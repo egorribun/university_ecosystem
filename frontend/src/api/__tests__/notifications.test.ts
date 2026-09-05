@@ -90,6 +90,17 @@ describe("fetchNotificationsList", () => {
     } as never)
     await expect(fetchNotificationsList()).rejects.toBeInstanceOf(ApiResponseValidationError)
   })
+
+  it("normalizes an omitted cursor while preserving an explicit limit", async () => {
+    vi.mocked(gen.listNotificationsApiV1NotificationsGet).mockResolvedValue({
+      data: { items: [], unread_count: 0, has_more: false, next_cursor: null },
+    } as never)
+
+    await fetchNotificationsList({ limit: 5 })
+    expect(gen.listNotificationsApiV1NotificationsGet).toHaveBeenCalledWith({
+      query: { cursor: undefined, limit: 5 },
+    })
+  })
 })
 
 describe("simple notification passthroughs", () => {
@@ -206,6 +217,27 @@ describe("saveSubscription", () => {
     expect(gen.subscribeApiV1PushSubscribePost).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ["missing endpoint", { keys: { p256dh: "p", auth: "a" } }],
+    ["missing p256dh", { endpoint: "https://push.example/x", keys: { auth: "a" } }],
+    ["missing auth", { endpoint: "https://push.example/x", keys: { p256dh: "p" } }],
+  ])("rejects a subscription with %s", async (_label, value) => {
+    await expect(saveSubscription(value as unknown as PushSubscriptionJSON)).rejects.toThrow(
+      "Invalid push subscription payload"
+    )
+    expect(gen.subscribeApiV1PushSubscribePost).not.toHaveBeenCalled()
+  })
+
+  it("omits topics when the optional value is not an array", async () => {
+    vi.mocked(gen.subscribeApiV1PushSubscribePost).mockResolvedValue({
+      data: { id: UUID, endpoint: "https://push.example/x" },
+    } as never)
+
+    await saveSubscription(goodSub, "system" as unknown as string[])
+    const body = vi.mocked(gen.subscribeApiV1PushSubscribePost).mock.calls[0]?.[0]?.body
+    expect(body).not.toHaveProperty("topics")
+  })
+
   it("throws when the server returns no data", async () => {
     vi.mocked(gen.subscribeApiV1PushSubscribePost).mockResolvedValue({ data: undefined } as never)
     await expect(saveSubscription(goodSub)).rejects.toThrow("Failed to save subscription")
@@ -246,6 +278,16 @@ describe("getVapidPublicKey null-normalization", () => {
     } as never)
     expect(await getVapidPublicKey()).toBeNull()
   })
+
+  it("rejects a malformed VAPID response with the endpoint context", async () => {
+    vi.mocked(gen.getVapidPublicKeyApiV1PushVapidPublicKeyGet).mockResolvedValue({
+      data: { publicKey: 42 },
+    } as never)
+    await expect(getVapidPublicKey()).rejects.toMatchObject({
+      name: "ApiResponseValidationError",
+      message: expect.stringContaining("GET /api/v1/push/vapid-public-key"),
+    })
+  })
 })
 
 describe("fetchPushTopics defaults", () => {
@@ -257,6 +299,18 @@ describe("fetchPushTopics defaults", () => {
     expect(result).toEqual({
       allowed: ["system"],
       topics: ["system"],
+      has_preferences: false,
+      updated_at: null,
+    })
+  })
+
+  it("defaults an omitted topics array and optional preference metadata", async () => {
+    vi.mocked(gen.getPushTopicsApiV1PushTopicsGet).mockResolvedValue({
+      data: { allowed: ["system"] },
+    } as never)
+    await expect(fetchPushTopics()).resolves.toEqual({
+      allowed: ["system"],
+      topics: [],
       has_preferences: false,
       updated_at: null,
     })
@@ -276,6 +330,19 @@ describe("admin topics", () => {
     } as never)
     const result = await fetchAdminUserTopics(UUID)
     expect(result.email).toBe("a@b.c")
+    expect(gen.adminGetUserTopicsApiV1PushAdminTopicsUserIdGet).toHaveBeenCalledWith({
+      path: { user_id: UUID },
+    })
+  })
+
+  it("reports the fetch endpoint when admin topic data is invalid", async () => {
+    vi.mocked(gen.adminGetUserTopicsApiV1PushAdminTopicsUserIdGet).mockResolvedValue({
+      data: { user_id: "not-a-uuid", email: "", topics: [], allowed_topics: [] },
+    } as never)
+    await expect(fetchAdminUserTopics(UUID)).rejects.toMatchObject({
+      name: "ApiResponseValidationError",
+      message: expect.stringContaining(`/api/v1/push/admin/topics/${UUID}`),
+    })
   })
 
   it("updateAdminUserTopics sends the body + validates", async () => {
@@ -292,6 +359,16 @@ describe("admin topics", () => {
     expect(gen.adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut).toHaveBeenCalledWith({
       path: { user_id: UUID },
       body: { topics: ["events"] },
+    })
+  })
+
+  it("reports the update endpoint when admin topic data is invalid", async () => {
+    vi.mocked(gen.adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut).mockResolvedValue({
+      data: { user_id: "not-a-uuid", email: "", topics: [], allowed_topics: [] },
+    } as never)
+    await expect(updateAdminUserTopics(UUID, ["events"])).rejects.toMatchObject({
+      name: "ApiResponseValidationError",
+      message: expect.stringContaining(`/api/v1/push/admin/topics/${UUID}`),
     })
   })
 })

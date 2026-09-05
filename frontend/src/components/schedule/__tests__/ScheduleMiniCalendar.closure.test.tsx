@@ -94,6 +94,9 @@ describe("ScheduleMiniCalendar", () => {
 
   it("keeps optional callbacks safe and handles month boundaries and leap days", () => {
     const { rerender } = render(<ScheduleMiniCalendar month={new Date(2026, 0, 1)} />)
+    // Drop the controlled prop so the navigation callback can update the
+    // component's internal month state.
+    rerender(<ScheduleMiniCalendar />)
 
     expect(() => fireEvent.click(screen.getByRole("button", { name: "common:prev" }))).not.toThrow()
     expect(screen.getByText("December 2025")).toBeInTheDocument()
