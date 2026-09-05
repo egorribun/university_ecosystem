@@ -4772,14 +4772,20 @@ def _assert_paired_gate_variant(
             {
                 "MANUAL_BASE_SHA": "${{ inputs.base_sha }}",
                 "MANUAL_CANDIDATE_SHA": "${{ github.sha }}",
+                "MANUAL_SOURCE_HEAD_SHA": "${{ github.sha }}",
+                "MANUAL_BASE_REF": "${{ github.ref_name }}",
             }
             if is_manual
             else {
                 "EVENT_NAME": "${{ github.event_name }}",
                 "PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
                 "PR_CANDIDATE_SHA": "${{ github.sha }}",
+                "PR_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
+                "PR_BASE_REF": "${{ github.event.pull_request.base.ref }}",
                 "PUSH_BASE_SHA": "${{ github.event.before }}",
                 "PUSH_CANDIDATE_SHA": "${{ github.sha }}",
+                "PUSH_SOURCE_HEAD_SHA": "${{ github.sha }}",
+                "PUSH_BASE_REF": "${{ github.ref_name }}",
             }
         ),
         base_worktree_leaf=(
@@ -5646,6 +5652,118 @@ def _assert_paired_capture_contract(
     )
 
 
+def _assert_paired_provenance_contract(
+    job: dict[str, object], *, capture_id: str, is_pull_request_workflow: bool
+) -> None:
+    """Require revision provenance to be recorded and verified before comparison."""
+
+    record = _step_named(job, "Record immutable benchmark provenance")
+    assert record["shell"] == "bash"
+    assert record.get("continue-on-error", False) is False
+    record_text = str(record["run"])
+    normalized_record_text = " ".join(record_text.replace("\\\n", " ").split())
+    assert normalized_record_text.startswith("set -euo pipefail")
+    for required_fragment in (
+        'validate_sha "$BASE_SHA" "base SHA"',
+        'validate_sha "$TESTED_COMMIT_SHA" "tested commit SHA"',
+        'validate_sha "$SOURCE_HEAD_SHA" "source head SHA"',
+        'if [[ ! "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]; then',
+        'if [[ ! "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then',
+        'if [[ ! -d "$ARTIFACT_ROOT" ]]; then',
+        "git rev-parse HEAD",
+        'git rev-list --parents -n1 "$TESTED_COMMIT_SHA"',
+        "tested_commit_parents",
+        "jq -n",
+        "provenance.json.tmp",
+        'mv -- "$PROVENANCE_TMP" "$ARTIFACT_ROOT/provenance.json"',
+    ):
+        assert required_fragment in normalized_record_text
+    record_env = record.get("env", {})
+    assert isinstance(record_env, dict)
+    assert record_env.get("EVENT_NAME") in {
+        "workflow_dispatch",
+        "${{ github.event_name }}",
+    }
+
+    comparator = _step_named(job, "Compare paired benchmark evidence")
+    comparator_text = str(comparator["run"])
+    normalized_comparator_text = " ".join(comparator_text.replace("\\\n", " ").split())
+    assert (
+        'BASE_COMPARATOR="${{ steps.' + capture_id + '.outputs.base_comparator }}"'
+    ) in comparator_text
+    assert "jq -e" in normalized_comparator_text
+    assert '"$ARTIFACT_ROOT/provenance.json" >/dev/null' in normalized_comparator_text
+    for required_fragment in (
+        ".schema_version == 1",
+        ".event == $event",
+        ".run_id",
+        ".run_attempt",
+        ".base_ref == $base_ref",
+        ".base_sha == $base_sha",
+        ".source_head_sha == $source_head_sha",
+        ".tested_commit_sha == $tested_commit_sha",
+        'git rev-list --parents -n1 "$EXPECTED_TESTED_COMMIT_SHA"',
+        "ACTUAL_PARENTS_JSON",
+        ".tested_commit_parents == $expected_parents",
+    ):
+        assert required_fragment in normalized_comparator_text
+    if is_pull_request_workflow:
+        comparator_env = comparator.get("env", {})
+        assert isinstance(comparator_env, dict)
+        assert (
+            comparator_env.get("PR_SOURCE_HEAD_SHA")
+            == "${{ github.event.pull_request.head.sha }}"
+        )
+    else:
+        assert ".source_head_sha == .tested_commit_sha" in normalized_comparator_text
+    assert normalized_comparator_text.index("jq -e") < normalized_comparator_text.index(
+        'ACTUAL_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR"'
+    )
+    assert comparator_text.count("jq -e") == 1
+
+    capture = _step_named(
+        job, "Resolve immutable revisions and capture paired evidence"
+    )
+    capture_text = " ".join(str(capture["run"]).replace("\\\n", " ").split())
+    assert 'git rev-list --parents -n1 "$CANDIDATE_SHA"' in capture_text
+    assert 'if [[ "$EVENT_NAME" == "pull_request" ]]; then' in capture_text or (
+        not is_pull_request_workflow
+    )
+    if is_pull_request_workflow:
+        for required_fragment in (
+            'if ! git cat-file -e "$SOURCE_HEAD_SHA^{commit}"; then',
+            'read -r COMMIT_ID PARENT_ONE PARENT_TWO EXTRA_PARENTS <<< "$PARENT_LINE"',
+            'if [[ "$PARENT_ONE" != "$BASE_SHA" ]]; then',
+            'if [[ "$PARENT_TWO" != "$SOURCE_HEAD_SHA" ]]; then',
+            'if [[ -n "$EXTRA_PARENTS" ]]; then',
+        ):
+            assert required_fragment in capture_text
+    else:
+        assert 'git cat-file -e "$SOURCE_HEAD_SHA^{commit}"' in capture_text
+        assert 'if [[ "$SOURCE_HEAD_SHA" != "$CANDIDATE_SHA" ]]; then' in capture_text
+
+
+def test_paired_performance_provenance_is_current_and_fail_closed() -> None:
+    """Both required and manual paired gates bind evidence to one run and SHA set."""
+
+    for workflow_path, is_pull_request_workflow in (
+        (REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml", True),
+        (MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH, False),
+    ):
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        jobs = workflow["jobs"]
+        for job_id in ("ws-hub-regression", "rust-native-regression"):
+            job = jobs[job_id]
+            capture = _step_named(
+                job, "Resolve immutable revisions and capture paired evidence"
+            )
+            _assert_paired_provenance_contract(
+                job,
+                capture_id=str(capture["id"]),
+                is_pull_request_workflow=is_pull_request_workflow,
+            )
+
+
 def test_performance_workflow_uses_same_run_immutable_paired_gates() -> None:
     """A required performance gate must compare immutable revisions in one VM."""
 
@@ -5666,8 +5784,12 @@ def test_performance_workflow_uses_same_run_immutable_paired_gates() -> None:
         "EVENT_NAME": "${{ github.event_name }}",
         "PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
         "PR_CANDIDATE_SHA": "${{ github.sha }}",
+        "PR_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
+        "PR_BASE_REF": "${{ github.event.pull_request.base.ref }}",
         "PUSH_BASE_SHA": "${{ github.event.before }}",
         "PUSH_CANDIDATE_SHA": "${{ github.sha }}",
+        "PUSH_SOURCE_HEAD_SHA": "${{ github.sha }}",
+        "PUSH_BASE_REF": "${{ github.ref_name }}",
     }
     _assert_paired_capture_contract(
         jobs["ws-hub-regression"],
@@ -5838,6 +5960,8 @@ def test_manual_performance_evidence_uses_distinct_read_only_paired_contexts() -
     manual_revision_environment = {
         "MANUAL_BASE_SHA": "${{ inputs.base_sha }}",
         "MANUAL_CANDIDATE_SHA": "${{ github.sha }}",
+        "MANUAL_SOURCE_HEAD_SHA": "${{ github.sha }}",
+        "MANUAL_BASE_REF": "${{ github.ref_name }}",
     }
     _assert_paired_capture_contract(
         jobs["ws-hub-regression"],
