@@ -85,6 +85,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      actions: read
     env:
       SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
       ENVIRONMENT: testing
@@ -185,6 +186,31 @@ jobs:
           # replace it with a name-only or cross-run lookup.
           artifact-ids: ${{ inputs.wasm-artifact-id }}
           path: frontend
+
+      - name: Verify server-side E2E WASM artifact digest
+        if: ${{ inputs.wasm-artifact-id != '' && inputs.wasm-artifact-name != '' && inputs.wasm-artifact-digest != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ARTIFACT_ID: ${{ inputs.wasm-artifact-id }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ inputs.wasm-artifact-digest }}
+        run: |
+          set -euo pipefail
+          api_url="https://api.github.com/repos/${REPOSITORY}/actions/artifacts/${ARTIFACT_ID}"
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors --retry-delay 2 \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_url}" -o "${response_file}"
+          actual_digest="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("digest", ""))' "${response_file}")"
+          if [[ "${actual_digest}" != "${EXPECTED_ARTIFACT_DIGEST}" ]]; then
+            echo "::error::E2E WASM artifact digest mismatch: server=${actual_digest} expected=${EXPECTED_ARTIFACT_DIGEST}"
+            exit 1
+          fi
 
       - name: Verify immutable E2E WASM provenance
         if: ${{ inputs.wasm-artifact-id != '' && inputs.wasm-artifact-name != '' && inputs.wasm-artifact-digest != '' }}

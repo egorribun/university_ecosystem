@@ -123,6 +123,7 @@ def test_e2e_consumer_accepts_all_or_none_artifact_inputs() -> None:
         assert inputs[name]["default"] == ""
 
     job = workflow["jobs"]["e2e"]
+    assert job["permissions"]["actions"] == "read"
     env = job["env"]
     assert env["SKIP_WASM_BUILD"] == "1"
     assert "wasm-artifact-id" in str(job["steps"])
@@ -145,6 +146,15 @@ def test_e2e_consumer_accepts_all_or_none_artifact_inputs() -> None:
     assert set(("EXPECTED_SHA", "EXPECTED_RUN_ID", "EXPECTED_RUN_ATTEMPT")) <= set(
         validate["env"]
     )
+
+    digest = _step(job, "Verify server-side E2E WASM artifact digest")
+    assert digest["env"]["ARTIFACT_ID"] == "${{ inputs.wasm-artifact-id }}"
+    assert digest["env"]["EXPECTED_ARTIFACT_DIGEST"] == (
+        "${{ inputs.wasm-artifact-digest }}"
+    )
+    assert "actions/artifacts/${ARTIFACT_ID}" in digest["run"]
+    assert "actual_digest" in digest["run"]
+    assert "exit 1" in digest["run"]
 
     fallback = _step(job, "Build WASM modules")
     assert "inputs.wasm-artifact-id == ''" in str(fallback["if"])
