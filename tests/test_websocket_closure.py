@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
-from app.api.websocket import websocket_chat
+from app.api.websocket import _get_websocket_audit_context, websocket_chat
 
 
 def _user() -> SimpleNamespace:
@@ -25,6 +25,17 @@ def _manager() -> MagicMock:
     return manager
 
 
+def test_websocket_audit_context_includes_path_and_client_host():
+    websocket = MagicMock()
+    websocket.url.path = "/ws/chat"
+    websocket.client.host = "127.0.0.1"
+
+    assert _get_websocket_audit_context(websocket) == {
+        "ws_path": "/ws/chat",
+        "ws_client": "127.0.0.1",
+    }
+
+
 @pytest.mark.asyncio
 async def test_websocket_chat_closes_when_authentication_returns_no_user():
     websocket = AsyncMock()
@@ -38,6 +49,26 @@ async def test_websocket_chat_closes_when_authentication_returns_no_user():
     websocket.close.assert_awaited_once_with(
         code=4001, reason="Authentication required"
     )
+
+
+@pytest.mark.asyncio
+async def test_websocket_chat_returns_when_connection_limit_rejects_user():
+    websocket = AsyncMock()
+    user = _user()
+    manager = _manager()
+    manager.connect.return_value = False
+
+    with (
+        patch(
+            "app.api.ws.authenticator.authenticator.authenticate_upgrade",
+            AsyncMock(return_value=(user, "jti", "subprotocol")),
+        ),
+        patch("app.api.websocket.manager", manager),
+    ):
+        await websocket_chat(websocket)
+
+    websocket.receive_text.assert_not_awaited()
+    manager.disconnect.assert_not_awaited()
 
 
 @pytest.mark.asyncio
