@@ -1977,8 +1977,16 @@ def test_mutation_lanes_are_readiness_gated_and_use_the_runner_budget() -> None:
     assert jobs["stryker-preflight"]["needs"] == [
         "pre-commit-check",
         "frontend-tests",
+    ]
+    assert jobs["stryker-shards"]["needs"] == [
+        "stryker-preflight",
         "coverage-policy-gate",
     ]
+    assert jobs["stryker-shards"]["if"] == (
+        "${{ github.event_name == 'pull_request' && "
+        "needs.stryker-preflight.result == 'success' && "
+        "needs.coverage-policy-gate.result == 'success' }}"
+    )
     assert jobs["stryker-shards"]["strategy"]["max-parallel"] == 8
     assert jobs["mutation-tests-stats"]["strategy"]["max-parallel"] == 8
     assert jobs["mutation-tests-stats"]["needs"] == [
@@ -4010,7 +4018,6 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert mutation_preflight["needs"] == [
         "pre-commit-check",
         "frontend-tests",
-        "coverage-policy-gate",
     ]
     assert "github.event_name == 'pull_request'" in mutation_preflight["if"]
     assert mutation_preflight["permissions"] == {
@@ -4063,7 +4070,15 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert mutation_shards["strategy"]["max-parallel"] == 8
     assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
     assert mutation_shards["timeout-minutes"] == 120
-    assert mutation_shards["needs"] == "stryker-preflight"
+    assert mutation_shards["needs"] == [
+        "stryker-preflight",
+        "coverage-policy-gate",
+    ]
+    assert mutation_shards["if"] == (
+        "${{ github.event_name == 'pull_request' && "
+        "needs.stryker-preflight.result == 'success' && "
+        "needs.coverage-policy-gate.result == 'success' }}"
+    )
     assert "pre-commit-check" in jobs["ci-success"]["needs"]
     assert "stryker-preflight" in jobs["ci-success"]["needs"]
     assert mutation_shards["env"] == {
@@ -4135,10 +4150,15 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
 
     assert "stryker-shard-replay" not in jobs
     mutation_aggregate = jobs["stryker-aggregate"]
-    assert mutation_aggregate["needs"] == ["stryker-preflight", "stryker-shards"]
+    assert mutation_aggregate["needs"] == [
+        "stryker-preflight",
+        "stryker-shards",
+        "coverage-policy-gate",
+    ]
     assert mutation_aggregate["if"] == (
         "${{ always() && !cancelled() && github.event_name == 'pull_request' "
-        "&& needs.stryker-preflight.result != 'skipped' }}"
+        "&& needs.stryker-preflight.result != 'skipped' "
+        "&& needs.coverage-policy-gate.result == 'success' }}"
     )
     assert mutation_aggregate["env"]["STRYKER_AGGREGATE_ROOT"] == (
         "reports/mutation/external"

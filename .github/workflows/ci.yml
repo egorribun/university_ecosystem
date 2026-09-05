@@ -753,9 +753,11 @@ jobs:
       contents: read
     uses: ./.github/workflows/reusable-e2e-wasm-build.yml
 
-  # Generate the expensive instrumenter universe once. The artifact is named
-  # for an exact immutable GitHub workflow attempt and commit; every consumer
-  # validates all bound metadata before it can select a logical shard.
+  # Generate the expensive instrumenter universe once after frontend readiness.
+  # This producer may overlap with aggregate coverage, but execution remains
+  # coverage-gated below. The artifact is named for an exact immutable GitHub
+  # workflow attempt and commit; every consumer validates all bound metadata
+  # before it can select a logical shard.
   stryker-preflight:
     name: Frontend Mutation Preflight Universe
     runs-on: ubuntu-24.04
@@ -763,8 +765,7 @@ jobs:
     needs:
       - pre-commit-check
       - frontend-tests
-      - coverage-policy-gate
-    if: ${{ github.event_name == 'pull_request' && needs.frontend-tests.result == 'success' && needs.pre-commit-check.result == 'success' && needs.coverage-policy-gate.result == 'success' }}
+    if: ${{ github.event_name == 'pull_request' && needs.frontend-tests.result == 'success' && needs.pre-commit-check.result == 'success' }}
     permissions:
       contents: read
       actions: read
@@ -881,8 +882,10 @@ jobs:
     name: Frontend mutation shard ${{ matrix.shard-index }}/64
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    needs: stryker-preflight
-    if: ${{ github.event_name == 'pull_request' }}
+    needs:
+      - stryker-preflight
+      - coverage-policy-gate
+    if: ${{ github.event_name == 'pull_request' && needs.stryker-preflight.result == 'success' && needs.coverage-policy-gate.result == 'success' }}
     strategy:
       fail-fast: false
       # A c4 timing sample from exact run 33303107020 (6 completed Stryker
@@ -1025,12 +1028,14 @@ jobs:
     name: Frontend Mutation Evidence (100%)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    needs: [stryker-preflight, stryker-shards]
-    # The preflight is intentionally gated on frontend readiness.  If that
-    # prerequisite is skipped, no producer can emit a same-run artifact and
-    # this consumer must remain skipped as well.  Once preflight started,
-    # keep the aggregate fail-closed for failed/cancelled shard producers.
-    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-preflight.result != 'skipped' }}
+    needs: [stryker-preflight, stryker-shards, coverage-policy-gate]
+    # The preflight is intentionally gated on frontend readiness.  Coverage is
+    # an explicit prerequisite for both shard execution and aggregation: a
+    # preflight artifact may exist while coverage is still running, but a
+    # failed/cancelled coverage gate must never produce mutation evidence.
+    # Once preflight started, keep the aggregate fail-closed for failed/
+    # cancelled shard producers.
+    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-preflight.result != 'skipped' && needs.coverage-policy-gate.result == 'success' }}
     permissions:
       contents: read
       actions: read
@@ -5164,11 +5169,12 @@ jobs:
             fi
           done
 
-          # Mutation producers are intentionally phase-gated on the aggregate
-          # coverage contract. A failed prerequisite already blocks this
-          # finalizer; in that case the expensive matrix is expected to be
-          # skipped, while any producer that started despite green readiness
-          # remains fail-closed and must conclude successfully.
+          # Mutation execution and aggregation are intentionally phase-gated on
+          # the aggregate coverage contract. The Stryker preflight may overlap
+          # coverage, but a failed prerequisite still blocks execution. In that
+          # case the expensive matrix is expected to be skipped, while any
+          # producer that started despite green readiness remains fail-closed
+          # and must conclude successfully.
           mutation_expected_result=success
           if {
             [[ "$COVERAGE_RESULT" != "success" ]] ||
@@ -5217,6 +5223,13 @@ jobs:
               assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "success"
               assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "success"
               assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "success"
+            elif [[ "$PRE_COMMIT_RESULT" == "success" && "$FRONTEND_TESTS_RESULT" == "success" && "${{ needs.stryker-preflight.result }}" == "success" && "$COVERAGE_RESULT" != "success" ]]; then
+              # Preflight is safe to overlap with coverage, but no execution or
+              # aggregate lane may start on a failed/cancelled coverage gate.
+              assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
+              assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "skipped"
+              assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "skipped"
+              assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "skipped"
             else
               assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "skipped"
               assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "skipped"

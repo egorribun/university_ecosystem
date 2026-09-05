@@ -799,6 +799,16 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
         '"$FRONTEND_TESTS_RESULT" == "success" && '
         '"$COVERAGE_RESULT" == "success" ]]; then' in gate
     )
+    assert (
+        'elif [[ "$PRE_COMMIT_RESULT" == "success" && '
+        '"$FRONTEND_TESTS_RESULT" == "success" && '
+        '"${{ needs.stryker-preflight.result }}" == "success" && '
+        '"$COVERAGE_RESULT" != "success" ]]; then' in gate
+    )
+    assert (
+        'assert_event_result "stryker-preflight" '
+        '"${{ needs.stryker-preflight.result }}" "success"' in gate
+    )
     for mutation_job in (
         "stryker-preflight",
         "stryker-aggregate",
