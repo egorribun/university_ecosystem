@@ -29,11 +29,9 @@ export function readSsrAuthHint(): SsrAuthState | undefined {
 
   if (serverHint) return serverHint
 
-  // Keep the DOM bridge safe in the Node SSR runtime without a separate
-  // `typeof document` branch. The no-op object also lets the marker chain stay
-  // total when a browser document has not mounted the root element yet.
-  const documentRef = globalThis.document ?? { getElementById: () => null }
-  const marker = documentRef.getElementById("root")?.getAttribute("data-ssr-auth")
+  // Optional access keeps the DOM bridge total in the Node SSR runtime and
+  // avoids manufacturing a fake document implementation.
+  const marker = globalThis.document?.getElementById("root")?.getAttribute("data-ssr-auth")
   if (!marker?.startsWith("authenticated:")) return undefined
   const role = marker.slice("authenticated:".length)
   if (!role || role.trim() !== role) return undefined

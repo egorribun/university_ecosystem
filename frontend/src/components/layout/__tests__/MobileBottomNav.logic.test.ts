@@ -62,5 +62,12 @@ describe("MobileBottomNav pure navigation contracts", () => {
     expect(shouldHideForVirtualKeyboard(input, 800, 650, 1)).toBe(false)
     expect(shouldHideForVirtualKeyboard(input, 800, 649, 0.99)).toBe(false)
     expect(shouldHideForVirtualKeyboard(input, 800, 500, 2)).toBe(false)
+
+    const absSpy = vi.spyOn(Math, "abs").mockReturnValue(0.01)
+    try {
+      expect(shouldHideForVirtualKeyboard(input, 800, 649, 1.02)).toBe(false)
+    } finally {
+      absSpy.mockRestore()
+    }
   })
 })

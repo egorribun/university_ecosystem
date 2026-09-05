@@ -168,6 +168,10 @@ describe("ContactList — empty state (W183 SW1)", () => {
     const iconContainer = container.querySelector(".messenger-card-matte")
     expect(iconContainer).toHaveStyle({ background: "var(--messenger-card-bg)" })
     expect(iconContainer?.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expect(entrance).toHaveAttribute(
+      "data-motion-animate",
+      JSON.stringify({ scale: 1, opacity: 1, y: 0 })
+    )
   })
 
   it("omits empty-state animation objects under reduced motion while keeping the state visible", () => {
@@ -395,6 +399,17 @@ describe("ContactList — empty state (W183 SW1)", () => {
     const retry = screen.getByRole("button", { name: /messenger:error.retry/ })
     expect(retry).toHaveAttribute("data-motion-while-hover", JSON.stringify({ scale: 1.04 }))
     expect(retry).toHaveAttribute("data-motion-while-tap", JSON.stringify({ scale: 0.96 }))
+  })
+
+  it("uses a zero-duration transition for the reduced-motion error state", () => {
+    mockReducedMotion.mockReturnValue(true)
+    const { container } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isError />,
+      { wrapper }
+    )
+
+    const panel = container.querySelector("[data-motion-animate]")
+    expect(panel).toHaveAttribute("data-motion-transition", JSON.stringify({ duration: 0 }))
   })
 
   it("removes retry hover/tap animation objects under reduced motion", () => {
@@ -747,7 +762,7 @@ describe("ContactList — populated contacts", () => {
 
     expect(bob.querySelector("img")).toHaveAttribute("src", "/fallbacks/default_avatar.png")
     expect(bob.querySelector(".messenger-online-indicator")).not.toBeInTheDocument()
-    expect(screen.getByLabelText('messenger:aria.unread|{"count":99}')).toHaveTextContent("99")
+    expect(screen.getByLabelText('messenger:aria.unread|{"count":99}')).toHaveTextContent(/^99$/)
     expect(screen.getByLabelText('messenger:aria.unread|{"count":100}')).toHaveTextContent("99+")
   })
 

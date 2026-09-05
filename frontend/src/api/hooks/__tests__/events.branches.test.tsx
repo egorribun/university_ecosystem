@@ -139,6 +139,24 @@ describe("eventsListQueryKey (events.ts:77-79)", () => {
     expect(eventsListQueryKey({ language: "ru", limit: -5 })[2].limit).toBe(12)
     expect(eventsListQueryKey({ language: "ru", limit: Number.NaN })[2].limit).toBe(12)
   })
+
+  it("exposes the same canonical key from the hook", () => {
+    const queryClient = freshClient()
+    const { result } = renderHook(
+      () =>
+        useEventsListQuery(
+          { language: "en", is_active: false, search: "  library  " },
+          { enabled: false }
+        ),
+      { wrapper: makeWrapper(queryClient) }
+    )
+
+    expect(result.current.queryKey).toEqual([
+      "events",
+      "list",
+      { language: "en", is_active: false, search: "library", location: "", limit: 12 },
+    ])
+  })
 })
 
 // ── useEventsListQuery: queryFn null-fallback (86-94) + cursor (149-151) + 304 ─
@@ -315,6 +333,23 @@ describe("useEventsListQuery queryFn branches", () => {
     expect(result.current.events).toHaveLength(2)
   })
 
+  it("reports null pagination while an uncached request is pending", async () => {
+    let resolveRequest: (value: unknown) => void = () => {}
+    allEventsMock.mockImplementation(
+      () => new Promise((resolve) => (resolveRequest = resolve as (value: unknown) => void))
+    )
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useEventsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isPending).toBe(true))
+    expect(result.current.pagination).toBeNull()
+
+    await act(async () => resolveRequest(okPage([], null)))
+  })
+
   it("304 response with a malformed or cold cache safely returns an empty page", async () => {
     allEventsMock.mockResolvedValue({ status: 304, data: undefined })
 
@@ -382,6 +417,55 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })
 
+  it("uses distinct all/archive snapshots and preserves the infinite-page shape", () => {
+    const scenarios = [
+      { is_active: null, activity: "all", id: "all-snapshot" },
+      { is_active: false, activity: "archive", id: "archive-snapshot" },
+    ] as const
+
+    for (const scenario of scenarios) {
+      const stored = [makeEvent(scenario.id)]
+      const key = `events:list:ru:${scenario.activity}`
+      window.localStorage.setItem(key, JSON.stringify(stored))
+      const queryClient = freshClient()
+      const { result, unmount } = renderHook(
+        () =>
+          useEventsListQuery({ language: "ru", is_active: scenario.is_active }, { enabled: false }),
+        { wrapper: makeWrapper(queryClient) }
+      )
+
+      expect(result.current.data).toEqual({
+        pages: [
+          {
+            items: stored,
+            total: 1,
+            limit: 12,
+            cursor: null,
+            next_cursor: null,
+            has_more: false,
+          },
+        ],
+        pageParams: [null],
+      })
+      unmount()
+      window.localStorage.removeItem(key)
+    }
+  })
+
+  it("does not create a placeholder for non-array or empty persisted values", () => {
+    for (const value of [{ invalid: true }, []]) {
+      window.localStorage.setItem("events:list:ru:all", JSON.stringify(value))
+      const queryClient = freshClient()
+      const { result, unmount } = renderHook(
+        () => useEventsListQuery({ language: "ru", is_active: null }, { enabled: false }),
+        { wrapper: makeWrapper(queryClient) }
+      )
+      expect(result.current.data).toBeUndefined()
+      unmount()
+      window.localStorage.removeItem("events:list:ru:all")
+    }
+  })
+
   it("placeholder swallows malformed JSON gracefully", async () => {
     window.localStorage.setItem("events:list:ru:all", "{not-json")
     allEventsMock.mockResolvedValue(okPage([], null))
@@ -396,7 +480,7 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
   })
 
   it("returns no placeholder when the storage adapter throws", async () => {
-    const getSpy = vi.spyOn(StorageItem.prototype, "get").mockImplementation(() => {
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("storage unavailable")
     })
     allEventsMock.mockResolvedValue(okPage([], null))
@@ -409,7 +493,7 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
       expect(result.current.events).toEqual([])
     } finally {
-      getSpy.mockRestore()
+      getItemSpy.mockRestore()
     }
   })
 })
@@ -459,6 +543,7 @@ describe("prefetchEventsListQuery (events.ts:262-272)", () => {
     expect(opts.initialPageParam).toBeNull()
     expect(opts.getNextPageParam({ next_cursor: "c" })).toBe("c")
     expect(opts.getNextPageParam({ next_cursor: null })).toBeNull()
+    expect(opts.getNextPageParam(undefined as never)).toBeNull()
   })
 
   it("executes the real queryFn against the mocked SDK when not spied", async () => {
@@ -495,6 +580,7 @@ describe("useMyEventsQuery (events.ts:329-354)", () => {
     })
     expect(result.current.fetchStatus).toBe("idle")
     expect(myEventsMock).not.toHaveBeenCalled()
+    expect(result.current.queryKey).toEqual(["events", "my", { language: "ru", userId: null }])
   })
 
   it("uses the anonymous ETag sentinel when a disabled query is manually refetched", async () => {
@@ -533,6 +619,38 @@ describe("useMyEventsQuery (events.ts:329-354)", () => {
     ).validateStatus
     expect(validateStatus(200)).toBe(true)
     expect(validateStatus(400)).toBe(false)
+  })
+
+  it("exposes the user-scoped query key and placeholder while the request is pending", async () => {
+    const stored = [makeEvent("m-persisted")]
+    window.localStorage.setItem("events:my:ru:u-pending", JSON.stringify(stored))
+    let resolveRequest: (value: unknown) => void = () => {}
+    myEventsMock.mockImplementation(
+      () => new Promise((resolve) => (resolveRequest = resolve as (value: unknown) => void))
+    )
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useMyEventsQuery({ language: "ru", userId: "u-pending" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.data).toEqual(stored))
+    expect(result.current.queryKey).toEqual([
+      "events",
+      "my",
+      { language: "ru", userId: "u-pending" },
+    ])
+    await act(async () => resolveRequest({ status: 200, data: stored }))
+  })
+
+  it("does not create a placeholder for a non-array persisted value", () => {
+    window.localStorage.setItem("events:my:ru:u-invalid", JSON.stringify({ items: [] }))
+    const queryClient = freshClient()
+    const { result } = renderHook(
+      () => useMyEventsQuery({ language: "ru", userId: "u-invalid" }, { enabled: false }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+    expect(result.current.data).toBeUndefined()
   })
 
   it("non-array 200 data coerces to [] (events.ts:353)", async () => {
@@ -626,7 +744,11 @@ describe("useSuspenseMyEventsQuery (events.ts:385-417)", () => {
     const validateStatus = (
       myEventsMock.mock.calls[0]?.[0] as { validateStatus: (status: number) => boolean }
     ).validateStatus
+    expect(validateStatus(199)).toBe(false)
+    expect(validateStatus(200)).toBe(true)
     expect(validateStatus(299)).toBe(true)
+    expect(validateStatus(399)).toBe(true)
+    expect(validateStatus(400)).toBe(false)
     expect(validateStatus(500)).toBe(false)
   })
 
@@ -644,7 +766,11 @@ describe("useSuspenseMyEventsQuery (events.ts:385-417)", () => {
     const cached = [makeEvent("su-c")]
     const queryClient = freshClient()
     // pre-seed the cache so the 304 branch can read it
-    queryClient.setQueryData(["events", "my", { language: "ru", userId: "su-3" }], cached)
+    // Mark the seed stale so the suspense query executes its 304 fallback
+    // instead of short-circuiting on a fresh cache entry.
+    queryClient.setQueryData(["events", "my", { language: "ru", userId: "su-3" }], cached, {
+      updatedAt: 0,
+    })
     myEventsMock.mockResolvedValue({ status: 304, data: undefined })
 
     const { result } = renderHook(
@@ -652,6 +778,7 @@ describe("useSuspenseMyEventsQuery (events.ts:385-417)", () => {
       { wrapper: makeWrapper(queryClient) }
     )
     await waitFor(() => expect(result.current.data).toEqual(cached))
+    expect(myEventsMock).toHaveBeenCalledOnce()
   })
 
   it("304 in suspense path returns an empty array when no cache exists", async () => {
@@ -691,6 +818,7 @@ describe("useEventDetailQuery (events.ts:457-466)", () => {
     })
     expect(result.current.fetchStatus).toBe("idle")
     expect(getEventMock).not.toHaveBeenCalled()
+    expect(queryClient.getQueryCache().find({ queryKey: ["events", "detail", ""] })).toBeDefined()
   })
 
   it("fetches the event when id is provided", async () => {
@@ -703,7 +831,9 @@ describe("useEventDetailQuery (events.ts:457-466)", () => {
     })
 
     await waitFor(() => expect(result.current.data).toEqual(ev))
-    expect(getEventMock).toHaveBeenCalled()
+    expect(getEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { event_id: "d-2" } })
+    )
   })
 })
 
@@ -711,6 +841,12 @@ describe("useEventDetailQuery (events.ts:457-466)", () => {
 describe("useEventNavigation (events.ts:482-525)", () => {
   it("derives prev/next from the cached events list, dedup preserving order", () => {
     const queryClient = freshClient()
+    // A non-events cache entry must never influence event navigation. A
+    // malformed query-key filter would include this page and change the
+    // neighboring event ids.
+    queryClient.setQueryData(["users", "me"], {
+      pages: [{ items: [makeEvent("unrelated")] }],
+    })
     // Two cached list entries with an overlapping id ("b") to exercise dedupe.
     queryClient.setQueryData(["events", "list", { language: "ru", page: 1 }], {
       pages: [{ items: [makeEvent("a", "A"), makeEvent("b", "B")] }],
@@ -727,6 +863,43 @@ describe("useEventNavigation (events.ts:482-525)", () => {
     expect(result.current.prevTitle).toBe("A")
     expect(result.current.nextId).toBe("c")
     expect(result.current.nextTitle).toBe("C")
+  })
+
+  it("handles undefined cache data without dereferencing it", () => {
+    const queryClient = freshClient()
+    vi.spyOn(queryClient, "getQueriesData").mockReturnValue([
+      [["events", "list"], undefined],
+    ] as never)
+
+    const { result } = renderHook(() => useEventNavigation("missing"), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    expect(result.current).toEqual({
+      prevId: null,
+      nextId: null,
+      prevTitle: null,
+      nextTitle: null,
+    })
+  })
+
+  it("recomputes neighbors when the current id changes", () => {
+    const queryClient = freshClient()
+    queryClient.setQueryData(["events", "list", { language: "ru" }], {
+      pages: [{ items: [makeEvent("a", "A"), makeEvent("b", "B"), makeEvent("c", "C")] }],
+    })
+
+    const { result, rerender } = renderHook(
+      ({ currentId }: { currentId: string }) => useEventNavigation(currentId),
+      {
+        initialProps: { currentId: "a" },
+        wrapper: makeWrapper(queryClient),
+      }
+    )
+    expect(result.current.nextId).toBe("b")
+    rerender({ currentId: "b" })
+    expect(result.current.prevId).toBe("a")
+    expect(result.current.nextId).toBe("c")
   })
 
   it("returns null nav for the first item (no prev)", () => {

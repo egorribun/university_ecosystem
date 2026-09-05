@@ -3,7 +3,7 @@ import type { PropsWithChildren } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { i18n as I18nInstance } from "i18next"
 
-import i18n from "@/i18n/config"
+import i18n, { createI18nInstance } from "@/i18n/config"
 import {
   LanguageProvider,
   getLocaleForLanguage,
@@ -70,6 +70,15 @@ describe("LanguageContext browser branches", () => {
     expect(resolveInitialLanguage({ language: "en" } as I18nInstance)).toBe("en")
   })
 
+  it("falls back when a server i18n instance exposes a non-string language", () => {
+    vi.stubGlobal("window", undefined)
+
+    expect(resolveInitialLanguage({ language: 42 } as unknown as I18nInstance)).toBe("ru")
+    expect(resolveInitialLanguage({ language: { code: "en" } } as unknown as I18nInstance)).toBe(
+      "ru"
+    )
+  })
+
   it("marks the mirrored language cookie Secure on HTTPS", async () => {
     const cookieSetter = vi.spyOn(document, "cookie", "set")
     vi.stubGlobal("location", { protocol: "https:" })
@@ -79,6 +88,31 @@ describe("LanguageContext browser branches", () => {
     await waitFor(() =>
       expect(cookieSetter).toHaveBeenCalledWith(expect.stringContaining("; Secure"))
     )
+  })
+
+  it("writes the exact non-secure cookie contract on HTTP", async () => {
+    const cookieSetter = vi.spyOn(document, "cookie", "set")
+    vi.stubGlobal("location", { protocol: "http:" })
+
+    render(<Probe />, { wrapper })
+
+    await waitFor(() =>
+      expect(cookieSetter).toHaveBeenCalledWith(
+        "ue:language=ru; Path=/; Max-Age=31536000; SameSite=Lax"
+      )
+    )
+    expect(cookieSetter.mock.calls.at(-1)?.[0]).not.toContain("Secure")
+  })
+
+  it("keeps the cookie path safe when location is unavailable", async () => {
+    const cookieSetter = vi.spyOn(document, "cookie", "set")
+    vi.stubGlobal("location", undefined)
+
+    render(<Probe />, { wrapper })
+
+    await waitFor(() => expect(cookieSetter).toHaveBeenCalled())
+    expect(cookieSetter.mock.calls.at(-1)?.[0]).toContain("ue:language=ru")
+    expect(cookieSetter.mock.calls.at(-1)?.[0]).not.toContain("Secure")
   })
 
   it("ignores browser locale so the client fallback matches SSR", () => {
@@ -134,11 +168,13 @@ describe("LanguageContext browser branches", () => {
   it("updates state through setLanguage and exposes the guard/error contract", async () => {
     const { result } = renderHook(() => useLanguage(), { wrapper })
     expect(result.current.language).toBe("ru")
+    const initialSetter = result.current.setLanguage
 
     act(() => {
       result.current.setLanguage("ru")
     })
     expect(result.current.language).toBe("ru")
+    expect(result.current.setLanguage).toBe(initialSetter)
     await waitFor(() => expect(window.localStorage.getItem("ue:language")).toBe("ru"))
 
     expect(() => renderHook(() => useLanguage())).toThrow(
@@ -158,5 +194,36 @@ describe("LanguageContext browser branches", () => {
       i18n.emit("languageChanged", "de")
     })
     expect(result.current.language).toBe("ru")
+  })
+
+  it("applies supported languageChanged events and detaches the listener", async () => {
+    const first = createI18nInstance("ru")
+    const second = createI18nInstance("ru")
+    const firstOn = vi.spyOn(first, "on")
+    const firstOff = vi.spyOn(first, "off")
+    const secondOn = vi.spyOn(second, "on")
+    const secondOff = vi.spyOn(second, "off")
+    let current = first
+    globalThis.__ssrI18nGetter__ = () => current
+
+    const view = render(<Probe />, { wrapper })
+    expect(firstOn).toHaveBeenCalledWith("languageChanged", expect.any(Function))
+
+    current = second
+    view.rerender(
+      <LanguageProvider>
+        <Probe />
+      </LanguageProvider>
+    )
+    expect(firstOff).toHaveBeenCalledWith("languageChanged", expect.any(Function))
+    expect(secondOn).toHaveBeenCalledWith("languageChanged", expect.any(Function))
+
+    act(() => {
+      second.emit("languageChanged", "en")
+    })
+    await waitFor(() => expect(screen.getByRole("button")).toHaveTextContent("en:en,ru"))
+
+    view.unmount()
+    expect(secondOff).toHaveBeenCalledWith("languageChanged", expect.any(Function))
   })
 })

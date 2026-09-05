@@ -2,6 +2,9 @@ import { useCallback, useMemo, useSyncExternalStore } from "react"
 
 type MediaQueryCallback = (event: MediaQueryListEvent | MediaQueryList) => void
 
+const TRUE_SERVER_SNAPSHOT = () => true
+const FALSE_SERVER_SNAPSHOT = () => false
+
 export interface UseMediaQueryOptions {
   /** Value used before the first client render when matchMedia is unavailable. */
   defaultValue?: boolean
@@ -14,10 +17,9 @@ const getMatchMedia = (): ((query: string) => MediaQueryList) | undefined => {
   return matchMedia.bind(window)
 }
 
-const unavailableMediaQuery = (): MediaQueryList | null => null
-
-const toMediaQueryList = (query: string): MediaQueryList | null => {
-  const matchMedia = getMatchMedia() ?? unavailableMediaQuery
+export const toMediaQueryList = (query: string): MediaQueryList | null => {
+  const matchMedia = getMatchMedia()
+  if (!matchMedia) return null
   try {
     return matchMedia(query)
   } catch {
@@ -74,7 +76,7 @@ export default function useMediaQuery(
     [mediaQueryList, store]
   )
 
-  const getServerSnapshot = useCallback(() => defaultValue, [defaultValue])
+  const getServerSnapshot = defaultValue ? TRUE_SERVER_SNAPSHOT : FALSE_SERVER_SNAPSHOT
 
   return useSyncExternalStore(subscribe, store.getSnapshot, getServerSnapshot)
 }

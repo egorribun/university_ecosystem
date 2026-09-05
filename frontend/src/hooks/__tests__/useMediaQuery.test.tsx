@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react"
 import { hydrateRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
-import useMediaQuery from "../useMediaQuery"
+import useMediaQuery, { toMediaQueryList } from "../useMediaQuery"
 
 describe("useMediaQuery", () => {
   const listeners = new Map<string, (event: MediaQueryListEvent) => void>()
@@ -150,6 +150,17 @@ describe("useMediaQuery", () => {
     })
     const throwing = renderHook(() => useMediaQuery("(forced-throw)", { defaultValue: true }))
     expect(throwing.result.current).toBe(true)
+  })
+
+  it("returns null when the direct media-query resolver throws", () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => {
+        throw new Error("resolver failure")
+      }),
+    })
+
+    expect(toMediaQueryList("(resolver-failure)")).toBeNull()
   })
 
   it("updates the fallback snapshot when defaultValue changes", () => {

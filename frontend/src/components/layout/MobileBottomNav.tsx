@@ -60,7 +60,7 @@ export function createMobileNavItems(t: Translation) {
 
 export default function MobileBottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const { t } = useTranslation(["navigation"])
+  const { t } = useTranslation("navigation")
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const deferredScrollFrame = useRef<number | null>(null)
   const [isVirtualKeyboardOpen, setIsVirtualKeyboardOpen] = useState(false)

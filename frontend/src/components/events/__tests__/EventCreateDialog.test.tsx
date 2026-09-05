@@ -73,6 +73,13 @@ describe("EventCreateDialog", () => {
     expect(hasInvalidEventDates("2026-01-15T12:00", "2026-01-15T10:00")).toBe(true)
     expect(hasInvalidEventDates("2026-01-15T10:00", "2026-01-15T12:00")).toBe(false)
     expect(hasInvalidEventDates("2026-01-15T10:00", "2026-01-15T10:00")).toBe(true)
+
+    const parseSpy = vi.spyOn(Date, "parse")
+    parseSpy
+      .mockReturnValueOnce(Number.POSITIVE_INFINITY)
+      .mockReturnValueOnce(Number.POSITIVE_INFINITY)
+    expect(hasInvalidEventDates("infinite-start", "infinite-end")).toBe(false)
+    parseSpy.mockRestore()
   })
 
   it("requires every submit precondition", () => {
@@ -113,6 +120,10 @@ describe("EventCreateDialog", () => {
 
     expect(generation.current).toBe(5)
     expect(onCleanup).toHaveBeenCalledOnce()
+
+    const noCallbackGeneration = { current: 7 }
+    expect(() => createUploadGenerationCleanup(noCallbackGeneration)()).not.toThrow()
+    expect(noCallbackGeneration.current).toBe(8)
   })
 
   it("renders nothing when open=false", () => {
@@ -519,6 +530,23 @@ describe("EventCreateDialog", () => {
     rerender(<EventCreateDialog {...baseProps} language="ru" onCreated={onCreated} />)
     expect(fieldByLabel("events:form.title")).toHaveValue("Русское название")
     expect(fieldByLabel("events:form.location")).toHaveValue("Русский зал")
+  })
+
+  it("keeps localized optional description and event type values independent", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<EventCreateDialog {...baseProps} language="en" />)
+
+    await user.type(fieldByLabel("events:form.description_en"), "English details")
+    await user.type(fieldByLabel("events:form.type_en"), "Lecture")
+    rerender(<EventCreateDialog {...baseProps} language="ru" />)
+    expect(fieldByLabel("events:form.description")).toHaveValue("")
+    expect(fieldByLabel("events:form.type")).toHaveValue("")
+
+    await user.type(fieldByLabel("events:form.description"), "Русские детали")
+    await user.type(fieldByLabel("events:form.type"), "Лекция")
+    rerender(<EventCreateDialog {...baseProps} language="en" />)
+    expect(fieldByLabel("events:form.description_en")).toHaveValue("English details")
+    expect(fieldByLabel("events:form.type_en")).toHaveValue("Lecture")
   })
 
   it("resets the draft immediately when the dialog is closed", async () => {

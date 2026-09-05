@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import * as dateUtils from "@/utils/date"
 import {
   buildTable,
+  getEndTimeStr,
+  getTimeStr,
   getTodayIdx,
   minutesDiff,
   parseMinutes,
@@ -23,11 +26,30 @@ describe("schedule time parser closure", () => {
 
   it("parses a valid clock time through the fast path", () => {
     expect(parseMinutes("09:30")).toBe(9 * 60 + 30)
+    expect(parseMinutes("00:00")).toBe(0)
+    expect(parseMinutes("23:59")).toBe(23 * 60 + 59)
   })
 
   it("rejects out-of-range clock values after the fast-path shape match", () => {
     expect(parseMinutes("24:00")).toBeNull()
     expect(parseMinutes("23:60")).toBeNull()
+    expect(parseMinutes("00:60")).toBeNull()
+  })
+
+  it("uses the fallback date's local hour and minute when no clock token exists", () => {
+    const toDateSpy = vi.spyOn(dateUtils, "toDate").mockReturnValue(new Date(2026, 3, 26, 13, 37))
+    try {
+      expect(parseMinutes("opaque-date-value")).toBe(13 * 60 + 37)
+    } finally {
+      toDateSpy.mockRestore()
+    }
+  })
+
+  it("handles nullable lesson times and computes valid minute deltas", () => {
+    expect(getTimeStr({} as Lesson)).toBe("")
+    expect(getEndTimeStr({} as Lesson)).toBe("")
+    expect(minutesDiff("09:00", "10:30")).toBe(90)
+    expect(minutesDiff("not-a-real-date", "10:30")).toBe(630)
   })
 
   it("maps Sunday outside the Monday-first schedule", () => {

@@ -167,7 +167,7 @@ export const OtpEntry = ({
         >
           {digits.map((digit, index) => (
             <input
-              key={`otp-digit-${index}`}
+              key={index}
               ref={(el) => {
                 inputRefs.current[index] = el
               }}

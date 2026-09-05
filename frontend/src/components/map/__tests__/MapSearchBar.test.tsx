@@ -316,7 +316,12 @@ describe("MapSearchBar", () => {
   })
 
   it("moves the active option with bounded ArrowDown and ArrowUp navigation", () => {
-    render(<MapSearchBar {...baseProps} buildings={CAMPUS_BUILDINGS} />)
+    const thirdBuilding = {
+      ...CAMPUS_BUILDINGS[0]!,
+      letter: "ЛК" as const,
+      name: "Campus Lab",
+    } satisfies CampusBuilding
+    render(<MapSearchBar {...baseProps} buildings={[...CAMPUS_BUILDINGS, thirdBuilding]} />)
     const input = screen.getByRole("combobox")
     fireEvent.change(input, { target: { value: "Campus" } })
     const options = screen.getAllByRole("option")
@@ -331,12 +336,12 @@ describe("MapSearchBar", () => {
     expect(input).toHaveAttribute("aria-activedescendant", options[1]!.id)
 
     fireEvent.keyDown(input, { key: "ArrowDown" })
-    expect(options[1]).toHaveAttribute("aria-selected", "true")
+    expect(options[2]).toHaveAttribute("aria-selected", "true")
     fireEvent.keyDown(input, { key: "ArrowDown" })
-    expect(options[1]).toHaveAttribute("aria-selected", "true")
+    expect(options[2]).toHaveAttribute("aria-selected", "true")
 
     fireEvent.keyDown(input, { key: "ArrowUp" })
-    expect(options[0]).toHaveAttribute("aria-selected", "true")
+    expect(options[1]).toHaveAttribute("aria-selected", "true")
     fireEvent.keyDown(input, { key: "ArrowUp" })
     expect(options[0]).toHaveAttribute("aria-selected", "true")
   })
