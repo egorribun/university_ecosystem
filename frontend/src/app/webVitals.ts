@@ -52,9 +52,10 @@ function sendMetric(endpoint: string, metric: WebVitalMetric): void {
   const payload = JSON.stringify(payloadObject)
 
   if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
-    if (typeof Blob !== "undefined") {
+    const BlobCtor = typeof Blob === "function" ? Blob : undefined
+    if (BlobCtor) {
       try {
-        const blob = new Blob([payload], { type: "application/json" })
+        const blob = new BlobCtor([payload], { type: "application/json" })
         navigator.sendBeacon(endpoint, blob)
         return
       } catch (_error) {

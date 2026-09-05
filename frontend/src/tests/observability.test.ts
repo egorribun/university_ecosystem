@@ -130,6 +130,24 @@ describe("initObservability", () => {
     )
   })
 
+  it("leaves omitted sample rates unset", () => {
+    const result = initObservability({
+      DEV: false,
+      PROD: true,
+      BASE_URL: "http://localhost",
+      MODE: "production",
+      VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+    } as unknown as ImportMetaEnv)
+
+    expect(result).toBe(true)
+    expect(Sentry.init).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tracesSampleRate: undefined,
+        profilesSampleRate: undefined,
+      })
+    )
+  })
+
   it("accepts exact sample-rate boundaries and rejects empty values", () => {
     const result = initObservability({
       DEV: false,
