@@ -2647,3 +2647,368 @@ artifact не смешиваются с source evidence):
 Эта секция закрывает информационный пробел независимого аудита, но не меняет
 Definition-of-Done: пока отсутствуют current-SHA CI и внешние staging/release
 доказательства, цель остаётся активной и нельзя заявлять полное завершение.
+
+## 34. Current continuation checkpoint (2026-09-04; source-of-truth refresh)
+
+Этот checkpoint добавлен после повторной сверки рабочей ветки с origin и не
+перезаписывает исторические evidence из §§32–33. Он является актуальным
+операционным входом для следующего автономного цикла.
+
+### 34.1 Identity and worktree
+
+| Поле | Текущее значение |
+|---|---|
+| Branch | `egorribun` (tracking `origin/egorribun`) |
+| Source SHA | `d909673d1402637f042c0bc78e9f2cbf784a50b1` |
+| Previous source SHA | `a579943eae065866b0d750178d66243f2c3f6fc8` |
+| Latest source commits | `3991dc72f` mutmut isolated-input closure; `5c37f955c` Spinner mutation contract; `f65dadef9` messenger/push edge-contract tests; `387966a48` cgroup quota-first sizing; `9773bed4e` stable logging-record assertions; `ab3ea68d1` cgroup edge coverage; `a579943ea` Semgrep ledger realignment; `1cc51419d` BuildKit WASM caches; `d909673d1` architecture-scoped cache IDs |
+| Open user artifact | `docs/audits/AUDIT_PLATFORM_FULL.md` remains deliberately untracked and untouched |
+| Stash | No stash entries were present during the checkpoint; no user files were removed or staged |
+| Last push | `d909673d1` pushed successfully; the frontend typecheck push hook passed |
+
+The Spinner change is a focused RED→GREEN mutation contract: the component
+test now asserts the semantic `animate-spin` class, and a seven-mutant local
+run produced `7/7 Killed`. It does not certify the full frontend mutation
+universe. The mutmut change adds the two root Kubernetes manifests required by
+the isolated copy inventory and its focused regression suite is green.
+The current source also adds deterministic branch contracts for messenger
+`clearChat` cache isolation and Web Push subscription edge cases (primitive and
+malformed user IDs, VAPID normalization, URL-safe key decoding, exact key
+comparison, permission options and expiry boundaries). The focused Vitest
+selection is `138/138`, and the same source passes frontend typecheck, lint and
+production client+SSR build locally. The cgroup fix makes finite cgroups v2/v1
+quotas authoritative before affinity (19 focused database/auth tests plus 18
+database settings tests pass), while the frontend Dockerfile now uses locked,
+architecture-scoped BuildKit caches; `docker buildx build --call=check` and the
+Docker resource contract pass. Semgrep's existing reviewed suppressions were
+realigned to the post-refactor source lines and the fresh Semgrep gate is green.
+
+### 34.2 Fresh CI and runner-cap evidence
+
+The fresh PR matrix for this source is
+[run 33854837526](https://github.com/egorribun/university_ecosystem/actions/runs/33854837526),
+created at `2026-09-04T08:43:48Z`, with `head_sha` exactly equal to the Source
+SHA above. At the time of this refresh it was still non-terminal; no result is
+promoted to release evidence until every required child job and aggregate is
+terminal. The superseded predecessor
+[33854426925](https://github.com/egorribun/university_ecosystem/actions/runs/33854426925)
+on `a579943e` was cancelled after the next push, preserving its history but not
+its partial evidence.
+
+The prior run `33846790732` on `3991dc72f` was superseded by the Spinner push.
+The old scheduled nightly run `33840031905` on `d654e3f6` held 16 hosted
+runners in a long Stryker tail and was cancelled only after verifying it was a
+stale main-SHA run unrelated to the current PR. Cancellation preserves its
+history and is not evidence for either source SHA. This was an operational
+queue action, not a gate bypass.
+
+The repository ruleset requires both the Matrix contexts and standalone
+security/contract contexts. Therefore deleting duplicate-looking workflows or
+adding broad path filters would leave required contexts pending. Any future
+capacity change must retain the complete 64-way Stryker, 8-way mutmut-stats,
+128-way mutmut execution, API shards, browser matrix and all security scans.
+The current measured safe budget remains 8 Stryker plus 12 mutmut execution
+workers (and 8 mutmut-stats fan-out); changing it requires three comparable
+green runs with queue, timeout and billed-minute evidence, as required by
+§11.13. The measured Stryker tail is a cost-balancing problem, not a reason to
+raise the 120-minute timeout or weaken viable-mutant semantics.
+The live run has not yet reached the mutation phase. Its first 90 observed
+jobs show `0` failures, `18` successes and `11` intentional skips; completed
+non-skipped jobs have a median duration near `0.9` minutes and a p90 near
+`4.0` minutes, while the current queue-start delay is a measured consequence of
+the 20-runner ceiling and concurrent standalone security/fuzzing workflows.
+Historical comparable runs are either failed or cancelled, so the three-green
+rebalancing threshold is not met.
+
+### 34.3 Open root causes after the checkpoint
+
+1. **Stryker quality and cost remain open.** Historical artifacts contained
+   `8,557 Survived`, `300 Timeout`, `36 RuntimeError` and `16 NoCoverage`
+   statuses among 35,316 completed mutants. The validator correctly rejects
+   every non-`Killed`/`CompileError` status. The next step is a complete,
+   source-bound survivor ledger and owning RED tests/refactors; no exclusions,
+   `ignoreStatic`, related-mode relaxation, threshold change or timeout
+   inflation is allowed.
+2. **Stryker tail balancing remains open.** The 64-way preflight contains
+   approximately 40,841 mutants and historical producer p90 was about 56
+   minutes with a 100-minute maximum. Rebalance only through deterministic,
+   tested cost-aware planning that preserves exact assignments, provenance and
+   all mutants; do not move hotspots based on intuition alone.
+3. **Fresh mutmut validation is required.** The isolated copy contract now
+   includes `k8s/ingress.yaml` and `k8s/secrets-example.yaml`; all stats and
+   execution artifacts must prove the exact copy inventory on the new SHA.
+4. **External-audit architecture backlog is retained explicitly.** BE-02
+   (dual Python/DDL defaults), BE-04 (Dishka/Depends coexistence), BE-08
+   (CDC worker lifecycle), INFRA-02 (raw-manifest scope), SEC-06 (allowlist
+   review) and SEC-09 (dependency upper-bound policy) need separate ADRs or
+   measured phased work. They are not silently marked fixed by this checkpoint.
+5. **Release evidence is still external.** Merge-to-main recertification,
+   exact-six immutable images, registry SBOM/provenance/attestations,
+   digest-pinned Docker smoke, Kubernetes/TLS/ExternalSecrets/observability,
+   real-device CWV, chaos/rollback and production release remain blocked until
+   the authority and evidence described in §§29 and 33.8 exist.
+6. **Docker CPU quota sizing is fixed and must be recertified.** A measured
+   cgroup-v2 container with `--cpus=0.50` exposed host affinity `16` while
+   `/sys/fs/cgroup/cpu.max` reported the 0.5 quota; `387966a48` now makes finite
+   v2/v1 quotas authoritative, caps pathological values and falls back safely
+   for malformed/unlimited files. Focused database/auth tests are green. The
+   remaining work is fresh-run and immutable-image recertification, not another
+   unbounded pool rewrite.
+7. **Semgrep line-bound provenance was repaired.** The `ab3ea68d` run exposed a
+   stale SHA-1 suppression range after the security module's import cleanup.
+   `a579943ea` updates only that exact policy key (127–129), retains the
+   reviewed HIBP rationale and passes the validator/pre-commit; run
+   `33854837526` is the required fresh-SHA confirmation.
+8. **External audit P0/P1 triage is complete for current ancestry.** The
+   independent audit's listed GraphQL HMAC, ExternalSecret/revocation, migration,
+   SSR boundary, Go path/JWKS/health/origin, Rust memory/sanitization, Helm and
+   service-log findings are already fixed and test-backed. BE-02/BE-04 and
+   INFRA-02 remain explicit architecture/scope debt and are not silently closed.
+
+### 34.4 Required next cycle
+
+1. Poll run `33854837526` to terminal state and inventory every non-success,
+   cancellation, skip and timeout exactly once; separate root failures from
+   aggregate cascades.
+2. Confirm the fresh mutmut stats shards no longer reproduce the missing-root
+   manifest error or the circuit-breaker timing race.
+3. Confirm frontend qualification, E2E/browser and dark smoke outcomes before
+   accepting any Stryker artifact. Re-run the narrow Spinner mutation contract
+   only as a regression, not as aggregate evidence.
+4. If Stryker producers fail, download the exact preflight and shard reports,
+   classify the complete inventory, then implement one owning-domain RED→GREEN
+   slice at a time. Keep a machine-readable ledger with report hashes and
+   tested/source/base identities.
+5. After a terminal-green source SHA, run the full local/harness/security/API/
+   infrastructure matrix, update this plan with immutable report hashes, and
+   only then perform the external release/staging sequence.
+
+Until those steps produce terminal current-SHA artifacts, this plan and goal
+remain active; `CODE-FIXED`, local green or historical success is never
+substituted for full quality closure.
+
+## 35. Current live checkpoint (2026-09-05; source `73203ac5d`)
+
+This section records the currently running recertification without promoting
+partial evidence to a release decision. It supersedes the operational values
+in §34 while preserving that section's historical evidence.
+
+### 35.1 Source identity and worktree
+
+| Field | Value |
+|---|---|
+| Branch | `egorribun` (tracking `origin/egorribun`) |
+| Source head SHA | `73203ac5d15b66fb536a814a6d07fbc6b985bb4f` |
+| PR | [#1266](https://github.com/egorribun/university_ecosystem/pull/1266), base `main` |
+| Current source fix | `test: include k8s contract docs in mutmut copy` (isolated mutmut input closure) |
+| User artifact | `docs/audits/AUDIT_PLATFORM_FULL.md` remains untracked and untouched |
+| Stash | no stash entries; no user files staged or removed |
+| Worktree | only this plan overlay is modified; external audit remains untracked |
+
+The preceding run `33978875062` was intentionally cancelled after its exact
+primary failure was captured: mutmut stats shard 5 could not read
+`mutants/k8s/README.md` while collecting
+`tests/test_infra_audit_contract.py`. Commit `73203ac5d` adds that file to the
+tested `also_copy` inventory and its regression tests; no skip, exclusion or
+mutation threshold change was used.
+
+### 35.2 Fresh current-SHA evidence (non-terminal)
+
+The active matrix is
+[run 33981030258](https://github.com/egorribun/university_ecosystem/actions/runs/33981030258),
+whose source head is exactly the SHA above. Its coverage-policy artifact
+`quality-evidence-63103b97a5036f50524b6c2042c5b5e000652b68` (artifact id
+`9974115481`) is internally valid and records the necessary two-identity
+pair:
+
+- `source_head_sha` = `73203ac5d15b66fb536a814a6d07fbc6b985bb4f`;
+- `tested_commit_sha` (the pull-request merge ref) =
+  `63103b97a5036f50524b6c2042c5b5e000652b68`;
+- `validation.valid` = `true`, with no missing reports;
+- frontend, Python, Go applicable/derived, Rust applicable/derived and Tier-0
+  coverage metrics are 100%; unsupported native counters are explicitly
+  represented as `N/A` with reason codes rather than fabricated percentages;
+- provenance binds repository, workflow path/ref, run id `33981030258`,
+  attempt `1`, source head and tested merge identity.
+
+At the latest observation (21:25 MSK) the matrix had 309 materialized jobs:
+114 success, 12 intentional skips, 20 running, 163 queued and zero failures.
+Stryker had 9 completed shards, 8 running and 47 queued; all eight mutmut
+stats shards and central universe generation were successful, while the
+mutmut execution groups were still running/queued. These counts are progress
+only; no mutation score or release status is accepted until every required
+job and aggregate is terminal.
+
+All standalone companion workflows for this source were already terminal:
+20 successes (security, contracts, fuzz, performance, OpenAPI, Docker/Helm
+and dark/light unauthenticated smoke) and two documented intentional skips
+(Dependabot auto-merge and Chromatic). The active matrix remains the only
+non-terminal workflow.
+
+### 35.3 Required continuation
+
+1. Keep polling `33981030258` without cancelling while it makes progress; on
+   any failure retrieve the exact job log, classify the primary root cause and
+   make one RED→GREEN fix on a new SHA.
+2. When terminal, download every mutation/coverage/evidence artifact, verify
+   source head + tested merge SHA, report hashes, complete inventories and
+   aggregate conclusions. A green coverage gate alone is insufficient.
+3. Re-run local harness, frontend typecheck/lint/build/WASM and focused
+   contract/security checks after any new fix; keep generated artifacts out of
+   the worktree and never stage the external audit implicitly.
+4. Only after a terminal-green current source SHA update this checkpoint with
+   final counts and hashes. Merge-to-main recertification, exact-six immutable
+   images, digest Docker smoke, Kubernetes/TLS/observability, real-device CWV,
+   chaos/rollback and production release remain external-only gates in §29.
+
+## 36. Read-only Stryker/CI bottleneck audit (2026-09-05; source `31ab24fcf`)
+
+Этот раздел фиксирует измеренный bottleneck без изменения workflow, threshold,
+mutation semantics или release gates. Он является диагностическим отчётом, а
+не current-SHA mutation evidence: матрица `33989628759` ещё не terminal и
+результаты Stryker для `31ab24fcf00789a0149b9bf0d833f8b5c49089c8` пока не
+принимаются в manifest.
+
+### 36.1 Что проверено
+
+- `frontend/stryker.config.mjs` строит полный `mutate` scope из
+  `quality/coverage-source-policy.json`; `coverageAnalysis` остаётся
+  `perTest`, `incremental` выключен, `excludedMutations` и `ignorers` пусты,
+  а concurrency ограничен контрактом диапазоном 1–4.
+- `frontend/scripts/run-stryker.mjs` fail-closed проверяет полный denominator,
+  попарно непересекающиеся shard assignments, source/policy/config hashes,
+  preflight identity и `SHARD_EVIDENCE.json`. Ни один из этих контрактов не
+  разрешает скрыть survivor, timeout, runtime error или no-coverage.
+- В текущем CI run `33989628759` (создан `2026-09-05T20:16:51Z`, `head_sha`
+  совпадает с `31ab24fcf`) API в момент аудита показывал `queued`, при этом
+  уже материализованные child jobs выполнялись. На наблюдении около 20:20 MSK
+  девять jobs завершились success, failures не было; frontend Lighthouse и
+  backend unit jobs ещё выполнялись, а Stryker preflight не стартовал. Эти
+  числа — progress snapshot, а не итоговый gate.
+
+Старые временные артефакты использованы только для оценки вариативности и
+явно не считаются evidence текущего SHA:
+
+| Артефакт | Source head | Наблюдение | Статус |
+|---|---|---|---|
+| `C:\\Temp\\stryker-shards-338637-current` | `3e54ca9b` | 42 отчёта; `10.1–96.1 min` на shard, среднее `26.5 min`, суммарно около `18.52 h`; длинный хвост — shard 009 (`96.1 min`) | stale, только performance baseline |
+| `C:\\Temp\\frontend-mutation-338084-artifacts` | `564bcd57` | 56 отчётов; `7.3–100.7 min`, среднее `30.1 min`; shard 040 — `100.7 min` | stale, только performance baseline |
+| `C:\\Temp\\stryker-audit-338637-bac5e61a4d914d4795733a785faf9954\\PREFLIGHT_ARTIFACT.json` | `3e54ca9b` | 589 файлов, 40 841 mutant, 64 shards | stale denominator |
+| `C:\\Temp\\stryker-preflight-338968\\PREFLIGHT_ARTIFACT.json` | `5c83aa46` | 589 файлов, 40 830 mutant, 64 shards; план `45–1037` mutant/shard | stale planning sample |
+
+### 36.2 Доказанный критический путь
+
+1. В `.github/workflows/ci.yml` `stryker-preflight` ждёт не только
+   `pre-commit-check`, но и весь reusable `frontend-tests` и
+   `coverage-policy-gate`. Последний, в свою очередь, ждёт backend, frontend,
+   Go и Rust coverage producers.
+2. Reusable frontend tests включают unit shards и aggregate, lint, production
+   build, bundle analysis и четыре Lighthouse shards с aggregate. Поэтому
+   дорогая mutation qualification не может начать подготовку, пока не
+   завершатся Lighthouse и остальные core producers; это подтверждено
+   текущим snapshot, где Lighthouse/backend ещё выполнялись, а Stryker был
+   заблокирован upstream barrier.
+3. После preflight запускается фиксированная матрица из 64 Stryker jobs с
+   `max-parallel: 8`; каждый job повторяет `npm ci`, валидирует preflight и
+   выполняет один свежий shard с `STRYKER_CONCURRENCY=4` (до 32 внутренних
+   worker-процессов при восьми hosted jobs). Это ограничивает throughput и
+   одновременно создаёт CPU/RSS contention на runner.
+4. Aggregate и independent round-trip verifier повторяют checkout/setup и
+   `npm ci`, затем заново проверяют shard evidence. Повторная установка —
+   намеренная defense-in-depth; удалять её без hash-equivalent manifest и
+   regression contracts нельзя.
+
+Отдельный Python mutation lane также вызывает до 128 логических assignments
+при `target-groups=128`; это даёт до 128 физических consumers с повторным
+setup. Общий лимит остаётся 20 hosted jobs (текущая безопасная раскладка —
+8 Stryker + 12 mutmut execution, а mutmut stats используют отдельный fan-out).
+Manual/nightly mutation workflows на PR не дублируют эту матрицу.
+
+### 36.3 Безопасный план оптимизации (не выполнен в этом аудите)
+
+1. Ввести подписанный `frontend-coverage-ready` context после unit shards,
+   merged frontend coverage и проверки exact source/policy/config hashes.
+   Разрешить Stryker preflight зависеть от этого контекста, а не от финального
+   Lighthouse/build aggregate; при этом оставить неизменными
+   `coverage-policy-gate`, final `CI Success`, полный browser/performance gate
+   и SHA-bound manifest. Добавить workflow-contract tests на DAG, hash
+   identity, fail-closed missing/partial artifacts и отсутствие fan-out при
+   красном qualification.
+2. После producer barrier сравнить только сопоставимые зелёные runs для
+   `STRYKER_CONCURRENCY=2/4` и `max-parallel=8/10/12`, измеряя wall-clock
+   critical path, queue delay, timeout/error rate, CPU/RSS и billed runner
+   minutes. До трёх comparable green runs нельзя менять текущий lane budget.
+3. Для mutmut отдельно рассмотреть physical groups `32` или `64`, сохранив
+   полный логический 128-way plan, exact assignment/group digests и
+   regression tests на inventory/completeness. Это эксперимент по setup cost,
+   а не разрешение уменьшить denominator.
+4. Aggregate и round-trip оставить до появления эквивалентного подписанного
+   evidence protocol; любые изменения должны пройти независимый security
+   review и текущий SHA full-matrix rerun.
+
+**Acceptance для будущей реализации:** каждый current-SHA mutant ровно один
+раз попадает в ожидаемый assignment; отсутствуют missing/duplicate/stale
+reports; сохраняются пустые exclusions/quarantines и `100% viable` semantics;
+aggregate принимает только полный manifest; а измеренное сокращение
+critical-path подтверждено тремя comparable green runs. До этих условий
+текущая стоимость Stryker и задержка preflight считаются открытым
+`OPEN-PERF/EVIDENCE-BLOCKED`, а не основанием для ослабления quality gates.
+
+## 37. Pre-push checkpoint (2026-09-06; parent source `0d16eee9e`)
+
+Этот checkpoint фиксирует изменения, подготовленные после §36, до запуска
+новой SHA-bound матрицы. Сам коммит этого раздела станет частью следующего
+source SHA и поэтому не является evidence для перечисленных проверок.
+
+### 37.1 Подготовленные изменения
+
+- `51c28739b` добавляет единый same-run producer WASM для всех E2E callers;
+  consumers используют server-issued artifact id, provenance, inventory и
+  per-file hashes без cross-run fallback.
+- `3b7c09757` разделяет WebSocket transport limit (полные UTF-8 bytes) и
+  message-content limit (Unicode code points), сохраняя legacy `read` только в
+  Python fallback. Focused route/contract tests закрывают ASCII, Unicode,
+  JSON-overhead, malformed/non-object и connection-limit paths.
+- `4601d6452` добавляет server-side artifact metadata digest verification;
+  `5ae7aabb7` передаёт `actions: read` только caller jobs, реально выполняющим
+  эту проверку; `cc6bee33a` закрепляет эти permissions contract tests.
+- `c5b046e98` нормализует bare `upload-artifact` digest в canonical
+  `sha256:<64 hex>` форму; `5cc0614b8` нормализует API response defensively.
+  Любая неожиданная форма digest завершается ошибкой, а не fallback.
+- `482cc3f88` добавляет WebSocket audit-context и connection-rejection
+  coverage. Все коммиты без `Co-Authored-By`; quality/testing commits не
+  используют фиктивные wave identifiers.
+- `0d16eee9e` обновляет workflow contract assertions для нового минимального
+  `actions: read` разрешения E2E consumers, не расширяя permissions других
+  reusable workflows.
+
+### 37.2 Локальная evidence до push
+
+- `python verify_harness.py --repo-only`: **29/29**, exit 0.
+- Frontend `npm run typecheck`, `npm run lint`: зелёные.
+- Backend Ruff (`app/`, `tests/`), strict mypy (349 files), custom AST и
+  no-python2-except: зелёные; actionlint и gitleaks: зелёные; Bandit targeted
+  WebSocket scan: без findings.
+- WebSocket focused regression: 79+ tests зелёные; расширенная выборка 111
+  tests даёт для `app/api/websocket.py` 100% lines/branches.
+- WASM workflow contract: 4/4; relevant pre-commit, semgrep, detect-secrets
+  и diff checks зелёные. `.secrets.baseline` обновлён и staged в последнем
+  workflow commit согласно repository policy.
+
+### 37.3 Что не является evidence этого source
+
+Старый PR matrix `33989628759` относится к SHA `31ab24fcf`, не к локальному
+parent `0d16eee9e`; на момент checkpoint он оставался non-terminal (135
+success, 12 intentional skips, 20 running, 142 queued, zero observed
+failures). Его mutation/coverage results не переносятся на новый SHA. После
+публикации следующего SHA требуется дождаться terminal matrix и companions,
+загрузить все artifacts, проверить source/tested merge identities, report
+hashes, full mutant inventory и aggregate conclusions.
+
+Пользовательский `docs/audits/AUDIT_PLATFORM_FULL.md` и каталоги
+`.tmp_preflight/`, `.tmp_stryker_18/`, `.tmp_stryker_22/` остаются untracked и
+не входят в source commits. Merge-to-main, exact-six immutable images,
+registry SBOM/provenance/attestations, digest Docker smoke, Kubernetes/TLS/
+ExternalSecrets/observability, real-device CWV, chaos/rollback и production
+release остаются внешними gates из §§29, 33 и 36 до получения их прямых
+доказательств.
