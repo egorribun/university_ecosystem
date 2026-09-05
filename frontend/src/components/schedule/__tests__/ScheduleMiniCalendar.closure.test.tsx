@@ -63,14 +63,48 @@ describe("ScheduleMiniCalendar", () => {
   })
 
   it("supports a controlled month and Sunday offsets", () => {
-    render(<ScheduleMiniCalendar month={new Date(2026, 10, 1)} />)
+    const { container } = render(<ScheduleMiniCalendar month={new Date(2026, 10, 1)} />)
 
     expect(screen.getByText("November 2026")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "common:today" })).toBeInTheDocument()
     expect(screen.getAllByRole("gridcell")).toHaveLength(36)
+    expect(screen.getAllByRole("row")).toHaveLength(6)
+    expect(screen.getByRole("button", { name: "November 1, 2026" }).parentElement).toHaveAttribute(
+      "aria-colindex",
+      "7"
+    )
     expect(screen.getByRole("button", { name: "November 30, 2026" })).not.toHaveAttribute(
       "data-has-lessons"
     )
+    expect(screen.getByRole("button", { name: "November 15, 2026" })).not.toHaveAttribute(
+      "aria-current"
+    )
+
+    const weekdayHeader = container.querySelector(".mb-1.grid.grid-cols-7")
+    expect([...weekdayHeader!.children].map((node) => node.textContent)).toEqual([
+      "M",
+      "T",
+      "W",
+      "T",
+      "F",
+      "S",
+      "S",
+    ])
+  })
+
+  it("keeps optional callbacks safe and handles month boundaries and leap days", () => {
+    const { rerender } = render(<ScheduleMiniCalendar month={new Date(2026, 0, 1)} />)
+
+    expect(() => fireEvent.click(screen.getByRole("button", { name: "common:prev" }))).not.toThrow()
+    expect(screen.getByText("December 2025")).toBeInTheDocument()
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "December 15, 2025" }))
+    ).not.toThrow()
+
+    rerender(<ScheduleMiniCalendar month={new Date(2028, 1, 1)} />)
+    expect(screen.getByText("February 2028")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "February 29, 2028" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "February 30, 2028" })).not.toBeInTheDocument()
   })
 
   it("renders an accessible loading skeleton without requiring callbacks", () => {
