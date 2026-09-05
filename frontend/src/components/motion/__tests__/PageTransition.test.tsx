@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
+import { renderToString } from "react-dom/server"
 
 const motionState = vi.hoisted(() => ({
   initialValues: [] as unknown[],
@@ -113,7 +114,7 @@ describe("PageTransition", () => {
   })
 
   it("renders the reduced-motion fallback wrapper (no framer-motion)", () => {
-    setReduceMotion(true)
+    const matchMedia = setReduceMotion(true)
     const { container } = render(
       <PageTransition>
         <div>Hello reduced</div>
@@ -122,6 +123,30 @@ describe("PageTransition", () => {
     expect(screen.getByText("Hello reduced")).toBeInTheDocument()
     // simple fallback wrapper carries the bg-page class
     expect(container.querySelector(".bg-page")).toBeInTheDocument()
+    expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
+  })
+
+  it("keeps the reduced-motion initializer safe when window is unavailable during SSR", () => {
+    const originalWindow = globalThis.window
+    try {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: undefined,
+      })
+      const html = renderToString(
+        <PageTransition>
+          <div>SSR-safe child</div>
+        </PageTransition>
+      )
+      expect(html).toContain("SSR-safe child")
+      expect(html).toContain("bg-page")
+    } finally {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        writable: true,
+        value: originalWindow,
+      })
+    }
   })
 
   it("renders children through the animated framer-motion path", async () => {

@@ -3,9 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import * as dateUtils from "@/utils/date"
 import {
   buildTable,
+  defaultLessonTypeColor,
   getEndTimeStr,
   getTimeStr,
   getTodayIdx,
+  minimalLessonTypeFallback,
+  minimalWeekdayFallback,
   minutesDiff,
   parseMinutes,
   scheduleQueryKey,
@@ -17,6 +20,15 @@ afterEach(() => {
 })
 
 describe("schedule time parser closure", () => {
+  it("fails closed for every missing time input", () => {
+    expect(parseMinutes()).toBeNull()
+    expect(parseMinutes(undefined)).toBeNull()
+    expect(parseMinutes(null)).toBeNull()
+    expect(parseMinutes("")).toBeNull()
+    expect(getTimeStr(undefined as unknown as Lesson)).toBe("")
+    expect(getEndTimeStr(undefined as unknown as Lesson)).toBe("")
+  })
+
   it("uses the full-date fallback for valid timestamps and rejects invalid dates", () => {
     const dateOnly = "2026-04-26"
     const parsedDate = new Date(dateOnly)
@@ -104,5 +116,23 @@ describe("schedule time parser closure", () => {
 
   it("builds the active schedule query key", () => {
     expect(scheduleQueryKey("group-7")).toEqual(["schedule", "group", "group-7"])
+  })
+
+  it("keeps the minimal fallback lesson type and weekday contracts stable", () => {
+    expect(defaultLessonTypeColor).toBe("var(--lesson-type-default)")
+    expect(minimalLessonTypeFallback).toEqual({
+      id: "lesson",
+      backend: ["lesson"],
+      label: "Lesson",
+      color: defaultLessonTypeColor,
+    })
+    expect(minimalWeekdayFallback).toEqual([
+      { id: "mon", backend: ["Monday"], long: "Monday", short: "Mon" },
+      { id: "tue", backend: ["Tuesday"], long: "Tuesday", short: "Tue" },
+      { id: "wed", backend: ["Wednesday"], long: "Wednesday", short: "Wed" },
+      { id: "thu", backend: ["Thursday"], long: "Thursday", short: "Thu" },
+      { id: "fri", backend: ["Friday"], long: "Friday", short: "Fri" },
+      { id: "sat", backend: ["Saturday"], long: "Saturday", short: "Sat" },
+    ])
   })
 })

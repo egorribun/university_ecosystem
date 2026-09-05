@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { fireEvent, render, screen } from "@testing-library/react"
+import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
@@ -210,5 +211,34 @@ describe("AsyncImage mutation contracts", () => {
     expect(screen.getByRole("img", { name: "fallback" })).toHaveAttribute("src", "/fallback.png")
     expect(state.resolvedSources).toHaveLength(0)
     expect(state.versionParams).toHaveLength(0)
+  })
+
+  it("keeps the initial loading state observable during SSR before effects run", () => {
+    const withSource = renderToString(<AsyncImage src={primary} />)
+    expect(withSource).toContain("async-image-skeleton")
+    expect(withSource).toContain('src="https://example.com/image.png"')
+
+    const withoutSource = renderToString(<AsyncImage fallbackSrc="/fallback.png" alt="fallback" />)
+    expect(withoutSource).not.toContain("async-image-skeleton")
+    expect(withoutSource).toContain('src="/fallback.png"')
+  })
+
+  it("resets loaded status when the primary source is removed and never prefers fallbackSrc over it", () => {
+    const { rerender } = render(
+      <AsyncImage src={primary} fallbackSrc="/fallback.png" alt="primary" />
+    )
+    const image = screen.getByTestId("async-image-img")
+    fireEvent.load(image)
+    expect(screen.getByTestId("async-image-img")).toHaveAttribute(
+      "data-motion-animate",
+      JSON.stringify({ opacity: 1 })
+    )
+
+    fireEvent.error(screen.getByTestId("async-image-img"))
+    expect(screen.queryByRole("img", { name: "fallback" })).not.toBeInTheDocument()
+
+    rerender(<AsyncImage fallbackSrc="/fallback.png" alt="fallback" />)
+    expect(screen.getByRole("img", { name: "fallback" })).toHaveAttribute("src", "/fallback.png")
+    expect(screen.queryByTestId("async-image-skeleton")).not.toBeInTheDocument()
   })
 })

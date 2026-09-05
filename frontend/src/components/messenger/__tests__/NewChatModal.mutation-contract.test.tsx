@@ -3,7 +3,14 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const state = vi.hoisted(() => ({ reduced: false, get: vi.fn() }))
+const state = vi.hoisted(() => ({
+  reduced: false,
+  get: vi.fn(),
+  focusTrap: vi.fn((options: unknown) => {
+    void options
+    return { current: null }
+  }),
+}))
 
 vi.mock("framer-motion", async () => {
   const React = await import("react")
@@ -62,7 +69,12 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 vi.mock("@/hooks/useMediaQuery", () => ({ default: () => state.reduced }))
-vi.mock("@/hooks/useFocusTrap", () => ({ default: () => ({ current: null }) }))
+vi.mock("@/hooks/useFocusTrap", () => ({
+  default: (options: unknown) => {
+    state.focusTrap(options)
+    return { current: null }
+  },
+}))
 vi.mock("@/hooks/useDebounced", () => ({ useDebounced: <T,>(value: T) => value }))
 vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/client")>()
@@ -103,6 +115,7 @@ const attr = (element: Element, name: string) => element.getAttribute(name)
 beforeEach(() => {
   state.reduced = false
   state.get.mockReset().mockResolvedValue({ data: [] })
+  state.focusTrap.mockReset()
 })
 afterEach(() => vi.restoreAllMocks())
 
@@ -257,5 +270,89 @@ describe("NewChatModal motion/layout mutation contract", () => {
       "font-bold",
       "text-(--text-secondary)"
     )
+  })
+
+  it("keeps group submit guards exact for whitespace, member count and in-flight state", async () => {
+    state.get.mockResolvedValue({ data: [user("one"), user("two"), user("three")] })
+    const onCreateGroup = vi.fn()
+    const { rerender } = render(
+      <NewChatModal open onClose={() => {}} onSelect={() => {}} onCreateGroup={onCreateGroup} />,
+      { wrapper }
+    )
+    fireEvent.click(screen.getByRole("tab", { name: "messenger:modeGroup" }))
+    const name = screen.getByRole("textbox", { name: "messenger:groupName" })
+    const create = screen.getByRole("button", { name: "messenger:createGroup" })
+    expect(create).toBeDisabled()
+
+    fireEvent.change(name, { target: { value: "   " } })
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+      target: { value: "us" },
+    })
+    const options = await screen.findAllByRole("option")
+    fireEvent.click(options[0]!)
+    expect(create).toBeDisabled()
+
+    fireEvent.change(name, { target: { value: "A" } })
+    expect(create).toBeDisabled()
+    fireEvent.click(options[1]!)
+    await waitFor(() => expect(create).not.toBeDisabled())
+    fireEvent.click(create)
+    expect(onCreateGroup).toHaveBeenCalledWith("A", ["one", "two"])
+
+    rerender(
+      <NewChatModal
+        open
+        onClose={() => {}}
+        onSelect={() => {}}
+        onCreateGroup={onCreateGroup}
+        isCreatingGroup
+      />
+    )
+    const creating = screen.getByRole("button", { name: "messenger:creatingGroup" })
+    expect(creating).toBeDisabled()
+  })
+
+  it("uses the two-character query boundary and keeps focus-trap options explicit", async () => {
+    const { rerender } = render(
+      <NewChatModal open={false} onClose={() => {}} onSelect={() => {}} />,
+      { wrapper }
+    )
+    expect(state.focusTrap).toHaveBeenCalledWith(
+      expect.objectContaining({ active: false, initialFocus: false, returnFocus: true })
+    )
+
+    rerender(<NewChatModal open onClose={() => {}} onSelect={() => {}} />)
+    const input = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+    fireEvent.change(input, { target: { value: "a" } })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(state.get).not.toHaveBeenCalled()
+
+    state.get.mockResolvedValue({ data: [] })
+    fireEvent.change(input, { target: { value: "ab" } })
+    await waitFor(() => expect(state.get).toHaveBeenCalledTimes(1))
+    expect(state.get).toHaveBeenCalledWith("/users?limit=10&search=ab")
+    expect(state.focusTrap).toHaveBeenLastCalledWith(
+      expect.objectContaining({ active: true, initialFocus: false, returnFocus: true })
+    )
+  })
+
+  it("schedules autofocus only while open and cancels the stale frame on close", () => {
+    const requestAnimationFrame = vi.fn().mockReturnValue(17)
+    const cancelAnimationFrame = vi.fn()
+    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame)
+    vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrame)
+    try {
+      const { rerender } = render(
+        <NewChatModal open={false} onClose={() => {}} onSelect={() => {}} />,
+        { wrapper }
+      )
+      expect(requestAnimationFrame).not.toHaveBeenCalled()
+      rerender(<NewChatModal open onClose={() => {}} onSelect={() => {}} />)
+      expect(requestAnimationFrame).toHaveBeenCalledTimes(1)
+      rerender(<NewChatModal open={false} onClose={() => {}} onSelect={() => {}} />)
+      expect(cancelAnimationFrame).toHaveBeenCalledWith(17)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

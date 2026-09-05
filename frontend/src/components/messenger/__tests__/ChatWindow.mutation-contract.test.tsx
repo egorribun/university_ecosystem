@@ -89,10 +89,18 @@ vi.mock("@/components/media/SmartImage", () => ({
 }))
 
 vi.mock("@/components/messenger/ReactionPill", () => ({
-  ReactionPill: ({ emoji, count }: { emoji: string; count: number }) => (
-    <span data-testid={`reaction-${emoji}`}>
+  ReactionPill: ({
+    emoji,
+    count,
+    onToggle,
+  }: {
+    emoji: string
+    count: number
+    onToggle?: (value: string) => void
+  }) => (
+    <button type="button" data-testid={`reaction-${emoji}`} onClick={() => onToggle?.(emoji)}>
       {emoji}:{count}
-    </span>
+    </button>
   ),
 }))
 
@@ -176,24 +184,70 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(screen.queryByRole("button", { name: "messenger:error.retry" })).toBeNull()
   })
 
+  it("keeps error icon semantics and retry motion affordance exact", () => {
+    const { container } = render(<ChatWindow messages={[]} isError onRetry={() => {}} />)
+    const alert = screen.getByRole("alert", { name: "messenger:aria.messageList" })
+    const icon = alert.querySelector(".messenger-card-matte svg")!
+    expect(icon).toHaveClass("size-8", "text-(--color-violet-500)")
+    expect(icon).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expect(icon).toHaveAttribute("aria-hidden", "true")
+
+    const retry = screen.getByRole("button", { name: "messenger:error.retry" })
+    expect(retry).toHaveClass(
+      "messenger-send-btn",
+      "inline-flex",
+      "min-h-[44px]",
+      "items-center",
+      "gap-2",
+      "rounded-full",
+      "px-5"
+    )
+    expect(motionAttr(retry, "data-motion-while-hover")).toBe(JSON.stringify({ scale: 1.04 }))
+    expect(motionAttr(retry, "data-motion-while-tap")).toBe(JSON.stringify({ scale: 0.96 }))
+    expect(retry.querySelector("svg")).toHaveClass("size-4")
+    expect(retry.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
+    expect(container.querySelector('[role="alert"]')).toHaveAttribute("aria-live", "assertive")
+  })
+
   it("renders six deterministic alternating loading skeletons with width geometry", () => {
     const { container } = render(<ChatWindow messages={[]} isLoading />)
     const status = screen.getByRole("status", { name: "messenger:loading.messages" })
     const rows = [...status.querySelectorAll(":scope > div > div")]
     expect(rows).toHaveLength(6)
-    expect(rows.map((row) => row.className)).toEqual([
-      expect.stringContaining("flex-row"),
-      expect.stringContaining("flex-row-reverse"),
-      expect.stringContaining("flex-row"),
-      expect.stringContaining("flex-row-reverse"),
-      expect.stringContaining("flex-row"),
-      expect.stringContaining("flex-row-reverse"),
-    ])
+    rows.forEach((row, index) => {
+      const isMine = index % 2 === 1
+      expect(row.classList.contains("flex-row-reverse")).toBe(isMine)
+      expect(row.classList.contains("flex-row")).toBe(!isMine)
+      expect(row.classList.contains("items-end")).toBe(true)
+      expect(row.classList.contains("gap-2")).toBe(true)
+      expect(row.classList.contains("md:gap-3")).toBe(true)
+      expect(row.classList.contains("flex-row") && row.classList.contains("flex-row-reverse")).toBe(
+        false
+      )
+    })
     const widths = [...status.querySelectorAll<HTMLElement>("[style]")]
       .map((element) => element.style.width)
       .filter(Boolean)
     expect(widths).toEqual(["45%", "58%", "71%", "49%", "62%", "75%"])
     expect(container.querySelectorAll(".messenger-skeleton")).toHaveLength(12)
+  })
+
+  it("keeps skeleton bubble corner geometry aligned with each side", () => {
+    const { container } = render(<ChatWindow messages={[]} isLoading />)
+    const status = screen.getByRole("status", { name: "messenger:loading.messages" })
+    const rows = [...status.querySelectorAll<HTMLElement>(":scope > div > div")]
+    rows.forEach((row, index) => {
+      const bubble = row.querySelector<HTMLElement>(".messenger-skeleton.min-h-\\[44px\\]")!
+      expect(row).toHaveAttribute("aria-hidden", "true")
+      if (index % 2 === 1) {
+        expect(bubble).toHaveClass("rounded-br-sm", "md:rounded-br-2xl", "md:rounded-bl-sm")
+        expect(bubble).not.toHaveClass("rounded-bl-sm")
+      } else {
+        expect(bubble).toHaveClass("rounded-bl-sm")
+        expect(bubble).not.toHaveClass("rounded-br-sm", "md:rounded-bl-sm")
+      }
+    })
+    expect(container.querySelectorAll('[aria-hidden="true"]')).toHaveLength(6)
   })
 
   it("keeps empty/search-empty cards and clear-search contract observable", () => {
@@ -230,6 +284,67 @@ describe("ChatWindow motion and layout mutation contract", () => {
       name: "messenger:noMessages.searchEmpty.clearSearch",
     })
     expect(clear).toHaveClass("inline-flex", "min-h-[44px]", "rounded-full", "border")
+    fireEvent.click(clear)
+    expect(onClearSearch).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps empty and search-empty card icons, typography and motion affordances exact", () => {
+    const empty = render(<ChatWindow messages={[]} />)
+    const emptyCard = empty.container.querySelector(".messenger-card-matte")!
+    const emptyAnimated = emptyCard.parentElement!
+    expect(emptyAnimated).toHaveClass("flex", "w-full", "max-w-[24rem]", "flex-col", "items-center")
+    expect(emptyAnimated.querySelector("svg")).toHaveClass("size-8", "text-(--color-violet-500)")
+    expect(emptyAnimated.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expect(emptyAnimated.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
+    expect(emptyCard).toHaveClass("mb-5", "flex", "size-16", "items-center", "justify-center")
+    expect(emptyCard).toHaveStyle({ background: "var(--messenger-card-bg)" })
+    expect(motionAttr(emptyAnimated, "data-motion-animate")).toBe(
+      JSON.stringify({ scale: 1, opacity: 1, y: 0 })
+    )
+    expect(empty.container.querySelector("h3")).toHaveClass(
+      "sf-pro",
+      "mb-2",
+      "text-base",
+      "font-bold",
+      "leading-tight",
+      "text-(--text-primary)"
+    )
+    expect(empty.container.querySelector("p")).toHaveClass(
+      "text-sm",
+      "leading-relaxed",
+      "text-(--text-secondary)"
+    )
+    empty.unmount()
+
+    const onClearSearch = vi.fn()
+    const search = render(
+      <ChatWindow
+        messages={[makeMessage({ id: "search-style", text: "ordinary" })]}
+        searchQuery="absent"
+        onClearSearch={onClearSearch}
+      />
+    )
+    const searchCard = search.container.querySelector(".messenger-card-matte")!
+    const searchAnimated = searchCard.parentElement!
+    expect(searchAnimated.querySelector("svg")).toHaveClass("size-8", "text-(--color-violet-500)")
+    expect(searchAnimated.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expect(searchCard).toHaveClass("mb-5", "flex", "size-16", "items-center", "justify-center")
+    const clear = screen.getByRole("button", {
+      name: "messenger:noMessages.searchEmpty.clearSearch",
+    })
+    expect(motionAttr(clear, "data-motion-while-hover")).toBe(JSON.stringify({ scale: 1.04 }))
+    expect(motionAttr(clear, "data-motion-while-tap")).toBe(JSON.stringify({ scale: 0.96 }))
+    expect(clear).toHaveClass(
+      "inline-flex",
+      "min-h-[44px]",
+      "items-center",
+      "gap-2",
+      "rounded-full",
+      "border",
+      "px-5"
+    )
+    expect(clear.querySelector("svg")).toHaveClass("size-4")
+    expect(clear.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
     fireEvent.click(clear)
     expect(onClearSearch).toHaveBeenCalledTimes(1)
   })
@@ -279,6 +394,50 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(screen.getByText("received body")).toBeInTheDocument()
     expect(screen.getByRole("img", { name: "messenger:aria.messageRead" })).toBeInTheDocument()
     expect(screen.getByText("2.0 KB")).toBeInTheDocument()
+  })
+
+  it("keeps the virtualizer canvas geometry and row transforms deterministic", () => {
+    const { container } = render(
+      <ChatWindow
+        messages={[
+          makeMessage({ id: "virtual-0", text: "first" }),
+          makeMessage({ id: "virtual-1", text: "second" }),
+          makeMessage({ id: "virtual-2", text: "third" }),
+        ]}
+      />
+    )
+
+    const log = container.querySelector('[role="log"]')!
+    const canvas = log.firstElementChild as HTMLElement
+    expect(canvas).toHaveStyle({ height: "240px", width: "100%", position: "relative" })
+    const rows = [...canvas.querySelectorAll<HTMLElement>(":scope > [data-index]")]
+    expect(rows).toHaveLength(3)
+    rows.forEach((row, index) => {
+      expect(row).toHaveClass("absolute", "top-0", "left-0", "w-full")
+      expect(row).toHaveAttribute("data-index", String(index))
+      expect(row.style.transform).toBe(`translateY(${index * 80}px)`)
+    })
+  })
+
+  it("suppresses row entrance motion for reduced motion and active search", () => {
+    const first = makeMessage({ id: "append-0", text: "first" })
+    const second = makeMessage({ id: "append-1", text: "second" })
+    const { container, rerender } = render(<ChatWindow messages={[first]} />)
+
+    motionState.reduced = true
+    rerender(<ChatWindow messages={[first, second]} />)
+    expect(
+      [...container.querySelectorAll<HTMLElement>("[data-index]")].map((row) =>
+        row.querySelector<HTMLElement>(".group")?.getAttribute("data-motion-initial")
+      )
+    ).toEqual(["false", "false"])
+
+    motionState.reduced = false
+    rerender(<ChatWindow messages={[first, second]} searchQuery="second" />)
+    expect(container.querySelector('[data-index="0"] .group')).toHaveAttribute(
+      "data-motion-initial",
+      "false"
+    )
   })
 
   it("observes sent and received attachment/reply/status class branches", () => {
@@ -339,6 +498,543 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(screen.getAllByRole("button", { name: "messenger:forward" })).toHaveLength(2)
   })
 
+  it("does not reserve an attachment or reaction footer for empty arrays", () => {
+    const { container } = render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "empty-arrays",
+            text: "plain",
+            attachments: [],
+            reactions: [],
+          }),
+        ]}
+      />
+    )
+
+    const row = container.querySelector('[data-index="0"]')!
+    expect(row.querySelector(".mb-2.space-y-2")).toBeNull()
+    expect(row.querySelector(".flex.flex-wrap.items-center.gap-1")).toBeNull()
+  })
+
+  it("keeps sent and received attachment surfaces and reply previews theme-aware", () => {
+    const { container } = render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "sent-attachment",
+            text: "sent attachment",
+            isMe: true,
+            attachments: [
+              {
+                id: "sent-file",
+                url: "https://example.test/sent.pdf",
+                type: "file",
+                name: "sent.pdf",
+                size: 1024,
+              },
+            ],
+            replyTo: {
+              id: "sent-reply",
+              senderName: "Bob",
+              isMe: false,
+              text: "quoted sent",
+              deletedAt: null,
+            },
+          }),
+          makeMessage({
+            id: "received-attachment",
+            text: "received attachment",
+            attachments: [
+              {
+                id: "received-file",
+                url: "https://example.test/received.pdf",
+                type: "file",
+                name: "received.pdf",
+                size: 2048,
+              },
+            ],
+            replyTo: {
+              id: "deleted-reply",
+              senderName: "Carol",
+              isMe: false,
+              text: "quoted deleted",
+              deletedAt: "2026-01-01",
+            },
+          }),
+        ]}
+      />
+    )
+
+    const sentLink = container.querySelector<HTMLAnchorElement>(
+      'a[href="https://example.test/sent.pdf"]'
+    )!
+    expect(sentLink).toHaveClass(
+      "flex",
+      "items-center",
+      "gap-3",
+      "p-3",
+      "rounded-xl",
+      "border",
+      "border-white/(--opacity-faint)",
+      "bg-(--messenger-attachment-bg)"
+    )
+    expect(sentLink.querySelector("div")).toHaveClass(
+      "p-2",
+      "rounded-lg",
+      "bg-(--messenger-attachment-bg)",
+      "text-[var(--text-inverse)]"
+    )
+
+    const receivedLink = container.querySelector<HTMLAnchorElement>(
+      'a[href="https://example.test/received.pdf"]'
+    )!
+    expect(receivedLink).toHaveClass("bg-(--bg-surface-raised)/(--opacity-medium)")
+    expect(receivedLink.querySelector("div")).toHaveClass(
+      "p-2",
+      "rounded-lg",
+      "bg-(--bg-surface-raised)",
+      "text-(--brand-main)"
+    )
+
+    const sentReply = screen.getByText("quoted sent").parentElement!
+    expect(sentReply).toHaveClass(
+      "mb-2",
+      "rounded-lg",
+      "border-l-2",
+      "px-2.5",
+      "py-1.5",
+      "border-(--text-inverse)/(--opacity-medium)",
+      "bg-(--text-inverse)/(--opacity-faint)"
+    )
+    expect(sentReply.querySelector("p")).toHaveClass("font-semibold", "text-[var(--text-inverse)]")
+
+    const deletedReply = screen.getByText("messenger:replyTo.deletedOriginal").parentElement!
+    expect(deletedReply).toHaveClass(
+      "mb-2",
+      "rounded-lg",
+      "border-l-2",
+      "px-2.5",
+      "py-1.5",
+      "border-(--color-violet-500)/(--opacity-medium)",
+      "bg-(--color-violet-500)/(--opacity-faint)"
+    )
+    expect(deletedReply.querySelectorAll("p")[1]).toHaveClass("italic")
+  })
+
+  it("keeps reaction pills read-only and safe when no toggle handler is supplied", () => {
+    render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "reaction-read-only",
+            text: "reacted",
+            reactions: [{ emoji: "👍", count: 1, reactedByMe: false }],
+          }),
+        ]}
+      />
+    )
+
+    expect(() => fireEvent.click(screen.getByTestId("reaction-👍"))).not.toThrow()
+  })
+
+  it("keeps reaction footer alignment and enforces one active picker at a time", () => {
+    const onToggleReaction = vi.fn()
+    const { container } = render(
+      <ChatWindow
+        messages={[
+          makeMessage({ id: "reaction-received", text: "received", reactions: [] }),
+          makeMessage({ id: "reaction-sent", text: "sent", isMe: true, reactions: [] }),
+        ]}
+        onToggleReaction={onToggleReaction}
+      />
+    )
+
+    const receivedRow = container.querySelector('[data-index="0"]')!
+    const sentRow = container.querySelector('[data-index="1"]')!
+    const addButtons = screen.getAllByRole("button", { name: "messenger:reactions.add" })
+    expect(addButtons).toHaveLength(2)
+    expect(receivedRow.querySelector(".flex.flex-wrap.items-center.gap-1")).toHaveClass(
+      "justify-start"
+    )
+    expect(sentRow.querySelector(".flex.flex-wrap.items-center.gap-1")).toHaveClass("justify-end")
+
+    fireEvent.click(addButtons[0]!)
+    let currentAddButtons = screen.getAllByRole("button", { name: "messenger:reactions.add" })
+    expect(currentAddButtons[0]).toHaveAttribute("aria-expanded", "true")
+    expect(currentAddButtons[1]).toHaveAttribute("aria-expanded", "false")
+    const receivedPicker = container.querySelector('[role="group"]')!
+    expect(receivedPicker).toHaveClass(
+      "messenger-card-matte",
+      "flex",
+      "items-center",
+      "gap-1",
+      "rounded-full",
+      "px-2",
+      "py-1",
+      "self-start"
+    )
+    expect(receivedPicker).toHaveAttribute("aria-label", "messenger:reactions.add")
+    expect(receivedPicker.querySelectorAll("button")).toHaveLength(5)
+    for (const button of receivedPicker.querySelectorAll("button")) {
+      expect(button).toHaveClass(
+        "-m-2",
+        "inline-flex",
+        "min-h-[44px]",
+        "min-w-[44px]",
+        "items-center",
+        "justify-center",
+        "rounded-full",
+        "text-xl"
+      )
+      expect(button.getAttribute("aria-label")).toMatch(/^messenger:reactions.react\|/)
+      expect(button.querySelector("span")).toHaveAttribute("aria-hidden", "true")
+    }
+
+    fireEvent.click(currentAddButtons[1]!)
+    currentAddButtons = screen.getAllByRole("button", { name: "messenger:reactions.add" })
+    expect(currentAddButtons[0]).toHaveAttribute("aria-expanded", "false")
+    expect(currentAddButtons[1]).toHaveAttribute("aria-expanded", "true")
+    expect(container.querySelector('[role="group"]')).toHaveClass("self-end")
+
+    fireEvent.click(currentAddButtons[1]!)
+    expect(screen.getAllByRole("button", { name: "messenger:reactions.add" })[1]).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    )
+    expect(container.querySelector('[role="group"]')).toBeNull()
+  })
+
+  it("renders date dividers only when both the flag and a non-empty label exist", () => {
+    const { container } = render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "date-valid",
+            text: "valid",
+            showDateDivider: true,
+            dateLabel: "Today",
+          }),
+          makeMessage({ id: "date-no-label", text: "no label", showDateDivider: true }),
+          makeMessage({
+            id: "date-flag-off",
+            text: "flag off",
+            showDateDivider: false,
+            dateLabel: "Should not render",
+          }),
+        ]}
+      />
+    )
+
+    expect(screen.getByText("Today")).toBeInTheDocument()
+    expect(screen.queryByText("Should not render")).toBeNull()
+    expect(container.querySelectorAll('[data-index="0"] .justify-center')).toHaveLength(1)
+    expect(container.querySelector('[data-index="1"] .justify-center')).toBeNull()
+    expect(container.querySelector('[data-index="2"] .justify-center')).toBeNull()
+  })
+
+  it("keeps grouped-row spacing and avatar spacer semantics exact", () => {
+    const { container } = render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "group-start",
+            text: "first",
+            senderName: "First",
+            isGroupStart: true,
+          }),
+          makeMessage({ id: "grouped", text: "second", senderName: "Second", isGroupStart: false }),
+          makeMessage({ id: "group-default", text: "third", senderName: "Third" }),
+        ]}
+      />
+    )
+
+    const firstRow = container.querySelector('[data-index="0"]')!
+    const groupedRow = container.querySelector('[data-index="1"]')!
+    const defaultRow = container.querySelector('[data-index="2"]')!
+    expect(firstRow.querySelector(".group")?.classList.contains("py-1")).toBe(true)
+    expect(groupedRow.querySelector(".group")?.classList.contains("py-0.5")).toBe(true)
+    expect(groupedRow.querySelector('[aria-hidden="true"]')).toBeInTheDocument()
+    expect(groupedRow.querySelector('img[alt="Second"]')).toBeNull()
+    expect(defaultRow.querySelector('img[alt="Third"]')).toBeInTheDocument()
+  })
+
+  it("keeps sent/received row alignment and forwarded-header styling distinct", () => {
+    const { container } = render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "row-sent",
+            text: "sent",
+            isMe: true,
+            forwardedFromName: "Alice",
+          }),
+          makeMessage({
+            id: "row-received",
+            text: "received",
+            isMe: false,
+            forwardedFromName: "Bob",
+          }),
+        ]}
+      />
+    )
+
+    const sentRow = container.querySelector('[data-index="0"] .group')!
+    const receivedRow = container.querySelector('[data-index="1"] .group')!
+    expect(sentRow).toHaveClass("flex-row-reverse", "justify-start")
+    expect(sentRow).not.toHaveClass("flex-row")
+    expect(receivedRow).toHaveClass("flex-row", "justify-start")
+    expect(receivedRow).not.toHaveClass("flex-row-reverse")
+
+    const forwardedHeaders = [...container.querySelectorAll<HTMLElement>(".italic")].filter(
+      (element) => element.textContent?.includes("messenger:forwardedFrom")
+    )
+    expect(forwardedHeaders).toHaveLength(2)
+    expect(forwardedHeaders[0]).toHaveClass(
+      "mb-1.5",
+      "flex",
+      "items-center",
+      "gap-1",
+      "font-semibold",
+      "text-[var(--text-inverse)]",
+      "opacity-medium"
+    )
+    expect(forwardedHeaders[1]).toHaveClass(
+      "mb-1.5",
+      "flex",
+      "items-center",
+      "gap-1",
+      "font-semibold",
+      "text-(--brand-main)"
+    )
+    expect(forwardedHeaders[0]!.querySelector("svg")).toHaveClass("size-3", "shrink-0")
+    expect(forwardedHeaders[0]!.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
+  })
+
+  it("keeps tombstones and inline editors accessible without cross-branch styles", () => {
+    const { container, rerender } = render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "tombstone",
+            text: "secret",
+            isMe: true,
+            deletedAt: "2026-01-01",
+          }),
+        ]}
+      />
+    )
+    const tombstone = container.querySelector(".messenger-bubble-received")!
+    expect(tombstone).toHaveClass(
+      "relative",
+      "max-w-full",
+      "px-4",
+      "py-2.5",
+      "text-base",
+      "messenger-bubble-received",
+      "rounded-2xl",
+      "rounded-br-sm",
+      "md:rounded-br-2xl",
+      "md:rounded-bl-sm"
+    )
+    expect(tombstone.querySelector("p")).toHaveClass(
+      "italic",
+      "leading-relaxed",
+      "text-text-secondary"
+    )
+    expect(tombstone.querySelector("p")).toHaveTextContent("messenger:messageDeleted")
+    expect(screen.queryByText("secret")).toBeNull()
+
+    const own = makeMessage({ id: "editor-contract", text: "draft me", isMe: true })
+    rerender(
+      <ChatWindow messages={[own]} editingMessageId={own.id} editingMessageContent="draft" />
+    )
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement
+    const label = container.querySelector(`label[for="edit-message-${own.id}"]`)
+    expect(label).toBeInTheDocument()
+    expect(textarea).toHaveAttribute("id", `edit-message-${own.id}`)
+    expect(textarea).toHaveAttribute("rows", "2")
+    expect(textarea).toHaveClass(
+      "w-full",
+      "resize-none",
+      "rounded-lg",
+      "bg-(--bg-surface)/(--opacity-medium)",
+      "px-3",
+      "py-2",
+      "text-base",
+      "leading-relaxed"
+    )
+    expect(label).toHaveTextContent("messenger:editMessage")
+  })
+
+  it("distinguishes read and sent status icons for own messages", () => {
+    const { container } = render(
+      <ChatWindow
+        messages={[
+          makeMessage({ id: "status-read", text: "read", isMe: true, status: "read" }),
+          makeMessage({ id: "status-sent", text: "sent", isMe: true, status: "sent" }),
+        ]}
+      />
+    )
+
+    const readStatus = screen.getByRole("img", { name: "messenger:aria.messageRead" })
+    const sentStatus = screen.getByRole("img", { name: "messenger:aria.messageSent" })
+    expect(readStatus.querySelector(".lucide-check-check")).toBeInTheDocument()
+    expect(readStatus.querySelector(".lucide-check")).toBeNull()
+    expect(sentStatus.querySelector(".lucide-check")).toBeInTheDocument()
+    expect(sentStatus.querySelector(".lucide-check-check")).toBeNull()
+    expect(
+      container.querySelectorAll('[role="img"][aria-label^="messenger:aria.message"]').length
+    ).toBe(2)
+  })
+
+  it("keeps edited labels, timestamp colors and tooltip interpolation side-aware", () => {
+    const { container } = render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "edited-own",
+            text: "own edit",
+            isMe: true,
+            editedAt: "2026-01-01",
+            editedAtLabel: "15:00",
+            timestamp: "15:01",
+          }),
+          makeMessage({
+            id: "edited-received",
+            text: "received edit",
+            isMe: false,
+            editedAt: "2026-01-01",
+            editedAtLabel: "15:02",
+            timestamp: "15:03",
+          }),
+        ]}
+      />
+    )
+
+    const ownRow = container.querySelector('[data-index="0"]')!
+    const receivedRow = container.querySelector('[data-index="1"]')!
+    const ownEdited = ownRow.querySelector("span.text-micro")!
+    const receivedEdited = receivedRow.querySelector("span.text-micro")!
+    expect(ownEdited).toHaveTextContent("messenger:edited")
+    expect(ownEdited).toHaveAttribute("title", 'messenger:messageEditedAt|{"time":"15:00"}')
+    expect(ownEdited).toHaveStyle({ color: "var(--primary-subtle)" })
+    expect(receivedEdited).toHaveTextContent("messenger:edited")
+    expect(receivedEdited).toHaveAttribute("title", 'messenger:messageEditedAt|{"time":"15:02"}')
+    expect(receivedEdited).toHaveStyle({ color: "var(--text-secondary)" })
+
+    const ownTimestamps = ownRow.querySelectorAll("span.text-micro")
+    const receivedTimestamps = receivedRow.querySelectorAll("span.text-micro")
+    expect([...ownTimestamps].some((element) => element.textContent === "15:01")).toBe(true)
+    expect([...receivedTimestamps].some((element) => element.textContent === "15:03")).toBe(true)
+    expect([...ownTimestamps].find((element) => element.textContent === "15:01")).toHaveStyle({
+      color: "var(--primary-subtle)",
+    })
+    expect([...receivedTimestamps].find((element) => element.textContent === "15:03")).toHaveStyle({
+      color: "var(--text-secondary)",
+    })
+  })
+
+  it("applies seen-marker precedence for group counts, partial data and tombstones", () => {
+    render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "seen-group",
+            text: "group seen",
+            isMe: true,
+            seenByCount: 2,
+            seenByTotal: 3,
+            isLastRead: true,
+            readAtLabel: "10:00",
+          }),
+          makeMessage({
+            id: "seen-zero",
+            text: "group zero",
+            isMe: true,
+            seenByCount: 0,
+            seenByTotal: 3,
+            isLastRead: true,
+            readAtLabel: "10:01",
+          }),
+          makeMessage({
+            id: "seen-partial-count",
+            text: "partial count",
+            isMe: true,
+            seenByCount: 1,
+            isLastRead: true,
+            readAtLabel: "10:02",
+          }),
+          makeMessage({
+            id: "seen-partial-total",
+            text: "partial total",
+            isMe: true,
+            seenByTotal: 3,
+            isLastRead: true,
+            readAtLabel: "10:03",
+          }),
+          makeMessage({
+            id: "seen-deleted",
+            text: "deleted",
+            isMe: true,
+            deletedAt: "2026-01-01",
+            seenByCount: 2,
+            seenByTotal: 3,
+            isLastRead: true,
+            readAtLabel: "10:04",
+          }),
+          makeMessage({
+            id: "seen-received",
+            text: "received",
+            isMe: false,
+            seenByCount: 2,
+            seenByTotal: 3,
+            isLastRead: true,
+            readAtLabel: "10:05",
+          }),
+        ]}
+      />
+    )
+
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-index]")]
+    expect(rows[0]).toHaveTextContent('messenger:seenByGroup|{"count":2,"total":3}')
+    expect(rows[0]).not.toHaveTextContent('messenger:seen|{"time":"10:00"}')
+    expect(rows[1]).not.toHaveTextContent('messenger:seenByGroup|{"count":0,"total":3}')
+    expect(rows[1]).not.toHaveTextContent('messenger:seen|{"time":"10:01"}')
+    expect(rows[2]).toHaveTextContent('messenger:seen|{"time":"10:02"}')
+    expect(rows[3]).toHaveTextContent('messenger:seen|{"time":"10:03"}')
+    expect(rows[4]).not.toHaveTextContent('messenger:seenByGroup|{"count":2,"total":3}')
+    expect(rows[4]).not.toHaveTextContent('messenger:seen|{"time":"10:04"}')
+    expect(rows[5]).not.toHaveTextContent('messenger:seen|{"time":"10:05"}')
+  })
+
+  it("does not throw when optional edit/delete callbacks are omitted", () => {
+    const own = makeMessage({ id: "optional-actions", text: "edit me", isMe: true })
+    const { container, rerender } = render(<ChatWindow messages={[own]} />)
+
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "messenger:editMessage" }))
+    ).not.toThrow()
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "messenger:deleteMessage" }))
+    ).not.toThrow()
+
+    rerender(
+      <ChatWindow messages={[own]} editingMessageId={own.id} editingMessageContent="draft" />
+    )
+    const textarea = screen.getByRole("textbox")
+    expect(() => fireEvent.change(textarea, { target: { value: "draft next" } })).not.toThrow()
+    expect(() => fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })).not.toThrow()
+    expect(() => fireEvent.keyDown(textarea, { key: "Escape" })).not.toThrow()
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    ).not.toThrow()
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    ).not.toThrow()
+    expect(container.querySelector("textarea")).toBeInTheDocument()
+  })
+
   it("preserves jump-to-latest scroll alignment and reduced-motion FAB props", () => {
     const { container, unmount } = render(
       <ChatWindow messages={[makeMessage({ id: "jump", text: "x" })]} />
@@ -359,6 +1055,9 @@ describe("ChatWindow motion and layout mutation contract", () => {
       JSON.stringify({ duration: 0.2, ease: [0.22, 1, 0.36, 1] })
     )
     expect(fab).toHaveClass("absolute", "bottom-4", "right-4", "size-11", "rounded-full")
+    expect(fab.querySelector("svg")).toHaveClass("size-5")
+    expect(fab.querySelector("svg")).toHaveAttribute("stroke-width", "2.5")
+    expect(fab.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
     fireEvent.click(fab)
     expect(virtualizerState.scrollToIndex).toHaveBeenCalledWith(0, {
       align: "end",
