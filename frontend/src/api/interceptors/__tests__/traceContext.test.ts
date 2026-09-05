@@ -13,7 +13,14 @@ describe("updateTraceContext", () => {
   })
 
   it("clears trace state when response headers are absent", () => {
+    const fromSpy = vi.spyOn(AxiosHeaders, "from")
+
     updateTraceContext(undefined)
+
+    // The absent-header path must return before constructing an Axios adapter.
+    // Besides avoiding needless work, this keeps the interceptor safe when a
+    // response object is only partially initialized during error handling.
+    expect(fromSpy).not.toHaveBeenCalled()
     expect(setTag).toHaveBeenCalledWith("trace_id", "")
   })
 
@@ -24,6 +31,11 @@ describe("updateTraceContext", () => {
 
   it("clears an empty trace header", () => {
     updateTraceContext({ "x-trace-id": "" })
+    expect(setTag).toHaveBeenCalledWith("trace_id", "")
+  })
+
+  it("rejects a whitespace-only trace header", () => {
+    updateTraceContext({ "x-trace-id": "   " })
     expect(setTag).toHaveBeenCalledWith("trace_id", "")
   })
 

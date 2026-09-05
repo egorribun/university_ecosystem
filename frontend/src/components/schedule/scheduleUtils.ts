@@ -105,11 +105,12 @@ export const readFromStorage = <T>(
     return undefined
   }
 
-  const ts = typeof parsed.timestamp === "number" ? parsed.timestamp : NaN
-  if (!Number.isFinite(ts)) {
+  const timestamp = parsed.timestamp
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
     storage.remove()
     return undefined
   }
+  const ts = timestamp
 
   if (Date.now() - ts > maxAgeMs) {
     storage.remove()

@@ -14,9 +14,10 @@ const getMatchMedia = (): ((query: string) => MediaQueryList) | undefined => {
   return matchMedia.bind(window)
 }
 
+const unavailableMediaQuery = (): MediaQueryList | null => null
+
 const toMediaQueryList = (query: string): MediaQueryList | null => {
-  const matchMedia = getMatchMedia()
-  if (!matchMedia) return null
+  const matchMedia = getMatchMedia() ?? unavailableMediaQuery
   try {
     return matchMedia(query)
   } catch {

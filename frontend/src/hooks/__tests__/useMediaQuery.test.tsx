@@ -81,6 +81,26 @@ describe("useMediaQuery", () => {
     await act(async () => root?.unmount())
   })
 
+  it("refreshes the external subscription when its fallback store is recreated", () => {
+    const mediaQueryList = createMediaQueryList("(fallback-store)", false)
+    const addEventListener = vi.spyOn(mediaQueryList, "addEventListener")
+    const removeEventListener = vi.spyOn(mediaQueryList, "removeEventListener")
+    vi.mocked(window.matchMedia).mockReturnValue(mediaQueryList)
+
+    const { rerender, unmount } = renderHook(
+      ({ defaultValue }) => useMediaQuery("(fallback-store)", { defaultValue }),
+      { initialProps: { defaultValue: false } }
+    )
+
+    rerender({ defaultValue: true })
+
+    // Changing the fallback creates a new store.  React must detach the
+    // listener that closes over the old store and attach one for the new one.
+    expect(removeEventListener).toHaveBeenCalledTimes(1)
+    expect(addEventListener).toHaveBeenCalledTimes(2)
+    unmount()
+  })
+
   it("updates when the media query changes", () => {
     const { result } = renderHook(() => useMediaQuery("(prefers-reduced-motion: reduce)"))
     expect(result.current).toBe(false)
@@ -93,6 +113,22 @@ describe("useMediaQuery", () => {
     })
 
     expect(result.current).toBe(true)
+  })
+
+  it("rebinds subscriptions when the query changes", () => {
+    const { result, rerender, unmount } = renderHook(({ query }) => useMediaQuery(query), {
+      initialProps: { query: "(prefers-reduced-motion: reduce)" },
+    })
+    expect(result.current).toBe(false)
+    expect(listeners.has("(prefers-reduced-motion: reduce)")).toBe(true)
+
+    rerender({ query: "(max-width: 600px)" })
+
+    expect(result.current).toBe(true)
+    expect(listeners.has("(prefers-reduced-motion: reduce)")).toBe(false)
+    expect(listeners.has("(max-width: 600px)")).toBe(true)
+    unmount()
+    expect(listeners.size).toBe(0)
   })
 
   it("uses defaultValue when matchMedia is unavailable or throws", () => {
@@ -114,6 +150,23 @@ describe("useMediaQuery", () => {
     })
     const throwing = renderHook(() => useMediaQuery("(forced-throw)", { defaultValue: true }))
     expect(throwing.result.current).toBe(true)
+  })
+
+  it("updates the fallback snapshot when defaultValue changes", () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: undefined,
+    })
+
+    const { result, rerender } = renderHook(
+      ({ defaultValue }) => useMediaQuery("(fallback)", { defaultValue }),
+      { initialProps: { defaultValue: false } }
+    )
+    expect(result.current).toBe(false)
+
+    rerender({ defaultValue: true })
+
+    expect(result.current).toBe(true)
   })
 
   it("supports legacy addListener/removeListener media-query APIs", () => {
@@ -144,6 +197,28 @@ describe("useMediaQuery", () => {
     unmount()
     expect(addListener).toHaveBeenCalledOnce()
     expect(removeListener).toHaveBeenCalledOnce()
+  })
+
+  it("uses the standard change event name and removes modern listeners on unmount", () => {
+    const addEventListener = vi.fn()
+    const removeEventListener = vi.fn()
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(
+        () =>
+          ({
+            matches: false,
+            media: "(modern)",
+            addEventListener,
+            removeEventListener,
+          }) as unknown as MediaQueryList
+      ),
+    })
+
+    const { unmount } = renderHook(() => useMediaQuery("(modern)"))
+    expect(addEventListener).toHaveBeenCalledWith("change", expect.any(Function))
+    unmount()
+    expect(removeEventListener).toHaveBeenCalledWith("change", expect.any(Function))
   })
 
   it("tolerates media-query lists without either listener API", () => {

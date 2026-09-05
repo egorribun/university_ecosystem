@@ -4,6 +4,7 @@ import {
   buildLessonsByDay,
   getEndTimeStr,
   getTimeStr,
+  GROUPS_STORAGE_TTL_MS,
   groupsStorageKey,
   type Lesson,
   readFromStorage,
@@ -40,6 +41,13 @@ afterEach(() => {
 // readFromStorage / writeToStorage
 // ---------------------------------------------------------------------------
 describe("readFromStorage / writeToStorage", () => {
+  it("keeps the storage contract keys and five-minute TTLs stable", () => {
+    expect(groupsStorageKey).toBe("sched:groups")
+    expect(scheduleStorageKey("group-42")).toBe("sched:group-42")
+    expect(GROUPS_STORAGE_TTL_MS).toBe(300_000)
+    expect(SCHEDULE_STORAGE_TTL_MS).toBe(300_000)
+  })
+
   it("round-trips a value written by writeToStorage", () => {
     const key = scheduleStorageKey("g1")
     writeToStorage(key, { a: 1, b: "two" })

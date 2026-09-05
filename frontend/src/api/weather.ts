@@ -45,7 +45,7 @@ const toCacheKey = ({ lat, lon }: WeatherCoordinates) => {
 
 type ParsedCacheResult = { value: unknown }
 
-type CacheReadResult = { ok: true; value: string | null } | { ok: false }
+type CacheReadResult = string | null
 
 const parseCacheEntry = (raw: string): ParsedCacheResult | null => {
   try {
@@ -62,16 +62,14 @@ const readCacheEntry = (
   const readResult: CacheReadResult = (() => {
     try {
       const storage = window.sessionStorage
-      if (!storage) return { ok: false }
-      return { ok: true, value: storage.getItem(key) }
+      if (!storage) return null
+      return storage.getItem(key)
     } catch {
-      return { ok: false }
+      return null
     }
   })()
-  if (readResult.ok === false) return null
-  const raw = readResult.value
-  if (typeof raw !== "string") return null
-  const parsedResult = parseCacheEntry(raw)
+  if (readResult === null) return null
+  const parsedResult = parseCacheEntry(readResult)
   if (parsedResult === null) return null
   const parsed = parsedResult.value
   if (Object.prototype.toString.call(parsed) === "[object Object]") {

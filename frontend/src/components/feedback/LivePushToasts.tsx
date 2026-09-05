@@ -200,6 +200,9 @@ export const toActiveToast = (payload: unknown): ActiveToast | null => {
 
 let memoryBuffer: ActiveToast[] | undefined
 
+const emptyStorageGetItem = (_key: string): string | null => null
+const emptyStorageSetItem = (_key: string, _value: string): void => undefined
+
 /** Resolve browser storage without touching the window during SSR. */
 export function getToastStorage(): Storage | null {
   if (typeof window === "undefined") return null
@@ -220,12 +223,8 @@ export const sanitizeBuffer = (buffer: unknown): ActiveToast[] => {
 /** @internal Storage read is deliberately fail-closed. */
 export const readBuffer = (): ActiveToast[] => {
   const storage = getToastStorage()
-  if (storage === null) {
-    memoryBuffer = []
-    return memoryBuffer
-  }
+  const getItem = storage?.getItem?.bind(storage) ?? emptyStorageGetItem
   try {
-    const getItem = storage.getItem.bind(storage)
     const raw = getItem(getBufferStorageKey())
     if (!raw) {
       memoryBuffer = []
@@ -244,9 +243,8 @@ export const readBuffer = (): ActiveToast[] => {
 export const writeBuffer = (buffer: ActiveToast[]) => {
   memoryBuffer = buffer.slice(-MAX_BUFFER_SIZE)
   const storage = getToastStorage()
-  if (storage === null) return
+  const setItem = storage?.setItem?.bind(storage) ?? emptyStorageSetItem
   try {
-    const setItem = storage.setItem.bind(storage)
     setItem(getBufferStorageKey(), JSON.stringify(memoryBuffer))
   } catch (_e) {
     // Ignore

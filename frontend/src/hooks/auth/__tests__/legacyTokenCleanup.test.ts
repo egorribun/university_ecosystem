@@ -12,11 +12,16 @@ describe("clearLegacyAccessToken", () => {
 
     clearLegacyAccessToken({ removeItem })
 
-    expect(removeItem).toHaveBeenCalledWith(LEGACY_ACCESS_TOKEN_STORAGE_KEY)
+    // Keep this assertion independent from the exported constant so a mutated
+    // storage key cannot update both sides of the expectation.
+    expect(removeItem).toHaveBeenCalledWith("ecosystem.access.token")
+    expect(LEGACY_ACCESS_TOKEN_STORAGE_KEY).toBe("ecosystem.access.token")
   })
 
   it("is safe without browser storage", () => {
+    window.localStorage.setItem(LEGACY_ACCESS_TOKEN_STORAGE_KEY, "must-remain")
     expect(() => clearLegacyAccessToken(null)).not.toThrow()
+    expect(window.localStorage.getItem(LEGACY_ACCESS_TOKEN_STORAGE_KEY)).toBe("must-remain")
   })
 
   it("uses browser storage by default", () => {

@@ -22,7 +22,7 @@ export const RELATED_EVENTS_TRANSLATION_NAMESPACES = ["events", "common"] as con
 export const RELATED_EVENT_CARD_TRANSLATION_NAMESPACES = ["events"] as const
 
 export function RelatedEvents({ items }: RelatedEventsProps) {
-  const { t } = useTranslation([...RELATED_EVENTS_TRANSLATION_NAMESPACES])
+  const { t } = useTranslation(RELATED_EVENTS_TRANSLATION_NAMESPACES)
   const { language } = useLanguage()
 
   if (items.length === 0) return null
@@ -47,7 +47,7 @@ export function RelatedEvents({ items }: RelatedEventsProps) {
 }
 
 function RelatedEventCard({ event, language }: { event: Event; language: "en" | "ru" }) {
-  const { t } = useTranslation([...RELATED_EVENT_CARD_TRANSLATION_NAMESPACES])
+  const { t } = useTranslation(RELATED_EVENT_CARD_TRANSLATION_NAMESPACES)
 
   // These values are deliberately computed inline: each is a small, pure
   // presentation transform and keeping them as ordinary expressions makes
