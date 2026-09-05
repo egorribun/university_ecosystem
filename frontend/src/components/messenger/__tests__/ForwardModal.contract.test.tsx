@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 
@@ -134,5 +134,80 @@ describe("ForwardModal contracts", () => {
     render(<ForwardModal open onClose={() => {}} contacts={[]} onSelect={() => {}} />)
     expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite")
     expect(screen.getByText("messenger:forwardNoChats")).toBeInTheDocument()
+  })
+
+  it("dispatches the selected destination and marks only the current chat", () => {
+    const onSelect = vi.fn()
+    const contacts = [
+      {
+        id: "chat-current",
+        name: "Current chat",
+        avatar: "",
+        lastMessage: "",
+        lastMessageTime: "10:00",
+        unread: 0,
+        online: false,
+      },
+      {
+        id: "chat-other",
+        name: "Other chat",
+        avatar: "avatar.png",
+        lastMessage: "A recent message",
+        lastMessageTime: "10:01",
+        unread: 2,
+        online: true,
+      },
+    ] as never
+
+    render(
+      <ForwardModal
+        open
+        onClose={() => {}}
+        contacts={contacts}
+        currentChatId="chat-current"
+        onSelect={onSelect}
+      />
+    )
+
+    const options = screen.getAllByRole("option")
+    expect(options).toHaveLength(2)
+    expect(options[0]).toHaveTextContent("messenger:forwardCurrentChat")
+    expect(options[0]).not.toHaveTextContent("A recent message")
+    expect(options[1]).toHaveTextContent("A recent message")
+
+    fireEvent.click(options[1]!)
+    expect(onSelect).toHaveBeenCalledOnce()
+    expect(onSelect).toHaveBeenCalledWith("chat-other")
+  })
+
+  it("blocks destination dispatch while forwarding and closes only from modal boundaries", () => {
+    const onSelect = vi.fn()
+    const onClose = vi.fn()
+    const { container, rerender } = render(
+      <ForwardModal open onClose={onClose} contacts={contacts} onSelect={onSelect} isForwarding />
+    )
+
+    const listbox = screen.getByRole("listbox", { name: "messenger:forwardTo" })
+    expect(listbox).toHaveAttribute("aria-busy", "true")
+    const option = screen.getByRole("option")
+    expect(option).toBeDisabled()
+    fireEvent.click(option)
+    expect(onSelect).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("dialog"))
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+    expect(onClose).toHaveBeenCalledOnce()
+
+    fireEvent.click(container.querySelector("[aria-hidden='true']")!)
+    expect(onClose).toHaveBeenCalledTimes(2)
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(onClose).toHaveBeenCalledTimes(3)
+
+    rerender(
+      <ForwardModal open={false} onClose={onClose} contacts={contacts} onSelect={onSelect} />
+    )
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(onClose).toHaveBeenCalledTimes(3)
   })
 })
