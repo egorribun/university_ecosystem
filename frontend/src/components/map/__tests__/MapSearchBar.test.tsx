@@ -318,7 +318,7 @@ describe("MapSearchBar", () => {
   it("moves the active option with bounded ArrowDown and ArrowUp navigation", () => {
     const thirdBuilding = {
       ...CAMPUS_BUILDINGS[0]!,
-      letter: "ЛК" as const,
+      letter: "ЦИТ" as const,
       name: "Campus Lab",
     } satisfies CampusBuilding
     render(<MapSearchBar {...baseProps} buildings={[...CAMPUS_BUILDINGS, thirdBuilding]} />)
