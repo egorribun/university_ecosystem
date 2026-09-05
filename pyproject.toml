@@ -635,6 +635,10 @@ also_copy = [
     # mutmut's stats pass exercises the same repository surface as CI.
     "k8s/ingress.yaml",
     "k8s/secrets-example.yaml",
+    # test_infra_audit_contract reads the canonical-owner guidance from the
+    # raw Kubernetes tree; keep that documentation in the isolated baseline
+    # so stats collection cannot fail before mutation execution.
+    "k8s/README.md",
     "k8s/backend",
     "k8s/frontend",
     # test_feature_flag_architecture_contract reads the flagd deployment,

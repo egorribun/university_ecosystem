@@ -27,6 +27,7 @@ REQUIRED_ALSO_COPY = {
     "frontend/src/tests/mocks/generated",
     "k8s/ingress.yaml",
     "k8s/secrets-example.yaml",
+    "k8s/README.md",
 }
 
 
@@ -59,6 +60,7 @@ def test_mutmut_also_copy_creates_file_parents_before_exact_files() -> None:
         "frontend/src/hooks/useChatWebSocket.ts": "frontend/src/hooks",
         "k8s/ingress.yaml": "k8s/kyverno",
         "k8s/secrets-example.yaml": "k8s/kyverno",
+        "k8s/README.md": "k8s/kyverno",
     }
     for file_path, parent in parent_providers.items():
         assert configured.index(parent) < configured.index(file_path), file_path
