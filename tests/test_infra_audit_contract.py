@@ -82,3 +82,39 @@ def test_standalone_ingress_requires_explicit_certificate_issuer() -> None:
     assert 'cert-manager.io/cluster-issuer: "${CERT_MANAGER_ISSUER_NAME}"' in source
     assert 'cert-manager.io/cluster-issuer: "letsencrypt-prod"' not in source
     assert "CERT_MANAGER_ISSUER_NAME" in source
+
+
+def test_raw_k8s_scope_declares_helm_as_canonical_application_producer() -> None:
+    """Keep the raw-manifest scope and the Helm workload inventory aligned.
+
+    The standalone tree intentionally omits the Go workloads.  This contract
+    prevents a future documentation edit from presenting the partial raw
+    bundle as a production deployment, while also making additions to the
+    chart's first-party workload set visible in the canonical-owner guidance.
+    """
+
+    readme = (ROOT / "k8s/README.md").read_text(encoding="utf-8")
+    normalized = " ".join(readme.split()).lower()
+
+    assert "sole canonical producer" in normalized
+    assert "single canonical deployment artifact" in normalized
+    assert "must not be used as a staging or production release path" in normalized
+    assert "does not duplicate the go service deployments or services" in normalized
+
+    deployment_templates = sorted(
+        path.stem.removesuffix("-deployment")
+        for path in (CHART / "templates").glob("*-deployment.yaml")
+    )
+    assert deployment_templates == [
+        "backend",
+        "file-processor",
+        "frontend",
+        "gateway",
+        "outbox-worker",
+        "ws-hub",
+    ]
+    for component in deployment_templates:
+        assert f"`{component}`" in readme
+
+    for component in ("gateway", "ws-hub", "file-processor"):
+        assert not list((ROOT / "k8s").rglob(f"{component}*deployment*.yaml"))
