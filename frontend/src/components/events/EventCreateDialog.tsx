@@ -36,8 +36,13 @@ export function normalizeLocalizedValue(primary: string, fallback: string): stri
 
 /** Date validation is only applicable once both endpoints have been supplied. */
 export function hasInvalidEventDates(startsAt: string, endsAt: string): boolean {
-  if (!startsAt || !endsAt) return false
-  return new Date(endsAt).getTime() <= new Date(startsAt).getTime()
+  const startTimestamp = Date.parse(startsAt)
+  const endTimestamp = Date.parse(endsAt)
+  return (
+    Number.isFinite(startTimestamp) &&
+    Number.isFinite(endTimestamp) &&
+    endTimestamp <= startTimestamp
+  )
 }
 
 export type EventSubmitState = {
@@ -62,12 +67,22 @@ export function canSubmitEventDraft(state: EventSubmitState): boolean {
 
 /** File inputs can emit null/empty FileLists; never manufacture a file. */
 export function firstSelectedFile(files: FileList | null | undefined): File | undefined {
-  if (!files || files.length === 0) return undefined
-  return files[0]
+  return files?.[0]
 }
 
 export function invalidateUploadGeneration(ref: { current: number }): void {
   ref.current += 1
+}
+
+/** Keep the unmount cancellation callback directly testable and side-effect free. */
+export function createUploadGenerationCleanup(
+  ref: { current: number },
+  onCleanup?: () => void
+): () => void {
+  return () => {
+    invalidateUploadGeneration(ref)
+    onCleanup?.()
+  }
 }
 
 const INITIAL_DRAFT: EventDraft = {
@@ -144,11 +159,17 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
     }
   }, [preview])
 
-  useEffect(() => {
-    return () => {
-      invalidateUploadGeneration(uploadGenerationRef)
-    }
-  }, [])
+  // Cancel an in-flight upload when the dialog visibility changes or the owner
+  // unmounts. This also covers parents that close the dialog without invoking
+  // the local close button, preventing stale results from updating hidden UI.
+  useEffect(
+    () =>
+      createUploadGenerationCleanup(uploadGenerationRef, () => {
+        setImageUploading(false)
+        setPreview(null)
+      }),
+    [open]
+  )
 
   const handleClose = () => {
     invalidateUploadGeneration(uploadGenerationRef)
@@ -193,7 +214,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
               label={
                 language === "en" ? t("events:form.description_en") : t("events:form.description")
               }
-              value={getLocalizedValue("description")}
+              value={getLocalizedValue("description") ?? EMPTY_DRAFT_VALUE}
               onChange={(event) => updateLocalizedValue("description", event.target.value)}
               multiline
               rows={3}
@@ -201,7 +222,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
             />
             <TextField
               label={language === "en" ? t("events:form.type_en") : t("events:form.type")}
-              value={getLocalizedValue("event_type")}
+              value={getLocalizedValue("event_type") ?? EMPTY_DRAFT_VALUE}
               onChange={(event) => updateLocalizedValue("event_type", event.target.value)}
               fullWidth
             />

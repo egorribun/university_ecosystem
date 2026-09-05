@@ -26,6 +26,7 @@ vi.mock("@/api/events", () => ({ uploadEventImage }))
 import {
   EventCreateDialog,
   canSubmitEventDraft,
+  createUploadGenerationCleanup,
   firstSelectedFile,
   hasInvalidEventDates,
   invalidateUploadGeneration,
@@ -101,6 +102,17 @@ describe("EventCreateDialog", () => {
     const generation = { current: 4 }
     invalidateUploadGeneration(generation)
     expect(generation.current).toBe(5)
+  })
+
+  it("keeps upload cancellation lifecycle contracts explicit", () => {
+    const generation = { current: 4 }
+    const onCleanup = vi.fn()
+    const cleanup = createUploadGenerationCleanup(generation, onCleanup)
+
+    cleanup()
+
+    expect(generation.current).toBe(5)
+    expect(onCleanup).toHaveBeenCalledOnce()
   })
 
   it("renders nothing when open=false", () => {
@@ -643,6 +655,41 @@ describe("EventCreateDialog", () => {
       })
 
       expect(revokeObjectUrl).toHaveBeenCalledWith("blob:unmounted")
+    } finally {
+      createObjectUrl.mockRestore()
+      revokeObjectUrl.mockRestore()
+    }
+  })
+
+  it("cancels and resets an upload when the parent closes the dialog", async () => {
+    let resolveUpload!: (url: string) => void
+    const pending = new Promise<string>((resolve) => {
+      resolveUpload = resolve
+    })
+    uploadEventImage.mockImplementationOnce(() => pending)
+
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:parent-close")
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    try {
+      const user = userEvent.setup()
+      const { rerender } = render(<EventCreateDialog {...baseProps} />)
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(input, new File(["x"], "parent-close.png", { type: "image/png" }))
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+
+      // Closing through the parent bypasses the local close button, so the
+      // visibility lifecycle cleanup must invalidate and reset the upload.
+      rerender(<EventCreateDialog {...baseProps} open={false} />)
+      resolveUpload("https://cdn.example.com/stale-parent-close.png")
+      await act(async () => {
+        await pending
+      })
+
+      rerender(<EventCreateDialog {...baseProps} open />)
+      expect(screen.queryByText("common:statuses.uploading")).not.toBeInTheDocument()
+      expect(screen.getByText("events:form.uploadImage")).toBeInTheDocument()
+      expect(screen.queryByAltText("events:alt.preview")).not.toBeInTheDocument()
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:parent-close")
     } finally {
       createObjectUrl.mockRestore()
       revokeObjectUrl.mockRestore()

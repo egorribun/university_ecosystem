@@ -18,8 +18,6 @@ function buildSrcSet(rawUrl: string, widths: readonly number[]): string {
     new Set(widths.filter((value) => Number.isFinite(value) && value > 0))
   ).sort((a, b) => a - b)
 
-  if (!uniqueWidths.length) return ""
-
   return uniqueWidths
     .map((width) => {
       const proxyUrl = resolveProxyImageUrl(rawUrl, width)
@@ -91,9 +89,10 @@ export default function SmartImage({
         onLoad(event)
       }}
       onError={(event) => {
-        if (!useFallback) {
-          setUseFallback(true)
-        }
+        // React bails out when the fallback state is already true, so repeated
+        // errors from a broken fallback image remain idempotent without an
+        // extra branch that can drift from the rendered source.
+        setUseFallback(true)
         onError(event)
       }}
     />
