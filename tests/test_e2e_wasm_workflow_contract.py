@@ -162,6 +162,7 @@ def test_e2e_consumer_accepts_all_or_none_artifact_inputs() -> None:
     )
     assert "actions/artifacts/${ARTIFACT_ID}" in digest["run"]
     assert "actual_digest" in digest["run"]
+    assert 'actual_digest="sha256:${actual_digest}"' in digest["run"]
     assert "exit 1" in digest["run"]
 
     fallback = _step(job, "Build WASM modules")

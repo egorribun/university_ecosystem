@@ -207,6 +207,9 @@ jobs:
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "${api_url}" -o "${response_file}"
           actual_digest="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("digest", ""))' "${response_file}")"
+          if [[ "$actual_digest" =~ ^[0-9a-f]{64}$ ]]; then
+            actual_digest="sha256:${actual_digest}"
+          fi
           if [[ "${actual_digest}" != "${EXPECTED_ARTIFACT_DIGEST}" ]]; then
             echo "::error::E2E WASM artifact digest mismatch: server=${actual_digest} expected=${EXPECTED_ARTIFACT_DIGEST}"
             exit 1
