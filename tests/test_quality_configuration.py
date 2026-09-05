@@ -368,6 +368,7 @@ def test_docker_context_excludes_local_quality_virtualenv() -> None:
     dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
 
     assert ".quality-venv/" in dockerignore.splitlines()
+    assert "/.tmp*/" in dockerignore.splitlines()
 
 
 def test_test_image_context_preserves_required_and_safe_inputs() -> None:
@@ -391,6 +392,7 @@ def test_test_image_context_preserves_required_and_safe_inputs() -> None:
         ".opencode/",
         ".superpowers/",
         ".quality-pytest-tmp*/",
+        "/.tmp*/",
         ".worktrees/",
         ".pytest_tmp*/",
         ".uv-cache*/",
