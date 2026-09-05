@@ -59,7 +59,7 @@ type NormalizedNewsListFilters = {
 
 const normalizeNewsListFilters = (filters: NewsListFilters): NormalizedNewsListFilters => {
   const normalizeLimit = (value: number | undefined) => {
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    if (value !== undefined && Number.isFinite(value) && value > 0) {
       return Math.floor(value)
     }
     return NEWS_PAGE_SIZE

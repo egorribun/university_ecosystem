@@ -138,6 +138,21 @@ describe("readFromStorage / writeToStorage", () => {
     expect(localStorage.getItem(key)).toBeNull()
   })
 
+  it("returns undefined and removes entry on an infinite timestamp", () => {
+    const key = scheduleStorageKey("g6-infinite")
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        version: STORAGE_SCHEMA_VERSION,
+        timestamp: Number.POSITIVE_INFINITY,
+        data: { x: 1 },
+      })
+    )
+
+    expect(readFromStorage(key)).toBeUndefined()
+    expect(localStorage.getItem(key)).toBeNull()
+  })
+
   it("returns undefined and removes entry on a missing timestamp field", () => {
     const key = scheduleStorageKey("g7")
     localStorage.setItem(

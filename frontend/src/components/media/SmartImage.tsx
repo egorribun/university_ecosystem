@@ -51,7 +51,7 @@ export default function SmartImage({
       return sanitizeUrl(blobUrl) ? resolveMediaUrl(blobUrl) : ""
     }
 
-    if (!sanitizeUrl(srcRaw || "")) return ""
+    if (typeof srcRaw !== "string" || !sanitizeUrl(srcRaw)) return ""
 
     // For original src, we don't fix width but still route through proxy for AVIF/WebP
     const resolved = resolveProxyImageUrl(srcRaw)

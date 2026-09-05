@@ -106,7 +106,7 @@ export const readFromStorage = <T>(
   }
 
   const timestamp = parsed.timestamp
-  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+  if (!Number.isFinite(timestamp)) {
     storage.remove()
     return undefined
   }

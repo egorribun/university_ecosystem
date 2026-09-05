@@ -104,6 +104,8 @@ describe("newsListQueryKey (news.ts:95-97)", () => {
     expect(newsListQueryKey({ language: "ru", limit: 0 })[2].limit).toBe(12)
     expect(newsListQueryKey({ language: "ru", limit: -3 })[2].limit).toBe(12)
     expect(newsListQueryKey({ language: "ru", limit: Number.NaN })[2].limit).toBe(12)
+    expect(newsListQueryKey({ language: "ru", limit: Number.POSITIVE_INFINITY })[2].limit).toBe(12)
+    expect(newsListQueryKey({ language: "ru", limit: Number.NEGATIVE_INFINITY })[2].limit).toBe(12)
   })
 })
 
@@ -271,6 +273,30 @@ describe("useNewsListQuery queryFn branches", () => {
     const queryClient = freshClient()
     // With no cached infinite-query entry the optional pages chain must treat
     // the 304 as a cache miss, not dereference an undefined cache value.
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.news).toEqual([])
+    expect(result.current.pagination).toEqual({
+      items: [],
+      total: 0,
+      limit: 12,
+      cursor: null,
+      next_cursor: null,
+      has_more: false,
+    })
+  })
+
+  it("304 response tolerates a cached entry without a pages array", async () => {
+    newsListMock.mockResolvedValue({ status: 304, data: undefined })
+
+    const queryClient = freshClient()
+    vi.spyOn(queryClient, "getQueryData").mockReturnValue({
+      pages: undefined,
+    } as never)
+
     const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
       wrapper: makeWrapper(queryClient),
     })
