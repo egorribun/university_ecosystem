@@ -38,6 +38,19 @@ describe("clearLegacyAccessToken", () => {
     expect(() => clearLegacyAccessToken()).not.toThrow()
   })
 
+  it("fails closed when browser storage access throws", () => {
+    const blockedWindow = {}
+    Object.defineProperty(blockedWindow, "localStorage", {
+      configurable: true,
+      get: () => {
+        throw new DOMException("blocked", "SecurityError")
+      },
+    })
+    vi.stubGlobal("window", blockedWindow)
+
+    expect(() => clearLegacyAccessToken()).not.toThrow()
+  })
+
   it("fails closed when browser storage rejects access", () => {
     const removeItem = vi.fn(() => {
       throw new DOMException("blocked", "SecurityError")

@@ -1480,8 +1480,37 @@ mod tests {
         }
 
         let conflicts = batch_detect_conflicts(items).unwrap();
-        assert!(conflicts
-            .iter()
+        assert_eq!(conflicts.len(), 1);
+
+        // Exercise both sides of the short-circuit predicate deterministically:
+        // the first candidate reaches the right-hand comparison and fails, the
+        // second fails on the left-hand comparison, and the final candidate
+        // satisfies the complete pair contract.
+        let matching_left = ScheduleItem {
+            id: Some(1),
+            weekday: "monday".to_string(),
+            start_time: 1_000,
+            end_time: 3_000,
+            parity: "both".to_string(),
+        };
+        let matching_right = ScheduleItem {
+            id: Some(2),
+            weekday: "monday".to_string(),
+            start_time: 2_000,
+            end_time: 4_000,
+            parity: "both".to_string(),
+        };
+        let mut wrong_left = matching_left.clone();
+        wrong_left.id = Some(999);
+        let mut wrong_right = matching_right.clone();
+        wrong_right.id = Some(999);
+        let candidates = [
+            (&matching_left, &wrong_right),
+            (&wrong_left, &matching_right),
+            (&matching_left, &matching_right),
+        ];
+        assert!(candidates
+            .into_iter()
             .any(|(left, right)| left.id == Some(1) && right.id == Some(2)));
     }
 
