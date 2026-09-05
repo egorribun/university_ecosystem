@@ -53,9 +53,14 @@ function sendMetric(endpoint: string, metric: WebVitalMetric): void {
 
   if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
     const BlobCtor = typeof Blob === "function" ? Blob : undefined
-    if (BlobCtor) {
+    if (BlobCtor === undefined) {
+      // Continue to the fetch fallback below when Blob is unavailable.
+    } else {
+      // BlobCtor is the native callable constructor and the payload is always
+      // a finite JSON string, so construction is safe before the transport
+      // error boundary. Only sendBeacon failures need the fetch fallback.
+      const blob = new BlobCtor([payload], { type: "application/json" })
       try {
-        const blob = new BlobCtor([payload], { type: "application/json" })
         navigator.sendBeacon(endpoint, blob)
         return
       } catch (_error) {

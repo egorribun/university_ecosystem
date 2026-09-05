@@ -148,6 +148,25 @@ describe("initObservability", () => {
     )
   })
 
+  it("does not parse omitted sample rates", () => {
+    const parseFloatSpy = vi.spyOn(Number, "parseFloat")
+    try {
+      expect(
+        initObservability({
+          DEV: false,
+          PROD: true,
+          BASE_URL: "http://localhost",
+          MODE: "production",
+          VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+        } as unknown as ImportMetaEnv)
+      ).toBe(true)
+
+      expect(parseFloatSpy).not.toHaveBeenCalled()
+    } finally {
+      parseFloatSpy.mockRestore()
+    }
+  })
+
   it("accepts exact sample-rate boundaries and rejects empty values", () => {
     const result = initObservability({
       DEV: false,
