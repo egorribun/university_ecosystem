@@ -170,6 +170,7 @@ def test_ci_e2e_matrix_depends_on_shared_producer_not_frontend_suite() -> None:
     for job_name in ("e2e-tests", "e2e-tests-cross-browser"):
         caller = jobs[job_name]
         assert set(caller["needs"]) == {"pre-commit-check", "e2e-wasm-build"}
+        assert caller["permissions"]["actions"] == "read"
         with_values = caller["with"]
         assert with_values["wasm-artifact-id"] == (
             "${{ needs.e2e-wasm-build.outputs.artifact_id }}"
@@ -192,6 +193,7 @@ def test_nightly_browser_matrix_uses_shared_producer() -> None:
 
     browser = jobs["browser-matrix"]
     assert browser["needs"] == "e2e-wasm-build"
+    assert browser["permissions"]["actions"] == "read"
     assert browser["with"]["wasm-artifact-id"] == (
         "${{ needs.e2e-wasm-build.outputs.artifact_id }}"
     )
