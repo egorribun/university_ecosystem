@@ -56,6 +56,7 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
             transition={prefersReducedMotion ? { duration: 0 } : springSoft}
           >
             <SmartImage
+              srcRaw={avatarSource || undefined}
               cacheV={avatarSource ? avatarCacheV : undefined}
               fallback={avatarFallback}
               alt={profileAlt}
