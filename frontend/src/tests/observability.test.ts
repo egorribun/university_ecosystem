@@ -167,6 +167,28 @@ describe("initObservability", () => {
     }
   })
 
+  it("trims configured sample rates before parsing", () => {
+    const trim = vi.fn(() => "0.25")
+    const sampleRate = {
+      trim,
+      toString: () => "0.25",
+    }
+
+    expect(
+      initObservability({
+        DEV: false,
+        PROD: true,
+        BASE_URL: "http://localhost",
+        MODE: "production",
+        VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+        VITE_SENTRY_TRACES_SAMPLE_RATE: sampleRate as unknown as string,
+      } as unknown as ImportMetaEnv)
+    ).toBe(true)
+
+    expect(trim).toHaveBeenCalledTimes(1)
+    expect(Sentry.init).toHaveBeenCalledWith(expect.objectContaining({ tracesSampleRate: 0.25 }))
+  })
+
   it("accepts exact sample-rate boundaries and rejects empty values", () => {
     const result = initObservability({
       DEV: false,
