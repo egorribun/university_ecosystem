@@ -1000,7 +1000,10 @@ def test_e2e_coverage_is_chromium_opt_in_and_staged_for_codecov() -> None:
         for step in steps
     )
     assert e2e_workflow["permissions"] == {"contents": "read"}
-    assert e2e_workflow["jobs"]["e2e"]["permissions"] == {"contents": "read"}
+    assert e2e_workflow["jobs"]["e2e"]["permissions"] == {
+        "contents": "read",
+        "actions": "read",
+    }
 
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     staging = next(
@@ -1031,7 +1034,10 @@ def test_codecov_oidc_permissions_are_scoped_to_trusted_upload_job() -> None:
         call = _workflow_triggers(workflow)["workflow_call"]
         assert workflow["permissions"] == {"contents": "read"}
         assert "CODECOV_TOKEN" not in call.get("secrets", {})
-        assert workflow["jobs"][upload_job_name]["permissions"] == {"contents": "read"}
+        expected_permissions = {"contents": "read"}
+        if workflow_path == E2E_WORKFLOW_PATH:
+            expected_permissions["actions"] = "read"
+        assert workflow["jobs"][upload_job_name]["permissions"] == expected_permissions
         assert not any(
             str(step.get("uses", "")).startswith("codecov/codecov-action@")
             for step in workflow["jobs"][upload_job_name]["steps"]
@@ -1040,8 +1046,12 @@ def test_codecov_oidc_permissions_are_scoped_to_trusted_upload_job() -> None:
     nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert nightly["permissions"] == {"contents": "read"}
     assert "CODECOV_TOKEN" not in NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
-    for job_name in ("backend-full", "backend-integration", "browser-matrix"):
+    for job_name in ("backend-full", "backend-integration"):
         assert nightly["jobs"][job_name]["permissions"] == {"contents": "read"}
+    assert nightly["jobs"]["browser-matrix"]["permissions"] == {
+        "contents": "read",
+        "actions": "read",
+    }
 
     ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     trusted = ci["jobs"]["codecov-upload"]
