@@ -32,7 +32,7 @@ jobs:
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
       artifact_name: ${{ steps.publish.outputs.artifact_name }}
-      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+      artifact_digest: ${{ steps.normalize_digest.outputs.artifact_digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -170,11 +170,28 @@ jobs:
           compression-level: 0
           include-hidden-files: true
 
+      - name: Normalize E2E WASM artifact digest
+        id: normalize_digest
+        shell: bash
+        env:
+          RAW_ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          if [[ "$RAW_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            artifact_digest="sha256:${RAW_ARTIFACT_DIGEST}"
+          elif [[ "$RAW_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            artifact_digest="$RAW_ARTIFACT_DIGEST"
+          else
+            echo "::error::Unexpected upload-artifact digest format"
+            exit 1
+          fi
+          printf 'artifact_digest=%s\n' "$artifact_digest" >> "$GITHUB_OUTPUT"
+
       - name: Verify uploaded artifact identity
         shell: bash
         env:
           ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
-          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+          ARTIFACT_DIGEST: ${{ steps.normalize_digest.outputs.artifact_digest }}
         run: |
           set -euo pipefail
           [[ "$ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]

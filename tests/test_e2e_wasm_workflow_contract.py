@@ -60,7 +60,7 @@ def test_shared_e2e_wasm_producer_is_immutable_and_fail_closed() -> None:
         == "${{ steps.publish.outputs.artifact_name }}"
     )
     assert build["outputs"]["artifact_digest"] == (
-        "${{ steps.upload.outputs.artifact-digest }}"
+        "${{ steps.normalize_digest.outputs.artifact_digest }}"
     )
 
     checkout = next(
@@ -112,6 +112,14 @@ def test_shared_e2e_wasm_producer_is_immutable_and_fail_closed() -> None:
         "compression-level": 0,
         "include-hidden-files": True,
     }
+    normalize = _step(build, "Normalize E2E WASM artifact digest")
+    assert normalize["id"] == "normalize_digest"
+    assert "sha256:${RAW_ARTIFACT_DIGEST}" in normalize["run"]
+    assert "Unexpected upload-artifact digest format" in normalize["run"]
+    verify_upload = _step(build, "Verify uploaded artifact identity")
+    assert verify_upload["env"]["ARTIFACT_DIGEST"] == (
+        "${{ steps.normalize_digest.outputs.artifact_digest }}"
+    )
 
 
 def test_e2e_consumer_accepts_all_or_none_artifact_inputs() -> None:
