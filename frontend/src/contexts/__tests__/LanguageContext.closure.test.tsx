@@ -50,6 +50,32 @@ describe("LanguageContext browser branches", () => {
     expect(document.cookie).toContain("ue:language=ru")
   })
 
+  it("keeps DOM synchronization safe when document.body is unavailable", () => {
+    const { result } = renderHook(() => useLanguage(), { wrapper })
+    const bodyDescriptor = Object.getOwnPropertyDescriptor(document, "body")
+
+    try {
+      Object.defineProperty(document, "body", {
+        configurable: true,
+        value: null,
+      })
+
+      act(() => {
+        result.current.setLanguage("en")
+      })
+
+      expect(document.documentElement).toHaveAttribute("lang", "en")
+      expect(document.documentElement).toHaveAttribute("dir", "ltr")
+      expect(document.cookie).toContain("ue:language=en")
+    } finally {
+      if (bodyDescriptor) {
+        Object.defineProperty(document, "body", bodyDescriptor)
+      } else {
+        Reflect.deleteProperty(document, "body")
+      }
+    }
+  })
+
   it("prefers the server-selected bootstrap language when it is supported", () => {
     window.__UE_SELECTED_LANG__ = "en"
 
