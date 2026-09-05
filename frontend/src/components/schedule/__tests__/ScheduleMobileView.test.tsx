@@ -115,6 +115,37 @@ describe("ScheduleMobileView", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(baseProps.weekdayBackend.length)
   })
 
+  it("exposes lesson counts only for populated days and keeps tab state coherent", async () => {
+    const user = userEvent.setup()
+    renderView()
+
+    const monday = screen.getByRole("tab", { name: /Mon/ })
+    const tuesday = screen.getByRole("tab", { name: /Tue/ })
+    const wednesday = screen.getByRole("tab", { name: /Wed/ })
+
+    expect(monday).toHaveAttribute("aria-selected", "true")
+    expect(monday).toHaveAttribute("tabindex", "0")
+    expect(monday.querySelector("sup")).toHaveTextContent("1")
+    expect(tuesday.querySelector("sup")).toHaveTextContent("1")
+    expect(wednesday.querySelector("sup")).toBeNull()
+
+    await user.click(tuesday)
+    expect(tuesday).toHaveAttribute("aria-selected", "true")
+    expect(tuesday).toHaveAttribute("tabindex", "0")
+    expect(monday).toHaveAttribute("aria-selected", "false")
+    expect(monday).toHaveAttribute("tabindex", "-1")
+    expect(monday.className).toContain("ring-1")
+    expect(tuesday.className).not.toContain("ring-1")
+  })
+
+  it("initially selects a non-first weekday when today is elsewhere", () => {
+    renderView({ ...baseProps, hasToday: true, todayIdx: 2 })
+
+    expect(screen.getByRole("tab", { name: /Wed/ })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("tab", { name: /Mon/ })).toHaveAttribute("aria-selected", "false")
+    expect(screen.getByRole("heading", { name: "Wednesday" })).toBeInTheDocument()
+  })
+
   it("renders the active day's lessons in the day column", () => {
     renderView()
     expect(screen.getByText("Linear Algebra")).toBeInTheDocument()
