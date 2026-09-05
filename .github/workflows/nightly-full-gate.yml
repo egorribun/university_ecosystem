@@ -1002,8 +1002,19 @@ jobs:
           tests/integration/test_spicedb_integration.py
           --maxfail=1
 
+  # Build generated WASM once and bind every nightly browser job to this
+  # immutable same-run artifact. Keeping this producer independent lets it
+  # overlap the rest of the nightly fan-out instead of serializing browsers
+  # behind frontend or mutation jobs.
+  e2e-wasm-build:
+    name: E2E WASM Build
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-e2e-wasm-build.yml
+
   browser-matrix:
     name: Browser matrix (${{ matrix.browser }})
+    needs: e2e-wasm-build
     strategy:
       fail-fast: false
       matrix:
@@ -1022,6 +1033,9 @@ jobs:
       shard-index: 1
       shard-total: 1
       collect-coverage: ${{ matrix.browser == 'chromium' }}
+      wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
+      wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
+      wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
   load-and-chaos:
     name: Load and chaos resilience
@@ -1289,6 +1303,7 @@ jobs:
       - frontend-mutation-shards
       - frontend-mutation-tests-full
       - frontend-mutation-roundtrip
+      - e2e-wasm-build
       - backend-full
       - backend-integration
       - go-integration

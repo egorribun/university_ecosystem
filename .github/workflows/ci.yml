@@ -743,6 +743,16 @@ jobs:
       node-version: "24"
       run-lighthouse: true
 
+  # Build the generated WASM packages once for all Playwright jobs.  This lane
+  # intentionally has no dependency on frontend-tests: it starts at fan-out and
+  # therefore cannot serialize browser coverage behind the larger frontend
+  # matrix.  Consumers bind the server-issued artifact outputs to this run.
+  e2e-wasm-build:
+    name: E2E WASM Build
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-e2e-wasm-build.yml
+
   # Generate the expensive instrumenter universe once. The artifact is named
   # for an exact immutable GitHub workflow attempt and commit; every consumer
   # validates all bound metadata before it can select a logical shard.
@@ -1261,7 +1271,9 @@ jobs:
   # without overloading the SSR preview.
   e2e-tests:
     name: E2E Tests (shard ${{ matrix.shard-index }}/4)
-    needs: pre-commit-check
+    needs:
+      - pre-commit-check
+      - e2e-wasm-build
     permissions:
       contents: read
     strategy:
@@ -1276,6 +1288,9 @@ jobs:
       shard-index: ${{ matrix.shard-index }}
       shard-total: 4
       collect-coverage: true
+      wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
+      wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
+      wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
   # Phase 7.1: browser coverage is visible immediately but remains advisory
   # during the 30-day stabilization window. Nightly runs execute the same
@@ -1283,7 +1298,9 @@ jobs:
   # feedback without making pre-existing renderer flakes merge blockers.
   e2e-tests-cross-browser:
     name: E2E Tests (cross-browser ${{ matrix.browser }})
-    needs: pre-commit-check
+    needs:
+      - pre-commit-check
+      - e2e-wasm-build
     permissions:
       contents: read
     strategy:
@@ -1298,6 +1315,9 @@ jobs:
       shard-index: 1
       shard-total: 1
       advisory: true
+      wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
+      wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
+      wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
   security-audit:
     name: Security Audit
@@ -5025,6 +5045,7 @@ jobs:
       - schemathesis-api-tests
       - msw-mock-drift
       - provenance-check
+      - e2e-wasm-build
       - e2e-tests
       - e2e-tests-cross-browser
       - rust-ffi-asan
@@ -5099,6 +5120,7 @@ jobs:
             "schemathesis-api-tests|${{ needs.schemathesis-api-tests.result }}"
             "msw-mock-drift|${{ needs.msw-mock-drift.result }}"
             "provenance-check|${{ needs.provenance-check.result }}"
+            "e2e-wasm-build|${{ needs.e2e-wasm-build.result }}"
             "e2e-tests|${{ needs.e2e-tests.result }}"
             "rust-ffi-asan|${{ needs.rust-ffi-asan.result }}"
             "rust-ffi-tsan|${{ needs.rust-ffi-tsan.result }}"
