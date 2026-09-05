@@ -214,7 +214,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
               label={
                 language === "en" ? t("events:form.description_en") : t("events:form.description")
               }
-              value={getLocalizedValue("description") ?? EMPTY_DRAFT_VALUE}
+              value={getLocalizedValue("description")}
               onChange={(event) => updateLocalizedValue("description", event.target.value)}
               multiline
               rows={3}
@@ -222,7 +222,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
             />
             <TextField
               label={language === "en" ? t("events:form.type_en") : t("events:form.type")}
-              value={getLocalizedValue("event_type") ?? EMPTY_DRAFT_VALUE}
+              value={getLocalizedValue("event_type")}
               onChange={(event) => updateLocalizedValue("event_type", event.target.value)}
               fullWidth
             />

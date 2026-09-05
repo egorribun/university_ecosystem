@@ -141,4 +141,15 @@ describe("RxDB database lifecycle", () => {
     createRxDatabase.mockResolvedValueOnce(replacement)
     await expect(getDatabase()).resolves.toBe(replacement)
   })
+
+  it("clears the cached promise when database initialization rejects", async () => {
+    createRxDatabase.mockRejectedValueOnce(new Error("initialization failed"))
+
+    await expect(getDatabase()).rejects.toThrow("initialization failed")
+    await expect(resetDatabaseForTesting()).resolves.toBeUndefined()
+
+    const replacement = makeDatabase()
+    createRxDatabase.mockResolvedValueOnce(replacement)
+    await expect(getDatabase()).resolves.toBe(replacement)
+  })
 })
