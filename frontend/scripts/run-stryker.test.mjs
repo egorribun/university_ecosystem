@@ -600,7 +600,7 @@ test("isolates measured API test-graph hotspots in dedicated first-attempt shard
     )
     assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
     assert.ok(
-      assignedShardIndexes.every((shardIndex) => shardIndex < 8),
+      assignedShardIndexes.every((shardIndex) => shardIndex < 12),
       `${file} leaked into a regular first-attempt shard`
     )
     if (count > 8) {
@@ -612,7 +612,7 @@ test("isolates measured API test-graph hotspots in dedicated first-attempt shard
   }
   assert.ok(
     plan
-      .slice(0, 8)
+      .slice(0, 12)
       .every((shard) =>
         shard.files.some((pattern) => hotspotFiles.some(([file]) => pattern.startsWith(file)))
       ),
@@ -620,7 +620,7 @@ test("isolates measured API test-graph hotspots in dedicated first-attempt shard
   )
   assert.ok(
     plan
-      .slice(8)
+      .slice(12)
       .every((shard) =>
         shard.files.every((pattern) =>
           regularFiles.some(([file]) => pattern === file || pattern.startsWith(`${file}:`))
@@ -704,7 +704,7 @@ test("isolates the recurrent unmeasured API/core timeout graph in dedicated firs
     )
     assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
     assert.ok(
-      assignedShardIndexes.every((shardIndex) => shardIndex < 9),
+      assignedShardIndexes.every((shardIndex) => shardIndex < 13),
       `${file} leaked into a regular first-attempt shard`
     )
   }
@@ -718,7 +718,7 @@ test("isolates the recurrent unmeasured API/core timeout graph in dedicated firs
   )
   assert.ok(
     plan
-      .slice(9)
+      .slice(13)
       .every((shard) =>
         shard.files.every((pattern) => regularFiles.some(([file]) => pattern.startsWith(file)))
       ),
@@ -801,13 +801,13 @@ test("isolates proven non-API test-graph hotspots without dropping regular work"
     )
     assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
     assert.ok(
-      assignedShardIndexes.every((shardIndex) => shardIndex < 8),
+      assignedShardIndexes.every((shardIndex) => shardIndex < 12),
       `${file} leaked into a regular first-attempt shard`
     )
   }
   assert.ok(
     plan
-      .slice(8)
+      .slice(12)
       .every((shard) => shard.files.every((pattern) => pattern.startsWith("src/regular-"))),
     "regular shards must not inherit a proven expensive graph"
   )

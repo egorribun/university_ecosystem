@@ -489,7 +489,13 @@ const firstAttemptSourceCostWeights = new Map([
   ["src/hooks/useFocusTrap.ts", 226], // 31 mutants / 226 tests
   ["src/hooks/useMediaQuery.ts", 217], // 57 mutants / 217 tests
 ])
-const firstAttemptCostAwareShardCount = 8
+// The previous first-attempt plan reserved only eight cost-aware shards.  The
+// immutable CI evidence for run 34003977528 shows that two of those shards
+// still hit the 120-minute job timeout (one carried 709 mutants and one never
+// produced a report).  Twelve keeps the public 64-shard denominator and
+// max-parallel contract unchanged while spreading the measured static-heavy
+// API ranges across enough isolated runners to stay below the observed cap.
+const firstAttemptCostAwareShardCount = 12
 // backendOrigin is imported by the SSR/client bootstrap graph, so even its
 // tiny source file selects a broad static test set. Keep that graph on a
 // dedicated first-attempt shard; mixing it with another static-heavy range
