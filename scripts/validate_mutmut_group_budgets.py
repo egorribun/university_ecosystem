@@ -26,6 +26,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.mutmut_shard_budget import (
+    ShardBudget,
     _load_stats,
     calculate_shard_budget,
 )
@@ -39,6 +40,34 @@ from scripts.mutmut_shard_matrix import (
 
 class GroupBudgetValidationError(ValueError):
     """Raised when grouped mutation evidence cannot be trusted."""
+
+
+def _require_int(value: object, *, label: str, minimum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise GroupBudgetValidationError(f"{label} must be an integer >= {minimum}")
+    return value
+
+
+def _calculate_budget(
+    selected_names: tuple[str, ...],
+    tests_by_function: dict[str, list[str]],
+    durations: dict[str, float],
+    *,
+    max_children: int,
+    control_cycle_reserve_seconds: int,
+    metadata_and_startup_reserve_seconds: int,
+) -> ShardBudget:
+    try:
+        return calculate_shard_budget(
+            selected_names,
+            tests_by_function,
+            durations,
+            max_children=max_children,
+            control_cycle_reserve_seconds=control_cycle_reserve_seconds,
+            metadata_and_startup_reserve_seconds=metadata_and_startup_reserve_seconds,
+        )
+    except (TypeError, ValueError) as error:
+        raise GroupBudgetValidationError(str(error)) from error
 
 
 def _read_json_object(path: Path, *, label: str) -> dict[str, Any]:
@@ -85,12 +114,26 @@ def validate_group_budgets(
 ) -> dict[str, Any]:
     """Validate the matrix topology and all logical/physical timeout budgets."""
 
-    if expected_shards < 1 or target_groups < 1:
-        raise GroupBudgetValidationError("shard and group counts must be positive")
-    if max_children < 1 or control_cycle_reserve_seconds < 1:
-        raise GroupBudgetValidationError("budget worker/reserve values are invalid")
-    if metadata_startup_reserve_seconds < 0 or max_timeout_seconds < 1:
-        raise GroupBudgetValidationError("budget reserve/cap values are invalid")
+    expected_shards = _require_int(
+        expected_shards, label="expected shard count", minimum=1
+    )
+    target_groups = _require_int(
+        target_groups, label="target physical group count", minimum=1
+    )
+    max_children = _require_int(max_children, label="max children", minimum=1)
+    control_cycle_reserve_seconds = _require_int(
+        control_cycle_reserve_seconds,
+        label="control-cycle reserve",
+        minimum=1,
+    )
+    metadata_startup_reserve_seconds = _require_int(
+        metadata_startup_reserve_seconds,
+        label="metadata/startup reserve",
+        minimum=0,
+    )
+    max_timeout_seconds = _require_int(
+        max_timeout_seconds, label="maximum timeout", minimum=1
+    )
 
     actual_matrix = _read_json_object(matrix_path, label="mutation matrix")
     try:
@@ -205,7 +248,7 @@ def validate_group_budgets(
                 )
             except PlanValidationError as error:
                 raise GroupBudgetValidationError(str(error)) from error
-            logical_budget = calculate_shard_budget(
+            logical_budget = _calculate_budget(
                 logical_names,
                 tests_by_function,
                 durations,
@@ -229,7 +272,7 @@ def validate_group_budgets(
                 }
             )
 
-        group_budget = calculate_shard_budget(
+        group_budget = _calculate_budget(
             names,
             tests_by_function,
             durations,

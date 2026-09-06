@@ -181,6 +181,46 @@ def test_group_budget_validation_rejects_physical_timeout_over_cap(
         )
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("expected_shards", True),
+        ("target_groups", 0),
+        ("max_children", "3"),
+        ("control_cycle_reserve_seconds", 0),
+        ("metadata_startup_reserve_seconds", -1),
+        ("max_timeout_seconds", False),
+    ],
+)
+def test_group_budget_validation_rejects_invalid_budget_parameters(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    plan = _write_plan(tmp_path, {})
+    matrix_path = tmp_path / "matrix.json"
+    matrix_path.write_text(
+        json.dumps(
+            build_execution_groups_matrix(plan, expected_shards=4, target_groups=2)
+        ),
+        encoding="utf-8",
+    )
+    parameters: dict[str, object] = {
+        "matrix_path": matrix_path,
+        "plan_directory": plan,
+        "stats_path": tmp_path / "missing-stats.json",
+        "output_manifest": tmp_path / "group-budgets.json",
+        "expected_shards": 4,
+        "target_groups": 2,
+        "max_children": 3,
+        "control_cycle_reserve_seconds": 5,
+        "metadata_startup_reserve_seconds": 120,
+        "max_timeout_seconds": 20_880,
+    }
+    parameters[field] = value
+
+    with pytest.raises(GroupBudgetValidationError, match="must be an integer"):
+        validate_group_budgets(**parameters)
+
+
 def test_empty_plan_uses_sentinel_without_reading_stats(tmp_path: Path) -> None:
     plan = _write_plan(tmp_path, {})
     matrix_path = tmp_path / "matrix.json"
