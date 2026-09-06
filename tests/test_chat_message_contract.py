@@ -15,7 +15,10 @@ import pytest
 from pydantic import ValidationError
 
 import app.core.config.storage as storage_config
-from app.api.websocket import _is_websocket_payload_within_limits
+from app.api.websocket import (
+    _is_websocket_payload_within_limits,
+    _message_content_from_payload,
+)
 from app.core.config.storage import StorageSettings
 from app.models.chat import Message
 from app.schemas.chat import MessageCreate, MessageResponse
@@ -76,6 +79,29 @@ def test_message_response_accepts_legacy_rows_through_current_limit() -> None:
 def test_message_response_rejects_only_above_canonical_limit() -> None:
     with pytest.raises(ValidationError):
         _response("x" * (EXPECTED_LIMIT + 1))
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"type": "message", "content": "direct"}, (True, "direct")),
+        (
+            {"type": "message", "payload": {"content": "nested"}},
+            (True, "nested"),
+        ),
+        ({"type": "ping", "content": "control"}, (False, None)),
+    ],
+)
+def test_message_content_extraction_requires_message_type_and_preserves_shape(
+    payload: dict[str, object], expected: tuple[bool, object]
+) -> None:
+    """Exercise the helper's type guard before the full websocket loop.
+
+    Keeping this contract at the helper boundary makes malformed or control
+    frames fail fast and prevents a wrong type predicate from entering the
+    asynchronous receive loop indefinitely.
+    """
+    assert _message_content_from_payload(payload) == expected
 
 
 def test_frontend_message_limit_is_generated_from_backend_contract() -> None:
