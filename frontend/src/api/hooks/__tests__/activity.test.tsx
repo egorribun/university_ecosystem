@@ -253,6 +253,25 @@ describe("useActivitySummaryQuery", () => {
     expect(apiMock.get).toHaveBeenCalledTimes(1)
   })
 
+  it.each([
+    Object.assign(new Error("aborted"), { name: "AbortError" }),
+    Object.assign(new Error("cancelled"), { name: "CanceledError" }),
+    Object.assign(new Error("cancelled"), { code: "ERR_CANCELED" }),
+  ])("rethrows every cancellation marker without fallback fan-out", async (canceled) => {
+    apiMock.get.mockRejectedValueOnce(canceled)
+    const options = activitySummaryOptions({ period: "30d", language: "en" })
+
+    await expect(
+      options.queryFn?.({
+        queryKey: options.queryKey,
+        signal: new AbortController().signal,
+        meta: undefined,
+        client: queryClient,
+      })
+    ).rejects.toBe(canceled)
+    expect(apiMock.get).toHaveBeenCalledTimes(1)
+  })
+
   it("treats a primitive primary rejection as an outage and uses healthy fallback feeds", async () => {
     apiMock.get
       .mockRejectedValueOnce("summary unavailable")

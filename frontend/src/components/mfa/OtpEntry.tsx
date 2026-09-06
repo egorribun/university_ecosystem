@@ -40,10 +40,12 @@ export const OtpEntry = ({
   const code = digits.join("")
 
   const focusInput = useCallback((index: number) => {
-    // All callers pass a bounded digit index and run after the corresponding
-    // input refs have been committed.  Keeping this invariant explicit avoids
-    // a silent no-op that could strand keyboard focus on a detached field.
-    inputRefs.current[index]!.focus()
+    // Keyboard/paste handlers can run while a controlled list is being
+    // reconciled. Treat an out-of-range or not-yet-mounted ref as a safe no-op
+    // instead of throwing from a detached input and aborting the OTP flow.
+    if (index < 0 || index >= OTP_LENGTH) return
+    const input = inputRefs.current[index]
+    if (input) input.focus()
   }, [])
 
   const submitCode = useCallback(async () => {

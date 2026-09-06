@@ -490,24 +490,21 @@ export function useEventNavigation(currentId: string): EventNav {
       queryKey: ["events", "list"],
     })
 
-    const allItems: Event[] = []
-    for (const [, data] of queries) {
-      if (data?.pages) {
-        for (const page of data.pages) {
-          if (page.items) allItems.push(...page.items)
-        }
-      }
-    }
+    const allItems: Event[] = queries.flatMap(
+      ([, data]) =>
+        data?.pages?.flatMap((page) => page.items ?? new Array<Event>()) ?? new Array<Event>()
+    )
 
     // Deduplicate preserving order
     const seen = new Set<string>()
-    const ordered: Event[] = []
+    const orderedById = new Map<string, Event>()
     for (const item of allItems) {
       if (!seen.has(item.id)) {
         seen.add(item.id)
-        ordered.push(item)
+        orderedById.set(item.id, item)
       }
     }
+    const ordered = Array.from(orderedById.values())
 
     const currentIndex = ordered.findIndex((e) => e.id === currentId)
     if (currentIndex === -1) return fallback

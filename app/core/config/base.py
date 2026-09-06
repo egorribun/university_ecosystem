@@ -19,7 +19,7 @@ _logger = get_logger(__name__)
 def _resolve_env_file(base_dir: Path) -> Path | None:
     """Locate a concrete environment file if one has been provided."""
     example_override = os.environ.get("ENV_EXAMPLE_PATH")
-    if example_override is not None:
+    if example_override:
         example_path = Path(example_override)
     else:
         example_path = base_dir / ".env.example"

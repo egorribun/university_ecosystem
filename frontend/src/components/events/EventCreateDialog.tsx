@@ -38,11 +38,9 @@ export function normalizeLocalizedValue(primary: string, fallback: string): stri
 export function hasInvalidEventDates(startsAt: string, endsAt: string): boolean {
   const startTimestamp = Date.parse(startsAt)
   const endTimestamp = Date.parse(endsAt)
-  return (
-    Number.isFinite(startTimestamp) &&
-    Number.isFinite(endTimestamp) &&
-    endTimestamp <= startTimestamp
-  )
+  if (!Number.isFinite(startTimestamp)) return false
+  if (!Number.isFinite(endTimestamp)) return false
+  return endTimestamp <= startTimestamp
 }
 
 export type EventSubmitState = {

@@ -20,6 +20,7 @@ import {
   blurSearchInput,
   focusSearchInput,
   MapSearchBar,
+  shouldOpenSearchOnFocus,
 } from "@/components/map/MapSearchBar"
 import type { CampusBuilding } from "@/data/campusBuildings"
 
@@ -90,6 +91,12 @@ afterEach(() => {
 })
 
 describe("MapSearchBar", () => {
+  it("opens on focus only when at least one result exists", () => {
+    expect(shouldOpenSearchOnFocus(0)).toBe(false)
+    expect(shouldOpenSearchOnFocus(-1)).toBe(false)
+    expect(shouldOpenSearchOnFocus(1)).toBe(true)
+  })
+
   it("ignores a missing selection without invoking either callback", () => {
     const onSelectBuilding = vi.fn()
     const onSelectRoom = vi.fn()
@@ -154,6 +161,7 @@ describe("MapSearchBar", () => {
     render(<MapSearchBar {...baseProps} />)
 
     const input = screen.getByRole("combobox")
+    expect(input).toHaveAttribute("aria-expanded", "false")
     expect(translation.useTranslation).toHaveBeenCalledWith("map")
     expect(input).toHaveAccessibleName("search.ariaLabel")
     expect(input).toHaveAttribute("placeholder", "search.placeholder")

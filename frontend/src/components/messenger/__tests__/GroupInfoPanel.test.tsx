@@ -238,6 +238,23 @@ describe("GroupInfoPanel (W211 G4)", () => {
     expect(onAddMember).toHaveBeenCalledWith("new-user")
   })
 
+  it("does not issue a user search until the minimum query length is exceeded", async () => {
+    render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+      wrapper,
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+    const search = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+    fireEvent.change(search, { target: { value: "N" } })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    })
+    expect(mocks.apiGet).not.toHaveBeenCalled()
+
+    fireEvent.change(search, { target: { value: "Ni" } })
+    await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=Ni"))
+  })
+
   it("resets transient rename and add-search state when closed", () => {
     const { rerender } = render(
       <GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />,

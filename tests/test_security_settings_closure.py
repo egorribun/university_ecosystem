@@ -80,6 +80,16 @@ def test_default_audit_secret_is_rejected_in_production(monkeypatch):
         configured._reject_default_audit_secret_in_production()
 
 
+def test_repository_known_audit_secret_fingerprint_is_case_insensitive_and_exact():
+    """The retired-key helper must match only the canonical fingerprints."""
+    from app.core.config.security import _is_repository_known_audit_secret
+
+    retired = _RETIRED_AUDIT_KEYS[0]
+    assert _is_repository_known_audit_secret(retired)
+    assert _is_repository_known_audit_secret(retired.upper())
+    assert not _is_repository_known_audit_secret(retired[:-1] + "0")
+
+
 @pytest.mark.parametrize("retired_key", _RETIRED_AUDIT_KEYS)
 def test_retired_repository_audit_keys_are_rejected_in_production(
     monkeypatch, retired_key

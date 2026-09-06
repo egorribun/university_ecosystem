@@ -839,4 +839,20 @@ describe("ContactList — populated contacts", () => {
     fireEvent.keyDown(firstRow, { key: "ArrowDown" })
     expect(document.activeElement).toBe(firstRow)
   })
+
+  it("clamps keyboard navigation at both list boundaries", () => {
+    const contacts = [mockContacts[0]!, mockContacts[1]!]
+    render(<ContactList contacts={contacts} selectedId={null} onSelect={() => {}} />, { wrapper })
+
+    const firstRow = document.getElementById("messenger-contact-1")!
+    const lastRow = document.getElementById("messenger-contact-2")!
+
+    lastRow.focus()
+    fireEvent.keyDown(lastRow, { key: "ArrowDown" })
+    expect(document.activeElement).toBe(lastRow)
+
+    firstRow.focus()
+    fireEvent.keyDown(firstRow, { key: "ArrowUp" })
+    expect(document.activeElement).toBe(firstRow)
+  })
 })

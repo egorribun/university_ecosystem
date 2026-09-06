@@ -56,9 +56,8 @@ def _verify_gateway_identity_signature(
     absent or the signature is missing/invalid.
     """
     internal_secret = str(getattr(settings, "internal_hmac_secret", "") or "")
-    environment = str(
-        getattr(settings, "environment", "production") or "production"
-    ).lower()
+    raw_environment = getattr(settings, "environment", None)
+    environment = str(raw_environment).lower() if raw_environment else "production"
     if not internal_secret:
         if environment == "production":
             raise_unauthorized(
@@ -70,16 +69,16 @@ def _verify_gateway_identity_signature(
         )
         return
 
-    signature = request.headers.get("X-Internal-Signature", "")
+    signature = request.headers.get("X-Internal-Signature")
     payload = (
         f"{user_id}:{session_id}:{tenant_id}"
         if tenant_id
         else f"{user_id}:{session_id}"
     )
     expected = hmac.new(
-        internal_secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+        internal_secret.encode(), payload.encode(), hashlib.sha256
     ).hexdigest()
-    if not secrets.compare_digest(expected, signature):
+    if not signature or not secrets.compare_digest(expected, signature):
         logger.warning("GraphQL gateway identity signature verification failed")
         raise_unauthorized(
             resolve_locale(request=request), "errors.auth.credentials_invalid"

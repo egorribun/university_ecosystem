@@ -115,6 +115,10 @@ describe("eventsListQueryKey (events.ts:77-79)", () => {
       location: "",
       limit: 12,
     })
+
+    expect(eventsListQueryKey({ language: "ru", is_active: false })[2].is_active).toBe(false)
+    expect(eventsListQueryKey({ language: "ru", is_active: null })[2].is_active).toBeNull()
+    expect(eventsListQueryKey({ language: "ru", limit: 3.9 })[2].limit).toBe(3)
   })
 
   it("normalizes is_active=null/undefined to null and trims search/location", () => {
@@ -392,6 +396,19 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
     })
 
     await waitFor(() => expect(result.current.events).toEqual(stored))
+    expect(result.current.data).toEqual({
+      pages: [
+        expect.objectContaining({
+          items: stored,
+          total: 2,
+          limit: 12,
+          cursor: null,
+          next_cursor: null,
+          has_more: false,
+        }),
+      ],
+      pageParams: [null],
+    })
     expect(result.current.pagination).toMatchObject({
       total: 2,
       limit: 12,
@@ -684,6 +701,24 @@ describe("useMyEventsQuery (events.ts:329-354)", () => {
     expect(result.current.data).toEqual(cached)
   })
 
+  it("304 response uses safe pagination defaults when cached data has no pages", async () => {
+    const queryClient = freshClient()
+    queryClient.setQueryData(eventsListQueryKey({ language: "ru", is_active: true }), {
+      pages: [],
+      pageParams: [],
+    })
+    allEventsMock.mockResolvedValue({ status: 304, data: undefined })
+
+    const { result } = renderHook(() => useEventsListQuery({ language: "ru", is_active: true }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(allEventsMock).toHaveBeenCalledOnce())
+    await waitFor(() => expect(result.current.isFetching).toBe(false))
+    expect(result.current.events).toEqual([])
+    expect(result.current.pagination).toMatchObject({ items: [], total: 0, limit: 12 })
+  })
+
   it("304 response returns an empty array when no cached my-events data exists", async () => {
     myEventsMock.mockResolvedValue({ status: 304, data: undefined })
 
@@ -781,6 +816,25 @@ describe("useSuspenseMyEventsQuery (events.ts:385-417)", () => {
     expect(myEventsMock).toHaveBeenCalledOnce()
   })
 
+  it("304 in suspense path returns the cached identity even when the response carries data", async () => {
+    const cached = [makeEvent("su-cached")]
+    const responseData = [makeEvent("su-response")]
+    const queryClient = freshClient()
+    const queryKey = myEventsQueryKey({ language: "ru", userId: "su-identity" })
+    queryClient.setQueryData(queryKey, cached, { updatedAt: 0 })
+    myEventsMock.mockResolvedValue({ status: 304, data: responseData })
+
+    const { result } = renderHook(
+      () => useSuspenseMyEventsQuery({ language: "ru", userId: "su-identity" }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+
+    await waitFor(() => expect(myEventsMock).toHaveBeenCalledOnce())
+    await waitFor(() => expect(result.current.isFetching).toBe(false))
+    await waitFor(() => expect(result.current.data).toBe(cached))
+    expect(result.current.data).not.toBe(responseData)
+  })
+
   it("304 in suspense path returns an empty array when no cache exists", async () => {
     myEventsMock.mockResolvedValue({ status: 304, data: undefined })
     const queryClient = freshClient()
@@ -863,6 +917,25 @@ describe("useEventNavigation (events.ts:482-525)", () => {
     expect(result.current.prevTitle).toBe("A")
     expect(result.current.nextId).toBe("c")
     expect(result.current.nextTitle).toBe("C")
+  })
+
+  it("only reads event-list query entries when deriving neighbors", () => {
+    const queryClient = freshClient()
+    queryClient.setQueryData(["users", "me"], {
+      pages: [{ items: [makeEvent("foreign-before"), makeEvent("foreign-after")] }],
+    })
+    queryClient.setQueryData(["events", "list", { language: "ru" }], {
+      pages: [{ items: [makeEvent("current"), makeEvent("next")] }],
+    })
+
+    const { result } = renderHook(() => useEventNavigation("current"), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    expect(result.current.prevId).toBeNull()
+    expect(result.current.prevTitle).toBeNull()
+    expect(result.current.nextId).toBe("next")
+    expect(result.current.nextTitle).toBe("Event next")
   })
 
   it("handles undefined cache data without dereferencing it", () => {

@@ -33,11 +33,14 @@ def _log_event(
     _redact_pii(logger, "log", event)
     redacted_extra = {key: value for key, value in event.items() if key != "event"}
 
-    target = (
-        logging.getLogger(__name__)
-        if is_logger_enabled(logger, level) and not getattr(logger, "disabled", False)
-        else logging.getLogger()
-    )
+    try:
+        logger_disabled = logger.disabled
+    except AttributeError:
+        logger_disabled = False
+    if is_logger_enabled(logger, level) and not logger_disabled:
+        target = logging.getLogger(__name__)
+    else:
+        target = logging.getLogger()
     target.log(
         level,
         message,

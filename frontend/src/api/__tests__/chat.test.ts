@@ -90,9 +90,20 @@ describe("chatApi", () => {
 
     const formData = vi.mocked(client.post).mock.calls[0]![1] as FormData
     expect(formData).toBeInstanceOf(FormData)
-    // Check if expected fields exist in FormData
-    // Since FormData.get might be weird in some environments, we can check its internal state if needed
-    // or just assume if it's FormData it's probably okay after being passed to the client.
+    expect(formData.get("content")).toBe("hello")
+    expect(formData.getAll("files")).toHaveLength(1)
+    expect(formData.get("reply_to_message_id")).toBeNull()
+  })
+
+  it("omits optional file and reply fields when they are not supplied", async () => {
+    vi.mocked(client.post).mockResolvedValueOnce({ data: { id: "msg-no-options" } })
+
+    await chatApi.sendMessage("chat1", "plain", [], "")
+
+    const formData = vi.mocked(client.post).mock.calls[0]![1] as FormData
+    expect(formData.get("content")).toBe("plain")
+    expect(formData.getAll("files")).toEqual([])
+    expect(formData.get("reply_to_message_id")).toBeNull()
   })
 
   it("markRead calls correct endpoint", async () => {

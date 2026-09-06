@@ -73,6 +73,7 @@ export default function MobileBottomNav() {
   const { t } = useTranslation(MOBILE_NAV_TRANSLATION_NAMESPACE)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const deferredScrollFrame = useRef<number | null>(null)
+  const viewportEffectKey = useRef(Symbol("mobile-bottom-nav-viewport"))
   const [isVirtualKeyboardOpen, setIsVirtualKeyboardOpen] = useState(false)
 
   // Wave 128 SW3 — useIsomorphicLayoutEffect picks useEffect on SSR
@@ -118,7 +119,7 @@ export default function MobileBottomNav() {
       viewport.removeEventListener("resize", syncKeyboardState)
       viewport.removeEventListener("scroll", syncKeyboardState)
     }
-  }, [])
+  }, [viewportEffectKey])
 
   const items = useMemo(() => createMobileNavItems(t), [t])
 

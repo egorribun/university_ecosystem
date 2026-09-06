@@ -293,6 +293,18 @@ describe("getVapidPublicKey null-normalization", () => {
       data: { publicKey: "  BJ_key  " },
     } as never)
     expect(await getVapidPublicKey()).toBe("BJ_key")
+
+    // Keep the same focused test attached to the normalized expression so
+    // per-test Stryker coverage cannot reduce the contract to the happy path.
+    vi.mocked(gen.getVapidPublicKeyApiV1PushVapidPublicKeyGet).mockResolvedValue({
+      data: { publicKey: "   " },
+    } as never)
+    expect(await getVapidPublicKey()).toBeNull()
+
+    vi.mocked(gen.getVapidPublicKeyApiV1PushVapidPublicKeyGet).mockResolvedValue({
+      data: { publicKey: null },
+    } as never)
+    expect(await getVapidPublicKey()).toBeNull()
   })
 
   it("normalizes blank/missing to null", async () => {
@@ -340,6 +352,17 @@ describe("fetchPushTopics defaults", () => {
       topics: [],
       has_preferences: false,
       updated_at: null,
+    })
+  })
+
+  it("preserves endpoint context when the topics payload is malformed", async () => {
+    vi.mocked(gen.getPushTopicsApiV1PushTopicsGet).mockResolvedValue({
+      data: { allowed: [42], topics: ["system"] },
+    } as never)
+
+    await expect(fetchPushTopics()).rejects.toMatchObject({
+      name: "ApiResponseValidationError",
+      message: expect.stringContaining("GET /api/v1/push/topics"),
     })
   })
 })

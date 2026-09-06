@@ -120,6 +120,9 @@ describe("newsListQueryKey (news.ts:95-97)", () => {
   it("keeps a valid explicit limit distinct from every invalid boundary", () => {
     expect(newsListQueryKey({ language: "ru", limit: 1 })[2].limit).toBe(1)
     expect(newsListQueryKey({ language: "ru", limit: undefined })[2].limit).toBe(12)
+    expect(
+      newsListQueryKey({ language: "ru", limit: "invalid" as unknown as number })[2].limit
+    ).toBe(12)
   })
 
   it("exposes the canonical key from the hook", () => {
@@ -198,6 +201,19 @@ describe("useNewsListQuery queryFn branches", () => {
     expect(request.validateStatus?.(200)).toBe(true)
     expect(request.validateStatus?.(399)).toBe(true)
     expect(request.validateStatus?.(400)).toBe(false)
+  })
+
+  it("keeps the persisted page as the exact single placeholder page", () => {
+    const persisted = [makeNews("persisted")]
+    window.localStorage.setItem("news:list:ru", JSON.stringify(persisted))
+    const queryClient = freshClient()
+    const { result } = renderHook(
+      () => useNewsListQuery({ language: "ru", limit: 12 }, { enabled: false }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+    expect(result.current.data?.pages).toHaveLength(1)
+    expect(result.current.data?.pages[0]?.items).toEqual(persisted)
+    expect(result.current.data?.pageParams).toEqual([null])
   })
 
   it("passes cursor param on fetchNextPage (news.ts:158-160)", async () => {

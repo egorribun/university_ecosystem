@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
+import { createContext, useContext, useEffect, useState } from "react"
 import type { ReactNode } from "react"
 import { I18nextProvider } from "react-i18next"
 import type { i18n as I18nInstance } from "i18next"
@@ -28,8 +28,10 @@ const setLangCookie = (lang: SupportedLanguage) => {
   document.cookie = `${storageKey}=${encodeURIComponent(lang)}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax${secureAttr}`
 }
 
-const isSupportedLanguage = (value: unknown): value is SupportedLanguage =>
-  typeof value === "string" && supportedLngs.includes(value as SupportedLanguage)
+const isSupportedLanguage = (value: unknown): value is SupportedLanguage => {
+  if (typeof value !== "string") return false
+  return supportedLngs.includes(value as SupportedLanguage)
+}
 
 export const resolveInitialLanguage = (instance: I18nInstance): SupportedLanguage => {
   if (typeof window === "undefined") {
@@ -94,14 +96,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     setLangCookie(language)
   }, [instance, language])
 
-  const setLanguage = useCallback((lng: SupportedLanguage) => {
+  const setLanguage = (lng: SupportedLanguage) => {
     setLanguageState(lng)
-  }, [])
+  }
 
-  const value = useMemo<LanguageContextValue>(
-    () => ({ language, setLanguage, available: supportedLngs }),
-    [language, setLanguage]
-  )
+  const value: LanguageContextValue = { language, setLanguage, available: supportedLngs }
 
   return (
     <I18nextProvider i18n={instance}>

@@ -31,6 +31,32 @@ describe("enqueueOfflineMutation", () => {
     })
   })
 
+  it("stores the mutation before returning when navigator has no serviceWorker member", async () => {
+    vi.stubGlobal("navigator", { userAgent: "test" })
+
+    await enqueueOfflineMutation({ ...mutation, category: "profile" })
+
+    expect(offline.storePendingMutation).toHaveBeenCalledWith({
+      ...mutation,
+      category: "profile",
+    })
+  })
+
+  it("does not post work when a service worker exists without an active controller", async () => {
+    const postMessage = vi.fn()
+    vi.stubGlobal("navigator", {
+      serviceWorker: {
+        controller: null,
+        ready: Promise.resolve({ sync: { register: vi.fn() } }),
+      },
+    })
+
+    await enqueueOfflineMutation(mutation)
+
+    expect(offline.storePendingMutation).toHaveBeenCalledOnce()
+    expect(postMessage).not.toHaveBeenCalled()
+  })
+
   it("registers a background sync when the service worker exposes sync", async () => {
     const controller = { postMessage: vi.fn() }
     const register = vi.fn().mockResolvedValue(undefined)

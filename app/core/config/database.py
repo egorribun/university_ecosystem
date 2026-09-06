@@ -41,11 +41,14 @@ def _cgroup_aware_cpu_count() -> int:
     try:
         with open("/sys/fs/cgroup/cpu.max") as f:
             fields = f.read().strip().split()
-        if len(fields) == 2 and fields[0] != "max":
-            quota = int(fields[0])
-            period = int(fields[1])
-            if quota > 0 and period > 0:
-                return min(max(1, quota // period), 32)
+        if len(fields) == 2:
+            try:
+                quota, period = map(int, fields)
+            except (TypeError, ValueError):
+                pass
+            else:
+                if quota > 0 and period > 0:
+                    return min(max(1, quota // period), 32)
     except (FileNotFoundError, ValueError, OSError):
         pass
 
@@ -63,7 +66,10 @@ def _cgroup_aware_cpu_count() -> int:
         pass
 
     try:
-        sched = getattr(os, "sched_getaffinity", None)
+        if hasattr(os, "sched_getaffinity"):
+            sched = os.sched_getaffinity
+        else:
+            sched = None
         if sched:
             return len(sched(0))
     except (AttributeError, NotImplementedError, OSError):

@@ -1,6 +1,10 @@
 import { act, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import LivePushToasts from "../feedback/LivePushToasts"
+import LivePushToasts, {
+  readBuffer,
+  writeBuffer,
+  type ActiveToast,
+} from "../feedback/LivePushToasts"
 
 const translations: Record<string, string> = {
   "notifications:defaultTitle": "University Ecosystem",
@@ -88,5 +92,78 @@ describe("LivePushToasts", () => {
     })
 
     expect(localStorage.getItem("livePushToastBuffer")).toBe("[]")
+  })
+
+  it("fails closed when storage exposes neither read nor write capability", () => {
+    const nativeStorage = window.localStorage
+    const unavailableStorage = { getItem: undefined, setItem: undefined }
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: unavailableStorage,
+    })
+
+    try {
+      expect(readBuffer()).toEqual([])
+      const toast = { id: "storage-less", title: "Title", body: "Body" } as ActiveToast
+      expect(() => writeBuffer([toast])).not.toThrow()
+      expect(unavailableStorage.getItem).toBeUndefined()
+      expect(unavailableStorage.setItem).toBeUndefined()
+    } finally {
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        value: nativeStorage,
+      })
+    }
+  })
+
+  it("keeps reading and writing independently when one storage method is unavailable", () => {
+    const nativeStorage = window.localStorage
+    const getOnlyStorage = {
+      getItem: vi.fn(() => JSON.stringify([{ id: "stored", title: "Stored", body: "Body" }])),
+      setItem: undefined,
+    }
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: getOnlyStorage,
+    })
+
+    try {
+      expect(readBuffer().map(({ id }) => id)).toEqual(["stored"])
+      expect(() => writeBuffer([])).not.toThrow()
+      expect(getOnlyStorage.getItem).toHaveBeenCalledWith("livePushToastBuffer")
+    } finally {
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        value: nativeStorage,
+      })
+    }
+  })
+
+  it("does not let storage read or write exceptions escape notification delivery", () => {
+    const nativeStorage = window.localStorage
+    const throwingStorage = {
+      getItem: vi.fn(() => {
+        throw new Error("private mode")
+      }),
+      setItem: vi.fn(() => {
+        throw new Error("quota")
+      }),
+    }
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: throwingStorage,
+    })
+
+    try {
+      expect(readBuffer()).toEqual([])
+      expect(() => writeBuffer([])).not.toThrow()
+      expect(throwingStorage.getItem).toHaveBeenCalledOnce()
+      expect(throwingStorage.setItem).toHaveBeenCalledOnce()
+    } finally {
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        value: nativeStorage,
+      })
+    }
   })
 })

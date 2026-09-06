@@ -144,7 +144,8 @@ const TIME_RE = /(\d{2}):(\d{2})/
 
 /** Safely extract HH:MM string from a lesson time field. Returns "" if invalid. */
 function extractHHMM(raw: string | null | undefined): string {
-  if (!raw) return ""
+  if (typeof raw !== "string") return ""
+  if (raw.length === 0) return ""
   const match = TIME_RE.exec(raw)
   return match ? `${match[1]}:${match[2]}` : ""
 }
@@ -187,7 +188,6 @@ export { toDate }
 export function getTodayIdx(): number {
   const d = new Date()
   const day = d.getDay() // 0 (Sun) to 6 (Sat)
-  if (day === 0) return -1
   return day - 1
 }
 
@@ -205,10 +205,9 @@ export function buildTable(
       .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
   )
   const maxLessons = Math.max(...lessonsByDay.map((arr) => arr.length), 0)
-  const rows: (Lesson | null)[][] = []
-  for (let i = 0; i < maxLessons; ++i)
-    rows.push(weekdayOrder.map((_, d) => lessonsByDay[d]?.[i] ?? null))
-  return rows
+  return Array.from({ length: maxLessons }, (_, rowIndex) =>
+    weekdayOrder.map((_, dayIndex) => lessonsByDay[dayIndex]![rowIndex] ?? null)
+  )
 }
 
 // ============================================================================

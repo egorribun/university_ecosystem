@@ -153,6 +153,17 @@ describe("MessageInput motion and DOM contract", () => {
 
   it("keeps attachment menu animation, item colors and accept contracts stable", () => {
     const { container } = render(<MessageInput onSend={() => {}} />)
+    const attachButton = screen.getByRole("button", { name: "messenger:aria.attachments" })
+    expect(attachButton).toHaveClass(
+      "min-h-[44px]",
+      "min-w-[44px]",
+      "focus-visible:ring-2",
+      "focus-visible:ring-offset-2"
+    )
+    const textarea = screen.getByRole("textbox", { name: "messenger:typeMessage" })
+    expect(textarea).toHaveAttribute("placeholder", "messenger:typeMessage")
+    expect(textarea).toHaveClass("flex-1", "resize-none", "max-h-48", "text-base")
+    expect(container.querySelector(".flex.gap-2.mb-3")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "messenger:aria.attachments" }))
     const menu = container.querySelector(".absolute.bottom-full")!
     expect(attr(menu, "data-motion-initial")).toBe(
@@ -183,6 +194,31 @@ describe("MessageInput motion and DOM contract", () => {
     fireEvent.click(screen.getByRole("button", { name: "messenger:aria.attachments" }))
     fireEvent.click(screen.getByRole("button", { name: "messenger:attachFile" }))
     expect(input.accept).toBe("*")
+  })
+
+  it("keeps attachment and send state classes tied to their actual state", () => {
+    render(<MessageInput onSend={() => {}} />)
+    const attach = screen.getByRole("button", { name: "messenger:aria.attachments" })
+    const send = screen.getByRole("button", { name: "messenger:aria.sendMessage" })
+    expect(attach).toHaveClass("text-(--text-secondary)")
+    expect(attach.querySelector("svg")).toHaveClass("transition-transform", "duration-base")
+    expect(send).toHaveClass(
+      "bg-(--bg-surface-hover)/(--opacity-subtle)",
+      "text-(--text-secondary)",
+      "opacity-soft",
+      "cursor-not-allowed",
+      "focus-visible:ring-2"
+    )
+
+    fireEvent.click(attach)
+    expect(attach).toHaveClass("text-(--brand-main)", "bg-(--brand-main)/(--opacity-subtle)")
+    expect(attach.querySelector("svg")).toHaveClass("rotate-45")
+    fireEvent.click(attach)
+
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:typeMessage" }), {
+      target: { value: "ready" },
+    })
+    expect(send).toHaveClass("messenger-send-btn")
   })
 
   it("serialises rejected SVG alert animation and reply-chip accessibility", async () => {
@@ -256,6 +292,34 @@ describe("MessageInput motion and DOM contract", () => {
       screen.queryByRole("button", { name: "messenger:aria.removeAttachment" })
     ).not.toBeInTheDocument()
     expect(createObjectURLSpy).not.toHaveBeenCalled()
+  })
+
+  it("rejects SVG MIME independently from the filename extension", async () => {
+    const { container } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const svg = new File(["<svg/>"], "vector.bin", { type: "image/svg+xml" })
+    Object.defineProperty(fileInput, "files", { value: [svg], configurable: true })
+
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+
+    expect(screen.getByRole("alert")).toHaveTextContent("messenger:svgNotAllowed")
+    expect(createObjectURLSpy).not.toHaveBeenCalled()
+  })
+
+  it("does not sniff SVG markup for non-image attachments", async () => {
+    const { container } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const documentFile = new File(["<svg/>"], "notes.txt", { type: "text/plain" })
+    Object.defineProperty(fileInput, "files", { value: [documentFile], configurable: true })
+
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(createObjectURLSpy).toHaveBeenCalledWith(documentFile)
   })
 
   it("rejects XML-declared SVG markup with arbitrary declaration whitespace", async () => {

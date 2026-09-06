@@ -139,7 +139,7 @@ _AUDIT_SECRET_PLACEHOLDER_DIGESTS: frozenset[bytes] = frozenset(
 def _is_repository_known_audit_secret(value: str) -> bool:
     """Return whether ``value`` matches a retired repository key fingerprint."""
 
-    digest = hashlib.sha256(value.lower().encode("utf-8")).digest()
+    digest = hashlib.sha256(value.lower().encode()).digest()
     return digest in _AUDIT_SECRET_PLACEHOLDER_DIGESTS
 
 

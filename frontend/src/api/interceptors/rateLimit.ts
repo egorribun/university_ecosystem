@@ -33,11 +33,11 @@ const CLIENT_RATE_LIMIT_MAX_CONCURRENT = parsePositiveInteger(
 
 let rateLimitResetAt = 0
 let rateLimitTimer: ReturnType<typeof setTimeout> | null = null
-const rateLimitWaiters: Array<() => void> = []
+const rateLimitWaiters: Array<() => void> = new Array<() => void>()
 
 let clientQueueInFlight = 0
-const clientQueueWaiters: ClientQueueWaiter[] = []
-const clientQueueTimestamps: number[] = []
+const clientQueueWaiters: ClientQueueWaiter[] = new Array<ClientQueueWaiter>()
+const clientQueueTimestamps: number[] = new Array<number>()
 let clientQueueTimer: ReturnType<typeof setTimeout> | null = null
 
 const pruneClientQueueTimestamps = () => {
@@ -138,12 +138,12 @@ const shouldThrottleRequest = (config: InternalAxiosRequestConfig) => {
 }
 
 const abortError = (signal?: AbortSignal): Error => {
-  const reason = signal?.reason
+  const reason = (Object(signal) as { reason?: unknown }).reason
   return reason instanceof Error ? reason : new DOMException("Aborted", "AbortError")
 }
 
 const throwIfAborted = (signal?: AbortSignal) => {
-  if (!signal?.aborted) return
+  if (Object(signal).aborted !== true) return
   throw abortError(signal)
 }
 
@@ -212,9 +212,7 @@ export const releaseClientQueueSlot = (config?: QueueConfig) => {
     return
   }
 
-  if (clientQueueInFlight > 0) {
-    clientQueueInFlight -= 1
-  }
+  clientQueueInFlight = Math.max(0, clientQueueInFlight - 1)
 
   pruneClientQueueTimestamps()
   notifyClientQueue()
@@ -228,16 +226,14 @@ export const scheduleRateLimitWindow = (delayMs: number) => {
 
   rateLimitResetAt = target
 
-  if (rateLimitTimer) {
-    clearTimeout(rateLimitTimer)
-    rateLimitTimer = null
-  }
+  clearTimeout(rateLimitTimer as ReturnType<typeof setTimeout>)
+  rateLimitTimer = null
 
   rateLimitTimer = setTimeout(
     () => {
       rateLimitTimer = null
       rateLimitResetAt = 0
-      rateLimitWaiters.splice(0).forEach((resolve) => resolve?.())
+      rateLimitWaiters.splice(0).forEach((resolve) => resolve())
     },
     getClientQueueResetDelay(target, Date.now())
   )
@@ -259,9 +255,9 @@ export const waitForRateLimitWindow = async (signal?: AbortSignal) => {
 
   await new Promise<void>((resolve, reject) => {
     const onAbort = () => reject(new DOMException("Aborted", "AbortError"))
-    signal?.addEventListener("abort", onAbort, { once: true })
+    if (signal) signal.addEventListener("abort", onAbort, { once: true })
     rateLimitWaiters.push(() => {
-      signal?.removeEventListener("abort", onAbort)
+      if (signal) signal.removeEventListener("abort", onAbort)
       resolve()
     })
   })

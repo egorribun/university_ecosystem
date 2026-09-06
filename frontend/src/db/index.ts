@@ -41,8 +41,8 @@ export async function getDatabase(): Promise<AppDatabase> {
 }
 
 export async function resetDatabaseForTesting(): Promise<void> {
+  if (!dbPromise) return
   const pending = dbPromise
-  if (pending === null) return
 
   let db: AppDatabase
   try {

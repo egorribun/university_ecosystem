@@ -15,13 +15,20 @@ function trimOrigin(value: string | undefined): string | undefined {
  */
 export function resolveSsrBackendOrigin(): string {
   const defaultBackendOrigin = "http://localhost:8000"
-  const runtimeProcess = (globalThis as typeof globalThis & { process?: NodeProcessLike }).process
-  let runtimeOrigin: string | undefined
-  if (typeof window === "undefined" && runtimeProcess && runtimeProcess.env) {
-    runtimeOrigin = trimOrigin(runtimeProcess.env.BACKEND_ORIGIN)
-  }
+  // Wrapping the optional Node process in Object() keeps the environment read
+  // total in browser/jsdom/Vitest runtimes. That is important for SSR/client
+  // module evaluation: a missing process must fall back, never throw or hold a
+  // request open while a mutation runner explores a guard branch.
+  const runtimeProcess = Object(
+    (globalThis as typeof globalThis & { process?: NodeProcessLike }).process
+  ) as NodeProcessLike
+  const runtimeEnv = Object(runtimeProcess.env) as Record<string, unknown>
+  const runtimeOrigin =
+    typeof window === "undefined"
+      ? trimOrigin(runtimeEnv.BACKEND_ORIGIN as string | undefined)
+      : undefined
 
   // Vite always provides import.meta.env in every supported browser/SSR build.
-  const buildOrigin = import.meta.env.VITE_BACKEND_ORIGIN?.trim()
+  const buildOrigin = trimOrigin(import.meta.env.VITE_BACKEND_ORIGIN)
   return (runtimeOrigin || buildOrigin || defaultBackendOrigin).replace(/\/+$/u, "")
 }

@@ -220,7 +220,11 @@ export const sanitizeBuffer = (buffer: unknown): ActiveToast[] => {
 /** @internal Storage read is deliberately fail-closed. */
 export const readBuffer = (): ActiveToast[] => {
   const storage = getToastStorage()
-  if (storage === null || typeof storage.getItem !== "function") {
+  if (storage === null) {
+    memoryBuffer = []
+    return memoryBuffer
+  }
+  if (typeof storage.getItem !== "function") {
     memoryBuffer = []
     return memoryBuffer
   }
@@ -243,7 +247,8 @@ export const readBuffer = (): ActiveToast[] => {
 export const writeBuffer = (buffer: ActiveToast[]) => {
   memoryBuffer = buffer.slice(-MAX_BUFFER_SIZE)
   const storage = getToastStorage()
-  if (storage === null || typeof storage.setItem !== "function") return
+  if (storage === null) return
+  if (typeof storage.setItem !== "function") return
   try {
     storage.setItem(getBufferStorageKey(), JSON.stringify(memoryBuffer))
   } catch (_e) {

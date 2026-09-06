@@ -36,6 +36,7 @@ describe("MobileBottomNav reduced-motion closure", () => {
       initialPath: "/dashboard",
     })
 
+    expect(window.matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
     const indicator = document.querySelector("[data-nav-indicator]")
     expect(indicator).toHaveClass("motion-reduce:transition-none")
     expect(indicator).toHaveClass("transition-[transform,opacity]")
