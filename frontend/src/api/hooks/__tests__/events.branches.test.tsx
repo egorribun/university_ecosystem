@@ -1048,4 +1048,52 @@ describe("useEventNavigation (events.ts:482-525)", () => {
       nextTitle: null,
     })
   })
+
+  it("does not let empty cache fallbacks become a phantom predecessor", () => {
+    const queryClient = freshClient()
+    // Keep both fallback expressions observable: the first cache entry has no
+    // data at all (outer fallback), while the second has a page without items
+    // before the real events (inner page fallback). Neither may introduce an
+    // array-like value that shifts the navigation order.
+    vi.spyOn(queryClient, "getQueriesData").mockReturnValue([
+      [["events", "list", { language: "ru", source: "missing" }], undefined],
+      [
+        ["events", "list", { language: "ru", source: "valid" }],
+        { pages: [{}, { items: [makeEvent("first"), makeEvent("second")] }] },
+      ],
+    ] as never)
+
+    const { result } = renderHook(() => useEventNavigation("second"), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    expect(result.current.prevId).toBe("first")
+    expect(result.current.prevTitle).toBe("Event first")
+    expect(result.current.nextId).toBeNull()
+  })
+
+  it("keeps the first value for duplicate ids when deriving neighbors", () => {
+    const queryClient = freshClient()
+    queryClient.setQueryData(["events", "list", { language: "ru" }], {
+      pages: [
+        {
+          items: [
+            makeEvent("before", "First title"),
+            makeEvent("current", "Current title"),
+            makeEvent("before", "Duplicate title"),
+            makeEvent("after", "Last title"),
+          ],
+        },
+      ],
+    })
+
+    const { result } = renderHook(() => useEventNavigation("current"), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    expect(result.current.prevId).toBe("before")
+    expect(result.current.prevTitle).toBe("First title")
+    expect(result.current.nextId).toBe("after")
+    expect(result.current.nextTitle).toBe("Last title")
+  })
 })

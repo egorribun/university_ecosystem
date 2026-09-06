@@ -153,6 +153,16 @@ describe("news pagination helpers", () => {
     expect(getLatestNewsPage([page])).toBe(page)
     expect(getLatestNewsPage([null])).toBeNull()
   })
+
+  it("does not read a custom negative index from an empty page list", () => {
+    const page = okPage([], "next-cursor").data
+    const emptyPages = [] as Array<typeof page | null | undefined>
+    // An empty array can still carry ordinary custom properties. The helper's
+    // empty-list contract must win over an accidental `pages[-1]` lookup.
+    emptyPages[-1] = page
+
+    expect(getLatestNewsPage(emptyPages)).toBeNull()
+  })
 })
 
 // ── useNewsListQuery queryFn: null fallback (104-112) + cursor (159-160) + 304 ─
