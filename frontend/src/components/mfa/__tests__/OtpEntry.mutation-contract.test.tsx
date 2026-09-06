@@ -35,13 +35,29 @@ vi.mock("@/components/settings", () => ({
   ),
 }))
 
-import OtpEntry from "../OtpEntry"
+import OtpEntry, { focusOtpInput } from "../OtpEntry"
 
 const inputs = () => screen.getAllByRole("textbox") as HTMLInputElement[]
 
 afterEach(() => vi.restoreAllMocks())
 
 describe("OtpEntry mutation contracts", () => {
+  it("fails closed for invalid and not-yet-mounted focus targets", () => {
+    const refs: { current: (HTMLInputElement | null)[] } = {
+      current: [null, null, null, null, null, null],
+    }
+    const invalidFocus = vi.fn()
+
+    focusOtpInput(refs, -1)
+    focusOtpInput(refs, 6)
+    focusOtpInput(refs, 0)
+    expect(invalidFocus).not.toHaveBeenCalled()
+
+    refs.current[2] = { focus: invalidFocus } as unknown as HTMLInputElement
+    focusOtpInput(refs, 2)
+    expect(invalidFocus).toHaveBeenCalledOnce()
+  })
+
   it("keeps the six indexed fields and their stable keys/labels", () => {
     render(<OtpEntry onSubmit={vi.fn()} />)
     const fields = inputs()
