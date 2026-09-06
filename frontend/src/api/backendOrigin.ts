@@ -1,5 +1,3 @@
-const DEFAULT_BACKEND_ORIGIN = "http://localhost:8000"
-
 type NodeProcessLike = {
   env?: Record<string, string | undefined>
 }
@@ -16,6 +14,7 @@ function trimOrigin(value: string | undefined): string | undefined {
  * image can be deployed under arbitrary Compose/Helm service names.
  */
 export function resolveSsrBackendOrigin(): string {
+  const defaultBackendOrigin = "http://localhost:8000"
   const runtimeProcess = (globalThis as typeof globalThis & { process?: NodeProcessLike }).process
   let runtimeOrigin: string | undefined
   if (typeof window === "undefined" && runtimeProcess && runtimeProcess.env) {
@@ -24,5 +23,5 @@ export function resolveSsrBackendOrigin(): string {
 
   // Vite always provides import.meta.env in every supported browser/SSR build.
   const buildOrigin = import.meta.env.VITE_BACKEND_ORIGIN?.trim()
-  return (runtimeOrigin || buildOrigin || DEFAULT_BACKEND_ORIGIN).replace(/\/+$/u, "")
+  return (runtimeOrigin || buildOrigin || defaultBackendOrigin).replace(/\/+$/u, "")
 }
