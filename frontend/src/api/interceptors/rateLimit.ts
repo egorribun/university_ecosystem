@@ -154,7 +154,7 @@ const waitForClientQueueSlotInternal = async (config: QueueConfig): Promise<void
     return
   }
 
-  let removeAbortListener = () => {}
+  let removeAbortListener: (() => void) | undefined
   try {
     await new Promise<void>((resolve, reject) => {
       let granted = false
@@ -173,12 +173,14 @@ const waitForClientQueueSlotInternal = async (config: QueueConfig): Promise<void
         // than leaving it blocked behind the cancelled request.
         notifyClientQueue()
       }
-      removeAbortListener = () => config.signal?.removeEventListener("abort", onAbort)
+      removeAbortListener = config.signal
+        ? () => config.signal?.removeEventListener("abort", onAbort)
+        : undefined
       config.signal?.addEventListener("abort", onAbort, { once: true })
       clientQueueWaiters.push(waiter)
     })
   } finally {
-    removeAbortListener()
+    removeAbortListener?.()
   }
 
   try {

@@ -262,6 +262,15 @@ describe("ChatArea motion and delegation contract", () => {
     expect(setSearchQuery).toHaveBeenLastCalledWith("")
   })
 
+  it("does not schedule a focus frame when search is open without an input", () => {
+    render(<ChatArea {...base} selectedChatId={null} activeChat={null} showSearchInChat />)
+
+    // The search header is intentionally absent until a chat is selected. The
+    // focus effect must treat that transient state as a no-op rather than
+    // scheduling work against a null ref.
+    expect(screen.queryByRole("textbox", { name: "messenger:searchMessages" })).toBeNull()
+  })
+
   it("preserves empty-state card motion/style and child callback delegation", () => {
     const { container, rerender } = render(
       <ChatArea {...base} selectedChatId={null} activeChat={null} setSearchQuery={vi.fn()} />

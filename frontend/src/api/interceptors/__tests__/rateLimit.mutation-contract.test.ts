@@ -263,6 +263,27 @@ describe("rateLimit mutation contracts", () => {
     releaseClientQueueSlot(second)
   })
 
+  it("releases a slot when a granted waiter aborts before recursive reacquire", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "1")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const active = makeConfig()
+    const controller = new AbortController()
+    const queued = makeConfig("get", controller.signal)
+
+    await waitForClientQueueSlot(active)
+    const queuedWait = waitForClientQueueSlot(queued)
+    await flushMicrotasks()
+
+    // Releasing the active request synchronously grants the queued waiter,
+    // but its recursive reacquire only runs in a later microtask. Aborting in
+    // this gap exercises the race cleanup and prevents a stranded slot.
+    releaseClientQueueSlot(active)
+    controller.abort()
+
+    await expect(queuedWait).rejects.toMatchObject({ name: "AbortError" })
+    expect(queued.__clientRateLimitAcquired).toBeUndefined()
+  })
+
   it("is safe when releasing the final slot without queued waiters", async () => {
     const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
     const request = makeConfig()
