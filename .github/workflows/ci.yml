@@ -695,10 +695,10 @@ jobs:
           cd services/ws-hub
           # Serialize fuzz workers to bound runner memory. Go 1.26.6 still
           # has golang/go#75804, where an exact fuzztime deadline can escape
-          # as a false context-deadline failure, so retain a one-second
-          # shutdown margin for both targets.
-          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=29s -parallel=1 -timeout=3m
-          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=29s -parallel=1 -timeout=3m
+          # as a false context-deadline failure. Keep a five-second shutdown
+          # margin for both targets while retaining a bounded smoke budget.
+          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=25s -parallel=1 -timeout=3m
+          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=25s -parallel=1 -timeout=3m
 
       - name: Upload fuzz corpus on failure
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
