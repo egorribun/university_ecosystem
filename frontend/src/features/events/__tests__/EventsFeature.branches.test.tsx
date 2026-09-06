@@ -365,6 +365,21 @@ describe("EventsFeature — client-side category + date filters", () => {
     }
   })
 
+  it("uses the weekday offset for a non-Sunday week start", () => {
+    vi.useFakeTimers()
+    const dayOfWeekSpy = vi.spyOn(Date.prototype, "getDay").mockReturnValue(1)
+    search.params = { dr: "week" }
+    listQuery.events = [evt({ id: "weekday-week" })]
+
+    try {
+      render(<EventsFeature />)
+      expect(screen.getByTestId("list-count")).toHaveTextContent("0")
+    } finally {
+      dayOfWeekSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it("filters by the 'month' date range", () => {
     const now = new Date()
     const thisMonthIso = new Date(now.getFullYear(), now.getMonth(), 15, 9).toISOString()
