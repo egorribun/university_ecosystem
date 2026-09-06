@@ -200,14 +200,6 @@ export const toActiveToast = (payload: unknown): ActiveToast | null => {
 
 let memoryBuffer: ActiveToast[] | undefined
 
-function emptyStorageGetItem(_key: string): string | null {
-  return null
-}
-
-function emptyStorageSetItem(_key: string, _value: string): void {
-  return undefined
-}
-
 /** Resolve browser storage without touching the window during SSR. */
 export function getToastStorage(): Storage | null {
   if (typeof window === "undefined") return null
@@ -228,12 +220,12 @@ export const sanitizeBuffer = (buffer: unknown): ActiveToast[] => {
 /** @internal Storage read is deliberately fail-closed. */
 export const readBuffer = (): ActiveToast[] => {
   const storage = getToastStorage()
-  const getItem =
-    storage !== null && typeof storage.getItem === "function"
-      ? storage.getItem.bind(storage)
-      : emptyStorageGetItem
+  if (storage === null || typeof storage.getItem !== "function") {
+    memoryBuffer = []
+    return memoryBuffer
+  }
   try {
-    const raw = getItem(getBufferStorageKey())
+    const raw = storage.getItem(getBufferStorageKey())
     if (!raw) {
       memoryBuffer = []
       return memoryBuffer
@@ -251,12 +243,9 @@ export const readBuffer = (): ActiveToast[] => {
 export const writeBuffer = (buffer: ActiveToast[]) => {
   memoryBuffer = buffer.slice(-MAX_BUFFER_SIZE)
   const storage = getToastStorage()
-  const setItem =
-    storage !== null && typeof storage.setItem === "function"
-      ? storage.setItem.bind(storage)
-      : emptyStorageSetItem
+  if (storage === null || typeof storage.setItem !== "function") return
   try {
-    setItem(getBufferStorageKey(), JSON.stringify(memoryBuffer))
+    storage.setItem(getBufferStorageKey(), JSON.stringify(memoryBuffer))
   } catch (_e) {
     // Ignore
   }

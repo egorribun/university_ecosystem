@@ -73,6 +73,8 @@ describe("EventCreateDialog", () => {
     expect(hasInvalidEventDates("2026-01-15T12:00", "2026-01-15T10:00")).toBe(true)
     expect(hasInvalidEventDates("2026-01-15T10:00", "2026-01-15T12:00")).toBe(false)
     expect(hasInvalidEventDates("2026-01-15T10:00", "2026-01-15T10:00")).toBe(true)
+    expect(hasInvalidEventDates("2026-01-15T10:00", "not-a-date")).toBe(false)
+    expect(hasInvalidEventDates("not-a-date", "2026-01-15T12:00")).toBe(false)
 
     const parseSpy = vi.spyOn(Date, "parse")
     parseSpy

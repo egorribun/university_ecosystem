@@ -6,6 +6,7 @@ import {
   cancelDeferredIdle,
   clearDeferredTimer,
   createMountedCommit,
+  createDeferredMountLifecycle,
   DEFERRED_INTERACTION_EVENTS,
   DEFERRED_INTERACTION_OPTIONS,
   DEFERRED_OVERLAY_DELAY_MS,
@@ -45,6 +46,13 @@ describe("DeferredGlobalOverlays", () => {
     const unmountedCommit = createMountedCommit(() => false, commit)
     unmountedCommit()
     expect(commit).toHaveBeenCalledOnce()
+
+    const lifecycleCommit = vi.fn()
+    const lifecycle = createDeferredMountLifecycle(lifecycleCommit)
+    lifecycle.commit()
+    lifecycle.unmount()
+    lifecycle.commit()
+    expect(lifecycleCommit).toHaveBeenCalledOnce()
 
     const clear = vi.fn()
     clearDeferredTimer(12, clear)
@@ -105,7 +113,7 @@ describe("DeferredGlobalOverlays", () => {
 
   it("registers every promotion listener with one-shot passive options", () => {
     const addEventListener = vi.spyOn(window, "addEventListener")
-    const { unmount } = render(<DeferredGlobalOverlays />)
+    const { rerender, unmount } = render(<DeferredGlobalOverlays />)
     const expectedEvents = ["pointerdown", "keydown", "touchstart", "focusin"]
 
     for (const eventName of expectedEvents) {
@@ -114,6 +122,11 @@ describe("DeferredGlobalOverlays", () => {
         passive: true,
       })
     }
+    rerender(<DeferredGlobalOverlays />)
+    const registrations = addEventListener.mock.calls.filter(([eventName]) =>
+      expectedEvents.includes(String(eventName))
+    )
+    expect(registrations).toHaveLength(expectedEvents.length)
     unmount()
     addEventListener.mockRestore()
   })

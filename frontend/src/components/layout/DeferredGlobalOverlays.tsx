@@ -23,6 +23,16 @@ export function createMountedCommit(isMounted: () => boolean, commit: () => void
   }
 }
 
+export function createDeferredMountLifecycle(commit: () => void) {
+  let mounted = true
+  return {
+    commit: createMountedCommit(() => mounted, commit),
+    unmount: () => {
+      mounted = false
+    },
+  }
+}
+
 export function clearDeferredTimer(timer: number | null, clear: (handle: number) => void) {
   if (timer !== null) clear(timer)
 }
@@ -60,11 +70,8 @@ export function DeferredGlobalOverlays() {
   useEffect(() => {
     ensurePushMessageBridge()
 
-    let mounted = true
-    const commitReady = createMountedCommit(
-      () => mounted,
-      () => setReady(true)
-    )
+    const lifecycle = createDeferredMountLifecycle(() => setReady(true))
+    const commitReady = lifecycle.commit
     let timer: number | null = window.setTimeout(() => {
       timer = null
       const idleWindow = window as Window & {
@@ -100,7 +107,7 @@ export function DeferredGlobalOverlays() {
     )
 
     return () => {
-      mounted = false
+      lifecycle.unmount()
       clearDeferredTimer(timer, window.clearTimeout)
       const idleWindow = window as Window & {
         cancelIdleCallback?: (handle: number) => void

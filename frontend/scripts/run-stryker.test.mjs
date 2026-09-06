@@ -643,12 +643,28 @@ test("isolates the recurrent unmeasured API/core timeout graph in dedicated firs
       },
     }))
   const recurrentHotspots = [
-    ["src/api/client.ts", 677],
+    ["src/api/backendOrigin.ts", 20],
     ["src/api/chat.ts", 200],
+    ["src/api/client.ts", 500],
+    ["src/api/events.ts", 40],
     ["src/api/hooks/activity.ts", 200],
+    ["src/api/hooks/adminAudit.ts", 50],
+    ["src/api/hooks/adminFeatureFlags.ts", 50],
+    ["src/api/hooks/adminNotifications.ts", 50],
+    ["src/api/hooks/adminUsers.ts", 100],
+    ["src/api/hooks/sessions.ts", 50],
+    ["src/api/hooks/weather.ts", 100],
+    ["src/api/interceptors/language.ts", 100],
     ["src/api/interceptors/rateLimit.ts", 144],
-    ["src/api/schemas/wsMessage.ts", 151],
+    ["src/api/mfa.ts", 37],
+    ["src/api/news.ts", 65],
     ["src/api/notifications.ts", 110],
+    ["src/api/offlineMutationQueue.ts", 24],
+    ["src/api/schemas/wsMessage.ts", 151],
+    ["src/api/stories.ts", 16],
+    ["src/App.tsx", 9],
+    ["src/app/globalErrorHandlers.ts", 53],
+    ["src/app/hydration.ts", 40],
   ]
   const measuredHotspots = [
     ["src/api/interceptors/etagCache.ts", 239],
@@ -665,6 +681,20 @@ test("isolates the recurrent unmeasured API/core timeout graph in dedicated firs
   ])
 
   const plan = planMutationShards(preflight, 750, 64)
+  const reversePlan = planMutationShards(new Map([...preflight].reverse()), 750, 64)
+  const expectedMutants = [...preflight.values()].reduce(
+    (total, entry) => total + entry.mutants.length,
+    0
+  )
+  const assignments = plan.flatMap(({ files }) => files)
+
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    expectedMutants
+  )
+  assert.equal(new Set(assignments).size, assignments.length)
+  assert.deepEqual(plan, reversePlan)
 
   for (const [file] of [...recurrentHotspots, ...measuredHotspots]) {
     const assignedShardIndexes = plan.flatMap((shard, shardIndex) =>
