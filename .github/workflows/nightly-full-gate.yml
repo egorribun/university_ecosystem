@@ -145,11 +145,15 @@ jobs:
           for shard in $(seq 1 128); do
             printf -v shard_file 'shard-%02d.txt' "$shard"
             test -s "mutants/mutmut-full-plan/$shard_file"
+            # Keep nightly's stats-derived bound aligned with the measured
+            # mutation startup envelope; the live deadline guard remains the
+            # authoritative setup/evidence safety check.
             uv run python scripts/mutmut_shard_budget.py \
               --selected-file "mutants/mutmut-full-plan/$shard_file" \
               --stats mutants/mutmut-stats.json \
               --max-children 8 \
               --control-cycle-reserve-seconds 1 \
+              --metadata-startup-reserve-seconds 120 \
               --max-timeout-seconds 20970 \
               --output "mutants/mutmut-full-plan/budget-${shard_file%.txt}.json"
           done
@@ -296,11 +300,15 @@ jobs:
             --prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
             --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_FAILURE_REASON="deriving the stats-based mutation budget"
+          # The live deadline check below accounts for runner setup and the
+          # required evidence reserve; this 120-second helper reserve covers
+          # mutmut's internal startup/metadata phase without truncation.
           MUTMUT_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
             --max-children 8 \
             --control-cycle-reserve-seconds 1 \
+            --metadata-startup-reserve-seconds 120 \
             --max-timeout-seconds 20970 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
@@ -378,10 +386,13 @@ jobs:
             if [ "$survivor_count" -gt 0 ]; then
               cp mutants/mutmut-stats-full.json mutants/mutmut-stats.json
               MUTMUT_FAILURE_REASON="deriving the full-map survivor confirmation budget"
+              # Survivor confirmation uses the same bounded mutmut startup
+              # phase and remains subject to the job-level deadline guard.
               FULL_MAP_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
                 --selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt" \
                 --stats mutants/mutmut-stats-full.json \
                 --max-children 2 \
+                --metadata-startup-reserve-seconds 120 \
                 --max-timeout-seconds 20970 \
                 --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget.json")"
               if ! [[ "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
@@ -991,8 +1002,19 @@ jobs:
           tests/integration/test_spicedb_integration.py
           --maxfail=1
 
+  # Build generated WASM once and bind every nightly browser job to this
+  # immutable same-run artifact. Keeping this producer independent lets it
+  # overlap the rest of the nightly fan-out instead of serializing browsers
+  # behind frontend or mutation jobs.
+  e2e-wasm-build:
+    name: E2E WASM Build
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-e2e-wasm-build.yml
+
   browser-matrix:
     name: Browser matrix (${{ matrix.browser }})
+    needs: e2e-wasm-build
     strategy:
       fail-fast: false
       matrix:
@@ -1004,6 +1026,7 @@ jobs:
     uses: ./.github/workflows/reusable-e2e-tests.yml
     permissions:
       contents: read
+      actions: read
     with:
       node-version: "24"
       python-version: "3.14"
@@ -1011,6 +1034,9 @@ jobs:
       shard-index: 1
       shard-total: 1
       collect-coverage: ${{ matrix.browser == 'chromium' }}
+      wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
+      wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
+      wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
   load-and-chaos:
     name: Load and chaos resilience
@@ -1278,6 +1304,7 @@ jobs:
       - frontend-mutation-shards
       - frontend-mutation-tests-full
       - frontend-mutation-roundtrip
+      - e2e-wasm-build
       - backend-full
       - backend-integration
       - go-integration

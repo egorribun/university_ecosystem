@@ -33,6 +33,14 @@ def test_resolve_env_file_handles_missing_example_and_empty_override(
     monkeypatch.setenv("ENV_FILE_PATH", str(tmp_path / "missing.env"))
     assert base._resolve_env_file(tmp_path) is None
 
+    # An empty optional override behaves like an unset override and must not
+    # turn Path("") into the process working directory.
+    monkeypatch.setenv("ENV_EXAMPLE_PATH", "")
+    monkeypatch.delenv("ENV_FILE_PATH", raising=False)
+    candidate = tmp_path / ".env"
+    candidate.write_text("DATABASE_URL=sqlite\n", encoding="utf-8")
+    assert base._resolve_env_file(tmp_path) == candidate
+
 
 def test_resolve_env_file_warns_for_explicit_example_copy(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -48,6 +56,16 @@ def test_resolve_env_file_warns_for_explicit_example_copy(
         assert base._resolve_env_file(tmp_path) == candidate
 
     assert "identical" in caplog.text
+    messages = [
+        str(getattr(record, "msg", ""))
+        + " "
+        + str(getattr(record, "msg", {}).get("message", ""))
+        if isinstance(getattr(record, "msg", None), dict)
+        else record.getMessage()
+        for record in caplog.records
+    ]
+    assert any(str(candidate) in message for message in messages)
+    assert any(str(example) in message for message in messages)
 
 
 def test_resolve_env_file_accepts_explicit_candidate_with_real_values(
@@ -122,6 +140,38 @@ def test_resolve_env_file_warns_for_default_env_copy(
         assert base._resolve_env_file(tmp_path) == candidate
 
     assert "identical" in caplog.text
+    messages = [
+        str(getattr(record, "msg", ""))
+        + " "
+        + str(getattr(record, "msg", {}).get("message", ""))
+        if isinstance(getattr(record, "msg", None), dict)
+        else record.getMessage()
+        for record in caplog.records
+    ]
+    assert any(str(candidate) in message for message in messages)
+    assert any(str(example) in message for message in messages)
+
+
+def test_resolve_env_file_default_warning_keeps_both_path_arguments(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The warning must identify the concrete file that needs remediation."""
+    example = tmp_path / ".env.example"
+    candidate = tmp_path / ".env"
+    content = b"SECRET_KEY=example\n"
+    example.write_bytes(content)
+    candidate.write_bytes(content)
+    monkeypatch.delenv("ENV_FILE_PATH", raising=False)
+    monkeypatch.delenv("ENV_EXAMPLE_PATH", raising=False)
+
+    with patch.object(base._logger, "warning") as warning:
+        assert base._resolve_env_file(tmp_path) == candidate
+
+    warning.assert_called_once()
+    assert warning.call_args is not None
+    args = warning.call_args.args
+    assert args[1] == candidate
+    assert args[2] == example
 
 
 def test_resolve_env_file_accepts_default_env_with_real_values(

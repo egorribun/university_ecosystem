@@ -200,6 +200,12 @@ func sanitizeMinIOKey(key string) (string, error) {
 	if key == "" {
 		return "", errors.New("object key must not be empty")
 	}
+	// Keys are scoped object names, never filesystem paths.  Validate the raw
+	// input before cleaning it: path.Clean("/../../etc/passwd") becomes
+	// "/etc/passwd" and would otherwise bypass the traversal check below.
+	if path.IsAbs(key) || strings.HasPrefix(key, "/") || strings.HasPrefix(key, "\\") {
+		return "", fmt.Errorf("absolute path is not allowed in object key: %q", key)
+	}
 	clean := path.Clean(key)
 	if strings.HasPrefix(clean, "..") || strings.Contains(clean, "/../") {
 		return "", fmt.Errorf("path traversal detected in object key: %q", key)

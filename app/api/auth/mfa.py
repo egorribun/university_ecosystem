@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Annotated, Literal, cast
 from uuid import UUID
 
@@ -28,6 +27,7 @@ from app.auth.schemas import (
 )
 from app.core.database import get_db
 from app.core.fingerprint import extract_request_fingerprint
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import RateLimitExceeded
 from app.models import User
@@ -43,7 +43,7 @@ from app.services.auth.login_service import LoginService
 if TYPE_CHECKING:
     from app.models import ActiveSession
 
-logger = logging.getLogger("app.auth.mfa")
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["mfa"])
 

@@ -392,7 +392,8 @@
         "replicaCount": {"type": "integer", "minimum": 1},
         "image": {"$ref": "#/definitions/image"},
         "service": {"$ref": "#/definitions/service"},
-        "resources": {"$ref": "#/definitions/resources"}
+        "resources": {"$ref": "#/definitions/resources"},
+        "autoscaling": {"$ref": "#/definitions/autoscaling"}
       }
     },
     "gateway": {
@@ -400,6 +401,7 @@
       "properties": {
         "replicaCount": {"type": "integer", "minimum": 1}, "image": {"$ref": "#/definitions/image"},
         "service": {"$ref": "#/definitions/service"}, "resources": {"$ref": "#/definitions/resources"},
+        "autoscaling": {"$ref": "#/definitions/autoscaling"},
         "config": {
           "type": "object", "additionalProperties": false,
           "properties": {

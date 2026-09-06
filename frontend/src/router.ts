@@ -1,6 +1,7 @@
 import { createElement } from "react"
 import { createRouter } from "@tanstack/react-router"
 import { QueryClient } from "@tanstack/react-query"
+import { createQueryClient } from "./app/queryClient"
 import { routeTree } from "./routeTree.gen"
 
 export interface RouterContext {
@@ -68,10 +69,11 @@ const createAppRouter = () => {
     routeTree,
     context: {
       auth: ssrAuth ?? DEFAULT_AUTH,
-      // Per-call QueryClient instance — SSR + client never share cache state
-      // (would cause hydration mismatches). Phase 4+ may add proper
-      // dehydrate/hydrate transfer via TanStack Query's persister.
-      queryClient: new QueryClient(),
+      // Per-call QueryClient instance — SSR + client never share cache state,
+      // while both still use the same offline/retry/cache policy.  Constructing
+      // a bare QueryClient here silently diverges from the provider's defaults
+      // during SSR loader resolution and causes redundant refetches.
+      queryClient: createQueryClient(),
     },
     defaultPreload: "intent",
     defaultPreloadStaleTime: 0,

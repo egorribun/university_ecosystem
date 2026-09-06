@@ -101,4 +101,30 @@ describe("useFocusTrap deterministic lifecycle", () => {
     expect(target).toBe(container.firstElementChild)
     expect(target.tabIndex).toBe(0)
   })
+
+  it("refreshes callback and initial-focus refs when props change", () => {
+    const firstDeactivate = vi.fn()
+    const nextDeactivate = vi.fn()
+    const { rerender } = render(
+      <TrapHarness active initialFocus={false} onDeactivate={firstDeactivate} />
+    )
+
+    // The trap itself is intentionally not recreated for callback changes;
+    // the ref-sync effect must still make its existing callback current.
+    rerender(<TrapHarness active initialFocus={undefined} onDeactivate={nextDeactivate} />)
+    mocks.options?.onDeactivate()
+    expect(firstDeactivate).not.toHaveBeenCalled()
+    expect(nextDeactivate).toHaveBeenCalledOnce()
+
+    // Re-activating after the prop update must omit initialFocus entirely when
+    // it is undefined (rather than passing an own property with undefined).
+    rerender(<TrapHarness active={false} initialFocus={undefined} onDeactivate={nextDeactivate} />)
+    rerender(<TrapHarness active initialFocus={undefined} onDeactivate={nextDeactivate} />)
+    expect(Object.prototype.hasOwnProperty.call(mocks.options, "initialFocus")).toBe(false)
+  })
+
+  it("deactivates safely when no callback is supplied", () => {
+    const { unmount } = render(<TrapHarness active />)
+    expect(() => unmount()).not.toThrow()
+  })
 })

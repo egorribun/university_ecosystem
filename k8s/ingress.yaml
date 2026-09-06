@@ -16,12 +16,15 @@ metadata:
     nginx.ingress.kubernetes.io/limit-rps: "50"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
     nginx.ingress.kubernetes.io/limit-connections: "20"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Set CERT_MANAGER_ISSUER_NAME in the deployment environment; do not bake
+    # a cluster-specific issuer into this reusable manifest.
+    cert-manager.io/cluster-issuer: "${CERT_MANAGER_ISSUER_NAME}"
 spec:
   ingressClassName: nginx
   tls:
     # TD-31-02 (supersedes TD-28-03): Parameterized via envsubst in the deploy
-    # pipeline.  Set FRONTEND_HOST, API_HOST, TLS_SECRET_NAME env vars before
+    # pipeline. Set CERT_MANAGER_ISSUER_NAME, FRONTEND_HOST, API_HOST,
+    # TLS_SECRET_NAME env vars before
     # running: envsubst < ingress.yaml | kubectl apply -f -
     - hosts:
         - ${FRONTEND_HOST}

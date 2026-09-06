@@ -61,6 +61,7 @@ env/
 .opencode/
 .superpowers/
 .quality-pytest-tmp*/
+/.tmp*/
 .worktrees/
 .pytest_tmp*/
 .uv-cache*/

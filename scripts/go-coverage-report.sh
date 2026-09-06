@@ -11,6 +11,9 @@ declare -A services=(
   ["ws-hub"]="services/ws-hub"
   ["file-processor"]="services/file-processor"
   ["uni-cli"]="services/cmd/uni-cli"
+  ["logging"]="services/pkg/logging"
+  ["spiffe"]="services/pkg/spiffe"
+  ["spicedb"]="services/pkg/spicedb"
 )
 
 for name in "${!services[@]}"; do

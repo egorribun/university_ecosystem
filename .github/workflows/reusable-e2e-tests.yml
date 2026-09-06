@@ -53,6 +53,21 @@ on:
         required: false
         type: boolean
         default: false
+      wasm-artifact-id:
+        description: "Server-issued same-run E2E WASM artifact id"
+        required: false
+        type: string
+        default: ""
+      wasm-artifact-name:
+        description: "Attempt- and SHA-bound E2E WASM artifact name"
+        required: false
+        type: string
+        default: ""
+      wasm-artifact-digest:
+        description: "Upload-artifact archive digest for the E2E WASM artifact"
+        required: false
+        type: string
+        default: ""
 jobs:
   e2e:
     name: E2E Tests (${{ inputs.browser }})
@@ -70,6 +85,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      actions: read
     env:
       SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
       ENVIRONMENT: testing
@@ -85,9 +101,9 @@ jobs:
       # 1536 MiB, so this does not turn an unbounded build into a pass.
       FRONTEND_BUILD_MAX_RSS_MB: "2048"
       FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
-      # Build WASM once with the retrying step below. Subsequent Playwright
-      # webServer builds validate the checked/generated artifacts instead of
-      # re-downloading Binaryen from GitHub Releases for every suite.
+      # The artifact mode consumes the caller's immutable same-run producer.
+      # Standalone/manual callers leave all three inputs empty and use the
+      # explicitly guarded local fallback below.
       SKIP_WASM_BUILD: "1"
     services:
       postgres:
@@ -143,6 +159,157 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Validate E2E WASM artifact input contract
+        if: ${{ inputs.wasm-artifact-id != '' || inputs.wasm-artifact-name != '' || inputs.wasm-artifact-digest != '' }}
+        shell: bash
+        env:
+          WASM_ARTIFACT_ID: ${{ inputs.wasm-artifact-id }}
+          WASM_ARTIFACT_NAME: ${{ inputs.wasm-artifact-name }}
+          WASM_ARTIFACT_DIGEST: ${{ inputs.wasm-artifact-digest }}
+        run: |
+          set -euo pipefail
+          # Artifact mode is all-or-none. A partial input must never silently
+          # fall back to a fresh local build or consume an ambiguous artifact.
+          if [[ -z "$WASM_ARTIFACT_ID" || -z "$WASM_ARTIFACT_NAME" || -z "$WASM_ARTIFACT_DIGEST" ]]; then
+            echo "::error::E2E WASM artifact mode requires all three inputs (id, name, digest)."
+            exit 1
+          fi
+          [[ "$WASM_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$WASM_ARTIFACT_NAME" =~ ^frontend-e2e-wasm-[0-9]+-[0-9]+-[0-9a-f]{40}$ ]]
+          [[ "$WASM_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+
+      - name: Download immutable E2E WASM modules
+        if: ${{ inputs.wasm-artifact-id != '' && inputs.wasm-artifact-name != '' && inputs.wasm-artifact-digest != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          # An id is server-issued and scoped to this workflow run. Do not
+          # replace it with a name-only or cross-run lookup.
+          artifact-ids: ${{ inputs.wasm-artifact-id }}
+          path: frontend
+
+      - name: Verify server-side E2E WASM artifact digest
+        if: ${{ inputs.wasm-artifact-id != '' && inputs.wasm-artifact-name != '' && inputs.wasm-artifact-digest != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ARTIFACT_ID: ${{ inputs.wasm-artifact-id }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ inputs.wasm-artifact-digest }}
+        run: |
+          set -euo pipefail
+          api_url="https://api.github.com/repos/${REPOSITORY}/actions/artifacts/${ARTIFACT_ID}"
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors --retry-delay 2 \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_url}" -o "${response_file}"
+          actual_digest="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("digest", ""))' "${response_file}")"
+          if [[ "$actual_digest" =~ ^[0-9a-f]{64}$ ]]; then
+            actual_digest="sha256:${actual_digest}"
+          fi
+          if [[ "${actual_digest}" != "${EXPECTED_ARTIFACT_DIGEST}" ]]; then
+            echo "::error::E2E WASM artifact digest mismatch: server=${actual_digest} expected=${EXPECTED_ARTIFACT_DIGEST}"
+            exit 1
+          fi
+
+      - name: Verify immutable E2E WASM provenance
+        if: ${{ inputs.wasm-artifact-id != '' && inputs.wasm-artifact-name != '' && inputs.wasm-artifact-digest != '' }}
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          EXPECTED_WORKFLOW_REF: ${{ github.workflow_ref }}
+          EXPECTED_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EXPECTED_RUN_ID: ${{ github.run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
+          EXPECTED_EVENT: ${{ github.event_name }}
+          EXPECTED_ARTIFACT_ID: ${{ inputs.wasm-artifact-id }}
+          EXPECTED_ARTIFACT_NAME: ${{ inputs.wasm-artifact-name }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ inputs.wasm-artifact-digest }}
+        run: |
+          set -euo pipefail
+          test -s frontend/WASM_PROVENANCE.json
+          test -s frontend/WASM_INVENTORY.json
+          [[ "$EXPECTED_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EXPECTED_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          export EXPECTED_SHA EXPECTED_PR_HEAD_SHA EXPECTED_REPOSITORY EXPECTED_WORKFLOW_REF EXPECTED_WORKFLOW_SHA EXPECTED_RUN_ID EXPECTED_RUN_ATTEMPT EXPECTED_EVENT EXPECTED_ARTIFACT_ID EXPECTED_ARTIFACT_NAME EXPECTED_ARTIFACT_DIGEST
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("frontend").resolve()
+          provenance_path = root / "WASM_PROVENANCE.json"
+          inventory_path = root / "WASM_INVENTORY.json"
+          provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+          inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+          expected = {
+              "repository": os.environ["EXPECTED_REPOSITORY"],
+              "source_sha": os.environ["EXPECTED_SHA"],
+              "pr_head_sha": os.environ["EXPECTED_PR_HEAD_SHA"],
+              "workflow_ref": os.environ["EXPECTED_WORKFLOW_REF"],
+              "workflow_sha": os.environ["EXPECTED_WORKFLOW_SHA"],
+              "run_id": int(os.environ["EXPECTED_RUN_ID"]),
+              "run_attempt": int(os.environ["EXPECTED_RUN_ATTEMPT"]),
+              "event": os.environ["EXPECTED_EVENT"],
+              "artifact_name": os.environ["EXPECTED_ARTIFACT_NAME"],
+              "artifact_kind": "e2e-wasm",
+              "schema_version": 1,
+          }
+          for key, value in expected.items():
+              if provenance.get(key) != value:
+                  raise SystemExit(f"WASM provenance mismatch for {key}: {provenance.get(key)!r}")
+          files = inventory.get("files")
+          if inventory.get("schema_version") != 1 or not isinstance(files, list) or not files:
+              raise SystemExit("WASM inventory is missing or malformed")
+          expected_digest = inventory.get("inventory_sha256")
+          canonical = json.dumps(
+              {"schema_version": inventory["schema_version"], "files": files},
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode()
+          if expected_digest != hashlib.sha256(canonical).hexdigest():
+              raise SystemExit("WASM inventory digest mismatch")
+          expected_paths = set()
+          for record in files:
+              relative = record.get("path") if isinstance(record, dict) else None
+              if not isinstance(relative, str) or relative.startswith("/") or ".." in Path(relative).parts:
+                  raise SystemExit(f"invalid WASM inventory path: {relative!r}")
+              path = root / relative
+              if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
+                  raise SystemExit(f"unsafe or missing WASM inventory path: {relative!r}")
+              if relative in expected_paths:
+                  raise SystemExit(f"duplicate WASM inventory path: {relative!r}")
+              expected_paths.add(relative)
+              if path.stat().st_size != record.get("size"):
+                  raise SystemExit(f"WASM size mismatch: {relative}")
+              if hashlib.sha256(path.read_bytes()).hexdigest() != record.get("sha256"):
+                  raise SystemExit(f"WASM digest mismatch: {relative}")
+          actual_paths = {
+              path.relative_to(root).as_posix()
+              for package in (root / "rust-crypto/pkg", root / "wasm-sanitizer/pkg")
+              for path in package.rglob("*")
+              if path.is_file() and not path.is_symlink()
+          }
+          if actual_paths != expected_paths:
+              raise SystemExit("WASM inventory does not exactly match generated package files")
+          if provenance.get("inventory_sha256") != expected_digest:
+              raise SystemExit("WASM provenance inventory digest mismatch")
+          package_roots = (root / "rust-crypto/pkg", root / "wasm-sanitizer/pkg")
+          for package in package_roots:
+              if not package.is_dir() or package.is_symlink():
+                  raise SystemExit(f"missing or symlinked WASM package: {package}")
+              for entry in package.rglob("*"):
+                  if entry.is_symlink():
+                      raise SystemExit(f"symlink in WASM package: {entry}")
+          PY
+          (cd frontend && node scripts/verify-wasm-artifacts.mjs)
+
       - name: Verify E2E coverage merger
         if: ${{ inputs.collect-coverage && inputs.browser == 'chromium' }}
         working-directory: frontend
@@ -155,11 +322,13 @@ jobs:
       # boundary as the SHA-pinned action's upstream source). Same fix as
       # W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
       - name: Install wasm-pack
+        if: ${{ inputs.wasm-artifact-id == '' && inputs.wasm-artifact-name == '' && inputs.wasm-artifact-digest == '' }}
         uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
         with:
           tool: wasm-pack@0.13.1
 
       - name: Build WASM modules
+        if: ${{ inputs.wasm-artifact-id == '' && inputs.wasm-artifact-name == '' && inputs.wasm-artifact-digest == '' }}
         # Binaryen is downloaded by wasm-pack from GitHub Releases on the first
         # build. Retry transient CDN 404/timeout failures without weakening the
         # build: persistent failures still fail the job after three attempts.

@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -17,6 +16,7 @@ from jwt import PyJWTError as JWTError
 from zxcvbn import zxcvbn
 
 from app.core.config import settings
+from app.core.config.database import _cgroup_aware_cpu_count
 from app.core.localization import translate
 from app.core.logging import get_logger
 
@@ -36,30 +36,12 @@ _logger = get_logger(__name__)
 # (TD-W8-03: corrected from 65536/64 MB — reduced in PERF-02, audit 2026-03-04.)
 # Bounding pool size to cpu_count prevents memory exhaustion under login bursts.
 # Python's default (cpu_count + 4) is designed for I/O-bound work — not suitable here.
-# PERF-2: os.cpu_count() returns HOST core count inside containers; use
-# sched_getaffinity (cgroups v2) or cfs_quota (cgroups v1) for correctness.
-# A 2-CPU container on a 32-core host would otherwise spin up 32 Argon2
-# threads × 64 MB = 2 GB RAM instead of the expected 128 MB.
+# PERF-2: os.cpu_count() returns HOST core count inside containers.  The shared
+# cgroup-aware helper honours cgroups v2/v1 quotas before affinity so a 2-CPU
+# container on a 32-core host cannot spin up 32 Argon2 workers.
 def _container_cpu_count() -> int:
     """Return cgroup-aware CPU count for container environments."""
-    try:
-        sched = getattr(os, "sched_getaffinity", None)
-        if sched:
-            return len(sched(0))  # Linux cgroups v2 — most accurate
-    except (AttributeError, NotImplementedError):  # RZ-28-01
-        pass
-    try:  # Fallback for cgroups v1 (Docker legacy)
-        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as _f:
-            quota = int(_f.read().strip())
-        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as _f:
-            period = int(_f.read().strip())
-        if quota > 0 and period > 0:
-            # LOW-W19: cap at 32 to prevent runaway thread/memory usage on
-            # hosts where cgroups v1 quota is set to an unreasonably high value.
-            return min(max(1, quota // period), 32)
-    except (FileNotFoundError, ValueError, OSError):  # RZ-28-01
-        pass
-    return os.cpu_count() or 2
+    return _cgroup_aware_cpu_count()
 
 
 _AUTH_EXECUTOR_WORKERS: int = max(2, _container_cpu_count())

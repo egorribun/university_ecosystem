@@ -152,6 +152,28 @@ def test_normalizer_v2_emits_current_complete_schema_valid_evidence(
     }
 
 
+def test_normalizer_v2_rejects_metric_status_contract_drift(
+    evidence_repo: Path,
+) -> None:
+    contract_path = evidence_repo / "quality" / "quality-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["metric_statuses"]["go-gateway"]["statements"] = ["unsupported"]
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+    _commit_all(evidence_repo, "mutate metric status contract")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode != 0
+    assert "go-gateway.statements" in result.stderr
+    assert "not allowed by the metric contract" in result.stderr
+    manifest = json.loads(
+        (evidence_repo / "artifacts/coverage/quality-manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["validation"]["valid"] is False
+
+
 def test_normalizer_v2_rejects_sha_mismatch_before_writing(evidence_repo: Path) -> None:
     arguments = _full_arguments(evidence_repo)
     arguments[arguments.index("--commit-sha") + 1] = "0" * 40

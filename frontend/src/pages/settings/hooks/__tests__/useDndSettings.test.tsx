@@ -313,7 +313,7 @@ describe("useDndSettings", () => {
         severity: "error",
       })
     )
-    expect(result.current.dndSaving).toBe(false)
+    await vi.waitFor(() => expect(result.current.dndSaving).toBe(false))
   })
 
   it("uses the generic fallback for a non-Axios persistence failure", async () => {

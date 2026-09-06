@@ -372,14 +372,22 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     )
     matrix_step = _step(universe, "Build validated mutmut execution matrix")
     assert "descriptor_count=" in matrix_step["run"]
-    assert '"$descriptor_count" -gt 128' in matrix_step["run"]
+    assert '"$descriptor_count" -gt 64' in matrix_step["run"]
+    assert "mutmut_shard_matrix.py groups" in matrix_step["run"]
+    assert "--target-groups 64" in matrix_step["run"]
+    assert "scripts/validate_mutmut_group_budgets.py" in matrix_step["run"]
+    assert "--output-manifest /tmp/mutmut-group-budgets.json" in matrix_step["run"]
+    assert "Preflight the exact execution budget" in matrix_step["run"]
+    assert "--metadata-startup-reserve-seconds 120" in matrix_step["run"]
+    assert "--max-timeout-seconds 20880" in matrix_step["run"]
+    assert "21,600 - 630 - 90" in matrix_step["run"]
     assert "Mutation matrix capacity" in matrix_step["run"]
     assert (
         'if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then'
         in matrix_step["run"]
     )
     assert (
-        'matrix_summary="Fully validated fixed plan assignments: 128"'
+        'matrix_summary="Fully validated 128 logical assignments; up to 64 budget-validated physical groups"'
         in matrix_step["run"]
     )
     assert (
@@ -651,7 +659,10 @@ def test_go_mutation_diagnostic_never_converts_tool_failure_to_success() -> None
     assert 'local isolated_root="$MUTATION_ROOT/$safe_target/repository"' in mutation
     assert 'local workdir="$isolated_root/$SERVICE_DIRECTORY"' in mutation
     assert 'cp -a "$GITHUB_WORKSPACE/$SERVICE_DIRECTORY/." "$workdir/"' in mutation
-    assert "for dependency in services/pkg/spiffe gen/go; do" in mutation
+    assert (
+        "for dependency in services/pkg/logging services/pkg/spiffe gen/go; do"
+        in mutation
+    )
     assert 'local dependency_source="$GITHUB_WORKSPACE/$dependency"' in mutation
     assert 'local dependency_destination="$isolated_root/$dependency"' in mutation
     assert (
@@ -789,6 +800,16 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
         'if [[ "$PRE_COMMIT_RESULT" == "success" && '
         '"$FRONTEND_TESTS_RESULT" == "success" && '
         '"$COVERAGE_RESULT" == "success" ]]; then' in gate
+    )
+    assert (
+        'elif [[ "$PRE_COMMIT_RESULT" == "success" && '
+        '"$FRONTEND_TESTS_RESULT" == "success" && '
+        '"${{ needs.stryker-preflight.result }}" == "success" && '
+        '"$COVERAGE_RESULT" != "success" ]]; then' in gate
+    )
+    assert (
+        'assert_event_result "stryker-preflight" '
+        '"${{ needs.stryker-preflight.result }}" "success"' in gate
     )
     for mutation_job in (
         "stryker-preflight",

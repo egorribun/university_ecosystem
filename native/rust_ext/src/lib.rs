@@ -245,6 +245,20 @@ const MAX_CONFLICT_PAIRS: usize = 50_000;
 const PARALLEL_CONFLICT_THRESHOLD: usize = 32;
 
 #[inline]
+fn canonical_weekday_code(weekday: &str) -> u8 {
+    match weekday {
+        "monday" => 0,
+        "tuesday" => 1,
+        "wednesday" => 2,
+        "thursday" => 3,
+        "friday" => 4,
+        "saturday" => 5,
+        "sunday" => 6,
+        _ => u8::MAX,
+    }
+}
+
+#[inline]
 fn record_conflict_pair(
     a: &ScheduleItem,
     b: &ScheduleItem,
@@ -315,6 +329,9 @@ pub fn batch_detect_conflicts(
             let limit_exceeded = std::sync::atomic::AtomicBool::new(false);
             let conflicts: Vec<(ScheduleItem, ScheduleItem)> = if canonical_fast_path {
                 if items.len() < PARALLEL_CONFLICT_THRESHOLD {
+                    // Rayon scheduling overhead dominates tiny batches, and the
+                    // direct String comparison avoids allocating a code vector for
+                    // this latency-sensitive path.
                     items
                         .iter()
                         .enumerate()
@@ -332,19 +349,29 @@ pub fn batch_detect_conflicts(
                         })
                         .collect()
                 } else {
+                    // Canonical inputs use one of seven fixed weekday strings.  Compare
+                    // a compact code in the O(n²) loop instead of repeatedly scanning
+                    // each String's bytes; the observable pair ordering and overlap
+                    // predicates remain unchanged.
+                    let weekday_codes: Vec<u8> = items
+                        .iter()
+                        .map(|item| canonical_weekday_code(&item.weekday))
+                        .collect();
                     pool.install(|| {
                         items
                             .par_iter()
                             .enumerate()
                             .flat_map_iter(|(i, a)| {
+                                let a_weekday = weekday_codes[i];
                                 items[i + 1..]
                                     .iter()
+                                    .zip(weekday_codes[i + 1..].iter())
                                     .filter(move |b| {
-                                        a.weekday == b.weekday
-                                            && a.start_time < b.end_time
-                                            && b.start_time < a.end_time
+                                        a_weekday == *b.1
+                                            && a.start_time < b.0.end_time
+                                            && b.0.start_time < a.end_time
                                     })
-                                    .filter_map(|b| {
+                                    .filter_map(|(b, _)| {
                                         record_conflict_pair(a, b, &pair_count, &limit_exceeded)
                                     })
                             })
@@ -389,13 +416,18 @@ pub fn batch_detect_conflicts(
 
 #[pyfunction(name = "batch_detect_conflicts")]
 fn batch_detect_conflicts_py(
+    py: Python<'_>,
     items: Bound<'_, PyAny>,
 ) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
     let _extract_guard = schedule_item_extract_guard()?;
     let items: Vec<ScheduleItem> = items.extract()?;
     drop(_extract_guard);
 
-    batch_detect_conflicts(items)
+    // Rayon performs CPU-intensive pairwise work on owned Rust values.  Detach
+    // from Python while it runs so concurrent asyncio/worker threads can make
+    // progress; all Python extraction and result conversion remains on the
+    // GIL-held side of this boundary.
+    py.detach(|| batch_detect_conflicts(items))
 }
 
 #[pyfunction(name = "find_optimal_slot")]
@@ -1351,6 +1383,13 @@ mod tests {
     }
 
     #[test]
+    fn canonical_weekday_code_covers_fallback() {
+        assert_eq!(canonical_weekday_code("monday"), 0);
+        assert_eq!(canonical_weekday_code("MONDAY"), u8::MAX);
+        assert_eq!(canonical_weekday_code("not-a-weekday"), u8::MAX);
+    }
+
+    #[test]
     fn batch_detect_conflicts_covers_canonical_non_overlaps_and_parallel_path() {
         let late = ScheduleItem {
             id: Some(1),
@@ -1409,6 +1448,70 @@ mod tests {
         assert!(batch_detect_conflicts(vec![noncanonical, early])
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn canonical_parallel_path_preserves_overlapping_pairs() {
+        let mut items = vec![
+            ScheduleItem {
+                id: Some(1),
+                weekday: "monday".to_string(),
+                start_time: 1_000,
+                end_time: 3_000,
+                parity: "both".to_string(),
+            },
+            ScheduleItem {
+                id: Some(2),
+                weekday: "monday".to_string(),
+                start_time: 2_000,
+                end_time: 4_000,
+                parity: "both".to_string(),
+            },
+        ];
+        for index in 0..32 {
+            let start = 10_000 + (index as i64) * 1_000;
+            items.push(ScheduleItem {
+                id: Some(index + 3),
+                weekday: "tuesday".to_string(),
+                start_time: start,
+                end_time: start + 100,
+                parity: "both".to_string(),
+            });
+        }
+
+        let conflicts = batch_detect_conflicts(items).unwrap();
+        assert_eq!(conflicts.len(), 1);
+
+        // Exercise both sides of the short-circuit predicate deterministically:
+        // the first candidate reaches the right-hand comparison and fails, the
+        // second fails on the left-hand comparison, and the final candidate
+        // satisfies the complete pair contract.
+        let matching_left = ScheduleItem {
+            id: Some(1),
+            weekday: "monday".to_string(),
+            start_time: 1_000,
+            end_time: 3_000,
+            parity: "both".to_string(),
+        };
+        let matching_right = ScheduleItem {
+            id: Some(2),
+            weekday: "monday".to_string(),
+            start_time: 2_000,
+            end_time: 4_000,
+            parity: "both".to_string(),
+        };
+        let mut wrong_left = matching_left.clone();
+        wrong_left.id = Some(999);
+        let mut wrong_right = matching_right.clone();
+        wrong_right.id = Some(999);
+        let candidates = [
+            (&matching_left, &wrong_right),
+            (&wrong_left, &matching_right),
+            (&matching_left, &matching_right),
+        ];
+        assert!(candidates
+            .into_iter()
+            .any(|(left, right)| left.id == Some(1) && right.id == Some(2)));
     }
 
     #[test]

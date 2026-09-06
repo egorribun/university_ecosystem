@@ -431,22 +431,80 @@ export function normalizeStrykerRuntimeReport(report) {
 const largeMutationUniverseThreshold = 10_000
 const firstAttemptUnitSplitFactor = 16
 // These weights are the distinct test counts observed in the latest
-// provenance-bound Stryker mutation graph for the source ranges that completed
-// (run 33618615853).  They are intentionally checked in: a fresh run has no
-// historical timing model, but these API modules still fan out to materially
-// different related-test graphs.  A weight of one means that the regular
-// locality-aware count model remains in effect.
+// provenance-bound Stryker mutation graph for source files whose complete
+// preflight inventory was present in successful shards (run 33863748227,
+// source 3e54ca9b5a6ccc03ec887df188572cdcac2ac091).  They are intentionally
+// checked in: a first attempt has no historical timing model, but these
+// modules fan out to materially different related-test graphs.  A weight of
+// one means that the regular locality-aware count model remains in effect.
 const firstAttemptSourceCostWeights = new Map([
-  ["src/api/interceptors/etagCache.ts", 267], // 137 mutants / 267 tests
-  ["src/api/hooks/users.ts", 229], // 8 mutants / 229 tests
-  ["src/api/hooks/events.ts", 52], // 253 mutants / 52 tests
-  ["src/api/hooks/news.ts", 38], // 170 mutants / 38 tests
-  ["src/api/hooks/messenger.ts", 131], // 35 mutants / 131 tests
-  ["src/api/validation.ts", 46], // 20 mutants / 46 tests
-  ["src/api/weather.ts", 41], // 163 mutants / 41 tests
+  // The first attempt in runs 33863748227 and 33994803565 repeatedly placed
+  // this API/core block in logical shard 8.  That shard reached the 120-minute
+  // hard timeout despite having only 677 mutants.  Keep conservative guard
+  // weights explicit so a fresh SHA cannot silently fall back to the count-only
+  // locality planner for the same hotspot.  These guard weights are relative
+  // placement costs, not coverage claims; measured test-graph counts below
+  // retain their evidence comments.
+  ["src/api/backendOrigin.ts", 24], // timeout guard weight
+  ["src/api/chat.ts", 180], // timeout guard weight
+  ["src/api/client.ts", 650], // timeout guard weight
+  ["src/api/events.ts", 50], // timeout guard weight
+  ["src/api/hooks/activity.ts", 120], // timeout guard weight
+  ["src/api/hooks/adminAudit.ts", 60], // timeout guard weight
+  ["src/api/hooks/adminFeatureFlags.ts", 60], // timeout guard weight
+  ["src/api/hooks/adminNotifications.ts", 60], // timeout guard weight
+  ["src/api/hooks/adminUsers.ts", 120], // timeout guard weight
+  ["src/api/hooks/sessions.ts", 60], // timeout guard weight
+  ["src/api/hooks/weather.ts", 101], // timeout guard weight
+  ["src/api/hooks/events.ts", 74], // 301 mutants / 74 tests
+  ["src/api/hooks/messenger.ts", 135], // 35 mutants / 135 tests
+  ["src/api/hooks/news.ts", 62], // 170 mutants / 62 tests
   ["src/api/hooks/schedule.ts", 33], // 23 mutants / 33 tests
+  ["src/api/hooks/users.ts", 235], // 8 mutants / 235 tests
+  ["src/api/interceptors/etagCache.ts", 2882], // 239 mutants / 2882 tests
+  ["src/api/interceptors/language.ts", 120], // timeout guard weight
+  ["src/api/interceptors/rateLimit.ts", 342], // 144 mutants / 342 tests
+  ["src/api/interceptors/traceContext.ts", 285], // 16 mutants / 285 tests
+  ["src/api/mfa.ts", 18], // 37 mutants / 18 tests
+  ["src/api/news.ts", 14], // 65 mutants / 14 tests
+  ["src/api/notifications.ts", 47], // 110 mutants / 47 tests
+  ["src/api/offlineMutationQueue.ts", 5], // 24 mutants / 5 tests
+  ["src/api/schemas/wsMessage.ts", 71], // 151 mutants / 71 tests
+  ["src/api/stories.ts", 12], // 16 mutants / 12 tests
+  ["src/api/validation.ts", 46], // 20 mutants / 46 tests
+  ["src/api/weather.ts", 101], // 174 mutants / 101 tests
+  ["src/App.tsx", 3], // 9 mutants / 3 tests
+  ["src/app/globalErrorHandlers.ts", 6], // 53 mutants / 6 tests
+  ["src/app/hydration.ts", 20], // 40 mutants / 20 tests
+  ["src/app/logger.ts", 417], // 117 mutants / 417 tests
+  ["src/components/media/SmartImage.tsx", 169], // 89 mutants / 169 tests
+  ["src/components/schedule/scheduleUtils.ts", 173], // 169 mutants / 173 tests
+  ["src/components/settings/ui/Form.tsx", 164], // 26 mutants / 164 tests
+  ["src/components/ui/Tooltip.tsx", 42], // 11 mutants / 42 tests
+  ["src/contexts/AuthContext.tsx", 176], // 35 mutants / 176 tests
+  ["src/contexts/LanguageContext.tsx", 325], // 70 mutants / 325 tests
+  ["src/db/index.ts", 650], // 38 mutants / 650 tests
+  ["src/hooks/auth/legacyTokenCleanup.ts", 226], // 12 mutants / 226 tests
+  ["src/hooks/auth/ssrAuthHint.ts", 166], // 32 mutants / 166 tests
+  ["src/hooks/useFocusTrap.ts", 226], // 31 mutants / 226 tests
+  ["src/hooks/useMediaQuery.ts", 217], // 57 mutants / 217 tests
 ])
-const firstAttemptCostAwareShardCount = 8
+// The previous first-attempt plan reserved only eight cost-aware shards.  The
+// immutable CI evidence for run 34003977528 shows that two of those shards
+// still hit the 120-minute job timeout (one carried 709 mutants and one never
+// produced a report).  Twelve keeps the public 64-shard denominator and
+// max-parallel contract unchanged while spreading the measured static-heavy
+// API ranges across enough isolated runners to stay below the observed cap.
+const firstAttemptCostAwareShardCount = 12
+// backendOrigin is imported by the SSR/client bootstrap graph, so even its
+// tiny source file selects a broad static test set. Keep that graph on a
+// dedicated first-attempt shard; mixing it with another static-heavy range
+// turns a handful of mutants into a hard-to-diagnose shard timeout.
+const firstAttemptDedicatedFiles = new Set(["src/api/backendOrigin.ts"])
+
+function mutationPatternStartsWithSource(pattern, sourcePath) {
+  return pattern === sourcePath || pattern.startsWith(`${sourcePath}:`)
+}
 
 function firstAttemptSourceCostWeight(file) {
   return firstAttemptSourceCostWeights.get(file) ?? 1
@@ -501,20 +559,46 @@ function assignFirstAttemptMutationUnits(weightedUnits, shards) {
     assignWeightedMutationUnits(weightedUnits, shards)
     return
   }
-  // Keep the expensive API graph in a bounded group of dedicated shards.  The
+  const dedicatedUnits = expensiveUnits.filter((entry) =>
+    [...firstAttemptDedicatedFiles].some((sourcePath) =>
+      mutationPatternStartsWithSource(entry.pattern, sourcePath)
+    )
+  )
+  const remainingExpensiveUnits = expensiveUnits.filter((entry) => !dedicatedUnits.includes(entry))
+  const remainingShards = dedicatedUnits.length > 0 ? shards.slice(1) : shards
+  if (dedicatedUnits.length > 0) {
+    assignWeightedMutationUnits(dedicatedUnits, [shards[0]])
+  }
+  if (remainingShards.length === 0) {
+    assignWeightedMutationUnits(remainingExpensiveUnits, [shards[0]])
+    return
+  }
+  if (remainingShards.length === 1) {
+    // A dedicated source already occupies shard zero.  When only one shard
+    // remains, it must carry both the residual expensive graph and regular
+    // work; reserving a separate expensive shard would leave an empty target
+    // and make the planner fail with `Reduce of empty array`.
+    assignWeightedMutationUnits([...remainingExpensiveUnits, ...regularUnits], remainingShards)
+    return
+  }
+  // Keep the expensive related-test graphs in a bounded group of dedicated shards.  The
   // lower bound guarantees that the regular units can still seed every
   // remaining shard when the inventory is small or unusually fragmented.
-  const minimumExpensiveShards = Math.max(1, shards.length - regularUnits.length)
-  const maximumExpensiveShards = regularUnits.length > 0 ? shards.length - 1 : shards.length
+  const minimumExpensiveShards = Math.max(1, remainingShards.length - regularUnits.length)
+  const maximumExpensiveShards =
+    regularUnits.length > 0 ? remainingShards.length - 1 : remainingShards.length
   const expensiveShardCount = Math.min(
-    expensiveUnits.length,
+    remainingExpensiveUnits.length,
     maximumExpensiveShards,
-    Math.max(minimumExpensiveShards, Math.min(firstAttemptCostAwareShardCount, shards.length))
+    Math.max(
+      minimumExpensiveShards,
+      Math.min(firstAttemptCostAwareShardCount, remainingShards.length)
+    )
   )
-  const expensiveShards = shards.slice(0, expensiveShardCount)
-  const regularShards = shards.slice(expensiveShardCount)
+  const expensiveShards = remainingShards.slice(0, expensiveShardCount)
+  const regularShards = remainingShards.slice(expensiveShardCount)
 
-  assignWeightedMutationUnits(expensiveUnits, expensiveShards)
+  assignWeightedMutationUnits(remainingExpensiveUnits, expensiveShards)
   assignLocalityAwareMutationUnits(regularUnits, regularShards)
 }
 

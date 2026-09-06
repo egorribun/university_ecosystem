@@ -51,15 +51,18 @@ def test_upgrade_uses_validated_shadow_cutover_for_groups_and_sessions() -> None
     sql = _render("upgrade f7aa476e968a:148642dd1207")
 
     assert "ALTER TABLE GROUPS ALTER COLUMN ID TYPE" not in sql
-    assert (
-        "ALTER TABLE ACTIVE_SESSIONS ALTER COLUMN SIGNING_KEY SET NOT NULL" not in sql
-    )
+    # PostgreSQL receives the same physical NOT NULL invariant as the other
+    # supported dialects, but only after the validated check-backed preflight.
+    assert "ALTER TABLE ACTIVE_SESSIONS ALTER COLUMN SIGNING_KEY SET NOT NULL" in sql
     assert "ID__INTEGER INTEGER" in sql
     assert "CHECK (ID__INTEGER IS NOT NULL) NOT VALID" in sql
     assert "CHECK (ID IS NOT NULL) NOT VALID" in sql
     assert "VALIDATE CONSTRAINT CK_GROUPS_ID_SHADOW_NOT_NULL" in sql
     assert "VALIDATE CONSTRAINT CK_GROUPS_ID_NOT_NULL" in sql
     assert "VALIDATE CONSTRAINT CK_ACTIVE_SESSIONS_SIGNING_KEY_NOT_NULL" in sql
+    assert sql.index(
+        "VALIDATE CONSTRAINT CK_ACTIVE_SESSIONS_SIGNING_KEY_NOT_NULL"
+    ) < sql.index("ALTER TABLE ACTIVE_SESSIONS ALTER COLUMN SIGNING_KEY SET NOT NULL")
     assert "PRIMARY KEY USING INDEX GROUPS_PKEY_IDX" in sql
     assert "RENAME COLUMN" not in sql
 
@@ -73,6 +76,7 @@ def test_downgrade_restores_legacy_shape_without_in_place_type_change() -> None:
     assert "UPDATE GROUPS SET ID__VARCHAR" in sql
     assert "PRIMARY KEY USING INDEX GROUPS_PKEY_IDX" in sql
     assert "DROP CONSTRAINT IF EXISTS CK_ACTIVE_SESSIONS_SIGNING_KEY_NOT_NULL" in sql
+    assert "ALTER TABLE ACTIVE_SESSIONS ALTER COLUMN SIGNING_KEY DROP NOT NULL" in sql
 
 
 def test_fk_conversion_preflight_uses_a_short_circuit_numeric_cast() -> None:

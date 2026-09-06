@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { ApiResponseValidationError } from "../validation"
-
 // Mock the generated SDK + the lazy-imported axios client so the api/notifications
 // wrappers run against canned responses (no MSW / contract validator needed).
 vi.mock("@/api/generated", () => ({
@@ -88,7 +86,21 @@ describe("fetchNotificationsList", () => {
     vi.mocked(gen.listNotificationsApiV1NotificationsGet).mockResolvedValue({
       data: { items: [], unread_count: "nope", has_more: false },
     } as never)
-    await expect(fetchNotificationsList()).rejects.toBeInstanceOf(ApiResponseValidationError)
+    await expect(fetchNotificationsList()).rejects.toMatchObject({
+      name: "ApiResponseValidationError",
+      message: expect.stringContaining("GET /api/v1/notifications"),
+    })
+  })
+
+  it("normalizes an omitted cursor while preserving an explicit limit", async () => {
+    vi.mocked(gen.listNotificationsApiV1NotificationsGet).mockResolvedValue({
+      data: { items: [], unread_count: 0, has_more: false, next_cursor: null },
+    } as never)
+
+    await fetchNotificationsList({ limit: 5 })
+    expect(gen.listNotificationsApiV1NotificationsGet).toHaveBeenCalledWith({
+      query: { cursor: undefined, limit: 5 },
+    })
   })
 })
 
@@ -196,6 +208,21 @@ describe("saveSubscription", () => {
     }
   })
 
+  it("includes a non-empty browser user agent in the subscription payload", async () => {
+    const userAgent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("UniversityBrowser/1")
+    vi.mocked(gen.subscribeApiV1PushSubscribePost).mockResolvedValue({
+      data: { id: UUID, endpoint: "https://push.example/x" },
+    } as never)
+
+    try {
+      await saveSubscription(goodSub)
+      const body = vi.mocked(gen.subscribeApiV1PushSubscribePost).mock.calls[0]?.[0]?.body
+      expect(body).toHaveProperty("user_agent", "UniversityBrowser/1")
+    } finally {
+      userAgent.mockRestore()
+    }
+  })
+
   it("throws on an incomplete payload (no network call)", async () => {
     await expect(
       saveSubscription({
@@ -204,6 +231,38 @@ describe("saveSubscription", () => {
       } as unknown as PushSubscriptionJSON)
     ).rejects.toThrow("Invalid push subscription payload")
     expect(gen.subscribeApiV1PushSubscribePost).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["missing endpoint", { keys: { p256dh: "p", auth: "a" } }],
+    ["missing p256dh", { endpoint: "https://push.example/x", keys: { auth: "a" } }],
+    ["missing auth", { endpoint: "https://push.example/x", keys: { p256dh: "p" } }],
+  ])("rejects a subscription with %s", async (_label, value) => {
+    await expect(saveSubscription(value as unknown as PushSubscriptionJSON)).rejects.toThrow(
+      "Invalid push subscription payload"
+    )
+    expect(gen.subscribeApiV1PushSubscribePost).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["missing keys", { endpoint: "https://push.example/x" }],
+    ["missing p256dh optional chain", { endpoint: "https://push.example/x", keys: { auth: "a" } }],
+    ["missing auth optional chain", { endpoint: "https://push.example/x", keys: { p256dh: "p" } }],
+  ])("fails closed with the stable validation error when %s", async (_label, value) => {
+    await expect(saveSubscription(value as unknown as PushSubscriptionJSON)).rejects.toThrow(
+      "Invalid push subscription payload"
+    )
+    expect(gen.subscribeApiV1PushSubscribePost).not.toHaveBeenCalled()
+  })
+
+  it("omits topics when the optional value is not an array", async () => {
+    vi.mocked(gen.subscribeApiV1PushSubscribePost).mockResolvedValue({
+      data: { id: UUID, endpoint: "https://push.example/x" },
+    } as never)
+
+    await saveSubscription(goodSub, "system" as unknown as string[])
+    const body = vi.mocked(gen.subscribeApiV1PushSubscribePost).mock.calls[0]?.[0]?.body
+    expect(body).not.toHaveProperty("topics")
   })
 
   it("throws when the server returns no data", async () => {
@@ -234,6 +293,18 @@ describe("getVapidPublicKey null-normalization", () => {
       data: { publicKey: "  BJ_key  " },
     } as never)
     expect(await getVapidPublicKey()).toBe("BJ_key")
+
+    // Keep the same focused test attached to the normalized expression so
+    // per-test Stryker coverage cannot reduce the contract to the happy path.
+    vi.mocked(gen.getVapidPublicKeyApiV1PushVapidPublicKeyGet).mockResolvedValue({
+      data: { publicKey: "   " },
+    } as never)
+    expect(await getVapidPublicKey()).toBeNull()
+
+    vi.mocked(gen.getVapidPublicKeyApiV1PushVapidPublicKeyGet).mockResolvedValue({
+      data: { publicKey: null },
+    } as never)
+    expect(await getVapidPublicKey()).toBeNull()
   })
 
   it("normalizes blank/missing to null", async () => {
@@ -245,6 +316,16 @@ describe("getVapidPublicKey null-normalization", () => {
       data: { publicKey: null },
     } as never)
     expect(await getVapidPublicKey()).toBeNull()
+  })
+
+  it("rejects a malformed VAPID response with the endpoint context", async () => {
+    vi.mocked(gen.getVapidPublicKeyApiV1PushVapidPublicKeyGet).mockResolvedValue({
+      data: { publicKey: 42 },
+    } as never)
+    await expect(getVapidPublicKey()).rejects.toMatchObject({
+      name: "ApiResponseValidationError",
+      message: expect.stringContaining("GET /api/v1/push/vapid-public-key"),
+    })
   })
 })
 
@@ -259,6 +340,29 @@ describe("fetchPushTopics defaults", () => {
       topics: ["system"],
       has_preferences: false,
       updated_at: null,
+    })
+  })
+
+  it("defaults an omitted topics array and optional preference metadata", async () => {
+    vi.mocked(gen.getPushTopicsApiV1PushTopicsGet).mockResolvedValue({
+      data: { allowed: ["system"] },
+    } as never)
+    await expect(fetchPushTopics()).resolves.toEqual({
+      allowed: ["system"],
+      topics: [],
+      has_preferences: false,
+      updated_at: null,
+    })
+  })
+
+  it("preserves endpoint context when the topics payload is malformed", async () => {
+    vi.mocked(gen.getPushTopicsApiV1PushTopicsGet).mockResolvedValue({
+      data: { allowed: [42], topics: ["system"] },
+    } as never)
+
+    await expect(fetchPushTopics()).rejects.toMatchObject({
+      name: "ApiResponseValidationError",
+      message: expect.stringContaining("GET /api/v1/push/topics"),
     })
   })
 })
@@ -276,6 +380,19 @@ describe("admin topics", () => {
     } as never)
     const result = await fetchAdminUserTopics(UUID)
     expect(result.email).toBe("a@b.c")
+    expect(gen.adminGetUserTopicsApiV1PushAdminTopicsUserIdGet).toHaveBeenCalledWith({
+      path: { user_id: UUID },
+    })
+  })
+
+  it("reports the fetch endpoint when admin topic data is invalid", async () => {
+    vi.mocked(gen.adminGetUserTopicsApiV1PushAdminTopicsUserIdGet).mockResolvedValue({
+      data: { user_id: "not-a-uuid", email: "", topics: [], allowed_topics: [] },
+    } as never)
+    await expect(fetchAdminUserTopics(UUID)).rejects.toMatchObject({
+      name: "ApiResponseValidationError",
+      message: expect.stringContaining(`/api/v1/push/admin/topics/${UUID}`),
+    })
   })
 
   it("updateAdminUserTopics sends the body + validates", async () => {
@@ -294,6 +411,16 @@ describe("admin topics", () => {
       body: { topics: ["events"] },
     })
   })
+
+  it("reports the update endpoint when admin topic data is invalid", async () => {
+    vi.mocked(gen.adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut).mockResolvedValue({
+      data: { user_id: "not-a-uuid", email: "", topics: [], allowed_topics: [] },
+    } as never)
+    await expect(updateAdminUserTopics(UUID, ["events"])).rejects.toMatchObject({
+      name: "ApiResponseValidationError",
+      message: expect.stringContaining(`/api/v1/push/admin/topics/${UUID}`),
+    })
+  })
 })
 
 describe("dead-letter queue (generated client)", () => {
@@ -308,6 +435,17 @@ describe("dead-letter queue (generated client)", () => {
       query: { limit: 10, offset: 0 },
       signal: controller.signal,
       throwOnError: true,
+    })
+  })
+
+  it("reports the dead-letter endpoint when its response is malformed", async () => {
+    vi.mocked(gen.listNotificationDeadLetters).mockResolvedValue({
+      data: { items: [{ id: "job-1" }], total: 1 },
+    } as never)
+
+    await expect(fetchDeadLetterQueue()).rejects.toMatchObject({
+      name: "ApiResponseValidationError",
+      message: expect.stringContaining("GET /api/v1/notifications/admin/dead-letter"),
     })
   })
 

@@ -30,7 +30,6 @@ MUTMUT_WALL_TIMEOUT_MULTIPLIER = 15
 # the shortest exact mutation shard while preserving a fail-closed outer cap.
 MUTMUT_WALL_TIMEOUT_GRACE_SECONDS = 6
 METADATA_AND_STARTUP_RESERVE_SECONDS = 900
-SELECTED_TEST_PHASE_MULTIPLIER = 2
 CONTROL_CYCLE_RESERVE_SECONDS = 15
 TERMINATION_GRACE_SECONDS = 30
 # Keep the CI cap below the six-hour mutation job envelope.  The workflow
@@ -58,6 +57,8 @@ class ShardBudget:
     selected_count: int
     max_children: int
     selected_test_union_seconds: int
+    forced_fail_test_seconds: int
+    metadata_and_startup_reserve_seconds: int
     pre_mutation_reserve_seconds: int
     watchdog_execution_cap_seconds: int
     control_cycle_count: int
@@ -74,6 +75,10 @@ class ShardBudget:
             "selected_count": self.selected_count,
             "max_children": self.max_children,
             "selected_test_union_seconds": self.selected_test_union_seconds,
+            "forced_fail_test_seconds": self.forced_fail_test_seconds,
+            "metadata_and_startup_reserve_seconds": (
+                self.metadata_and_startup_reserve_seconds
+            ),
             "pre_mutation_reserve_seconds": self.pre_mutation_reserve_seconds,
             "watchdog_execution_cap_seconds": self.watchdog_execution_cap_seconds,
             "control_cycle_count": self.control_cycle_count,
@@ -250,12 +255,12 @@ def _estimated_test_seconds(
     return estimates
 
 
-def _selected_test_union_seconds(
+def _selected_test_names(
     selected_mutants: Iterable[str],
     tests_by_function: Mapping[str, Sequence[str]],
     durations: Mapping[str, float],
-) -> int:
-    """Return the de-duplicated mapped test duration for an exact shard."""
+) -> set[str]:
+    """Return the validated de-duplicated test IDs for an exact shard."""
 
     selected_test_names: set[str] = set()
     for mutant_name in selected_mutants:
@@ -277,7 +282,47 @@ def _selected_test_union_seconds(
                 f"{mutant_name!r}: {missing_durations}"
             )
         selected_test_names.update(test_names)
+    return selected_test_names
+
+
+def _selected_test_union_seconds(
+    selected_mutants: Iterable[str],
+    tests_by_function: Mapping[str, Sequence[str]],
+    durations: Mapping[str, float],
+) -> int:
+    """Return the de-duplicated mapped clean-test duration for an exact shard."""
+
+    selected_test_names = _selected_test_names(
+        selected_mutants, tests_by_function, durations
+    )
     return _conservative_ceil(_duration_total(selected_test_names, durations))
+
+
+def _forced_fail_test_seconds(
+    selected_mutants: Iterable[str],
+    tests_by_function: Mapping[str, Sequence[str]],
+    durations: Mapping[str, float],
+) -> int:
+    """Bound mutmut's forced-fail phase to its first failing test.
+
+    ``run_mutmut_with_stats.py`` scopes the forced-fail invocation to the same
+    mapped union as the clean baseline, while the repository's mutmut pytest
+    arguments include ``-x``.  ``MUTANT_UNDER_TEST=fail`` therefore stops at
+    the first test that reaches a selected trampoline; charging the slowest
+    mapped test is a conservative bound without paying for the full union a
+    second time.  The clean phase remains fully charged by
+    ``_selected_test_union_seconds`` above.
+    """
+
+    selected_test_names = _selected_test_names(
+        selected_mutants, tests_by_function, durations
+    )
+    if not selected_test_names:
+        raise ValueError("mutmut stats contain no mapped tests for selected mutants")
+    return max(
+        _conservative_ceil(_duration_total((test_name,), durations))
+        for test_name in selected_test_names
+    )
 
 
 def _schedule_execution_caps(
@@ -341,12 +386,19 @@ def calculate_shard_budget(
     *,
     max_children: int,
     control_cycle_reserve_seconds: int = CONTROL_CYCLE_RESERVE_SECONDS,
+    metadata_and_startup_reserve_seconds: int = METADATA_AND_STARTUP_RESERVE_SECONDS,
 ) -> ShardBudget:
     """Derive a conservative, stats-backed whole-process timeout."""
     if max_children < 1:
         raise ValueError("max_children must be positive")
     if control_cycle_reserve_seconds < 1:
         raise ValueError("control_cycle_reserve_seconds must be positive")
+    if (
+        isinstance(metadata_and_startup_reserve_seconds, bool)
+        or not isinstance(metadata_and_startup_reserve_seconds, int)
+        or metadata_and_startup_reserve_seconds < 0
+    ):
+        raise ValueError("metadata_and_startup_reserve_seconds must be non-negative")
     if not selected_mutants:
         raise ValueError("selected mutant names must not be empty")
     if len(selected_mutants) != len(set(selected_mutants)):
@@ -359,9 +411,13 @@ def calculate_shard_budget(
     selected_test_union_seconds = _selected_test_union_seconds(
         selected_mutants, tests_by_function, validated_durations
     )
+    forced_fail_test_seconds = _forced_fail_test_seconds(
+        selected_mutants, tests_by_function, validated_durations
+    )
     pre_mutation_reserve = (
-        METADATA_AND_STARTUP_RESERVE_SECONDS
-        + SELECTED_TEST_PHASE_MULTIPLIER * selected_test_union_seconds
+        metadata_and_startup_reserve_seconds
+        + selected_test_union_seconds
+        + forced_fail_test_seconds
     )
     watchdog_execution_cap = _schedule_execution_caps(
         estimates, max_children=max_children
@@ -377,6 +433,8 @@ def calculate_shard_budget(
         selected_count=len(selected_mutants),
         max_children=max_children,
         selected_test_union_seconds=selected_test_union_seconds,
+        forced_fail_test_seconds=forced_fail_test_seconds,
+        metadata_and_startup_reserve_seconds=metadata_and_startup_reserve_seconds,
         pre_mutation_reserve_seconds=pre_mutation_reserve,
         watchdog_execution_cap_seconds=watchdog_execution_cap,
         control_cycle_count=control_cycle_count,
@@ -406,6 +464,15 @@ def _parse_args() -> argparse.Namespace:
         help="parent orchestration reserve charged for every selected child",
     )
     parser.add_argument(
+        "--metadata-startup-reserve-seconds",
+        type=int,
+        default=METADATA_AND_STARTUP_RESERVE_SECONDS,
+        help=(
+            "reserve for metadata/startup work outside the selected-test phase; "
+            "reuse-generated-universe callers may provide an evidence-backed value"
+        ),
+    )
+    parser.add_argument(
         "--max-timeout-seconds",
         type=int,
         default=DEFAULT_MAX_TIMEOUT_SECONDS,
@@ -417,6 +484,8 @@ def _parse_args() -> argparse.Namespace:
         parser.error("--max-children must be positive")
     if args.control_cycle_reserve_seconds < 1:
         parser.error("--control-cycle-reserve-seconds must be positive")
+    if args.metadata_startup_reserve_seconds < 0:
+        parser.error("--metadata-startup-reserve-seconds must be non-negative")
     if args.max_timeout_seconds < 1:
         parser.error("--max-timeout-seconds must be positive")
     return args
@@ -434,6 +503,7 @@ def main() -> None:
             durations,
             max_children=args.max_children,
             control_cycle_reserve_seconds=args.control_cycle_reserve_seconds,
+            metadata_and_startup_reserve_seconds=args.metadata_startup_reserve_seconds,
         )
         if budget.outer_timeout_seconds > args.max_timeout_seconds:
             raise ValueError(

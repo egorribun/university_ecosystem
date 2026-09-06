@@ -120,7 +120,7 @@ export const resetEtagCache = () => {
   responseCache.clear()
 }
 
-const isAbortError = (error: unknown) => {
+export const isAbortError = (error: unknown): boolean => {
   if (error instanceof DOMException) return error.name === "AbortError"
   if (error !== null && typeof error === "object" && "name" in error) {
     const { name } = error
@@ -132,7 +132,7 @@ const isAbortError = (error: unknown) => {
 // TD-14-04 (audit Wave 14): Extracted — was hardcoded as 2000 in three places.
 const DEFAULT_RETRY_AFTER_MS = 2000
 
-const getRetryDelay = (headers: Record<string, unknown> | undefined) => {
+export const getRetryDelay = (headers: Record<string, unknown> | undefined): number => {
   if (!headers) return DEFAULT_RETRY_AFTER_MS
   const header = headers["retry-after"] ?? headers["Retry-After"]
   if (typeof header !== "string") return DEFAULT_RETRY_AFTER_MS

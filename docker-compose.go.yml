@@ -109,6 +109,15 @@ services:
         condition: service_completed_successfully
       backend:
         condition: service_healthy
+    # The distroless image carries the statically linked probe built in
+    # services/file-processor/Dockerfile. Keep the overlay independently
+    # health-aware when it is combined with the base stack.
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - internal
       - event_net

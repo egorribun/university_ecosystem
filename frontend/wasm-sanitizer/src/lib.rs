@@ -2,9 +2,7 @@ use ammonia::Builder;
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-pub fn sanitize_rich_text(html: &str) -> String {
-    let mut tags = HashSet::new();
+fn sanitize_rich_text_once(html: &str) -> String {
     let allowed_tags = [
         "p",
         "br",
@@ -28,46 +26,79 @@ pub fn sanitize_rich_text(html: &str) -> String {
         "blockquote",
         "code",
         "pre",
-    ];
-    for t in allowed_tags {
-        tags.insert(t);
-    }
+    ]
+    .into_iter()
+    .collect::<HashSet<_>>();
 
-    let mut attributes = HashMap::new();
-    let mut a_attrs = HashSet::new();
-    a_attrs.insert("href");
-    a_attrs.insert("title");
-    a_attrs.insert("target");
-    attributes.insert("a", a_attrs);
+    let attributes = HashMap::from([(
+        "a",
+        ["href", "title", "target"]
+            .into_iter()
+            .collect::<HashSet<_>>(),
+    )]);
 
-    let mut url_schemes = HashSet::new();
-    url_schemes.insert("http");
-    url_schemes.insert("https");
+    let url_schemes = ["http", "https"].into_iter().collect::<HashSet<_>>();
 
     Builder::new()
-        .tags(tags)
+        .tags(allowed_tags)
         .tag_attributes(attributes)
         .url_schemes(url_schemes)
-        // ammonia automatically handles rel="noopener noreferrer" for target="_blank"
+        // ammonia automatically handles rel="noopener noreferrer" for
+        // target="_blank".
         .link_rel(Some("noopener noreferrer"))
-        // We do not want to allow relative URLs for this strict sanitizer
-        // Or if we do, ammonia's default handles it. Let's strictly disallow data:/javascript:
         .clean(html)
         .to_string()
 }
 
+fn sanitize_html_basic_once(html: &str) -> String {
+    let allowed_tags = ["b", "i", "em", "strong"]
+        .into_iter()
+        .collect::<HashSet<_>>();
+    Builder::new().tags(allowed_tags).clean(html).to_string()
+}
+
+fn strip_html_once(html: &str) -> String {
+    Builder::new().tags(HashSet::new()).clean(html).to_string()
+}
+
+/// Keep sanitizer output stable when html5ever repairs malformed fragments
+/// across multiple parse/serialize cycles. The bound prevents hostile input
+/// from consuming unbounded CPU while retaining the restrictive ammonia policy
+/// on every pass.
+fn canonicalize(html: &str, clean_once: fn(&str) -> String) -> String {
+    const MAX_PASSES: usize = 8;
+
+    let mut current = strip_unsafe_markers(clean_once(html));
+    for _ in 1..MAX_PASSES {
+        let next = strip_unsafe_markers(clean_once(&current));
+        if next == current {
+            return current;
+        }
+        current = next;
+    }
+    current
+}
+
+#[wasm_bindgen]
+pub fn sanitize_rich_text(html: &str) -> String {
+    canonicalize(html, sanitize_rich_text_once)
+}
+
 #[wasm_bindgen]
 pub fn sanitize_html_basic(html: &str) -> String {
-    let mut tags = HashSet::new();
-    for t in ["b", "i", "em", "strong"] {
-        tags.insert(t);
-    }
-    Builder::new().tags(tags).clean(html).to_string()
+    canonicalize(html, sanitize_html_basic_once)
 }
 
 #[wasm_bindgen]
 pub fn strip_html(html: &str) -> String {
-    Builder::new().tags(HashSet::new()).clean(html).to_string()
+    canonicalize(html, strip_html_once)
+}
+
+/// Keep the browser WASM sanitizer byte-for-byte compatible with the backend
+/// sanitizer. html5ever (used by ammonia) preserves NUL and BOM markers in
+/// text nodes, so strip them after every sanitization mode.
+fn strip_unsafe_markers(value: String) -> String {
+    value.replace(['\0', '\u{feff}'], "")
 }
 
 #[wasm_bindgen]
@@ -77,19 +108,41 @@ pub fn sanitize_rich_text_raw(ptr: *const u8, len: usize) -> Result<String, Stri
         return Err(String::from("Null pointer"));
     }
 
-    #[cfg(target_arch = "wasm32")]
+    // A raw pointer received by a native caller has no provenance or length
+    // metadata that Rust can validate safely.  Refuse native execution rather
+    // than creating an unchecked slice and risking undefined memory reads.
+    #[cfg(not(target_arch = "wasm32"))]
     {
-        let mem_size = core::arch::wasm32::memory_size::<0>() * 65536;
-        let start = ptr as usize;
-        if start > mem_size || len > mem_size || start.saturating_add(len) > mem_size {
-            return Err(String::from("Out of bounds pointer/length"));
-        }
+        let _ = (ptr, len);
+        return Err(String::from(
+            "Raw pointer sanitization is supported only on wasm32",
+        ));
     }
 
-    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-    let s = std::str::from_utf8(slice).map_err(|e| format!("Invalid UTF-8: {}", e))?;
+    #[cfg(target_arch = "wasm32")]
+    {
+        const WASM_PAGE_SIZE: usize = 65_536;
+        let mem_size = core::arch::wasm32::memory_size::<0>()
+            .checked_mul(WASM_PAGE_SIZE)
+            .ok_or_else(|| String::from("WASM memory size overflow"))?;
+        let start = ptr as usize;
+        let end = start
+            .checked_add(len)
+            .ok_or_else(|| String::from("Pointer/length overflow"))?;
+        if start > mem_size || end > mem_size {
+            return Err(String::from("Out of bounds pointer/length"));
+        }
 
-    Ok(sanitize_rich_text(s))
+        // The arithmetic checks above establish that the range lies inside
+        // the active linear memory before this one unavoidable FFI read.
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let s = std::str::from_utf8(slice).map_err(|e| format!("Invalid UTF-8: {}", e))?;
+
+        return Ok(sanitize_rich_text(s));
+    }
+
+    #[allow(unreachable_code)]
+    Err(String::from("Raw pointer sanitization is unavailable"))
 }
 
 // Native unit tests (testing session 9). #[wasm_bindgen] leaves the functions
@@ -189,6 +242,22 @@ mod tests {
     }
 
     #[test]
+    fn rich_text_malformed_fuzz_regression_is_idempotent() {
+        let input = "*zq**<h2>\u{18}nav**<h*<h2><h2><5>bdo";
+        let once = sanitize_rich_text(input);
+        assert_eq!(sanitize_rich_text(&once), once);
+    }
+
+    #[test]
+    fn canonicalization_is_bounded_for_non_converging_cleaner() {
+        fn append_marker(value: &str) -> String {
+            format!("{value}x")
+        }
+
+        assert_eq!(canonicalize("", append_marker), "xxxxxxxx");
+    }
+
+    #[test]
     fn basic_keeps_only_inline_emphasis_tags() {
         let out = sanitize_html_basic("<p>para</p><b>bold</b><script>x</script>");
         assert!(out.contains("<b>bold</b>"), "b must survive: {out}");
@@ -250,7 +319,21 @@ mod tests {
 
         let valid_utf8 = b"<p>hello</p>";
         let res = sanitize_rich_text_raw(valid_utf8.as_ptr(), valid_utf8.len());
-        assert_eq!(res.unwrap(), "<p>hello</p>");
+        assert!(res.is_err(), "native raw-pointer calls must fail closed");
+    }
+
+    #[test]
+    fn sanitizers_strip_null_bytes_and_bom() {
+        let input = "\u{feff}<p>safe\0 text</p>";
+        for output in [
+            sanitize_rich_text(input),
+            sanitize_html_basic(input),
+            strip_html(input),
+        ] {
+            assert!(!output.contains('\0'));
+            assert!(!output.contains('\u{feff}'));
+            assert!(output.contains("safe"));
+        }
     }
 
     proptest! {

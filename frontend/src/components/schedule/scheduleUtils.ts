@@ -105,11 +105,12 @@ export const readFromStorage = <T>(
     return undefined
   }
 
-  const ts = typeof parsed.timestamp === "number" ? parsed.timestamp : NaN
-  if (!Number.isFinite(ts)) {
+  const timestamp = parsed.timestamp
+  if (!Number.isFinite(timestamp)) {
     storage.remove()
     return undefined
   }
+  const ts = timestamp
 
   if (Date.now() - ts > maxAgeMs) {
     storage.remove()
@@ -143,7 +144,8 @@ const TIME_RE = /(\d{2}):(\d{2})/
 
 /** Safely extract HH:MM string from a lesson time field. Returns "" if invalid. */
 function extractHHMM(raw: string | null | undefined): string {
-  if (!raw) return ""
+  if (typeof raw !== "string") return ""
+  if (raw.length === 0) return ""
   const match = TIME_RE.exec(raw)
   return match ? `${match[1]}:${match[2]}` : ""
 }
@@ -163,7 +165,9 @@ export function parseMinutes(s?: string | null): number | null {
   if (match) {
     const h = Number(match[1])
     const m = Number(match[2])
-    if (h >= 0 && h <= 23 && m >= 0 && m <= 59) return h * 60 + m
+    // TIME_RE only accepts decimal digits, so lower bounds are implicit.
+    // Keep the actual domain checks focused on the upper clock limits.
+    if (h <= 23 && m <= 59) return h * 60 + m
     return null
   }
   // Fallback: full date parse
@@ -184,7 +188,6 @@ export { toDate }
 export function getTodayIdx(): number {
   const d = new Date()
   const day = d.getDay() // 0 (Sun) to 6 (Sat)
-  if (day === 0) return -1
   return day - 1
 }
 
@@ -202,10 +205,9 @@ export function buildTable(
       .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
   )
   const maxLessons = Math.max(...lessonsByDay.map((arr) => arr.length), 0)
-  const rows: (Lesson | null)[][] = []
-  for (let i = 0; i < maxLessons; ++i)
-    rows.push(weekdayOrder.map((_, d) => lessonsByDay[d]?.[i] ?? null))
-  return rows
+  return Array.from({ length: maxLessons }, (_, rowIndex) =>
+    weekdayOrder.map((_, dayIndex) => lessonsByDay[dayIndex]![rowIndex] ?? null)
+  )
 }
 
 // ============================================================================

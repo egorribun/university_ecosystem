@@ -8,7 +8,8 @@ const MIN_SAMPLE_RATE = 0
 const MAX_SAMPLE_RATE = 1
 
 function parseSampleRate(value: string | undefined): number | undefined {
-  const parsed = value === undefined ? Number.NaN : Number.parseFloat(value)
+  if (value === undefined) return undefined
+  const parsed = Number.parseFloat(value.trim())
   if (Number.isNaN(parsed)) return undefined
   if (parsed < MIN_SAMPLE_RATE || parsed > MAX_SAMPLE_RATE) return undefined
   return parsed

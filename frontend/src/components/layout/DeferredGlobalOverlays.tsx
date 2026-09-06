@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react"
+import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import OfflineIndicator from "@/components/feedback/OfflineIndicator"
 import { ensurePushMessageBridge } from "@/push/pushMessageBus"
 
@@ -20,6 +20,16 @@ export const DEFERRED_INTERACTION_OPTIONS = { once: true, passive: true } as con
 export function createMountedCommit(isMounted: () => boolean, commit: () => void) {
   return () => {
     if (isMounted()) commit()
+  }
+}
+
+export function createDeferredMountLifecycle(commit: () => void) {
+  let mounted = true
+  return {
+    commit: createMountedCommit(() => mounted, commit),
+    unmount: () => {
+      mounted = false
+    },
   }
 }
 
@@ -56,15 +66,13 @@ const InstallPrompt = lazy(() => import("@/components/pwa/InstallPrompt"))
  */
 export function DeferredGlobalOverlays() {
   const [ready, setReady] = useState(false)
+  const lifecycleEffectKey = useRef(Symbol("deferred-overlays"))
 
   useEffect(() => {
     ensurePushMessageBridge()
 
-    let mounted = true
-    const commitReady = createMountedCommit(
-      () => mounted,
-      () => setReady(true)
-    )
+    const lifecycle = createDeferredMountLifecycle(() => setReady(true))
+    const commitReady = lifecycle.commit
     let timer: number | null = window.setTimeout(() => {
       timer = null
       const idleWindow = window as Window & {
@@ -100,7 +108,7 @@ export function DeferredGlobalOverlays() {
     )
 
     return () => {
-      mounted = false
+      lifecycle.unmount()
       clearDeferredTimer(timer, window.clearTimeout)
       const idleWindow = window as Window & {
         cancelIdleCallback?: (handle: number) => void
@@ -110,7 +118,7 @@ export function DeferredGlobalOverlays() {
         window.removeEventListener(eventName, promoteOnInteraction)
       )
     }
-  }, [])
+  }, [lifecycleEffectKey])
 
   return (
     <>

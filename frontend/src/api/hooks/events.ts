@@ -207,27 +207,27 @@ export const useEventsListQuery = (
   // Read from localStorage as fallback for offline mode
   const placeholderData = useMemo(() => {
     if (typeof window === "undefined") return undefined
-    try {
-      const activity =
-        normalized.is_active === null ? "all" : normalized.is_active ? "active" : "archive"
-      const storage = new StorageItem<Event[]>(`events:list:${normalized.language}:${activity}`)
-      const items = storage.get()
-      if (!Array.isArray(items) || items.length === 0) return undefined
-      return {
-        pages: [
-          {
-            items,
-            total: items.length,
-            limit: normalized.limit,
-            cursor: null,
-            next_cursor: null,
-            has_more: false,
-          },
-        ],
-        pageParams: [null],
-      }
-    } catch {
-      return undefined
+    const activity =
+      normalized.is_active === null ? "all" : normalized.is_active ? "active" : "archive"
+    // StorageItem#get is itself fail-closed (including blocked browser storage
+    // getters). Keeping this read path free of a second catch makes the
+    // persistence contract single-owner and prevents an unexpected adapter
+    // implementation from silently bypassing the typed fallback below.
+    const storage = new StorageItem<Event[]>(`events:list:${normalized.language}:${activity}`)
+    const items = storage.get()
+    if (!Array.isArray(items) || items.length === 0) return undefined
+    return {
+      pages: [
+        {
+          items,
+          total: items.length,
+          limit: normalized.limit,
+          cursor: null,
+          next_cursor: null,
+          has_more: false,
+        },
+      ],
+      pageParams: [null],
     }
   }, [normalized.language, normalized.is_active, normalized.limit])
 
@@ -490,30 +490,30 @@ export function useEventNavigation(currentId: string): EventNav {
       queryKey: ["events", "list"],
     })
 
-    const allItems: Event[] = []
-    for (const [, data] of queries) {
-      if (data?.pages) {
-        for (const page of data.pages) {
-          if (page.items) allItems.push(...page.items)
-        }
-      }
-    }
+    const allItems: Event[] = queries.flatMap(
+      ([, data]) =>
+        data?.pages?.flatMap((page) => page.items ?? new Array<Event>()) ?? new Array<Event>()
+    )
 
     // Deduplicate preserving order
     const seen = new Set<string>()
-    const ordered: Event[] = []
+    const orderedById = new Map<string, Event>()
     for (const item of allItems) {
       if (!seen.has(item.id)) {
         seen.add(item.id)
-        ordered.push(item)
+        orderedById.set(item.id, item)
       }
     }
+    const ordered = Array.from(orderedById.values())
 
     const currentIndex = ordered.findIndex((e) => e.id === currentId)
     if (currentIndex === -1) return fallback
 
-    const prev = currentIndex > 0 ? ordered[currentIndex - 1] : null
-    const next = currentIndex < ordered.length - 1 ? ordered[currentIndex + 1] : null
+    // `currentIndex` is known to be in bounds above. Indexing with nullish
+    // fallback keeps the boundary contract explicit without duplicating
+    // arithmetic comparisons that can drift from the array semantics.
+    const prev = ordered[currentIndex - 1] ?? null
+    const next = ordered[currentIndex + 1] ?? null
 
     return {
       prevId: prev?.id ?? null,

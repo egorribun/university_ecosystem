@@ -94,6 +94,9 @@ def test_config_dependent_settings_warnings():
     """Test low pool size and identical read replica warnings in production."""
     settings = Settings(_allow_missing=True)
     settings.environment = "production"
+    # Production authentication-capable settings must always use an explicit
+    # dedicated revocation store; the loopback URL is reserved for local runs.
+    settings.revocation_redis_url = "redis://revocation.internal:6379/0"
 
     # Low pool size warning
     settings.database_pool_size = 1

@@ -10,13 +10,13 @@ Logs and records metrics for slow API requests.
 # avoid leaking internal timing data to external clients in production.
 
 import asyncio
-import logging
 import time
 from typing import Any, TypeVar
 
 from app.core.config import settings
+from app.core.logging import get_logger
 
-logger = logging.getLogger("app.timing")
+logger = get_logger("app.timing")
 
 # Threshold for slow request logging (milliseconds)
 SLOW_REQUEST_THRESHOLD_MS: float = 500.0

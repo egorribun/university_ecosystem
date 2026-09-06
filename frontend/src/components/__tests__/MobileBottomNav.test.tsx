@@ -8,13 +8,16 @@ const mainNavLabel = () => i18n.t("navigation:aria.mainNavigation")
 
 describe("MobileBottomNav", () => {
   it("does not render on auth pages", async () => {
-    await renderWithRouter({
-      ui: MobileBottomNav,
-      path: "/login",
-      initialPath: "/login",
-    })
+    for (const path of ["/login", "/register", "/forgot-password", "/reset-password"]) {
+      const view = await renderWithRouter({
+        ui: MobileBottomNav,
+        path,
+        initialPath: path,
+      })
 
-    expect(screen.queryByRole("navigation", { name: mainNavLabel() })).toBeNull()
+      expect(screen.queryByRole("navigation", { name: mainNavLabel() })).toBeNull()
+      view.unmount()
+    }
   })
 
   it("renders links for main sections", async () => {
@@ -26,6 +29,7 @@ describe("MobileBottomNav", () => {
 
     const nav = screen.getByRole("navigation", { name: mainNavLabel() })
     expect(nav).toBeInTheDocument()
+    expect(nav).not.toHaveAttribute("aria-hidden")
     const links = within(nav).getAllByRole("link")
     expect(links).toHaveLength(5)
     expect(
@@ -207,6 +211,20 @@ describe("MobileBottomNav", () => {
     expect(raf).not.toHaveBeenCalled()
   })
 
+  it("does not cancel a frame when no deferred scroll was scheduled", async () => {
+    const raf = vi.spyOn(window, "requestAnimationFrame")
+    const cancel = vi.spyOn(window, "cancelAnimationFrame")
+    const view = await renderWithRouter({
+      ui: MobileBottomNav,
+      path: "/dashboard",
+      initialPath: "/dashboard",
+    })
+
+    view.unmount()
+    expect(raf).not.toHaveBeenCalled()
+    expect(cancel).not.toHaveBeenCalled()
+  })
+
   it("cancels deferred scrolling and visual viewport listeners on unmount", async () => {
     const resizeListeners = new Set<EventListener>()
     const scrollListeners = new Set<EventListener>()
@@ -232,6 +250,7 @@ describe("MobileBottomNav", () => {
     })
     expect(visualViewport.addEventListener).toHaveBeenCalledWith("resize", expect.any(Function))
     expect(visualViewport.addEventListener).toHaveBeenCalledWith("scroll", expect.any(Function))
+    expect(visualViewport.addEventListener).toHaveBeenCalledTimes(2)
 
     result.unmount()
     expect(cancelRaf).toHaveBeenCalledWith(42)
@@ -263,10 +282,13 @@ describe("MobileBottomNav", () => {
 
     visualViewport.height = window.innerHeight - 100
     act(() => listeners.forEach((listener) => listener(new Event("resize"))))
+
+    expect(visualViewport.addEventListener).toHaveBeenCalledTimes(2)
     expect(screen.getByRole("navigation", { name: mainNavLabel() })).toHaveAttribute(
       "data-virtual-keyboard",
       "closed"
     )
+    expect(screen.getByRole("navigation", { name: mainNavLabel() })).not.toHaveAttribute("inert")
 
     visualViewport.height = window.innerHeight - 200
     const input = document.createElement("input")

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -163,6 +163,41 @@ describe("ReactionPill integration contracts", () => {
       "py-0.5",
       "text-sm",
       "transition-colors"
+    )
+    expect(container.querySelector("[data-reaction-ui]")).toBe(button)
+  })
+
+  it("treats pen long-press as a popover gesture and suppresses its follow-up click", () => {
+    vi.useFakeTimers()
+    try {
+      const { onToggle } = renderContract({ chatId: "chat-pen", emoji: "🖊️", count: 1 })
+      const button = screen.getByRole("button")
+
+      fireEvent.pointerDown(button, { pointerType: "pen" })
+      act(() => {
+        vi.advanceTimersByTime(500)
+      })
+
+      expect(screen.getByText("messenger:reactions.whoReacted")).toBeInTheDocument()
+      expect(mocks.useQuery).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: true }))
+
+      fireEvent.click(button)
+      expect(onToggle).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("keeps pressed state, accessible tally and inactive styling distinct", () => {
+    const { container } = renderContract({ reactedByMe: true, emoji: "✅", count: 0 })
+    const button = screen.getByRole("button")
+
+    expect(button).toHaveAttribute("aria-pressed", "true")
+    expect(button).toHaveAttribute("aria-label", "messenger:reactions.tally")
+    expect(button).toHaveClass(
+      "border-(--color-violet-500)/(--opacity-medium)",
+      "bg-(--color-violet-500)/(--opacity-soft)",
+      "text-(--text-primary)"
     )
     expect(container.querySelector("[data-reaction-ui]")).toBe(button)
   })

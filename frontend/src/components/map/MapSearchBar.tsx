@@ -67,6 +67,11 @@ export function focusSearchInput(input: HTMLInputElement | null): void {
   if (input) input.focus()
 }
 
+/** Focus may reopen the list only when the current query has results. */
+export function shouldOpenSearchOnFocus(resultCount: number): boolean {
+  return resultCount > 0
+}
+
 interface MapSearchBarProps {
   buildings: CampusBuilding[]
   onSelectBuilding: (letter: BuildingId) => void
@@ -98,6 +103,7 @@ export function MapSearchBar({
   // Tracks the blur→close timeout so it can be cancelled on unmount or explicit
   // close events, preventing state updates into a torn-down environment.
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lifecycleEffectKey = useRef(Symbol("map-search-bar"))
   // A successful keyboard/click selection deliberately blurs the input. That
   // blur must not schedule a delayed close which can race with an immediate
   // second search and swallow its Escape/Enter key handling.
@@ -109,7 +115,7 @@ export function MapSearchBar({
         clearTimeout(blurTimeoutRef.current)
       }
     }
-  }, [])
+  }, [lifecycleEffectKey])
 
   const results = useMemo((): SearchResult[] => {
     const q = query.trim().toLowerCase()
@@ -202,13 +208,7 @@ export function MapSearchBar({
 
   // useImperativeHandle runs after the input is committed, so the local DOM
   // ref is populated even though it is nullable during render.
-  const imperativeHandleIdentity = useMemo(() => searchInputRef, [searchInputRef])
-  useImperativeHandle(searchInputRef, () => {
-    // Keep the handle tied to the current external ref identity when a
-    // parent swaps refs during a route transition.
-    void imperativeHandleIdentity
-    return inputRef.current!
-  }, [imperativeHandleIdentity])
+  useImperativeHandle(searchInputRef, () => inputRef.current!)
 
   // Group results
   const buildingResults = results.filter((r) => r.type === "building")
@@ -233,7 +233,10 @@ export function MapSearchBar({
             setIsOpen(true)
             setActiveIdx(null)
           }}
-          onFocus={() => results.length > 0 && setIsOpen(true)}
+          onFocus={() => {
+            if (!shouldOpenSearchOnFocus(results.length)) return
+            setIsOpen(true)
+          }}
           onBlur={() => {
             if (skipNextBlurCloseRef.current) {
               skipNextBlurCloseRef.current = false

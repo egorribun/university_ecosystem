@@ -627,7 +627,10 @@ def test_bounded_shutdown_logs_timeout_warning_for_hanging_provider() -> None:
             finished.set()
 
     logger = MagicMock()
-    with patch.object(observability.logging, "getLogger", return_value=logger):
+    # The production module owns a structured logger at import time; patch
+    # that handle directly so the test remains independent of stdlib logger
+    # construction and verifies the actual warning sink.
+    with patch.object(observability, "_logger", logger):
         observability._shutdown_otel_providers_bounded((HangingProvider(),))
 
     try:

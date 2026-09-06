@@ -61,7 +61,9 @@ describe("fetchWeatherSnapshot", () => {
     const sessionStorage = vi
       .spyOn(window, "sessionStorage", "get")
       .mockReturnValue(undefined as unknown as Storage)
+    const parseSpy = vi.spyOn(JSON, "parse")
     expect(readWeatherCache(COORDS)).toBeNull()
+    expect(parseSpy).not.toHaveBeenCalled()
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(

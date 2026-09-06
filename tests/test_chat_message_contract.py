@@ -15,6 +15,10 @@ import pytest
 from pydantic import ValidationError
 
 import app.core.config.storage as storage_config
+from app.api.websocket import (
+    _is_websocket_payload_within_limits,
+    _message_content_from_payload,
+)
 from app.core.config.storage import StorageSettings
 from app.models.chat import Message
 from app.schemas.chat import MessageCreate, MessageResponse
@@ -77,6 +81,29 @@ def test_message_response_rejects_only_above_canonical_limit() -> None:
         _response("x" * (EXPECTED_LIMIT + 1))
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"type": "message", "content": "direct"}, (True, "direct")),
+        (
+            {"type": "message", "payload": {"content": "nested"}},
+            (True, "nested"),
+        ),
+        ({"type": "ping", "content": "control"}, (False, None)),
+    ],
+)
+def test_message_content_extraction_requires_message_type_and_preserves_shape(
+    payload: dict[str, object], expected: tuple[bool, object]
+) -> None:
+    """Exercise the helper's type guard before the full websocket loop.
+
+    Keeping this contract at the helper boundary makes malformed or control
+    frames fail fast and prevents a wrong type predicate from entering the
+    asynchronous receive loop indefinitely.
+    """
+    assert _message_content_from_payload(payload) == expected
+
+
 def test_frontend_message_limit_is_generated_from_backend_contract() -> None:
     """The browser schema must consume the backend-owned generated value."""
     generated = (
@@ -124,3 +151,102 @@ def test_openapi_message_content_limits_cover_send_edit_and_response() -> None:
     assert edit_content["maxLength"] == EXPECTED_LIMIT
     assert edit_content["minLength"] == 1
     assert response_content["maxLength"] == EXPECTED_LIMIT
+
+
+@pytest.mark.parametrize(
+    ("character", "size", "expected"),
+    [
+        ("x", EXPECTED_LIMIT - 1, True),
+        ("x", EXPECTED_LIMIT, True),
+        ("x", EXPECTED_LIMIT + 1, False),
+        ("я", EXPECTED_LIMIT, False),
+    ],
+)
+def test_websocket_content_limit_is_independent_from_json_framing(
+    character: str, size: int, expected: bool
+) -> None:
+    """Validate message content by code points, not the enclosing JSON length."""
+    import json
+
+    content = character * size
+    frame = json.dumps(
+        {"type": "message", "payload": {"content": content}},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+    assert _is_websocket_payload_within_limits(frame, json.loads(frame)) is expected
+    if len(content) == EXPECTED_LIMIT:
+        assert (
+            len(frame) > EXPECTED_LIMIT
+        )  # JSON framing must not consume content slots
+
+
+def test_websocket_frame_limit_counts_utf8_bytes_for_non_message_commands() -> None:
+    """Transport framing follows ws-hub's 60 KiB raw-byte guard."""
+    import json
+
+    base = json.dumps({"type": "ping", "padding": ""}, separators=(",", ":"))
+    available = 60 * 1024 - len(base.encode("utf-8"))
+    at_limit = json.dumps(
+        {"type": "ping", "padding": "x" * available}, separators=(",", ":")
+    )
+    over_limit = json.dumps(
+        {"type": "ping", "padding": "x" * (available + 1)}, separators=(",", ":")
+    )
+
+    assert len(at_limit.encode("utf-8")) == 60 * 1024
+    assert _is_websocket_payload_within_limits(at_limit, json.loads(at_limit)) is True
+    assert (
+        _is_websocket_payload_within_limits(over_limit, json.loads(over_limit)) is False
+    )
+
+
+def test_websocket_message_content_shapes_are_fail_closed() -> None:
+    """All supported message envelope shapes share the same content contract."""
+    import json
+
+    at_limit = "x" * EXPECTED_LIMIT
+    over_limit = "x" * (EXPECTED_LIMIT + 1)
+    frames = [
+        {"type": "message", "content": at_limit},
+        {"type": "message", "payload": {"content": at_limit}},
+        {"type": "message", "payload": {"message": {"content": at_limit}}},
+        {"type": "message", "payload": {"text": at_limit}},
+        {"type": "message", "payload": {"message": "legacy-text"}},
+        {"type": "message", "payload": {"message": {"text": "legacy-text"}}},
+        {"type": "message", "payload": "legacy-text"},
+    ]
+    for data in frames:
+        frame = json.dumps(data, separators=(",", ":"))
+        assert _is_websocket_payload_within_limits(frame, data) is True
+
+    invalid_content = {"type": "message", "content": 42}
+    invalid_frame = json.dumps(invalid_content, separators=(",", ":"))
+    assert _is_websocket_payload_within_limits(invalid_frame, invalid_content) is False
+
+    nested_over = {"type": "message", "payload": {"message": {"content": over_limit}}}
+    nested_over_frame = json.dumps(nested_over, separators=(",", ":"))
+    assert _is_websocket_payload_within_limits(nested_over_frame, nested_over) is False
+
+    assert _is_websocket_payload_within_limits("[]", []) is False
+
+
+def test_legacy_read_is_scoped_to_python_fallback_not_ws_hub() -> None:
+    """REST owns browser receipts; ``read`` remains only direct-backend compatibility."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    dispatcher = (root / "app/api/ws/dispatcher.py").read_text(encoding="utf-8")
+    ws_hub = (root / "services/ws-hub/pkg/hub/client.go").read_text(encoding="utf-8")
+
+    assert re.search(r"msg_type\s*==\s*[\"']read[\"']", dispatcher)
+    assert re.search(r"allowedMessageTypes.*?\n\}", ws_hub, flags=re.DOTALL)
+    allowlist = re.search(
+        r"var allowedMessageTypes = map\[string\]bool\{(?P<body>.*?)\n\}",
+        ws_hub,
+        flags=re.DOTALL,
+    )
+    assert allowlist is not None
+    assert '"read"' not in allowlist.group("body")

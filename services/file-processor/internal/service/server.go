@@ -42,6 +42,16 @@ const (
 // validateProcessFileRequest performs input validation on gRPC requests.
 // RZ-23-04: reject invalid requests before Temporal workflow start.
 func validateProcessFileRequest(req *pb.ProcessFileRequest) error {
+	if err := validateProcessFileIdentity(req); err != nil {
+		return err
+	}
+	if err := validateProcessFileKeys(req.SourceKey, req.DestKey); err != nil {
+		return err
+	}
+	return validateProcessFileOptions(req.Options)
+}
+
+func validateProcessFileIdentity(req *pb.ProcessFileRequest) error {
 	if req.Id == "" {
 		return status.Error(codes.InvalidArgument, "id is required")
 	}
@@ -51,23 +61,47 @@ func validateProcessFileRequest(req *pb.ProcessFileRequest) error {
 	if req.SourceKey == "" || req.DestKey == "" {
 		return status.Error(codes.InvalidArgument, "source_key and dest_key are required")
 	}
+	return nil
+}
+
+func validateProcessFileKeys(sourceKey, destKey string) error {
 	// RZ-26-04: bound key lengths to prevent Temporal workflow history bloat.
 	const maxKeyLen = 1024
-	if len(req.SourceKey) > maxKeyLen || len(req.DestKey) > maxKeyLen {
+	if len(sourceKey) > maxKeyLen || len(destKey) > maxKeyLen {
 		return status.Errorf(codes.InvalidArgument, "source_key/dest_key exceeds %d bytes", maxKeyLen)
 	}
 	// RZ-27-04: Reject path traversal at gRPC boundary before Temporal workflow
 	// start. sanitizeMinIOKey in workflow.go catches this too (defense in depth).
-	for _, key := range []string{req.SourceKey, req.DestKey} {
-		cleaned := path.Clean(key)
-		if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") {
-			return status.Errorf(codes.InvalidArgument, "path traversal in key: %q", key)
+	for _, key := range []string{sourceKey, destKey} {
+		// Object keys are always relative to the configured tenant prefix.  Check
+		// the raw value before path.Clean: Clean("/../../etc/passwd") yields
+		// "/etc/passwd", which no longer contains a detectable ".." segment.
+		// Reject both slash styles at the boundary so platform-specific input
+		// cannot escape the prefix when a key is later interpreted by another
+		// storage adapter.
+		if err := validateProcessFileKey(key); err != nil {
+			return err
 		}
 	}
-	if len(req.Options) > maxOptionsCount {
-		return status.Errorf(codes.InvalidArgument, "options count %d exceeds limit of %d", len(req.Options), maxOptionsCount)
+	return nil
+}
+
+func validateProcessFileKey(key string) error {
+	if path.IsAbs(key) || strings.HasPrefix(key, "/") || strings.HasPrefix(key, "\\") {
+		return status.Errorf(codes.InvalidArgument, "absolute path is not allowed in key: %q", key)
 	}
-	for k, v := range req.Options {
+	cleaned := path.Clean(key)
+	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") {
+		return status.Errorf(codes.InvalidArgument, "path traversal in key: %q", key)
+	}
+	return nil
+}
+
+func validateProcessFileOptions(options map[string]string) error {
+	if len(options) > maxOptionsCount {
+		return status.Errorf(codes.InvalidArgument, "options count %d exceeds limit of %d", len(options), maxOptionsCount)
+	}
+	for k, v := range options {
 		if len(k) > maxOptionKeyLen || len(v) > maxOptionValueLen {
 			return status.Error(codes.InvalidArgument, "option key/value exceeds size limit")
 		}

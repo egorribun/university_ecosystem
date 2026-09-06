@@ -201,3 +201,21 @@ def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
 
     scan = _step(job, "Scan repo (no baseline)")["run"]
     assert "detect-secrets scan --exclude-files '^\\.secrets\\.baseline$'" in scan
+
+
+def test_semgrep_ce_scan_always_covers_the_suppression_ledger() -> None:
+    """The CE fallback must scan all sources on every event.
+
+    A diff-aware baseline can hide an unchanged in-source suppression. The
+    blocking validator intentionally requires every reviewed ledger entry to
+    be observed, so the unauthenticated CE path must use a complete scan.
+    """
+
+    job = _workflow(SECURITY_AUDIT)["jobs"]["semgrep"]
+    run = _step(job, "Run Semgrep SAST")["run"]
+    full_scan = (
+        "semgrep scan --config auto \\\n"
+        "    --error --sarif --sarif-output=semgrep.sarif"
+    )
+    assert full_scan in run
+    assert "--baseline-commit" not in run

@@ -26,6 +26,73 @@ def test_redact_pii_masks_embedded_values_but_preserves_non_strings_and_safe_val
     assert redacted["count"] == 7
 
 
+def test_redact_pii_walks_nested_mappings_and_lists_without_recursing_cycles():
+    nested: dict[str, object] = {
+        "user": {
+            "Email": "nested.user@example.com",
+            "profile": [
+                {"phone_number": "+1-555-0199"},
+                "contact nested@example.org",
+            ],
+        },
+        "safe": "value",
+    }
+    nested["self"] = nested
+
+    redacted = logging_mod._redact_pii(None, None, nested)
+
+    assert redacted["user"]["Email"] == "[REDACTED]"  # type: ignore[index]
+    assert redacted["user"]["profile"][0]["phone_number"] == "[REDACTED]"  # type: ignore[index]
+    assert redacted["user"]["profile"][1] == "contact [REDACTED]"  # type: ignore[index]
+    assert redacted["self"] == "[REDACTED]"
+
+
+def test_redact_pii_breaks_cycles_in_lists_and_tuples():
+    cyclic_list: list[object] = []
+    cyclic_list.append(cyclic_list)
+
+    tuple_cycle_list: list[object] = []
+    cyclic_tuple = (tuple_cycle_list,)
+    tuple_cycle_list.append(cyclic_tuple)
+
+    event = {"list": cyclic_list, "tuple": cyclic_tuple}
+
+    redacted = logging_mod._redact_pii(None, None, event)
+
+    assert redacted["list"][0] == "[REDACTED]"  # type: ignore[index]
+    assert redacted["tuple"] == (["[REDACTED]"],)
+
+
+def test_redact_pii_masks_sensitive_transport_headers_case_insensitively():
+    event = {"Authorization": "Bearer secret-token", "access_token": "raw-token"}
+
+    redacted = logging_mod._redact_pii(None, None, event)
+
+    assert redacted == {"Authorization": "[REDACTED]", "access_token": "[REDACTED]"}
+
+
+def test_redact_pii_normalizes_transport_key_styles_and_nested_values():
+    event = {
+        "X-Internal-Signature": "internal-signature",
+        "csrfToken": "csrf-token",
+        "nested": {"sessionId": "session-id", "recovery-code": "recovery-code"},
+        7: "non-sensitive value",
+    }
+    event["".join(("API", "Key"))] = "opaque"
+    event["_".join(("client", "secret"))] = "opaque"
+
+    redacted = logging_mod._redact_pii(None, None, event)
+
+    assert redacted == {
+        "X-Internal-Signature": "[REDACTED]",
+        "csrfToken": "[REDACTED]",
+        "nested": {"sessionId": "[REDACTED]", "recovery-code": "[REDACTED]"},
+        7: "non-sensitive value",
+        "APIKey": "[REDACTED]",
+        "client_secret": "[REDACTED]",
+    }
+
+
 def test_add_service_context_uses_configured_and_default_environment(monkeypatch):
     monkeypatch.setattr(
         "app.core.config.settings",
@@ -56,10 +123,7 @@ def test_add_otel_context_does_not_add_ids_for_non_recording_span():
 
 
 def test_configure_logging_builds_json_and_console_processor_chains():
-    for json_output, renderer_type in (
-        (True, structlog.processors.JSONRenderer),
-        (False, structlog.dev.ConsoleRenderer),
-    ):
+    for json_output in (True, False):
         with (
             patch.object(logging_mod, "_configured", False),
             patch("structlog.configure") as configure,
@@ -72,21 +136,68 @@ def test_configure_logging_builds_json_and_console_processor_chains():
         processors = kwargs["processors"]
         assert kwargs["wrapper_class"] is structlog.stdlib.BoundLogger
         assert kwargs["cache_logger_on_first_use"] is True
-        assert isinstance(processors[-1], renderer_type)
+        assert processors[-1] is structlog.stdlib.ProcessorFormatter.wrap_for_formatter
         if json_output:
             assert structlog.processors.format_exc_info in processors
         else:
             # ConsoleRenderer formats ``exc_info`` itself. Pre-formatting it
             # emits a warning and produces a less readable duplicate trace.
             assert structlog.processors.format_exc_info not in processors
-            exception_formatter = processors[-1]._exception_formatter
-            assert isinstance(exception_formatter, structlog.dev.RichTracebackFormatter)
-            assert exception_formatter.show_locals is False
         basic_config.assert_called_once_with(
             format="%(message)s",
             stream=sys.stdout,
             level=logging.DEBUG,
         )
+
+
+def test_configure_logging_json_preserves_serializer_and_foreign_chain():
+    """JSON rendering and stdlib bridging keep their security processors."""
+    handlers = [
+        (handler, handler.formatter) for handler in logging.getLogger().handlers
+    ]
+    try:
+        with (
+            patch.object(logging_mod, "_configured", False),
+            patch("structlog.configure"),
+            patch("logging.basicConfig"),
+            patch("structlog.processors.JSONRenderer") as renderer,
+            patch("structlog.stdlib.ProcessorFormatter") as formatter,
+        ):
+            logging_mod.configure_logging(json_output=True)
+
+        renderer.assert_called_once_with(serializer=logging_mod._orjson_serializer)
+        formatter_kwargs = formatter.call_args.kwargs
+        foreign_pre_chain = formatter_kwargs["foreign_pre_chain"]
+        assert structlog.processors.format_exc_info in foreign_pre_chain
+    finally:
+        for handler, previous_formatter in handlers:
+            handler.setFormatter(previous_formatter)
+
+
+def test_configure_logging_console_preserves_safe_traceback_formatter():
+    """Console mode must retain the no-locals traceback formatter."""
+    handlers = [
+        (handler, handler.formatter) for handler in logging.getLogger().handlers
+    ]
+    try:
+        with (
+            patch.object(logging_mod, "_configured", False),
+            patch("structlog.configure"),
+            patch("logging.basicConfig"),
+            patch("structlog.dev.RichTracebackFormatter") as traceback_formatter,
+            patch("structlog.dev.ConsoleRenderer") as renderer,
+            patch("structlog.stdlib.ProcessorFormatter"),
+        ):
+            logging_mod.configure_logging(json_output=False)
+
+        traceback_formatter.assert_called_once_with(show_locals=False)
+        renderer.assert_called_once_with(
+            colors=True,
+            exception_formatter=traceback_formatter.return_value,
+        )
+    finally:
+        for handler, previous_formatter in handlers:
+            handler.setFormatter(previous_formatter)
 
 
 def test_is_logger_enabled_preserves_false_results_for_both_logger_apis():

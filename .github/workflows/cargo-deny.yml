@@ -14,10 +14,31 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  cargo-deny:
-    name: Cargo Deny Scan
+  # Run each independently versioned Rust crate in parallel.  Keeping this
+  # producer matrix separate from the stable aggregate below preserves the
+  # canonical `Cargo Deny Scan` release context while still covering every
+  # Rust dependency graph without serialising the scans.
+  cargo-deny-crates:
+    name: Cargo Deny (${{ matrix.name }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - name: native-rust-ext
+            manifest-path: native/rust_ext/Cargo.toml
+            config-path: native/rust_ext/deny.toml
+          - name: pyo3-sanitizer
+            manifest-path: crates/pyo3-sanitizer/Cargo.toml
+            config-path: native/rust_ext/deny.toml
+          - name: wasm-sanitizer
+            manifest-path: frontend/wasm-sanitizer/Cargo.toml
+            config-path: native/rust_ext/deny.toml
+          - name: rust-crypto
+            manifest-path: frontend/rust-crypto/Cargo.toml
+            config-path: native/rust_ext/deny.toml
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,6 +46,24 @@ jobs:
       - name: Run Cargo Deny
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
-          manifest-path: native/rust_ext/Cargo.toml
+          manifest-path: ${{ matrix.manifest-path }}
           command: check
-          arguments: --all-features
+          arguments: --config ${{ matrix.config-path }} --all-features
+
+  cargo-deny:
+    # Keep the historical, release-required check name.  This gate is
+    # fail-closed: a cancelled, skipped, or failed matrix producer can never
+    # mint a successful aggregate context.
+    name: Cargo Deny Scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    needs: [cargo-deny-crates]
+    if: ${{ always() }}
+    steps:
+      - name: Require every crate scan to pass
+        run: |
+          if [ "${{ needs.cargo-deny-crates.result }}" != "success" ]; then
+            echo "::error::Cargo Deny matrix result was '${{ needs.cargo-deny-crates.result }}'; refusing aggregate success."
+            exit 1
+          fi
+          echo "All four Rust crate dependency scans passed."

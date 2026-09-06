@@ -156,4 +156,25 @@ describe("TotpQrDisplay", () => {
 
     expect(document.querySelector("button")).toHaveAttribute("aria-label", "")
   })
+
+  it("does not show the copied tooltip before the first interaction", () => {
+    render(<TotpQrDisplay otpauthUrl="otpauth://totp/Initial" secret="secret" />)
+
+    expect(screen.queryByText("mfa.totp.copySecret")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "mfa.totp.copySecret" })).toHaveClass("text-brand")
+  })
+
+  it("renders the translated scan heading and manual instructions", () => {
+    render(
+      <TotpQrDisplay
+        otpauthUrl="otpauth://totp/Accessible"
+        secret="secret"
+        label="student@example.com"
+      />
+    )
+
+    expect(screen.getByRole("heading", { name: "mfa.totp.scanHeading" })).toBeInTheDocument()
+    expect(screen.getByText("mfa.totp.instructions")).toBeInTheDocument()
+    expect(screen.getByLabelText("mfa.totp.manualHeading")).toHaveValue("SECRET")
+  })
 })

@@ -28,6 +28,11 @@ const IMAGE_TRANSITION = { duration: 0.3 } as const
 
 type Status = "idle" | "loading" | "loaded" | "error"
 
+export const getAsyncImageInitialStatus = (src?: string): Status => (src ? "loading" : "idle")
+
+export const getAsyncImageResolvedStatus = (resolvedSrc: string): Status =>
+  resolvedSrc ? "loading" : "idle"
+
 type AsyncImageProps = ComponentProps<"div"> & {
   src?: string
   alt?: string
@@ -65,7 +70,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
     })
     const isVisible = !!observer?.isIntersecting
 
-    const [status, setStatus] = useState<Status>(src ? "loading" : "idle")
+    const [status, setStatus] = useState<Status>(() => getAsyncImageInitialStatus(src))
 
     const resolvedSrc = useMemo(() => {
       if (!src) return ""
@@ -74,7 +79,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
     }, [src, version])
 
     useEffect(() => {
-      setStatus(resolvedSrc ? "loading" : "idle")
+      setStatus(getAsyncImageResolvedStatus(resolvedSrc))
     }, [resolvedSrc])
 
     const handleLoad: ComponentProps<"img">["onLoad"] = (event) => {
@@ -88,8 +93,9 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
     }
 
     const shouldShowSkeleton = status === "loading"
-    const shouldShowFallback = status === "error" || (!resolvedSrc && fallback)
     const hasImage = Boolean(resolvedSrc)
+    const shouldShowFallback =
+      status === "error" || (!resolvedSrc && fallback) || (!hasImage && !fallbackSrc)
 
     return (
       <div
@@ -152,9 +158,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
           />
         )}
 
-        {((shouldShowFallback && fallback) ||
-          status === "error" ||
-          (!hasImage && !fallbackSrc)) && (
+        {shouldShowFallback && (
           <div
             className="absolute inset-0 flex items-center justify-center bg-(--bg-surface)/(--opacity-dim) text-(--text-secondary)"
             data-testid="async-image-fallback"

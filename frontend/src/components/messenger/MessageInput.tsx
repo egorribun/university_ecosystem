@@ -155,42 +155,49 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
   const handleFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget
     const files = input.files
-    if (files && files.length > 0) {
-      const filteredFiles = await Promise.all(
-        Array.from(files).map(async (file) => {
-          if (file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg")) {
-            return null
-          }
-          if (file.type.startsWith("image/")) {
-            try {
-              const fileText = await file.slice(0, 512).text()
-              // eslint-disable-next-line security/detect-unsafe-regex -- bounded 512-byte input, no ReDoS risk
-              if (/^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(fileText)) return null
-            } catch {
-              // ignore
-            }
-          }
-          return file
-        })
-      )
-      const validFiles = filteredFiles.filter((file): file is File => !!file)
-      const rejectedCount = filteredFiles.length - validFiles.length
-      if (rejectedCount > 0) {
-        setSvgRejected(true)
-        setTimeout(() => setSvgRejected(false), 3000)
-      }
-      setSelectedFiles((previousFiles) => [
-        ...previousFiles,
-        // Wave 183 SW7 — create Blob URL ONCE per file at add time.
-        // Pre-W183 the JSX created a new URL on every parent re-render
-        // (memory leak).
-        ...validFiles.map((file) => ({
-          id: crypto.randomUUID(),
-          file,
-          previewUrl: URL.createObjectURL(file),
-        })),
-      ])
+    if (!files) {
+      input.value = ""
+      return
     }
+    if (files.length === 0) {
+      input.value = ""
+      return
+    }
+
+    const filteredFiles = await Promise.all(
+      Array.from(files).map(async (file) => {
+        if (file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg")) {
+          return null
+        }
+        if (file.type.startsWith("image/")) {
+          try {
+            const fileText = await file.slice(0, 512).text()
+            // eslint-disable-next-line security/detect-unsafe-regex -- bounded 512-byte input, no ReDoS risk
+            if (/^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(fileText)) return null
+          } catch {
+            // ignore
+          }
+        }
+        return file
+      })
+    )
+    const validFiles = filteredFiles.filter((file): file is File => !!file)
+    const rejectedCount = filteredFiles.length - validFiles.length
+    if (rejectedCount > 0) {
+      setSvgRejected(true)
+      setTimeout(() => setSvgRejected(false), 3000)
+    }
+    setSelectedFiles((previousFiles) => [
+      ...previousFiles,
+      // Wave 183 SW7 — create Blob URL ONCE per file at add time.
+      // Pre-W183 the JSX created a new URL on every parent re-render
+      // (memory leak).
+      ...validFiles.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        previewUrl: URL.createObjectURL(file),
+      })),
+    ])
     input.value = ""
   }
 

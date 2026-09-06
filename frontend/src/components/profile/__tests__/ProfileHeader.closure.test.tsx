@@ -12,16 +12,19 @@ vi.mock("@/components/media/SmartImage", () => ({
     srcRaw,
     fallback,
     alt = "",
+    cacheV,
   }: {
     srcRaw?: string
     fallback?: string
     alt?: string
+    cacheV?: number
   }) => (
     <img
       data-testid="profile-smart-image"
       src={srcRaw ?? fallback}
       alt={alt}
       data-fallback={fallback}
+      data-cache-v={cacheV}
     />
   ),
 }))
@@ -87,7 +90,7 @@ describe("ProfileHeader closure paths", () => {
       education_path: { course: "Computer Science", record_book_number: "RB-42" },
     } as unknown as User
 
-    render(
+    const { container } = render(
       <ProfileHeader
         {...baseProps}
         user={user}
@@ -104,7 +107,35 @@ describe("ProfileHeader closure paths", () => {
     expect(screen.getByText("ada@example.com")).toBeInTheDocument()
     expect(screen.getByText("@ada")).toBeInTheDocument()
     expect(screen.getAllByTestId("profile-smart-image")).toHaveLength(2)
+    const images = screen.getAllByTestId("profile-smart-image")
+    expect(images[0]).toHaveAttribute("data-cache-v", "2")
+    expect(images[0]).toHaveAttribute("src", "/cover.jpg")
+    expect(images[1]).toHaveAttribute("data-cache-v", "1")
+    expect(images[1]).toHaveAttribute("alt", "Ada Lovelace")
     expect(screen.getByTestId("qr-code")).toHaveAttribute("data-value", "BEGIN:VCARD")
+
+    const hero = [...container.querySelectorAll<HTMLElement>("div")].find((element) =>
+      element.className.includes("min-h-(--min-h-hero-cover)")
+    )
+    expect(hero?.style.paddingBottom).toBe("2rem")
+    const cover = images[0]?.parentElement
+    expect(cover).toHaveStyle({
+      transform: "translateY(8px) scale(1.04)",
+      filter: "saturate(1) contrast(1.02) brightness(0.98)",
+      transitionTimingFunction: "cubic-bezier(0.33,1,0.68,1)",
+    })
+    const status = screen.getByText("Ada Lovelace").closest("div")?.parentElement?.parentElement
+    expect(status).toBeTruthy()
+    const online = document.querySelector(".shadow-glow-green")
+    expect(online).toHaveStyle({ right: "4px", bottom: "4px", width: "10px", height: "10px" })
+    expect(online?.querySelector(".animate-online-pulse")).toBeInTheDocument()
+
+    expect(screen.getByRole("button", { name: "profile:labels.viewQR" })).toHaveClass(
+      "qr-minimal",
+      "h-20",
+      "w-20",
+      "rounded-xl"
+    )
 
     fireEvent.click(screen.getByText("ada@example.com"))
     fireEvent.click(screen.getByText("@ada"))
@@ -115,13 +146,20 @@ describe("ProfileHeader closure paths", () => {
   })
 
   it("uses placeholders for an empty profile and omits optional Telegram status", () => {
-    render(<ProfileHeader {...baseProps} user={null} isOnline={false} reduceMotion />)
+    const { container } = render(
+      <ProfileHeader {...baseProps} user={null} isOnline={false} reduceMotion />
+    )
 
     expect(screen.getByText("profile:placeholders.status")).toBeInTheDocument()
     expect(screen.getAllByText("—")).toHaveLength(2)
     expect(screen.getByText("profile:placeholders.email")).toBeInTheDocument()
     expect(screen.queryByText("profile:placeholders.telegram")).not.toBeInTheDocument()
     expect(screen.getAllByTestId("profile-smart-image")).toHaveLength(2)
+    expect(container.querySelector(".shadow-glow-green")).toBeNull()
+    const cover = screen.getAllByTestId("profile-smart-image")[0]?.parentElement
+    expect(cover).not.toHaveClass("transition-transform", "duration-hero")
+    expect(cover).not.toHaveStyle("transition-timing-function: cubic-bezier(0.33,1,0.68,1)")
+    expect(screen.getAllByText("—")[0]).toHaveClass("text-xl", "font-bold", "text-(--brand-main)")
 
     fireEvent.click(screen.getByRole("button", { name: "profile:labels.viewQR" }))
     expect(baseProps.onQrClick).toHaveBeenCalledOnce()

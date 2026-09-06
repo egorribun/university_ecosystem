@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import logging
 from collections.abc import MutableMapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -44,7 +43,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
-audit_logger = logging.getLogger("app.users.audit")
+audit_logger = get_logger("app.users.audit")
 _PENDING_DIGEST = "0" * 64
 _APP_DIGEST_KEY_LABEL = "app-primary"
 

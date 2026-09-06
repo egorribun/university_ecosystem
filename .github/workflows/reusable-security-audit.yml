@@ -484,7 +484,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The CE fallback uses --baseline-commit for diff-aware PR scans.
+          # The CE fallback performs a complete repository scan so the
+          # suppression ledger is observed and validated on every event.
           fetch-depth: 0
           persist-credentials: false
 
@@ -492,16 +493,18 @@ jobs:
         # Keep the SARIF upload alive when findings make the scanner return 1;
         # the follow-up gate fails the job after GitHub has received findings.
         # Without the AppSec token, use the documented CE command instead of
-        # `semgrep ci`, which requires `semgrep login`. The baseline keeps the
-        # PR gate focused on newly introduced findings; scheduled/full scans
-        # remain responsible for existing repository debt.
+        # `semgrep ci`, which requires `semgrep login`. Always run a complete
+        # local scan when the token is absent: the reviewed suppression ledger
+        # must be observed on every event, while a diff-only baseline can hide
+        # an unchanged suppression and make the fail-closed validator reject
+        # otherwise valid evidence.
         run: |
           set -u
           scan_status=0
           if [ -n "${SEMGREP_APP_TOKEN:-}" ]; then
             semgrep ci --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
           else
-            semgrep scan --config auto --baseline-commit origin/main \
+            semgrep scan --config auto \
               --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
           fi
           if [ ! -s semgrep.sarif ]; then

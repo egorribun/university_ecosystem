@@ -553,6 +553,12 @@ def _settings_values() -> dict[str, object]:
         "environment": "staging",
         "database_url": "sqlite+aiosqlite:///:memory:",
         "algorithm": "RS256",
+        "revocation_redis_url": "redis://revocation.internal:6380/0",
+        # Keep the independent audit-signing guard valid so each case below
+        # reaches the CWV validator it is intended to exercise.
+        # Deterministic low-entropy fixture; production validators still check
+        # the length and placeholder rules while detect-secrets ignores it.
+        "audit_log_secret": "auditlog-" + "a" * 56,  # pragma: allowlist secret
         "internal_hmac_secret": INTERNAL_HMAC_SECRET,
         "cwv_rum_enabled": True,
         "cwv_rum_signing_secret": SECRET,

@@ -42,12 +42,27 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 COMPOSE_FILE = REPO_ROOT / "docker-compose.full.yml"
 
 
+def _load_compose(path: Path) -> dict[str, object]:
+    """Parse Compose YAML while tolerating Compose-only ``!override`` tags.
+
+    ``!override`` is interpreted by Docker Compose when overlays are merged,
+    but it is not a standard YAML tag and PyYAML's ``SafeLoader`` rejects it.
+    Contract tests inspect the resolved scalar/sequence values, so removing
+    the tag for this read keeps the production Compose source untouched while
+    making the parser agree with Docker's data model.
+    """
+
+    source = path.read_text(encoding="utf-8")
+    parsed = yaml.safe_load(source.replace("!override", ""))
+    assert isinstance(parsed, dict)
+    return parsed
+
+
 @pytest.fixture(scope="module")
 def ws_hub_env() -> dict[str, str]:
     """Parse docker-compose.full.yml and return ws-hub service env block."""
     assert COMPOSE_FILE.exists(), f"Expected compose file at {COMPOSE_FILE}"
-    with COMPOSE_FILE.open(encoding="utf-8") as fh:
-        compose = yaml.safe_load(fh)
+    compose = _load_compose(COMPOSE_FILE)
     ws_hub = compose["services"].get("ws-hub")
     assert ws_hub is not None, "ws-hub service must exist in docker-compose.full.yml"
     env = ws_hub.get("environment")

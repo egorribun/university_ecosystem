@@ -1,0 +1,206 @@
+# Shared same-run WebAssembly producer for browser E2E jobs.
+#
+# The producer is deliberately a small, read-only reusable workflow.  It builds
+# the two generated packages once, publishes an attempt- and SHA-bound artifact,
+# and records the exact source/toolchain/file inventory that consumers verify
+# before the generated modules can be used by Playwright.
+name: E2E WASM Build
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    outputs:
+      artifact_id:
+        description: "Server-issued same-run artifact id"
+        value: ${{ jobs.build.outputs.artifact_id }}
+      artifact_name:
+        description: "Attempt- and SHA-bound artifact name"
+        value: ${{ jobs.build.outputs.artifact_name }}
+      artifact_digest:
+        description: "Upload-artifact archive digest"
+        value: ${{ jobs.build.outputs.artifact_digest }}
+
+jobs:
+  build:
+    name: Build E2E WASM modules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_name: ${{ steps.publish.outputs.artifact_name }}
+      artifact_digest: ${{ steps.normalize_digest.outputs.artifact_digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        with:
+          tool: wasm-pack@0.13.1
+
+      - name: Build immutable WASM modules
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add wasm32-unknown-unknown
+          rustup target list --installed | grep -Fxq "wasm32-unknown-unknown"
+          for attempt in 1 2 3; do
+            rm -rf -- rust-crypto/pkg wasm-sanitizer/pkg
+            crypto_status=0
+            sanitizer_status=0
+            wasm-pack build rust-crypto --target web --release &
+            crypto_pid=$!
+            wasm-pack build wasm-sanitizer --target web --release &
+            sanitizer_pid=$!
+            wait "$crypto_pid" || crypto_status=$?
+            wait "$sanitizer_pid" || sanitizer_status=$?
+            if (( crypto_status == 0 && sanitizer_status == 0 )); then
+              echo "OK: WASM modules built (attempt $attempt)"
+              node scripts/verify-wasm-artifacts.mjs
+              exit 0
+            fi
+            if (( attempt == 3 )); then
+              echo "::error::WASM build failed after 3 attempts (rust-crypto=$crypto_status, wasm-sanitizer=$sanitizer_status)"
+              exit 1
+            fi
+            echo "WASM build failed on attempt $attempt; retrying after 10s..."
+            sleep 10
+          done
+
+      - name: Write immutable WASM provenance
+        id: publish
+        working-directory: frontend
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+          PRODUCER_JOB: ${{ github.job }}
+        run: |
+          set -euo pipefail
+          checked_out_sha="$(git rev-parse HEAD)"
+          test "$checked_out_sha" = "$EXPECTED_SHA"
+          export EXPECTED_SHA PR_HEAD_SHA WORKFLOW_REPOSITORY WORKFLOW_REF WORKFLOW_SHA RUN_ID RUN_ATTEMPT WORKFLOW_EVENT PRODUCER_JOB
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(".").resolve()
+          package_roots = (Path("rust-crypto/pkg"), Path("wasm-sanitizer/pkg"))
+          records = []
+          for package_root in package_roots:
+              if not package_root.is_dir() or package_root.is_symlink():
+                  raise SystemExit(f"missing or symlinked WASM package: {package_root}")
+              # ``Path.rglob`` keeps the relative spelling of a relative root.
+              # Resolve the validated package root before walking so every
+              # path can be safely compared with the absolute checkout root.
+              absolute_package_root = package_root.resolve()
+              if not absolute_package_root.is_relative_to(root):
+                  raise SystemExit(
+                      f"WASM package escapes checkout root: {package_root}"
+                  )
+              for path in sorted(absolute_package_root.rglob("*")):
+                  if path.is_symlink():
+                      raise SystemExit(f"symlink in WASM package: {path}")
+                  if path.is_file():
+                      relative = path.relative_to(root).as_posix()
+                      digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                      records.append({"path": relative, "size": path.stat().st_size, "sha256": digest})
+          if not records:
+              raise SystemExit("WASM package inventory is empty")
+          inventory = {"schema_version": 1, "files": records}
+          inventory_bytes = json.dumps(inventory, sort_keys=True, separators=(",", ":")).encode()
+          inventory["inventory_sha256"] = hashlib.sha256(inventory_bytes).hexdigest()
+          Path("WASM_INVENTORY.json").write_text(
+              json.dumps(inventory, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          provenance = {
+              "schema_version": 1,
+              "artifact_kind": "e2e-wasm",
+              "artifact_name": f"frontend-e2e-wasm-{os.environ['RUN_ID']}-{os.environ['RUN_ATTEMPT']}-{os.environ['EXPECTED_SHA']}",
+              "repository": os.environ["WORKFLOW_REPOSITORY"],
+              "source_sha": os.environ["EXPECTED_SHA"],
+              "pr_head_sha": os.environ["PR_HEAD_SHA"],
+              "workflow_ref": os.environ["WORKFLOW_REF"],
+              "workflow_sha": os.environ["WORKFLOW_SHA"],
+              "run_id": int(os.environ["RUN_ID"]),
+              "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              "event": os.environ["WORKFLOW_EVENT"],
+              "producer_job": os.environ["PRODUCER_JOB"],
+              "toolchain": {
+                  "node": os.popen("node --version").read().strip(),
+                  "rustc": os.popen("rustc --version").read().strip(),
+                  "wasm_pack": os.popen("wasm-pack --version").read().strip(),
+                  "target": "wasm32-unknown-unknown",
+              },
+              "inventory_sha256": inventory["inventory_sha256"],
+          }
+          Path("WASM_PROVENANCE.json").write_text(
+              json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          print(f"artifact_name={provenance['artifact_name']}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"artifact_name={provenance['artifact_name']}\n")
+          PY
+
+      - name: Upload immutable E2E WASM modules
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.publish.outputs.artifact_name }}
+          path: |
+            frontend/rust-crypto/pkg
+            frontend/wasm-sanitizer/pkg
+            frontend/WASM_PROVENANCE.json
+            frontend/WASM_INVENTORY.json
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 1
+          compression-level: 0
+          include-hidden-files: true
+
+      - name: Normalize E2E WASM artifact digest
+        id: normalize_digest
+        shell: bash
+        env:
+          RAW_ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          if [[ "$RAW_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            artifact_digest="sha256:${RAW_ARTIFACT_DIGEST}"
+          elif [[ "$RAW_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            artifact_digest="$RAW_ARTIFACT_DIGEST"
+          else
+            echo "::error::Unexpected upload-artifact digest format"
+            exit 1
+          fi
+          printf 'artifact_digest=%s\n' "$artifact_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Verify uploaded artifact identity
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.normalize_digest.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          [[ "$ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]

@@ -156,6 +156,14 @@ func TestSanitizeMinIOKey_TraversalRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "path traversal")
 }
 
+func TestSanitizeMinIOKey_AbsoluteKeysRejected(t *testing.T) {
+	for _, key := range []string{"/etc/shadow", `\\etc\\shadow`} {
+		_, err := sanitizeMinIOKey(key)
+		require.Error(t, err, "absolute key %q must be rejected", key)
+		assert.Contains(t, err.Error(), "absolute path")
+	}
+}
+
 // ── NewFileActivities ─────────────────────────────────────────────────────────
 
 func TestNewFileActivities_NilClientReturnsError(t *testing.T) {

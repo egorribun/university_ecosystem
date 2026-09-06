@@ -178,6 +178,15 @@
   {{- if and .Values.backend.autoscaling.enabled (lt (int .Values.backend.autoscaling.maxReplicas) (int .Values.backend.autoscaling.minReplicas)) -}}
     {{- fail "backend.autoscaling.maxReplicas must be greater than or equal to minReplicas" -}}
   {{- end -}}
+  {{- range $component := list "frontend" "gateway" -}}
+    {{- $autoscaling := index $.Values $component "autoscaling" -}}
+    {{- if not $autoscaling.enabled -}}
+      {{- fail (printf "%s.autoscaling.enabled=true is required in staging/production" $component) -}}
+    {{- end -}}
+    {{- if or (lt (int $autoscaling.minReplicas) 2) (lt (int $autoscaling.maxReplicas) (int $autoscaling.minReplicas)) -}}
+      {{- fail (printf "%s.autoscaling requires minReplicas>=2 and maxReplicas>=minReplicas in staging/production" $component) -}}
+    {{- end -}}
+  {{- end -}}
   {{- if or (not .Values.ingress.enabled) (not .Values.ingress.className) (not .Values.ingress.tls) -}}
     {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}
   {{- end -}}

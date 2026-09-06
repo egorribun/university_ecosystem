@@ -83,6 +83,12 @@ describe("EventMedia", () => {
     expect(screen.queryByText(/events:card.statuses.in/)).not.toBeInTheDocument()
   })
 
+  it("does not render the soon indicator when a neutral event has stale countdown text", () => {
+    render(<EventMedia {...baseProps} timeStatus={{ status: "none", timeText: "15m" }} />)
+
+    expect(screen.queryByText(/events:card.statuses.in/)).not.toBeInTheDocument()
+  })
+
   it("fires onImageClick when the image is clicked", async () => {
     const user = userEvent.setup()
     const onImageClick = vi.fn()

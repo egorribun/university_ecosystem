@@ -4,6 +4,9 @@ This module creates the Strawberry GraphQL schema and router that can be
 included in the FastAPI application.
 """
 
+import hashlib
+import hmac
+import secrets
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -18,7 +21,9 @@ from strawberry.extensions import (
 from strawberry.extensions.tracing import OpenTelemetryExtension
 from strawberry.fastapi import GraphQLRouter
 
+from app.api.validation import raise_unauthorized
 from app.core.config import settings
+from app.core.localization import resolve_locale
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.graphql.context import GraphQLContext
@@ -31,6 +36,53 @@ from app.graphql.extensions import (
 from app.graphql.queries import Query
 
 logger = get_logger(__name__)
+
+
+def _verify_gateway_identity_signature(
+    request: Request,
+    user_id: str,
+    session_id: str,
+    tenant_id: str,
+) -> None:
+    """Verify gateway-provided identity headers before GraphQL authentication.
+
+    The edge gateway strips caller-supplied identity headers and signs the
+    verified ``user_id``, ``session_id`` and optional ``tenant_id`` tuple with
+    ``INTERNAL_HMAC_SECRET``.  GraphQL must enforce the same trust boundary as
+    REST; otherwise a direct backend request could impersonate any user.
+
+    Development/test environments may run without a gateway secret for local
+    integration tests.  Production is always fail-closed when the secret is
+    absent or the signature is missing/invalid.
+    """
+    internal_secret = str(getattr(settings, "internal_hmac_secret", "") or "")
+    raw_environment = getattr(settings, "environment", None)
+    environment = str(raw_environment).lower() if raw_environment else "production"
+    if not internal_secret:
+        if environment == "production":
+            raise_unauthorized(
+                resolve_locale(request=request), "errors.auth.credentials_invalid"
+            )
+        logger.warning(
+            "INTERNAL_HMAC_SECRET not configured — skipping GraphQL gateway "
+            "signature verification (acceptable in development only)"
+        )
+        return
+
+    signature = request.headers.get("X-Internal-Signature")
+    payload = (
+        f"{user_id}:{session_id}:{tenant_id}"
+        if tenant_id
+        else f"{user_id}:{session_id}"
+    )
+    expected = hmac.new(
+        internal_secret.encode(), payload.encode(), hashlib.sha256
+    ).hexdigest()
+    if not signature or not secrets.compare_digest(expected, signature):
+        logger.warning("GraphQL gateway identity signature verification failed")
+        raise_unauthorized(
+            resolve_locale(request=request), "errors.auth.credentials_invalid"
+        )
 
 
 @inject
@@ -77,8 +129,12 @@ async def get_context(
 
         x_user_id = request.headers.get("X-User-ID")
         x_session_id = request.headers.get("X-Session-ID")
+        x_tenant_id = request.headers.get("X-Tenant-ID", "")
 
         if x_user_id and x_session_id:
+            _verify_gateway_identity_signature(
+                request, x_user_id, x_session_id, x_tenant_id
+            )
             current_user = await validator.validate(x_user_id, x_session_id)
         else:
             auth_header = request.headers.get("Authorization", "")
@@ -97,6 +153,12 @@ async def get_context(
         from fastapi import HTTPException
 
         from app.auth.security import SecurityError
+
+        # Preserve the 401 emitted by the gateway-signature boundary.  Turning
+        # an invalid caller-controlled identity header into a 503 would both
+        # hide the security failure and make retries look like an outage.
+        if isinstance(exc, HTTPException):
+            raise
 
         if isinstance(exc, SecurityError):
             # TD-27-01: Only exact SecurityError demotes to anonymous. Subclasses

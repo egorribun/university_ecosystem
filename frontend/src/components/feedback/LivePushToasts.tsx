@@ -224,9 +224,12 @@ export const readBuffer = (): ActiveToast[] => {
     memoryBuffer = []
     return memoryBuffer
   }
+  if (typeof storage.getItem !== "function") {
+    memoryBuffer = []
+    return memoryBuffer
+  }
   try {
-    const getItem = storage.getItem.bind(storage)
-    const raw = getItem(getBufferStorageKey())
+    const raw = storage.getItem(getBufferStorageKey())
     if (!raw) {
       memoryBuffer = []
       return memoryBuffer
@@ -245,9 +248,9 @@ export const writeBuffer = (buffer: ActiveToast[]) => {
   memoryBuffer = buffer.slice(-MAX_BUFFER_SIZE)
   const storage = getToastStorage()
   if (storage === null) return
+  if (typeof storage.setItem !== "function") return
   try {
-    const setItem = storage.setItem.bind(storage)
-    setItem(getBufferStorageKey(), JSON.stringify(memoryBuffer))
+    storage.setItem(getBufferStorageKey(), JSON.stringify(memoryBuffer))
   } catch (_e) {
     // Ignore
   }

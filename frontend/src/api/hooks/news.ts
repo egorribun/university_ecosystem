@@ -165,6 +165,32 @@ const mergeNewsPages = (pages: PaginatedResponse<NewsItem>[] | undefined): NewsI
   return merged
 }
 
+/**
+ * Return the cursor for the next news page, treating an absent page as the
+ * terminal state.  TanStack Query normally supplies a page object here, but
+ * keeping the guard explicit makes the pagination contract safe for hydrated
+ * or manually seeded cache data as well.
+ */
+export const getNewsNextPageParam = (
+  lastPage: PaginatedResponse<NewsItem> | null | undefined
+): string | null => {
+  if (!lastPage) return null
+  return lastPage.next_cursor ?? null
+}
+
+/**
+ * Resolve the latest cached page without exposing an undefined array access
+ * to callers.  The wider element type is intentional: persisted or manually
+ * seeded query data can contain a nullish tail even though API responses are
+ * validated before normal use.
+ */
+export const getLatestNewsPage = (
+  pages: readonly (PaginatedResponse<NewsItem> | null | undefined)[] | undefined
+): PaginatedResponse<NewsItem> | null => {
+  if (!pages || pages.length === 0) return null
+  return pages[pages.length - 1] ?? null
+}
+
 const createNewsListQueryFn =
   (queryClient: QueryClient, normalized: NormalizedNewsListFilters, queryKey: NewsListQueryKey) =>
   async ({ pageParam, signal }: { pageParam?: string | null; signal?: AbortSignal }) => {
@@ -264,10 +290,10 @@ export const useNewsListQuery = (
   const queryKey: NewsListQueryKey = useMemo(() => ["news", "list", normalized], [normalized])
   const { enabled = true, ...rest } = options ?? {}
 
-  const queryFn = useMemo(
-    () => createNewsListQueryFn(queryClient, normalized, queryKey),
-    [queryClient, normalized, queryKey]
-  )
+  // The query closure is cheap and must follow the normalized filter object on
+  // every render. Keeping it direct also avoids a stale placeholder/query
+  // contract when a caller changes locale or page size in place.
+  const queryFn = createNewsListQueryFn(queryClient, normalized, queryKey)
 
   // Read once per locale/page-size pair. SSR can hydrate an already-created
   // query with an empty/error result, in which case TanStack Query does not
@@ -279,13 +305,12 @@ export const useNewsListQuery = (
   )
 
   // Read from localStorage as fallback for offline mode
-  const placeholderData = useMemo(() => {
-    if (!persistedPage) return undefined
-    return {
-      pages: [persistedPage],
-      pageParams: [null],
-    }
-  }, [persistedPage])
+  const placeholderData = persistedPage
+    ? {
+        pages: [persistedPage],
+        pageParams: [null],
+      }
+    : undefined
 
   const query = useInfiniteQuery<
     PaginatedResponse<NewsItem>,
@@ -297,7 +322,7 @@ export const useNewsListQuery = (
     queryKey,
     enabled,
     initialPageParam: null as string | null,
-    getNextPageParam: (lastPage: PaginatedResponse<NewsItem>) => lastPage?.next_cursor ?? null,
+    getNextPageParam: getNewsNextPageParam,
     queryFn,
     staleTime: 30_000, // 30s — matches interaction query; prevents refetch on mount/focus
     placeholderData,
@@ -309,7 +334,11 @@ export const useNewsListQuery = (
     if (liveNews.length > 0 || !query.isError) return liveNews
     return persistedPage?.items ?? []
   }, [persistedPage, query.data, query.isError])
-  const pagination = query.data?.pages?.[query.data.pages.length - 1] ?? null
+  let pagination: PaginatedResponse<NewsItem> | null = null
+  const queryData = query.data
+  if (queryData) {
+    pagination = getLatestNewsPage(queryData.pages)
+  }
 
   useEffect(() => {
     if (!query.isSuccess || query.isPlaceholderData) return
@@ -350,7 +379,7 @@ export const prefetchNewsListQuery = (queryClient: QueryClient, filters: NewsLis
     queryKey,
     queryFn,
     initialPageParam: null as string | null,
-    getNextPageParam: (lastPage: PaginatedResponse<NewsItem>) => lastPage?.next_cursor ?? null,
+    getNextPageParam: getNewsNextPageParam,
   })
 }
 

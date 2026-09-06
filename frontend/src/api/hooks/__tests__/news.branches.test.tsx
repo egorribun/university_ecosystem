@@ -22,6 +22,7 @@ import type { PropsWithChildren } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { NewsItem } from "@/api/news"
+import { StorageItem } from "@/utils/storage"
 
 // ── SDK + @/api/news mock ─────────────────────────────────────────────────────
 // useNewsListQuery imports `newsListApiV1NewsGet` statically; newsDetailQueryOptions
@@ -37,7 +38,14 @@ vi.mock("@/api/news", () => ({
   fetchNewsItem: (...args: unknown[]) => fetchNewsItemMock(...args),
 }))
 
-import { newsListQueryKey, useNewsListQuery, newsDetailQueryOptions } from "@/api/hooks/news"
+import {
+  getLatestNewsPage,
+  getNewsNextPageParam,
+  newsListQueryKey,
+  prefetchNewsListQuery,
+  useNewsListQuery,
+  newsDetailQueryOptions,
+} from "@/api/hooks/news"
 
 const makeNews = (id: string, title = `News ${id}`): NewsItem =>
   ({
@@ -104,6 +112,56 @@ describe("newsListQueryKey (news.ts:95-97)", () => {
     expect(newsListQueryKey({ language: "ru", limit: 0 })[2].limit).toBe(12)
     expect(newsListQueryKey({ language: "ru", limit: -3 })[2].limit).toBe(12)
     expect(newsListQueryKey({ language: "ru", limit: Number.NaN })[2].limit).toBe(12)
+    expect(newsListQueryKey({ language: "ru", limit: Number.POSITIVE_INFINITY })[2].limit).toBe(12)
+    expect(newsListQueryKey({ language: "ru", limit: Number.NEGATIVE_INFINITY })[2].limit).toBe(12)
+    // Runtime callers can still provide null through decoded query params;
+    // treat it exactly like an omitted/invalid page size.
+    expect(newsListQueryKey({ language: "ru", limit: null as unknown as number })[2].limit).toBe(12)
+  })
+
+  it("keeps a valid explicit limit distinct from every invalid boundary", () => {
+    expect(newsListQueryKey({ language: "ru", limit: 1 })[2].limit).toBe(1)
+    expect(newsListQueryKey({ language: "ru", limit: undefined })[2].limit).toBe(12)
+    expect(
+      newsListQueryKey({ language: "ru", limit: "invalid" as unknown as number })[2].limit
+    ).toBe(12)
+  })
+
+  it("exposes the canonical key from the hook", () => {
+    const queryClient = freshClient()
+    const { result } = renderHook(
+      () => useNewsListQuery({ language: "en", limit: 20.9 }, { enabled: false }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+
+    expect(result.current.queryKey).toEqual(["news", "list", { language: "en", limit: 20 }])
+  })
+})
+
+describe("news pagination helpers", () => {
+  it("treats absent pages as terminal and preserves the server cursor", () => {
+    expect(getNewsNextPageParam(undefined)).toBeNull()
+    expect(getNewsNextPageParam(null)).toBeNull()
+    expect(getNewsNextPageParam(okPage([], "next-cursor").data)).toBe("next-cursor")
+    expect(getNewsNextPageParam(okPage([], null).data)).toBeNull()
+  })
+
+  it("resolves empty, missing, valid, and nullish page tails safely", () => {
+    const page = okPage([], "next-cursor").data
+    expect(getLatestNewsPage(undefined)).toBeNull()
+    expect(getLatestNewsPage([])).toBeNull()
+    expect(getLatestNewsPage([page])).toBe(page)
+    expect(getLatestNewsPage([null])).toBeNull()
+  })
+
+  it("does not read a custom negative index from an empty page list", () => {
+    const page = okPage([], "next-cursor").data
+    const emptyPages = [] as Array<typeof page | null | undefined>
+    // An empty array can still carry ordinary custom properties. The helper's
+    // empty-list contract must win over an accidental `pages[-1]` lookup.
+    emptyPages[-1] = page
+
+    expect(getLatestNewsPage(emptyPages)).toBeNull()
   })
 })
 
@@ -130,6 +188,63 @@ describe("useNewsListQuery queryFn branches", () => {
     })
   })
 
+  it("preserves valid pagination fields and sends the complete first-page contract", async () => {
+    const item = makeNews("numeric-fields")
+    newsListMock.mockResolvedValue({
+      status: 200,
+      data: {
+        items: [item],
+        total: 99,
+        limit: 7,
+        cursor: "server-cursor",
+        next_cursor: null,
+        has_more: false,
+      },
+    })
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru", limit: 5 }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(result.current.pagination).toMatchObject({
+      items: [item],
+      total: 99,
+      limit: 7,
+      cursor: "server-cursor",
+      next_cursor: null,
+      has_more: false,
+    })
+
+    const request = newsListMock.mock.calls[0]?.[0] as {
+      query?: Record<string, unknown>
+      etagCacheKey?: string
+      validateStatus?: (status: number) => boolean
+    }
+    expect(request.query).toEqual({ limit: 5 })
+    expect(request).toHaveProperty("throwOnError", true)
+    expect(request.etagCacheKey).toBe("news:list:ru:5")
+    expect(request.validateStatus?.(199)).toBe(false)
+    expect(request.validateStatus?.(200)).toBe(true)
+    expect(request.validateStatus?.(399)).toBe(true)
+    expect(request.validateStatus?.(400)).toBe(false)
+  })
+
+  it("keeps the persisted page as the exact single placeholder page", () => {
+    const persisted = [makeNews("persisted")]
+    window.localStorage.setItem("news:list:ru", JSON.stringify(persisted))
+    const queryClient = freshClient()
+    const { result } = renderHook(
+      () => useNewsListQuery({ language: "ru", limit: 12 }, { enabled: false }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+    expect(result.current.data?.pages).toHaveLength(1)
+    expect(result.current.data?.pages[0]?.items).toEqual(persisted)
+    expect(result.current.data?.pageParams).toEqual([null])
+  })
+
   it("passes cursor param on fetchNextPage (news.ts:158-160)", async () => {
     const firstPage = [makeNews("a"), makeNews("b")]
     const secondPage = [makeNews("c")]
@@ -152,6 +267,56 @@ describe("useNewsListQuery queryFn branches", () => {
     await waitFor(() => expect(result.current.news).toHaveLength(3))
     const secondCall = newsListMock.mock.calls[1]?.[0] as { query?: Record<string, unknown> }
     expect(secondCall?.query?.cursor).toBe("cursor-2")
+  })
+
+  it("reports null pagination while an uncached request is pending", async () => {
+    let resolveRequest: (value: unknown) => void = () => {}
+    newsListMock.mockImplementation(
+      () =>
+        new Promise<unknown>((resolve) => {
+          resolveRequest = resolve
+        })
+    )
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isPending).toBe(true))
+    expect(result.current.pagination).toBeNull()
+    await act(async () => resolveRequest(okPage([], null)))
+  })
+
+  it("uses ETag only for the first page and carries the cursor on later pages", async () => {
+    newsListMock
+      .mockResolvedValueOnce(okPage([makeNews("etag-first")], "cursor-2"))
+      .mockResolvedValueOnce(okPage([makeNews("etag-second")], null))
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.hasNextPage).toBe(true))
+    const firstCall = newsListMock.mock.calls[0]?.[0] as {
+      query?: Record<string, unknown>
+      etagCacheKey?: string
+    }
+    expect(firstCall.query).not.toHaveProperty("cursor")
+    expect(firstCall.etagCacheKey).toBe("news:list:ru:12")
+
+    await act(async () => {
+      await result.current.fetchNextPage()
+    })
+    await waitFor(() => expect(result.current.news).toHaveLength(2))
+
+    const secondCall = newsListMock.mock.calls[1]?.[0] as {
+      query?: Record<string, unknown>
+      etagCacheKey?: string
+    }
+    expect(secondCall.query).toEqual({ limit: 12, cursor: "cursor-2" })
+    expect(secondCall).not.toHaveProperty("etagCacheKey")
   })
 
   it("304 response falls back to cached first page (news.ts:173-177)", async () => {
@@ -188,6 +353,67 @@ describe("useNewsListQuery queryFn branches", () => {
     await waitFor(() => expect(newsListMock).toHaveBeenCalledOnce())
     await waitFor(() => expect(result.current.isFetching).toBe(false))
     expect(result.current.news).toEqual(persistedItems)
+  })
+
+  it("304 response with a malformed or cold cache safely returns an empty page", async () => {
+    newsListMock.mockResolvedValue({ status: 304, data: undefined })
+
+    const queryClient = freshClient()
+    // With no cached infinite-query entry the optional pages chain must treat
+    // the 304 as a cache miss, not dereference an undefined cache value.
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.news).toEqual([])
+    expect(result.current.pagination).toEqual({
+      items: [],
+      total: 0,
+      limit: 12,
+      cursor: null,
+      next_cursor: null,
+      has_more: false,
+    })
+  })
+
+  it("304 response tolerates a cached entry without a pages array", async () => {
+    newsListMock.mockResolvedValue({ status: 304, data: undefined })
+
+    const queryClient = freshClient()
+    vi.spyOn(queryClient, "getQueryData").mockReturnValue({
+      pages: undefined,
+    } as never)
+
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.news).toEqual([])
+    expect(result.current.pagination).toEqual({
+      items: [],
+      total: 0,
+      limit: 12,
+      cursor: null,
+      next_cursor: null,
+      has_more: false,
+    })
+  })
+
+  it("returns null pagination for an empty in-memory infinite-data entry", () => {
+    const queryClient = freshClient()
+    queryClient.setQueryData(newsListQueryKey({ language: "ru" }), {
+      pages: [],
+      pageParams: [],
+    })
+
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }, { enabled: false }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    expect(result.current.pagination).toBeNull()
+    expect(result.current.news).toEqual([])
   })
 
   it("normalizes malformed pagination fields to safe defaults", async () => {
@@ -318,6 +544,27 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })
 
+  it("does not create a placeholder page for an empty persisted snapshot", async () => {
+    window.localStorage.setItem("news:list:ru", JSON.stringify([]))
+    let resolveFn: (value: unknown) => void = () => {}
+    newsListMock.mockImplementation(
+      () => new Promise((resolve) => (resolveFn = resolve as (value: unknown) => void))
+    )
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isPending).toBe(true))
+    expect(result.current.pagination).toBeNull()
+    expect(result.current.news).toEqual([])
+
+    await act(async () => {
+      resolveFn(okPage([], null))
+    })
+  })
+
   it("placeholder swallows malformed JSON gracefully (news.ts:268-269)", async () => {
     window.localStorage.setItem("news:list:ru", "{not-json")
     newsListMock.mockResolvedValue(okPage([], null))
@@ -328,6 +575,90 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
     })
     expect(result.current.news).toEqual([])
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
+  })
+
+  it("keeps live data visible when a refetch fails", async () => {
+    const live = [makeNews("live")]
+    newsListMock
+      .mockResolvedValueOnce(okPage(live, null))
+      .mockRejectedValueOnce(new Error("offline"))
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    await act(async () => {
+      await result.current.refetch()
+    })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.news).toEqual(live)
+  })
+
+  it("does not persist a placeholder before the network resolves", async () => {
+    const stored = [makeNews("placeholder")]
+    window.localStorage.setItem("news:list:ru", JSON.stringify(stored))
+    let resolveRequest: (value: unknown) => void = () => {}
+    newsListMock.mockImplementation(
+      () =>
+        new Promise<unknown>((resolve) => {
+          resolveRequest = resolve
+        })
+    )
+    const setSpy = vi.spyOn(StorageItem.prototype, "set").mockImplementation(() => true)
+
+    try {
+      const queryClient = freshClient()
+      const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+        wrapper: makeWrapper(queryClient),
+      })
+
+      await waitFor(() => expect(result.current.news).toEqual(stored))
+      expect(setSpy).not.toHaveBeenCalled()
+      await act(async () => resolveRequest(okPage(stored, null)))
+    } finally {
+      setSpy.mockRestore()
+    }
+  })
+
+  it("refreshes the persisted snapshot and key when language or limit changes", () => {
+    window.localStorage.setItem("news:list:ru", JSON.stringify([makeNews("ru")]))
+    window.localStorage.setItem("news:list:en", JSON.stringify([makeNews("en")]))
+    const queryClient = freshClient()
+    const { result, rerender } = renderHook(
+      ({ language, limit }: { language: string; limit: number }) =>
+        useNewsListQuery({ language, limit }, { enabled: false }),
+      {
+        initialProps: { language: "ru", limit: 12 },
+        wrapper: makeWrapper(queryClient),
+      }
+    )
+
+    expect(result.current.queryKey).toEqual(["news", "list", { language: "ru", limit: 12 }])
+    expect(result.current.news.map((item) => item.id)).toEqual(["ru"])
+    rerender({ language: "en", limit: 20 })
+    expect(result.current.queryKey).toEqual(["news", "list", { language: "en", limit: 20 }])
+    expect(result.current.news.map((item) => item.id)).toEqual(["en"])
+  })
+})
+
+describe("prefetchNewsListQuery pagination contract", () => {
+  it("uses the canonical key and treats missing pages as terminal", async () => {
+    newsListMock.mockResolvedValue(okPage([], null))
+    const queryClient = freshClient()
+    const prefetchSpy = vi.spyOn(queryClient, "prefetchInfiniteQuery")
+
+    await prefetchNewsListQuery(queryClient, { language: "en", limit: 12 })
+
+    expect(prefetchSpy).toHaveBeenCalledOnce()
+    const options = prefetchSpy.mock.calls[0]?.[0] as unknown as {
+      queryKey: unknown
+      getNextPageParam: (...args: unknown[]) => unknown
+    }
+    expect(options.queryKey).toEqual(["news", "list", { language: "en", limit: 12 }])
+    expect(options.getNextPageParam(undefined)).toBeNull()
+    expect(options.getNextPageParam({ next_cursor: "next" })).toBe("next")
   })
 })
 

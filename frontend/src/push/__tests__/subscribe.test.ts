@@ -109,6 +109,45 @@ describe("subscribe", () => {
       expect(mod.parseStoredTopics({ topics: ["legacy"] })).toEqual(["legacy"])
     })
 
+    it("treats only trimmed primitive identifiers as active users", () => {
+      vi.spyOn(storageMod.profileCacheStorage, "get").mockReturnValue(null)
+
+      const payload = {
+        perUser: {
+          "[object Object]": ["private-object"],
+          " ": ["private-whitespace"],
+          "0": ["numeric-zero"],
+        },
+        shared: ["shared-fallback"],
+      }
+
+      expect(mod.parseStoredTopics(payload, { userId: {} as any })).toEqual(["shared-fallback"])
+      expect(mod.parseStoredTopics(payload, { userId: " " })).toEqual(["shared-fallback"])
+      expect(mod.parseStoredTopics(payload, { userId: 0 })).toEqual(["numeric-zero"])
+    })
+
+    it("ignores malformed per-user entries and falls back to shared topics", () => {
+      vi.spyOn(storageMod.profileCacheStorage, "get").mockReturnValue(null)
+
+      expect(
+        mod.parseStoredTopics(
+          { perUser: { selected: "not-an-array" }, shared: ["shared-fallback"] },
+          { userId: "selected" }
+        )
+      ).toEqual(["shared-fallback"])
+      expect(
+        mod.parseStoredTopics({ perUser: { null: ["wrong-user"] }, shared: ["shared"] })
+      ).toEqual(["shared"])
+    })
+
+    it("does not dereference an empty profile cache while resolving the active user", () => {
+      vi.spyOn(storageMod.profileCacheStorage, "get").mockReturnValue(null)
+
+      expect(
+        mod.parseStoredTopics({ perUser: { null: ["wrong-user"] }, shared: ["shared"] })
+      ).toEqual(["shared"])
+    })
+
     it("normalizes valid per-user topics while clearing shared topics", () => {
       vi.spyOn(storageMod.profileCacheStorage, "get").mockReturnValue(null)
       localStorage.setItem(
@@ -587,6 +626,17 @@ describe("subscribe", () => {
       expect(key).toBe("env-key-123")
     })
 
+    it("trims an environment VAPID key and falls back when it is undefined", async () => {
+      vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "  env-key-123  ")
+      await expect(mod.resolveVapidPublicKey()).resolves.toBe("env-key-123")
+
+      vi.resetModules()
+      vi.stubEnv("VITE_VAPID_PUBLIC_KEY", undefined as unknown as string)
+      vi.mocked(getVapidPublicKey).mockResolvedValue("api-key-456")
+      const fresh = await import("../subscribe")
+      await expect(fresh.resolveVapidPublicKey()).resolves.toBe("api-key-456")
+    })
+
     it("resolves from API if environment variable is missing", async () => {
       vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "")
       vi.mocked(getVapidPublicKey).mockResolvedValue("api-key-456")
@@ -610,6 +660,13 @@ describe("subscribe", () => {
       const b64 = "YmFzZTY0"
       const bytes = mod.urlBase64ToUint8Array(b64)
       expect(new TextDecoder().decode(bytes)).toBe("base64")
+    })
+
+    it("decodes URL-safe values and applies padding for every base64 remainder", () => {
+      expect(Array.from(mod.urlBase64ToUint8Array("-_8"))).toEqual([251, 255])
+      expect(Array.from(mod.urlBase64ToUint8Array("AQ"))).toEqual([1])
+      expect(Array.from(mod.urlBase64ToUint8Array("AQI"))).toEqual([1, 2])
+      expect(Array.from(mod.urlBase64ToUint8Array("AQID"))).toEqual([1, 2, 3])
     })
   })
 
@@ -691,6 +748,159 @@ describe("subscribe", () => {
         })
       ).resolves.toBe(freshSub)
       expect(unsubscribeSpy).toHaveBeenCalledOnce()
+    })
+
+    it("reuses an unexpired subscription only when every application-key byte matches", async () => {
+      const desiredKey = mod.urlBase64ToUint8Array("matching-key")
+      const matchingSub = {
+        endpoint: "https://push.example.com/matching-key",
+        expirationTime: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        options: { applicationServerKey: desiredKey.buffer },
+        unsubscribe: vi.fn().mockResolvedValue(true),
+        toJSON: () => ({ endpoint: "https://push.example.com/matching-key" }),
+      }
+      const matchingReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(matchingSub),
+          subscribe: vi.fn(),
+        },
+      }
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      await expect(
+        mod.ensurePushSubscription({
+          registration: matchingReg,
+          vapidPublicKey: "matching-key",
+          requestPermission: false,
+        })
+      ).resolves.toBe(matchingSub)
+      expect(matchingSub.unsubscribe).not.toHaveBeenCalled()
+      expect(matchingReg.pushManager.subscribe).not.toHaveBeenCalled()
+
+      const almostMatching = {
+        ...matchingSub,
+        endpoint: "https://push.example.com/almost-matching",
+        options: {
+          applicationServerKey: (() => {
+            const key = new Uint8Array(desiredKey)
+            const lastIndex = key.length - 1
+            const lastValue = key[lastIndex] ?? 0
+            key[lastIndex] = lastValue ^ 1
+            return key.buffer
+          })(),
+        },
+      }
+      const replaceReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(almostMatching),
+          subscribe: vi.fn().mockResolvedValue(matchingSub),
+        },
+      }
+      await expect(
+        mod.ensurePushSubscription({
+          registration: replaceReg,
+          vapidPublicKey: "matching-key",
+          requestPermission: false,
+        })
+      ).resolves.toBe(matchingSub)
+      expect(almostMatching.unsubscribe).toHaveBeenCalledOnce()
+      expect(replaceReg.pushManager.subscribe).toHaveBeenCalledWith({
+        userVisibleOnly: true,
+        applicationServerKey: desiredKey,
+      })
+    })
+
+    it.each([
+      [null, "null-expiration"],
+      [0, "zero-expiration"],
+      [-1, "negative-expiration"],
+    ] as const)(
+      "does not rotate a matching subscription with %s expiration",
+      async (expirationTime, suffix) => {
+        const key = mod.urlBase64ToUint8Array(`expiry-${suffix}`)
+        const subscription = {
+          endpoint: `https://push.example.com/${suffix}`,
+          expirationTime,
+          options: { applicationServerKey: key.buffer },
+          unsubscribe: vi.fn().mockResolvedValue(true),
+          toJSON: () => ({ endpoint: `https://push.example.com/${suffix}` }),
+        }
+        const registration = {
+          pushManager: {
+            getSubscription: vi.fn().mockResolvedValue(subscription),
+            subscribe: vi.fn(),
+          },
+        }
+        vi.stubGlobal("Notification", { permission: "granted" })
+
+        await expect(
+          mod.ensurePushSubscription({
+            registration,
+            vapidPublicKey: `expiry-${suffix}`,
+            requestPermission: false,
+          })
+        ).resolves.toBe(subscription)
+        expect(subscription.unsubscribe).not.toHaveBeenCalled()
+        expect(registration.pushManager.subscribe).not.toHaveBeenCalled()
+      }
+    )
+
+    it("keeps a matching subscription exactly at the expiry threshold", async () => {
+      vi.setSystemTime(0)
+      const key = mod.urlBase64ToUint8Array("expiry-threshold")
+      const subscription = {
+        endpoint: "https://push.example.com/threshold-expiration",
+        expirationTime: 3 * 24 * 60 * 60 * 1000,
+        options: { applicationServerKey: key.buffer },
+        unsubscribe: vi.fn().mockResolvedValue(true),
+        toJSON: () => ({ endpoint: "https://push.example.com/threshold-expiration" }),
+      }
+      const registration = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(subscription),
+          subscribe: vi.fn(),
+        },
+      }
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      await expect(
+        mod.ensurePushSubscription({
+          registration,
+          vapidPublicKey: "expiry-threshold",
+          requestPermission: false,
+        })
+      ).resolves.toBe(subscription)
+      expect(subscription.unsubscribe).not.toHaveBeenCalled()
+      expect(registration.pushManager.subscribe).not.toHaveBeenCalled()
+    })
+
+    it("requires an explicit permission request and safely handles omitted options", async () => {
+      const registration = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(null),
+          subscribe: vi.fn(),
+        },
+      }
+      vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "omitted-options")
+      vi.stubGlobal("Notification", {
+        permission: "default",
+        requestPermission: vi.fn().mockResolvedValue("granted"),
+      })
+
+      await expect(mod.ensurePushSubscription({ registration })).resolves.toBeNull()
+      expect(Notification.requestPermission).not.toHaveBeenCalled()
+      expect(registration.pushManager.subscribe).not.toHaveBeenCalled()
+
+      vi.stubGlobal("Notification", { permission: "granted" })
+      const subscription = {
+        endpoint: "https://push.example.com/omitted-options",
+        options: {
+          applicationServerKey: mod.urlBase64ToUint8Array("omitted-options").buffer,
+        },
+        toJSON: () => ({ endpoint: "https://push.example.com/omitted-options" }),
+      }
+      registration.pushManager.getSubscription.mockResolvedValue(subscription)
+      await expect(mod.ensurePushSubscription({ registration })).resolves.toBe(subscription)
     })
 
     it("returns null when the user declines the default permission prompt", async () => {

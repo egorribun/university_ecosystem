@@ -23,6 +23,15 @@ type OtpEntryProps = {
 const OTP_LENGTH = 6
 const EMPTY_DIGITS = (): string[] => Array.from({ length: OTP_LENGTH }, () => "")
 
+type OtpInputRefs = { current: (HTMLInputElement | null)[] }
+
+/** Focus a mounted OTP field without throwing during reconciliation. */
+export const focusOtpInput = (inputRefs: OtpInputRefs, index: number): void => {
+  if (index < 0 || index >= OTP_LENGTH) return
+  const input = inputRefs.current[index]
+  if (input) input.focus()
+}
+
 export const OtpEntry = ({
   method = "totp",
   loading,
@@ -40,17 +49,20 @@ export const OtpEntry = ({
   const code = digits.join("")
 
   const focusInput = useCallback((index: number) => {
-    const input = inputRefs.current[index]
-    if (input) input.focus()
+    // Keyboard/paste handlers can run while a controlled list is being
+    // reconciled. Treat an out-of-range or not-yet-mounted ref as a safe no-op
+    // instead of throwing from a detached input and aborting the OTP flow.
+    focusOtpInput(inputRefs, index)
   }, [])
 
   const submitCode = useCallback(async () => {
     if (loading || code.length !== OTP_LENGTH) {
       setLocalError(t("mfa.otp.validation.required"))
       return
+    } else {
+      setLocalError(null)
+      await onSubmit(code)
     }
-    setLocalError(null)
-    await onSubmit(code)
   }, [code, loading, onSubmit, t])
 
   const handleChange = (index: number, value: string) => {
@@ -164,7 +176,7 @@ export const OtpEntry = ({
         >
           {digits.map((digit, index) => (
             <input
-              key={`otp-digit-${index}`}
+              key={index}
               ref={(el) => {
                 inputRefs.current[index] = el
               }}

@@ -74,18 +74,24 @@ end_of_record
         ),
     }
     go_paths = {
-        "artifacts/coverage/go/gateway/coverage.out": "services/gateway/main.go",
-        "artifacts/coverage/go/ws-hub/coverage.out": "services/ws-hub/main.go",
+        "artifacts/coverage/go/gateway/coverage.out": ("services/gateway/main.go",),
+        "artifacts/coverage/go/ws-hub/coverage.out": ("services/ws-hub/main.go",),
         "artifacts/coverage/go/file-processor/coverage.out": (
-            "services/file-processor/main.go"
+            "services/file-processor/main.go",
         ),
-        "artifacts/coverage/go/shared/coverage.out": ("services/pkg/spicedb/client.go"),
+        "artifacts/coverage/go/shared/coverage.out": (
+            "services/pkg/logging/logging.go",
+            "services/pkg/spicedb/client.go",
+        ),
     }
-    for report_path, source_path in go_paths.items():
-        payloads[report_path] = f"mode: count\n{source_path}:1.1,1.10 1 1\n"
-        source = root / source_path
-        source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_text("package main\n", encoding="utf-8")
+    for report_path, source_paths in go_paths.items():
+        payloads[report_path] = "mode: count\n" + "".join(
+            f"{source_path}:1.1,1.10 1 1\n" for source_path in source_paths
+        )
+        for source_path in source_paths:
+            source = root / source_path
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text("package main\n", encoding="utf-8")
 
     rust_components = {
         "rust-native": "native/rust_ext",

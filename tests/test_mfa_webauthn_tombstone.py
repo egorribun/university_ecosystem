@@ -12,6 +12,11 @@ ALLOWED_RETIREMENT_CONTRACTS = {
     ROOT / "tests" / "integration" / "test_mfa_email_otp_postgres.py",
     ROOT / "tests" / "test_mfa_openapi_artifacts_contract.py",
 }
+# This map contains file-level pytest telemetry, not active product/security
+# declarations. Its keys intentionally include immutable tombstone test
+# filenames so the scheduler can retain their measured cost without making
+# those historical names part of the MFA contract surface.
+NON_CONTRACT_QUALITY_ARTIFACTS = {ROOT / "quality" / "test-durations.json"}
 
 
 def test_runtime_has_no_webauthn_references_or_models() -> None:
@@ -44,6 +49,8 @@ def test_security_policy_describes_only_current_mfa_factors() -> None:
 def test_active_quality_contracts_have_no_retired_factor_references() -> None:
     findings: list[str] = []
     for path in (ROOT / "quality").glob("*.json"):
+        if path.resolve() in NON_CONTRACT_QUALITY_ARTIFACTS:
+            continue
         content = path.read_text(encoding="utf-8").lower()
         if "webauthn" in content or "passkey" in content:
             findings.append(str(path.relative_to(ROOT)))

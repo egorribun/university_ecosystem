@@ -39,6 +39,10 @@ SECRET = "cwv-signing-secret-with-at-least-32-bytes"  # pragma: allowlist secret
 INTERNAL_HMAC_SECRET = (
     "internal-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret
 )
+# Keep the independent audit-signing guard valid so the settings tests exercise
+# the CWV validator they target rather than the production placeholder guard.
+# The deterministic low-entropy fixture is intentionally not a real secret.
+AUDIT_LOG_SECRET = "auditlog-" + "a" * 56  # pragma: allowlist secret
 INVALID_SHORT_SECRET = "short"  # pragma: allowlist secret
 TESTER_IDS = ",".join(f"00000000-0000-0000-0000-{index:012d}" for index in range(1, 26))
 OIDC_TEST_TOKEN = (
@@ -703,6 +707,7 @@ def test_staging_settings_redact_secret_and_reject_partial_oidc_policy() -> None
         "database_url": "sqlite+aiosqlite:///:memory:",
         "revocation_redis_url": "redis://revocation.internal:6379/0",
         "algorithm": "RS256",
+        "audit_log_secret": AUDIT_LOG_SECRET,
         "internal_hmac_secret": INTERNAL_HMAC_SECRET,
         "cwv_rum_enabled": True,
         "cwv_rum_signing_secret": SECRET,
@@ -736,6 +741,7 @@ def test_staging_settings_reject_invalid_ttl_origin_and_tester_cohort() -> None:
         "database_url": "sqlite+aiosqlite:///:memory:",
         "revocation_redis_url": "redis://revocation.internal:6379/0",
         "algorithm": "RS256",
+        "audit_log_secret": AUDIT_LOG_SECRET,
         "internal_hmac_secret": INTERNAL_HMAC_SECRET,
         "cwv_rum_enabled": True,
         "cwv_rum_signing_secret": SECRET,

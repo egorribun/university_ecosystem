@@ -68,6 +68,34 @@ spec:
                 name: backend-secrets
             - configMapRef:
                 name: backend-config
+          env:
+            # Keep the RSA private key out of the environment; it is mounted
+            # from the ESO-managed Secret below and loaded by this path.
+            - name: JWT_PRIVATE_KEY_PATH
+              value: /run/secrets/jwt-rsa-private-key.pem
+            # These secrets are listed explicitly so a malformed/missing ESO
+            # key fails the pod at startup rather than silently selecting an
+            # insecure development fallback.
+            - name: CACHE_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: CACHE_REDIS_URL
+            - name: REVOCATION_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: REVOCATION_REDIS_URL
+            - name: WS_HUB_INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: WS_HUB_INTERNAL_SECRET
+            - name: IDEMPOTENCY_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: IDEMPOTENCY_HMAC_SECRET
           # MOD-06: preStop sleep ensures load balancer drains before pod dies.
           # K8s sends SIGTERM + starts preStop concurrently; the sleep lets the
           # readiness probe flip to 503 and LB endpoint lists propagate first.
@@ -115,6 +143,9 @@ spec:
               mountPath: /tmp
             - name: cache
               mountPath: /app/.cache
+            - name: jwt-rsa
+              mountPath: /run/secrets
+              readOnly: true
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -124,6 +155,12 @@ spec:
           emptyDir: {}
         - name: cache
           emptyDir: {}
+        - name: jwt-rsa
+          secret:
+            secretName: backend-secrets # pragma: allowlist secret; Kubernetes Secret resource name only
+            items:
+              - key: jwt-rsa-private-key
+                path: jwt-rsa-private-key.pem
 ---
 apiVersion: v1
 kind: Service

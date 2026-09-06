@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import * as logger from "@/app/logger"
 import { clearLegacyAccessToken, LEGACY_ACCESS_TOKEN_STORAGE_KEY } from "../legacyTokenCleanup"
 
 describe("clearLegacyAccessToken", () => {
@@ -10,34 +11,71 @@ describe("clearLegacyAccessToken", () => {
   it("removes the token persisted by pre-cookie application versions", () => {
     const removeItem = vi.fn()
 
-    clearLegacyAccessToken({ removeItem })
+    expect(clearLegacyAccessToken({ removeItem })).toBe(true)
 
-    expect(removeItem).toHaveBeenCalledWith(LEGACY_ACCESS_TOKEN_STORAGE_KEY)
+    // Keep this assertion independent from the exported constant so a mutated
+    // storage key cannot update both sides of the expectation.
+    expect(removeItem).toHaveBeenCalledWith("ecosystem.access.token")
+    expect(LEGACY_ACCESS_TOKEN_STORAGE_KEY).toBe("ecosystem.access.token")
   })
 
   it("is safe without browser storage", () => {
-    expect(() => clearLegacyAccessToken(null)).not.toThrow()
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => {})
+    window.localStorage.setItem(LEGACY_ACCESS_TOKEN_STORAGE_KEY, "must-remain")
+    expect(clearLegacyAccessToken(null)).toBe(false)
+    expect(window.localStorage.getItem(LEGACY_ACCESS_TOKEN_STORAGE_KEY)).toBe("must-remain")
+    expect(warningSpy).not.toHaveBeenCalled()
+    warningSpy.mockRestore()
   })
 
   it("uses browser storage by default", () => {
     window.localStorage.setItem(LEGACY_ACCESS_TOKEN_STORAGE_KEY, "legacy-token")
 
-    clearLegacyAccessToken()
+    expect(clearLegacyAccessToken()).toBe(true)
 
     expect(window.localStorage.getItem(LEGACY_ACCESS_TOKEN_STORAGE_KEY)).toBeNull()
   })
 
   it("is safe during server-side rendering", () => {
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => {})
     vi.stubGlobal("window", undefined)
 
-    expect(() => clearLegacyAccessToken()).not.toThrow()
+    try {
+      expect(clearLegacyAccessToken()).toBe(false)
+      expect(warningSpy).not.toHaveBeenCalled()
+    } finally {
+      warningSpy.mockRestore()
+    }
+  })
+
+  it("fails closed when browser storage access throws", () => {
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => {})
+    const blockedWindow = {}
+    Object.defineProperty(blockedWindow, "localStorage", {
+      configurable: true,
+      get: () => {
+        throw new DOMException("blocked", "SecurityError")
+      },
+    })
+    vi.stubGlobal("window", blockedWindow)
+
+    expect(clearLegacyAccessToken()).toBe(false)
+    expect(warningSpy).toHaveBeenCalledWith(
+      "Unable to access legacy token storage",
+      expect.any(DOMException)
+    )
   })
 
   it("fails closed when browser storage rejects access", () => {
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => {})
     const removeItem = vi.fn(() => {
       throw new DOMException("blocked", "SecurityError")
     })
 
-    expect(() => clearLegacyAccessToken({ removeItem })).not.toThrow()
+    expect(clearLegacyAccessToken({ removeItem })).toBe(false)
+    expect(warningSpy).toHaveBeenCalledWith(
+      "Unable to remove a legacy access token",
+      expect.any(DOMException)
+    )
   })
 })

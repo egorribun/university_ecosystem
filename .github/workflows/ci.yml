@@ -650,6 +650,10 @@ jobs:
             coverage-threshold: 100
             coverage-component: go-shared-fragment
             coverage-canonical-path: artifacts/coverage/go/shared-inputs/uni-cli/coverage.out
+          - service: services/pkg/logging
+            coverage-threshold: 100
+            coverage-component: go-shared-fragment
+            coverage-canonical-path: artifacts/coverage/go/shared-inputs/logging/coverage.out
           - service: services/pkg/spiffe
             coverage-threshold: 100
             coverage-component: go-shared-fragment
@@ -670,7 +674,8 @@ jobs:
       coverage-canonical-path: ${{ matrix.coverage-canonical-path }}
 
   # MOD-W15-06 (audit 2026-03-23 Wave 15): Go fuzz testing for ws-hub message parsing.
-  # Short 30s CI budget — finds quick panics and crashes.
+  # Bounded fuzz smoke — finds quick panics and crashes without an unbounded
+  # worker lifetime.
   # Crashes are stored in testdata/fuzz/ and replayed on subsequent runs automatically.
   go-fuzz:
     name: Go Fuzz Tests (ws-hub)
@@ -685,15 +690,15 @@ jobs:
           go-version: "1.26.6"
           cache-dependency-path: services/ws-hub/go.sum
 
-      # PERF-W18-04 (audit 2026-03-23 Wave 18): increased from 30s to 120s for
-      # meaningful coverage of JSON parsing and WebSocket message validation.
-      - name: Run fuzz tests (120s CI budget)
+      - name: Run fuzz tests (bounded smoke)
         run: |
           cd services/ws-hub
-          # Serialize fuzz workers to bound runner memory; fuzz duration and
-          # target coverage remain unchanged.
-          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=30s -parallel=1 -timeout=3m
-          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=30s -parallel=1 -timeout=3m
+          # Serialize fuzz workers to bound runner memory. Go 1.26.6 still
+          # has golang/go#75804, where an exact fuzztime deadline can escape
+          # as a false context-deadline failure. Keep a five-second shutdown
+          # margin for both targets while retaining a bounded smoke budget.
+          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=25s -parallel=1 -timeout=3m
+          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=25s -parallel=1 -timeout=3m
 
       - name: Upload fuzz corpus on failure
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -738,9 +743,21 @@ jobs:
       node-version: "24"
       run-lighthouse: true
 
-  # Generate the expensive instrumenter universe once. The artifact is named
-  # for an exact immutable GitHub workflow attempt and commit; every consumer
-  # validates all bound metadata before it can select a logical shard.
+  # Build the generated WASM packages once for all Playwright jobs.  This lane
+  # intentionally has no dependency on frontend-tests: it starts at fan-out and
+  # therefore cannot serialize browser coverage behind the larger frontend
+  # matrix.  Consumers bind the server-issued artifact outputs to this run.
+  e2e-wasm-build:
+    name: E2E WASM Build
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-e2e-wasm-build.yml
+
+  # Generate the expensive instrumenter universe once after frontend readiness.
+  # This producer may overlap with aggregate coverage, but execution remains
+  # coverage-gated below. The artifact is named for an exact immutable GitHub
+  # workflow attempt and commit; every consumer validates all bound metadata
+  # before it can select a logical shard.
   stryker-preflight:
     name: Frontend Mutation Preflight Universe
     runs-on: ubuntu-24.04
@@ -748,8 +765,7 @@ jobs:
     needs:
       - pre-commit-check
       - frontend-tests
-      - coverage-policy-gate
-    if: ${{ github.event_name == 'pull_request' && needs.frontend-tests.result == 'success' && needs.pre-commit-check.result == 'success' && needs.coverage-policy-gate.result == 'success' }}
+    if: ${{ github.event_name == 'pull_request' && needs.frontend-tests.result == 'success' && needs.pre-commit-check.result == 'success' }}
     permissions:
       contents: read
       actions: read
@@ -866,8 +882,10 @@ jobs:
     name: Frontend mutation shard ${{ matrix.shard-index }}/64
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    needs: stryker-preflight
-    if: ${{ github.event_name == 'pull_request' }}
+    needs:
+      - stryker-preflight
+      - coverage-policy-gate
+    if: ${{ github.event_name == 'pull_request' && needs.stryker-preflight.result == 'success' && needs.coverage-policy-gate.result == 'success' }}
     strategy:
       fail-fast: false
       # A c4 timing sample from exact run 33303107020 (6 completed Stryker
@@ -1010,12 +1028,14 @@ jobs:
     name: Frontend Mutation Evidence (100%)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    needs: [stryker-preflight, stryker-shards]
-    # The preflight is intentionally gated on frontend readiness.  If that
-    # prerequisite is skipped, no producer can emit a same-run artifact and
-    # this consumer must remain skipped as well.  Once preflight started,
-    # keep the aggregate fail-closed for failed/cancelled shard producers.
-    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-preflight.result != 'skipped' }}
+    needs: [stryker-preflight, stryker-shards, coverage-policy-gate]
+    # The preflight is intentionally gated on frontend readiness.  Coverage is
+    # an explicit prerequisite for both shard execution and aggregation: a
+    # preflight artifact may exist while coverage is still running, but a
+    # failed/cancelled coverage gate must never produce mutation evidence.
+    # Once preflight started, keep the aggregate fail-closed for failed/
+    # cancelled shard producers.
+    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-preflight.result != 'skipped' && needs.coverage-policy-gate.result == 'success' }}
     permissions:
       contents: read
       actions: read
@@ -1256,9 +1276,12 @@ jobs:
   # without overloading the SSR preview.
   e2e-tests:
     name: E2E Tests (shard ${{ matrix.shard-index }}/4)
-    needs: pre-commit-check
+    needs:
+      - pre-commit-check
+      - e2e-wasm-build
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -1271,6 +1294,9 @@ jobs:
       shard-index: ${{ matrix.shard-index }}
       shard-total: 4
       collect-coverage: true
+      wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
+      wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
+      wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
   # Phase 7.1: browser coverage is visible immediately but remains advisory
   # during the 30-day stabilization window. Nightly runs execute the same
@@ -1278,9 +1304,12 @@ jobs:
   # feedback without making pre-existing renderer flakes merge blockers.
   e2e-tests-cross-browser:
     name: E2E Tests (cross-browser ${{ matrix.browser }})
-    needs: pre-commit-check
+    needs:
+      - pre-commit-check
+      - e2e-wasm-build
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -1293,6 +1322,9 @@ jobs:
       shard-index: 1
       shard-total: 1
       advisory: true
+      wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
+      wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
+      wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
   security-audit:
     name: Security Audit
@@ -3422,32 +3454,79 @@ jobs:
           test -s mutants/mutmut-incremental-plan/plan-manifest.json
 
       # A typical focused backend change occupies only a handful of the fixed
-      # 128 plan entries.  Emitting only nonempty entries releases hosted
+      # 128 logical plan entries. Emitting only nonempty entries and coalescing
+      # them into at most 64 budget-validated physical groups releases hosted
       # runners for E2E, Lighthouse, and frontend mutation work rather than
       # repeatedly bootstrapping uv and Helm for a plan already proven empty.
-      # The helper validates every shard file, selection digest, and complete
-      # population digest before it writes this matrix; the consumers validate
-      # the same plan again after downloading the attempt-scoped envelope.
+      # The matrix helper validates every shard file, selection digest, and
+      # complete population digest; the grouped-budget helper then validates
+      # both logical and physical timeout envelopes in one stats-loaded pass.
+      # Consumers validate the same plan again after downloading the
+      # attempt-scoped envelope.
       - name: Build validated mutmut execution matrix
         id: mutation_matrix
         shell: bash
         run: |
           set -euo pipefail
           if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then
-            matrix="$(python scripts/mutmut_shard_matrix.py matrix \
+            # Preflight the exact execution budget before expanding runners.
+            # The consumer repeats this calculation, but doing it here avoids
+            # allocating any matrix leg when fresh stats no longer fit the
+            # six-hour envelope.  The 120-second reserve is restricted to the
+            # already-generated, immutable universe reuse path; it is greater
+            # than the measured 72-second maximum for that phase.  The live
+            # deadline check separately charges checkout/setup elapsed time;
+            # all selected-test and per-mutant watchdog costs remain fail-closed.
+            # Keep a 90-second pre-run setup envelope in the producer gate so
+            # a plan that would only fit before checkout/setup is rejected
+            # before any matrix runner is allocated: 21,600 - 630 - 90.
+            mapfile -t nonempty_plan_files < <(
+              find mutants/mutmut-incremental-plan -maxdepth 1 -type f \
+                -name 'shard-*.txt' -size +0c -print | sort
+            )
+            matrix="$(python scripts/mutmut_shard_matrix.py groups \
               --plan-directory mutants/mutmut-incremental-plan \
-              --expected-shards 128)"
-            matrix_summary="Fully validated fixed plan assignments: 128"
+              --expected-shards 128 \
+              --target-groups 64)"
+            printf '%s\n' "$matrix" > /tmp/mutmut-execution-matrix.json
+            # Validate every logical assignment and every coalesced physical
+            # group against merged stats in one process. This keeps the
+            # producer fail-closed without reparsing a large stats JSON once
+            # per logical shard before any runner can start.
+            uv run python scripts/validate_mutmut_group_budgets.py \
+              --matrix-file /tmp/mutmut-execution-matrix.json \
+              --plan-directory mutants/mutmut-incremental-plan \
+              --stats mutants/mutmut-stats.json \
+              --output-manifest /tmp/mutmut-group-budgets.json \
+              --expected-shards 128 \
+              --target-groups 64 \
+              --max-children 3 \
+              --control-cycle-reserve-seconds 5 \
+              --metadata-startup-reserve-seconds 120 \
+              --max-timeout-seconds 20880
+            test -s /tmp/mutmut-group-budgets.json
+            if [ "${#nonempty_plan_files[@]}" -eq 0 ]; then
+              # Keep the explicit non-mutant sentinel emitted by ``groups``
+              # for an already-validated empty plan (for example, a legacy
+              # retry artifact); the planner itself normally rejects an empty
+              # changed-Python mutation universe before writing a plan.
+              echo "Validated Python scope contains no nonempty mutation shards; emitting the non-mutant sentinel."
+            fi
+            if [ "${#nonempty_plan_files[@]}" -eq 0 ]; then
+              matrix_summary="Validated Python scope has no mutants; one explicit non-mutant sentinel"
+            else
+              matrix_summary="Fully validated 128 logical assignments; up to 64 budget-validated physical groups"
+            fi
           else
             # GitHub does not permit an empty dynamic matrix. A single explicit
             # no-Python sentinel validates the empty attempt envelope and exits
             # without installing a mutation toolchain.
-            matrix='{"include":[{"shard":0,"has_python":"false","has_mutants":"false"}]}'
+            matrix='{"include":[{"group_id":0,"logical_shards":[],"selection_files":[],"selected_count":0,"selection_sha256":"","group_sha256":"","estimated_load_micros":0,"has_python":"false","has_mutants":"false"}]}'
             matrix_summary="No-Python sentinel: one explicit non-mutant descriptor (not a 128-assignment plan)"
           fi
           descriptor_count="$(printf '%s' "$matrix" | python -c 'import json, sys; entries = json.load(sys.stdin).get("include"); sys.exit("mutation matrix must contain a nonempty include list") if not isinstance(entries, list) or not entries else None; print(len(entries))')"
-          if ! [[ "$descriptor_count" =~ ^[1-9][0-9]*$ ]] || [ "$descriptor_count" -gt 128 ]; then
-            echo "::error::Mutation descriptor count is outside the validated 1..128 range: $descriptor_count"
+          if ! [[ "$descriptor_count" =~ ^[1-9][0-9]*$ ]] || [ "$descriptor_count" -gt 64 ]; then
+            echo "::error::Mutation descriptor count is outside the validated 1..64 range: $descriptor_count"
             exit 1
           fi
           if [ "${{ steps.mutation_scope.outputs.has_python }}" = "false" ] && [ "$descriptor_count" -ne 1 ]; then
@@ -3522,7 +3601,7 @@ jobs:
           if-no-files-found: error
 
   mutation-tests-incremental:
-    name: Incremental Mutation Tests (mutmut) / shard ${{ matrix.shard }}/128
+    name: Incremental Mutation Tests (mutmut) / execution group ${{ matrix.group_id }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -3530,24 +3609,34 @@ jobs:
       # expensive runners are not allocated when the foundational quality gate
       # is already red. Once that gate is green, use the complete hosted-runner
       # budget: eight Stryker workers plus twelve mutmut workers equals the
-      # repository's 20-runner ceiling. The bounded inner mutmut worker count
-      # and the complete 128-assignment evidence plan remain unchanged.
+      # repository's 20-runner ceiling. The bounded inner mutmut worker count,
+      # complete 128-assignment evidence plan, and at-most-64 physical groups
+      # remain fail-closed.
       max-parallel: 12
       # The producer validates all 128 fixed assignments, then dynamically
-      # emits only exact nonempty entries. This preserves the full plan as
-      # evidence while preventing empty shards from consuming the scarce
-      # hosted-runner pool. A single explicit sentinel handles an empty scope.
+      # emits at most 64 deterministic physical groups over their exact
+      # nonempty entries. This preserves the full plan as evidence while
+      # preventing empty logical shards and per-shard bootstrap overhead from
+      # consuming hosted runners.
+      # A single explicit sentinel handles an empty scope.
       matrix: ${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}
-    # Exact shards can legitimately map to a large lifecycle test union. The
+    # Exact execution groups can legitimately map to a large lifecycle test union. The
     # pull-request gate therefore uses the same six-hour wall-clock envelope
     # as the manual evidence workflow. Three bounded workers avoid SQLite
     # contention in forked test processes while the fixed one-hundred-twenty-eight
-    # shard plan bounds the maximum fan-out without allowing an unbounded fork storm.
+    # logical plan and at-most-sixty-four physical groups cap fan-out without
+    # allowing an unbounded fork storm.
     # The dynamic inner timeout remains fail-closed and leaves ten minutes for
     # proof, score verification, upload, and a controlled exit.
     timeout-minutes: 360
     env:
       OTEL_SDK_DISABLED: "true"
+      # mutmut forks test processes after the application has constructed
+      # metric readers. An infinite export interval keeps the mutation
+      # subprocesses deterministic without registering the SDK's periodic
+      # at-fork callback; normal stats/universe and observability jobs retain
+      # the default exporter behavior.
+      OTEL_METRIC_EXPORT_INTERVAL: "inf"
       REVOCATION_REDIS_URL: redis://localhost:6380/0
     permissions:
       contents: read
@@ -3705,7 +3794,13 @@ jobs:
           LOCAL_HAS_PYTHON: ${{ steps.mutation_scope.outputs.has_python }}
           MATRIX_HAS_PYTHON: ${{ matrix.has_python }}
           MATRIX_HAS_MUTANTS: ${{ matrix.has_mutants }}
-          MATRIX_SHARD: ${{ matrix.shard }}
+          MATRIX_GROUP_ID: ${{ matrix.group_id }}
+          MATRIX_LOGICAL_SHARDS: ${{ join(matrix.logical_shards, ',') }}
+          MATRIX_SELECTED_COUNT: ${{ matrix.selected_count }}
+          MATRIX_SELECTION_SHA256: ${{ matrix.selection_sha256 }}
+          MATRIX_GROUP_SHA256: ${{ matrix.group_sha256 }}
+          MATRIX_ESTIMATED_LOAD_MICROS: ${{ matrix.estimated_load_micros }}
+          MUTMUT_TARGET_GROUPS: "64"
         run: |
           set -euo pipefail
           if [[ "$MATRIX_HAS_PYTHON" != "true" && "$MATRIX_HAS_PYTHON" != "false" ]]; then
@@ -3721,19 +3816,31 @@ jobs:
             exit 1
           fi
           if [ "$LOCAL_HAS_PYTHON" = "false" ]; then
-            if [ "$MATRIX_SHARD" != "0" ] || [ "$MATRIX_HAS_MUTANTS" != "false" ]; then
+            if [ "$MATRIX_GROUP_ID" != "0" ] || [ "$MATRIX_HAS_MUTANTS" != "false" ]; then
               echo "::error::Empty mutation scope must use the explicit non-mutant sentinel."
               exit 1
             fi
             echo "has_mutants=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          python scripts/mutmut_shard_matrix.py validate-entry \
+          if [ "$MATRIX_HAS_MUTANTS" != "true" ]; then
+            if [ "$MATRIX_GROUP_ID" != "0" ] || [ -n "$MATRIX_LOGICAL_SHARDS" ]; then
+              echo "::error::Empty mutation scope has an invalid group sentinel."
+              exit 1
+            fi
+            echo "has_mutants=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python scripts/mutmut_shard_matrix.py validate-group \
             --plan-directory mutants/mutmut-incremental-plan \
             --expected-shards 128 \
-            --shard-id "$MATRIX_SHARD" \
-            --has-python "$MATRIX_HAS_PYTHON" \
-            --has-mutants "$MATRIX_HAS_MUTANTS"
+            --target-groups "$MUTMUT_TARGET_GROUPS" \
+            --group-id "$MATRIX_GROUP_ID" \
+            --logical-shards "$MATRIX_LOGICAL_SHARDS" \
+            --selected-count "$MATRIX_SELECTED_COUNT" \
+            --selection-sha256 "$MATRIX_SELECTION_SHA256" \
+            --group-sha256 "$MATRIX_GROUP_SHA256" \
+            --estimated-load-micros "$MATRIX_ESTIMATED_LOAD_MICROS"
           printf 'has_mutants=%s\n' "$MATRIX_HAS_MUTANTS" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
@@ -3780,25 +3887,69 @@ jobs:
       - name: Run incremental mutmut (blocking, stats-derived budget)
         id: run_incremental_mutmut
         if: steps.mutation_scope.outputs.has_python == 'true' && steps.mutation_shard.outputs.has_mutants == 'true'
+        # GitHub Actions creates a fresh shell for every step.  Keep the
+        # validated matrix descriptor available to the execution step instead
+        # of relying on the validation step's process environment.  Without
+        # this explicit binding the runner reaches ``test -n
+        # "$MATRIX_LOGICAL_SHARDS"`` with an empty variable and exits before
+        # any selected mutant is executed or evidence is finalized.
+        env:
+          MATRIX_GROUP_ID: ${{ matrix.group_id }}
+          MATRIX_LOGICAL_SHARDS: ${{ join(matrix.logical_shards, ',') }}
+          MATRIX_SELECTED_COUNT: ${{ matrix.selected_count }}
+          MATRIX_SELECTION_SHA256: ${{ matrix.selection_sha256 }}
+          MATRIX_GROUP_SHA256: ${{ matrix.group_sha256 }}
+          MATRIX_ESTIMATED_LOAD_MICROS: ${{ matrix.estimated_load_micros }}
         run: |
           # Scope mutmut to every changed backend source line.  The old
           # tenant-only probe silently skipped mutation evidence for all other
           # Python diffs, while whole-file selection made a small edit replay
           # hundreds of unrelated mutants.
           # The central producer has already generated the complete source /
-          # metadata universe and a duration-balanced exact plan.  Selecting a
-          # precomputed file here avoids repeating mutmut's expensive source
-          # generation in all 128 consumer legs.
-          shard_plan="mutants/mutmut-incremental-plan/shard-$(printf '%02d' '${{ matrix.shard }}').txt"
-          test -f "$shard_plan"
-          cp "$shard_plan" /tmp/mutmut-shard.txt
+          # metadata universe and a duration-balanced exact plan. Selecting the
+          # validated logical files in this physical group avoids repeating
+          # mutmut's expensive source generation per logical shard.
+          test -n "$MATRIX_LOGICAL_SHARDS"
+          : > /tmp/mutmut-shard.txt
+          IFS=',' read -r -a logical_shards <<< "$MATRIX_LOGICAL_SHARDS"
+          for logical_shard in "${logical_shards[@]}"; do
+            if ! [[ "$logical_shard" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Validated group contains an invalid logical shard ID."
+              exit 1
+            fi
+            shard_plan="mutants/mutmut-incremental-plan/shard-$(printf '%02d' "$logical_shard").txt"
+            test -f "$shard_plan" && test ! -L "$shard_plan"
+            cat "$shard_plan" >> /tmp/mutmut-shard.txt
+          done
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
             echo "::error::Validated nonempty mutation matrix entry became empty."
             exit 1
           fi
           echo "has_mutants=true" >> "$GITHUB_OUTPUT"
-          echo "Mutating shard ${{ matrix.shard }}/128: ${#MUTANT_NAMES[@]} exact mutants"
+          if [ "${#MUTANT_NAMES[@]}" -ne "$MATRIX_SELECTED_COUNT" ]; then
+            echo "::error::Grouped mutation selection count changed after materialization."
+            exit 1
+          fi
+          duplicate_count="$(LC_ALL=C sort /tmp/mutmut-shard.txt | uniq -d | wc -l)"
+          if [ "$duplicate_count" -ne 0 ]; then
+            echo "::error::Grouped mutation selection contains duplicate mutant IDs."
+            exit 1
+          fi
+          actual_selection_sha256="$(python - /tmp/mutmut-shard.txt <<'PY'
+          import hashlib
+          import sys
+          from pathlib import Path
+
+          names = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+          print(hashlib.sha256("\n".join(sorted(names)).encode("utf-8")).hexdigest())
+          PY
+          )"
+          if [ "$actual_selection_sha256" != "$MATRIX_SELECTION_SHA256" ]; then
+            echo "::error::Grouped mutation selection digest changed after materialization."
+            exit 1
+          fi
+          echo "Mutating execution group $MATRIX_GROUP_ID (logical shards $MATRIX_LOGICAL_SHARDS): ${#MUTANT_NAMES[@]} exact mutants"
           MUTMUT_EVIDENCE_DIR=mutants/mutmut-exact-evidence
           mkdir -p "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_EVIDENCE_FINALIZED=false
@@ -3855,11 +4006,18 @@ jobs:
             --prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
             --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_FAILURE_REASON="deriving the stats-based mutation budget"
+          # The immutable source/metadata universe was generated and
+          # validated by the producer.  Two minutes is an evidence-backed
+          # reserve for this reuse path (13 sampled successful jobs stayed
+          # below 90 seconds, with a 72-second maximum; the largest observed
+          # pre-run setup elapsed 89 seconds).  The selected-test and mutmut
+          # watchdog phases remain fully charged by the helper.
           MUTMUT_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
             --max-children 3 \
             --control-cycle-reserve-seconds 5 \
+            --metadata-startup-reserve-seconds 120 \
             --max-timeout-seconds 20970 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
@@ -3978,7 +4136,7 @@ jobs:
         if: always() && steps.mutation_scope.outputs.has_python == 'true' && steps.run_incremental_mutmut.outputs.has_mutants == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          name: mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-group-${{ matrix.group_id }}
           path: |
             mutants/mutmut-cicd-stats.json
             mutants/mutmut-exact-evidence/
@@ -4247,6 +4405,12 @@ jobs:
           name: go-coverage-services-pkg-spiffe
           path: artifacts/coverage/go/shared-inputs/spiffe
 
+      - name: Download Go shared logging coverage artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: go-coverage-services-pkg-logging
+          path: artifacts/coverage/go/shared-inputs/logging
+
       - name: Download Go SpiceDB coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -4316,9 +4480,9 @@ jobs:
           test -s frontend/coverage/lcov.info
           test -s frontend/coverage/coverage-final.json
           test "$(find frontend/coverage -maxdepth 1 -type f | wc -l)" -eq 3
-          test "$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)" -eq 3
-          test "$(find artifacts/coverage/go -name 'coverage.out' -type f | wc -l)" -eq 6
-          test "$(find artifacts/coverage/go -name 'coverage-provenance.json' -type f | wc -l)" -eq 6
+          test "$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)" -eq 4
+          test "$(find artifacts/coverage/go -name 'coverage.out' -type f | wc -l)" -eq 7
+          test "$(find artifacts/coverage/go -name 'coverage-provenance.json' -type f | wc -l)" -eq 7
           test "$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)" -eq 4
           test "$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)" -eq 4
           test "$(find artifacts/coverage/rust -name 'codecov.json' -type f | wc -l)" -eq 4
@@ -4344,6 +4508,7 @@ jobs:
           verify_producer artifacts/coverage/go/ws-hub/coverage-provenance.json test go-coverage-services-ws-hub
           verify_producer artifacts/coverage/go/file-processor/coverage-provenance.json test go-coverage-services-file-processor
           verify_producer artifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json test go-coverage-services-cmd-uni-cli
+          verify_producer artifacts/coverage/go/shared-inputs/logging/coverage-provenance.json test go-coverage-services-pkg-logging
           verify_producer artifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json test go-coverage-services-pkg-spiffe
           verify_producer artifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json test go-coverage-services-pkg-spicedb
           verify_producer artifacts/coverage/rust/coverage-provenance.json rust-tests rust-coverage
@@ -4422,6 +4587,7 @@ jobs:
           uv run python scripts/quality/merge_go_coverprofiles.py \
             --output artifacts/coverage/go/shared/coverage.out \
             artifacts/coverage/go/shared-inputs/uni-cli/coverage.out \
+            artifacts/coverage/go/shared-inputs/logging/coverage.out \
             artifacts/coverage/go/shared-inputs/spiffe/coverage.out \
             artifacts/coverage/go/shared-inputs/spicedb/coverage.out
           test -s artifacts/coverage/go/shared/coverage.out
@@ -4629,6 +4795,7 @@ jobs:
             artifacts/coverage/go/ws-hub/coverage.out
             artifacts/coverage/go/file-processor/coverage.out
             artifacts/coverage/go/shared/coverage.out
+            artifacts/coverage/go/shared-inputs/logging/coverage.out
             artifacts/coverage/rust/rust-native/llvm.json
             artifacts/coverage/rust/rust-native/branch-llvm.json
             artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
@@ -4646,6 +4813,7 @@ jobs:
             artifacts/coverage/go/ws-hub/coverage-provenance.json
             artifacts/coverage/go/file-processor/coverage-provenance.json
             artifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json
+            artifacts/coverage/go/shared-inputs/logging/coverage-provenance.json
             artifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json
             artifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json
             artifacts/coverage/quality-manifest.json
@@ -4894,6 +5062,7 @@ jobs:
       - schemathesis-api-tests
       - msw-mock-drift
       - provenance-check
+      - e2e-wasm-build
       - e2e-tests
       - e2e-tests-cross-browser
       - rust-ffi-asan
@@ -4968,6 +5137,7 @@ jobs:
             "schemathesis-api-tests|${{ needs.schemathesis-api-tests.result }}"
             "msw-mock-drift|${{ needs.msw-mock-drift.result }}"
             "provenance-check|${{ needs.provenance-check.result }}"
+            "e2e-wasm-build|${{ needs.e2e-wasm-build.result }}"
             "e2e-tests|${{ needs.e2e-tests.result }}"
             "rust-ffi-asan|${{ needs.rust-ffi-asan.result }}"
             "rust-ffi-tsan|${{ needs.rust-ffi-tsan.result }}"
@@ -5009,11 +5179,12 @@ jobs:
             fi
           done
 
-          # Mutation producers are intentionally phase-gated on the aggregate
-          # coverage contract. A failed prerequisite already blocks this
-          # finalizer; in that case the expensive matrix is expected to be
-          # skipped, while any producer that started despite green readiness
-          # remains fail-closed and must conclude successfully.
+          # Mutation execution and aggregation are intentionally phase-gated on
+          # the aggregate coverage contract. The Stryker preflight may overlap
+          # coverage, but a failed prerequisite still blocks execution. In that
+          # case the expensive matrix is expected to be skipped, while any
+          # producer that started despite green readiness remains fail-closed
+          # and must conclude successfully.
           mutation_expected_result=success
           if {
             [[ "$COVERAGE_RESULT" != "success" ]] ||
@@ -5062,6 +5233,13 @@ jobs:
               assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "success"
               assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "success"
               assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "success"
+            elif [[ "$PRE_COMMIT_RESULT" == "success" && "$FRONTEND_TESTS_RESULT" == "success" && "${{ needs.stryker-preflight.result }}" == "success" && "$COVERAGE_RESULT" != "success" ]]; then
+              # Preflight is safe to overlap with coverage, but no execution or
+              # aggregate lane may start on a failed/cancelled coverage gate.
+              assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
+              assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "skipped"
+              assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "skipped"
+              assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "skipped"
             else
               assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "skipped"
               assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "skipped"

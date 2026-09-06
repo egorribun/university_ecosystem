@@ -16,6 +16,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -69,10 +70,21 @@ type cacheEntry struct {
 	storedAt time.Time // PERF-31-02: timestamp for probabilistic early refresh
 }
 
+// rsaKeySet is an immutable snapshot of the keys published by the backend
+// JWKS endpoint. The map is replaced atomically on refresh; readers never
+// mutate it, so tokens signed by either side of a rotation window can be
+// verified concurrently without taking a lock.
+type rsaKeySet map[string]*rsa.PublicKey
+
 // JWTMiddleware validates JWT tokens (HS256 and RS256).
 type JWTMiddleware struct {
-	secret       []byte
-	audience     string
+	secret   []byte
+	audience string
+	// rsaKeys retains every JWKS key by its JOSE kid for dual-key rotation.
+	rsaKeys atomic.Pointer[rsaKeySet]
+	// rsaPublicKey is a compatibility fallback for callers/tests that configure
+	// a single PEM key directly. New JWKS snapshots update it to a representative
+	// key, while verification prefers rsaKeys + kid lookup.
 	rsaPublicKey atomic.Pointer[rsa.PublicKey] // RZ-33-19: atomic for JWKS hot-reload safety
 	redis        *redis.Client
 	l1cache      *lru.Cache[string, cacheEntry]
@@ -172,6 +184,45 @@ func NewJWTMiddleware(secret string, redisClient *redis.Client) *JWTMiddleware {
 	return NewJWTMiddlewareWithConfig(secret, "", redisClient, DefaultL1CacheConfig())
 }
 
+// storeRSAKeys publishes a complete JWKS snapshot atomically.  The legacy
+// rsaPublicKey pointer is updated as well so older direct-PEM integrations keep
+// their existing observability/test seam; authentication itself uses the map.
+func (m *JWTMiddleware) storeRSAKeys(keys rsaKeySet) {
+	if len(keys) == 0 {
+		return
+	}
+	snapshot := make(rsaKeySet, len(keys))
+	for kid, key := range keys {
+		snapshot[kid] = key
+	}
+	m.rsaKeys.Store(&snapshot)
+	if key, ok := snapshot[""]; ok {
+		m.rsaPublicKey.Store(key)
+		return
+	}
+	for _, key := range snapshot {
+		m.rsaPublicKey.Store(key)
+		break
+	}
+}
+
+func (m *JWTMiddleware) rsaConfigured() bool {
+	return m.rsaKeys.Load() != nil || m.rsaPublicKey.Load() != nil
+}
+
+func rsaKeySetsEqual(left, right rsaKeySet) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for kid, leftKey := range left {
+		rightKey, ok := right[kid]
+		if !ok || leftKey == nil || rightKey == nil || !leftKey.Equal(rightKey) {
+			return false
+		}
+	}
+	return true
+}
+
 // NewJWTMiddlewareWithConfig creates a new JWT middleware with custom L1 cache settings.
 // rsaPublicKeyPEM is optional; when non-empty, RS256 tokens are accepted using
 // the given PEM-encoded RSA public key alongside HS256 tokens.
@@ -218,7 +269,7 @@ func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *red
 			// safer than silently allowing HS256-only mode when RS256 was intended.
 			panic(fmt.Sprintf("gateway: failed to parse JWKS_PUBLIC_KEY_PEM: %v", err))
 		}
-		m.rsaPublicKey.Store(pubKey)
+		m.storeRSAKeys(rsaKeySet{"": pubKey})
 	}
 
 	return m
@@ -271,14 +322,14 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 		var retryCount int
 
 		jwksRefreshes.Inc()
-		newKey, err := fetchJWKSPublicKey(ctx, httpClient, endpoint)
+		newKeys, err := fetchJWKSKeySet(ctx, httpClient, endpoint)
 		if err != nil {
 			jwksRefreshErrors.Inc()
 			retryCount = 1
 			nextInterval = minRetryInterval
 			logger.WarnContext(ctx, "Initial JWKS fetch failed, retrying soon", "err", err, "next_retry_in", nextInterval)
 		} else {
-			m.rsaPublicKey.Store(newKey)
+			m.storeRSAKeys(newKeys)
 			nextInterval = interval
 			logger.InfoContext(ctx, "Initial JWKS fetch succeeded")
 		}
@@ -292,7 +343,7 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 				return
 			case <-timer.C:
 				jwksRefreshes.Inc()
-				newKey, err := fetchJWKSPublicKey(ctx, httpClient, endpoint)
+				newKeys, err := fetchJWKSKeySet(ctx, httpClient, endpoint)
 				if err != nil {
 					jwksRefreshErrors.Inc()
 					retryCount++
@@ -312,9 +363,9 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 				timer.Reset(nextInterval)
 
 				// Atomic swap — RZ-33-19: hot path reads via m.rsaPublicKey.Load().
-				old := m.rsaPublicKey.Load()
-				if old == nil || !old.Equal(newKey) {
-					m.rsaPublicKey.Store(newKey)
+				old := m.rsaKeys.Load()
+				if old == nil || !rsaKeySetsEqual(*old, newKeys) {
+					m.storeRSAKeys(newKeys)
 					jwksKeyRotations.Inc()
 					logger.InfoContext(ctx, "JWKS key rotated successfully")
 				}
@@ -323,9 +374,19 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 	}()
 }
 
-// fetchJWKSPublicKey fetches a JWKS JSON from the given endpoint and returns
-// the first RSA public key found.  Supports standard JWKS format (RFC 7517).
-func fetchJWKSPublicKey(ctx context.Context, client *http.Client, endpoint string) (*rsa.PublicKey, error) {
+// fetchJWKSKeySet fetches a JWKS JSON from the given endpoint and returns every
+// RSA key indexed by its JOSE key id. Supporting the complete set is required
+// during dual-key rotation: tokens carrying either the retiring or current
+// “kid“ remain verifiable until the old key is removed by the issuer.
+func fetchJWKSKeySet(ctx context.Context, client *http.Client, endpoint string) (rsaKeySet, error) {
+	body, err := fetchJWKSBody(ctx, client, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	return parseJWKSBody(body)
+}
+
+func fetchJWKSBody(ctx context.Context, client *http.Client, endpoint string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("jwks: create request: %w", err)
@@ -347,31 +408,86 @@ func fetchJWKSPublicKey(ctx context.Context, client *http.Client, endpoint strin
 	if err != nil {
 		return nil, fmt.Errorf("jwks: read body: %w", err)
 	}
+	return body, nil
+}
 
-	// Try standard JWKS format first.
+// parseJWKSBody decodes the standard JWKS representation and falls back to a
+// legacy raw PEM response for deployments that expose a single key directly.
+func parseJWKSBody(body []byte) (rsaKeySet, error) {
 	var jwks struct {
 		Keys []json.RawMessage `json:"keys"`
 	}
 	if err := json.Unmarshal(body, &jwks); err != nil {
 		// Fallback: try parsing as raw PEM.
-		return parseRSAPublicKeyFromPEM(body)
+		key, pemErr := parseRSAPublicKeyFromPEM(body)
+		if pemErr != nil {
+			return nil, pemErr
+		}
+		return rsaKeySet{"": key}, nil
 	}
+	return parseJWKSKeys(jwks.Keys)
+}
 
-	for _, keyJSON := range jwks.Keys {
+func parseJWKSKeys(rawKeys []json.RawMessage) (rsaKeySet, error) {
+	keys := make(rsaKeySet, len(rawKeys))
+	for _, keyJSON := range rawKeys {
 		var kty struct {
 			Kty string `json:"kty"`
 			N   string `json:"n"`
 			E   string `json:"e"`
+			Kid string `json:"kid"`
 		}
 		if err := json.Unmarshal(keyJSON, &kty); err != nil {
 			continue
 		}
 		if kty.Kty == "RSA" && kty.N != "" && kty.E != "" {
-			return jwkToRSAPublicKey(kty.N, kty.E)
+			key, keyErr := jwkToRSAPublicKey(kty.N, kty.E)
+			if keyErr != nil {
+				return nil, keyErr
+			}
+			if _, duplicate := keys[kty.Kid]; duplicate {
+				return nil, fmt.Errorf("jwks: duplicate RSA key id %q", kty.Kid)
+			}
+			keys[kty.Kid] = key
 		}
 	}
 
-	return nil, fmt.Errorf("jwks: no RSA key found in JWKS response")
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("jwks: no RSA key found in JWKS response")
+	}
+	return keys, nil
+}
+
+// fetchJWKSPublicKey is retained for existing single-key callers and tests.
+// Authentication and refresh use fetchJWKSKeySet; this compatibility helper
+// returns the sole key or a deterministic representative when multiple keys
+// are present.
+func fetchJWKSPublicKey(ctx context.Context, client *http.Client, endpoint string) (*rsa.PublicKey, error) {
+	keys, err := fetchJWKSKeySet(ctx, client, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	return selectJWKSRepresentative(keys)
+}
+
+// selectJWKSRepresentative returns the compatibility key used by callers that
+// predate dual-key JWKS support.  A blank kid is the legacy single-key form;
+// otherwise choose the lexicographically first kid so the result is stable
+// across map iterations.  fetchJWKSKeySet normally guarantees a non-empty set,
+// but keeping the invariant check here makes this helper safe for all callers.
+func selectJWKSRepresentative(keys rsaKeySet) (*rsa.PublicKey, error) {
+	if key, ok := keys[""]; ok {
+		return key, nil
+	}
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("jwks: no RSA key found in JWKS response")
+	}
+	kids := make([]string, 0, len(keys))
+	for kid := range keys {
+		kids = append(kids, kid)
+	}
+	sort.Strings(kids)
+	return keys[kids[0]], nil
 }
 
 func jwkToRSAPublicKey(nB64, eB64 string) (*rsa.PublicKey, error) {
@@ -735,17 +851,33 @@ func extractAlgFromHeader(tokenString string) (string, error) {
 func (m *JWTMiddleware) keyFunc(token *jwt.Token) (interface{}, error) {
 	switch token.Method.(type) {
 	case *jwt.SigningMethodRSA:
-		// RS256 path — requires a configured public key.
-		if m.rsaPublicKey.Load() == nil {
-			return nil, fmt.Errorf("RS256 token received but JWKS_PUBLIC_KEY_PEM is not configured")
+		// RS256 path — resolve the JOSE kid against the complete JWKS snapshot.
+		if keys := m.rsaKeys.Load(); keys != nil {
+			kid, _ := token.Header["kid"].(string)
+			if key, ok := (*keys)[kid]; ok {
+				return key, nil
+			}
+			if kid == "" && len(*keys) == 1 {
+				for _, key := range *keys {
+					return key, nil
+				}
+			}
+			if kid == "" {
+				return nil, fmt.Errorf("RS256 token is missing kid while multiple JWKS keys are configured")
+			}
+			return nil, fmt.Errorf("RS256 token references unknown JWKS key id %q", kid)
 		}
-		return m.rsaPublicKey.Load(), nil
+		// Compatibility path for a directly configured PEM key.
+		if key := m.rsaPublicKey.Load(); key != nil {
+			return key, nil
+		}
+		return nil, fmt.Errorf("RS256 token received but JWKS_PUBLIC_KEY_PEM is not configured")
 	case *jwt.SigningMethodHMAC:
 		// HS256 path — only allowed when RS256 is NOT configured.
 		// If rsaPublicKey is set, the deployment intends RS256-only; accepting HS256
 		// alongside RS256 would allow an attacker with knowledge of the HMAC secret
 		// to forge tokens even after the RS256 key is rotated.
-		if m.rsaPublicKey.Load() != nil {
+		if m.rsaConfigured() {
 			return nil, fmt.Errorf("HS256 token rejected: RS256 is configured and HS256 is not accepted alongside it")
 		}
 		return m.secret, nil
@@ -778,7 +910,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 		// RZ-W15-01: Pre-parse algorithm check — mirrors ws-hub's extractAlgFromHeader.
 		// Reads the alg claim from the JOSE header before any signature work, so that
 		// an algorithm downgrade attempt is caught and logged early.
-		if m.rsaPublicKey.Load() != nil {
+		if m.rsaConfigured() {
 			alg, algErr := extractAlgFromHeader(tokenString)
 			if algErr != nil {
 				AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "malformed token header", "https://api.university.edu/probs/invalid-token")
@@ -797,7 +929,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 		// any other algorithm not in the list before signature verification occurs.
 		// RZ-W16-07: Restrict allowlist to RS256-only when RSA key is configured.
 		validMethods := []string{"RS256", "HS256"}
-		if m.rsaPublicKey.Load() != nil {
+		if m.rsaConfigured() {
 			validMethods = []string{"RS256"}
 		}
 		parser := jwt.NewParser(
@@ -895,7 +1027,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 		}
 
 		// RZ-W15-01: Same pre-parse algorithm check as Validate() for optional auth.
-		if m.rsaPublicKey.Load() != nil {
+		if m.rsaConfigured() {
 			alg, algErr := extractAlgFromHeader(tokenString)
 			if algErr != nil || alg != "RS256" {
 				// Malformed header or downgrade attempt — treat as unauthenticated.
@@ -910,7 +1042,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 
 		// RZ-W16-07: Restrict allowlist to RS256-only when RSA key is configured.
 		optValidMethods := []string{"RS256", "HS256"}
-		if m.rsaPublicKey.Load() != nil {
+		if m.rsaConfigured() {
 			optValidMethods = []string{"RS256"}
 		}
 		parser := jwt.NewParser(

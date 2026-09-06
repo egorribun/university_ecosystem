@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import functools
-import logging
 
 from redis.exceptions import RedisError
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.ratelimit.circuit_breaker import get_circuit_breaker
 from app.core.ratelimit.contract import RateLimitStrategy
 from app.core.ratelimit.exceptions import RateLimitExceeded
@@ -14,7 +14,7 @@ from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
 from app.core.ratelimit.utils import compose_identifier
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 @functools.lru_cache(maxsize=4)

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import BackToTop from "@/components/motion/BackToTop"
 import i18n from "@/i18n/config"
@@ -137,5 +138,108 @@ describe("BackToTop", () => {
 
     fireEvent.click(screen.getByRole("button", { name: getLabel() }))
     expect(scrollTo).toHaveBeenNthCalledWith(2, 0, 0)
+  })
+
+  it("keeps the SSR initial state hidden until the client reads scroll position", () => {
+    expect(renderToString(<BackToTop />)).not.toContain(getLabel())
+  })
+
+  it("uses a strict scroll threshold and does not show at exactly 420px", async () => {
+    render(<BackToTop />)
+
+    setScrollY(420)
+    fireEvent.scroll(window)
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: getLabel() })).not.toBeInTheDocument()
+    )
+
+    setScrollY(421)
+    fireEvent.scroll(window)
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: getLabel() })).toBeInTheDocument()
+    )
+  })
+
+  it("registers and removes a passive scroll listener exactly once", () => {
+    const addEventListener = vi.spyOn(window, "addEventListener")
+    const removeEventListener = vi.spyOn(window, "removeEventListener")
+    const { unmount } = render(<BackToTop />)
+
+    const scrollRegistration = addEventListener.mock.calls.find(
+      ([type]) => String(type) === "scroll"
+    )
+    expect(scrollRegistration).toEqual(["scroll", expect.any(Function), { passive: true }])
+
+    unmount()
+    expect(removeEventListener).toHaveBeenCalledWith("scroll", scrollRegistration?.[1])
+  })
+
+  it("does not construct an IntersectionObserver when there is no footer", () => {
+    const construct = vi.fn()
+    class MockIntersectionObserver {
+      constructor() {
+        construct()
+      }
+
+      observe = vi.fn()
+      disconnect = vi.fn()
+    }
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver)
+
+    render(<BackToTop />)
+
+    expect(construct).not.toHaveBeenCalled()
+  })
+
+  it("configures a dense footer threshold and shifts by the visible footer pixels", async () => {
+    const observe = vi.fn()
+    const disconnect = vi.fn()
+    let callback: IntersectionObserverCallback | undefined
+    let options: IntersectionObserverInit | undefined
+    class MockIntersectionObserver {
+      constructor(next: IntersectionObserverCallback, nextOptions?: IntersectionObserverInit) {
+        callback = next
+        options = nextOptions
+      }
+
+      observe = observe
+      disconnect = disconnect
+    }
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver)
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 })
+    const footer = document.createElement("footer")
+    footer.setAttribute("role", "contentinfo")
+    document.body.appendChild(footer)
+
+    render(<BackToTop />)
+
+    expect(options?.threshold).toEqual(Array.from({ length: 21 }, (_, i) => i / 20))
+    expect(observe).toHaveBeenCalledWith(footer)
+    callback?.(
+      [{ isIntersecting: true, boundingClientRect: { top: 700 } } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    setScrollY(500)
+    fireEvent.scroll(window)
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: getLabel() }).parentElement?.parentElement
+      ).toHaveStyle("bottom: 140px")
+    )
+
+    footer.remove()
+  })
+
+  it("keeps the FAB shell and pointer interaction contract stable", async () => {
+    render(<BackToTop />)
+    setScrollY(500)
+    fireEvent.scroll(window)
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: getLabel() })).toBeInTheDocument()
+    )
+    const wrap = screen.getByRole("button", { name: getLabel() }).parentElement?.parentElement
+    expect(wrap).toHaveClass("fixed", "right-6", "z-tooltip", "back-to-top-wrap")
+    expect(wrap).toHaveStyle({ pointerEvents: "auto" })
   })
 })

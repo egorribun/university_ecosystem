@@ -21,22 +21,40 @@ def _cgroup_aware_cpu_count() -> int:
     the old formula produced ``pool_size = 65`` and ``max_overflow = 128``,
     easily exhausting PostgreSQL's ``max_connections`` (default 100).
 
-    Detection order:
-    1. ``os.sched_getaffinity(0)`` — cgroups v2 (modern Docker/K8s).
-    2. ``/sys/fs/cgroup/cpu/cpu.cfs_quota_us`` — cgroups v1 (legacy Docker).
-    3. ``os.cpu_count()`` — bare-metal fallback.
+    Detection order is quota-first so a Docker/Kubernetes ``--cpus`` limit is
+    honoured even when the process still has access to every host CPU through
+    ``sched_getaffinity`` (the common cgroups v2 configuration):
 
-    This mirrors ``app.auth.security._container_cpu_count()`` (used for Argon2
-    parallelism).  The logic is duplicated here to avoid a cross-module import
-    from the auth layer into the config layer, which would create a circular
-    dependency (config → auth → config).
+    1. ``/sys/fs/cgroup/cpu.max`` — cgroups v2 quota/period pair.
+    2. ``/sys/fs/cgroup/cpu/cpu.cfs_quota_us`` and ``cpu.cfs_period_us`` —
+       cgroups v1 (legacy Docker).
+    3. ``os.sched_getaffinity(0)`` — cpuset/host affinity fallback.
+    4. ``os.cpu_count()`` — bare-metal fallback.
+
+    ``app.auth.security._container_cpu_count()`` delegates to this function so
+    database pools and Argon2 workers use the same bounded interpretation.
     """
+
+    # cgroups v2 exposes CPU quota and period in a single file.  ``max`` means
+    # no quota; in that case affinity remains the best available signal.  Read
+    # this before affinity: cpuset affinity does not reflect ``--cpus`` quotas.
     try:
-        sched = getattr(os, "sched_getaffinity", None)
-        if sched:
-            return len(sched(0))
-    except (AttributeError, NotImplementedError):
+        with open("/sys/fs/cgroup/cpu.max") as f:
+            fields = f.read().strip().split()
+        if len(fields) == 2:
+            try:
+                quota, period = map(int, fields)
+            except (TypeError, ValueError):
+                pass
+            else:
+                if quota > 0 and period > 0:
+                    return min(max(1, quota // period), 32)
+    except (FileNotFoundError, ValueError, OSError):
         pass
+
+    # cgroups v1 stores quota and period separately.  Keep the same cap as the
+    # v2 path so malformed or unexpectedly large host values cannot over-size
+    # connection pools or CPU-bound executors.
     try:
         with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as f:
             quota = int(f.read().strip())
@@ -45,6 +63,16 @@ def _cgroup_aware_cpu_count() -> int:
         if quota > 0 and period > 0:
             return min(max(1, quota // period), 32)
     except (FileNotFoundError, ValueError, OSError):
+        pass
+
+    try:
+        if hasattr(os, "sched_getaffinity"):
+            sched = os.sched_getaffinity
+        else:
+            sched = None
+        if sched:
+            return len(sched(0))
+    except (AttributeError, NotImplementedError, OSError):
         pass
     return os.cpu_count() or 2
 

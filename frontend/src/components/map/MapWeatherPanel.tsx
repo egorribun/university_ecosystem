@@ -23,7 +23,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import type { MapWeatherData, HourlyPoint } from "@/hooks/useMapWeather"
-import type { WeatherCondition } from "@/utils/weatherCodes"
+import { WEATHER_CONDITION_CLEAR, type WeatherCondition } from "@/utils/weatherCodes"
 
 /**
  * Resolve a weather condition to an icon at runtime.  Keeping the mapping in
@@ -33,7 +33,7 @@ import type { WeatherCondition } from "@/utils/weatherCodes"
  */
 export function getConditionIcon(condition: WeatherCondition): LucideIcon {
   switch (condition) {
-    case "clear":
+    case WEATHER_CONDITION_CLEAR:
       return Sun
     case "cloudy":
       return Cloud
@@ -178,7 +178,8 @@ function StatCard({
 
 /* ── Hourly column ── */
 function HourlyColumn({ point, isDay }: { point: HourlyPoint; isDay: boolean }) {
-  const Icon = point.condition === "clear" && !isDay ? Moon : getConditionIcon(point.condition)
+  const Icon =
+    point.condition === WEATHER_CONDITION_CLEAR && !isDay ? Moon : getConditionIcon(point.condition)
   return (
     <div className="map-weather-panel-hour">
       <span className="text-[9px] text-[var(--text-tertiary)]">

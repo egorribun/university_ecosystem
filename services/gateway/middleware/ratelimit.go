@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -267,7 +268,15 @@ func (rl *RateLimiter) Middleware(ctx context.Context) gin.HandlerFunc {
 // isHealthPath returns true for Kubernetes probe and monitoring paths that must
 // bypass rate limiting to prevent cascading failures during Redis outages.
 func isHealthPath(path string) bool {
-	return path == "/health" || path == "/readiness" || path == "/metrics"
+	// Kubernetes probes use the canonical /health/{ready,live} endpoints.  Keep
+	// every health sub-route exempt: probes must continue to work when Redis is
+	// unavailable and the limiter is operating in its bounded in-memory fallback.
+	return path == "/health" ||
+		path == "/health/ready" ||
+		path == "/health/live" ||
+		strings.HasPrefix(path, "/health/") ||
+		path == "/readiness" ||
+		path == "/metrics"
 }
 
 // getClientKey returns a unique key for rate limiting based on IP or user.

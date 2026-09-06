@@ -6,6 +6,8 @@ CQRS query handlers, API endpoints, and utility functions.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,6 +18,21 @@ from httpx import AsyncClient
 from app.auth.security import get_password_hash
 
 _TEST_PASSWORD = "TestPassword123!"  # pragma: allowlist secret
+
+
+def _graphql_identity_headers() -> dict[str, str]:
+    """Build identity headers that satisfy the gateway trust-boundary contract."""
+    from app.core.config import settings
+
+    headers = {"X-User-ID": "user-123", "X-Session-ID": "session-456"}
+    secret = str(getattr(settings, "internal_hmac_secret", "") or "")
+    if secret:
+        headers["X-Internal-Signature"] = hmac.new(
+            secret.encode("utf-8"),
+            b"user-123:session-456",
+            hashlib.sha256,
+        ).hexdigest()
+    return headers
 
 
 async def _login(client: AsyncClient, email: str) -> dict[str, str]:
@@ -900,7 +917,7 @@ class TestGraphQLAdvancedCoverage:
         request = MagicMock()
         request.app.dependency_overrides = {}
         request.state.dishka_container.get = AsyncMock(return_value=MagicMock())
-        request.headers = {"X-User-ID": "user-123", "X-Session-ID": "session-456"}
+        request.headers = _graphql_identity_headers()
 
         mock_user = MagicMock()
         with patch(
@@ -926,7 +943,7 @@ class TestGraphQLAdvancedCoverage:
         request = MagicMock()
         request.app.dependency_overrides = {}
         request.state.dishka_container.get = AsyncMock(return_value=MagicMock())
-        request.headers = {"X-User-ID": "user-123", "X-Session-ID": "session-456"}
+        request.headers = _graphql_identity_headers()
 
         with patch(
             "app.services.auth.graphql_token_validator.GraphQLTokenValidator.validate",
@@ -945,7 +962,7 @@ class TestGraphQLAdvancedCoverage:
         request = MagicMock()
         request.app.dependency_overrides = {}
         request.state.dishka_container.get = AsyncMock(return_value=MagicMock())
-        request.headers = {"X-User-ID": "user-123", "X-Session-ID": "session-456"}
+        request.headers = _graphql_identity_headers()
 
         with patch(
             "app.services.auth.graphql_token_validator.GraphQLTokenValidator.validate",
@@ -965,7 +982,7 @@ class TestGraphQLAdvancedCoverage:
         request = MagicMock()
         request.app.dependency_overrides = {}
         request.state.dishka_container.get = AsyncMock(return_value=MagicMock())
-        request.headers = {"X-User-ID": "user-123", "X-Session-ID": "session-456"}
+        request.headers = _graphql_identity_headers()
 
         with patch(
             "app.services.auth.graphql_token_validator.GraphQLTokenValidator.validate",

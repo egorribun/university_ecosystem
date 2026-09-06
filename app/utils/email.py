@@ -6,7 +6,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
-from app.core.logging import get_logger, is_logger_enabled
+from app.core.logging import _redact_pii, get_logger, is_logger_enabled
 
 logger = get_logger(__name__)
 
@@ -22,12 +22,32 @@ def _log_event(
 ) -> None:
     """Emit a log record even if the module logger is disabled upstream."""
 
-    target = (
-        logger
-        if is_logger_enabled(logger, level) and not logger.disabled
-        else logging.getLogger()
+    # Keep the ``LogRecord.msg`` value as the stable event name.  Passing an
+    # event through ``structlog.BoundLogger.log`` turns the message into an
+    # event dictionary before ``ProcessorFormatter`` sees it, which makes
+    # standard-library consumers (including ``caplog`` and log shippers) lose
+    # the canonical event name.  Use the stdlib bridge directly while running
+    # the same redaction processor first so fields remain structured and no
+    # email address or credential can leak through ``record.__dict__``.
+    event: dict[str, Any] = {"event": message, **(extra or {})}
+    _redact_pii(logger, "log", event)
+    redacted_extra = {key: value for key, value in event.items() if key != "event"}
+
+    try:
+        logger_disabled = logger.disabled
+    except AttributeError:
+        logger_disabled = False
+    if is_logger_enabled(logger, level) and not logger_disabled:
+        target = logging.getLogger(__name__)
+    else:
+        target = logging.getLogger()
+    target.log(
+        level,
+        message,
+        extra=redacted_extra,
+        exc_info=exc_info,
+        stacklevel=3,
     )
-    target.log(level, message, extra=extra, exc_info=exc_info, stacklevel=3)
 
 
 RESET_TOKEN_EXPIRY_MINUTES = 45

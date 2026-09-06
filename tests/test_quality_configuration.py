@@ -275,6 +275,7 @@ def test_governance_quality_configuration_matches_contract() -> None:
         "go-file-processor": ["services/file-processor/"],
         "go-shared": [
             "services/cmd/uni-cli/",
+            "services/pkg/logging/",
             "services/pkg/spiffe/",
             "services/pkg/spicedb/",
         ],
@@ -367,6 +368,7 @@ def test_docker_context_excludes_local_quality_virtualenv() -> None:
     dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
 
     assert ".quality-venv/" in dockerignore.splitlines()
+    assert "/.tmp*/" in dockerignore.splitlines()
 
 
 def test_test_image_context_preserves_required_and_safe_inputs() -> None:
@@ -390,6 +392,7 @@ def test_test_image_context_preserves_required_and_safe_inputs() -> None:
         ".opencode/",
         ".superpowers/",
         ".quality-pytest-tmp*/",
+        "/.tmp*/",
         ".worktrees/",
         ".pytest_tmp*/",
         ".uv-cache*/",
@@ -515,6 +518,130 @@ def test_test_duration_updater_aggregates_junit_cases_and_preserves_schema() -> 
         "tests/test_stale.py": 9.0,
     }
     assert payload["default_duration_seconds"] == 1.0
+
+
+def test_test_duration_updater_maps_classified_junit_classnames_to_module_files() -> (
+    None
+):
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuite name='unit'>
+              <testcase classname='tests.test_auth.TestLogin' time='1.25' />
+              <testcase classname='tests.test_auth.TestLogin' time='0.75' />
+              <testcase classname='tests.test_plain' time='2.0' />
+            </testsuite>""",
+            encoding="utf-8",
+        )
+
+        payload = build_duration_payload(report_path, existing={}, replace=True)
+
+    assert payload["durations"] == {
+        "tests/test_auth.py": 2.0,
+        "tests/test_plain.py": 2.0,
+    }
+
+
+def test_test_duration_updater_replace_preserves_positive_estimate_for_skips() -> None:
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuite name='unit'>
+              <testcase file='tests/test_skipped.py' time='0.001'>
+                <skipped />
+              </testcase>
+              <testcase file='tests/test_measured.py' time='1.5' />
+            </testsuite>""",
+            encoding="utf-8",
+        )
+        existing = {
+            "version": 1,
+            "default_duration_seconds": 1.0,
+            "durations": {"tests/test_skipped.py": 12.0},
+        }
+
+        payload = build_duration_payload(report_path, existing=existing, replace=True)
+
+    assert payload["durations"] == {
+        "tests/test_measured.py": 1.5,
+        "tests/test_skipped.py": 12.0,
+    }
+
+
+def test_test_duration_updater_replace_omits_new_all_skipped_file() -> None:
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuite name='unit'>
+              <testcase file='tests/test_skipped.py' time='0.001'>
+                <skipped />
+              </testcase>
+            </testsuite>""",
+            encoding="utf-8",
+        )
+
+        payload = build_duration_payload(report_path, existing={}, replace=True)
+
+    assert payload["durations"] == {}
+    assert payload["default_duration_seconds"] == 1.0
+
+
+def test_test_duration_updater_replace_keeps_measured_partial_file_without_history() -> (
+    None
+):
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuite name='unit'>
+              <testcase file='tests/test_partial.py' time='12.5' />
+              <testcase file='tests/test_partial.py' time='0.001'>
+                <skipped />
+              </testcase>
+            </testsuite>""",
+            encoding="utf-8",
+        )
+
+        payload = build_duration_payload(report_path, existing={}, replace=True)
+
+    assert payload["durations"] == {"tests/test_partial.py": 12.5}
+
+
+def test_test_duration_updater_preserves_estimate_for_partial_skips() -> None:
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuite name='unit'>
+              <testcase file='tests/test_partial.py' time='1.5' />
+              <testcase file='tests/test_partial.py' time='0.001'>
+                <skipped />
+              </testcase>
+            </testsuite>""",
+            encoding="utf-8",
+        )
+        existing = {
+            "version": 1,
+            "default_duration_seconds": 1.0,
+            "durations": {"tests/test_partial.py": 12.0},
+        }
+
+        payload = build_duration_payload(report_path, existing=existing, replace=True)
+
+    assert payload["durations"] == {"tests/test_partial.py": 12.0}
 
 
 def test_test_duration_updater_rejects_negative_or_non_numeric_times() -> None:

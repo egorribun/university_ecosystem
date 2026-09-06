@@ -600,7 +600,7 @@ test("isolates measured API test-graph hotspots in dedicated first-attempt shard
     )
     assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
     assert.ok(
-      assignedShardIndexes.every((shardIndex) => shardIndex < 8),
+      assignedShardIndexes.every((shardIndex) => shardIndex < 12),
       `${file} leaked into a regular first-attempt shard`
     )
     if (count > 8) {
@@ -612,7 +612,7 @@ test("isolates measured API test-graph hotspots in dedicated first-attempt shard
   }
   assert.ok(
     plan
-      .slice(0, 8)
+      .slice(0, 12)
       .every((shard) =>
         shard.files.some((pattern) => hotspotFiles.some(([file]) => pattern.startsWith(file)))
       ),
@@ -620,13 +620,196 @@ test("isolates measured API test-graph hotspots in dedicated first-attempt shard
   )
   assert.ok(
     plan
-      .slice(8)
+      .slice(12)
       .every((shard) =>
         shard.files.every((pattern) =>
           regularFiles.some(([file]) => pattern === file || pattern.startsWith(`${file}:`))
         )
       ),
     "regular shards must not inherit an expensive API graph"
+  )
+})
+
+test("isolates the recurrent unmeasured API/core timeout graph in dedicated first-attempt shards", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+  const recurrentHotspots = [
+    ["src/api/backendOrigin.ts", 20],
+    ["src/api/chat.ts", 200],
+    ["src/api/client.ts", 500],
+    ["src/api/events.ts", 40],
+    ["src/api/hooks/activity.ts", 200],
+    ["src/api/hooks/adminAudit.ts", 50],
+    ["src/api/hooks/adminFeatureFlags.ts", 50],
+    ["src/api/hooks/adminNotifications.ts", 50],
+    ["src/api/hooks/adminUsers.ts", 100],
+    ["src/api/hooks/sessions.ts", 50],
+    ["src/api/hooks/weather.ts", 100],
+    ["src/api/interceptors/language.ts", 100],
+    ["src/api/interceptors/rateLimit.ts", 144],
+    ["src/api/mfa.ts", 37],
+    ["src/api/news.ts", 65],
+    ["src/api/notifications.ts", 110],
+    ["src/api/offlineMutationQueue.ts", 24],
+    ["src/api/schemas/wsMessage.ts", 151],
+    ["src/api/stories.ts", 16],
+    ["src/App.tsx", 9],
+    ["src/app/globalErrorHandlers.ts", 53],
+    ["src/app/hydration.ts", 40],
+  ]
+  const measuredHotspots = [
+    ["src/api/interceptors/etagCache.ts", 239],
+    ["src/api/hooks/events.ts", 301],
+  ]
+  const regularFiles = Array.from({ length: 12 }, (_, index) => {
+    const file = `src/regular-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    ...recurrentHotspots.map(([file, count]) => [file, { mutants: makeMutants(file, count) }]),
+    ...measuredHotspots.map(([file, count]) => [file, { mutants: makeMutants(file, count) }]),
+    ...regularFiles,
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  const reversePlan = planMutationShards(new Map([...preflight].reverse()), 750, 64)
+  const expectedMutants = [...preflight.values()].reduce(
+    (total, entry) => total + entry.mutants.length,
+    0
+  )
+  const assignments = plan.flatMap(({ files }) => files)
+
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    expectedMutants
+  )
+  assert.equal(new Set(assignments).size, assignments.length)
+  assert.deepEqual(plan, reversePlan)
+
+  for (const [file] of [...recurrentHotspots, ...measuredHotspots]) {
+    const assignedShardIndexes = plan.flatMap((shard, shardIndex) =>
+      shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+        ? [shardIndex]
+        : []
+    )
+    assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
+    assert.ok(
+      assignedShardIndexes.every((shardIndex) => shardIndex < 13),
+      `${file} leaked into a regular first-attempt shard`
+    )
+  }
+
+  const backendOriginShard = plan.find((shard) =>
+    shard.files.some((pattern) => pattern.startsWith("src/api/backendOrigin.ts"))
+  )
+  assert.ok(backendOriginShard)
+  assert.ok(
+    backendOriginShard.files.every((pattern) => pattern.startsWith("src/api/backendOrigin.ts"))
+  )
+  assert.ok(
+    plan
+      .slice(13)
+      .every((shard) =>
+        shard.files.every((pattern) => regularFiles.some(([file]) => pattern.startsWith(file)))
+      ),
+    "regular shards must not inherit the recurrent timeout graph"
+  )
+})
+
+test("keeps the dedicated first-attempt planner total with two requested shards", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+
+  const preflight = new Map([
+    ["src/api/backendOrigin.ts", { mutants: makeMutants("src/api/backendOrigin.ts", 100) }],
+    ["src/api/client.ts", { mutants: makeMutants("src/api/client.ts", 10_000) }],
+    ["src/regular.ts", { mutants: makeMutants("src/regular.ts", 100) }],
+  ])
+
+  const plan = planMutationShards(preflight, 750, 2)
+  assert.equal(plan.length, 2)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    10_200
+  )
+  const assignments = plan.flatMap(({ files }) => files)
+  assert.equal(new Set(assignments).size, assignments.length)
+  assert.ok(assignments.length >= 3)
+  assert.ok(plan[0]?.files.every((pattern) => pattern.startsWith("src/api/backendOrigin.ts")))
+  assert.ok(plan[1]?.files.some((pattern) => pattern.startsWith("src/api/client.ts")))
+  assert.ok(plan[1]?.files.some((pattern) => pattern === "src/regular.ts"))
+})
+
+test("isolates proven non-API test-graph hotspots without dropping regular work", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+  const hotspotFiles = [
+    "src/app/logger.ts",
+    "src/components/media/SmartImage.tsx",
+    "src/components/schedule/scheduleUtils.ts",
+    "src/contexts/LanguageContext.tsx",
+    "src/db/index.ts",
+  ]
+  const preflight = new Map([
+    ...hotspotFiles.map((file) => [file, { mutants: makeMutants(file, 500) }]),
+    ...Array.from({ length: 10 }, (_, index) => {
+      const file = `src/regular-${index}.ts`
+      return [file, { mutants: makeMutants(file, 1_000) }]
+    }),
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    12_500
+  )
+
+  for (const file of hotspotFiles) {
+    const assignedShardIndexes = plan.flatMap((shard, shardIndex) =>
+      shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+        ? [shardIndex]
+        : []
+    )
+    assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
+    assert.ok(
+      assignedShardIndexes.every((shardIndex) => shardIndex < 12),
+      `${file} leaked into a regular first-attempt shard`
+    )
+  }
+  assert.ok(
+    plan
+      .slice(12)
+      .every((shard) => shard.files.every((pattern) => pattern.startsWith("src/regular-"))),
+    "regular shards must not inherit a proven expensive graph"
   )
 })
 

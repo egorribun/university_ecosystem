@@ -188,6 +188,46 @@ describe("MessengerSidebar", () => {
     expect(screen.getByRole("button", { name: "messenger:newChat" })).toBeInTheDocument()
   })
 
+  it("removes mobile slide and button transforms when reduced motion is preferred", () => {
+    mediaQueryMock.mockReturnValue(true)
+    render(<MessengerSidebar {...baseProps} isMobile />)
+
+    const sidebar = mocks.motion.mock.calls.find(
+      ([tag, props]) => tag === "div" && props.className?.includes("panel-glass")
+    )
+    expect(sidebar?.[1]).toMatchObject({
+      initial: undefined,
+      animate: { x: 0, opacity: 1 },
+      exit: undefined,
+      transition: { duration: 0 },
+    })
+    const newChat = mocks.motion.mock.calls.find(
+      ([tag, props]) => tag === "button" && props.id === "messenger-new-chat-btn"
+    )
+    expect(newChat?.[1]).toMatchObject({ whileHover: undefined, whileTap: undefined })
+  })
+
+  it("keeps the sidebar stationary on desktop and searches message previews", () => {
+    render(<MessengerSidebar {...baseProps} isMobile={false} />)
+
+    const sidebar = mocks.motion.mock.calls.find(
+      ([tag, props]) => tag === "div" && props.className?.includes("panel-glass")
+    )
+    expect(sidebar?.[1]).toMatchObject({
+      initial: undefined,
+      animate: { x: 0, opacity: 1 },
+      exit: undefined,
+    })
+
+    fireEvent.change(screen.getByPlaceholderText("messenger:search"), {
+      target: { value: "  SOON  " },
+    })
+    const list = screen.getByTestId("mock-contact-list")
+    expect(list).toHaveAttribute("data-count", "1")
+    expect(list).toHaveAttribute("data-search-active", "true")
+    expect(list).toHaveAttribute("data-search-query", "SOON")
+  })
+
   it("uses the exact sidebar motion contracts when reduced motion is disabled", () => {
     render(<MessengerSidebar {...baseProps} isMobile />)
     expect(mocks.translation).toHaveBeenCalledWith(["messenger", "common"])

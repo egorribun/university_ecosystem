@@ -45,6 +45,7 @@ COMPONENTS = (
     "scripts",
 )
 METRICS = ("lines", "statements", "branches", "functions")
+METRIC_STATUSES = frozenset({"native", "derived", "unsupported"})
 COVERAGE_COMPONENTS = (
     "python",
     "frontend",
@@ -101,6 +102,7 @@ COVERAGE_SCOPE_ROOTS = {
     "go-file-processor": ("services/file-processor",),
     "go-shared": (
         "services/cmd/uni-cli",
+        "services/pkg/logging",
         "services/pkg/spiffe",
         "services/pkg/spicedb",
     ),
@@ -118,6 +120,7 @@ SOURCE_ROOTS = {
     "go-file-processor": ("services/file-processor",),
     "go-shared": (
         "services/cmd/uni-cli",
+        "services/pkg/logging",
         "services/pkg/spiffe",
         "services/pkg/spicedb",
     ),
@@ -185,6 +188,69 @@ GO_COMPONENTS = frozenset({"go-gateway", "go-ws-hub", "go-file-processor", "go-s
 RUST_COMPONENTS = frozenset(
     {"rust-native", "rust-pyo3-sanitizer", "rust-wasm-sanitizer", "rust-crypto"}
 )
+# ``go test -coverprofile`` records import paths rather than repository paths.
+# Keep the accepted module-prefix map explicit and component-scoped so a report
+# cannot introduce an arbitrary path alias.  The shared component contains four
+# independent Go modules; all four must normalize before the profiles are merged
+# or a later Tier0 source (notably SpiceDB) is lost behind the first parse error.
+GO_MODULE_SOURCE_PREFIXES: dict[
+    str, tuple[tuple[tuple[str, ...], tuple[str, ...]], ...]
+] = {
+    "go-gateway": (
+        (
+            ("github.com", "university-ecosystem", "gateway"),
+            ("services", "gateway"),
+        ),
+    ),
+    "go-ws-hub": (
+        (
+            ("github.com", "university-ecosystem", "ws-hub"),
+            ("services", "ws-hub"),
+        ),
+    ),
+    "go-file-processor": (
+        (
+            ("github.com", "university-ecosystem", "file-processor"),
+            ("services", "file-processor"),
+        ),
+    ),
+    "go-shared": (
+        (
+            ("github.com", "university-ecosystem", "uni-cli"),
+            ("services", "cmd", "uni-cli"),
+        ),
+        (
+            (
+                "github.com",
+                "university-ecosystem",
+                "services",
+                "pkg",
+                "logging",
+            ),
+            ("services", "pkg", "logging"),
+        ),
+        (
+            (
+                "github.com",
+                "university-ecosystem",
+                "services",
+                "pkg",
+                "spiffe",
+            ),
+            ("services", "pkg", "spiffe"),
+        ),
+        (
+            (
+                "github.com",
+                "university-ecosystem",
+                "services",
+                "pkg",
+                "spicedb",
+            ),
+            ("services", "pkg", "spicedb"),
+        ),
+    ),
+}
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 ASCII_DECIMAL_PATTERN = re.compile(r"^[0-9]+$")
@@ -263,6 +329,7 @@ class _PreparedInvocation:
     output_path: Path
     report_inputs: tuple[_ReportInput, ...]
     floors: dict[str, dict[str, int]]
+    metric_statuses: dict[str, dict[str, frozenset[str]]]
     expected_reports: frozenset[tuple[str, str, str]]
     manifest_path: str
     provenance: dict[str, str]
@@ -283,6 +350,7 @@ class _PreparedInvocation:
 @dataclass(frozen=True)
 class _ContractConfiguration:
     floors: dict[str, dict[str, int]]
+    metric_statuses: dict[str, dict[str, frozenset[str]]]
     source_roots: dict[str, tuple[str, ...]]
     coverage_scope: dict[str, tuple[str, ...]]
     expected_reports: frozenset[tuple[str, str, str]]
@@ -519,6 +587,27 @@ def _source_path_is_component_root(
     )
 
 
+def _normalize_go_module_source(
+    component: str,
+    source_parts: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Translate an approved Go module import path to a repository path.
+
+    Go coverprofiles identify files with the module path from ``go.mod``.  The
+    quality contract, however, inventories the checked-in repository layout.
+    Only exact, component-scoped module prefixes are translated; an unknown
+    import path is left untouched and is rejected by the configured-root check
+    below.  Keeping the prefix boundary segment-aware prevents aliases such as
+    ``.../logging-evil`` from being accepted accidentally.
+    """
+    for module_prefix, repository_prefix in GO_MODULE_SOURCE_PREFIXES.get(
+        component, ()
+    ):
+        if source_parts[: len(module_prefix)] == module_prefix:
+            return (*repository_prefix, *source_parts[len(module_prefix) :])
+    return source_parts
+
+
 def _canonical_source_identity(component: str, raw_path: str) -> str:
     """Validate and normalize one report-embedded source path for a component."""
     if not raw_path:
@@ -600,50 +689,8 @@ def _canonical_source_identity(component: str, raw_path: str) -> str:
                 app_alias = REPOSITORY_ROOT.joinpath("app", *source_parts)
                 if app_alias.is_file() and not _is_link_or_junction(app_alias):
                     source_parts = ("app", *source_parts)
-    elif component == "go-gateway":
-        if len(source_parts) >= 3 and source_parts[:3] == (
-            "github.com",
-            "university-ecosystem",
-            "gateway",
-        ):
-            source_parts = ("services", "gateway", *source_parts[3:])
-    elif component == "go-ws-hub":
-        if len(source_parts) >= 3 and source_parts[:3] == (
-            "github.com",
-            "university-ecosystem",
-            "ws-hub",
-        ):
-            source_parts = ("services", "ws-hub", *source_parts[3:])
-    elif component == "go-file-processor":
-        if len(source_parts) >= 3 and source_parts[:3] == (
-            "github.com",
-            "university-ecosystem",
-            "file-processor",
-        ):
-            source_parts = ("services", "file-processor", *source_parts[3:])
-    elif component == "go-shared":
-        if len(source_parts) >= 3 and source_parts[:3] == (
-            "github.com",
-            "university-ecosystem",
-            "uni-cli",
-        ):
-            source_parts = ("services", "cmd", "uni-cli", *source_parts[3:])
-        elif len(source_parts) >= 5 and source_parts[:5] == (
-            "github.com",
-            "university-ecosystem",
-            "services",
-            "pkg",
-            "spiffe",
-        ):
-            source_parts = ("services", "pkg", "spiffe", *source_parts[5:])
-        elif len(source_parts) >= 5 and source_parts[:5] == (
-            "github.com",
-            "university-ecosystem",
-            "services",
-            "pkg",
-            "spicedb",
-        ):
-            source_parts = ("services", "pkg", "spicedb", *source_parts[5:])
+    elif component in GO_COMPONENTS:
+        source_parts = _normalize_go_module_source(component, source_parts)
 
     _reject_source_symlink_parts(source_parts)
     if not _source_path_is_within_component_root(component, source_parts):
@@ -3229,6 +3276,34 @@ def _load_contract(path: Path, generated_at: datetime) -> _ContractConfiguration
                 )
             component_floors[metric] = value
         floors[component] = component_floors
+    raw_metric_statuses = contract["metric_statuses"]
+    if not isinstance(raw_metric_statuses, dict):
+        raise _InputError("malformed contract: metric_statuses must be an object")
+    metric_statuses: dict[str, dict[str, frozenset[str]]] = {}
+    for component in COMPONENTS:
+        component_statuses = raw_metric_statuses.get(component)
+        if not isinstance(component_statuses, dict):
+            raise _InputError(
+                f"malformed contract: metric_statuses.{component} must be an object"
+            )
+        metric_statuses[component] = {}
+        for metric in METRICS:
+            statuses = component_statuses.get(metric)
+            if (
+                not isinstance(statuses, list)
+                or not statuses
+                or not all(
+                    isinstance(status, str) and status in METRIC_STATUSES
+                    for status in statuses
+                )
+            ):
+                raise _InputError(
+                    f"malformed contract: metric_statuses.{component}.{metric} "
+                    "must be a non-empty status array"
+                )
+            metric_statuses[component][metric] = frozenset(
+                cast(str, status) for status in statuses
+            )
     raw_source_roots = contract["source_roots"]
     if not isinstance(raw_source_roots, dict):
         raise _InputError("malformed contract: source_roots must be an object")
@@ -3260,6 +3335,7 @@ def _load_contract(path: Path, generated_at: datetime) -> _ContractConfiguration
         raise _InputError("malformed contract: manifest_path must be a string")
     return _ContractConfiguration(
         floors=floors,
+        metric_statuses=metric_statuses,
         source_roots=source_roots,
         coverage_scope=coverage_scope,
         expected_reports=expected_reports,
@@ -3455,10 +3531,16 @@ def _missing_metrics() -> dict[str, dict[str, object]]:
     return {metric: _unmeasured_metric("missing") for metric in METRICS}
 
 
-def _metric_satisfies_floor(metric: dict[str, object], floor: int) -> bool:
+def _metric_satisfies_floor(
+    metric: dict[str, object],
+    floor: int,
+    allowed_statuses: frozenset[str] | None = None,
+) -> bool:
     status = metric["status"]
+    if allowed_statuses is not None and status not in allowed_statuses:
+        return False
     if status == "unsupported":
-        return floor == 0
+        return floor == 0 and bool(str(metric.get("reason_code", "")).strip())
     if status in {"missing", "experimental"}:
         return False
     covered = metric["covered"]
@@ -3487,10 +3569,19 @@ def _metric_failure(
     metric_name: str,
     metric: dict[str, object],
     floor: int,
+    allowed_statuses: frozenset[str] | None = None,
 ) -> str | None:
-    if _metric_satisfies_floor(metric, floor):
+    if _metric_satisfies_floor(metric, floor, allowed_statuses):
         return None
     status = metric["status"]
+    if allowed_statuses is not None and status not in allowed_statuses:
+        allowed = ", ".join(sorted(allowed_statuses)) or "none"
+        return (
+            f"{component}.{metric_name} status {status!r} is not allowed by "
+            f"the metric contract (allowed: {allowed})"
+        )
+    if status == "unsupported" and not str(metric.get("reason_code", "")).strip():
+        return f"{component}.{metric_name} unsupported metric is missing its N/A reason_code"
     if status == "derived":
         return f"{component}.{metric_name} trusted derivation is below 100%"
     if status != "native":
@@ -3502,6 +3593,7 @@ def _component_entry(
     component: str,
     reports: list[_ParsedReport],
     floors: dict[str, int],
+    metric_statuses: dict[str, frozenset[str]],
     supplied_count: int,
     required_count: int,
     evidence_errors: list[str],
@@ -3540,6 +3632,7 @@ def _component_entry(
                     metric_name,
                     metrics[metric_name],
                     floors[metric_name],
+                    metric_statuses[metric_name],
                 )
             )
             is not None
@@ -3781,6 +3874,7 @@ def _expected_tier0_sources(
 def _aggregate_tier0(
     reports_by_component: defaultdict[str, list[_ParsedReport]],
     floors: dict[str, dict[str, int]],
+    metric_statuses: dict[str, dict[str, frozenset[str]]],
     source_inventory: Mapping[str, Collection[str]] | None = None,
 ) -> dict[str, object]:
     rules, rules_error = _load_tier0_rules()
@@ -3823,11 +3917,26 @@ def _aggregate_tier0(
         for metric_name in METRICS:
             metric = metrics[metric_name]
             status = metric["status"]
+            allowed_statuses = metric_statuses[component][metric_name]
+            if status not in allowed_statuses:
+                errors.append(
+                    f"{path} ({component}).{metric_name} status {status!r} is "
+                    "not allowed by the metric contract"
+                )
+                continue
             if status in {"native", "derived"}:
                 measured_by_metric[metric_name].append(metric)
-                if not _metric_satisfies_floor(metric, 100):
+                if not _metric_satisfies_floor(
+                    metric,
+                    100,
+                    allowed_statuses,
+                ):
                     errors.append(f"{path} ({component}).{metric_name} is below 100%")
-            elif status == "unsupported" and floors[component][metric_name] == 0:
+            elif status == "unsupported" and _metric_satisfies_floor(
+                metric,
+                floors[component][metric_name],
+                allowed_statuses,
+            ):
                 not_applicable[metric_name] += 1
             elif status == "unsupported":
                 errors.append(
@@ -4040,6 +4149,7 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
         output_path=output_path,
         report_inputs=tuple(report_inputs),
         floors=configuration.floors,
+        metric_statuses=configuration.metric_statuses,
         expected_reports=configuration.expected_reports,
         manifest_path=configuration.manifest_path,
         provenance=_build_provenance(arguments),
@@ -4237,6 +4347,7 @@ def _build_manifest(
             component,
             reports_by_component[component],
             floors[component],
+            invocation.metric_statuses[component],
             report_input_counts[component],
             required_count,
             evidence_errors_by_component[component],
@@ -4280,6 +4391,7 @@ def _build_manifest(
     tier0 = _aggregate_tier0(
         reports_by_component,
         floors,
+        invocation.metric_statuses,
         invocation.coverage_inventory,
     )
     tier0_errors = tier0["errors"]

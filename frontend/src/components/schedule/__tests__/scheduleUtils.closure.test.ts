@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import * as dateUtils from "@/utils/date"
 import {
   buildTable,
+  defaultLessonTypeColor,
+  getEndTimeStr,
+  getTimeStr,
   getTodayIdx,
+  minimalLessonTypeFallback,
+  minimalWeekdayFallback,
   minutesDiff,
   parseMinutes,
   scheduleQueryKey,
@@ -14,6 +20,15 @@ afterEach(() => {
 })
 
 describe("schedule time parser closure", () => {
+  it("fails closed for every missing time input", () => {
+    expect(parseMinutes()).toBeNull()
+    expect(parseMinutes(undefined)).toBeNull()
+    expect(parseMinutes(null)).toBeNull()
+    expect(parseMinutes("")).toBeNull()
+    expect(getTimeStr(undefined as unknown as Lesson)).toBe("")
+    expect(getEndTimeStr(undefined as unknown as Lesson)).toBe("")
+  })
+
   it("uses the full-date fallback for valid timestamps and rejects invalid dates", () => {
     const dateOnly = "2026-04-26"
     const parsedDate = new Date(dateOnly)
@@ -23,11 +38,30 @@ describe("schedule time parser closure", () => {
 
   it("parses a valid clock time through the fast path", () => {
     expect(parseMinutes("09:30")).toBe(9 * 60 + 30)
+    expect(parseMinutes("00:00")).toBe(0)
+    expect(parseMinutes("23:59")).toBe(23 * 60 + 59)
   })
 
   it("rejects out-of-range clock values after the fast-path shape match", () => {
     expect(parseMinutes("24:00")).toBeNull()
     expect(parseMinutes("23:60")).toBeNull()
+    expect(parseMinutes("00:60")).toBeNull()
+  })
+
+  it("uses the fallback date's local hour and minute when no clock token exists", () => {
+    const toDateSpy = vi.spyOn(dateUtils, "toDate").mockReturnValue(new Date(2026, 3, 26, 13, 37))
+    try {
+      expect(parseMinutes("opaque-date-value")).toBe(13 * 60 + 37)
+    } finally {
+      toDateSpy.mockRestore()
+    }
+  })
+
+  it("handles nullable lesson times and computes valid minute deltas", () => {
+    expect(getTimeStr({} as Lesson)).toBe("")
+    expect(getEndTimeStr({} as Lesson)).toBe("")
+    expect(minutesDiff("09:00", "10:30")).toBe(90)
+    expect(minutesDiff("not-a-real-date", "10:30")).toBe(630)
   })
 
   it("maps Sunday outside the Monday-first schedule", () => {
@@ -82,5 +116,23 @@ describe("schedule time parser closure", () => {
 
   it("builds the active schedule query key", () => {
     expect(scheduleQueryKey("group-7")).toEqual(["schedule", "group", "group-7"])
+  })
+
+  it("keeps the minimal fallback lesson type and weekday contracts stable", () => {
+    expect(defaultLessonTypeColor).toBe("var(--lesson-type-default)")
+    expect(minimalLessonTypeFallback).toEqual({
+      id: "lesson",
+      backend: ["lesson"],
+      label: "Lesson",
+      color: defaultLessonTypeColor,
+    })
+    expect(minimalWeekdayFallback).toEqual([
+      { id: "mon", backend: ["Monday"], long: "Monday", short: "Mon" },
+      { id: "tue", backend: ["Tuesday"], long: "Tuesday", short: "Tue" },
+      { id: "wed", backend: ["Wednesday"], long: "Wednesday", short: "Wed" },
+      { id: "thu", backend: ["Thursday"], long: "Thursday", short: "Thu" },
+      { id: "fri", backend: ["Friday"], long: "Friday", short: "Fri" },
+      { id: "sat", backend: ["Saturday"], long: "Saturday", short: "Sat" },
+    ])
   })
 })

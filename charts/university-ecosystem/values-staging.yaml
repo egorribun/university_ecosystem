@@ -79,12 +79,24 @@ frontend:
     repository: ghcr.io/REQUIRED_REPOSITORY/frontend
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
 
 gateway:
   image:
     repository: ghcr.io/REQUIRED_REPOSITORY/gateway
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
   config:
     grpcUseTLS: true
     otelEndpoint: REQUIRED_OTLP_ENDPOINT
