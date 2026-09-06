@@ -90,6 +90,29 @@ describe("AuthProvider signing-key accessor", () => {
     expect(accessor()).toBe("rotated-signing-key")
   })
 
+  it("re-registers the accessor when the signing-key ref identity changes", async () => {
+    const { rerender } = render(
+      <AuthProvider>
+        <div>child</div>
+      </AuthProvider>
+    )
+
+    await waitFor(() => expect(mocks.registerSigningKeyAccessor).toHaveBeenCalledOnce())
+    const initialAccessor = mocks.registerSigningKeyAccessor.mock.calls[0]![0]
+
+    mocks.signingKeyRef = { current: "replacement-signing-key" }
+    rerender(
+      <AuthProvider>
+        <div>child</div>
+      </AuthProvider>
+    )
+
+    await waitFor(() => expect(mocks.registerSigningKeyAccessor).toHaveBeenCalledTimes(2))
+    const replacementAccessor = mocks.registerSigningKeyAccessor.mock.calls[1]![0]
+    expect(replacementAccessor).not.toBe(initialAccessor)
+    expect(replacementAccessor()).toBe("replacement-signing-key")
+  })
+
   it("refreshes every memoized action when its implementation changes", () => {
     const observed = vi.fn<(value: ReturnType<typeof useAuth>) => void>()
     const { rerender } = render(

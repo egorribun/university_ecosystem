@@ -117,6 +117,11 @@ describe("newsListQueryKey (news.ts:95-97)", () => {
     expect(newsListQueryKey({ language: "ru", limit: null as unknown as number })[2].limit).toBe(12)
   })
 
+  it("keeps a valid explicit limit distinct from every invalid boundary", () => {
+    expect(newsListQueryKey({ language: "ru", limit: 1 })[2].limit).toBe(1)
+    expect(newsListQueryKey({ language: "ru", limit: undefined })[2].limit).toBe(12)
+  })
+
   it("exposes the canonical key from the hook", () => {
     const queryClient = freshClient()
     const { result } = renderHook(

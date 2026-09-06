@@ -20,9 +20,12 @@ describe("clearLegacyAccessToken", () => {
   })
 
   it("is safe without browser storage", () => {
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => {})
     window.localStorage.setItem(LEGACY_ACCESS_TOKEN_STORAGE_KEY, "must-remain")
     expect(clearLegacyAccessToken(null)).toBe(false)
     expect(window.localStorage.getItem(LEGACY_ACCESS_TOKEN_STORAGE_KEY)).toBe("must-remain")
+    expect(warningSpy).not.toHaveBeenCalled()
+    warningSpy.mockRestore()
   })
 
   it("uses browser storage by default", () => {
@@ -34,9 +37,15 @@ describe("clearLegacyAccessToken", () => {
   })
 
   it("is safe during server-side rendering", () => {
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => {})
     vi.stubGlobal("window", undefined)
 
-    expect(clearLegacyAccessToken()).toBe(false)
+    try {
+      expect(clearLegacyAccessToken()).toBe(false)
+      expect(warningSpy).not.toHaveBeenCalled()
+    } finally {
+      warningSpy.mockRestore()
+    }
   })
 
   it("fails closed when browser storage access throws", () => {

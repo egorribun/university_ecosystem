@@ -71,6 +71,7 @@ describe("ForwardModal contracts", () => {
     const onClose = vi.fn()
     render(<ForwardModal open onClose={onClose} contacts={contacts} onSelect={() => {}} />)
     expect(mocks.translation).toHaveBeenCalledWith(["messenger", "common"])
+    expect(mocks.mediaQuery).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
     expect(mocks.focusTrap).toHaveBeenCalledWith({
       active: true,
       onDeactivate: onClose,
@@ -134,6 +135,25 @@ describe("ForwardModal contracts", () => {
     render(<ForwardModal open onClose={() => {}} contacts={[]} onSelect={() => {}} />)
     expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite")
     expect(screen.getByText("messenger:forwardNoChats")).toBeInTheDocument()
+    const icon = screen.getByText("messenger:forwardNoChats").previousElementSibling!
+    expect(icon).toHaveStyle({ background: "var(--messenger-card-bg)" })
+    expect(icon.querySelector("svg")).toHaveClass("size-8", "text-(--color-violet-500)")
+    expect(icon.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+  })
+
+  it("uses an explicit zero-duration dialog transition under reduced motion", () => {
+    mocks.mediaQuery.mockReturnValue(true)
+    render(<ForwardModal open onClose={() => {}} contacts={contacts} onSelect={() => {}} />)
+    const dialog = mocks.motion.mock.calls.find(
+      ([tag, props]) => tag === "div" && props.role === "dialog"
+    )
+    expect(dialog?.[1]).toMatchObject({
+      initial: false,
+      animate: { scale: 1, opacity: 1, y: 0 },
+      exit: { opacity: 0 },
+      transition: { duration: 0 },
+    })
+    mocks.mediaQuery.mockReturnValue(false)
   })
 
   it("dispatches the selected destination and marks only the current chat", () => {

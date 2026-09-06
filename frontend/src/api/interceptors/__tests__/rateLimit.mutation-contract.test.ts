@@ -204,4 +204,70 @@ describe("rateLimit mutation contracts", () => {
     expect(() => window.dispatchEvent(new Event("online"))).not.toThrow()
     expect(isRateLimited()).toBe(false)
   })
+
+  it("keeps parser and timer arithmetic explicit at their boundaries", async () => {
+    const { getClientQueueResetDelay, parsePositiveInteger } = await import("../rateLimit")
+
+    expect(parsePositiveInteger(undefined, 90)).toBe(90)
+    expect(parsePositiveInteger(null, 90)).toBe(90)
+    expect(parsePositiveInteger("12", 90)).toBe(12)
+    expect(parsePositiveInteger("0", 90)).toBe(90)
+    expect(getClientQueueResetDelay(10_000, 9_000)).toBe(1_000)
+    expect(getClientQueueResetDelay(9_000, 10_000)).toBe(0)
+  })
+
+  it("does not over-admit at the exact concurrency boundary", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "2")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const first = makeConfig()
+    const second = makeConfig()
+    const third = makeConfig()
+
+    await waitForClientQueueSlot(first)
+    await waitForClientQueueSlot(second)
+    let settled = false
+    const thirdWait = waitForClientQueueSlot(third).then(() => {
+      settled = true
+    })
+    await flushMicrotasks()
+    expect(settled).toBe(false)
+    expect(third.__clientRateLimitAcquired).toBeUndefined()
+
+    releaseClientQueueSlot(first)
+    await thirdWait
+    expect(third.__clientRateLimitAcquired).toBe(true)
+    releaseClientQueueSlot(second)
+    releaseClientQueueSlot(third)
+  })
+
+  it("removes an aborted queued waiter and wakes the next request", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "1")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const active = makeConfig()
+    const firstController = new AbortController()
+    const first = makeConfig("get", firstController.signal)
+    const second = makeConfig()
+
+    await waitForClientQueueSlot(active)
+    const firstWait = waitForClientQueueSlot(first)
+    const secondWait = waitForClientQueueSlot(second)
+    await flushMicrotasks()
+
+    firstController.abort()
+    await expect(firstWait).rejects.toMatchObject({ name: "AbortError" })
+    expect(second.__clientRateLimitAcquired).toBeUndefined()
+
+    releaseClientQueueSlot(active)
+    await secondWait
+    expect(second.__clientRateLimitAcquired).toBe(true)
+    releaseClientQueueSlot(second)
+  })
+
+  it("is safe when releasing the final slot without queued waiters", async () => {
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const request = makeConfig()
+    await waitForClientQueueSlot(request)
+    expect(() => releaseClientQueueSlot(request)).not.toThrow()
+    expect(request.__clientRateLimitAcquired).toBe(false)
+  })
 })

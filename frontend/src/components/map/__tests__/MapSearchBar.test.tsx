@@ -499,6 +499,38 @@ describe("MapSearchBar", () => {
     }
   })
 
+  it("does not reopen an empty-result dropdown on focus", () => {
+    render(<MapSearchBar {...baseProps} />)
+    const input = screen.getByRole("combobox")
+
+    fireEvent.change(input, { target: { value: "unknown building" } })
+    fireEvent.blur(input)
+    fireEvent.focus(input)
+
+    expect(input).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+  })
+
+  it("keeps a pending blur close until unmount instead of rerender cleanup", () => {
+    vi.useFakeTimers()
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+    try {
+      const view = render(<MapSearchBar {...baseProps} />)
+      fireEvent.change(screen.getByRole("combobox"), { target: { value: "Главный" } })
+      fireEvent.blur(screen.getByRole("combobox"))
+      const callsAfterBlur = clearTimeoutSpy.mock.calls.length
+
+      view.rerender(<MapSearchBar {...baseProps} />)
+      expect(clearTimeoutSpy.mock.calls.length).toBe(callsAfterBlur)
+
+      view.unmount()
+      expect(clearTimeoutSpy.mock.calls.length).toBe(callsAfterBlur + 1)
+    } finally {
+      clearTimeoutSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it("skips only the blur immediately following a selection", () => {
     vi.useFakeTimers()
     const setTimeoutSpy = vi.spyOn(window, "setTimeout")

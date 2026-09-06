@@ -133,6 +133,30 @@ const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢"] as const
 // bubbles fills the chat viewport without being visually overwhelming.
 const SKELETON_BUBBLE_COUNT = 6
 
+/** Stable React identity for loading rows (keeps reconciliation deterministic). */
+export const getMessageSkeletonKey = (index: number): string => `message-skeleton-${index}`
+
+/**
+ * Rows only animate when they are newly appended to the unfiltered history.
+ * Keeping this policy pure makes the virtualised render contract testable
+ * without depending on effect scheduling in a browser test runner.
+ */
+export const shouldAnimateMessageEntrance = (params: {
+  prefersReducedMotion: boolean
+  isSearchActive: boolean
+  index: number
+  animateFromIndex: number
+}): boolean =>
+  !params.prefersReducedMotion && !params.isSearchActive && params.index >= params.animateFromIndex
+
+export const getMessageEntranceMotion = (animateEntrance: boolean) => ({
+  initial: animateEntrance ? { opacity: 0, y: 10, scale: 0.95 } : false,
+  animate: { opacity: 1, y: 0, scale: 1 },
+  transition: animateEntrance
+    ? { duration: 0.3, ease: [0.22, 1, 0.36, 1] as const }
+    : { duration: 0 },
+})
+
 // Wave 208 SW4 — show the scroll-to-bottom FAB once the user has scrolled this
 // many px up from the bottom. Module-level per W202 SW1 hoist convention.
 const SCROLL_FAB_THRESHOLD = 240
@@ -161,6 +185,16 @@ export const ChatWindow = memo(function ChatWindow({
   olderMessagesError = false,
 }: ChatWindowProps) {
   const { t } = useTranslation()
+  // Optional controller callbacks are intentionally normalised once per
+  // render.  Event handlers must remain total when ChatWindow is used in
+  // Storybook/standalone contexts; keeping the no-op boundary outside JSX
+  // also makes every interaction deterministic for keyboard and pointer input.
+  const handleEditingContentChange = onEditingContentChange ?? (() => undefined)
+  const handleEditMessage = onEditMessage ?? (() => undefined)
+  const handleSaveEdit = onSaveEdit ?? (() => undefined)
+  const handleCancelEdit = onCancelEdit ?? (() => undefined)
+  const handleDeleteMessage = onDeleteMessage ?? (() => undefined)
+  const handleToggleReaction = onToggleReaction ?? (() => undefined)
   // Wave 206 — which message's emoji picker is open (null = none). The "+react"
   // affordance toggles it; selecting an emoji or clicking outside / Escape closes.
   const [reactionPickerForId, setReactionPickerForId] = useState<string | null>(null)
@@ -378,7 +412,7 @@ export const ChatWindow = memo(function ChatWindow({
             const widthPct = 45 + ((idx * 13) % 35)
             return (
               <div
-                key={`message-skeleton-${idx}`}
+                key={getMessageSkeletonKey(idx)}
                 className={cn(
                   "flex items-end gap-2 md:gap-3",
                   isMineSkeleton ? "flex-row-reverse" : "flex-row"
@@ -555,8 +589,13 @@ export const ChatWindow = memo(function ChatWindow({
             // run the entrance; already-seen rows mount with initial={false} so
             // they appear instantly on scroll-into-view (no re-animation). Search
             // results never animate (the filtered set isn't "new" messages).
-            const animateEntrance =
-              !prefersReducedMotion && !isSearchActive && virtualRow.index >= animateFromIndex
+            const animateEntrance = shouldAnimateMessageEntrance({
+              prefersReducedMotion: Boolean(prefersReducedMotion),
+              isSearchActive,
+              index: virtualRow.index,
+              animateFromIndex,
+            })
+            const entranceMotion = getMessageEntranceMotion(animateEntrance)
 
             return (
               <div
@@ -581,11 +620,7 @@ export const ChatWindow = memo(function ChatWindow({
                   </div>
                 ) : null}
                 <m.div
-                  initial={animateEntrance ? { opacity: 0, y: 10, scale: 0.95 } : false}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={
-                    animateEntrance ? { duration: 0.3, ease: [0.22, 1, 0.36, 1] } : { duration: 0 }
-                  }
+                  {...entranceMotion}
                   className={cn(
                     "flex items-end gap-2 md:gap-3 w-full md:flex-row group",
                     message.isGroupStart === false ? "py-0.5" : "py-1",
@@ -662,14 +697,14 @@ export const ChatWindow = memo(function ChatWindow({
                         <textarea
                           id={`edit-message-${message.id}`}
                           value={editingMessageContent}
-                          onChange={(event) => onEditingContentChange?.(event.target.value)}
+                          onChange={(event) => handleEditingContentChange(event.target.value)}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" && !event.shiftKey) {
                               event.preventDefault()
-                              onSaveEdit?.(message.id)
+                              handleSaveEdit(message.id)
                             } else if (event.key === "Escape") {
                               event.preventDefault()
-                              onCancelEdit?.()
+                              handleCancelEdit()
                             }
                           }}
                           rows={2}
@@ -680,14 +715,14 @@ export const ChatWindow = memo(function ChatWindow({
                         <div className="mt-2 flex items-center justify-end gap-2">
                           <button
                             type="button"
-                            onClick={onCancelEdit}
+                            onClick={handleCancelEdit}
                             className="-my-0.5 inline-flex min-h-[44px] min-w-[44px] items-center rounded-full px-4 text-sm font-semibold text-(--text-secondary) transition-colors hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                           >
                             {t("common:buttons.cancel")}
                           </button>
                           <button
                             type="button"
-                            onClick={() => onSaveEdit?.(message.id)}
+                            onClick={() => handleSaveEdit(message.id)}
                             className="messenger-send-btn -my-0.5 inline-flex min-h-[44px] min-w-[44px] items-center rounded-full px-5 text-sm font-semibold text-[var(--text-inverse)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                           >
                             {t("common:buttons.save")}
@@ -895,7 +930,7 @@ export const ChatWindow = memo(function ChatWindow({
                                 <>
                                   <button
                                     type="button"
-                                    onClick={() => onEditMessage?.(message.id, message.text)}
+                                    onClick={() => handleEditMessage(message.id, message.text)}
                                     aria-label={t("messenger:editMessage")}
                                     className="-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
                                   >
@@ -903,7 +938,7 @@ export const ChatWindow = memo(function ChatWindow({
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => onDeleteMessage?.(message.id)}
+                                    onClick={() => handleDeleteMessage(message.id)}
                                     aria-label={t("messenger:deleteMessage")}
                                     className="-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
                                   >
@@ -1009,7 +1044,7 @@ export const ChatWindow = memo(function ChatWindow({
                             emoji={reaction.emoji}
                             count={reaction.count}
                             reactedByMe={reaction.reactedByMe}
-                            onToggle={(value) => onToggleReaction?.(message.id, value)}
+                            onToggle={(value) => handleToggleReaction(message.id, value)}
                           />
                         ))}
                         {onToggleReaction ? (
@@ -1045,7 +1080,7 @@ export const ChatWindow = memo(function ChatWindow({
                             key={emoji}
                             type="button"
                             onClick={() => {
-                              onToggleReaction(message.id, emoji)
+                              handleToggleReaction(message.id, emoji)
                               setReactionPickerForId(null)
                             }}
                             aria-label={t("messenger:reactions.react", { emoji })}

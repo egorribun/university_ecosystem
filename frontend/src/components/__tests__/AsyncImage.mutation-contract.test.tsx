@@ -90,7 +90,10 @@ vi.mock("@/components/settings", () => ({
   ),
 }))
 
-import AsyncImage from "../media/AsyncImage"
+import AsyncImage, {
+  getAsyncImageInitialStatus,
+  getAsyncImageResolvedStatus,
+} from "../media/AsyncImage"
 
 const primary = "https://example.com/image.png"
 
@@ -104,6 +107,16 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 
 describe("AsyncImage mutation contracts", () => {
+  it("keeps source status transitions explicit for SSR and client effects", () => {
+    expect(getAsyncImageInitialStatus(primary)).toBe("loading")
+    expect(getAsyncImageInitialStatus()).toBe("idle")
+    expect(getAsyncImageResolvedStatus(primary)).toBe("loading")
+    expect(getAsyncImageResolvedStatus("")).toBe("idle")
+  })
+
+  it("exposes the component identity for diagnostics", () => {
+    expect(AsyncImage.displayName).toBe("AsyncImage")
+  })
   it("passes a pixel root margin and freezes the observer after visibility", () => {
     render(<AsyncImage src={primary} />)
 
@@ -131,6 +144,13 @@ describe("AsyncImage mutation contracts", () => {
     expect(document.querySelector('img[src="/fallback.png"]')).toHaveStyle({
       objectFit: "scale-down",
     })
+  })
+
+  it("does not mount fallbackSrc while a primary source is available", () => {
+    render(<AsyncImage src={primary} fallbackSrc="/fallback.png" />)
+
+    expect(screen.getByTestId("async-image-img")).toHaveAttribute("src", primary)
+    expect(document.querySelector('img[src="/fallback.png"]')).not.toBeInTheDocument()
   })
 
   it("exposes loading and loaded animation states instead of only hiding the skeleton", () => {
@@ -161,6 +181,15 @@ describe("AsyncImage mutation contracts", () => {
       "data-motion-animate",
       JSON.stringify({ opacity: 0 })
     )
+  })
+
+  it("uses the canonical fallback state for source-less custom and default fallbacks", () => {
+    const { rerender } = render(<AsyncImage fallback={<span>Custom fallback</span>} />)
+    expect(screen.getByTestId("async-image-fallback")).toHaveTextContent("Custom fallback")
+
+    rerender(<AsyncImage />)
+    expect(screen.getByTestId("async-image-fallback")).toBeInTheDocument()
+    expect(screen.getByTestId("async-image-fallback")).not.toHaveTextContent("Custom fallback")
   })
 
   it("does not mount the primary image before intersection and mounts it after visibility", () => {

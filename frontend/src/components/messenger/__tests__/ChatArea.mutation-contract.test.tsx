@@ -90,6 +90,7 @@ vi.mock("@/components/messenger/GroupAvatar", () => ({
 vi.mock("@/components/messenger", () => ({
   ChatWindow: (props: {
     onClearSearch?: () => void
+    searchQuery?: string
     isLoading?: boolean
     isError?: boolean
     hasMore?: boolean
@@ -103,6 +104,7 @@ vi.mock("@/components/messenger", () => ({
       data-has-more={String(props.hasMore)}
       data-is-loading-older={String(props.isLoadingOlder)}
       data-older-messages-error={String(props.olderMessagesError)}
+      data-search-query={props.searchQuery ?? ""}
     >
       {props.onClearSearch ? (
         <button type="button" onClick={props.onClearSearch}>
@@ -213,6 +215,7 @@ describe("ChatArea motion and delegation contract", () => {
       <ChatArea {...base} setShowSearchInChat={setShowSearchInChat} />
     )
     const searchButton = container.querySelector("#chat-search-toggle")!
+    expect(searchButton).toHaveAttribute("aria-label", "messenger:searchMessages")
     expect(attr(searchButton, "data-motion-while-hover")).toBe(JSON.stringify({ scale: 1.05 }))
     expect(attr(searchButton, "data-motion-while-tap")).toBe(JSON.stringify({ scale: 0.95 }))
     fireEvent.click(searchButton)
@@ -231,6 +234,26 @@ describe("ChatArea motion and delegation contract", () => {
     expect(attr(searchHeader, "data-motion-initial")).toBe(JSON.stringify({ y: -20, opacity: 0 }))
     expect(attr(searchHeader, "data-motion-animate")).toBe(JSON.stringify({ y: 0, opacity: 1 }))
     expect(attr(searchHeader, "data-motion-exit")).toBe(JSON.stringify({ y: -20, opacity: 0 }))
+    expect(screen.getByTestId("chat-window-mock")).toHaveAttribute("data-search-query", "needle")
+    const closeButton = screen.getByRole("button", { name: "common:buttons.close" })
+    expect(attr(closeButton, "data-motion-while-tap")).toBe(JSON.stringify({ scale: 0.9 }))
+
+    state.reduced = true
+    rerender(
+      <ChatArea
+        {...base}
+        showSearchInChat
+        searchQuery="needle-reduced"
+        setShowSearchInChat={setShowSearchInChat}
+        setSearchQuery={setSearchQuery}
+      />
+    )
+    expect(attr(container.querySelector(".sticky")!, "data-motion-initial")).toBe("false")
+    expect(attr(container.querySelector(".sticky")!, "data-motion-exit")).toBe(
+      JSON.stringify({ opacity: 0 })
+    )
+    state.reduced = false
+
     const input = screen.getByRole("textbox", { name: "messenger:searchMessages" })
     fireEvent.change(input, { target: { value: "needle next" } })
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
@@ -249,7 +272,23 @@ describe("ChatArea motion and delegation contract", () => {
     expect(icon).toHaveStyle({ background: "var(--messenger-card-bg)" })
     expect(icon).toHaveClass("relative", "mb-7", "size-40", "items-center", "justify-center")
     expect(screen.getByRole("status", { name: "messenger:selectChat" })).toBeInTheDocument()
+    expect(attr(icon, "data-motion-initial")).toBe(
+      JSON.stringify({ scale: 0.85, opacity: 0, y: 8 })
+    )
+    expect(attr(icon, "data-motion-transition")).toBe(
+      JSON.stringify({ duration: 0.6, ease: [0.22, 1, 0.36, 1] })
+    )
 
+    state.reduced = true
+    rerender(<ChatArea {...base} selectedChatId={null} activeChat={null} />)
+    expect(attr(container.querySelector(".messenger-card-matte")!, "data-motion-initial")).toBe(
+      "false"
+    )
+    expect(attr(container.querySelector(".messenger-card-matte")!, "data-motion-transition")).toBe(
+      JSON.stringify({ duration: 0 })
+    )
+
+    state.reduced = false
     const setSearchQuery = vi.fn()
     rerender(<ChatArea {...base} searchQuery="query" setSearchQuery={setSearchQuery} />)
     fireEvent.click(screen.getByRole("button", { name: "clear" }))
@@ -296,6 +335,27 @@ describe("ChatArea motion and delegation contract", () => {
     expect(screen.queryByTestId("typing-indicator-mock")).toBeNull()
   })
 
+  it("preserves online/offline status motion contracts and header fallback semantics", () => {
+    const { container, rerender } = render(
+      <ChatArea {...base} presenceMap={{ peer: { active: true, last_seen_at: null } }} />
+    )
+    const online = screen.getByText("messenger:online")
+    expect(attr(online, "data-motion-initial")).toBe(JSON.stringify({ opacity: 0, y: 5 }))
+    expect(attr(online, "data-motion-animate")).toBe(JSON.stringify({ opacity: 1, y: 0 }))
+    expect(attr(online, "data-motion-exit")).toBe(JSON.stringify({ opacity: 0, y: -5 }))
+
+    const menuToggle = container.querySelector<HTMLButtonElement>("#chat-menu-toggle")!
+    expect(menuToggle).toHaveAttribute("aria-label", "messenger:chatActions")
+    expect(attr(menuToggle, "data-motion-while-hover")).toBe(JSON.stringify({ scale: 1.05 }))
+    expect(attr(menuToggle, "data-motion-while-tap")).toBe(JSON.stringify({ scale: 0.95 }))
+
+    rerender(<ChatArea {...base} presenceMap={{}} />)
+    const offline = screen.getByText("messenger:offline")
+    expect(attr(offline, "data-motion-initial")).toBe(JSON.stringify({ opacity: 0, y: 5 }))
+    expect(attr(offline, "data-motion-animate")).toBe(JSON.stringify({ opacity: 1, y: 0 }))
+    expect(attr(offline, "data-motion-exit")).toBe(JSON.stringify({ opacity: 0, y: -5 }))
+  })
+
   it("keeps normal header, mobile back and menu motion values exact", () => {
     const { container, rerender } = render(<ChatArea {...base} isMobile showChatMenu />)
     const header = container.querySelector(".z-deep")!
@@ -340,6 +400,13 @@ describe("ChatArea motion and delegation contract", () => {
       expect(action).toHaveTextContent(label)
       expect(action.querySelector("svg")).toHaveClass(color)
     }
+
+    const menuToggle = container.querySelector<HTMLButtonElement>("#chat-menu-toggle")!
+    expect(menuToggle).toHaveClass("bg-(--bg-surface-hover)")
+
+    const { container: closedContainer } = render(<ChatArea {...base} />)
+    const closedMenuToggle = closedContainer.querySelector<HTMLButtonElement>("#chat-menu-toggle")!
+    expect(closedMenuToggle).toHaveClass("hover:bg-(--bg-surface-hover)/(--opacity-medium)")
   })
 
   it("preserves direct-message avatar and name fallbacks for all participant shapes", () => {

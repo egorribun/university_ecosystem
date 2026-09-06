@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { ApiResponseValidationError } from "../validation"
-
 // Mock the generated SDK + the lazy-imported axios client so the api/notifications
 // wrappers run against canned responses (no MSW / contract validator needed).
 vi.mock("@/api/generated", () => ({
@@ -88,7 +86,10 @@ describe("fetchNotificationsList", () => {
     vi.mocked(gen.listNotificationsApiV1NotificationsGet).mockResolvedValue({
       data: { items: [], unread_count: "nope", has_more: false },
     } as never)
-    await expect(fetchNotificationsList()).rejects.toBeInstanceOf(ApiResponseValidationError)
+    await expect(fetchNotificationsList()).rejects.toMatchObject({
+      name: "ApiResponseValidationError",
+      message: expect.stringContaining("GET /api/v1/notifications"),
+    })
   })
 
   it("normalizes an omitted cursor while preserving an explicit limit", async () => {
@@ -207,6 +208,21 @@ describe("saveSubscription", () => {
     }
   })
 
+  it("includes a non-empty browser user agent in the subscription payload", async () => {
+    const userAgent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("UniversityBrowser/1")
+    vi.mocked(gen.subscribeApiV1PushSubscribePost).mockResolvedValue({
+      data: { id: UUID, endpoint: "https://push.example/x" },
+    } as never)
+
+    try {
+      await saveSubscription(goodSub)
+      const body = vi.mocked(gen.subscribeApiV1PushSubscribePost).mock.calls[0]?.[0]?.body
+      expect(body).toHaveProperty("user_agent", "UniversityBrowser/1")
+    } finally {
+      userAgent.mockRestore()
+    }
+  })
+
   it("throws on an incomplete payload (no network call)", async () => {
     await expect(
       saveSubscription({
@@ -222,6 +238,17 @@ describe("saveSubscription", () => {
     ["missing p256dh", { endpoint: "https://push.example/x", keys: { auth: "a" } }],
     ["missing auth", { endpoint: "https://push.example/x", keys: { p256dh: "p" } }],
   ])("rejects a subscription with %s", async (_label, value) => {
+    await expect(saveSubscription(value as unknown as PushSubscriptionJSON)).rejects.toThrow(
+      "Invalid push subscription payload"
+    )
+    expect(gen.subscribeApiV1PushSubscribePost).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["missing keys", { endpoint: "https://push.example/x" }],
+    ["missing p256dh optional chain", { endpoint: "https://push.example/x", keys: { auth: "a" } }],
+    ["missing auth optional chain", { endpoint: "https://push.example/x", keys: { p256dh: "p" } }],
+  ])("fails closed with the stable validation error when %s", async (_label, value) => {
     await expect(saveSubscription(value as unknown as PushSubscriptionJSON)).rejects.toThrow(
       "Invalid push subscription payload"
     )
@@ -385,6 +412,17 @@ describe("dead-letter queue (generated client)", () => {
       query: { limit: 10, offset: 0 },
       signal: controller.signal,
       throwOnError: true,
+    })
+  })
+
+  it("reports the dead-letter endpoint when its response is malformed", async () => {
+    vi.mocked(gen.listNotificationDeadLetters).mockResolvedValue({
+      data: { items: [{ id: "job-1" }], total: 1 },
+    } as never)
+
+    await expect(fetchDeadLetterQueue()).rejects.toMatchObject({
+      name: "ApiResponseValidationError",
+      message: expect.stringContaining("GET /api/v1/notifications/admin/dead-letter"),
     })
   })
 

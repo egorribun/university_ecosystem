@@ -10,16 +10,17 @@ export interface UseMediaQueryOptions {
   defaultValue?: boolean
 }
 
-const getMatchMedia = (): ((query: string) => MediaQueryList) | undefined => {
-  if (typeof window === "undefined") return undefined
+type MatchMediaResolver = (query: string) => MediaQueryList | null
+
+const getMatchMedia = (): MatchMediaResolver => {
+  if (typeof window === "undefined") return () => null
   const matchMedia = window.matchMedia
-  if (typeof matchMedia !== "function") return undefined
+  if (typeof matchMedia !== "function") return () => null
   return matchMedia.bind(window)
 }
 
 export const toMediaQueryList = (query: string): MediaQueryList | null => {
   const matchMedia = getMatchMedia()
-  if (!matchMedia) return null
   try {
     return matchMedia(query)
   } catch {

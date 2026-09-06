@@ -250,6 +250,7 @@ describe("MobileBottomNav", () => {
     })
     expect(visualViewport.addEventListener).toHaveBeenCalledWith("resize", expect.any(Function))
     expect(visualViewport.addEventListener).toHaveBeenCalledWith("scroll", expect.any(Function))
+    expect(visualViewport.addEventListener).toHaveBeenCalledTimes(2)
 
     result.unmount()
     expect(cancelRaf).toHaveBeenCalledWith(42)
@@ -281,10 +282,13 @@ describe("MobileBottomNav", () => {
 
     visualViewport.height = window.innerHeight - 100
     act(() => listeners.forEach((listener) => listener(new Event("resize"))))
+
+    expect(visualViewport.addEventListener).toHaveBeenCalledTimes(2)
     expect(screen.getByRole("navigation", { name: mainNavLabel() })).toHaveAttribute(
       "data-virtual-keyboard",
       "closed"
     )
+    expect(screen.getByRole("navigation", { name: mainNavLabel() })).not.toHaveAttribute("inert")
 
     visualViewport.height = window.innerHeight - 200
     const input = document.createElement("input")

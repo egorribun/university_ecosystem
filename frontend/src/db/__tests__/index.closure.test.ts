@@ -41,6 +41,11 @@ afterEach(async () => {
 })
 
 describe("RxDB database lifecycle", () => {
+  it("treats an empty cache as an idempotent reset", async () => {
+    await expect(resetDatabaseForTesting()).resolves.toBeUndefined()
+    expect(createRxDatabase).not.toHaveBeenCalled()
+  })
+
   it("does not register the noisy development plugin in the test runtime", async () => {
     vi.stubEnv("DEV", true)
     vi.stubEnv("MODE", "test")

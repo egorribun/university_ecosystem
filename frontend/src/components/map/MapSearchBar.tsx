@@ -202,13 +202,7 @@ export function MapSearchBar({
 
   // useImperativeHandle runs after the input is committed, so the local DOM
   // ref is populated even though it is nullable during render.
-  const imperativeHandleIdentity = useMemo(() => searchInputRef, [searchInputRef])
-  useImperativeHandle(searchInputRef, () => {
-    // Keep the handle tied to the current external ref identity when a
-    // parent swaps refs during a route transition.
-    void imperativeHandleIdentity
-    return inputRef.current!
-  }, [imperativeHandleIdentity])
+  useImperativeHandle(searchInputRef, () => inputRef.current!)
 
   // Group results
   const buildingResults = results.filter((r) => r.type === "building")
@@ -233,7 +227,10 @@ export function MapSearchBar({
             setIsOpen(true)
             setActiveIdx(null)
           }}
-          onFocus={() => results.length > 0 && setIsOpen(true)}
+          onFocus={() => {
+            if (results.length === 0) return
+            setIsOpen(true)
+          }}
           onBlur={() => {
             if (skipNextBlurCloseRef.current) {
               skipNextBlurCloseRef.current = false

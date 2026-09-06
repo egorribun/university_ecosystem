@@ -704,18 +704,59 @@ test("isolates the recurrent unmeasured API/core timeout graph in dedicated firs
     )
     assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
     assert.ok(
-      assignedShardIndexes.every((shardIndex) => shardIndex < 8),
+      assignedShardIndexes.every((shardIndex) => shardIndex < 9),
       `${file} leaked into a regular first-attempt shard`
     )
   }
+
+  const backendOriginShard = plan.find((shard) =>
+    shard.files.some((pattern) => pattern.startsWith("src/api/backendOrigin.ts"))
+  )
+  assert.ok(backendOriginShard)
+  assert.ok(
+    backendOriginShard.files.every((pattern) => pattern.startsWith("src/api/backendOrigin.ts"))
+  )
   assert.ok(
     plan
-      .slice(8)
+      .slice(9)
       .every((shard) =>
         shard.files.every((pattern) => regularFiles.some(([file]) => pattern.startsWith(file)))
       ),
     "regular shards must not inherit the recurrent timeout graph"
   )
+})
+
+test("keeps the dedicated first-attempt planner total with two requested shards", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+
+  const preflight = new Map([
+    ["src/api/backendOrigin.ts", { mutants: makeMutants("src/api/backendOrigin.ts", 100) }],
+    ["src/api/client.ts", { mutants: makeMutants("src/api/client.ts", 10_000) }],
+    ["src/regular.ts", { mutants: makeMutants("src/regular.ts", 100) }],
+  ])
+
+  const plan = planMutationShards(preflight, 750, 2)
+  assert.equal(plan.length, 2)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    10_200
+  )
+  const assignments = plan.flatMap(({ files }) => files)
+  assert.equal(new Set(assignments).size, assignments.length)
+  assert.ok(assignments.length >= 3)
+  assert.ok(plan[0]?.files.every((pattern) => pattern.startsWith("src/api/backendOrigin.ts")))
+  assert.ok(plan[1]?.files.some((pattern) => pattern.startsWith("src/api/client.ts")))
+  assert.ok(plan[1]?.files.some((pattern) => pattern === "src/regular.ts"))
 })
 
 test("isolates proven non-API test-graph hotspots without dropping regular work", async () => {

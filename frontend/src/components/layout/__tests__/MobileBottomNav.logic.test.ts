@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest"
 import {
   createMobileNavItems,
   isNavSectionActive,
+  MOBILE_NAV_TRANSLATION_NAMESPACE,
+  mobileNavAriaCurrent,
+  mobileNavAriaHidden,
   navScrollBehavior,
   normalizeNavPath,
   sameNavPath,
@@ -26,6 +29,7 @@ describe("MobileBottomNav pure navigation contracts", () => {
     expect(isNavSectionActive("/newsroom", "/news")).toBe(false)
     expect(isNavSectionActive("/", "/")).toBe(true)
     expect(isNavSectionActive("/anything", "/")).toBe(false)
+    expect(isNavSectionActive("//anything", "/")).toBe(false)
   })
 
   it("creates the complete translated navigation contract", () => {
@@ -41,6 +45,11 @@ describe("MobileBottomNav pure navigation contracts", () => {
       { to: "/profile", label: "translated:navigation:menu.profile" },
     ])
     expect(items.every(({ icon }) => icon != null)).toBe(true)
+    expect(MOBILE_NAV_TRANSLATION_NAMESPACE).toBe("navigation")
+    expect(mobileNavAriaCurrent(true)).toBe("page")
+    expect(mobileNavAriaCurrent(false)).toBeUndefined()
+    expect(mobileNavAriaHidden(true)).toBe(true)
+    expect(mobileNavAriaHidden(false)).toBeUndefined()
   })
 
   it("selects a deterministic scroll behavior", () => {

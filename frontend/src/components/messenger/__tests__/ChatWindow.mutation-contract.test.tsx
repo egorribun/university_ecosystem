@@ -121,7 +121,12 @@ vi.mock("@tanstack/react-virtual", () => ({
   }),
 }))
 
-import { ChatWindow } from "@/components/messenger/ChatWindow"
+import {
+  ChatWindow,
+  getMessageEntranceMotion,
+  getMessageSkeletonKey,
+  shouldAnimateMessageEntrance,
+} from "@/components/messenger/ChatWindow"
 
 const makeMessage = (overrides: Partial<Message> & Pick<Message, "id" | "text">): Message => {
   const { id, text, ...rest } = overrides
@@ -1078,5 +1083,284 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(motionAttr(reducedFab, "data-motion-initial")).toBe("false")
     expect(motionAttr(reducedFab, "data-motion-while-hover")).toBe("undefined")
     expect(motionAttr(reducedFab, "data-motion-while-tap")).toBe("undefined")
+  })
+
+  it("keeps the loading-row identity stable and explicit", () => {
+    expect(getMessageSkeletonKey(0)).toBe("message-skeleton-0")
+    expect(getMessageSkeletonKey(5)).toBe("message-skeleton-5")
+  })
+
+  it("keeps reduced-motion transitions observable for both empty branches", () => {
+    motionState.reduced = true
+    const empty = render(<ChatWindow messages={[]} />)
+    const emptyAnimated = empty.container.querySelector("[data-motion-initial]")!
+    expect(motionAttr(emptyAnimated, "data-motion-initial")).toBe("false")
+    expect(motionAttr(emptyAnimated, "data-motion-animate")).toBe(
+      JSON.stringify({ scale: 1, opacity: 1, y: 0 })
+    )
+    expect(motionAttr(emptyAnimated, "data-motion-transition")).toBe(
+      JSON.stringify({ duration: 0 })
+    )
+    expect(emptyAnimated.parentElement?.querySelector(".messenger-card-matte")).toHaveStyle({
+      background: "var(--messenger-card-bg)",
+    })
+    empty.unmount()
+
+    const search = render(
+      <ChatWindow
+        messages={[makeMessage({ id: "search-motion", text: "visible" })]}
+        searchQuery="absent"
+      />
+    )
+    const searchAnimated = search.container.querySelector("[data-motion-initial]")!
+    expect(motionAttr(searchAnimated, "data-motion-initial")).toBe("false")
+    expect(motionAttr(searchAnimated, "data-motion-animate")).toBe(
+      JSON.stringify({ scale: 1, opacity: 1, y: 0 })
+    )
+    expect(motionAttr(searchAnimated, "data-motion-transition")).toBe(
+      JSON.stringify({ duration: 0 })
+    )
+    expect(searchAnimated.parentElement?.querySelector(".messenger-card-matte")).toHaveStyle({
+      background: "var(--messenger-card-bg)",
+    })
+    search.unmount()
+  })
+
+  it("animates only the newly appended row with the canonical transition", () => {
+    const first = makeMessage({ id: "append-first", text: "first" })
+    const second = makeMessage({ id: "append-second", text: "second" })
+    const { container, rerender } = render(<ChatWindow messages={[first]} />)
+
+    rerender(<ChatWindow messages={[first, second]} />)
+    expect(container.querySelectorAll("[data-index]")).toHaveLength(2)
+    expect(
+      shouldAnimateMessageEntrance({
+        prefersReducedMotion: false,
+        isSearchActive: false,
+        index: 1,
+        animateFromIndex: 1,
+      })
+    ).toBe(true)
+    expect(
+      shouldAnimateMessageEntrance({
+        prefersReducedMotion: false,
+        isSearchActive: false,
+        index: 0,
+        animateFromIndex: 1,
+      })
+    ).toBe(false)
+    expect(getMessageEntranceMotion(true)).toEqual({
+      initial: { opacity: 0, y: 10, scale: 0.95 },
+      animate: { opacity: 1, y: 0, scale: 1 },
+      transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] },
+    })
+    expect(
+      shouldAnimateMessageEntrance({
+        prefersReducedMotion: true,
+        isSearchActive: false,
+        index: 1,
+        animateFromIndex: 1,
+      })
+    ).toBe(false)
+    expect(
+      shouldAnimateMessageEntrance({
+        prefersReducedMotion: false,
+        isSearchActive: true,
+        index: 1,
+        animateFromIndex: 1,
+      })
+    ).toBe(false)
+    expect(getMessageEntranceMotion(false)).toEqual({
+      initial: false,
+      animate: { opacity: 1, y: 0, scale: 1 },
+      transition: { duration: 0 },
+    })
+
+    rerender(<ChatWindow messages={[first, second]} searchQuery="second" />)
+    const searchRow = container.querySelector('[data-index="0"] .group')!
+    expect(searchRow).toHaveAttribute("data-motion-initial", "false")
+  })
+
+  it("preserves exact sender, column, bubble and reply styling for both sides", () => {
+    const { container } = render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "styled-sent",
+            text: "sent body",
+            senderName: "",
+            isMe: true,
+            replyTo: {
+              id: "sent-reply",
+              senderName: "Bob",
+              isMe: false,
+              text: "quoted sent",
+              deletedAt: null,
+            },
+          }),
+          makeMessage({
+            id: "styled-received",
+            text: "received body",
+            senderName: "Carol",
+            replyTo: {
+              id: "received-reply",
+              senderName: "Dana",
+              isMe: false,
+              text: "quoted received",
+              deletedAt: null,
+            },
+          }),
+        ]}
+      />
+    )
+
+    const sentRow = container.querySelector('[data-index="0"]')!
+    const receivedRow = container.querySelector('[data-index="1"]')!
+    expect(sentRow.querySelector('img[alt=""]')).toBeInTheDocument()
+    expect(sentRow.querySelector(".group")).toHaveClass("flex-row-reverse", "justify-start")
+    expect(receivedRow.querySelector(".group")).toHaveClass("flex-row", "justify-start")
+    const sentColumn = sentRow.querySelector<HTMLElement>(".group > div:nth-child(2)")!
+    const receivedColumn = receivedRow.querySelector<HTMLElement>(".group > div:nth-child(2)")!
+    for (const column of [sentColumn, receivedColumn]) {
+      expect(column).toHaveClass(
+        "flex",
+        "min-w-0",
+        "max-w-4/5",
+        "flex-col",
+        "gap-1",
+        "sm:max-w-3/4",
+        "md:max-w-[68%]",
+        "lg:max-w-[60%]",
+        "xl:max-w-[52%]"
+      )
+    }
+    expect(sentColumn).toHaveClass("items-end")
+    expect(receivedColumn).toHaveClass("items-start")
+
+    const sentBubble = sentRow.querySelector(".messenger-bubble-sent")!
+    const receivedBubble = receivedRow.querySelector(".messenger-bubble-received")!
+    expect(sentBubble).toHaveClass("relative", "max-w-full", "px-4", "py-2.5", "text-base")
+    expect(receivedBubble).toHaveClass("relative", "max-w-full", "px-4", "py-2.5", "text-base")
+
+    const sentReply = screen.getByText("quoted sent")
+    const receivedReply = screen.getByText("quoted received")
+    expect(sentReply).toHaveClass(
+      "line-clamp-2",
+      "text-sm",
+      "leading-snug",
+      "text-[var(--text-inverse)]",
+      "opacity-medium"
+    )
+    expect(receivedReply).toHaveClass(
+      "line-clamp-2",
+      "text-sm",
+      "leading-snug",
+      "text-(--text-secondary)"
+    )
+    expect(screen.getByText("Bob")).toHaveClass("text-[var(--text-inverse)]")
+    expect(screen.getByText("Dana")).toHaveClass("text-(--brand-main)")
+  })
+
+  it("keeps tombstone and inline-edit corner styles side-aware", () => {
+    const own = makeMessage({ id: "edit-own", text: "own", isMe: true })
+    const received = makeMessage({ id: "edit-received", text: "received", isMe: false })
+    const deletedOwn = makeMessage({
+      id: "deleted-own",
+      text: "secret",
+      isMe: true,
+      deletedAt: "2026-01-01",
+    })
+    const deletedReceived = makeMessage({
+      id: "deleted-received",
+      text: "secret2",
+      isMe: false,
+      deletedAt: "2026-01-01",
+    })
+    const { container, rerender } = render(<ChatWindow messages={[deletedOwn, deletedReceived]} />)
+    const tombstones = [...container.querySelectorAll<HTMLElement>(".messenger-bubble-received")]
+    expect(tombstones[0]).toHaveClass("rounded-br-sm", "md:rounded-br-2xl", "md:rounded-bl-sm")
+    expect(tombstones[1]).toHaveClass("rounded-bl-sm")
+    expect(tombstones[1]).not.toHaveClass("rounded-br-sm")
+
+    rerender(
+      <ChatWindow messages={[own]} editingMessageId={own.id} editingMessageContent="draft" />
+    )
+    const ownEditor = container.querySelector(".messenger-bubble-received")!
+    expect(ownEditor).toHaveClass(
+      "relative",
+      "w-full",
+      "max-w-full",
+      "rounded-2xl",
+      "px-3",
+      "py-2.5"
+    )
+    expect(ownEditor).toHaveClass("rounded-br-sm", "md:rounded-br-2xl", "md:rounded-bl-sm")
+    expect(ownEditor).not.toHaveClass("rounded-bl-sm")
+
+    rerender(
+      <ChatWindow
+        messages={[received]}
+        editingMessageId={received.id}
+        editingMessageContent="draft"
+      />
+    )
+    const receivedEditor = container.querySelector(".messenger-bubble-received")!
+    expect(receivedEditor).toHaveClass("rounded-bl-sm")
+    expect(receivedEditor).not.toHaveClass("rounded-br-sm", "md:rounded-bl-sm")
+  })
+
+  it("keeps reply and forward hit targets side-aware", () => {
+    const { container } = render(
+      <ChatWindow
+        messages={[
+          makeMessage({ id: "actions-sent", text: "sent", isMe: true }),
+          makeMessage({ id: "actions-received", text: "received", isMe: false }),
+        ]}
+        onStartReply={() => {}}
+        onForward={() => {}}
+      />
+    )
+    const sentRow = container.querySelector('[data-index="0"]')!
+    const receivedRow = container.querySelector('[data-index="1"]')!
+    for (const label of ["messenger:reply", "messenger:forward"]) {
+      expect(sentRow.querySelector(`button[aria-label="${label}"]`)).toHaveClass(
+        "-m-2",
+        "flex",
+        "min-h-[44px]",
+        "min-w-[44px]",
+        "text-[var(--text-inverse)]",
+        "focus-visible:ring-[var(--text-inverse)]"
+      )
+      expect(receivedRow.querySelector(`button[aria-label="${label}"]`)).toHaveClass(
+        "-m-2",
+        "flex",
+        "min-h-[44px]",
+        "min-w-[44px]",
+        "text-(--text-secondary)",
+        "focus-visible:ring-(--color-violet-500)"
+      )
+    }
+  })
+
+  it("hides reaction controls while editing and keeps read-only pills safe", () => {
+    const message = makeMessage({
+      id: "reaction-editing",
+      text: "react",
+      reactions: [{ emoji: "👍", count: 1, reactedByMe: false }],
+    })
+    const { rerender } = render(
+      <ChatWindow
+        messages={[message]}
+        editingMessageId={message.id}
+        editingMessageContent="draft"
+        onToggleReaction={() => {}}
+      />
+    )
+    expect(screen.queryByTestId("reaction-👍")).toBeNull()
+    expect(screen.queryByRole("button", { name: "messenger:reactions.add" })).toBeNull()
+
+    rerender(<ChatWindow messages={[message]} />)
+    const pill = screen.getByTestId("reaction-👍")
+    expect(() => fireEvent.click(pill)).not.toThrow()
   })
 })

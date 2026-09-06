@@ -15,6 +15,6 @@ export function resolveSsrBackendOrigin(): string {
   const runtimeProcess = (globalThis as typeof globalThis & { process?: NodeProcessLike }).process
   const runtimeOrigin =
     typeof window === "undefined" ? runtimeProcess?.env?.BACKEND_ORIGIN?.trim() : undefined
-  const buildOrigin = import.meta.env.VITE_BACKEND_ORIGIN?.trim()
+  const buildOrigin = import.meta.env?.VITE_BACKEND_ORIGIN?.trim()
   return (runtimeOrigin || buildOrigin || DEFAULT_BACKEND_ORIGIN).replace(/\/+$/u, "")
 }

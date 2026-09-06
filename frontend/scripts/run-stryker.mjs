@@ -490,6 +490,15 @@ const firstAttemptSourceCostWeights = new Map([
   ["src/hooks/useMediaQuery.ts", 217], // 57 mutants / 217 tests
 ])
 const firstAttemptCostAwareShardCount = 8
+// backendOrigin is imported by the SSR/client bootstrap graph, so even its
+// tiny source file selects a broad static test set. Keep that graph on a
+// dedicated first-attempt shard; mixing it with another static-heavy range
+// turns a handful of mutants into a hard-to-diagnose shard timeout.
+const firstAttemptDedicatedFiles = new Set(["src/api/backendOrigin.ts"])
+
+function mutationPatternStartsWithSource(pattern, sourcePath) {
+  return pattern === sourcePath || pattern.startsWith(`${sourcePath}:`)
+}
 
 function firstAttemptSourceCostWeight(file) {
   return firstAttemptSourceCostWeights.get(file) ?? 1
@@ -544,20 +553,46 @@ function assignFirstAttemptMutationUnits(weightedUnits, shards) {
     assignWeightedMutationUnits(weightedUnits, shards)
     return
   }
+  const dedicatedUnits = expensiveUnits.filter((entry) =>
+    [...firstAttemptDedicatedFiles].some((sourcePath) =>
+      mutationPatternStartsWithSource(entry.pattern, sourcePath)
+    )
+  )
+  const remainingExpensiveUnits = expensiveUnits.filter((entry) => !dedicatedUnits.includes(entry))
+  const remainingShards = dedicatedUnits.length > 0 ? shards.slice(1) : shards
+  if (dedicatedUnits.length > 0) {
+    assignWeightedMutationUnits(dedicatedUnits, [shards[0]])
+  }
+  if (remainingShards.length === 0) {
+    assignWeightedMutationUnits(remainingExpensiveUnits, [shards[0]])
+    return
+  }
+  if (remainingShards.length === 1) {
+    // A dedicated source already occupies shard zero.  When only one shard
+    // remains, it must carry both the residual expensive graph and regular
+    // work; reserving a separate expensive shard would leave an empty target
+    // and make the planner fail with `Reduce of empty array`.
+    assignWeightedMutationUnits([...remainingExpensiveUnits, ...regularUnits], remainingShards)
+    return
+  }
   // Keep the expensive related-test graphs in a bounded group of dedicated shards.  The
   // lower bound guarantees that the regular units can still seed every
   // remaining shard when the inventory is small or unusually fragmented.
-  const minimumExpensiveShards = Math.max(1, shards.length - regularUnits.length)
-  const maximumExpensiveShards = regularUnits.length > 0 ? shards.length - 1 : shards.length
+  const minimumExpensiveShards = Math.max(1, remainingShards.length - regularUnits.length)
+  const maximumExpensiveShards =
+    regularUnits.length > 0 ? remainingShards.length - 1 : remainingShards.length
   const expensiveShardCount = Math.min(
-    expensiveUnits.length,
+    remainingExpensiveUnits.length,
     maximumExpensiveShards,
-    Math.max(minimumExpensiveShards, Math.min(firstAttemptCostAwareShardCount, shards.length))
+    Math.max(
+      minimumExpensiveShards,
+      Math.min(firstAttemptCostAwareShardCount, remainingShards.length)
+    )
   )
-  const expensiveShards = shards.slice(0, expensiveShardCount)
-  const regularShards = shards.slice(expensiveShardCount)
+  const expensiveShards = remainingShards.slice(0, expensiveShardCount)
+  const regularShards = remainingShards.slice(expensiveShardCount)
 
-  assignWeightedMutationUnits(expensiveUnits, expensiveShards)
+  assignWeightedMutationUnits(remainingExpensiveUnits, expensiveShards)
   assignLocalityAwareMutationUnits(regularUnits, regularShards)
 }
 
