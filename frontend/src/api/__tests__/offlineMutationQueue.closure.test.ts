@@ -42,6 +42,17 @@ describe("enqueueOfflineMutation", () => {
     })
   })
 
+  it("stores the mutation before returning when navigator is unavailable", async () => {
+    vi.stubGlobal("navigator", undefined)
+
+    await enqueueOfflineMutation(mutation)
+
+    expect(offline.storePendingMutation).toHaveBeenCalledWith({
+      ...mutation,
+      category: "general",
+    })
+  })
+
   it("does not post work when a service worker exists without an active controller", async () => {
     const postMessage = vi.fn()
     vi.stubGlobal("navigator", {

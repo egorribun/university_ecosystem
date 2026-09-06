@@ -165,6 +165,32 @@ const mergeNewsPages = (pages: PaginatedResponse<NewsItem>[] | undefined): NewsI
   return merged
 }
 
+/**
+ * Return the cursor for the next news page, treating an absent page as the
+ * terminal state.  TanStack Query normally supplies a page object here, but
+ * keeping the guard explicit makes the pagination contract safe for hydrated
+ * or manually seeded cache data as well.
+ */
+export const getNewsNextPageParam = (
+  lastPage: PaginatedResponse<NewsItem> | null | undefined
+): string | null => {
+  if (!lastPage) return null
+  return lastPage.next_cursor ?? null
+}
+
+/**
+ * Resolve the latest cached page without exposing an undefined array access
+ * to callers.  The wider element type is intentional: persisted or manually
+ * seeded query data can contain a nullish tail even though API responses are
+ * validated before normal use.
+ */
+export const getLatestNewsPage = (
+  pages: readonly (PaginatedResponse<NewsItem> | null | undefined)[] | undefined
+): PaginatedResponse<NewsItem> | null => {
+  if (!pages || pages.length === 0) return null
+  return pages[pages.length - 1] ?? null
+}
+
 const createNewsListQueryFn =
   (queryClient: QueryClient, normalized: NormalizedNewsListFilters, queryKey: NewsListQueryKey) =>
   async ({ pageParam, signal }: { pageParam?: string | null; signal?: AbortSignal }) => {
@@ -296,10 +322,7 @@ export const useNewsListQuery = (
     queryKey,
     enabled,
     initialPageParam: null as string | null,
-    getNextPageParam: (lastPage: PaginatedResponse<NewsItem>) => {
-      if (!lastPage) return null
-      return lastPage.next_cursor ?? null
-    },
+    getNextPageParam: getNewsNextPageParam,
     queryFn,
     staleTime: 30_000, // 30s — matches interaction query; prevents refetch on mount/focus
     placeholderData,
@@ -314,8 +337,7 @@ export const useNewsListQuery = (
   let pagination: PaginatedResponse<NewsItem> | null = null
   const queryData = query.data
   if (queryData) {
-    const pages = queryData.pages
-    pagination = pages.length > 0 ? (pages[pages.length - 1] ?? null) : null
+    pagination = getLatestNewsPage(queryData.pages)
   }
 
   useEffect(() => {
@@ -357,10 +379,7 @@ export const prefetchNewsListQuery = (queryClient: QueryClient, filters: NewsLis
     queryKey,
     queryFn,
     initialPageParam: null as string | null,
-    getNextPageParam: (lastPage: PaginatedResponse<NewsItem>) => {
-      if (!lastPage) return null
-      return lastPage.next_cursor ?? null
-    },
+    getNextPageParam: getNewsNextPageParam,
   })
 }
 

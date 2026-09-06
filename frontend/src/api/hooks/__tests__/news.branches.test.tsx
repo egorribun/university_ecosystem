@@ -39,6 +39,8 @@ vi.mock("@/api/news", () => ({
 }))
 
 import {
+  getLatestNewsPage,
+  getNewsNextPageParam,
   newsListQueryKey,
   prefetchNewsListQuery,
   useNewsListQuery,
@@ -133,6 +135,23 @@ describe("newsListQueryKey (news.ts:95-97)", () => {
     )
 
     expect(result.current.queryKey).toEqual(["news", "list", { language: "en", limit: 20 }])
+  })
+})
+
+describe("news pagination helpers", () => {
+  it("treats absent pages as terminal and preserves the server cursor", () => {
+    expect(getNewsNextPageParam(undefined)).toBeNull()
+    expect(getNewsNextPageParam(null)).toBeNull()
+    expect(getNewsNextPageParam(okPage([], "next-cursor").data)).toBe("next-cursor")
+    expect(getNewsNextPageParam(okPage([], null).data)).toBeNull()
+  })
+
+  it("resolves empty, missing, valid, and nullish page tails safely", () => {
+    const page = okPage([], "next-cursor").data
+    expect(getLatestNewsPage(undefined)).toBeNull()
+    expect(getLatestNewsPage([])).toBeNull()
+    expect(getLatestNewsPage([page])).toBe(page)
+    expect(getLatestNewsPage([null])).toBeNull()
   })
 })
 
