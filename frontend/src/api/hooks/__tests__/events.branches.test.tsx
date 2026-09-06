@@ -1072,6 +1072,32 @@ describe("useEventNavigation (events.ts:482-525)", () => {
     expect(result.current.nextId).toBeNull()
   })
 
+  it("does not let synthetic fallback entries shadow malformed cache neighbors", () => {
+    const queryClient = freshClient()
+    const malformedNeighbor = {
+      ...makeEvent("missing", "Malformed neighbor"),
+      id: undefined,
+    } as unknown as Event
+
+    vi.spyOn(queryClient, "getQueriesData").mockReturnValue([
+      [["events", "list", { language: "ru", source: "missing" }], undefined],
+      [
+        ["events", "list", { language: "ru", source: "valid" }],
+        {
+          pages: [{}, { items: [malformedNeighbor, makeEvent("current"), makeEvent("after")] }],
+        },
+      ],
+    ] as never)
+
+    const { result } = renderHook(() => useEventNavigation("current"), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    expect(result.current.prevId).toBeNull()
+    expect(result.current.prevTitle).toBe("Malformed neighbor")
+    expect(result.current.nextId).toBe("after")
+  })
+
   it("keeps the first value for duplicate ids when deriving neighbors", () => {
     const queryClient = freshClient()
     queryClient.setQueryData(["events", "list", { language: "ru" }], {
