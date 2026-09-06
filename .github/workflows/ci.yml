@@ -3454,12 +3454,15 @@ jobs:
           test -s mutants/mutmut-incremental-plan/plan-manifest.json
 
       # A typical focused backend change occupies only a handful of the fixed
-      # 128 plan entries.  Emitting only nonempty entries releases hosted
+      # 128 logical plan entries. Emitting only nonempty entries and coalescing
+      # them into at most 64 budget-validated physical groups releases hosted
       # runners for E2E, Lighthouse, and frontend mutation work rather than
       # repeatedly bootstrapping uv and Helm for a plan already proven empty.
-      # The helper validates every shard file, selection digest, and complete
-      # population digest before it writes this matrix; the consumers validate
-      # the same plan again after downloading the attempt-scoped envelope.
+      # The matrix helper validates every shard file, selection digest, and
+      # complete population digest; the grouped-budget helper then validates
+      # both logical and physical timeout envelopes in one stats-loaded pass.
+      # Consumers validate the same plan again after downloading the
+      # attempt-scoped envelope.
       - name: Build validated mutmut execution matrix
         id: mutation_matrix
         shell: bash
@@ -3481,33 +3484,38 @@ jobs:
               find mutants/mutmut-incremental-plan -maxdepth 1 -type f \
                 -name 'shard-*.txt' -size +0c -print | sort
             )
+            matrix="$(python scripts/mutmut_shard_matrix.py groups \
+              --plan-directory mutants/mutmut-incremental-plan \
+              --expected-shards 128 \
+              --target-groups 64)"
+            printf '%s\n' "$matrix" > /tmp/mutmut-execution-matrix.json
+            # Validate every logical assignment and every coalesced physical
+            # group against merged stats in one process. This keeps the
+            # producer fail-closed without reparsing a large stats JSON once
+            # per logical shard before any runner can start.
+            uv run python scripts/validate_mutmut_group_budgets.py \
+              --matrix-file /tmp/mutmut-execution-matrix.json \
+              --plan-directory mutants/mutmut-incremental-plan \
+              --stats mutants/mutmut-stats.json \
+              --output-manifest /tmp/mutmut-group-budgets.json \
+              --expected-shards 128 \
+              --target-groups 64 \
+              --max-children 3 \
+              --control-cycle-reserve-seconds 5 \
+              --metadata-startup-reserve-seconds 120 \
+              --max-timeout-seconds 20880
+            test -s /tmp/mutmut-group-budgets.json
             if [ "${#nonempty_plan_files[@]}" -eq 0 ]; then
               # Keep the explicit non-mutant sentinel emitted by ``groups``
               # for an already-validated empty plan (for example, a legacy
               # retry artifact); the planner itself normally rejects an empty
               # changed-Python mutation universe before writing a plan.
               echo "Validated Python scope contains no nonempty mutation shards; emitting the non-mutant sentinel."
-            else
-              for shard_file in "${nonempty_plan_files[@]}"; do
-                uv run python scripts/mutmut_shard_budget.py \
-                  --selected-file "$shard_file" \
-                  --stats mutants/mutmut-stats.json \
-                  --max-children 3 \
-                  --control-cycle-reserve-seconds 5 \
-                  --metadata-startup-reserve-seconds 120 \
-                  --max-timeout-seconds 20880 \
-                  --output "/tmp/mutmut-budget-$(basename "$shard_file")" \
-                  >/dev/null
-              done
             fi
-            matrix="$(python scripts/mutmut_shard_matrix.py groups \
-              --plan-directory mutants/mutmut-incremental-plan \
-              --expected-shards 128 \
-              --target-groups 128)"
             if [ "${#nonempty_plan_files[@]}" -eq 0 ]; then
               matrix_summary="Validated Python scope has no mutants; one explicit non-mutant sentinel"
             else
-              matrix_summary="Fully validated fixed plan assignments: 128; one budget-safe physical group per logical assignment"
+              matrix_summary="Fully validated 128 logical assignments; up to 64 budget-validated physical groups"
             fi
           else
             # GitHub does not permit an empty dynamic matrix. A single explicit
@@ -3517,8 +3525,8 @@ jobs:
             matrix_summary="No-Python sentinel: one explicit non-mutant descriptor (not a 128-assignment plan)"
           fi
           descriptor_count="$(printf '%s' "$matrix" | python -c 'import json, sys; entries = json.load(sys.stdin).get("include"); sys.exit("mutation matrix must contain a nonempty include list") if not isinstance(entries, list) or not entries else None; print(len(entries))')"
-          if ! [[ "$descriptor_count" =~ ^[1-9][0-9]*$ ]] || [ "$descriptor_count" -gt 128 ]; then
-            echo "::error::Mutation descriptor count is outside the validated 1..128 range: $descriptor_count"
+          if ! [[ "$descriptor_count" =~ ^[1-9][0-9]*$ ]] || [ "$descriptor_count" -gt 64 ]; then
+            echo "::error::Mutation descriptor count is outside the validated 1..64 range: $descriptor_count"
             exit 1
           fi
           if [ "${{ steps.mutation_scope.outputs.has_python }}" = "false" ] && [ "$descriptor_count" -ne 1 ]; then
@@ -3601,21 +3609,23 @@ jobs:
       # expensive runners are not allocated when the foundational quality gate
       # is already red. Once that gate is green, use the complete hosted-runner
       # budget: eight Stryker workers plus twelve mutmut workers equals the
-      # repository's 20-runner ceiling. The bounded inner mutmut worker count
-      # and the complete 128-assignment evidence plan remain unchanged.
+      # repository's 20-runner ceiling. The bounded inner mutmut worker count,
+      # complete 128-assignment evidence plan, and at-most-64 physical groups
+      # remain fail-closed.
       max-parallel: 12
       # The producer validates all 128 fixed assignments, then dynamically
-      # emits deterministic physical groups over their exact nonempty entries.
-      # This preserves the full plan as evidence while preventing empty logical
-      # shards and per-shard bootstrap overhead from consuming hosted runners.
+      # emits at most 64 deterministic physical groups over their exact
+      # nonempty entries. This preserves the full plan as evidence while
+      # preventing empty logical shards and per-shard bootstrap overhead from
+      # consuming hosted runners.
       # A single explicit sentinel handles an empty scope.
       matrix: ${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}
     # Exact execution groups can legitimately map to a large lifecycle test union. The
     # pull-request gate therefore uses the same six-hour wall-clock envelope
     # as the manual evidence workflow. Three bounded workers avoid SQLite
     # contention in forked test processes while the fixed one-hundred-twenty-eight
-    # logical plan and bounded physical groups cap fan-out without allowing an
-    # unbounded fork storm.
+    # logical plan and at-most-sixty-four physical groups cap fan-out without
+    # allowing an unbounded fork storm.
     # The dynamic inner timeout remains fail-closed and leaves ten minutes for
     # proof, score verification, upload, and a controlled exit.
     timeout-minutes: 360
@@ -3790,7 +3800,7 @@ jobs:
           MATRIX_SELECTION_SHA256: ${{ matrix.selection_sha256 }}
           MATRIX_GROUP_SHA256: ${{ matrix.group_sha256 }}
           MATRIX_ESTIMATED_LOAD_MICROS: ${{ matrix.estimated_load_micros }}
-          MUTMUT_TARGET_GROUPS: "128"
+          MUTMUT_TARGET_GROUPS: "64"
         run: |
           set -euo pipefail
           if [[ "$MATRIX_HAS_PYTHON" != "true" && "$MATRIX_HAS_PYTHON" != "false" ]]; then

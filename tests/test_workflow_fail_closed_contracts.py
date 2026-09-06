@@ -372,9 +372,11 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     )
     matrix_step = _step(universe, "Build validated mutmut execution matrix")
     assert "descriptor_count=" in matrix_step["run"]
-    assert '"$descriptor_count" -gt 128' in matrix_step["run"]
+    assert '"$descriptor_count" -gt 64' in matrix_step["run"]
     assert "mutmut_shard_matrix.py groups" in matrix_step["run"]
-    assert "--target-groups 128" in matrix_step["run"]
+    assert "--target-groups 64" in matrix_step["run"]
+    assert "scripts/validate_mutmut_group_budgets.py" in matrix_step["run"]
+    assert "--output-manifest /tmp/mutmut-group-budgets.json" in matrix_step["run"]
     assert "Preflight the exact execution budget" in matrix_step["run"]
     assert "--metadata-startup-reserve-seconds 120" in matrix_step["run"]
     assert "--max-timeout-seconds 20880" in matrix_step["run"]
@@ -385,7 +387,7 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
         in matrix_step["run"]
     )
     assert (
-        'matrix_summary="Fully validated fixed plan assignments: 128; one budget-safe physical group per logical assignment"'
+        'matrix_summary="Fully validated 128 logical assignments; up to 64 budget-validated physical groups"'
         in matrix_step["run"]
     )
     assert (
