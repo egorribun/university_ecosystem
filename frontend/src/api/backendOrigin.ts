@@ -4,6 +4,10 @@ type NodeProcessLike = {
   env?: Record<string, string | undefined>
 }
 
+function trimOrigin(value: string | undefined): string | undefined {
+  return typeof value === "string" ? value.trim() : undefined
+}
+
 /**
  * Resolve the backend origin used only by the Node SSR runtime.
  *
@@ -13,8 +17,12 @@ type NodeProcessLike = {
  */
 export function resolveSsrBackendOrigin(): string {
   const runtimeProcess = (globalThis as typeof globalThis & { process?: NodeProcessLike }).process
-  const runtimeOrigin =
-    typeof window === "undefined" ? runtimeProcess?.env?.BACKEND_ORIGIN?.trim() : undefined
-  const buildOrigin = import.meta.env?.VITE_BACKEND_ORIGIN?.trim()
+  let runtimeOrigin: string | undefined
+  if (typeof window === "undefined" && runtimeProcess && runtimeProcess.env) {
+    runtimeOrigin = trimOrigin(runtimeProcess.env.BACKEND_ORIGIN)
+  }
+
+  // Vite always provides import.meta.env in every supported browser/SSR build.
+  const buildOrigin = import.meta.env.VITE_BACKEND_ORIGIN?.trim()
   return (runtimeOrigin || buildOrigin || DEFAULT_BACKEND_ORIGIN).replace(/\/+$/u, "")
 }
