@@ -630,6 +630,64 @@ test("isolates measured API test-graph hotspots in dedicated first-attempt shard
   )
 })
 
+test("isolates the recurrent unmeasured API/core timeout graph in dedicated first-attempt shards", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+  const recurrentHotspots = [
+    ["src/api/client.ts", 677],
+    ["src/api/chat.ts", 200],
+    ["src/api/hooks/activity.ts", 200],
+    ["src/api/interceptors/rateLimit.ts", 144],
+    ["src/api/schemas/wsMessage.ts", 151],
+    ["src/api/notifications.ts", 110],
+  ]
+  const measuredHotspots = [
+    ["src/api/interceptors/etagCache.ts", 239],
+    ["src/api/hooks/events.ts", 301],
+  ]
+  const regularFiles = Array.from({ length: 12 }, (_, index) => {
+    const file = `src/regular-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    ...recurrentHotspots.map(([file, count]) => [file, { mutants: makeMutants(file, count) }]),
+    ...measuredHotspots.map(([file, count]) => [file, { mutants: makeMutants(file, count) }]),
+    ...regularFiles,
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+
+  for (const [file] of [...recurrentHotspots, ...measuredHotspots]) {
+    const assignedShardIndexes = plan.flatMap((shard, shardIndex) =>
+      shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+        ? [shardIndex]
+        : []
+    )
+    assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
+    assert.ok(
+      assignedShardIndexes.every((shardIndex) => shardIndex < 8),
+      `${file} leaked into a regular first-attempt shard`
+    )
+  }
+  assert.ok(
+    plan
+      .slice(8)
+      .every((shard) =>
+        shard.files.every((pattern) => regularFiles.some(([file]) => pattern.startsWith(file)))
+      ),
+    "regular shards must not inherit the recurrent timeout graph"
+  )
+})
+
 test("isolates proven non-API test-graph hotspots without dropping regular work", async () => {
   const { planMutationShards } = await import(runnerUrl)
   const makeMutants = (file, count) =>

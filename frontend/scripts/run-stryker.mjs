@@ -438,15 +438,44 @@ const firstAttemptUnitSplitFactor = 16
 // modules fan out to materially different related-test graphs.  A weight of
 // one means that the regular locality-aware count model remains in effect.
 const firstAttemptSourceCostWeights = new Map([
+  // The first attempt in runs 33863748227 and 33994803565 repeatedly placed
+  // this API/core block in logical shard 8.  That shard reached the 120-minute
+  // hard timeout despite having only 677 mutants.  Keep conservative guard
+  // weights explicit so a fresh SHA cannot silently fall back to the count-only
+  // locality planner for the same hotspot.  These guard weights are relative
+  // placement costs, not coverage claims; measured test-graph counts below
+  // retain their evidence comments.
+  ["src/api/backendOrigin.ts", 24], // timeout guard weight
+  ["src/api/chat.ts", 180], // timeout guard weight
+  ["src/api/client.ts", 650], // timeout guard weight
+  ["src/api/events.ts", 50], // timeout guard weight
+  ["src/api/hooks/activity.ts", 120], // timeout guard weight
+  ["src/api/hooks/adminAudit.ts", 60], // timeout guard weight
+  ["src/api/hooks/adminFeatureFlags.ts", 60], // timeout guard weight
+  ["src/api/hooks/adminNotifications.ts", 60], // timeout guard weight
+  ["src/api/hooks/adminUsers.ts", 120], // timeout guard weight
+  ["src/api/hooks/sessions.ts", 60], // timeout guard weight
+  ["src/api/hooks/weather.ts", 101], // timeout guard weight
   ["src/api/hooks/events.ts", 74], // 301 mutants / 74 tests
   ["src/api/hooks/messenger.ts", 135], // 35 mutants / 135 tests
   ["src/api/hooks/news.ts", 62], // 170 mutants / 62 tests
   ["src/api/hooks/schedule.ts", 33], // 23 mutants / 33 tests
   ["src/api/hooks/users.ts", 235], // 8 mutants / 235 tests
   ["src/api/interceptors/etagCache.ts", 2882], // 239 mutants / 2882 tests
+  ["src/api/interceptors/language.ts", 120], // timeout guard weight
+  ["src/api/interceptors/rateLimit.ts", 342], // 144 mutants / 342 tests
   ["src/api/interceptors/traceContext.ts", 285], // 16 mutants / 285 tests
+  ["src/api/mfa.ts", 18], // 37 mutants / 18 tests
+  ["src/api/news.ts", 14], // 65 mutants / 14 tests
+  ["src/api/notifications.ts", 47], // 110 mutants / 47 tests
+  ["src/api/offlineMutationQueue.ts", 5], // 24 mutants / 5 tests
+  ["src/api/schemas/wsMessage.ts", 71], // 151 mutants / 71 tests
+  ["src/api/stories.ts", 12], // 16 mutants / 12 tests
   ["src/api/validation.ts", 46], // 20 mutants / 46 tests
   ["src/api/weather.ts", 101], // 174 mutants / 101 tests
+  ["src/App.tsx", 3], // 9 mutants / 3 tests
+  ["src/app/globalErrorHandlers.ts", 6], // 53 mutants / 6 tests
+  ["src/app/hydration.ts", 20], // 40 mutants / 20 tests
   ["src/app/logger.ts", 417], // 117 mutants / 417 tests
   ["src/components/media/SmartImage.tsx", 169], // 89 mutants / 169 tests
   ["src/components/schedule/scheduleUtils.ts", 173], // 169 mutants / 173 tests
