@@ -392,6 +392,15 @@ describe("api/client — BroadcastChannel idempotency coordination", () => {
       status: 200,
     })
   })
+
+  it("does not construct a cross-tab channel during SSR", async () => {
+    vi.stubGlobal("window", undefined)
+    RecordingBroadcastChannel.instances = []
+
+    await import("@/api/client")
+
+    expect(RecordingBroadcastChannel.instances).toHaveLength(0)
+  })
 })
 
 describe("api/client — abort-aware 429 handling", () => {

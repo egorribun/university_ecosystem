@@ -153,7 +153,10 @@ const _inflightIdempotencyKeys = new Set<string>()
 // Server-side idempotency key is the authoritative check — this is defense-in-depth.
 let _dedupeChannel: BroadcastChannel | null = null
 try {
-  if (typeof BroadcastChannel !== "undefined") {
+  // BroadcastChannel is a browser coordination primitive.  Do not construct
+  // Node's implementation during SSR or mutation-test runs: an open channel
+  // keeps the process alive and can leak cross-request state.
+  if (typeof window !== "undefined" && typeof BroadcastChannel !== "undefined") {
     _dedupeChannel = new BroadcastChannel("ecosystem.idempotency.dedup")
     _dedupeChannel.addEventListener(
       "message",
