@@ -15,6 +15,22 @@ import { DraggableLessonCard } from "./DraggableLessonCard"
 /** Heatmap thresholds for day load intensity (lesson count) */
 const HEAT_THRESHOLDS = { heavy: 5, medium: 3, light: 1 } as const
 
+export function getDayHeatClass(lessonCount: number): string {
+  if (lessonCount >= HEAT_THRESHOLDS.heavy) return "sched-heat-heavy"
+  if (lessonCount >= HEAT_THRESHOLDS.medium) return "sched-heat-medium"
+  if (lessonCount >= HEAT_THRESHOLDS.light) return "sched-heat-light"
+  return ""
+}
+
+export function shouldCelebrateDay(
+  dayComplete: boolean,
+  isToday: boolean,
+  lessonCount: number,
+  alreadyCelebrated: boolean
+): boolean {
+  return dayComplete && isToday && !alreadyCelebrated && lessonCount > 0
+}
+
 /** PERF-70-06: extracted so DndContext only mounts when canEdit */
 function LessonList({
   lessons,
@@ -166,7 +182,7 @@ export function DayColumn({
   const celebratedRef = useRef(false)
   const [showConfetti, setShowConfetti] = useState(false)
   useEffect(() => {
-    if (dayComplete && isToday && !celebratedRef.current && lessons.length > 0) {
+    if (shouldCelebrateDay(dayComplete, isToday, lessons.length, celebratedRef.current)) {
       celebratedRef.current = true
       setShowConfetti(true)
       const timer = setTimeout(() => setShowConfetti(false), 2000)
@@ -187,14 +203,7 @@ export function DayColumn({
   )
 
   // Heatmap: color intensity based on lesson count
-  const heatClass =
-    lessons.length >= HEAT_THRESHOLDS.heavy
-      ? "sched-heat-heavy"
-      : lessons.length >= HEAT_THRESHOLDS.medium
-        ? "sched-heat-medium"
-        : lessons.length >= HEAT_THRESHOLDS.light
-          ? "sched-heat-light"
-          : ""
+  const heatClass = getDayHeatClass(lessons.length)
 
   return (
     <div
