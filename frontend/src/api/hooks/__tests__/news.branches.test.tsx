@@ -42,6 +42,7 @@ import {
   getLatestNewsPage,
   getNewsNextPageParam,
   newsListQueryKey,
+  normalizeNewsListLimit,
   prefetchNewsListQuery,
   useNewsListQuery,
   newsDetailQueryOptions,
@@ -93,6 +94,15 @@ afterEach(() => {
 
 // ── newsListQueryKey factory (news.ts:95-97) ──────────────────────────────────
 describe("newsListQueryKey (news.ts:95-97)", () => {
+  it("normalizes every page-size boundary through the pure helper", () => {
+    expect(normalizeNewsListLimit(undefined)).toBe(12)
+    expect(normalizeNewsListLimit(0)).toBe(12)
+    expect(normalizeNewsListLimit(-1)).toBe(12)
+    expect(normalizeNewsListLimit(Number.NaN)).toBe(12)
+    expect(normalizeNewsListLimit(Number.POSITIVE_INFINITY)).toBe(12)
+    expect(normalizeNewsListLimit(20.9)).toBe(20)
+  })
+
   it("normalizes filters into ['news', 'list', normalized] with default limit", () => {
     const key = newsListQueryKey({ language: "ru" })
     expect(key[0]).toBe("news")

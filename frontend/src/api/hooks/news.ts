@@ -57,17 +57,22 @@ type NormalizedNewsListFilters = {
   limit: number
 }
 
-const normalizeNewsListFilters = (filters: NewsListFilters): NormalizedNewsListFilters => {
-  const normalizeLimit = (value: number | undefined) => {
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      return Math.floor(value)
-    }
-    return NEWS_PAGE_SIZE
+/**
+ * Normalise the caller-provided page size before it participates in a query
+ * key or request.  Keeping this as a pure named helper makes the boundary
+ * contract explicit for both consumers and mutation tests.
+ */
+export const normalizeNewsListLimit = (value: number | undefined): number => {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.floor(value)
   }
+  return NEWS_PAGE_SIZE
+}
 
+const normalizeNewsListFilters = (filters: NewsListFilters): NormalizedNewsListFilters => {
   return {
     language: filters.language,
-    limit: normalizeLimit(filters.limit),
+    limit: normalizeNewsListLimit(filters.limit),
   }
 }
 
