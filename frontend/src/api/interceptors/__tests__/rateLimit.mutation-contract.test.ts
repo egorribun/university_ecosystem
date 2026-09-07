@@ -449,6 +449,44 @@ describe("rateLimit mutation contracts", () => {
     releaseClientQueueSlot(second)
   })
 
+  it("uses the smallest available concurrency and window capacity exactly once", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "90")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "3")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const active = makeConfig()
+    const activePeer = makeConfig()
+    const activeThird = makeConfig()
+    const first = makeConfig()
+    const second = makeConfig()
+
+    await waitForClientQueueSlot(active)
+    await waitForClientQueueSlot(activePeer)
+    await waitForClientQueueSlot(activeThird)
+    let secondSettled = false
+    const firstWait = waitForClientQueueSlot(first)
+    const secondWait = waitForClientQueueSlot(second).then(() => {
+      secondSettled = true
+    })
+    await flushMicrotasks()
+
+    // One concurrency slot is available while the rolling-window budget is
+    // much larger.  Only the first waiter may be granted; max/add mutations
+    // would over-admit the second waiter as well.
+    releaseClientQueueSlot(active)
+    await firstWait
+    await flushMicrotasks()
+    expect(first.__clientRateLimitAcquired).toBe(true)
+    expect(secondSettled).toBe(false)
+    expect(second.__clientRateLimitAcquired).toBeUndefined()
+
+    releaseClientQueueSlot(first)
+    await secondWait
+    expect(second.__clientRateLimitAcquired).toBe(true)
+    releaseClientQueueSlot(activePeer)
+    releaseClientQueueSlot(activeThird)
+    releaseClientQueueSlot(second)
+  })
+
   it("rejects an aborted queued waiter and removes its listener after grant cleanup", async () => {
     vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "1")
     const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")

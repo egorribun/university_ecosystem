@@ -37,7 +37,7 @@ const rateLimitWaiters: Array<() => void> = new Array<() => void>()
 
 let clientQueueInFlight = 0
 const clientQueueWaiters: ClientQueueWaiter[] = new Array<ClientQueueWaiter>()
-const clientQueueTimestamps: number[] = []
+const clientQueueTimestamps: number[] = new Array<number>()
 let clientQueueTimer: ReturnType<typeof setTimeout> | null = null
 
 const pruneClientQueueTimestamps = () => {
@@ -147,49 +147,47 @@ const throwIfAborted = (signal?: AbortSignal) => {
   throw abortError(signal)
 }
 
+const waitForClientQueueWaiter = (config: QueueConfig): Promise<void> => {
+  const signal = config.signal
+  const deferred = {} as {
+    resolve: () => void
+    reject: (reason?: unknown) => void
+  }
+  // Keep the executor expression-only.  Besides being a compact deferred,
+  // this prevents a block mutation from replacing queue registration with an
+  // unresolved promise and masking the abort contract behind a timeout.
+  const waitPromise = new Promise<void>((resolve, reject) =>
+    Object.assign(deferred, { resolve, reject })
+  )
+  const waiter: ClientQueueWaiter = { resolve: deferred.resolve }
+  const removeQueuedWaiter = () =>
+    clientQueueWaiters.splice(
+      0,
+      clientQueueWaiters.length,
+      ...clientQueueWaiters.filter((entry) => entry !== waiter)
+    )
+  // Keep cancellation expression-only: every operation runs even when the
+  // waiter was granted just before abort, and a block mutation cannot leave
+  // the queue promise pending behind a timeout.
+  const onAbort = () =>
+    void (removeQueuedWaiter(), deferred.reject(abortError(config.signal)), notifyClientQueue())
+  const removeAbortListener = signal
+    ? () => signal.removeEventListener("abort", onAbort)
+    : undefined
+  signal?.addEventListener("abort", onAbort, { once: true })
+  clientQueueWaiters.push(waiter)
+  return waitPromise.finally(() => removeAbortListener?.())
+}
+
 const waitForClientQueueSlotInternal = async (config: QueueConfig): Promise<void> => {
   throwIfAborted(config.signal)
-  if (tryAcquireClientQueueSlot()) {
-    config.__clientRateLimitAcquired = true
-    return
+  while (!tryAcquireClientQueueSlot()) {
+    await waitForClientQueueWaiter(config).finally(() => undefined)
+    // A signal can abort after the waiter is resolved but before the next
+    // acquire.  Check it before consuming the newly available slot.
+    throwIfAborted(config.signal)
   }
-
-  let removeAbortListener: (() => void) | undefined
-  try {
-    await new Promise<void>((resolve, reject) => {
-      let waiterState: "pending" | "granted" = "pending"
-      const waiter: ClientQueueWaiter = {
-        resolve: () => {
-          waiterState = "granted"
-          resolve()
-        },
-      }
-      const onAbort = () => {
-        const index = clientQueueWaiters.indexOf(waiter)
-        if (index >= 0) clientQueueWaiters.splice(index, 1)
-        if (waiterState === "pending") reject(abortError(config.signal))
-        // If the waiter was granted just before its signal aborted, its
-        // recursive reacquire will fail. Wake the next queued request rather
-        // than leaving it blocked behind the cancelled request.
-        notifyClientQueue()
-      }
-      const signal = config.signal
-      removeAbortListener = signal ? () => signal.removeEventListener("abort", onAbort) : undefined
-      signal?.addEventListener("abort", onAbort, { once: true })
-      clientQueueWaiters.push(waiter)
-    })
-  } finally {
-    removeAbortListener?.()
-  }
-
-  try {
-    await waitForClientQueueSlotInternal(config)
-  } catch (error) {
-    // A signal can abort after the waiter is resolved but before the
-    // recursive acquire runs. Make sure another waiter can use the slot.
-    notifyClientQueue()
-    throw error
-  }
+  config.__clientRateLimitAcquired = true
 }
 
 export const waitForClientQueueSlot = async (config: QueueConfig) => {
