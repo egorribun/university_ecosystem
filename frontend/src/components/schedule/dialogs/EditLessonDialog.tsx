@@ -20,6 +20,16 @@ interface EditLessonDialogProps {
   refresh: () => void
 }
 
+export function isEditLessonFormValid(
+  lesson: Pick<Lesson, "subject" | "start_time" | "end_time"> | null
+): boolean {
+  return !!lesson?.subject?.trim() && !!lesson?.start_time && !!lesson?.end_time
+}
+
+export function getLessonDatePart(value: string | null | undefined, now: Date): string {
+  return value?.includes("T") ? value.split("T")[0]! : now.toISOString().split("T")[0]!
+}
+
 export function EditLessonDialog({
   schedule,
   lessonTypeOptions,
@@ -34,8 +44,7 @@ export function EditLessonDialog({
   const [editLesson, setEditLesson] = useState<Lesson | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  const isFormValid =
-    !!editLesson?.subject?.trim() && !!editLesson?.start_time && !!editLesson?.end_time
+  const isFormValid = isEditLessonFormValid(editLesson)
 
   useEffect(() => {
     if (isOpen && selectedLesson) {
@@ -167,9 +176,7 @@ export function EditLessonDialog({
                     value={getTimeStr(editLesson)}
                     onChange={(event) =>
                       setEditLesson((prev) => {
-                        const datePart = prev!.start_time?.includes("T")
-                          ? prev!.start_time.split("T")[0]
-                          : new Date().toISOString().split("T")[0]
+                        const datePart = getLessonDatePart(prev?.start_time, new Date())
                         return {
                           ...prev!,
                           start_time: `${datePart}T${event.target.value}:00`,
@@ -192,9 +199,7 @@ export function EditLessonDialog({
                     value={getEndTimeStr(editLesson)}
                     onChange={(event) =>
                       setEditLesson((prev) => {
-                        const datePart = prev!.end_time?.includes("T")
-                          ? prev!.end_time.split("T")[0]
-                          : new Date().toISOString().split("T")[0]
+                        const datePart = getLessonDatePart(prev?.end_time, new Date())
                         return {
                           ...prev!,
                           end_time: `${datePart}T${event.target.value}:00`,

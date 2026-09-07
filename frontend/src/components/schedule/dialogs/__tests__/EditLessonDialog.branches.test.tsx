@@ -25,7 +25,11 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 
-import { EditLessonDialog } from "@/components/schedule/dialogs/EditLessonDialog"
+import {
+  EditLessonDialog,
+  getLessonDatePart,
+  isEditLessonFormValid,
+} from "@/components/schedule/dialogs/EditLessonDialog"
 import { SchedulePageProvider, useSchedulePage } from "@/contexts/SchedulePageContext"
 import type { Lesson } from "@/components/schedule/scheduleUtils"
 import { logError } from "@/app/logger"
@@ -93,6 +97,19 @@ describe("EditLessonDialog — branches", () => {
     apiMocks.patch.mockClear()
     apiMocks.patch.mockResolvedValue({ data: {} })
     vi.mocked(logError).mockClear()
+  })
+
+  it("keeps edit validation and date extraction contracts explicit", () => {
+    expect(isEditLessonFormValid(SAMPLE)).toBe(true)
+    expect(isEditLessonFormValid({ ...SAMPLE, subject: "   " })).toBe(false)
+    expect(isEditLessonFormValid({ ...SAMPLE, start_time: "" })).toBe(false)
+    expect(isEditLessonFormValid({ ...SAMPLE, end_time: "" })).toBe(false)
+    expect(isEditLessonFormValid(null)).toBe(false)
+
+    const now = new Date("2026-02-03T12:00:00.000Z")
+    expect(getLessonDatePart("2026-01-15T09:00:00", now)).toBe("2026-01-15")
+    expect(getLessonDatePart("09:00", now)).toBe("2026-02-03")
+    expect(getLessonDatePart(null, now)).toBe("2026-02-03")
   })
 
   it("edits every text field (subject/teacher/room) via change handlers", () => {
@@ -193,6 +210,10 @@ describe("EditLessonDialog — branches", () => {
     )
     // Optimistic update applied + refresh fired on success.
     expect(props.applyScheduleUpdate).toHaveBeenCalled()
+    const optimisticUpdater = props.applyScheduleUpdate.mock.calls[0]![0]!
+    const optimisticResult = optimisticUpdater([SAMPLE, { ...SAMPLE, id: "unrelated" }])
+    expect(optimisticResult[0]).toMatchObject({ id: "l1", lesson_type: "lecture" })
+    expect(optimisticResult[1]).toMatchObject({ id: "unrelated" })
     await waitFor(() => expect(props.refresh).toHaveBeenCalledTimes(1))
     // Dialog closed during the optimistic path.
     expect(screen.queryByText("schedule:dialog.editTitle")).not.toBeInTheDocument()
@@ -212,6 +233,8 @@ describe("EditLessonDialog — branches", () => {
     )
     // applyScheduleUpdate called twice: once for the optimistic write, once for the revert.
     await waitFor(() => expect(props.applyScheduleUpdate).toHaveBeenCalledTimes(2))
+    const rollbackUpdater = props.applyScheduleUpdate.mock.calls[1]![0]!
+    expect(rollbackUpdater([])).toEqual(props.schedule)
     expect(props.refresh).not.toHaveBeenCalled()
   })
 
