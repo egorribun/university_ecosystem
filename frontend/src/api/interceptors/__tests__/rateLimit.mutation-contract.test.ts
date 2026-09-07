@@ -102,6 +102,27 @@ describe("rateLimit mutation contracts", () => {
     expect(settled).toBe(true)
   })
 
+  it("fails fast if a queued client waiter is never resolved", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "1")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const active = makeConfig()
+    const queued = makeConfig()
+
+    await waitForClientQueueSlot(active)
+    const pending = waitForClientQueueSlot(queued)
+    await flushMicrotasks()
+
+    const settled = Promise.race([
+      pending.then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 25)),
+    ])
+    releaseClientQueueSlot(active)
+    await vi.advanceTimersByTimeAsync(25)
+    await expect(settled).resolves.toBe(true)
+    await pending
+    releaseClientQueueSlot(queued)
+  })
+
   it("registers the abort listener with the canonical event and once option", async () => {
     const { scheduleRateLimitWindow, waitForRateLimitWindow } = await import("../rateLimit")
     const controller = new AbortController()

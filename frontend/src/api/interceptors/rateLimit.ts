@@ -157,26 +157,25 @@ const waitForClientQueueSlotInternal = async (config: QueueConfig): Promise<void
   let removeAbortListener: (() => void) | undefined
   try {
     await new Promise<void>((resolve, reject) => {
-      let granted = false
+      let waiterState: "pending" | "granted" = "pending"
       const waiter: ClientQueueWaiter = {
         resolve: () => {
-          granted = true
+          waiterState = "granted"
           resolve()
         },
       }
       const onAbort = () => {
         const index = clientQueueWaiters.indexOf(waiter)
         if (index >= 0) clientQueueWaiters.splice(index, 1)
-        if (!granted) reject(abortError(config.signal))
+        if (waiterState === "pending") reject(abortError(config.signal))
         // If the waiter was granted just before its signal aborted, its
         // recursive reacquire will fail. Wake the next queued request rather
         // than leaving it blocked behind the cancelled request.
         notifyClientQueue()
       }
-      removeAbortListener = config.signal
-        ? () => config.signal?.removeEventListener("abort", onAbort)
-        : undefined
-      config.signal?.addEventListener("abort", onAbort, { once: true })
+      const signal = config.signal
+      removeAbortListener = signal ? () => signal.removeEventListener("abort", onAbort) : undefined
+      signal?.addEventListener("abort", onAbort, { once: true })
       clientQueueWaiters.push(waiter)
     })
   } finally {

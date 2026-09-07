@@ -253,6 +253,25 @@ describe("useActivitySummaryQuery", () => {
     expect(apiMock.get).toHaveBeenCalledTimes(1)
   })
 
+  it("distinguishes an Axios cancellation marker from name-based fallbacks", async () => {
+    const canceled = Object.assign(new Error("transport cancelled"), {
+      __CANCEL__: true,
+      name: "TransportCancelled",
+    })
+    apiMock.get.mockRejectedValueOnce(canceled)
+    const options = activitySummaryOptions({ period: "30d", language: "en" })
+
+    await expect(
+      options.queryFn?.({
+        queryKey: options.queryKey,
+        signal: new AbortController().signal,
+        meta: undefined,
+        client: queryClient,
+      })
+    ).rejects.toBe(canceled)
+    expect(apiMock.get).toHaveBeenCalledTimes(1)
+  })
+
   it.each([
     Object.assign(new Error("aborted"), { name: "AbortError" }),
     Object.assign(new Error("cancelled"), { name: "CanceledError" }),
@@ -289,6 +308,51 @@ describe("useActivitySummaryQuery", () => {
       })
     ).resolves.toEqual({ attendance: ATTENDANCE_STUB, grades: null, participation: null })
     expect(apiMock.get).toHaveBeenCalledTimes(4)
+  })
+
+  it("treats a null primary rejection as an outage and uses healthy fallback feeds", async () => {
+    apiMock.get
+      .mockRejectedValueOnce(null)
+      .mockResolvedValueOnce({ data: ATTENDANCE_STUB })
+      .mockResolvedValueOnce({ data: GRADES_STUB })
+      .mockResolvedValueOnce({ data: PARTICIPATION_STUB })
+    const options = activitySummaryOptions({ period: "30d", language: "en" })
+
+    await expect(
+      options.queryFn?.({
+        queryKey: options.queryKey,
+        signal: new AbortController().signal,
+        meta: undefined,
+        client: queryClient,
+      })
+    ).resolves.toEqual({
+      attendance: ATTENDANCE_STUB,
+      grades: GRADES_STUB,
+      participation: PARTICIPATION_STUB,
+    })
+    expect(apiMock.get).toHaveBeenCalledTimes(4)
+  })
+
+  it("does not fail the whole summary when only attendance and grades fail", async () => {
+    apiMock.get
+      .mockRejectedValueOnce(new Error("summary endpoint down"))
+      .mockRejectedValueOnce(new Error("attendance service down"))
+      .mockRejectedValueOnce(new Error("grades service down"))
+      .mockResolvedValueOnce({ data: PARTICIPATION_STUB })
+    const options = activitySummaryOptions({ period: "30d", language: "en" })
+
+    await expect(
+      options.queryFn?.({
+        queryKey: options.queryKey,
+        signal: new AbortController().signal,
+        meta: undefined,
+        client: queryClient,
+      })
+    ).resolves.toEqual({
+      attendance: null,
+      grades: null,
+      participation: PARTICIPATION_STUB,
+    })
   })
 
   it("cancels an obsolete period request without starting fallback feeds", async () => {
