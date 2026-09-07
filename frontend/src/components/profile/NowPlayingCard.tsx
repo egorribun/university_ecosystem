@@ -51,7 +51,7 @@ export const getNowPlayingInitial = (
   testEnvironment: boolean,
   prefersReduce: boolean,
   reduced: boolean
-): false | { y: number; opacity: number; scale: number } =>
+): false | { y: string; opacity: number; scale: number } =>
   testEnvironment || prefersReduce || reduced
     ? false
     : { y: motionTokens.slideSm, opacity: 0.8, scale: 1 }
@@ -61,15 +61,17 @@ export const getNowPlayingTransition = (
 ): { duration: number } | { type: "spring"; stiffness: number; damping: number; mass: number } =>
   testEnvironment ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }
 
-export const shouldUseNowPlayingImage = (imageUrl: string | null, imageError: boolean): boolean =>
-  Boolean(imageUrl) && !imageError
+export const shouldUseNowPlayingImage = (
+  imageUrl: string | null | undefined,
+  imageError: boolean
+): imageUrl is string => Boolean(imageUrl) && !imageError
 
 export const shouldUseNowPlayingImageHover = (prefersReduce: boolean, reduced: boolean): boolean =>
   !prefersReduce && !reduced
 
 export const isNowPlayingImageVisible = (
   imageLoaded: boolean,
-  imageUrl: string | null,
+  imageUrl: string | null | undefined,
   imageError: boolean
 ): boolean => imageLoaded || !imageUrl || imageError
 
