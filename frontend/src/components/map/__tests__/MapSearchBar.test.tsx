@@ -19,6 +19,7 @@ import {
   applySearchSelection,
   blurSearchInput,
   focusSearchInput,
+  getInitialSearchOpenState,
   MapSearchBar,
   shouldOpenSearchOnFocus,
 } from "@/components/map/MapSearchBar"
@@ -91,6 +92,10 @@ afterEach(() => {
 })
 
 describe("MapSearchBar", () => {
+  it("starts with a closed search dropdown", () => {
+    expect(getInitialSearchOpenState()).toBe(false)
+  })
+
   it("opens on focus only when at least one result exists", () => {
     expect(shouldOpenSearchOnFocus(0)).toBe(false)
     expect(shouldOpenSearchOnFocus(-1)).toBe(false)

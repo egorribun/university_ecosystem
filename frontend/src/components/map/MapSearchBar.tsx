@@ -4,7 +4,6 @@ import {
   useCallback,
   useRef,
   useId,
-  useEffect,
   useImperativeHandle,
   type KeyboardEvent,
 } from "react"
@@ -29,6 +28,9 @@ type SearchResult =
     }
 
 type SelectionResult = SearchResult
+
+/** Keep the combobox closed until the user supplies a query. */
+export const getInitialSearchOpenState = (): boolean => false
 
 /**
  * Dispatch a selected result to the matching consumer.  A stale keyboard or
@@ -96,7 +98,7 @@ export function MapSearchBar({
   const inputRef = useRef<HTMLInputElement>(null)
 
   const [query, setQuery] = useState("")
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(getInitialSearchOpenState)
   // null represents "no active option" without relying on a magic sentinel.
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
 
@@ -107,14 +109,16 @@ export function MapSearchBar({
   // blur must not schedule a delayed close which can race with an immediate
   // second search and swallow its Escape/Enter key handling.
   const skipNextBlurCloseRef = useRef(false)
-
-  useEffect(() => {
-    return () => {
-      if (blurTimeoutRef.current !== null) {
-        clearTimeout(blurTimeoutRef.current)
-      }
+  // A stable callback ref receives `null` exactly when the input leaves the
+  // tree, so pending blur work is cancelled without an effect dependency
+  // array (which can be mutated into an equivalent static value).
+  const setInputRef = useRef<(node: HTMLInputElement | null) => void>((node) => {
+    if (node === null && blurTimeoutRef.current !== null) {
+      clearTimeout(blurTimeoutRef.current)
+      blurTimeoutRef.current = null
     }
-  }, [])
+    inputRef.current = node
+  }).current
 
   const results = useMemo((): SearchResult[] => {
     const q = query.trim().toLowerCase()
@@ -218,7 +222,7 @@ export function MapSearchBar({
       <div className="map-card-matte flex items-center gap-2 px-3 py-2 focus-within:ring-2 focus-within:ring-[var(--color-teal-500)]/40 transition-shadow">
         <Search className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
         <input
-          ref={inputRef}
+          ref={setInputRef}
           type="text"
           role="combobox"
           aria-expanded={isOpen && results.length > 0}
@@ -233,8 +237,7 @@ export function MapSearchBar({
             setActiveIdx(null)
           }}
           onFocus={() => {
-            if (!shouldOpenSearchOnFocus(results.length)) return
-            setIsOpen(true)
+            setIsOpen(shouldOpenSearchOnFocus(results.length))
           }}
           onBlur={() => {
             if (skipNextBlurCloseRef.current) {
