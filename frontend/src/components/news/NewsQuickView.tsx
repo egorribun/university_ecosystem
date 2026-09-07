@@ -32,7 +32,9 @@ export function getNewsQuickViewMotion(position: NewsQuickViewPosition, prefersR
     exit: prefersReduced
       ? { opacity: 0 }
       : { opacity: 0, y: position === "top" ? 4 : -4, scale: 0.98 },
-    transition: prefersReduced ? { duration: 0 } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] },
+    transition: prefersReduced
+      ? { duration: 0 }
+      : { duration: 0.18, ease: [0.16, 1, 0.3, 1] as const },
   }
 }
 
