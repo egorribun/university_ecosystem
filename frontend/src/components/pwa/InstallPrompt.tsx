@@ -48,7 +48,7 @@ const UPDATE_TOAST_VARIANTS = {
   exit: { opacity: 0 },
 }
 
-const isStandalone = () => {
+export const isInstallPromptStandalone = () => {
   if (typeof window === "undefined") return false
   const navigatorWithStandalone = window.navigator as NavigatorStandalone
   return (
@@ -58,7 +58,7 @@ const isStandalone = () => {
   )
 }
 
-const readDismissedAt = (key: string) => {
+export const readInstallPromptDismissedAt = (key: string) => {
   try {
     const raw = localStorage.getItem(key)
     if (!raw) return 0
@@ -68,6 +68,9 @@ const readDismissedAt = (key: string) => {
     return 0
   }
 }
+
+export const isInstallPromptSuppressed = (now: number, suppressUntil: number): boolean =>
+  suppressUntil > 0 && now < suppressUntil
 
 const rememberDismiss = (key: string) => {
   try {
@@ -109,7 +112,7 @@ export default function InstallPrompt() {
   const pushSuppressUntilRef = useRef<number>(0)
   const pendingUpdateRef = useRef<ServiceWorkerUpdateEventDetail["update"] | null>(null)
 
-  const isEligible = useMemo(() => !isStandalone(), [])
+  const isEligible = useMemo(() => !isInstallPromptStandalone(), [])
   const appName = t("navigation:brandName")
 
   const {
@@ -145,11 +148,12 @@ export default function InstallPrompt() {
   useEffect(() => {
     if (!isEligible) return
 
-    installSuppressUntilRef.current = readDismissedAt(PWA_DISMISS_STORAGE_KEY) + DISMISS_TTL
+    installSuppressUntilRef.current =
+      readInstallPromptDismissedAt(PWA_DISMISS_STORAGE_KEY) + DISMISS_TTL
 
     const handleBeforeInstallPrompt = (event: Event) => {
       const now = Date.now()
-      if (installSuppressUntilRef.current && now < installSuppressUntilRef.current) {
+      if (isInstallPromptSuppressed(now, installSuppressUntilRef.current)) {
         return
       }
 
@@ -180,7 +184,8 @@ export default function InstallPrompt() {
 
   useEffect(() => {
     if (!pushSuppressUntilRef.current) {
-      pushSuppressUntilRef.current = readDismissedAt(PUSH_DISMISS_STORAGE_KEY) + DISMISS_TTL
+      pushSuppressUntilRef.current =
+        readInstallPromptDismissedAt(PUSH_DISMISS_STORAGE_KEY) + DISMISS_TTL
     }
 
     if (pushSupported && notificationPermission === "granted") {
@@ -189,7 +194,7 @@ export default function InstallPrompt() {
     }
 
     const now = Date.now()
-    if (pushSuppressUntilRef.current && now < pushSuppressUntilRef.current) return
+    if (isInstallPromptSuppressed(now, pushSuppressUntilRef.current)) return
     setPushVisible(true)
   }, [notificationPermission, pushSupported])
 
