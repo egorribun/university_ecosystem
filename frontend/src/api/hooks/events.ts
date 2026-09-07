@@ -248,7 +248,7 @@ export const useEventsListQuery = (
   })
 
   const events = useMemo(() => mergeEventPages(query.data?.pages), [query.data])
-  const pagination = query.data?.pages?.[query.data.pages.length - 1] ?? null
+  const pagination = lastEventPage(query.data)
 
   return {
     ...query,
@@ -257,6 +257,10 @@ export const useEventsListQuery = (
     queryKey,
   }
 }
+
+export const lastEventPage = (
+  data: InfiniteData<PaginatedResponse<Event>, string | null> | undefined
+): PaginatedResponse<Event> | null => data?.pages?.[data.pages.length - 1] ?? null
 
 export const prefetchEventsListQuery = (queryClient: QueryClient, filters: EventsListFilters) => {
   const normalized = normalizeEventsListFilters(filters)
@@ -319,15 +323,14 @@ export const useMyEventsQuery = (
 
   const placeholderData = useMemo(() => {
     if (typeof window === "undefined") return undefined
-    try {
-      const storage = new StorageItem<Event[]>(
-        `events:my:${normalized.language}:${normalized.userId}`
-      )
-      const items = storage.get()
-      return Array.isArray(items) ? items : undefined
-    } catch {
-      return undefined
-    }
+    // StorageItem#get is itself fail-closed (including blocked browser storage
+    // getters). Keeping this read path free of a second catch makes the
+    // persistence contract single-owner and preserves the typed fallback.
+    const storage = new StorageItem<Event[]>(
+      `events:my:${normalized.language}:${normalized.userId}`
+    )
+    const items = storage.get()
+    return Array.isArray(items) ? items : undefined
   }, [normalized.language, normalized.userId])
 
   const query = useQuery<Event[], Error, Event[], MyEventsQueryKey>({

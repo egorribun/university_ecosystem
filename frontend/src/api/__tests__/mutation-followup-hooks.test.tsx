@@ -25,7 +25,6 @@ import {
   useMyEventsQuery,
 } from "@/api/hooks/events"
 import { NEWS_PAGE_SIZE, newsListQueryKey } from "@/api/hooks/news"
-import { StorageItem } from "@/utils/storage"
 
 const makeClient = () =>
   new QueryClient({
@@ -134,7 +133,7 @@ describe("events filter and hydrated-state mutation contracts", () => {
   })
 
   it("fails closed when reading the persisted my-events placeholder throws", () => {
-    vi.spyOn(StorageItem.prototype, "get").mockImplementation(() => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("storage unavailable")
     })
     const client = makeClient()

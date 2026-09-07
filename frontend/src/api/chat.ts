@@ -177,10 +177,8 @@ export const chatApi = {
   ) => {
     const formData = new FormData()
     formData.append("content", content)
-    if (files && files.length > 0) {
-      files.forEach((file) => {
-        formData.append("files", file)
-      })
+    for (const file of files ?? []) {
+      formData.append("files", file)
     }
     // Wave 207 — reply/quote. The backend send_message validates the target
     // exists AND is in this chat (404 otherwise); the new Message row carries

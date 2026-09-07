@@ -106,6 +106,23 @@ describe("chatApi", () => {
     expect(formData.get("reply_to_message_id")).toBeNull()
   })
 
+  it("accepts an omitted file collection without reading its length", async () => {
+    vi.mocked(client.post).mockResolvedValueOnce({ data: { id: "msg-no-files" } })
+
+    await chatApi.sendMessage("chat1", "plain")
+
+    const formData = vi.mocked(client.post).mock.calls[0]![1] as FormData
+    expect(formData.getAll("files")).toEqual([])
+  })
+
+  it("does not iterate an empty file collection", async () => {
+    vi.mocked(client.post).mockResolvedValueOnce({ data: { id: "msg-empty-files" } })
+    await chatApi.sendMessage("chat1", "plain", [])
+
+    const formData = vi.mocked(client.post).mock.calls[0]![1] as FormData
+    expect(formData.getAll("files")).toEqual([])
+  })
+
   it("markRead calls correct endpoint", async () => {
     vi.mocked(client.post).mockResolvedValueOnce({ data: { ok: true } })
     await chatApi.markRead("chat1")

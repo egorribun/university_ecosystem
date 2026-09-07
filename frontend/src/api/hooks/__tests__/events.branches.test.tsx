@@ -28,7 +28,6 @@ import type { PropsWithChildren } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { Event } from "@/types/Event"
-import { StorageItem } from "@/utils/storage"
 
 // ── SDK mock ────────────────────────────────────────────────────────────────
 // The hooks/factories import `allEventsApiV1EventsGet` + `myEventsApiV1EventsMyGet`
@@ -47,6 +46,7 @@ import {
   eventsListQueryKey,
   prefetchEventsListQuery,
   myEventsQueryKey,
+  lastEventPage,
   useEventsListQuery,
   useMyEventsQuery,
   useSuspenseMyEventsQuery,
@@ -142,6 +142,15 @@ describe("eventsListQueryKey (events.ts:77-79)", () => {
     expect(eventsListQueryKey({ language: "ru", limit: 0 })[2].limit).toBe(12)
     expect(eventsListQueryKey({ language: "ru", limit: -5 })[2].limit).toBe(12)
     expect(eventsListQueryKey({ language: "ru", limit: Number.NaN })[2].limit).toBe(12)
+    expect(eventsListQueryKey({ language: "ru", limit: Number.NEGATIVE_INFINITY })[2].limit).toBe(
+      12
+    )
+    expect(eventsListQueryKey({ language: "ru", limit: "25" as unknown as number })[2].limit).toBe(
+      12
+    )
+    expect(eventsListQueryKey({ language: "ru", limit: true as unknown as number })[2].limit).toBe(
+      12
+    )
   })
 
   it("exposes the same canonical key from the hook", () => {
@@ -160,6 +169,21 @@ describe("eventsListQueryKey (events.ts:77-79)", () => {
       "list",
       { language: "en", is_active: false, search: "library", location: "", limit: 12 },
     ])
+  })
+})
+
+describe("lastEventPage (events.ts:251)", () => {
+  it("returns null when query data or its pages are missing", () => {
+    expect(lastEventPage(undefined)).toBeNull()
+    expect(lastEventPage({ pages: undefined } as never)).toBeNull()
+    expect(lastEventPage({ pages: [] } as never)).toBeNull()
+  })
+
+  it("returns the last cached page", () => {
+    const first = okPage([makeEvent("first")]).data
+    const last = okPage([makeEvent("last")]).data
+
+    expect(lastEventPage({ pages: [first, last], pageParams: [null, null] } as never)).toBe(last)
   })
 })
 
@@ -251,6 +275,20 @@ describe("useEventsListQuery queryFn branches", () => {
     expect(request.validateStatus?.(200)).toBe(true)
     expect(request.validateStatus?.(399)).toBe(true)
     expect(request.validateStatus?.(400)).toBe(false)
+  })
+
+  it("uses the archive activity segment for inactive event requests", async () => {
+    allEventsMock.mockResolvedValue(okPage([]))
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useEventsListQuery({ language: "ru", is_active: false }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const request = allEventsMock.mock.calls[0]?.[0] as { etagCacheKey?: string }
+    expect(request.etagCacheKey).toBe("events:list:ru:archive:::12")
   })
 
   it("passes cursor param + merges via getNextPageParam on fetchNextPage (149-151)", async () => {
@@ -744,7 +782,7 @@ describe("useMyEventsQuery (events.ts:329-354)", () => {
   })
 
   it("returns no placeholder when the storage adapter throws", async () => {
-    const getSpy = vi.spyOn(StorageItem.prototype, "get").mockImplementation(() => {
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("storage unavailable")
     })
     myEventsMock.mockResolvedValue({ status: 200, data: [] })
@@ -757,7 +795,7 @@ describe("useMyEventsQuery (events.ts:329-354)", () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
       expect(result.current.data).toEqual([])
     } finally {
-      getSpy.mockRestore()
+      getItemSpy.mockRestore()
     }
   })
 })
