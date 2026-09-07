@@ -61,9 +61,14 @@ const readCacheEntry = (
 ): WeatherCacheEntry | null => {
   const readResult: CacheReadResult = (() => {
     try {
-      const storage = window.sessionStorage
-      if (!storage) return null
-      return storage.getItem(key)
+      // Object(undefined) yields an empty object, so a missing storage
+      // implementation naturally falls through to the guarded invocation
+      // below without a branch that can diverge during mutation testing.
+      const storage = Object(window.sessionStorage)
+      const getItem = Reflect.get(storage, "getItem") as (
+        cacheKey: string
+      ) => string | null | undefined
+      return Reflect.apply(getItem, storage, [key]) ?? null
     } catch {
       return null
     }

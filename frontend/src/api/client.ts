@@ -152,23 +152,30 @@ const _inflightIdempotencyKeys = new Set<string>()
 // Prevents duplicate mutations when two tabs submit the same form simultaneously.
 // Server-side idempotency key is the authoritative check — this is defense-in-depth.
 let _dedupeChannel: BroadcastChannel | null = null
-try {
-  // BroadcastChannel is a browser coordination primitive.  Do not construct
-  // Node's implementation during SSR or mutation-test runs: an open channel
-  // keeps the process alive and can leak cross-request state.
-  if (typeof window !== "undefined" && typeof BroadcastChannel !== "undefined") {
-    _dedupeChannel = new BroadcastChannel("ecosystem.idempotency.dedup")
-    _dedupeChannel.addEventListener(
+const createDedupeChannel = (): BroadcastChannel | null => {
+  // Read the constructor from the browser window rather than the Node global.
+  // Vitest/jsdom exposes Node's BroadcastChannel globally, and constructing it
+  // during module evaluation leaves an open handle that can stall SSR/mutation
+  // runners.  A missing browser constructor is a supported no-op fallback.
+  try {
+    const browserWindow = Object(globalThis.window)
+    const Channel = Reflect.get(browserWindow, "BroadcastChannel") as typeof BroadcastChannel
+    const channel = new Channel("ecosystem.idempotency.dedup")
+    channel.addEventListener(
       "message",
       (e: MessageEvent<{ key: string; action: "add" | "delete" }>) => {
         if (e.data.action === "add") _inflightIdempotencyKeys.add(e.data.key)
         else _inflightIdempotencyKeys.delete(e.data.key)
       }
     )
+    return channel
+  } catch {
+    // BroadcastChannel not available (SSR, old browsers, Web Workers).
+    return null
   }
-} catch {
-  // BroadcastChannel not available (SSR, old browsers, Web Workers).
 }
+
+_dedupeChannel = createDedupeChannel()
 
 // Wave 174 SW2 — CSRF cookie auto-acquisition.
 //
@@ -340,10 +347,10 @@ api.interceptors.request.use(async (config) => {
 
 // PERF-14-05: Helper to clean up in-flight idempotency key tracking.
 const _cleanupIdempotencyKey = (config: ApiRequestConfig | undefined) => {
-  if (!config?.headers) return
+  const headers = config?.headers
   const key =
-    config.headers instanceof AxiosHeaders
-      ? (config.headers.get("Idempotency-Key") as string | undefined)
+    headers instanceof AxiosHeaders
+      ? (headers.get("Idempotency-Key") as string | undefined)
       : undefined
   if (key) {
     _inflightIdempotencyKeys.delete(key)

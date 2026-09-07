@@ -393,6 +393,30 @@ describe("api/client — BroadcastChannel idempotency coordination", () => {
     })
   })
 
+  it("releases an idempotency key after success so a later retry is not suppressed", async () => {
+    vi.stubGlobal("BroadcastChannel", undefined)
+    const { default: safeApi } = await import("@/api/client")
+    const adapter = vi.fn(async (config): Promise<AxiosResponse> => ({
+      config,
+      data: { ok: true },
+      status: 200,
+      statusText: "OK",
+      headers: new AxiosHeaders(),
+      request: {},
+    }))
+    safeApi.defaults.adapter = adapter
+
+    const requestConfig = { headers: { "Idempotency-Key": "retry-after-success" } } as never
+    await expect(safeApi.post("/events", { ok: true }, requestConfig)).resolves.toMatchObject({
+      status: 200,
+    })
+    await expect(safeApi.post("/events", { ok: true }, requestConfig)).resolves.toMatchObject({
+      status: 200,
+    })
+
+    expect(adapter).toHaveBeenCalledTimes(2)
+  })
+
   it("does not construct a cross-tab channel during SSR", async () => {
     vi.stubGlobal("window", undefined)
     RecordingBroadcastChannel.instances = []
@@ -446,6 +470,7 @@ describe("api/client — abort-aware 429 handling", () => {
 describe("api/client — SSR request branches", () => {
   beforeEach(() => {
     vi.resetModules()
+    vi.stubEnv("DEV", false)
     vi.stubGlobal("window", undefined)
     vi.stubGlobal(
       "__ssrCookieGetter__",
@@ -461,6 +486,7 @@ describe("api/client — SSR request branches", () => {
 
   it("forwards the incoming cookie and uses the SSR fallback base configuration", async () => {
     const { default: ssrApi, ensureCsrfCookie } = await import("@/api/client")
+    expect(ssrApi.defaults.baseURL).toBe("http://localhost:8000/api/v1")
     const seen: InternalAxiosRequestConfig[] = []
     ssrApi.defaults.adapter = async (config): Promise<AxiosResponse> => {
       seen.push(config)

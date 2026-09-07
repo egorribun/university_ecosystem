@@ -133,6 +133,18 @@ describe("RxDB database lifecycle", () => {
     expect(close).toHaveBeenCalledOnce()
   })
 
+  it("clears the cache when a database exposes no cleanup method", async () => {
+    const database = makeDatabase()
+    createRxDatabase.mockResolvedValue(database)
+
+    await getDatabase()
+    await expect(resetDatabaseForTesting()).resolves.toBeUndefined()
+
+    const replacement = makeDatabase()
+    createRxDatabase.mockResolvedValueOnce(replacement)
+    await expect(getDatabase()).resolves.toBe(replacement)
+  })
+
   it("clears the cached promise when cleanup rejects", async () => {
     const remove = vi.fn().mockRejectedValue(new Error("cleanup failed"))
     const database = makeDatabase({ remove })

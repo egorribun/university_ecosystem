@@ -55,11 +55,12 @@ export async function resetDatabaseForTesting(): Promise<void> {
   // whether the underlying remove/close operation succeeds so a later test
   // can create a fresh database instead of reusing a half-cleaned instance.
   const dbObj = db as unknown as Record<string, unknown>
-  const cleanup = (["remove", "close"] as const)
-    .map((method) => dbObj[method])
-    .find((candidate): candidate is () => Promise<void> => typeof candidate === "function")
+  const cleanup = [
+    ...(["remove", "close"] as const).map((method) => dbObj[method]),
+    async () => undefined,
+  ].find((candidate): candidate is () => Promise<void> => typeof candidate === "function")!
   try {
-    if (cleanup) await cleanup()
+    await cleanup()
     dbPromise = null
   } catch (_e) {
     dbPromise = null

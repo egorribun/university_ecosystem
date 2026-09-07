@@ -145,7 +145,6 @@ const TIME_RE = /(\d{2}):(\d{2})/
 /** Safely extract HH:MM string from a lesson time field. Returns "" if invalid. */
 function extractHHMM(raw: string | null | undefined): string {
   if (typeof raw !== "string") return ""
-  if (raw.length === 0) return ""
   const match = TIME_RE.exec(raw)
   return match ? `${match[1]}:${match[2]}` : ""
 }
