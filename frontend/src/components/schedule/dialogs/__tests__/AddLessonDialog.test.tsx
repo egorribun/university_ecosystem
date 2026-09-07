@@ -6,6 +6,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const apiMocks = vi.hoisted(() => ({
   post: vi.fn(() => Promise.resolve({ data: {} })),
 }))
+const translationMocks = vi.hoisted(() => ({
+  useTranslation: vi.fn(() => ({
+    t: (key: string) => key,
+    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+  })),
+}))
 
 vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
@@ -19,16 +25,18 @@ vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: translationMocks.useTranslation,
 }))
 
 import {
   AddLessonDialog,
+  createAddLessonChoiceUpdater,
+  createAddLessonFieldUpdater,
   isAddLessonFormValid,
   resolveBackendLessonType,
+  resetAddLessonTextFields,
+  updateAddLessonChoice,
+  updateAddLessonField,
 } from "@/components/schedule/dialogs/AddLessonDialog"
 import { SchedulePageProvider, useSchedulePage } from "@/contexts/SchedulePageContext"
 import type { LessonTypeConfig } from "@/components/schedule/scheduleUtils"
@@ -108,6 +116,7 @@ describe("AddLessonDialog", () => {
     apiMocks.post.mockClear()
     apiMocks.post.mockResolvedValue({ data: {} })
     vi.mocked(logError).mockClear()
+    translationMocks.useTranslation.mockClear()
   })
 
   it("validates every required field independently", () => {
@@ -124,8 +133,36 @@ describe("AddLessonDialog", () => {
     expect(resolveBackendLessonType("unknown", LESSON_TYPE_CONFIGS)).toBe("unknown")
   })
 
+  it("keeps text-field updates and post-submit reset immutable", () => {
+    const fields = {
+      subject: "Subject",
+      teacher: "Teacher",
+      room: "Room",
+      lessonType: "lecture",
+      startTime: "09:00",
+      endTime: "10:30",
+      parity: "both" as const,
+    }
+    expect(updateAddLessonField(fields, "teacher", "New Teacher")).toEqual({
+      ...fields,
+      teacher: "New Teacher",
+    })
+    expect(fields.teacher).toBe("Teacher")
+    expect(resetAddLessonTextFields(fields)).toEqual({
+      ...fields,
+      subject: "",
+      teacher: "",
+      room: "",
+    })
+    expect(fields.subject).toBe("Subject")
+    expect(createAddLessonFieldUpdater("room", "B-202")(fields).room).toBe("B-202")
+    expect(updateAddLessonChoice(fields, "lessonType", "practice").lessonType).toBe("practice")
+    expect(createAddLessonChoiceUpdater("parity", "odd")(fields).parity).toBe("odd")
+  })
+
   it("renders the add form when the 'add' dialog is active", () => {
     renderDialog()
+    expect(translationMocks.useTranslation).toHaveBeenCalledWith(["schedule", "common"])
     expect(screen.getByText("schedule:dialog.addTitle")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "schedule:buttons.add" })).toBeInTheDocument()
   })
@@ -178,6 +215,24 @@ describe("AddLessonDialog", () => {
     // Dialog closed on success.
     expect(screen.queryByText("schedule:dialog.addTitle")).not.toBeInTheDocument()
     expect(logError).not.toHaveBeenCalled()
+  })
+
+  it("includes edited teacher and room values in the submitted payload", async () => {
+    const user = userEvent.setup()
+    renderDialog(makeBaseProps())
+    fillRequiredFields()
+    fireEvent.change(screen.getByLabelText("schedule:form.teacher"), {
+      target: { value: "Dr. Ada" },
+    })
+    fireEvent.change(screen.getByLabelText("schedule:form.room"), {
+      target: { value: "A-101" },
+    })
+    await user.click(screen.getByRole("button", { name: "schedule:buttons.add" }))
+    await waitFor(() => expect(apiMocks.post).toHaveBeenCalledTimes(1))
+    expect(apiMocks.post).toHaveBeenCalledWith(
+      "/schedule",
+      expect.objectContaining({ teacher: "Dr. Ada", room: "A-101" })
+    )
   })
 
   it("submits selected lesson type and parity values", async () => {

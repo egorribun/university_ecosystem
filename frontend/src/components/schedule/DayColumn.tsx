@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, useEffect } from "react"
+import { useCallback, useRef, useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
@@ -176,7 +176,9 @@ export function DayColumn({
   const { t } = useTranslation(["schedule", "common"])
 
   const canEdit = userRole === "admin" || userRole === "teacher"
-  const lessonIds = useMemo(() => lessons.map((l) => l.id), [lessons])
+  // The list is tiny (one day only); deriving IDs directly avoids retaining a
+  // stale memo when a schedule update replaces the lesson array in place.
+  const lessonIds = lessons.map((lesson) => lesson.id)
 
   // Celebration: show confetti once when today's lessons are all done (FIX-68-23)
   const celebratedRef = useRef(false)

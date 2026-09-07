@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, type ChangeEvent, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
@@ -30,6 +30,89 @@ export function getLessonDatePart(value: string | null | undefined, now: Date): 
   return value?.includes("T") ? value.split("T")[0]! : now.toISOString().split("T")[0]!
 }
 
+export type EditableLessonField = "subject" | "teacher" | "room"
+export type EditableLessonTimeField = "start_time" | "end_time"
+
+export function updateLessonField(
+  lesson: Lesson,
+  field: EditableLessonField,
+  value: string
+): Lesson {
+  return { ...lesson, [field]: value }
+}
+
+export function updateLessonTimeField(
+  lesson: Lesson,
+  field: EditableLessonTimeField,
+  value: string,
+  now: Date
+): Lesson {
+  const datePart = getLessonDatePart(lesson[field], now)
+  return { ...lesson, [field]: `${datePart}T${value}:00` }
+}
+
+export function updateLessonChoice(lesson: Lesson, value: string): Lesson {
+  return { ...lesson, lesson_type: value }
+}
+
+export function updateLessonParity(lesson: Lesson, value: string): Lesson {
+  return { ...lesson, parity: value as LessonParity }
+}
+
+export function replaceLessonById(
+  lessons: Lesson[],
+  lessonId: string,
+  updatedLesson: Lesson
+): Lesson[] {
+  return lessons.map((lesson) => (lesson.id === lessonId ? updatedLesson : lesson))
+}
+
+export function createLessonFieldUpdater(
+  field: EditableLessonField,
+  value: string
+): (lesson: Lesson | null) => Lesson | null {
+  return function updateField(lesson: Lesson | null): Lesson | null {
+    return lesson ? updateLessonField(lesson, field, value) : lesson
+  }
+}
+
+export function createLessonTimeUpdater(
+  field: EditableLessonTimeField,
+  value: string,
+  now: Date
+): (lesson: Lesson | null) => Lesson | null {
+  return function updateTime(lesson: Lesson | null): Lesson | null {
+    return lesson ? updateLessonTimeField(lesson, field, value, now) : lesson
+  }
+}
+
+export function createLessonChoiceUpdater(value: string): (lesson: Lesson | null) => Lesson | null {
+  return function updateChoice(lesson: Lesson | null): Lesson | null {
+    return lesson ? updateLessonChoice(lesson, value) : lesson
+  }
+}
+
+export function createLessonParityUpdater(value: string): (lesson: Lesson | null) => Lesson | null {
+  return function updateParity(lesson: Lesson | null): Lesson | null {
+    return lesson ? updateLessonParity(lesson, value) : lesson
+  }
+}
+
+export function createOptimisticLessonUpdater(
+  lessonId: string,
+  updatedLesson: Lesson
+): (lessons: Lesson[]) => Lesson[] {
+  return function updateOptimistically(lessons: Lesson[]): Lesson[] {
+    return replaceLessonById(lessons, lessonId, updatedLesson)
+  }
+}
+
+export function createRollbackUpdater(backup: Lesson[]): (lessons: Lesson[]) => Lesson[] {
+  return function rollback(_lessons: Lesson[]): Lesson[] {
+    return backup
+  }
+}
+
 export function EditLessonDialog({
   schedule,
   lessonTypeOptions,
@@ -59,9 +142,7 @@ export function EditLessonDialog({
     const updatedLesson = { ...lesson, lesson_type: backendLessonType }
 
     // Optimistic update
-    applyScheduleUpdate((prev) =>
-      prev.map((lesson) => (lesson.id === optimisticId ? updatedLesson : lesson))
-    )
+    applyScheduleUpdate(createOptimisticLessonUpdater(optimisticId, updatedLesson))
     closeDialog()
 
     try {
@@ -76,17 +157,45 @@ export function EditLessonDialog({
       logError("Failed to update lesson", err)
       showSnackbar(t("schedule:snackbar.updateError"), "error")
       // Revert optimistic update
-      applyScheduleUpdate(() => backup)
+      applyScheduleUpdate(createRollbackUpdater(backup))
     } finally {
       setIsSaving(false)
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     if (editLesson && isFormValid && !isSaving) {
       void handleSave(editLesson)
     }
+  }
+
+  function handleSubjectChange(event: ChangeEvent<HTMLInputElement>) {
+    setEditLesson(createLessonFieldUpdater("subject", event.target.value))
+  }
+
+  function handleTeacherChange(event: ChangeEvent<HTMLInputElement>) {
+    setEditLesson(createLessonFieldUpdater("teacher", event.target.value))
+  }
+
+  function handleRoomChange(event: ChangeEvent<HTMLInputElement>) {
+    setEditLesson(createLessonFieldUpdater("room", event.target.value))
+  }
+
+  function handleLessonTypeChange(value: string) {
+    setEditLesson(createLessonChoiceUpdater(value))
+  }
+
+  function handleStartTimeChange(event: ChangeEvent<HTMLInputElement>) {
+    setEditLesson(createLessonTimeUpdater("start_time", event.target.value, new Date()))
+  }
+
+  function handleEndTimeChange(event: ChangeEvent<HTMLInputElement>) {
+    setEditLesson(createLessonTimeUpdater("end_time", event.target.value, new Date()))
+  }
+
+  function handleParityChange(value: string) {
+    setEditLesson(createLessonParityUpdater(value))
   }
 
   return (
@@ -107,9 +216,7 @@ export function EditLessonDialog({
                   id="edit-lesson-subject"
                   type="text"
                   value={editLesson.subject || ""}
-                  onChange={(event) =>
-                    setEditLesson((prev) => ({ ...prev!, subject: event.target.value }))
-                  }
+                  onChange={handleSubjectChange}
                   fullWidth
                 />
               </div>
@@ -124,9 +231,7 @@ export function EditLessonDialog({
                   id="edit-lesson-teacher"
                   type="text"
                   value={editLesson.teacher || ""}
-                  onChange={(event) =>
-                    setEditLesson((prev) => ({ ...prev!, teacher: event.target.value }))
-                  }
+                  onChange={handleTeacherChange}
                   fullWidth
                 />
               </div>
@@ -141,9 +246,7 @@ export function EditLessonDialog({
                   id="edit-lesson-room"
                   type="text"
                   value={editLesson.room || ""}
-                  onChange={(event) =>
-                    setEditLesson((prev) => ({ ...prev!, room: event.target.value }))
-                  }
+                  onChange={handleRoomChange}
                   fullWidth
                 />
               </div>
@@ -157,7 +260,7 @@ export function EditLessonDialog({
                 <Select
                   id="edit-lesson-type"
                   value={editLesson.lesson_type || ""}
-                  onValueChange={(val) => setEditLesson((prev) => ({ ...prev!, lesson_type: val }))}
+                  onValueChange={handleLessonTypeChange}
                   options={lessonTypeOptions}
                   placeholder={t("schedule:form.lessonType")}
                 />
@@ -174,15 +277,7 @@ export function EditLessonDialog({
                     id="edit-lesson-start-time"
                     type="time"
                     value={getTimeStr(editLesson)}
-                    onChange={(event) =>
-                      setEditLesson((prev) => {
-                        const datePart = getLessonDatePart(prev?.start_time, new Date())
-                        return {
-                          ...prev!,
-                          start_time: `${datePart}T${event.target.value}:00`,
-                        }
-                      })
-                    }
+                    onChange={handleStartTimeChange}
                     fullWidth
                   />
                 </div>
@@ -197,15 +292,7 @@ export function EditLessonDialog({
                     id="edit-lesson-end-time"
                     type="time"
                     value={getEndTimeStr(editLesson)}
-                    onChange={(event) =>
-                      setEditLesson((prev) => {
-                        const datePart = getLessonDatePart(prev?.end_time, new Date())
-                        return {
-                          ...prev!,
-                          end_time: `${datePart}T${event.target.value}:00`,
-                        }
-                      })
-                    }
+                    onChange={handleEndTimeChange}
                     fullWidth
                   />
                 </div>
@@ -220,9 +307,7 @@ export function EditLessonDialog({
                 <Select
                   id="edit-lesson-parity"
                   value={editLesson.parity}
-                  onValueChange={(val) =>
-                    setEditLesson((prev) => ({ ...prev!, parity: val as LessonParity }))
-                  }
+                  onValueChange={handleParityChange}
                   options={[
                     { value: "both", label: t("schedule:week.both") },
                     { value: "odd", label: t("schedule:week.odd") },

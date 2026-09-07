@@ -6,6 +6,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const apiMocks = vi.hoisted(() => ({
   patch: vi.fn(() => Promise.resolve({ data: {} })),
 }))
+const translationMocks = vi.hoisted(() => ({
+  useTranslation: vi.fn(() => ({
+    t: (key: string) => key,
+    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+  })),
+}))
 
 vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
@@ -19,16 +25,23 @@ vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: translationMocks.useTranslation,
 }))
 
 import {
+  createLessonChoiceUpdater,
+  createLessonFieldUpdater,
+  createLessonParityUpdater,
+  createLessonTimeUpdater,
+  createOptimisticLessonUpdater,
+  createRollbackUpdater,
   EditLessonDialog,
   getLessonDatePart,
   isEditLessonFormValid,
+  replaceLessonById,
+  updateLessonField,
+  updateLessonParity,
+  updateLessonTimeField,
 } from "@/components/schedule/dialogs/EditLessonDialog"
 import { SchedulePageProvider, useSchedulePage } from "@/contexts/SchedulePageContext"
 import type { Lesson } from "@/components/schedule/scheduleUtils"
@@ -97,6 +110,7 @@ describe("EditLessonDialog — branches", () => {
     apiMocks.patch.mockClear()
     apiMocks.patch.mockResolvedValue({ data: {} })
     vi.mocked(logError).mockClear()
+    translationMocks.useTranslation.mockClear()
   })
 
   it("keeps edit validation and date extraction contracts explicit", () => {
@@ -110,6 +124,29 @@ describe("EditLessonDialog — branches", () => {
     expect(getLessonDatePart("2026-01-15T09:00:00", now)).toBe("2026-01-15")
     expect(getLessonDatePart("09:00", now)).toBe("2026-02-03")
     expect(getLessonDatePart(null, now)).toBe("2026-02-03")
+
+    const updatedSubject = updateLessonField(SAMPLE, "subject", "Discrete")
+    expect(updatedSubject.subject).toBe("Discrete")
+    expect(SAMPLE.subject).toBe("Линейная алгебра")
+    expect(updateLessonTimeField(ISO_SAMPLE, "start_time", "08:30", now).start_time).toBe(
+      "2026-01-15T08:30:00"
+    )
+    expect(updateLessonTimeField(SAMPLE, "end_time", "11:45", now).end_time).toBe(
+      "2026-02-03T11:45:00"
+    )
+    expect(updateLessonParity(SAMPLE, "odd").parity).toBe("odd")
+    expect(createLessonFieldUpdater("room", "B-202")(SAMPLE)?.room).toBe("B-202")
+    expect(createLessonTimeUpdater("start_time", "07:30", now)(SAMPLE)?.start_time).toBe(
+      "2026-02-03T07:30:00"
+    )
+    expect(createLessonChoiceUpdater("practice")(SAMPLE)?.lesson_type).toBe("practice")
+    expect(createLessonParityUpdater("even")(SAMPLE)?.parity).toBe("even")
+    expect(createLessonFieldUpdater("subject", "ignored")(null)).toBeNull()
+
+    const changed = { ...SAMPLE, subject: "Changed" }
+    expect(replaceLessonById([SAMPLE], SAMPLE.id, changed)).toEqual([changed])
+    expect(createOptimisticLessonUpdater(SAMPLE.id, changed)([SAMPLE])).toEqual([changed])
+    expect(createRollbackUpdater([SAMPLE])([])).toEqual([SAMPLE])
   })
 
   it("edits every text field (subject/teacher/room) via change handlers", () => {
@@ -127,6 +164,11 @@ describe("EditLessonDialog — branches", () => {
     const room = screen.getByDisplayValue("ГУК-305")
     fireEvent.change(room, { target: { value: "ЛК-201" } })
     expect(screen.getByDisplayValue("ЛК-201")).toBeInTheDocument()
+  })
+
+  it("passes both schedule and common namespaces to i18next", () => {
+    renderDialog(makeBaseProps())
+    expect(translationMocks.useTranslation).toHaveBeenCalledWith(["schedule", "common"])
   })
 
   it("renders empty values for nullable lesson metadata", () => {
