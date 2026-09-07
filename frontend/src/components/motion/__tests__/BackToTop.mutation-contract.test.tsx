@@ -64,6 +64,43 @@ describe("BackToTop mutation contract", () => {
     expect(disconnect).toHaveBeenCalledOnce()
   })
 
+  it("registers the scroll listener only once across rerenders", () => {
+    const addEventListener = vi.spyOn(window, "addEventListener")
+    const removeEventListener = vi.spyOn(window, "removeEventListener")
+    const { rerender, unmount } = render(<BackToTop />)
+
+    rerender(<BackToTop />)
+
+    expect(addEventListener.mock.calls.filter(([type]) => type === "scroll")).toHaveLength(1)
+    unmount()
+    expect(removeEventListener.mock.calls.filter(([type]) => type === "scroll")).toHaveLength(1)
+  })
+
+  it("creates and observes the footer once across rerenders", () => {
+    const observe = vi.fn()
+    const disconnect = vi.fn()
+    const footer = document.createElement("footer")
+    footer.setAttribute("role", "contentinfo")
+    document.body.appendChild(footer)
+    class MockIntersectionObserver {
+      constructor() {
+        // The callback is not needed for this lifecycle contract.
+      }
+
+      observe = observe
+      disconnect = disconnect
+    }
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver)
+
+    const { rerender, unmount } = render(<BackToTop />)
+    rerender(<BackToTop />)
+
+    expect(observe).toHaveBeenCalledOnce()
+    unmount()
+    expect(disconnect).toHaveBeenCalledOnce()
+    footer.remove()
+  })
+
   it("passes the common namespace and exact motion contract to the FAB", async () => {
     render(<BackToTop />)
     expect(state.namespaces).toContainEqual(["common"])
@@ -126,5 +163,26 @@ describe("BackToTop mutation contract", () => {
     unmount()
     expect(disconnect).toHaveBeenCalledOnce()
     footer.remove()
+  })
+
+  it("falls back to the legacy scroll API when smooth scrolling is unavailable", async () => {
+    const scrollTo = vi
+      .spyOn(window, "scrollTo")
+      .mockImplementationOnce(() => {
+        throw new Error("smooth scrolling is unavailable")
+      })
+      .mockImplementationOnce(() => undefined)
+
+    render(<BackToTop />)
+    setScrollY(500)
+    fireEvent.scroll(window)
+    const button = await waitFor(() =>
+      screen.getByRole("button", { name: "common:buttons.backToTop" })
+    )
+
+    fireEvent.click(button)
+
+    expect(scrollTo).toHaveBeenNthCalledWith(1, { top: 0, behavior: "smooth" })
+    expect(scrollTo).toHaveBeenNthCalledWith(2, 0, 0)
   })
 })

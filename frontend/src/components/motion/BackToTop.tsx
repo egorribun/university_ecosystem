@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { m, AnimatePresence } from "framer-motion"
 import { ArrowUp } from "lucide-react"
@@ -6,6 +6,14 @@ import Magnetic from "./Magnetic"
 
 const BASE_BOTTOM = 24 // px — default distance from viewport bottom
 const FOOTER_GAP = 16 // px — gap between FAB and footer top edge
+
+export const scrollToTop = (): void => {
+  try {
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  } catch {
+    window.scrollTo(0, 0)
+  }
+}
 
 export const disconnectBackToTopObserver = (observer: IntersectionObserver | null): void => {
   observer?.disconnect()
@@ -50,13 +58,7 @@ export default function BackToTop() {
     return () => disconnectBackToTopObserver(observerRef.current)
   }, [])
 
-  const onClick = useCallback(() => {
-    try {
-      window.scrollTo({ top: 0, behavior: "smooth" })
-    } catch {
-      window.scrollTo(0, 0)
-    }
-  }, [])
+  const onClick = scrollToTop
 
   return (
     <AnimatePresence>
