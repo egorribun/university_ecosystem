@@ -185,6 +185,22 @@ describe("appendLiveMessageToCache boundaries", () => {
     expect(result.next_cursor).toBeNull()
   })
 
+  it("retains a malformed cache exactly at the render bound", () => {
+    const cached: MessagesListResponse = {
+      items: Array.from({ length: 199 }, (_, index) => message(index)),
+      has_more: false,
+      next_cursor: null,
+    }
+    const malformed = { ...message(199), created_at: "not-a-datetime" }
+
+    const result = appendLiveMessageToCache(cached, malformed)
+
+    expect(result.items).toHaveLength(200)
+    expect(result.items.at(-1)?.id).toBe("boundary-199")
+    expect(result.has_more).toBe(false)
+    expect(result.next_cursor).toBeNull()
+  })
+
   it("never exceeds the render bound under an adversarial malformed timestamp stream", () => {
     let cached: MessagesListResponse = {
       items: [],
@@ -246,6 +262,56 @@ describe("appendLiveMessageToCache boundaries", () => {
     ])
     expect(withHigherTie.items[1]).toBe(first)
     expect(withHigherTie.items[2]).toBe(exactTie)
+  })
+
+  it("orders sub-millisecond timestamps before applying the id tie-breaker", () => {
+    const older = {
+      ...message(1),
+      id: "micro-z-older",
+      created_at: "2026-08-26T00:00:00.123001Z",
+    }
+    const newer = {
+      ...message(2),
+      id: "micro-a-newer",
+      created_at: "2026-08-26T00:00:00.123999Z",
+    }
+    const byTimestamp = appendLiveMessageToCache(
+      { items: [newer], has_more: false, next_cursor: null },
+      older
+    )
+    expect(byTimestamp.items.map((item) => item.id)).toEqual(["micro-z-older", "micro-a-newer"])
+
+    const sameTimestampHigh = {
+      ...older,
+      id: "micro-z",
+      created_at: "2026-08-26T00:00:00.123456Z",
+    }
+    const sameTimestampLow = {
+      ...older,
+      id: "micro-a",
+      created_at: "2026-08-26T00:00:00.123456Z",
+    }
+    const byId = appendLiveMessageToCache(
+      { items: [sameTimestampHigh], has_more: false, next_cursor: null },
+      sameTimestampLow
+    )
+    expect(byId.items.map((item) => item.id)).toEqual(["micro-a", "micro-z"])
+
+    const offsetOlder = {
+      ...older,
+      id: "offset-z-older",
+      created_at: "2026-08-26T03:00:00.123001+03:00",
+    }
+    const offsetNewer = {
+      ...newer,
+      id: "offset-a-newer",
+      created_at: "2026-08-26T03:00:00.123999+03:00",
+    }
+    const byOffset = appendLiveMessageToCache(
+      { items: [offsetNewer], has_more: false, next_cursor: null },
+      offsetOlder
+    )
+    expect(byOffset.items.map((item) => item.id)).toEqual(["offset-z-older", "offset-a-newer"])
   })
 
   it("trims a delayed message outside the render window using the actual retained oldest", () => {
@@ -1215,9 +1281,38 @@ describe("useChatWebSocket", () => {
   it.each([
     ["oversized", () => "x".repeat(65_537)],
     ["non-array entries", () => JSON.stringify({ entries: {} })],
+    ["non-array entry", () => JSON.stringify({ entries: ["not-a-tuple"] })],
+    ["wrong tuple arity", () => JSON.stringify({ entries: [["storage-chat", 1]] })],
+    ["non-string chat id", () => JSON.stringify({ entries: [[123, 1, "valid-sequence-token"]] })],
+    ["empty chat id", () => JSON.stringify({ entries: [["", 1, "valid-sequence-token"]] })],
     [
-      "invalid entry",
-      () => JSON.stringify({ entries: [["storage-chat", 0, "invalid-sequence-token"]] }),
+      "oversized chat id",
+      () => JSON.stringify({ entries: [["x".repeat(513), 1, "valid-sequence-token"]] }),
+    ],
+    [
+      "non-number sequence",
+      () => JSON.stringify({ entries: [["storage-chat", "1", "valid-sequence-token"]] }),
+    ],
+    [
+      "fractional sequence",
+      () => JSON.stringify({ entries: [["storage-chat", 1.5, "valid-sequence-token"]] }),
+    ],
+    [
+      "zero sequence",
+      () => JSON.stringify({ entries: [["storage-chat", 0, "valid-sequence-token"]] }),
+    ],
+    [
+      "unsafe sequence",
+      () =>
+        JSON.stringify({
+          entries: [["storage-chat", Number.MAX_SAFE_INTEGER + 1, "valid-sequence-token"]],
+        }),
+    ],
+    ["non-string resume token", () => JSON.stringify({ entries: [["storage-chat", 1, 42]] })],
+    ["empty resume token", () => JSON.stringify({ entries: [["storage-chat", 1, ""]] })],
+    [
+      "oversized resume token",
+      () => JSON.stringify({ entries: [["storage-chat", 1, "x".repeat(4_097)]] }),
     ],
   ])("fails closed for a %s persisted checkpoint registry", async (_label, storedValue) => {
     TestWebSocket.instances = []
@@ -1651,6 +1746,8 @@ describe("useChatWebSocket", () => {
     }
     expect(registry.entries).toHaveLength(256)
     expect(registry.entries).toContainEqual(["checkpoint-chat-0", 1, "bounded-token-1"])
+    expect(registry.entries).not.toContainEqual(["checkpoint-chat-1", 2, "bounded-token-2"])
+    expect(registry.entries).toContainEqual(["checkpoint-chat-256", 257, "bounded-token-257"])
 
     const second = renderHook(
       () => useChatWebSocket({ enabled: true, currentUserId: "bounded-checkpoint-user" }),
