@@ -39,6 +39,9 @@ describe("RelatedNews", () => {
     expect(links).toHaveLength(ITEMS.length)
     expect(links[0]!.getAttribute("href")).toContain("/news/n1")
     expect(links[1]!.getAttribute("href")).toContain("/news/n2")
+    expect(screen.getByText("New Interdisciplinary Research Lab")).toBeInTheDocument()
+    expect(screen.getByText("Student council applications open")).toBeInTheDocument()
+    expect(links[0]).toHaveClass("group", "flex", "flex-col", "rounded-xl", "card-matte")
   })
 
   it("renders nothing when there are no related items", async () => {
@@ -59,5 +62,17 @@ describe("RelatedNews", () => {
 
     expect(screen.getByRole("img", { name: "News cover image" })).toBeInTheDocument()
     expect(screen.queryByText(/2026/)).not.toBeInTheDocument()
+  })
+
+  it("uses the compact image card contract for image and placeholder branches", async () => {
+    await renderWithRouter({ ui: () => <RelatedNews items={ITEMS} />, extraRoutes })
+
+    const image = screen.getByRole("img", { name: /New Interdisciplinary Research Lab/ })
+    expect(image).toHaveClass("h-full", "w-full", "object-cover")
+    expect(image).toHaveAttribute("sizes", "(min-width: 640px) 33vw, 100vw")
+
+    const links = screen.getAllByRole("link")
+    expect(links[1]?.querySelector("svg")).toBeInTheDocument()
+    expect(links[1]?.querySelector(".h-32")).toBeInTheDocument()
   })
 })
