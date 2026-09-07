@@ -375,6 +375,7 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
       const searchInput = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+      expect(searchInput).toHaveAttribute("placeholder", "messenger:searchUsers")
       await act(async () => {
         fireEvent.change(searchInput, { target: { value: "Ni" } })
       })
@@ -439,11 +440,14 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
         wrapper,
       })
       fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
-      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+      const searchInput = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+      fireEvent.change(searchInput, {
         target: { value: "ab" },
       })
       await waitFor(() => expect(mocks.apiGet).toHaveBeenCalled())
       expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
+      const searchRegion = searchInput.closest(".space-y-2")
+      expect(searchRegion?.querySelectorAll("button img")).toHaveLength(0)
       resolveSearch?.({ data: [] })
       expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
     })
@@ -675,6 +679,19 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
     expect(kick.className).toContain("min-w-[44px]")
     fireEvent.click(kick)
     expect(onRemoveMember).toHaveBeenCalledWith(MEMBER)
+  })
+
+  it("does not grant kick access to a non-owner member", () => {
+    render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={MEMBER} />, {
+      wrapper,
+    })
+
+    expect(
+      screen.queryByRole("button", { name: 'messenger:removeMember|{"name":"Mike Member"}' })
+    ).toBeNull()
+    expect(screen.getAllByRole("button", { name: "messenger:leaveGroup" }).length).toBeGreaterThan(
+      0
+    )
   })
 
   it("disables rename and add-member mutations while their requests are pending", async () => {

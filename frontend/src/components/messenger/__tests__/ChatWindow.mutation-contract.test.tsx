@@ -282,6 +282,13 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(motionAttr(searchEmptyAnimated, "data-motion-initial")).toBe(
       JSON.stringify({ scale: 0.92, opacity: 0, y: 8 })
     )
+    expect(motionAttr(searchEmptyAnimated, "data-motion-transition")).toBe(
+      JSON.stringify({ duration: 0.45, ease: [0.22, 1, 0.36, 1] })
+    )
+    expect(search.container.querySelector('[role="log"]')).toHaveAttribute(
+      "aria-label",
+      "messenger:aria.messageList"
+    )
     expect(
       screen.getByText('messenger:noMessages.searchEmpty.description|{"query":"missing"}')
     ).toBeInTheDocument()
@@ -1059,6 +1066,8 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(motionAttr(fab, "data-motion-transition")).toBe(
       JSON.stringify({ duration: 0.2, ease: [0.22, 1, 0.36, 1] })
     )
+    expect(motionAttr(fab, "data-motion-while-hover")).toBe(JSON.stringify({ scale: 1.05 }))
+    expect(motionAttr(fab, "data-motion-while-tap")).toBe(JSON.stringify({ scale: 0.95 }))
     expect(fab).toHaveClass("absolute", "bottom-4", "right-4", "size-11", "rounded-full")
     expect(fab.querySelector("svg")).toHaveClass("size-5")
     expect(fab.querySelector("svg")).toHaveAttribute("stroke-width", "2.5")
@@ -1083,6 +1092,7 @@ describe("ChatWindow motion and layout mutation contract", () => {
     expect(motionAttr(reducedFab, "data-motion-initial")).toBe("false")
     expect(motionAttr(reducedFab, "data-motion-while-hover")).toBe("undefined")
     expect(motionAttr(reducedFab, "data-motion-while-tap")).toBe("undefined")
+    expect(motionAttr(reducedFab, "data-motion-transition")).toBe(JSON.stringify({ duration: 0 }))
   })
 
   it("keeps the loading-row identity stable and explicit", () => {

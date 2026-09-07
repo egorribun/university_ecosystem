@@ -3,7 +3,11 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const state = vi.hoisted(() => ({ reduced: false, translationCalls: [] as unknown[] }))
+const state = vi.hoisted(() => ({
+  reduced: false,
+  translationCalls: [] as unknown[],
+  mediaQueries: [] as string[],
+}))
 let uuidCounter = 0
 const createObjectURLSpy = vi.fn<(file: Blob | MediaSource) => string>()
 const revokeObjectURLSpy = vi.fn<(url: string) => void>()
@@ -58,7 +62,12 @@ vi.mock("framer-motion", async () => {
   }
 })
 
-vi.mock("@/hooks/useMediaQuery", () => ({ default: () => state.reduced }))
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: (query: string) => {
+    state.mediaQueries.push(query)
+    return state.reduced
+  },
+}))
 vi.mock("react-i18next", () => ({
   useTranslation: (namespaces: unknown) => {
     state.translationCalls.push(namespaces)
@@ -81,6 +90,7 @@ const attr = (element: Element, name: string) => element.getAttribute(name)
 beforeEach(() => {
   state.reduced = false
   state.translationCalls.length = 0
+  state.mediaQueries.length = 0
   uuidCounter = 0
   createObjectURLSpy
     .mockReset()
@@ -98,6 +108,7 @@ describe("MessageInput motion and DOM contract", () => {
   it("requests both translation namespaces as a stable ordered tuple", () => {
     render(<MessageInput onSend={() => {}} />)
     expect(state.translationCalls).toContainEqual(["messenger", "common"])
+    expect(state.mediaQueries).toContain("(prefers-reduced-motion: reduce)")
   })
 
   it("exposes exact attach/send animations, touch targets and Unicode maxLength", async () => {
@@ -173,6 +184,14 @@ describe("MessageInput motion and DOM contract", () => {
     expect(attr(menu, "data-motion-exit")).toBe(JSON.stringify({ opacity: 0, scale: 0.95, y: 10 }))
     expect(menu).toHaveClass("min-w-(--min-w-column)", "rounded-2xl", "shadow-premium")
     expect(container.querySelector("#chat-attach-type-photo > div")).toHaveClass(
+      "w-8",
+      "h-8",
+      "rounded-lg",
+      "flex",
+      "items-center",
+      "justify-center",
+      "transition-transform",
+      "group-hover:scale-110",
       "text-(--primary-main)",
       "bg-(--primary-main)/(--opacity-subtle)"
     )
@@ -312,6 +331,12 @@ describe("MessageInput motion and DOM contract", () => {
     const { container } = render(<MessageInput onSend={() => {}} />)
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
     const documentFile = new File(["<svg/>"], "notes.txt", { type: "text/plain" })
+    const sniffBlob = new Blob([])
+    Object.defineProperty(sniffBlob, "text", {
+      configurable: true,
+      value: vi.fn().mockResolvedValue("<svg viewBox='0 0 1 1'>"),
+    })
+    const sliceSpy = vi.spyOn(documentFile, "slice").mockReturnValue(sniffBlob)
     Object.defineProperty(fileInput, "files", { value: [documentFile], configurable: true })
 
     await act(async () => {
@@ -320,6 +345,7 @@ describe("MessageInput motion and DOM contract", () => {
 
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(createObjectURLSpy).toHaveBeenCalledWith(documentFile)
+    expect(sliceSpy).not.toHaveBeenCalled()
   })
 
   it("rejects XML-declared SVG markup with arbitrary declaration whitespace", async () => {

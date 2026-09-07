@@ -139,6 +139,27 @@ def test_gateway_signature_rejects_malformed_none_secret_even_in_testing(
     assert exc_info.value.status_code == 401
 
 
+def test_gateway_signature_malformed_none_secret_preserves_error_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed configuration uses the same localized error as other 401s."""
+    from app.graphql import schema
+
+    monkeypatch.setattr(
+        schema,
+        "settings",
+        SimpleNamespace(environment="testing", internal_hmac_secret=None),
+    )
+    rejection = MagicMock(side_effect=HTTPException(status_code=401))
+    request = SimpleNamespace(headers={}, query_params={"lang": "ru"})
+
+    with patch.object(schema, "raise_unauthorized", rejection):
+        with pytest.raises(HTTPException):
+            schema._verify_gateway_identity_signature(request, "user", "session", "")
+
+    rejection.assert_called_once_with("ru", "errors.auth.credentials_invalid")
+
+
 def test_gateway_signature_failure_preserves_locale_and_error_key(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

@@ -23,6 +23,20 @@ def test_cgroup_cpu_count_prefers_affinity(monkeypatch):
     assert database._cgroup_aware_cpu_count() == 3
 
 
+def test_cgroup_cpu_count_uses_string_affinity_attribute_lookup(monkeypatch):
+    """The optional affinity lookup must use the real attribute name."""
+    monkeypatch.setattr(
+        builtins,
+        "open",
+        lambda *args, **kwargs: (_ for _ in ()).throw(FileNotFoundError),
+    )
+    monkeypatch.setattr(
+        database.os, "sched_getaffinity", lambda _: {1, 2, 3, 4}, raising=False
+    )
+
+    assert database._cgroup_aware_cpu_count() == 4
+
+
 def test_cgroup_cpu_count_prefers_v2_quota_over_host_affinity(monkeypatch):
     def fake_open(path, *args, **kwargs):
         if path == "/sys/fs/cgroup/cpu.max":

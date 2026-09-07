@@ -291,4 +291,235 @@ describe("rateLimit mutation contracts", () => {
     expect(() => releaseClientQueueSlot(request)).not.toThrow()
     expect(request.__clientRateLimitAcquired).toBe(false)
   })
+
+  it("does not drop a fresh timestamp at index zero while pruning", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "1")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "2")
+    vi.setSystemTime(1_000_000)
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const first = makeConfig()
+    const second = makeConfig()
+
+    await waitForClientQueueSlot(first)
+    releaseClientQueueSlot(first)
+
+    vi.setSystemTime(1_000_001)
+    const secondWait = waitForClientQueueSlot(second)
+    await flushMicrotasks()
+    expect(second.__clientRateLimitAcquired).toBeUndefined()
+
+    // The oldest timestamp is exactly at the expiry boundary.  The strict
+    // `>` check keeps it blocked until the rolling window actually expires.
+    await vi.advanceTimersByTimeAsync(59_999)
+    await secondWait
+    expect(second.__clientRateLimitAcquired).toBe(true)
+    releaseClientQueueSlot(second)
+  })
+
+  it("schedules the rolling-window reset from the oldest timestamp", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "1")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "2")
+    vi.setSystemTime(1_000_000)
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const first = makeConfig()
+    const second = makeConfig()
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout")
+
+    await waitForClientQueueSlot(first)
+    releaseClientQueueSlot(first)
+    vi.setSystemTime(1_000_001)
+    void waitForClientQueueSlot(second)
+    await flushMicrotasks()
+
+    const delay = timeoutSpy.mock.calls.at(-1)?.[1]
+    expect(delay).toBe(59_999)
+  })
+
+  it("removes only the expired prefix when a fresh timestamp follows it", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "2")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "2")
+    vi.setSystemTime(1_000_000)
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const first = makeConfig()
+    const second = makeConfig()
+    const third = makeConfig()
+
+    await waitForClientQueueSlot(first)
+    releaseClientQueueSlot(first)
+    vi.setSystemTime(1_030_000)
+    await waitForClientQueueSlot(second)
+    releaseClientQueueSlot(second)
+
+    vi.setSystemTime(1_060_001)
+    await waitForClientQueueSlot(third)
+    expect(third.__clientRateLimitAcquired).toBe(true)
+    releaseClientQueueSlot(third)
+  })
+
+  it("does not schedule a rolling timer when notify has no waiters", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "1")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const request = makeConfig()
+
+    await waitForClientQueueSlot(request)
+    releaseClientQueueSlot(request)
+
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("keeps a waiter blocked at the concurrency boundary without opening a window timer", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "1")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "1")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const active = makeConfig()
+    const firstController = new AbortController()
+    const first = makeConfig("get", firstController.signal)
+    const second = makeConfig()
+
+    await waitForClientQueueSlot(active)
+    const firstWait = waitForClientQueueSlot(first)
+    const secondWait = waitForClientQueueSlot(second)
+    await flushMicrotasks()
+
+    firstController.abort()
+    await expect(firstWait).rejects.toMatchObject({ name: "AbortError" })
+    expect(vi.getTimerCount()).toBe(0)
+
+    releaseClientQueueSlot(active)
+    await vi.advanceTimersByTimeAsync(60_000)
+    await secondWait
+    expect(second.__clientRateLimitAcquired).toBe(true)
+    releaseClientQueueSlot(second)
+  })
+
+  it("grants only the available capacity and keeps later waiters queued", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "90")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "2")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const active = makeConfig()
+    const activePeer = makeConfig()
+    const first = makeConfig()
+    const second = makeConfig()
+
+    await waitForClientQueueSlot(active)
+    await waitForClientQueueSlot(activePeer)
+    const firstWait = waitForClientQueueSlot(first)
+    const secondWait = waitForClientQueueSlot(second)
+    await flushMicrotasks()
+
+    releaseClientQueueSlot(active)
+    await firstWait
+    expect(first.__clientRateLimitAcquired).toBe(true)
+    expect(second.__clientRateLimitAcquired).toBeUndefined()
+
+    let secondSettled = false
+    void secondWait.then(() => {
+      secondSettled = true
+    })
+    releaseClientQueueSlot(first)
+    for (let index = 0; index < 10 && !secondSettled; index += 1) {
+      await Promise.resolve()
+    }
+    expect(secondSettled).toBe(true)
+    expect(second.__clientRateLimitAcquired).toBe(true)
+    releaseClientQueueSlot(activePeer)
+    releaseClientQueueSlot(second)
+  })
+
+  it("rejects an aborted queued waiter and removes its listener after grant cleanup", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "1")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const active = makeConfig()
+    const controller = new AbortController()
+    const addSpy = vi.spyOn(controller.signal, "addEventListener")
+    const removeSpy = vi.spyOn(controller.signal, "removeEventListener")
+    const queued = makeConfig("get", controller.signal)
+
+    await waitForClientQueueSlot(active)
+    const queuedWait = waitForClientQueueSlot(queued)
+    await flushMicrotasks()
+    expect(addSpy).toHaveBeenCalledWith(
+      "abort",
+      expect.any(Function),
+      expect.objectContaining({ once: true })
+    )
+
+    controller.abort()
+    await expect(queuedWait).rejects.toMatchObject({ name: "AbortError" })
+    expect(removeSpy).toHaveBeenCalledWith("abort", expect.any(Function))
+
+    releaseClientQueueSlot(active)
+    await flushMicrotasks()
+    expect(removeSpy).toHaveBeenCalledWith("abort", expect.any(Function))
+  })
+
+  it("preserves the exact abort event and message for a server-window waiter", async () => {
+    const { scheduleRateLimitWindow, waitForRateLimitWindow } = await import("../rateLimit")
+    const controller = new AbortController()
+    const addSpy = vi.spyOn(controller.signal, "addEventListener")
+    const removeSpy = vi.spyOn(controller.signal, "removeEventListener")
+
+    scheduleRateLimitWindow(10_000)
+    const waiter = waitForRateLimitWindow(controller.signal)
+    expect(addSpy).toHaveBeenCalledWith(
+      "abort",
+      expect.any(Function),
+      expect.objectContaining({ once: true })
+    )
+
+    controller.abort()
+    await expect(waiter).rejects.toMatchObject({ name: "AbortError", message: "Aborted" })
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(removeSpy).toHaveBeenCalledWith("abort", expect.any(Function))
+  })
+
+  it("uses a non-negative delay for the server-window timer", async () => {
+    const { scheduleRateLimitWindow } = await import("../rateLimit")
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout")
+
+    scheduleRateLimitWindow(10_000)
+
+    expect(timeoutSpy.mock.calls.at(-1)?.[1]).toBe(10_000)
+  })
+
+  it("keeps an active server window after an online event", async () => {
+    const { isRateLimited, scheduleRateLimitWindow } = await import("../rateLimit")
+
+    scheduleRateLimitWindow(10_000)
+    window.dispatchEvent(new Event("online"))
+
+    expect(isRateLimited()).toBe(true)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(isRateLimited()).toBe(false)
+  })
+
+  it("safely resolves an undefined waiter callback during window cleanup", async () => {
+    const { scheduleRateLimitWindow, waitForRateLimitWindow } = await import("../rateLimit")
+    const originalSplice = Array.prototype.splice
+    const spliceSpy = vi.spyOn(Array.prototype, "splice").mockImplementation(function (
+      this: unknown[],
+      start: number,
+      deleteCount?: number,
+      ...items
+    ) {
+      const result =
+        deleteCount === undefined
+          ? (Reflect.apply(originalSplice, this, [start]) as unknown[])
+          : (Reflect.apply(originalSplice, this, [start, deleteCount, ...items]) as unknown[])
+      if (start === 0 && deleteCount === undefined) {
+        result.push(undefined)
+      }
+      return result
+    })
+
+    try {
+      scheduleRateLimitWindow(1_000)
+      const waiter = waitForRateLimitWindow()
+      vi.setSystemTime(Date.now() + 1_001)
+      window.dispatchEvent(new Event("online"))
+      await expect(waiter).resolves.toBeUndefined()
+    } finally {
+      spliceSpy.mockRestore()
+    }
+  })
 })

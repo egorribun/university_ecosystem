@@ -46,8 +46,12 @@ vi.mock("framer-motion", () => ({
   },
 }))
 
-const { mediaQueryMock } = vi.hoisted(() => ({ mediaQueryMock: vi.fn(() => false) }))
-vi.mock("@/hooks/useMediaQuery", () => ({ default: mediaQueryMock }))
+const { mediaQueryMock } = vi.hoisted(() => ({
+  mediaQueryMock: vi.fn((_query?: string) => false),
+}))
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: (query: string) => mediaQueryMock(query),
+}))
 
 const navigateMock = vi.fn()
 vi.mock("@tanstack/react-router", () => ({
@@ -129,6 +133,7 @@ describe("MessengerSidebar", () => {
   it("renders the messenger title", () => {
     render(<MessengerSidebar {...baseProps} />, { wrapper })
     expect(screen.getByText("messenger:title")).toBeTruthy()
+    expect(mediaQueryMock).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
   })
 
   it("opens the new-chat modal when the new-chat button is clicked", () => {
@@ -145,6 +150,15 @@ describe("MessengerSidebar", () => {
     const list = screen.getByTestId("mock-contact-list")
     expect(list.getAttribute("data-count")).toBe("2")
     expect(list.getAttribute("data-search-active")).toBe("false")
+  })
+
+  it("preserves the contacts fast path when the search is empty", () => {
+    const contacts = makeContacts()
+    const filterSpy = vi.spyOn(contacts, "filter")
+
+    render(<MessengerSidebar {...baseProps} contacts={contacts} />, { wrapper })
+
+    expect(filterSpy).not.toHaveBeenCalled()
   })
 
   it("filters contacts by name as the user types a search query", () => {

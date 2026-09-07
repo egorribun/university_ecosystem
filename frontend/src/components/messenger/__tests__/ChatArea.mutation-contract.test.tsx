@@ -271,6 +271,12 @@ describe("ChatArea motion and delegation contract", () => {
     expect(screen.queryByRole("textbox", { name: "messenger:searchMessages" })).toBeNull()
   })
 
+  it("does not leak a stale query to ChatWindow when search is closed", () => {
+    render(<ChatArea {...base} showSearchInChat={false} searchQuery="stale query" />)
+
+    expect(screen.getByTestId("chat-window-mock")).toHaveAttribute("data-search-query", "")
+  })
+
   it("preserves empty-state card motion/style and child callback delegation", () => {
     const { container, rerender } = render(
       <ChatArea {...base} selectedChatId={null} activeChat={null} setSearchQuery={vi.fn()} />
