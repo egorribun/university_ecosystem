@@ -22,6 +22,16 @@ import { memo, Dispatch, SetStateAction, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "@tanstack/react-router"
 
+/** Search focus is only scheduled while the search control is mounted. */
+export function shouldFocusSearchInput(
+  showSearchInChat: boolean,
+  input: HTMLInputElement | null
+): input is HTMLInputElement {
+  return showSearchInChat && input !== null
+}
+
+const NOOP_CHAT_ACTION = () => undefined
+
 interface ChatAreaProps {
   isMobile: boolean
   selectedChatId: string | null
@@ -164,6 +174,7 @@ export const ChatArea = memo(function ChatArea({
   // changes needed; typing events flow through ws-hub presence subscription
   // already (W134+ infra).
   const { getTypingUsersForChat, sendTyping } = useMessenger()
+  const openGroupInfo = onOpenGroupInfo ?? NOOP_CHAT_ACTION
   // The indicator is only mounted for an active chat, so there is no need to
   // allocate a placeholder array while the empty state is visible. The null
   // inactive value is never rendered and keeps the branch allocation-free.
@@ -202,10 +213,10 @@ export const ChatArea = memo(function ChatArea({
   // component unmounts mid-focus-frame, e.g., rapid navigation away from
   // /messenger immediately after toggling chat search).
   useEffect(() => {
-    if (!showSearchInChat) return undefined
-    if (!searchInputRef.current) return undefined
+    const input = searchInputRef.current
+    if (!shouldFocusSearchInput(showSearchInChat, input)) return undefined
 
-    const rafId = requestAnimationFrame(() => searchInputRef.current?.focus())
+    const rafId = requestAnimationFrame(() => input.focus())
     return () => cancelAnimationFrame(rafId)
   }, [showSearchInChat])
 
@@ -251,7 +262,7 @@ export const ChatArea = memo(function ChatArea({
                     className="flex cursor-pointer items-center gap-3 border-none bg-transparent text-left outline-none"
                     onClick={() => {
                       if (activeChatDisplay?.isGroup) {
-                        if (onOpenGroupInfo) onOpenGroupInfo()
+                        openGroupInfo()
                         return
                       }
                       handleViewProfile()

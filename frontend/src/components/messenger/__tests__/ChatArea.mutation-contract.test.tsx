@@ -123,7 +123,7 @@ vi.mock("@/components/messenger", () => ({
   ),
 }))
 
-import { ChatArea } from "@/components/messenger/ChatArea"
+import { ChatArea, shouldFocusSearchInput } from "@/components/messenger/ChatArea"
 
 const user = (id: string, name = "Alice", avatar_url = "") =>
   ({ id, full_name: name, avatar_url }) as unknown as User
@@ -175,6 +175,14 @@ afterEach(() => vi.restoreAllMocks())
 const attr = (element: Element, name: string) => element.getAttribute(name)
 
 describe("ChatArea motion and delegation contract", () => {
+  it("only permits search focus while the search input is mounted", () => {
+    const input = document.createElement("input")
+
+    expect(shouldFocusSearchInput(false, input)).toBe(false)
+    expect(shouldFocusSearchInput(true, null)).toBe(false)
+    expect(shouldFocusSearchInput(true, input)).toBe(true)
+  })
+
   it("uses the mobile slide animation and stable root geometry", () => {
     const { container } = render(<ChatArea {...base} isMobile />)
     const root = container.firstElementChild!

@@ -192,6 +192,19 @@ describe("AsyncImage mutation contracts", () => {
     expect(screen.getByTestId("async-image-fallback")).not.toHaveTextContent("Custom fallback")
   })
 
+  it("keeps an explicit fallback visible when a fallback source is also supplied", () => {
+    render(
+      <AsyncImage
+        fallbackSrc="/fallback.png"
+        fallback={<span>Custom fallback</span>}
+        alt="fallback"
+      />
+    )
+
+    expect(screen.getByRole("img", { name: "fallback" })).toHaveAttribute("src", "/fallback.png")
+    expect(screen.getByTestId("async-image-fallback")).toHaveTextContent("Custom fallback")
+  })
+
   it("does not mount the primary image before intersection and mounts it after visibility", () => {
     state.visible = false
     const { rerender } = render(<AsyncImage src={primary} />)
