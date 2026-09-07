@@ -37,7 +37,7 @@ const rateLimitWaiters: Array<() => void> = new Array<() => void>()
 
 let clientQueueInFlight = 0
 const clientQueueWaiters: ClientQueueWaiter[] = new Array<ClientQueueWaiter>()
-const clientQueueTimestamps: number[] = new Array<number>()
+const clientQueueTimestamps: number[] = []
 let clientQueueTimer: ReturnType<typeof setTimeout> | null = null
 
 const pruneClientQueueTimestamps = () => {
@@ -50,7 +50,7 @@ const pruneClientQueueTimestamps = () => {
     clientQueueTimestamps.splice(0)
     return
   }
-  if (firstFreshIndex > 0) clientQueueTimestamps.splice(0, firstFreshIndex)
+  clientQueueTimestamps.splice(0, firstFreshIndex)
 }
 
 const scheduleClientQueueWindowReset = () => {
@@ -68,7 +68,7 @@ const scheduleClientQueueWindowReset = () => {
   // The length guard above guarantees an oldest timestamp.  A Date.now()
   // fallback would hide state corruption and adds an impossible branch.
   const oldest = clientQueueTimestamps[0]!
-  const target = oldest + RATE_LIMIT_WINDOW_MS
+  const target = getClientQueueWindowTarget(oldest)
   // Timestamps are appended chronologically, so an existing timer always
   // targets this same oldest entry (or an earlier one).  One timer is enough.
   if (clientQueueTimer) {
@@ -81,7 +81,7 @@ const scheduleClientQueueWindowReset = () => {
       pruneClientQueueTimestamps()
       notifyClientQueue()
     },
-    Math.max(0, target - Date.now())
+    getClientQueueResetDelay(target, Date.now())
   )
 }
 
@@ -240,6 +240,8 @@ export const scheduleRateLimitWindow = (delayMs: number) => {
 
 export const getClientQueueResetDelay = (target: number, now: number): number =>
   Math.max(0, target - now)
+
+export const getClientQueueWindowTarget = (oldest: number): number => oldest + RATE_LIMIT_WINDOW_MS
 
 // RZ-31-04: Accept optional AbortSignal so callers (e.g. 429 retry in client.ts)
 // can cancel the wait when the user navigates away or the component unmounts.

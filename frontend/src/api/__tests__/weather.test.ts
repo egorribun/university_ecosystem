@@ -79,6 +79,17 @@ describe("fetchWeatherSnapshot", () => {
     expect(sessionStorage).toHaveBeenCalled()
   })
 
+  it("does not parse a cache entry when sessionStorage is unavailable", () => {
+    vi.spyOn(window, "sessionStorage", "get").mockReturnValue(undefined as unknown as Storage)
+    const parseSpy = vi.spyOn(JSON, "parse").mockReturnValue({
+      data: SNAP,
+      expiresAt: Date.now() + 60_000,
+    })
+
+    expect(readWeatherCache(COORDS)).toBeNull()
+    expect(parseSpy).not.toHaveBeenCalled()
+  })
+
   it("fetches without touching browser storage during SSR", async () => {
     vi.stubGlobal("window", undefined)
     vi.stubGlobal(

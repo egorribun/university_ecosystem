@@ -49,6 +49,19 @@ describe("SmartImage defensive closure branches", () => {
     expect(screen.getByRole("img", { name: "empty" })).not.toHaveAttribute("src")
   })
 
+  it("does not pass an omitted source to the URL sanitizer", () => {
+    sanitizeMock.mockImplementation((value: string) => {
+      if (typeof value !== "string") throw new Error("non-string source")
+      return value
+    })
+
+    expect(() => render(<SmartImage fallback="/fallback.png" alt="missing source" />)).not.toThrow()
+    expect(screen.getByRole("img", { name: "missing source" })).toHaveAttribute(
+      "src",
+      "/fallback.png"
+    )
+  })
+
   it("sanitizes an unsafe fallback before assigning it to the image", () => {
     sanitizeMock.mockImplementation((value: string) => (value.startsWith("unsafe") ? null : value))
     render(<SmartImage srcRaw="javascript:alert(1)" fallback="unsafe-fallback" alt="unsafe" />)

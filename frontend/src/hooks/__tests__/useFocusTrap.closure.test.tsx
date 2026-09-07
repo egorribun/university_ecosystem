@@ -124,7 +124,10 @@ describe("useFocusTrap deterministic lifecycle", () => {
   })
 
   it("deactivates safely when no callback is supplied", () => {
-    const { unmount } = render(<TrapHarness active />)
-    expect(() => unmount()).not.toThrow()
+    render(<TrapHarness active />)
+    const onDeactivate = mocks.options?.onDeactivate
+
+    expect(onDeactivate).toBeTypeOf("function")
+    expect(() => onDeactivate?.()).not.toThrow()
   })
 })

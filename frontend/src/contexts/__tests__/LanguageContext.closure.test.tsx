@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { i18n as I18nInstance } from "i18next"
 
 import i18n, { createI18nInstance } from "@/i18n/config"
+import { supportedLngs } from "@/i18n/metadata"
 import {
   LanguageProvider,
   getLocaleForLanguage,
@@ -103,6 +104,14 @@ describe("LanguageContext browser branches", () => {
     expect(resolveInitialLanguage({ language: { code: "en" } } as unknown as I18nInstance)).toBe(
       "ru"
     )
+  })
+
+  it("does not consult the supported-language list for a non-string value", () => {
+    vi.stubGlobal("window", undefined)
+    const includesSpy = vi.spyOn(supportedLngs, "includes")
+
+    expect(resolveInitialLanguage({ language: 42 } as unknown as I18nInstance)).toBe("ru")
+    expect(includesSpy).not.toHaveBeenCalled()
   })
 
   it("marks the mirrored language cookie Secure on HTTPS", async () => {

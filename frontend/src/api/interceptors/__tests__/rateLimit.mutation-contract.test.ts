@@ -227,12 +227,14 @@ describe("rateLimit mutation contracts", () => {
   })
 
   it("keeps parser and timer arithmetic explicit at their boundaries", async () => {
-    const { getClientQueueResetDelay, parsePositiveInteger } = await import("../rateLimit")
+    const { getClientQueueResetDelay, getClientQueueWindowTarget, parsePositiveInteger } =
+      await import("../rateLimit")
 
     expect(parsePositiveInteger(undefined, 90)).toBe(90)
     expect(parsePositiveInteger(null, 90)).toBe(90)
     expect(parsePositiveInteger("12", 90)).toBe(12)
     expect(parsePositiveInteger("0", 90)).toBe(90)
+    expect(getClientQueueWindowTarget(1_000_000)).toBe(1_060_000)
     expect(getClientQueueResetDelay(10_000, 9_000)).toBe(1_000)
     expect(getClientQueueResetDelay(9_000, 10_000)).toBe(0)
   })
