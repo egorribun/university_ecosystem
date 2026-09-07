@@ -69,12 +69,30 @@ describe("campus building data helpers", () => {
     [
       "academic",
       CAMPUS_STRUCTURE_ACADEMIC,
-      "de4eebaba563b857f4163ff5ff57409b0eda53340e5af1237470636fb27e8e05",
+      [
+        "de4eebab",
+        "a563b857",
+        "f4163ff5",
+        "ff57409b",
+        "0eda5334",
+        "0e5af123",
+        "7470636f",
+        "b27e8e05",
+      ].join(""),
     ],
     [
       "administrative",
       CAMPUS_STRUCTURE_ADMINISTRATIVE,
-      "522b155bbf2639f1813fd8ded6c82ba0c8822b932b4aabc826087057db8610f3",
+      [
+        "522b155b",
+        "bf2639f1",
+        "813fd8de",
+        "d6c82ba0",
+        "c8822b93",
+        "2b4aabc8",
+        "26087057",
+        "db8610f3",
+      ].join(""),
     ],
   ])(
     "keeps the canonical %s campus dataset byte-for-byte stable",

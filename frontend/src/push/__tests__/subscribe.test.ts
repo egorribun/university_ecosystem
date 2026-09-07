@@ -1523,4 +1523,35 @@ describe("subscribe", () => {
       )
     })
   })
+
+  describe("non-Axios persistence status contracts", () => {
+    it.each([
+      { status: 409, label: "conflict" },
+      { status: 429, label: "rate limit" },
+    ])("handles a plain-object $label response without retrying", async ({ status }) => {
+      vi.mocked(saveSubscription).mockRejectedValue({ response: { status } })
+      const mockSub = {
+        endpoint: `https://push.example.com/plain-${status}`,
+        options: { applicationServerKey: mod.urlBase64ToUint8Array("cGxhaW4").buffer },
+        toJSON: () => ({ endpoint: `https://push.example.com/plain-${status}` }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(null),
+          subscribe: vi.fn().mockResolvedValue(mockSub),
+        },
+      }
+
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      await expect(
+        mod.ensurePushSubscription({
+          registration: mockReg,
+          vapidPublicKey: "cGxhaW4",
+          requestPermission: false,
+        })
+      ).resolves.toBe(mockSub)
+      expect(saveSubscription).toHaveBeenCalledOnce()
+    })
+  })
 })

@@ -1712,4 +1712,160 @@ describe("useMessengerController — branch top-up", () => {
       Object.assign(mocks.testUser, { full_name: previousName, avatar_url: previousAvatar })
     }
   })
+
+  it("treats same-day numbers in different months and years as separate days", async () => {
+    seedChat("chat-1")
+    mocks.chatApi.getMessages.mockResolvedValue({
+      items: [
+        {
+          id: "month-before",
+          chat_id: "chat-1",
+          sender_id: "peer",
+          content: "January",
+          created_at: "2026-01-05T10:00:00Z",
+          read_status: false,
+        },
+        {
+          id: "month-after",
+          chat_id: "chat-1",
+          sender_id: "peer",
+          content: "February",
+          created_at: "2026-02-05T10:01:00Z",
+          read_status: false,
+        },
+        {
+          id: "year-after",
+          chat_id: "chat-1",
+          sender_id: "peer",
+          content: "Next year",
+          created_at: "2027-02-05T10:02:00Z",
+          read_status: false,
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.messages).toHaveLength(3))
+
+    expect(result.current.messages.map((message) => message.showDateDivider)).toEqual([
+      true,
+      true,
+      true,
+    ])
+    expect(result.current.messages.map((message) => message.isGroupStart)).toEqual([
+      true,
+      true,
+      true,
+    ])
+  })
+
+  it("keeps live overlap data while preserving the older-page cursor metadata", async () => {
+    seedChat("chat-1")
+    mocks.chatApi.getMessages.mockImplementation((_chatId: string, cursor?: string) =>
+      cursor
+        ? Promise.resolve({
+            items: [
+              {
+                id: "overlap",
+                chat_id: "chat-1",
+                sender_id: "peer",
+                content: "stale REST copy",
+                created_at: "2026-08-25T09:00:00Z",
+                read_status: false,
+              },
+              {
+                id: "older-only",
+                chat_id: "chat-1",
+                sender_id: "peer",
+                content: "older page",
+                created_at: "2026-08-25T08:00:00Z",
+                read_status: false,
+              },
+            ],
+            has_more: true,
+            next_cursor: "cursor-next",
+          })
+        : Promise.resolve({
+            items: [
+              {
+                id: "overlap",
+                chat_id: "chat-1",
+                sender_id: "peer",
+                content: "live WebSocket copy",
+                created_at: "2026-08-25T09:00:00Z",
+                read_status: false,
+              },
+            ],
+            has_more: true,
+            next_cursor: "cursor-older",
+          })
+    )
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.hasMoreMessages).toBe(true))
+
+    await act(async () => {
+      await result.current.handleLoadOlderMessages()
+    })
+
+    expect(result.current.messages.find((message) => message.id === "overlap")?.text).toBe(
+      "live WebSocket copy"
+    )
+    expect(result.current.messages.find((message) => message.id === "older-only")?.text).toBe(
+      "older page"
+    )
+    expect(result.current.hasMoreMessages).toBe(true)
+  })
+
+  it("does not fetch chat or messages when no route chat is selected", async () => {
+    mocks.paramsRef.current = {}
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.selectedChatId).toBeNull())
+    await waitFor(() => expect(mocks.chatApi.getChats).toHaveBeenCalled())
+
+    expect(mocks.chatApi.getChat).not.toHaveBeenCalled()
+    expect(mocks.chatApi.getMessages).not.toHaveBeenCalled()
+  })
+
+  it("counts a group read receipt at the exact message timestamp", async () => {
+    const messageTimestamp = "2026-08-25T10:00:00Z"
+    seedGroup("group-1")
+    mocks.chatApi.getChats.mockResolvedValue({
+      items: [
+        {
+          id: "group-1",
+          chat_type: "group",
+          name: "Project Alpha",
+          created_by: "current-user-id",
+          participants: [{ id: "current-user-id" }, { id: "peer-a" }, { id: "peer-b" }],
+          read_receipts: [{ user_id: "peer-a", last_read_at: messageTimestamp }],
+          unread_count: 0,
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.chatApi.getMessages.mockResolvedValue({
+      items: [
+        {
+          id: "group-message",
+          chat_id: "group-1",
+          sender_id: "current-user-id",
+          content: "exact boundary",
+          created_at: messageTimestamp,
+          read_status: true,
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.messages[0]?.id).toBe("group-message"))
+
+    expect(result.current.messages[0]).toMatchObject({ seenByTotal: 2, seenByCount: 1 })
+  })
 })
