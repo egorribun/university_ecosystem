@@ -146,7 +146,10 @@ export const OtpEntry = ({
   }
 
   const handleKeyDown = (index: number, event: KeyboardEvent<HTMLInputElement>) => {
-    const nextIndex = getOtpKeyboardFocusIndex(index, event.key, digits[index] ?? "")
+    // `index` comes from the six-element `digits.map` below, so this access is
+    // always populated.  Avoid an unreachable nullish fallback here: Istanbul
+    // would otherwise require a branch that cannot occur through the UI.
+    const nextIndex = getOtpKeyboardFocusIndex(index, event.key, digits[index]!)
     if (nextIndex !== null) {
       event.preventDefault()
       focusInput(nextIndex)
