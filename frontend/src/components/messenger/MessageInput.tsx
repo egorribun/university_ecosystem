@@ -66,6 +66,16 @@ const ATTACH_MENU_ITEMS = [
 
 const NOOP_TYPING_HANDLER = () => undefined
 
+/**
+ * Normalise the browser's nullable FileList boundary once.  The input can
+ * legally report null when a picker is cancelled, so the rest of the handler
+ * should only operate on a total array value.
+ */
+export const normalizeFileSelection = (files: FileList | null): File[] => Array.from(files ?? [])
+
+/** Keep the empty-selection branch observable and independently testable. */
+export const hasSelectedFiles = (files: readonly File[]): boolean => files.length > 0
+
 export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: MessageInputProps) {
   const { t } = useTranslation(["messenger", "common"])
   const [text, setText] = useState("")
@@ -154,12 +164,8 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
 
   const handleFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget
-    const files = input.files
-    if (!files) {
-      input.value = ""
-      return
-    }
-    if (files.length === 0) {
+    const files = normalizeFileSelection(input.files)
+    if (!hasSelectedFiles(files)) {
       input.value = ""
       return
     }

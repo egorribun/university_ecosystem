@@ -83,7 +83,11 @@ vi.mock("@/components/media/SmartImage", () => ({
   ),
 }))
 
-import { MessageInput } from "@/components/messenger/MessageInput"
+import {
+  hasSelectedFiles,
+  MessageInput,
+  normalizeFileSelection,
+} from "@/components/messenger/MessageInput"
 
 const attr = (element: Element, name: string) => element.getAttribute(name)
 
@@ -105,6 +109,17 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 
 describe("MessageInput motion and DOM contract", () => {
+  it("normalizes nullable browser file selections without throwing", () => {
+    expect(normalizeFileSelection(null)).toEqual([])
+    expect(hasSelectedFiles(normalizeFileSelection(null))).toBe(false)
+
+    const file = new File(["payload"], "notes.txt", { type: "text/plain" })
+    const fileList = { 0: file, length: 1, item: (index: number) => (index === 0 ? file : null) }
+    const normalized = normalizeFileSelection(fileList as unknown as FileList)
+    expect(normalized).toEqual([file])
+    expect(hasSelectedFiles(normalized)).toBe(true)
+  })
+
   it("requests both translation namespaces as a stable ordered tuple", () => {
     render(<MessageInput onSend={() => {}} />)
     expect(state.translationCalls).toContainEqual(["messenger", "common"])

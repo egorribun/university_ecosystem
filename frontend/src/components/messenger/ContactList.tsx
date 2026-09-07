@@ -311,14 +311,18 @@ export const ContactList = memo(function ContactList({
                 event.key === "End"
               ) {
                 event.preventDefault()
+                const nextIndex = index + 1
+                const lastIndex = contacts.length - 1
                 const targetIndex =
                   event.key === "ArrowDown"
-                    ? Math.min(index + 1, contacts.length - 1)
+                    ? nextIndex < contacts.length
+                      ? nextIndex
+                      : lastIndex
                     : event.key === "ArrowUp"
                       ? Math.max(index - 1, 0)
                       : event.key === "Home"
                         ? 0
-                        : contacts.length - 1
+                        : lastIndex
                 const target = contacts[targetIndex] ?? contact
                 const targetElement =
                   document.getElementById(`messenger-contact-${target.id}`) ?? event.currentTarget
