@@ -18,7 +18,7 @@ type NewsHeroFrame = {
 }
 
 export function getNewsHeroFrame(heroRatio: number | null): NewsHeroFrame {
-  if (!heroRatio || !Number.isFinite(heroRatio) || heroRatio <= 0) {
+  if (heroRatio === null || !Number.isFinite(heroRatio) || heroRatio <= 0) {
     return {
       container: "h-(--h-hero-sm) min-h-80 max-h-(--layout-max-modal)",
       image: "object-cover",

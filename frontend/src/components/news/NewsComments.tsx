@@ -34,7 +34,9 @@ export function NewsComments({
   getMoscowDate,
 }: NewsCommentsProps) {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
-  const [editingCommentText, setEditingCommentText] = useState("")
+  // Use the platform empty-string initializer so this state cannot drift from
+  // the empty editor contract before the first comment is selected.
+  const [editingCommentText, setEditingCommentText] = useState<string>(String)
   const [commentText, setCommentText] = useState("")
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null)
 

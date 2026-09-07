@@ -158,6 +158,23 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     expect(nextClose).toHaveBeenCalledOnce()
   })
 
+  it("does not synchronize replacement data while the dialog is closed", async () => {
+    const replacement = {
+      ...initialData,
+      title: "Closed replacement",
+      content: "Closed content",
+    }
+    const view = renderDialog({ open: false })
+    view.rerender(
+      <QueryClientProvider client={view.client}>
+        <NewsDetailEditDialog {...makeProps({ open: false, initialData: replacement })} />
+      </QueryClientProvider>
+    )
+    expect(screen.queryByDisplayValue(replacement.title)).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue(replacement.content)).not.toBeInTheDocument()
+    expect(screen.queryByText("news:dialogs.edit.title")).not.toBeInTheDocument()
+  })
+
   it("prioritizes preview images, safely handles empty files, and cleans URLs exactly once", async () => {
     const user = userEvent.setup()
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:detail-one")
@@ -278,5 +295,27 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     expect(() => unmount()).not.toThrow()
     expect(revokeObjectURL).not.toHaveBeenCalled()
     revokeObjectURL.mockRestore()
+  })
+
+  it("keeps required field validation, image labels, and whitespace saves deterministic", async () => {
+    const user = userEvent.setup()
+    const onError = vi.fn()
+    renderDialog({ onError })
+
+    expect(screen.getByText("news:form.image")).toBeInTheDocument()
+    const title = screen.getByDisplayValue(initialData.title)
+    const content = screen.getByDisplayValue(initialData.content)
+    await user.clear(title)
+    await user.type(title, "   ")
+    await user.clear(content)
+    await user.type(content, "   ")
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+
+    // Closing without a selected image must not revoke a null preview URL.
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    revokeObjectURL.mockRestore()
+    expect(onError).not.toHaveBeenCalled()
   })
 })

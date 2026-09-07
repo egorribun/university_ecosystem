@@ -2,18 +2,22 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, it, expect, vi } from "vitest"
 
-const { translationMock } = vi.hoisted(() => ({
-  translationMock: vi.fn((key: string) => key),
+const { translationMock, namespaceMock } = vi.hoisted(() => ({
+  translationMock: vi.fn((key: string, _options?: unknown) => key),
+  namespaceMock: vi.fn(),
 }))
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => translationMock(key),
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: (namespaces: unknown) => {
+    namespaceMock(namespaces)
+    return {
+      t: (key: string, options?: unknown) => translationMock(key, options),
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    }
+  },
 }))
 
 import { NewsDetailHeader } from "@/components/news/NewsDetailHeader"
@@ -40,16 +44,19 @@ const baseProps = {
 
 afterEach(() => {
   translationMock.mockImplementation((key: string) => key)
+  namespaceMock.mockClear()
 })
 
 describe("NewsDetailHeader", () => {
   it("renders title, meta pills, and primary actions", () => {
     render(<NewsDetailHeader {...baseProps} />)
+    expect(namespaceMock).toHaveBeenCalledWith(["news", "common"])
     expect(
       screen.getByRole("heading", { level: 1, name: baseProps.displayTitle })
     ).toBeInTheDocument()
     expect(screen.getByText("20 MAY 2026")).toBeInTheDocument()
     expect(screen.getByText("news:meta.readingTime")).toBeInTheDocument()
+    expect(translationMock).toHaveBeenCalledWith("news:meta.readingTime", { count: 5 })
     expect(screen.getByText("news:actions.share")).toBeInTheDocument()
     expect(screen.getByText("42")).toBeInTheDocument()
     expect(screen.getByText("news:actions.bookmark")).toBeInTheDocument()
@@ -100,6 +107,15 @@ describe("NewsDetailHeader", () => {
         onToggleLike={onToggleLike}
         onToggleBookmark={onToggleBookmark}
       />
+    )
+    expect(screen.getByRole("button", { name: "news:aria.shareNews" })).toBeInTheDocument()
+    expect(screen.getByText("43").closest("button")).toHaveClass(
+      "transition-colors",
+      "duration-fast"
+    )
+    expect(screen.getByRole("button", { name: "news:actions.removeBookmark" })).toHaveClass(
+      "transition-colors",
+      "duration-fast"
     )
     expect(screen.getByText("news:actions.saved")).toBeInTheDocument()
     await user.click(screen.getByText("news:actions.share"))
@@ -154,6 +170,7 @@ describe("NewsDetailHeader", () => {
     expect(editButton).toBeDisabled()
     expect(deleteButton).toBeDisabled()
     expect(editButton).toHaveClass("inline-flex", "h-10", "w-10", "matte-chip")
+    expect(deleteButton).toHaveClass("text-(--error-text)", "hover:text-(--error-text)")
 
     rerender(<NewsDetailHeader {...baseProps} isAdmin deleting />)
     expect(editButton).toBeDisabled()

@@ -70,6 +70,7 @@ describe("NewsQuickView", () => {
 
   it("renders the popover with title, preview, counts and read-more key when visible", () => {
     render(<NewsQuickView visible {...baseProps} category="science" />)
+    expect(translation.useTranslation).toHaveBeenCalledWith(["news"])
 
     // The popover carries aria-hidden="true" (decorative), so query the hidden tree.
     expect(screen.getByRole("tooltip", { hidden: true })).toBeInTheDocument()
@@ -99,11 +100,16 @@ describe("NewsQuickView", () => {
     // getMoscowDate produces a non-empty Moscow-localized string.
     expect(tooltip.textContent).not.toBe("")
     expect(tooltip.textContent ?? "").toContain(baseProps.preview)
+    // The calendar icon is rendered only alongside a non-empty date label;
+    // the two footer icons are always present.
+    expect(tooltip.querySelectorAll("svg")).toHaveLength(3)
   })
 
   it("renders nothing when created_at is empty (no date label branch)", () => {
     render(<NewsQuickView visible {...baseProps} created_at="" />)
+    const tooltip = screen.getByRole("tooltip", { hidden: true })
     expect(screen.getByText(baseProps.title)).toBeInTheDocument()
+    expect(tooltip.querySelectorAll("svg")).toHaveLength(2)
   })
 
   it("applies the bottom position classes when position='bottom'", () => {

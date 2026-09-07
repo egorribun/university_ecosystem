@@ -156,4 +156,67 @@ describe("NewsComments", () => {
         .every((element) => element.className.includes("text-(--error-text)"))
     ).toBe(true)
   })
+
+  it("keeps comment controls, trimming, and count styles tied to their exact contracts", async () => {
+    const user = userEvent.setup()
+    const updateComment = vi.fn()
+    const t = vi.fn((key: string) => key)
+    render(<NewsComments {...baseProps} updateComment={updateComment} t={t} />)
+
+    const editButton = screen.getAllByLabelText("news:actions.editComment")[0]!
+    const deleteButton = screen.getAllByLabelText("news:actions.deleteComment")[0]!
+    expect(editButton).toHaveAttribute("title", "news:actions.editComment")
+    expect(deleteButton).toHaveAttribute("title", "news:actions.deleteComment")
+
+    await user.click(editButton)
+    const editBox = screen.getByLabelText("news:form.editCommentAriaLabel")
+    expect(editBox).toHaveClass("min-h-20", "text-sm")
+    expect(editBox).toHaveAttribute("maxLength", "500")
+    expect(screen.getByText("42/500")).toHaveClass("text-(--text-secondary)/(--opacity-medium)")
+
+    // The edit path caps input at the public maximum and does not allow whitespace-only saves.
+    fireEvent.change(editBox, { target: { value: "x".repeat(501) } })
+    expect(editBox).toHaveValue("x".repeat(500))
+    fireEvent.change(editBox, { target: { value: "   " } })
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+
+    fireEvent.change(editBox, { target: { value: "x".repeat(400) } })
+    expect(screen.getByText("400/500")).toHaveClass("text-warning-text", "font-semibold")
+    fireEvent.change(editBox, { target: { value: "x".repeat(475) } })
+    expect(screen.getByText("475/500")).toHaveClass("text-(--error-text)", "font-bold")
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    expect(updateComment).toHaveBeenCalledWith("c1", "x".repeat(475))
+    expect(screen.queryByLabelText("news:form.editCommentAriaLabel")).not.toBeInTheDocument()
+
+    const newComment = screen.getByLabelText("news:form.commentAriaLabel")
+    expect(newComment).toHaveAttribute("placeholder", "news:form.commentPlaceholder")
+    expect(newComment).toHaveClass("min-h-24")
+    fireEvent.change(newComment, { target: { value: "x".repeat(10) } })
+    expect(screen.getByText("10/500")).toHaveClass("text-(--text-secondary)/(--opacity-medium)")
+    fireEvent.change(newComment, { target: { value: "x".repeat(400) } })
+    expect(screen.getByText("400/500")).toHaveClass("text-warning-text", "font-semibold")
+    fireEvent.change(newComment, { target: { value: "x".repeat(475) } })
+    expect(screen.getByText("475/500")).toHaveClass("text-(--error-text)", "font-bold")
+  })
+
+  it("closes the delete confirmation and clears the composer after actions", async () => {
+    const user = userEvent.setup()
+    const addComment = vi.fn()
+    const deleteComment = vi.fn()
+    render(<NewsComments {...baseProps} addComment={addComment} deleteComment={deleteComment} />)
+
+    const composer = screen.getByLabelText("news:form.commentAriaLabel")
+    await user.type(composer, "A new comment")
+    await user.click(screen.getByRole("button", { name: "news:actions.postComment" }))
+    expect(addComment).toHaveBeenCalledWith("A new comment")
+    expect(composer).toHaveValue("")
+
+    await user.click(screen.getAllByLabelText("news:actions.deleteComment")[0]!)
+    const dialog = screen.getByRole("alertdialog")
+    expect(dialog).toHaveTextContent("news:dialogs.deleteComment.title")
+    expect(dialog).toHaveTextContent("news:dialogs.deleteComment.description")
+    await user.click(within(dialog).getByRole("button", { name: "common:buttons.cancel" }))
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+    expect(deleteComment).not.toHaveBeenCalled()
+  })
 })
