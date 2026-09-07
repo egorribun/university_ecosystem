@@ -2,7 +2,7 @@ import { render, screen, fireEvent } from "@testing-library/react"
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 import { createElement, forwardRef, type ReactNode } from "react"
 
-import { ContactList } from "@/components/messenger/ContactList"
+import { ContactList, getContactNavigationIndex } from "@/components/messenger/ContactList"
 import { GroupAvatar } from "@/components/messenger/GroupAvatar"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
@@ -432,6 +432,15 @@ describe("ContactList — empty state (W183 SW1)", () => {
 })
 
 describe("ContactList — keyboard navigation (W183 SW4)", () => {
+  it("clamps every navigation target to the contact list bounds", () => {
+    expect(getContactNavigationIndex(2, "ArrowDown", 3)).toBe(2)
+    expect(getContactNavigationIndex(0, "ArrowUp", 3)).toBe(0)
+    expect(getContactNavigationIndex(1, "ArrowDown", 3)).toBe(2)
+    expect(getContactNavigationIndex(1, "Home", 3)).toBe(0)
+    expect(getContactNavigationIndex(1, "End", 3)).toBe(2)
+    expect(getContactNavigationIndex(1, "PageDown", 3)).toBe(1)
+  })
+
   it("renders unread badges without entrance motion when reduced motion is enabled", () => {
     mockReducedMotion.mockReturnValue(true)
     render(<ContactList contacts={mockContacts} selectedId={null} onSelect={() => {}} />, {

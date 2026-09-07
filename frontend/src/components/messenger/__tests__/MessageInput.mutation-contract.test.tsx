@@ -328,6 +328,59 @@ describe("MessageInput motion and DOM contract", () => {
     expect(createObjectURLSpy).not.toHaveBeenCalled()
   })
 
+  it("clears a cancelled file picker synchronously before async processing", () => {
+    const { container } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const valueWrites: string[] = []
+    Object.defineProperty(fileInput, "value", {
+      configurable: true,
+      get: () => "",
+      set: (value: string) => valueWrites.push(value),
+    })
+    Object.defineProperty(fileInput, "files", { value: null, configurable: true })
+
+    fireEvent.change(fileInput)
+
+    expect(valueWrites).toEqual([""])
+  })
+
+  it("keeps preview URLs alive across rerenders and revokes them on unmount", async () => {
+    const { container, rerender, unmount } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(["payload"], "notes.txt", { type: "text/plain" })
+    Object.defineProperty(fileInput, "files", { value: [file], configurable: true })
+
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+    revokeObjectURLSpy.mockClear()
+
+    rerender(<MessageInput onSend={() => {}} />)
+    expect(revokeObjectURLSpy).not.toHaveBeenCalled()
+
+    unmount()
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:notes.txt")
+  })
+
+  it("clears the file input after accepting a file", async () => {
+    const { container } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const valueWrites: string[] = []
+    Object.defineProperty(fileInput, "value", {
+      configurable: true,
+      get: () => "",
+      set: (value: string) => valueWrites.push(value),
+    })
+    const file = new File(["payload"], "notes.txt", { type: "text/plain" })
+    Object.defineProperty(fileInput, "files", { value: [file], configurable: true })
+
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+
+    expect(valueWrites).toEqual([""])
+  })
+
   it("rejects SVG MIME independently from the filename extension", async () => {
     const { container } = render(<MessageInput onSend={() => {}} />)
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement

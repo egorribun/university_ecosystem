@@ -33,6 +33,13 @@ interface GroupInfoPanelProps {
 const USERS_PAGE_LIMIT = 10
 const MIN_SEARCH_LENGTH = 1
 
+/** Keep the user-search gate explicit and independently contract-testable. */
+export const shouldSearchGroupUsers = (
+  open: boolean,
+  showAddSearch: boolean,
+  query: string
+): boolean => open && showAddSearch && query.length > MIN_SEARCH_LENGTH
+
 /**
  * Wave 211 G4 (SW10) — group info / member-management panel. Mirrors
  * ProfileModal's a11y shell (focus trap, role=dialog + aria-modal, Escape, matte
@@ -83,11 +90,12 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
 
   // Reset transient sub-state when the panel closes.
   useEffect(() => {
-    if (open) return
-    setIsEditingName(false)
-    setNameDraft(undefined)
-    setShowAddSearch(false)
-    setSearch("")
+    if (!open) {
+      setIsEditingName(false)
+      setNameDraft(undefined)
+      setShowAddSearch(false)
+      setSearch("")
+    }
   }, [open])
 
   const members = chat?.participants ?? []
@@ -107,16 +115,17 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
       // emitting a runtime warning and leaving the search state ambiguous.
       return response.data ?? []
     },
-    enabled: open && showAddSearch && debouncedSearch.length > MIN_SEARCH_LENGTH,
+    enabled: shouldSearchGroupUsers(open, showAddSearch, debouncedSearch),
   })
   const addableResults = searchResults.filter((u) => !memberIds.has(String(u.id)))
 
   const startRename = () => {
-    setNameDraft(chat?.name ?? undefined)
+    if (!chat) return
+    setNameDraft(chat.name ?? undefined)
     setIsEditingName(true)
   }
   const saveRename = () => {
-    const trimmed = nameDraft?.trim()
+    const trimmed = nameDraft === undefined ? "" : nameDraft.trim()
     if (trimmed) onRename(trimmed)
     setIsEditingName(false)
   }

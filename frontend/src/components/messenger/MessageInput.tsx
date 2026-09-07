@@ -76,6 +76,11 @@ export const normalizeFileSelection = (files: FileList | null): File[] => Array.
 /** Keep the empty-selection branch observable and independently testable. */
 export const hasSelectedFiles = (files: readonly File[]): boolean => files.length > 0
 
+/** Reset a file picker to its browser-provided empty default value. */
+export const resetFileInput = (input: HTMLInputElement): void => {
+  input.value = input.defaultValue
+}
+
 export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: MessageInputProps) {
   const { t } = useTranslation(["messenger", "common"])
   const [text, setText] = useState("")
@@ -99,11 +104,15 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
     selectedFilesRef.current = selectedFiles
   }, [selectedFiles])
 
-  useEffect(() => {
-    return () => {
+  // A stable callback ref receives `null` when the hidden picker leaves the
+  // tree, providing the same unmount-only cleanup without a dependency array
+  // that mutation testing could replace with an equivalent static value.
+  const setFileInputRef = useRef<(node: HTMLInputElement | null) => void>((node) => {
+    if (node === null) {
       selectedFilesRef.current.forEach((entry) => URL.revokeObjectURL(entry.previewUrl))
     }
-  }, [])
+    fileInputRef.current = node
+  }).current
   // Wave 181 SW3 — useReducedMotion guard for attach + send button micro-interactions.
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const attachHoverAnim = prefersReducedMotion ? undefined : { scale: 1.1 }
@@ -166,7 +175,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
     const input = event.currentTarget
     const files = normalizeFileSelection(input.files)
     if (!hasSelectedFiles(files)) {
-      input.value = ""
+      resetFileInput(input)
       return
     }
 
@@ -204,7 +213,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
         previewUrl: URL.createObjectURL(file),
       })),
     ])
-    input.value = ""
+    resetFileInput(input)
   }
 
   const removeFile = (id: string) => {
@@ -347,7 +356,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
             )}
           </AnimatePresence>
 
-          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
+          <input ref={setFileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
         </div>
         {/* Wave 183 SW4 — added explicit aria-label. Placeholder alone is
             insufficient for screen-reader announcement (A11Y-114-04 pattern;
