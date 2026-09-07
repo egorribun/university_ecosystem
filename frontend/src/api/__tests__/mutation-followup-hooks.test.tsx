@@ -24,6 +24,7 @@ import {
   useEventsListQuery,
   useMyEventsQuery,
 } from "@/api/hooks/events"
+import { NEWS_PAGE_SIZE, newsListQueryKey } from "@/api/hooks/news"
 import { StorageItem } from "@/utils/storage"
 
 const makeClient = () =>
@@ -143,5 +144,16 @@ describe("events filter and hydrated-state mutation contracts", () => {
         wrapper: wrapperFor(client),
       })
     ).not.toThrow()
+  })
+})
+
+describe("news filter mutation contracts", () => {
+  it.each([
+    ["negative", -1],
+    ["infinite", Number.POSITIVE_INFINITY],
+    ["not-a-number", Number.NaN],
+  ])("falls back to the canonical page size for a %s limit", (_label, limit) => {
+    const key = newsListQueryKey({ language: "en", limit })
+    expect(key[2].limit).toBe(NEWS_PAGE_SIZE)
   })
 })
