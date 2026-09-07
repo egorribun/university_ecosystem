@@ -76,7 +76,7 @@ dependencies = [
   "sentry-sdk[opentelemetry]>=2.57.0,<3",
   "sqlalchemy[asyncio]>=2.0.49,<3",
   "starlette>=1.0.0,<2.0",                             # MOD-W10-01: upper bound
-  "strawberry-graphql[fastapi]>=0.314.3,<0.325.0",    # FIX-41-02: Python 3.14 compat; Renovate opens PR to advance
+  "strawberry-graphql[fastapi]>=0.314.3,<0.326.0",    # FIX-41-02: Python 3.14 compat; Renovate opens PR to advance
   "structlog>=25.5.0",
   "typer>=0.24.1",
   "urllib3>=2.6.3,<2.8",                              # PY-P1-01 (audit Wave 10): tight minor bound — urllib3 v3 breaks transport API; update via Renovate
@@ -372,11 +372,11 @@ output = "artifacts/coverage/python/coverage.json"
 release-certification = [
   # This isolated group is installed from uv.lock before the HMAC key enters
   # the environment; secret-bearing steps execute its interpreter with no sync.
-  "jsonschema==4.25.1",
+  "jsonschema==4.26.0",
 ]
 ci-precommit-runner = [
   # CI installs this minimal, hash-verified closure without synchronizing dev.
-  "pre-commit==4.6.0",
+  "pre-commit==4.6.2",
 ]
 dev = [
   "asgi-lifespan>=2.1.0",
@@ -413,7 +413,7 @@ dev = [
   "types-requests>=2.33.0.20260408",
   "types-pyyaml>=6.0.12.20260408",
   "types-redis>=4.6.0.20241004",
-  "types-jsonschema==4.25.1.20251008",
+  "types-jsonschema==4.26.0.20260518",
   # MOD-07 (audit 2026-03-16 Wave 10): Consumer-driven contract tests for the
   # Python backend → ws-hub NATS message boundary.  pact-python v2 wraps the
   # Pact Rust FFI and exposes the pact.v3 API used in tests/contracts/.
