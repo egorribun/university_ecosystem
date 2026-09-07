@@ -247,12 +247,12 @@ export function parseWsMessage(raw: string): WsServerMessage | null {
   // "rate_limit_exceeded"}) — those have no `payload`, so we validate them
   // as-is. Key off `payload` PRESENCE (not the outer `type`) so ws-hub's
   // notifications-sub re-typing (hub.go:501) doesn't matter here.
-  const parsedRecord =
-    parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null
-  // `parsedRecord` is either a plain object or null.  Use an object fallback
-  // for envelope inspection so primitive JSON frames remain a safe no-op and
-  // the presence check cannot dereference null/primitive values.
-  const envelopeRecord = parsedRecord ?? {}
+  // Box the parsed value for envelope inspection. `Object(null)` and
+  // `Object(undefined)` produce empty objects, while JSON primitives become
+  // safe boxed values; this keeps the `in` check total without a compound
+  // type/null conditional that can drift under mutation testing.
+  const envelopeRecord = Object(parsed) as Record<string, unknown>
+  const parsedRecord = envelopeRecord
   const hasEnvelopePayload =
     "payload" in envelopeRecord &&
     typeof envelopeRecord.payload === "object" &&

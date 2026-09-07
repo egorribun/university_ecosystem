@@ -41,10 +41,10 @@ const normalizeEventsListFilters = (filters: EventsListFilters): NormalizedEvent
     typeof value === "boolean" ? value : null
 
   const normalizeLimit = (value: number | undefined) => {
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      return Math.floor(value)
-    }
-    return EVENTS_PAGE_SIZE
+    if (typeof value !== "number") return EVENTS_PAGE_SIZE
+    if (!Number.isFinite(value)) return EVENTS_PAGE_SIZE
+    if (value <= 0) return EVENTS_PAGE_SIZE
+    return Math.floor(value)
   }
 
   return {
