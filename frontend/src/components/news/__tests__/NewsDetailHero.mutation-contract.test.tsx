@@ -66,7 +66,7 @@ vi.mock("@/hooks/useFocusTrap", () => ({
   },
 }))
 
-import { NewsDetailHero } from "@/components/news/NewsDetailHero"
+import { getNewsHeroFrame, NewsDetailHero } from "@/components/news/NewsDetailHero"
 
 const baseProps = {
   imageUrl: "https://picsum.photos/seed/news-detail/1200/675",
@@ -86,6 +86,21 @@ describe("NewsDetailHero mutation contracts", () => {
     smartImageMocks.render.mockClear()
     focusTrapState.calls = []
     focusTrapState.onDeactivate = undefined
+  })
+
+  it("maps invalid and boundary ratios to deterministic responsive frames", () => {
+    expect(getNewsHeroFrame(null)).toEqual({
+      container: "h-(--h-hero-sm) min-h-80 max-h-(--layout-max-modal)",
+      image: "object-cover",
+      imageStyle: { objectPosition: "50% 40%" },
+      backdrop: "bg-(--bg-surface)/(--opacity-dim)",
+    })
+    expect(getNewsHeroFrame(Number.NaN)).toEqual(getNewsHeroFrame(0))
+    expect(getNewsHeroFrame(Number.POSITIVE_INFINITY)).toEqual(getNewsHeroFrame(-1))
+    expect(getNewsHeroFrame(0.81).image).toBe("object-contain object-center")
+    expect(getNewsHeroFrame(0.82).container).toContain("aspect-5/4")
+    expect(getNewsHeroFrame(1.18).container).toContain("aspect-video")
+    expect(getNewsHeroFrame(2.61).container).toContain("aspect-21/9")
   })
 
   it("preserves exact namespaces, translation interpolation, LCP props, and default frame", () => {
