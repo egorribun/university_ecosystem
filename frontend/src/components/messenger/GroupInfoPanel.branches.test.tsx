@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react"
+import { render, screen, fireEvent, act, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createElement, forwardRef, type ReactNode } from "react"
@@ -125,6 +125,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 
 const OWNER = "owner-id"
 const MEMBER = "member-id"
+const GUEST = "guest-id"
 
 const groupChat = (createdBy: string): Chat => ({
   id: "group-1",
@@ -138,6 +139,14 @@ const groupChat = (createdBy: string): Chat => ({
   unread_count: 0,
   created_at: "2026-06-01T00:00:00Z",
   updated_at: "2026-06-01T00:00:00Z",
+})
+
+const groupChatWithGuest = (createdBy: string): Chat => ({
+  ...groupChat(createdBy),
+  participants: [
+    ...(groupChat(createdBy).participants ?? []),
+    { id: GUEST, full_name: "Nina Guest", avatar_url: null, is_active: false },
+  ] as never,
 })
 
 const baseProps = {
@@ -252,6 +261,36 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       'messenger:group.members|{"count":0}'
     )
     expect(screen.getByText('messenger:group.members|{"count":0}')).toBeInTheDocument()
+  })
+
+  it("keeps kick authorization owner-only when a non-owner has another member to target", () => {
+    const onRemoveMember = vi.fn()
+    const nonOwnerView = render(
+      <GroupInfoPanel
+        {...baseProps}
+        onRemoveMember={onRemoveMember}
+        chat={groupChatWithGuest(OWNER)}
+        currentUserId={MEMBER}
+      />,
+      { wrapper }
+    )
+
+    expect(screen.queryByRole("button", { name: /messenger:removeMember.*Nina Guest/ })).toBeNull()
+    expect(screen.getAllByRole("button", { name: "messenger:leaveGroup" })).toHaveLength(2)
+
+    nonOwnerView.unmount()
+    render(
+      <GroupInfoPanel
+        {...baseProps}
+        onRemoveMember={onRemoveMember}
+        chat={groupChatWithGuest(OWNER)}
+        currentUserId={OWNER}
+      />,
+      { wrapper }
+    )
+    expect(
+      screen.getByRole("button", { name: /messenger:removeMember.*Nina Guest/ })
+    ).toBeInTheDocument()
   })
 
   it("resets transient sub-state when the panel transitions open → closed (86-90)", () => {
@@ -487,6 +526,27 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       expect(mocks.apiGet).not.toHaveBeenCalled()
     })
 
+    it("disables the query immediately when the open panel closes", async () => {
+      const { rerender } = render(
+        <GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />,
+        { wrapper }
+      )
+      fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "ab" },
+      })
+      await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=ab"))
+
+      mocks.apiGet.mockClear()
+      rerender(
+        <GroupInfoPanel {...baseProps} open={false} chat={groupChat(OWNER)} currentUserId={OWNER} />
+      )
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(mocks.apiGet).not.toHaveBeenCalled()
+    })
+
     it("cancel button closes the search + clears the query without fetching (232-235)", () => {
       render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} />, { wrapper })
       fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
@@ -499,6 +559,11 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       // Search closed → the add-member trigger button is back.
       expect(screen.getByRole("button", { name: "messenger:addMember" })).toBeTruthy()
       expect(screen.queryByRole("textbox", { name: "messenger:searchUsers" })).toBeNull()
+
+      // Re-opening must not resurrect the previous query; the cancel handler
+      // clears the search state before the next request can be enabled.
+      fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+      expect(screen.getByRole("textbox", { name: "messenger:searchUsers" })).toHaveValue("")
     })
   })
 
@@ -513,6 +578,23 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       { wrapper }
     )
     expect(document.querySelector(".messenger-online-indicator")).toBeTruthy()
+  })
+
+  it("keeps the self-member remove control explicitly labelled as leave", () => {
+    render(
+      <GroupInfoPanel
+        {...baseProps}
+        chat={groupChat(OWNER)}
+        currentUserId={OWNER}
+        presenceMap={{}}
+      />,
+      { wrapper }
+    )
+    const selfRow = screen.getByText("Olga Owner").closest("li")
+    expect(selfRow).not.toBeNull()
+    expect(within(selfRow as HTMLElement).getByRole("button")).toHaveAccessibleName(
+      "messenger:leaveGroup"
+    )
   })
 
   it("omits the presence indicator when the member is offline (310 cold branch)", () => {
