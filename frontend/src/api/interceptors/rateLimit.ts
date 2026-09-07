@@ -276,7 +276,7 @@ if (typeof window !== "undefined") {
       clearTimeout(rateLimitTimer as ReturnType<typeof setTimeout>)
       rateLimitTimer = null
       rateLimitResetAt = 0
-      rateLimitWaiters.splice(0).forEach((resolve) => resolve?.())
+      rateLimitWaiters.splice(0).forEach((resolve) => resolve())
     }
     // If the window is still active, leave it — the server-side limit is still valid.
   })

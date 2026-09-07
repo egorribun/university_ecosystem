@@ -493,33 +493,16 @@ describe("rateLimit mutation contracts", () => {
     expect(isRateLimited()).toBe(false)
   })
 
-  it("safely resolves an undefined waiter callback during window cleanup", async () => {
+  it("resolves every queued waiter during online window cleanup", async () => {
     const { scheduleRateLimitWindow, waitForRateLimitWindow } = await import("../rateLimit")
-    const originalSplice = Array.prototype.splice
-    const spliceSpy = vi.spyOn(Array.prototype, "splice").mockImplementation(function (
-      this: unknown[],
-      start: number,
-      deleteCount?: number,
-      ...items
-    ) {
-      const result =
-        deleteCount === undefined
-          ? (Reflect.apply(originalSplice, this, [start]) as unknown[])
-          : (Reflect.apply(originalSplice, this, [start, deleteCount, ...items]) as unknown[])
-      if (start === 0 && deleteCount === undefined) {
-        result.push(undefined)
-      }
-      return result
-    })
 
-    try {
-      scheduleRateLimitWindow(1_000)
-      const waiter = waitForRateLimitWindow()
-      vi.setSystemTime(Date.now() + 1_001)
-      window.dispatchEvent(new Event("online"))
-      await expect(waiter).resolves.toBeUndefined()
-    } finally {
-      spliceSpy.mockRestore()
-    }
+    scheduleRateLimitWindow(1_000)
+    const firstWaiter = waitForRateLimitWindow()
+    const secondWaiter = waitForRateLimitWindow()
+    vi.setSystemTime(Date.now() + 1_001)
+
+    window.dispatchEvent(new Event("online"))
+
+    await expect(Promise.all([firstWaiter, secondWaiter])).resolves.toEqual([undefined, undefined])
   })
 })

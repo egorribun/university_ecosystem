@@ -146,4 +146,14 @@ describe("rate-limit follow-up mutation contracts", () => {
     await waiter
     expect(settled).toBe(true)
   })
+
+  it("does not run expired-window cleanup when no server window is active", async () => {
+    const { isRateLimited } = await import("../rateLimit")
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout")
+
+    window.dispatchEvent(new Event("online"))
+
+    expect(clearTimeoutSpy).not.toHaveBeenCalled()
+    expect(isRateLimited()).toBe(false)
+  })
 })

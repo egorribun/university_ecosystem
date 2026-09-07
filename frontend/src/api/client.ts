@@ -68,18 +68,19 @@ const api = axios.create({
   },
 })
 
+export const resolveRequestPath = (config: AxiosRequestConfig): string => {
+  const rawUrl = config.url ?? ""
+  const rawBaseUrl = config.baseURL ?? ""
+  const isAbsoluteUrl = rawUrl.includes("://") || (rawUrl.startsWith("//") && rawUrl[2] !== "/")
+  const combinedUrl = isAbsoluteUrl
+    ? rawUrl
+    : `${rawBaseUrl.replace(/\/+$/u, "")}/${rawUrl.replace(/^\/+/u, "")}`
+  const baseOrigin = window.location.origin
+  return new URL(combinedUrl, baseOrigin).pathname
+}
+
 if (import.meta.env.VITE_LHCI === "true") {
   const networkAdapter = axios.getAdapter(api.defaults.adapter)
-  const resolveRequestPath = (config: AxiosRequestConfig): string => {
-    const rawUrl = config.url ?? ""
-    const rawBaseUrl = config.baseURL ?? ""
-    const isAbsoluteUrl = rawUrl.includes("://") || rawUrl.startsWith("//")
-    const combinedUrl = isAbsoluteUrl
-      ? rawUrl
-      : `${rawBaseUrl.replace(/\/+$/u, "")}/${rawUrl.replace(/^\/+/u, "")}`
-    const baseOrigin = window.location.origin
-    return new URL(combinedUrl, baseOrigin).pathname
-  }
   const shouldUseE2ENetworkMocks = (config: AxiosRequestConfig) => {
     if (typeof window === "undefined") return false
     const e2eWindow = window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }
