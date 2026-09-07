@@ -65,6 +65,25 @@ describe("campus building data helpers", () => {
     expect(digest).toBe(expectedDigest)
   })
 
+  it.each([
+    [
+      "academic",
+      CAMPUS_STRUCTURE_ACADEMIC,
+      "de4eebaba563b857f4163ff5ff57409b0eda53340e5af1237470636fb27e8e05",
+    ],
+    [
+      "administrative",
+      CAMPUS_STRUCTURE_ADMINISTRATIVE,
+      "522b155bbf2639f1813fd8ded6c82ba0c8822b932b4aabc826087057db8610f3",
+    ],
+  ])(
+    "keeps the canonical %s campus dataset byte-for-byte stable",
+    (_name, dataset, expectedDigest) => {
+      const digest = createHash("sha256").update(JSON.stringify(dataset)).digest("hex")
+      expect(digest).toBe(expectedDigest)
+    }
+  )
+
   it("keeps the localized result identical to the decomposed structural data", () => {
     const structuralData = [
       ...CAMPUS_STRUCTURE_ACADEMIC,

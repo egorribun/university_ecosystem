@@ -55,9 +55,16 @@ def _verify_gateway_identity_signature(
     integration tests.  Production is always fail-closed when the secret is
     absent or the signature is missing/invalid.
     """
-    internal_secret = str(getattr(settings, "internal_hmac_secret", "") or "")
     raw_environment = getattr(settings, "environment", None)
     environment = str(raw_environment).lower() if raw_environment else "production"
+    raw_internal_secret = getattr(settings, "internal_hmac_secret", "")
+    if raw_internal_secret is None:
+        # ``None`` is a malformed configuration value, not an opt-out.  Keep
+        # the trust boundary fail-closed even in non-production environments.
+        raise_unauthorized(
+            resolve_locale(request=request), "errors.auth.credentials_invalid"
+        )
+    internal_secret = str(raw_internal_secret)
     if not internal_secret:
         if environment == "production":
             raise_unauthorized(

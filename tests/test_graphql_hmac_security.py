@@ -121,6 +121,24 @@ def test_gateway_signature_defaults_are_fail_closed_and_secret_is_required(
     assert exc_info.value.status_code == 401
 
 
+def test_gateway_signature_rejects_malformed_none_secret_even_in_testing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A null secret is malformed configuration, never a development opt-out."""
+    from app.graphql import schema
+
+    monkeypatch.setattr(
+        schema,
+        "settings",
+        SimpleNamespace(environment="testing", internal_hmac_secret=None),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        schema._verify_gateway_identity_signature(_request({}), "user", "session", "")
+
+    assert exc_info.value.status_code == 401
+
+
 def test_gateway_signature_failure_preserves_locale_and_error_key(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

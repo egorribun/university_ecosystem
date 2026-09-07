@@ -36,8 +36,11 @@ def _log_event(
     try:
         logger_disabled = logger.disabled
     except AttributeError:
+        # Compatible logger adapters without ``disabled`` are enabled by
+        # default.  Keep the exact boolean contract observable to mutation
+        # tests instead of relying on generic truthiness.
         logger_disabled = False
-    if is_logger_enabled(logger, level) and not logger_disabled:
+    if is_logger_enabled(logger, level) and logger_disabled is False:
         target = logging.getLogger(__name__)
     else:
         target = logging.getLogger()

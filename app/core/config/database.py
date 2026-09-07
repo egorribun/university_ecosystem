@@ -66,11 +66,8 @@ def _cgroup_aware_cpu_count() -> int:
         pass
 
     try:
-        if hasattr(os, "sched_getaffinity"):
-            sched = os.sched_getaffinity
-        else:
-            sched = None
-        if sched:
+        sched = getattr(os, "sched_getaffinity", None)
+        if sched is not None:
             return len(sched(0))
     except (AttributeError, NotImplementedError, OSError):
         pass

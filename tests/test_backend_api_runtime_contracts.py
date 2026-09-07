@@ -1229,7 +1229,12 @@ async def test_websocket_chat_payload_too_large():
     large_payload = json.dumps(
         {"type": "message", "content": "a" * 32_769}, separators=(",", ":")
     )
-    websocket.receive_text = AsyncMock(return_value=large_payload)
+    # A content-validation mutant can bypass the first-frame rejection and
+    # otherwise leave the route awaiting forever.  A deterministic disconnect
+    # makes that contract observable without a timeout-based test.
+    websocket.receive_text = AsyncMock(
+        side_effect=[large_payload, WebSocketDisconnect(code=1000)]
+    )
     websocket.close = AsyncMock()
 
     mock_user = MagicMock()
