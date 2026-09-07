@@ -139,6 +139,31 @@ describe("LivePushToasts", () => {
     }
   })
 
+  it("does not invoke object-valued storage capabilities", () => {
+    const nativeStorage = window.localStorage
+    const getItem = { call: vi.fn(() => JSON.stringify([{ id: "forged", title: "Forged" }])) }
+    const setItem = { call: vi.fn() }
+    const malformedStorage = { getItem, setItem }
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: malformedStorage,
+    })
+
+    try {
+      expect(readBuffer()).toEqual([])
+      expect(getItem.call).not.toHaveBeenCalled()
+
+      const toast = { id: "safe", title: "Safe", body: "Body" } as ActiveToast
+      expect(() => writeBuffer([toast])).not.toThrow()
+      expect(setItem.call).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        value: nativeStorage,
+      })
+    }
+  })
+
   it("does not let storage read or write exceptions escape notification delivery", () => {
     const nativeStorage = window.localStorage
     const throwingStorage = {
