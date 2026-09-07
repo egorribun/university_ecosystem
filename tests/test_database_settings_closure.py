@@ -37,6 +37,30 @@ def test_cgroup_cpu_count_uses_string_affinity_attribute_lookup(monkeypatch):
     assert database._cgroup_aware_cpu_count() == 4
 
 
+def test_cgroup_cpu_count_uses_explicit_none_for_optional_affinity_lookup(monkeypatch):
+    """The optional affinity lookup must retain its explicit fail-safe default."""
+    monkeypatch.setattr(
+        builtins,
+        "open",
+        lambda *args, **kwargs: (_ for _ in ()).throw(FileNotFoundError),
+    )
+    monkeypatch.setattr(
+        database.os, "sched_getaffinity", lambda _: {1, 2, 3, 4, 5}, raising=False
+    )
+    calls: list[tuple[object, str, object]] = []
+
+    def lookup(obj: object, name: str, default: object) -> object:
+        calls.append((obj, name, default))
+        return builtins.getattr(obj, name, default)
+
+    # Replacing the module's builtin lookup makes omission of the third
+    # argument observable instead of equivalent on hosts exposing the method.
+    monkeypatch.setattr(database, "getattr", lookup, raising=False)
+
+    assert database._cgroup_aware_cpu_count() == 5
+    assert calls == [(database.os, "sched_getaffinity", None)]
+
+
 def test_cgroup_cpu_count_prefers_v2_quota_over_host_affinity(monkeypatch):
     def fake_open(path, *args, **kwargs):
         if path == "/sys/fs/cgroup/cpu.max":
