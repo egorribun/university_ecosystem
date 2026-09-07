@@ -21,7 +21,54 @@ type OtpEntryProps = {
 }
 
 const OTP_LENGTH = 6
-const EMPTY_DIGITS = (): string[] => Array.from({ length: OTP_LENGTH }, () => "")
+export const createEmptyOtpDigits = (): string[] => Array.from({ length: OTP_LENGTH }, () => "")
+
+export const sanitizeOtpDigits = (value: string): string => value.replace(/\D/g, "")
+
+export const getOtpSingleDigitFocusIndex = (index: number): number | null =>
+  index < OTP_LENGTH - 1 ? index + 1 : null
+
+export const getOtpDistributionFocusIndex = (index: number, digitCount: number): number =>
+  Math.min(index + digitCount, OTP_LENGTH - 1)
+
+export const distributeOtpDigits = (
+  digits: readonly string[],
+  index: number,
+  sanitized: string
+): string[] => {
+  const next = [...digits]
+  const available = OTP_LENGTH - index
+  sanitized
+    .slice(0, available)
+    .split("")
+    .forEach((digit, offset) => {
+      next[index + offset] = digit
+    })
+  return next
+}
+
+export const getOtpKeyboardFocusIndex = (
+  index: number,
+  key: string,
+  currentValue: string
+): number | null => {
+  if (key === "Backspace" && currentValue === "" && index > 0) return index - 1
+  if (key === "ArrowLeft" && index > 0) return index - 1
+  if (key === "ArrowRight" && index < OTP_LENGTH - 1) return index + 1
+  return null
+}
+
+export const shouldResetOtpForError = (error: string | null | undefined): boolean => Boolean(error)
+
+export const shouldAutoSubmitOtp = (
+  code: string,
+  loading: boolean | undefined,
+  localError: string | null,
+  error: string | null | undefined
+): boolean => code.length === OTP_LENGTH && !loading && !localError && !error
+
+export const shouldAutoFocusOtp = (digits: readonly string[]): boolean =>
+  digits.every((digit) => digit === "")
 
 type OtpInputRefs = { current: (HTMLInputElement | null)[] }
 
@@ -40,7 +87,7 @@ export const OtpEntry = ({
   onSubmit,
 }: OtpEntryProps) => {
   const { t } = useTranslation("auth")
-  const [digits, setDigits] = useState<string[]>(EMPTY_DIGITS)
+  const [digits, setDigits] = useState<string[]>(createEmptyOtpDigits)
   const [localError, setLocalError] = useState<string | null>(null)
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
@@ -66,7 +113,7 @@ export const OtpEntry = ({
   }, [code, loading, onSubmit, t])
 
   const handleChange = (index: number, value: string) => {
-    const sanitized = value.replace(/\D/g, "")
+    const sanitized = sanitizeOtpDigits(value)
 
     if (sanitized.length === 0) {
       setDigits((prev) => {
@@ -84,48 +131,32 @@ export const OtpEntry = ({
         return next
       })
 
-      if (index < OTP_LENGTH - 1) {
-        focusInput(index + 1)
+      const nextIndex = getOtpSingleDigitFocusIndex(index)
+      if (nextIndex !== null) {
+        focusInput(nextIndex)
       }
     } else {
       setDigits((prev) => {
-        const next = [...prev]
-        const available = OTP_LENGTH - index
-        sanitized
-          .slice(0, available)
-          .split("")
-          .forEach((digit, offset) => {
-            next[index + offset] = digit
-          })
-        return next
+        return distributeOtpDigits(prev, index, sanitized)
       })
 
-      const lastIndex = Math.min(index + sanitized.length, OTP_LENGTH - 1)
+      const lastIndex = getOtpDistributionFocusIndex(index, sanitized.length)
       focusInput(lastIndex)
     }
   }
 
   const handleKeyDown = (index: number, event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Backspace") {
-      if (digits[index] === "") {
-        if (index > 0) {
-          event.preventDefault()
-          focusInput(index - 1)
-        }
-      }
-    } else if (event.key === "ArrowLeft" && index > 0) {
+    const nextIndex = getOtpKeyboardFocusIndex(index, event.key, digits[index] ?? "")
+    if (nextIndex !== null) {
       event.preventDefault()
-      focusInput(index - 1)
-    } else if (event.key === "ArrowRight" && index < OTP_LENGTH - 1) {
-      event.preventDefault()
-      focusInput(index + 1)
+      focusInput(nextIndex)
     }
   }
 
   const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
     event.preventDefault()
     const pastedData = event.clipboardData.getData("text")
-    const sanitized = pastedData.replace(/\D/g, "").slice(0, OTP_LENGTH)
+    const sanitized = sanitizeOtpDigits(pastedData).slice(0, OTP_LENGTH)
 
     if (sanitized.length > 0) {
       setDigits(Array.from({ length: OTP_LENGTH }, (_, offset) => sanitized.charAt(offset)))
@@ -139,20 +170,20 @@ export const OtpEntry = ({
   const describedBy = derivedError ? errorId : derivedHelperText ? helperId : undefined
 
   useEffect(() => {
-    if (!error) return
-    setDigits(EMPTY_DIGITS)
+    if (!shouldResetOtpForError(error)) return
+    setDigits(createEmptyOtpDigits())
     focusInput(0)
   }, [error, focusInput])
 
   useEffect(() => {
-    if (code.length === OTP_LENGTH && !loading && !localError && !error) {
+    if (shouldAutoSubmitOtp(code, loading, localError, error)) {
       void onSubmit(code)
     }
   }, [code, loading, onSubmit, localError, error])
 
   useEffect(() => {
     // Auto-focus the first input on initial render
-    if (digits.every((d) => d === "")) {
+    if (shouldAutoFocusOtp(digits)) {
       focusInput(0)
     }
     // We only want this on mount for the "fresh" state

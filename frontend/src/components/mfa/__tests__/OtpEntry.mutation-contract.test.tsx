@@ -35,13 +35,73 @@ vi.mock("@/components/settings", () => ({
   ),
 }))
 
-import OtpEntry, { focusOtpInput } from "../OtpEntry"
+import OtpEntry, {
+  createEmptyOtpDigits,
+  distributeOtpDigits,
+  focusOtpInput,
+  getOtpDistributionFocusIndex,
+  getOtpKeyboardFocusIndex,
+  getOtpSingleDigitFocusIndex,
+  sanitizeOtpDigits,
+  shouldAutoFocusOtp,
+  shouldAutoSubmitOtp,
+  shouldResetOtpForError,
+} from "../OtpEntry"
 
 const inputs = () => screen.getAllByRole("textbox") as HTMLInputElement[]
 
 afterEach(() => vi.restoreAllMocks())
 
 describe("OtpEntry mutation contracts", () => {
+  it("keeps OTP sanitizing, distribution and focus boundaries explicit", () => {
+    expect(createEmptyOtpDigits()).toEqual(["", "", "", "", "", ""])
+    expect(sanitizeOtpDigits("a12-3 4")).toBe("1234")
+    expect(sanitizeOtpDigits("---")).toBe("")
+    expect(getOtpSingleDigitFocusIndex(0)).toBe(1)
+    expect(getOtpSingleDigitFocusIndex(5)).toBeNull()
+    expect(getOtpDistributionFocusIndex(0, 6)).toBe(5)
+    expect(getOtpDistributionFocusIndex(4, 2)).toBe(5)
+    expect(getOtpDistributionFocusIndex(5, 8)).toBe(5)
+    expect(distributeOtpDigits(["", "", "", "", "", ""], 0, "123456")).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+    ])
+    expect(distributeOtpDigits(["1", "2", "", "", "", ""], 2, "98")).toEqual([
+      "1",
+      "2",
+      "9",
+      "8",
+      "",
+      "",
+    ])
+  })
+
+  it("keeps keyboard navigation and effect guards bounded", () => {
+    expect(getOtpKeyboardFocusIndex(0, "Backspace", "")).toBeNull()
+    expect(getOtpKeyboardFocusIndex(2, "Backspace", "")).toBe(1)
+    expect(getOtpKeyboardFocusIndex(2, "Backspace", "7")).toBeNull()
+    expect(getOtpKeyboardFocusIndex(0, "ArrowLeft", "")).toBeNull()
+    expect(getOtpKeyboardFocusIndex(2, "ArrowLeft", "")).toBe(1)
+    expect(getOtpKeyboardFocusIndex(5, "ArrowRight", "")).toBeNull()
+    expect(getOtpKeyboardFocusIndex(2, "ArrowRight", "")).toBe(3)
+    expect(getOtpKeyboardFocusIndex(2, "Enter", "")).toBeNull()
+
+    expect(shouldResetOtpForError(undefined)).toBe(false)
+    expect(shouldResetOtpForError(null)).toBe(false)
+    expect(shouldResetOtpForError("invalid")).toBe(true)
+    expect(shouldAutoSubmitOtp("12345", false, null, null)).toBe(false)
+    expect(shouldAutoSubmitOtp("123456", true, null, null)).toBe(false)
+    expect(shouldAutoSubmitOtp("123456", false, "local", null)).toBe(false)
+    expect(shouldAutoSubmitOtp("123456", false, null, "server")).toBe(false)
+    expect(shouldAutoSubmitOtp("123456", false, null, null)).toBe(true)
+    expect(shouldAutoFocusOtp(["", "", "", "", "", ""])).toBe(true)
+    expect(shouldAutoFocusOtp(["1", "", "", "", "", ""])).toBe(false)
+  })
+
   it("fails closed for invalid and not-yet-mounted focus targets", () => {
     const refs: { current: (HTMLInputElement | null)[] } = {
       current: [null, null, null, null, null, null],
