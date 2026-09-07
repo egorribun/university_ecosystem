@@ -25,7 +25,11 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 
-import { AddLessonDialog } from "@/components/schedule/dialogs/AddLessonDialog"
+import {
+  AddLessonDialog,
+  isAddLessonFormValid,
+  resolveBackendLessonType,
+} from "@/components/schedule/dialogs/AddLessonDialog"
 import { SchedulePageProvider, useSchedulePage } from "@/contexts/SchedulePageContext"
 import type { LessonTypeConfig } from "@/components/schedule/scheduleUtils"
 import { logError } from "@/app/logger"
@@ -106,6 +110,20 @@ describe("AddLessonDialog", () => {
     vi.mocked(logError).mockClear()
   })
 
+  it("validates every required field independently", () => {
+    const valid = { subject: " Algebra ", startTime: "09:00", endTime: "10:30" }
+    expect(isAddLessonFormValid(valid)).toBe(true)
+    expect(isAddLessonFormValid({ ...valid, subject: "   " })).toBe(false)
+    expect(isAddLessonFormValid({ ...valid, startTime: "" })).toBe(false)
+    expect(isAddLessonFormValid({ ...valid, endTime: "" })).toBe(false)
+  })
+
+  it("resolves configured, empty-backend, and unknown lesson types", () => {
+    expect(resolveBackendLessonType("lecture", LESSON_TYPE_CONFIGS)).toBe("LECTURE")
+    expect(resolveBackendLessonType("seminar", LESSON_TYPE_CONFIGS)).toBe("seminar")
+    expect(resolveBackendLessonType("unknown", LESSON_TYPE_CONFIGS)).toBe("unknown")
+  })
+
   it("renders the add form when the 'add' dialog is active", () => {
     renderDialog()
     expect(screen.getByText("schedule:dialog.addTitle")).toBeInTheDocument()
@@ -145,6 +163,8 @@ describe("AddLessonDialog", () => {
       "/schedule",
       expect.objectContaining({
         subject: "Линейная алгебра",
+        teacher: "",
+        room: "",
         // lecture config -> backend[0] = "LECTURE"
         lesson_type: "LECTURE",
         start_time: "mondayT09:00:00",
@@ -232,6 +252,26 @@ describe("AddLessonDialog", () => {
     // Refresh not fired on failure; dialog stays open.
     expect(props.refresh).not.toHaveBeenCalled()
     expect(screen.getByText("schedule:dialog.addTitle")).toBeInTheDocument()
+  })
+
+  it("does not submit twice while the first request is pending", async () => {
+    const user = userEvent.setup()
+    let resolveRequest!: () => void
+    apiMocks.post.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveRequest = () => resolve({ data: {} })))
+    )
+    const props = makeBaseProps()
+    renderDialog(props)
+    fillRequiredFields()
+
+    const form = screen.getByRole("button", { name: "schedule:buttons.add" }).closest("form")!
+    await user.click(screen.getByRole("button", { name: "schedule:buttons.add" }))
+    await waitFor(() => expect(apiMocks.post).toHaveBeenCalledTimes(1))
+
+    fireEvent.submit(form)
+    expect(apiMocks.post).toHaveBeenCalledTimes(1)
+    resolveRequest()
+    await waitFor(() => expect(props.refresh).toHaveBeenCalledTimes(1))
   })
 
   it("does not submit when selectedGroupId is null (early-return guard)", async () => {

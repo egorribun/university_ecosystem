@@ -19,6 +19,20 @@ interface AddLessonDialogProps {
   refresh: () => void
 }
 
+export function isAddLessonFormValid(
+  fields: Pick<AddLessonFields, "subject" | "startTime" | "endTime">
+): boolean {
+  return fields.subject.trim() !== "" && fields.startTime !== "" && fields.endTime !== ""
+}
+
+export function resolveBackendLessonType(
+  lessonType: string,
+  lessonTypeConfigs: LessonTypeConfig[]
+): string {
+  const match = lessonTypeConfigs.find((config) => config.id === lessonType)
+  return match ? (match.backend[0] ?? lessonType) : lessonType
+}
+
 export function AddLessonDialog({
   selectedGroupId,
   defaultLessonType,
@@ -43,8 +57,7 @@ export function AddLessonDialog({
 
   const [isAdding, setIsAdding] = useState(false)
 
-  const isFormValid =
-    addFields.subject.trim() !== "" && addFields.startTime !== "" && addFields.endTime !== ""
+  const isFormValid = isAddLessonFormValid(addFields)
 
   // Sync default lesson type
   useEffect(() => {
@@ -60,10 +73,7 @@ export function AddLessonDialog({
     if (!selectedGroupId || !addDay) return
 
     // Resolve backend lesson type
-    const backendType = (() => {
-      const match = lessonTypeConfigs.find((c) => c.id === addFields.lessonType)
-      return match ? (match.backend[0] ?? addFields.lessonType) : addFields.lessonType
-    })()
+    const backendType = resolveBackendLessonType(addFields.lessonType, lessonTypeConfigs)
 
     const payload = {
       subject: addFields.subject,
