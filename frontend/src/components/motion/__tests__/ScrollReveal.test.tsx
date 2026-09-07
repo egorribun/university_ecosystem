@@ -45,7 +45,7 @@ class MockIntersectionObserver {
 
 vi.stubGlobal("IntersectionObserver", MockIntersectionObserver)
 
-import { ScrollReveal } from "@/components/motion/ScrollReveal"
+import { ScrollReveal, shouldObserveScrollReveal } from "@/components/motion/ScrollReveal"
 
 function trigger(index: number, entries: IntersectionObserverEntry[]) {
   const observer = observers[index]!
@@ -53,6 +53,13 @@ function trigger(index: number, entries: IntersectionObserverEntry[]) {
 }
 
 describe("ScrollReveal", () => {
+  it("only observes a mounted element until it is visible", () => {
+    expect(shouldObserveScrollReveal(null, false)).toBe(false)
+    const element = document.createElement("div")
+    expect(shouldObserveScrollReveal(element, false)).toBe(true)
+    expect(shouldObserveScrollReveal(element, true)).toBe(false)
+  })
+
   beforeEach(() => {
     observers.length = 0
     motionState.props.length = 0

@@ -46,7 +46,14 @@ vi.mock("framer-motion", async () => {
   return { ...base, LazyMotion: CapturingLazyMotion, m: { div: CapturingDiv } }
 })
 
-import PageTransition from "@/components/motion/PageTransition"
+import PageTransition, {
+  commitMotionModuleIfActive,
+  deactivateMotionLoad,
+  getInitialReduceMotion,
+  loadMotionModule,
+  shouldLoadMotionModule,
+  shouldLogMotionImportFailure,
+} from "@/components/motion/PageTransition"
 
 const setReduceMotion = (matches: boolean) => {
   const matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -68,6 +75,49 @@ const setReduceMotion = (matches: boolean) => {
 }
 
 describe("PageTransition", () => {
+  it("keeps lazy loading and lifecycle guards explicit", () => {
+    expect(shouldLoadMotionModule(false)).toBe(true)
+    expect(shouldLoadMotionModule(true)).toBe(false)
+    expect(shouldLogMotionImportFailure(true)).toBe(true)
+    expect(shouldLogMotionImportFailure(false)).toBe(false)
+
+    const setter = vi.fn()
+    commitMotionModuleIfActive(false, setter, "ignored")
+    commitMotionModuleIfActive(true, setter, "loaded")
+    expect(setter).toHaveBeenCalledOnce()
+    expect(setter).toHaveBeenCalledWith("loaded")
+
+    const activity = { active: true }
+    deactivateMotionLoad(activity)
+    expect(activity.active).toBe(false)
+  })
+
+  it("caches the dynamic motion import promise", () => {
+    expect(loadMotionModule()).toBe(loadMotionModule())
+  })
+
+  it("derives reduced-motion state safely for SSR and media-query variants", () => {
+    const originalMatchMedia = window.matchMedia
+    try {
+      Object.defineProperty(window, "matchMedia", { configurable: true, value: undefined })
+      expect(getInitialReduceMotion()).toBe(false)
+      const matchMedia = vi.fn().mockReturnValue({ matches: true })
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: matchMedia,
+      })
+      expect(getInitialReduceMotion()).toBe(true)
+      expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
+    } finally {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: originalMatchMedia,
+      })
+    }
+  })
+
   beforeEach(() => {
     motionState.initialValues.length = 0
     motionState.props.length = 0

@@ -41,7 +41,7 @@ vi.mock("framer-motion", async () => {
   }
 })
 
-import BackToTop from "@/components/motion/BackToTop"
+import { disconnectBackToTopObserver, default as BackToTop } from "@/components/motion/BackToTop"
 
 const setScrollY = (value: number) => {
   Object.defineProperty(window, "scrollY", { value, configurable: true })
@@ -57,6 +57,13 @@ afterEach(() => {
 })
 
 describe("BackToTop mutation contract", () => {
+  it("keeps mount effects stable and observer cleanup null-safe", () => {
+    expect(() => disconnectBackToTopObserver(null)).not.toThrow()
+    const disconnect = vi.fn()
+    disconnectBackToTopObserver({ disconnect } as unknown as IntersectionObserver)
+    expect(disconnect).toHaveBeenCalledOnce()
+  })
+
   it("passes the common namespace and exact motion contract to the FAB", async () => {
     render(<BackToTop />)
     expect(state.namespaces).toContainEqual(["common"])

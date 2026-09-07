@@ -148,7 +148,7 @@ vi.mock("@/components/navbar/MobileDrawerQuickActions", () => ({
   ),
 }))
 
-import { MobileMenu } from "../MobileMenu"
+import { clickGlobalNotifications, getMobileDrawerOffset, MobileMenu } from "../MobileMenu"
 
 const links = [
   { to: "/", label: "Home" },
@@ -186,6 +186,14 @@ function renderMenu(overrides: Partial<React.ComponentProps<typeof MobileMenu>> 
 }
 
 describe("MobileMenu closure paths", () => {
+  it("keeps drawer offsets non-negative and tolerates a missing shell trigger", () => {
+    expect(getMobileDrawerOffset(12)).toBe(12)
+    expect(getMobileDrawerOffset(0)).toBe(0)
+    expect(getMobileDrawerOffset(-12)).toBe(0)
+    expect(getMobileDrawerOffset(Number.NaN)).toBe(0)
+    expect(() => clickGlobalNotifications()).not.toThrow()
+  })
+
   it("renders authenticated navigation and wires every drawer action", async () => {
     const user = userEvent.setup()
     const searchEvents: KeyboardEvent[] = []
@@ -465,7 +473,13 @@ describe("MobileMenu closure paths", () => {
     expect(backdrop).toHaveAttribute("tabindex", "-1")
 
     const drawer = screen.getByRole("dialog", { name: "navigation:aria.mobileMenu" })
-    expect(drawer).toHaveClass("w-(--drawer-w)", "max-w-(--drawer-w-max)")
+    expect(drawer).toHaveClass(
+      "w-(--drawer-w)",
+      "max-w-(--drawer-w-max)",
+      "pt-[env(safe-area-inset-top,0px)]",
+      "pr-[env(safe-area-inset-right,0px)]",
+      "pb-[env(safe-area-inset-bottom,0px)]"
+    )
     expect(screen.getByText("navigation:aria.mobileMenuDescription")).toBeInTheDocument()
     expect(document.querySelector('[style*="var(--drawer-accent-gradient)"]')).toBeInTheDocument()
   })

@@ -67,7 +67,12 @@ vi.mock("framer-motion", async () => {
   }
 })
 
-import { NavbarOverflowMenu } from "@/components/navbar/NavbarOverflowMenu"
+import {
+  focusFirstOverflowItem,
+  focusOverflowTrigger,
+  getOverflowItemAt,
+  NavbarOverflowMenu,
+} from "@/components/navbar/NavbarOverflowMenu"
 
 const items: NavigationItem[] = [
   { to: "/news", label: "News", icon: Home },
@@ -105,6 +110,15 @@ afterEach(() => {
 })
 
 describe("NavbarOverflowMenu mutation contract", () => {
+  it("keeps focus helpers null-safe and preserves the undefined item sentinel", () => {
+    expect(() => focusFirstOverflowItem(null)).not.toThrow()
+    expect(() => focusOverflowTrigger(null)).not.toThrow()
+
+    const itemsWithUndefinedProperty = Object.assign(["first"], { undefined: "not-an-item" })
+    expect(getOverflowItemAt(itemsWithUndefinedProperty, undefined)).toBeUndefined()
+    expect(getOverflowItemAt(itemsWithUndefinedProperty, 0)).toBe("first")
+  })
+
   it("keeps labels, aria state and reduced-motion transitions observable", async () => {
     const { view } = await renderMenu({ prefersReducedMotion: true })
     expect(state.namespaces).toContainEqual(undefined)
@@ -179,6 +193,27 @@ describe("NavbarOverflowMenu mutation contract", () => {
     view.unmount()
   })
 
+  it("wraps between multiple items and honors Home/End boundaries", async () => {
+    const { view } = await renderMenu()
+    const trigger = screen.getByRole("button", { name: "navigation:aria.overflowMenu" })
+    await userEvent.click(trigger)
+    const menu = screen.getByRole("menu")
+    const [news, events] = screen.getAllByRole("menuitem")
+    expect(news).toHaveFocus()
+
+    await userEvent.keyboard("{ArrowUp}")
+    expect(events).toHaveFocus()
+    await userEvent.keyboard("{ArrowDown}")
+    expect(news).toHaveFocus()
+    await userEvent.keyboard("{End}")
+    expect(events).toHaveFocus()
+    await userEvent.keyboard("{Home}")
+    expect(news).toHaveFocus()
+    menu.dispatchEvent(new KeyboardEvent("keydown", { key: "PageDown", bubbles: true }))
+    expect(news).toHaveFocus()
+    view.unmount()
+  })
+
   it("removes outside and Escape listeners when the menu closes", async () => {
     const add = vi.spyOn(document, "addEventListener")
     const remove = vi.spyOn(document, "removeEventListener")
@@ -192,6 +227,24 @@ describe("NavbarOverflowMenu mutation contract", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
     expect(remove.mock.calls.some(([type]) => type === "pointerdown")).toBe(true)
     expect(remove.mock.calls.some(([type]) => type === "keydown")).toBe(true)
+    view.unmount()
+  })
+
+  it("does not install document listeners while closed and exposes the non-reduced motion contract", async () => {
+    const add = vi.spyOn(document, "addEventListener")
+    const { view } = await renderMenu({ prefersReducedMotion: false })
+    expect(add.mock.calls.some(([type]) => type === "pointerdown")).toBe(false)
+    expect(add.mock.calls.some(([type]) => type === "keydown")).toBe(false)
+
+    const trigger = screen.getByRole("button", { name: "navigation:aria.overflowMenu" })
+    expect(trigger).toHaveClass("duration-200")
+    expect(trigger).toHaveAttribute("data-motion-while-tap", JSON.stringify({ scale: 0.95 }))
+    await userEvent.click(trigger)
+    const menu = screen.getByRole("menu")
+    expect(menu).toHaveAttribute(
+      "data-motion-transition",
+      JSON.stringify({ duration: 0.15, ease: [0.16, 1, 0.3, 1] })
+    )
     view.unmount()
   })
 })

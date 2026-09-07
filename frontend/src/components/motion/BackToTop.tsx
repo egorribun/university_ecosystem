@@ -7,6 +7,10 @@ import Magnetic from "./Magnetic"
 const BASE_BOTTOM = 24 // px — default distance from viewport bottom
 const FOOTER_GAP = 16 // px — gap between FAB and footer top edge
 
+export const disconnectBackToTopObserver = (observer: IntersectionObserver | null): void => {
+  observer?.disconnect()
+}
+
 export default function BackToTop() {
   const { t } = useTranslation(["common"])
 
@@ -43,7 +47,7 @@ export default function BackToTop() {
     )
 
     observerRef.current.observe(footer)
-    return () => observerRef.current?.disconnect()
+    return () => disconnectBackToTopObserver(observerRef.current)
   }, [])
 
   const onClick = useCallback(() => {

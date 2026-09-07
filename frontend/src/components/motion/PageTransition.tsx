@@ -6,8 +6,28 @@ type MotionModule = typeof import("framer-motion")
 
 let didPaint = false
 let motionModulePromise: Promise<MotionModule> | null = null
+export const getInitialReduceMotion = (): boolean => {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+}
 
-const loadMotionModule = async () => {
+export const shouldLoadMotionModule = (reduceMotion: boolean): boolean => !reduceMotion
+
+export function commitMotionModuleIfActive<T>(
+  active: boolean,
+  setMotionModule: (module: T) => void,
+  module: T
+): void {
+  if (active) setMotionModule(module)
+}
+
+export const deactivateMotionLoad = (state: { active: boolean }): void => {
+  state.active = false
+}
+
+export const shouldLogMotionImportFailure = (isDevelopment: boolean): boolean => isDevelopment
+
+export const loadMotionModule = (): Promise<MotionModule> => {
   if (!motionModulePromise) {
     motionModulePromise = import("framer-motion")
   }
@@ -17,10 +37,7 @@ const loadMotionModule = async () => {
 const PageTransition: FC<Props> = ({ children }) => {
   const [motionModule, setMotionModule] = useState<MotionModule | null>(null)
   const [isInitialPaint] = useState(() => !didPaint)
-  const [reduceMotion, setReduceMotion] = useState(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  })
+  const [reduceMotion, setReduceMotion] = useState(getInitialReduceMotion)
 
   useEffect(() => {
     didPaint = true
@@ -41,17 +58,19 @@ const PageTransition: FC<Props> = ({ children }) => {
   }, [])
 
   useEffect(() => {
-    if (reduceMotion) return
-    let active = true
+    if (!shouldLoadMotionModule(reduceMotion)) return
+    const activity = { active: true }
     loadMotionModule()
       .then((mod) => {
-        if (active) setMotionModule(mod)
+        commitMotionModuleIfActive(activity.active, setMotionModule, mod)
       })
       .catch((err: unknown) => {
-        if (import.meta.env.DEV) console.warn("[PageTransition] framer-motion load failed:", err)
+        if (shouldLogMotionImportFailure(import.meta.env.DEV)) {
+          console.warn("[PageTransition] framer-motion load failed:", err)
+        }
       })
     return () => {
-      active = false
+      deactivateMotionLoad(activity)
     }
   }, [reduceMotion])
 
