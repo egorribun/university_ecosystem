@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 import {
   LayoutDashboard as DashboardIcon,
@@ -33,6 +33,67 @@ export function navScrollBehavior(prefersReducedMotion: boolean): ScrollBehavior
 }
 
 export const MOBILE_NAV_TRANSLATION_NAMESPACE = "navigation"
+
+type MobileKeyboardStore = {
+  subscribe: (listener: () => void) => () => void
+  getSnapshot: () => boolean
+  getServerSnapshot: () => boolean
+}
+
+function createMobileKeyboardStore(): MobileKeyboardStore {
+  let isOpen = false
+  let viewport: VisualViewport | null = null
+  let cleanup: (() => void) | null = null
+  const listeners = new Set<() => void>()
+
+  const notify = () => {
+    for (const listener of listeners) listener()
+  }
+
+  const syncKeyboardState = () => {
+    if (!viewport) return
+    const activeElement = document.activeElement
+    const next = shouldHideForVirtualKeyboard(
+      activeElement,
+      window.innerHeight,
+      viewport.height,
+      viewport.scale
+    )
+    if (next === isOpen) return
+    isOpen = next
+    notify()
+  }
+
+  const start = () => {
+    viewport = window.visualViewport ?? null
+    if (!viewport) return
+    syncKeyboardState()
+    viewport.addEventListener("resize", syncKeyboardState)
+    viewport.addEventListener("scroll", syncKeyboardState)
+    cleanup = () => {
+      viewport?.removeEventListener("resize", syncKeyboardState)
+      viewport?.removeEventListener("scroll", syncKeyboardState)
+      viewport = null
+      isOpen = false
+      cleanup = null
+    }
+  }
+
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener)
+    if (cleanup === null) start()
+    return () => {
+      listeners.delete(listener)
+      if (listeners.size === 0) cleanup?.()
+    }
+  }
+
+  return {
+    subscribe,
+    getSnapshot: () => isOpen,
+    getServerSnapshot: () => false,
+  }
+}
 
 export function mobileNavAriaHidden(isVirtualKeyboardOpen: boolean): true | undefined {
   return isVirtualKeyboardOpen ? true : undefined
@@ -73,7 +134,12 @@ export default function MobileBottomNav() {
   const { t } = useTranslation(MOBILE_NAV_TRANSLATION_NAMESPACE)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const deferredScrollFrame = useRef<number | null>(null)
-  const [isVirtualKeyboardOpen, setIsVirtualKeyboardOpen] = useState(false)
+  const [viewportStore] = useState(createMobileKeyboardStore)
+  const isVirtualKeyboardOpen = useSyncExternalStore(
+    viewportStore.subscribe,
+    viewportStore.getSnapshot,
+    viewportStore.getServerSnapshot
+  )
 
   // Wave 128 SW3 — useIsomorphicLayoutEffect picks useEffect on SSR
   // (avoids React's "useLayoutEffect does nothing on the server" warning
@@ -95,30 +161,6 @@ export default function MobileBottomNav() {
       }
     }
   }, [pathname, prefersReducedMotion])
-
-  useEffect(() => {
-    const viewport = window.visualViewport
-    if (!viewport) return
-
-    const syncKeyboardState = () => {
-      const activeElement = document.activeElement
-      setIsVirtualKeyboardOpen(
-        shouldHideForVirtualKeyboard(
-          activeElement,
-          window.innerHeight,
-          viewport.height,
-          viewport.scale
-        )
-      )
-    }
-    syncKeyboardState()
-    viewport.addEventListener("resize", syncKeyboardState)
-    viewport.addEventListener("scroll", syncKeyboardState)
-    return () => {
-      viewport.removeEventListener("resize", syncKeyboardState)
-      viewport.removeEventListener("scroll", syncKeyboardState)
-    }
-  }, [])
 
   const items = useMemo(() => createMobileNavItems(t), [t])
 

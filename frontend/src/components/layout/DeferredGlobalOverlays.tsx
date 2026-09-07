@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react"
+import { lazy, Suspense, useState, useSyncExternalStore } from "react"
 import OfflineIndicator from "@/components/feedback/OfflineIndicator"
 import { ensurePushMessageBridge } from "@/push/pushMessageBus"
 
@@ -57,21 +57,28 @@ const SearchDialog = lazy(async () => {
 const LivePushToasts = lazy(() => import("@/components/feedback/LivePushToasts"))
 const InstallPrompt = lazy(() => import("@/components/pwa/InstallPrompt"))
 
-/**
- * Mount optional global overlays in the first task after the initial React
- * commit. Rendering `null` on the server and on the first client render keeps
- * SSR/hydration markup identical. The timer is deliberately cleaned up so a
- * route transition or aborted document mount cannot retain work or update an
- * unmounted tree.
- */
-export function DeferredGlobalOverlays() {
-  const [ready, setReady] = useState(false)
+type DeferredOverlayStore = {
+  subscribe: (listener: () => void) => () => void
+  getSnapshot: () => boolean
+  getServerSnapshot: () => boolean
+}
 
-  useEffect(() => {
+function createDeferredOverlayStore(): DeferredOverlayStore {
+  let ready = false
+  let cleanup: (() => void) | null = null
+  const listeners = new Set<() => void>()
+
+  const notify = () => {
+    for (const listener of listeners) listener()
+  }
+
+  const start = () => {
     ensurePushMessageBridge()
-
-    const lifecycle = createDeferredMountLifecycle(() => setReady(true))
-    const commitReady = lifecycle.commit
+    const lifecycle = createDeferredMountLifecycle(() => {
+      if (ready) return
+      ready = true
+      notify()
+    })
     let timer: number | null = window.setTimeout(() => {
       timer = null
       const idleWindow = window as Window & {
@@ -82,12 +89,12 @@ export function DeferredGlobalOverlays() {
         idleHandle = idleWindow.requestIdleCallback(
           () => {
             idleHandle = null
-            commitReady()
+            lifecycle.commit()
           },
           { timeout: 2_000 }
         )
       } else {
-        commitReady()
+        lifecycle.commit()
       }
     }, DEFERRED_OVERLAY_DELAY_MS)
     let idleHandle: number | null = null
@@ -100,13 +107,13 @@ export function DeferredGlobalOverlays() {
       }
       cancelDeferredIdle(idleHandle, idleWindow.cancelIdleCallback)
       idleHandle = null
-      commitReady()
+      lifecycle.commit()
     }
     DEFERRED_INTERACTION_EVENTS.forEach((eventName) =>
       window.addEventListener(eventName, promoteOnInteraction, DEFERRED_INTERACTION_OPTIONS)
     )
 
-    return () => {
+    cleanup = () => {
       lifecycle.unmount()
       clearDeferredTimer(timer, window.clearTimeout)
       const idleWindow = window as Window & {
@@ -116,8 +123,39 @@ export function DeferredGlobalOverlays() {
       DEFERRED_INTERACTION_EVENTS.forEach((eventName) =>
         window.removeEventListener(eventName, promoteOnInteraction)
       )
+      timer = null
+      idleHandle = null
+      cleanup = null
+      ready = false
     }
-  }, [])
+  }
+
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener)
+    if (cleanup === null) start()
+    return () => {
+      listeners.delete(listener)
+      if (listeners.size === 0) cleanup?.()
+    }
+  }
+
+  return {
+    subscribe,
+    getSnapshot: () => ready,
+    getServerSnapshot: () => false,
+  }
+}
+
+/**
+ * Mount optional global overlays in the first task after the initial React
+ * commit. Rendering `null` on the server and on the first client render keeps
+ * SSR/hydration markup identical. The timer is deliberately cleaned up so a
+ * route transition or aborted document mount cannot retain work or update an
+ * unmounted tree.
+ */
+export function DeferredGlobalOverlays() {
+  const [store] = useState(createDeferredOverlayStore)
+  const ready = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)
 
   return (
     <>
