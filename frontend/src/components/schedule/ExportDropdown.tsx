@@ -16,6 +16,23 @@ interface ExportDropdownProps {
   className?: string
 }
 
+export function getExportMenuNextIndex(
+  index: number,
+  direction: "next" | "previous",
+  itemCount: number
+): number {
+  if (itemCount <= 0) return -1
+  return direction === "next" ? (index + 1) % itemCount : (index - 1 + itemCount) % itemCount
+}
+
+export function isExportItemDisabled(
+  hasGrid: boolean,
+  exporting: string | null,
+  itemId: string
+): boolean {
+  return !hasGrid || exporting === itemId
+}
+
 export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdownProps) {
   const { t } = useTranslation(["schedule"])
   const [open, setOpen] = useState(false)
@@ -50,10 +67,12 @@ export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdo
         )
         const focused = document.activeElement as HTMLElement
         const idx = items.indexOf(focused)
-        const next =
-          e.key === "ArrowDown"
-            ? items[(idx + 1) % items.length]
-            : items[(idx - 1 + items.length) % items.length]
+        const nextIndex = getExportMenuNextIndex(
+          idx,
+          e.key === "ArrowDown" ? "next" : "previous",
+          items.length
+        )
+        const next = items[nextIndex]
         next?.focus()
       }
     }
@@ -95,20 +114,21 @@ export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdo
     }
   }, [gridRef, t])
 
+  const hasGrid = Boolean(gridRef?.current)
   const items = [
     {
       id: "pdf",
       icon: FileText,
       label: t("schedule:export.pdf"),
       onClick: handleExportPdf,
-      disabled: !gridRef?.current,
+      disabled: isExportItemDisabled(hasGrid, exporting, "pdf"),
     },
     {
       id: "png",
       icon: Image,
       label: t("schedule:export.png"),
       onClick: handleExportPng,
-      disabled: !gridRef?.current,
+      disabled: isExportItemDisabled(hasGrid, exporting, "png"),
     },
     {
       id: "gcal",

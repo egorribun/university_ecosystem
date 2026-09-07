@@ -24,7 +24,11 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 
-import { ExportDropdown } from "@/components/schedule/ExportDropdown"
+import {
+  ExportDropdown,
+  getExportMenuNextIndex,
+  isExportItemDisabled,
+} from "@/components/schedule/ExportDropdown"
 import { logError } from "@/app/logger"
 
 function gridRefWithEl() {
@@ -45,6 +49,21 @@ describe("ExportDropdown — branches", () => {
     exportMocks.pdf.mockClear()
     exportMocks.pdf.mockResolvedValue({ success: true })
     vi.mocked(logError).mockClear()
+  })
+
+  it("keeps menu navigation and disabled-state predicates exact", () => {
+    expect(getExportMenuNextIndex(0, "next", 3)).toBe(1)
+    expect(getExportMenuNextIndex(2, "next", 3)).toBe(0)
+    expect(getExportMenuNextIndex(0, "previous", 3)).toBe(2)
+    expect(getExportMenuNextIndex(2, "previous", 3)).toBe(1)
+    expect(getExportMenuNextIndex(-1, "next", 3)).toBe(0)
+    expect(getExportMenuNextIndex(-1, "previous", 3)).toBe(1)
+    expect(getExportMenuNextIndex(0, "next", 0)).toBe(-1)
+
+    expect(isExportItemDisabled(false, null, "png")).toBe(true)
+    expect(isExportItemDisabled(true, null, "png")).toBe(false)
+    expect(isExportItemDisabled(true, "png", "png")).toBe(true)
+    expect(isExportItemDisabled(true, "pdf", "png")).toBe(false)
   })
 
   it("exports PNG via the dynamic-import path when a grid ref is present", async () => {
@@ -182,6 +201,33 @@ describe("ExportDropdown — branches", () => {
 
     fireEvent.keyDown(document, { key: "ArrowUp" })
     expect(document.activeElement).toBe(pdfItem)
+
+    fireEvent.keyDown(document, { key: "ArrowUp" })
+    expect(document.activeElement).toBe(
+      screen.getByRole("menuitem", { name: "schedule:export.googleCalendar" })
+    )
+
+    const gcalItem = screen.getByRole("menuitem", { name: "schedule:export.googleCalendar" })
+    gcalItem.focus()
+    fireEvent.keyDown(document, { key: "ArrowDown" })
+    expect(document.activeElement).toBe(pdfItem)
+  })
+
+  it("marks the active export item busy until its promise settles", async () => {
+    const user = userEvent.setup()
+    let resolveExport!: (result: ExportResult) => void
+    exportMocks.png.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveExport = resolve))
+    )
+    render(<ExportDropdown gridRef={gridRefWithEl()} />)
+    await user.click(trigger())
+    await user.click(screen.getByRole("menuitem", { name: "schedule:export.png" }))
+
+    const pngItem = screen.getByRole("menuitem", { name: "schedule:export.png" })
+    await waitFor(() => expect(pngItem).toBeDisabled())
+    expect(pngItem.querySelector(".animate-spin")).toBeInTheDocument()
+    resolveExport({ success: true })
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
   })
 
   it("closes the menu on outside mousedown (outside-click effect)", async () => {
