@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   mediaValues: [false, false] as boolean[],
   mediaCallIndex: 0,
   mediaCalls: [] as string[],
+  translationNamespaces: [] as unknown[],
 }))
 
 vi.mock("framer-motion", async () => {
@@ -71,15 +72,32 @@ vi.mock("@/hooks/useMediaQuery", () => ({
 }))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: (namespaces?: string[]) => ({
-    t: (key: string, options?: Record<string, unknown>) =>
-      options ? `${key}|${JSON.stringify(options)}` : key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-    namespaces,
-  }),
+  useTranslation: (namespaces?: string[]) => {
+    state.translationNamespaces.push(namespaces)
+    return {
+      t: (key: string, options?: Record<string, unknown>) =>
+        options ? `${key}|${JSON.stringify(options)}` : key,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+      namespaces,
+    }
+  },
 }))
 
-import { NowPlayingCard } from "@/components/profile/NowPlayingCard"
+import {
+  clampNowPlayingProgress,
+  getNowPlayingInitial,
+  getNowPlayingProgressTransition,
+  getNowPlayingTrackKey,
+  getNowPlayingTrackTime,
+  getNowPlayingTransition,
+  isNowPlayingImageVisible,
+  isNowPlayingResumed,
+  NowPlayingCard,
+  shouldAnimateNowPlaying,
+  shouldSyncNowPlayingState,
+  shouldUseNowPlayingImage,
+  shouldUseNowPlayingImageHover,
+} from "@/components/profile/NowPlayingCard"
 
 const makeData = (overrides: Partial<NowPlaying> = {}): NowPlaying =>
   ({
@@ -99,9 +117,70 @@ beforeEach(() => {
   state.mediaValues = [false, false]
   state.mediaCallIndex = 0
   state.mediaCalls.length = 0
+  state.translationNamespaces.length = 0
 })
 
 describe("NowPlayingCard mutation contracts", () => {
+  it("keeps the pure progress, playback and motion contracts explicit", () => {
+    expect(clampNowPlayingProgress(null, 125_000)).toBe(0)
+    expect(clampNowPlayingProgress(undefined, 125_000)).toBe(0)
+    expect(clampNowPlayingProgress(Number.NaN, 125_000)).toBe(0)
+    expect(clampNowPlayingProgress(5_000, 0)).toBe(5_000)
+    expect(clampNowPlayingProgress(-5_000, -1)).toBe(0)
+    expect(clampNowPlayingProgress(200_000, 125_000)).toBe(125_000)
+
+    expect(getNowPlayingTrackKey(undefined)).toBeNull()
+    expect(getNowPlayingTrackKey(null)).toBeNull()
+    expect(getNowPlayingTrackKey("track-1")).toBe("track-1")
+    expect(isNowPlayingResumed(true, false)).toBe(true)
+    expect(isNowPlayingResumed(false, false)).toBe(false)
+    expect(isNowPlayingResumed(true, true)).toBe(false)
+    expect(shouldSyncNowPlayingState(false, false, false)).toBe(false)
+    expect(shouldSyncNowPlayingState(true, false, false)).toBe(true)
+    expect(shouldSyncNowPlayingState(false, true, false)).toBe(true)
+    expect(shouldSyncNowPlayingState(false, false, true)).toBe(true)
+
+    expect(shouldAnimateNowPlaying(true, true, false, false, 125_000)).toBe(false)
+    expect(shouldAnimateNowPlaying(false, true, false, false, 125_000)).toBe(true)
+    expect(shouldAnimateNowPlaying(false, false, false, false, 125_000)).toBe(false)
+    expect(shouldAnimateNowPlaying(false, true, true, false, 125_000)).toBe(false)
+    expect(shouldAnimateNowPlaying(false, true, false, true, 125_000)).toBe(false)
+    expect(shouldAnimateNowPlaying(false, true, false, false, 0)).toBe(false)
+
+    expect(getNowPlayingProgressTransition(true, false, false)).toContain("linear")
+    expect(getNowPlayingProgressTransition(false, false, false)).toContain("ease-out")
+    expect(getNowPlayingProgressTransition(true, true, false)).toContain("ease-out")
+    expect(getNowPlayingProgressTransition(true, false, true)).toContain("ease-out")
+    expect(getNowPlayingInitial(true, false, false)).toBe(false)
+    expect(getNowPlayingInitial(false, true, false)).toBe(false)
+    expect(getNowPlayingInitial(false, false, true)).toBe(false)
+    expect(getNowPlayingInitial(false, false, false)).toEqual({
+      y: expect.anything(),
+      opacity: 0.8,
+      scale: 1,
+    })
+    expect(getNowPlayingTransition(true)).toEqual({ duration: 0 })
+    expect(getNowPlayingTransition(false)).toEqual({
+      type: "spring",
+      stiffness: 520,
+      damping: 36,
+      mass: 0.9,
+    })
+
+    expect(shouldUseNowPlayingImage(null, false)).toBe(false)
+    expect(shouldUseNowPlayingImage("cover.jpg", false)).toBe(true)
+    expect(shouldUseNowPlayingImage("cover.jpg", true)).toBe(false)
+    expect(shouldUseNowPlayingImageHover(false, false)).toBe(true)
+    expect(shouldUseNowPlayingImageHover(true, false)).toBe(false)
+    expect(shouldUseNowPlayingImageHover(false, true)).toBe(false)
+    expect(isNowPlayingImageVisible(false, null, false)).toBe(true)
+    expect(isNowPlayingImageVisible(false, "cover.jpg", false)).toBe(false)
+    expect(isNowPlayingImageVisible(true, "cover.jpg", false)).toBe(true)
+    expect(isNowPlayingImageVisible(false, "cover.jpg", true)).toBe(true)
+    expect(getNowPlayingTrackTime(-1_000)).toBe("0:00")
+    expect(getNowPlayingTrackTime(61_000)).toBe("1:01")
+  })
+
   it("passes the exact media queries and profile translation namespace", () => {
     render(<NowPlayingCard data={makeData({ album_image_url: null })} />)
 
@@ -109,6 +188,7 @@ describe("NowPlayingCard mutation contracts", () => {
     expect(state.mediaCalls.every((query) => query === "(prefers-reduced-motion: reduce)")).toBe(
       true
     )
+    expect(state.translationNamespaces).toContainEqual(["profile"])
     expect(screen.getByRole("link")).toHaveAttribute(
       "aria-label",
       'profile:nowPlaying.openSpotifyWithTrack|{"track":"Track name"}'
