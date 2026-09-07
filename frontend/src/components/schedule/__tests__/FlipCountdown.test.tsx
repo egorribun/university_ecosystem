@@ -1,20 +1,28 @@
 import { act, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+const translationMocks = vi.hoisted(() => ({
+  useTranslation: vi.fn(() => ({
     t: (key: string, opts?: Record<string, unknown>) =>
       opts && "mins" in opts && "secs" in opts ? `${key}:${opts.mins}:${opts.secs}` : key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  })),
+}))
+
+vi.mock("react-i18next", () => ({
+  useTranslation: translationMocks.useTranslation,
 }))
 
 import {
   FlipCountdown,
+  createFlipResetCleanup,
   getSecondsUntilTarget,
+  invokeCountdownCompletion,
   isCountdownUrgent,
   padTwo,
+  shouldCompleteCountdown,
   shouldFlipDigit,
+  shouldRenderFlipFlaps,
   shouldTickCountdown,
 } from "@/components/schedule/FlipCountdown"
 
@@ -40,6 +48,14 @@ describe("FlipCountdown", () => {
     expect(shouldFlipDigit("5", "5")).toBe(false)
     expect(shouldTickCountdown("visible")).toBe(true)
     expect(shouldTickCountdown("hidden")).toBe(false)
+    expect(shouldCompleteCountdown(0)).toBe(true)
+    expect(shouldCompleteCountdown(1)).toBe(false)
+    const completion = vi.fn()
+    invokeCountdownCompletion(completion)
+    invokeCountdownCompletion(undefined)
+    expect(completion).toHaveBeenCalledTimes(1)
+    expect(shouldRenderFlipFlaps(true)).toBe(true)
+    expect(shouldRenderFlipFlaps(false)).toBe(false)
     expect(isCountdownUrgent(0)).toBe(false)
     expect(isCountdownUrgent(1)).toBe(true)
     expect(isCountdownUrgent(300)).toBe(true)
@@ -60,6 +76,7 @@ describe("FlipCountdown", () => {
     expect(screen.getByLabelText("0 schedule:countdown.tensOfSeconds")).toBeInTheDocument()
     expect(screen.getByLabelText("5 schedule:countdown.unitSeconds")).toBeInTheDocument()
     expect(screen.getByText(":")).toBeInTheDocument()
+    expect(translationMocks.useTranslation).toHaveBeenCalledWith(["schedule"])
   })
 
   it("marks the timer urgent within the last 5 minutes", () => {
@@ -98,6 +115,20 @@ describe("FlipCountdown", () => {
     expect(container.querySelector(".sched-flip-active")).not.toBeInTheDocument()
   })
 
+  it("cancels a stale digit animation timer when the digit changes again", () => {
+    const reset = vi.fn()
+    const cancel = createFlipResetCleanup(reset, 500)
+    cancel()
+    act(() => vi.advanceTimersByTime(500))
+    expect(reset).not.toHaveBeenCalled()
+
+    createFlipResetCleanup(reset, 500)
+    act(() => vi.advanceTimersByTime(499))
+    expect(reset).not.toHaveBeenCalled()
+    act(() => vi.advanceTimersByTime(1))
+    expect(reset).toHaveBeenCalledTimes(1)
+  })
+
   it("fires onComplete when the countdown reaches zero", () => {
     const onComplete = vi.fn()
     // 1s left so a single tick hits zero deterministically.
@@ -125,6 +156,18 @@ describe("FlipCountdown", () => {
     // Still 5s left — interval body early-returns when hidden
     expect(screen.getByLabelText("5 schedule:countdown.unitSeconds")).toBeInTheDocument()
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+  })
+
+  it("restarts its interval when the target lesson changes", () => {
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval")
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval")
+    const { rerender } = render(<FlipCountdown targetMinutes={600} />)
+    const initialSetCalls = setIntervalSpy.mock.calls.length
+    rerender(<FlipCountdown targetMinutes={700} />)
+    expect(setIntervalSpy.mock.calls.length).toBe(initialSetCalls + 1)
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(1)
+    setIntervalSpy.mockRestore()
+    clearIntervalSpy.mockRestore()
   })
 
   it("uses the latest completion callback and tolerates an omitted callback", () => {

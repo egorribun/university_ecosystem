@@ -36,6 +36,23 @@ export function isCountdownUrgent(secondsLeft: number): boolean {
   return secondsLeft > 0 && secondsLeft <= 300
 }
 
+export function shouldRenderFlipFlaps(flipping: boolean): boolean {
+  return flipping
+}
+
+export function shouldCompleteCountdown(secondsLeft: number): boolean {
+  return secondsLeft === 0
+}
+
+export function invokeCountdownCompletion(onComplete: (() => void) | undefined): void {
+  onComplete?.()
+}
+
+export function createFlipResetCleanup(onReset: () => void, durationMs: number): () => void {
+  const timer = setTimeout(onReset, durationMs)
+  return () => clearTimeout(timer)
+}
+
 function FlipDigit({ value, label }: { value: string; label: string }) {
   const [current, setCurrent] = useState(value)
   const [previous, setPrevious] = useState(value)
@@ -50,8 +67,7 @@ function FlipDigit({ value, label }: { value: string; label: string }) {
       setFlipping(true)
       // Duration synced with CSS --sched-flip-duration (FIX-69-03)
       const FLIP_DURATION_MS = 500
-      const timer = setTimeout(() => setFlipping(false), FLIP_DURATION_MS)
-      return () => clearTimeout(timer)
+      return createFlipResetCleanup(() => setFlipping(false), FLIP_DURATION_MS)
     }
   }, [value])
 
@@ -67,13 +83,13 @@ function FlipDigit({ value, label }: { value: string; label: string }) {
           <span>{current}</span>
         </div>
         {/* Animated top flap — flips down from previous to current */}
-        {flipping && (
+        {shouldRenderFlipFlaps(flipping) && (
           <div className="sched-flip-top-flap">
             <span>{previous}</span>
           </div>
         )}
         {/* Animated bottom flap — reveals current value */}
-        {flipping && (
+        {shouldRenderFlipFlaps(flipping) && (
           <div className="sched-flip-bottom-flap">
             <span>{current}</span>
           </div>
@@ -100,7 +116,7 @@ export function FlipCountdown({ targetMinutes, onComplete, className }: FlipCoun
       if (!shouldTickCountdown(document.visibilityState)) return
       setSecondsLeft((prev) => {
         const next = Math.max(0, prev - 1)
-        if (next === 0) onCompleteRef.current?.()
+        if (shouldCompleteCountdown(next)) invokeCountdownCompletion(onCompleteRef.current)
         return next
       })
     }, 1000)

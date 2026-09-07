@@ -8,6 +8,12 @@ const exportMocks = vi.hoisted(() => ({
   png: vi.fn<() => Promise<ExportResult>>(() => Promise.resolve({ success: true })),
   pdf: vi.fn<() => Promise<ExportResult>>(() => Promise.resolve({ success: true })),
 }))
+const translationMocks = vi.hoisted(() => ({
+  useTranslation: vi.fn(() => ({
+    t: (key: string) => key,
+    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+  })),
+}))
 
 vi.mock("@/utils/scheduleExport", () => ({
   exportScheduleAsPng: exportMocks.png,
@@ -18,16 +24,18 @@ vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: translationMocks.useTranslation,
 }))
 
 import {
   ExportDropdown,
   getExportMenuNextIndex,
+  getExportChevronClass,
+  getExportMenuMotion,
   isExportItemDisabled,
+  shouldHandleExportMenuKey,
+  shouldListenForExportMenu,
+  shouldShowExportSpinner,
 } from "@/components/schedule/ExportDropdown"
 import { logError } from "@/app/logger"
 
@@ -49,6 +57,7 @@ describe("ExportDropdown — branches", () => {
     exportMocks.pdf.mockClear()
     exportMocks.pdf.mockResolvedValue({ success: true })
     vi.mocked(logError).mockClear()
+    translationMocks.useTranslation.mockClear()
   })
 
   it("keeps menu navigation and disabled-state predicates exact", () => {
@@ -64,6 +73,42 @@ describe("ExportDropdown — branches", () => {
     expect(isExportItemDisabled(true, null, "png")).toBe(false)
     expect(isExportItemDisabled(true, "png", "png")).toBe(true)
     expect(isExportItemDisabled(true, "pdf", "png")).toBe(false)
+    expect(getExportMenuNextIndex(0, "next", -1)).toBe(-1)
+    expect(shouldHandleExportMenuKey("ArrowDown")).toBe(true)
+    expect(shouldHandleExportMenuKey("ArrowUp")).toBe(true)
+    expect(shouldHandleExportMenuKey("Tab")).toBe(false)
+    expect(shouldListenForExportMenu(true)).toBe(true)
+    expect(shouldListenForExportMenu(false)).toBe(false)
+    expect(shouldShowExportSpinner(undefined, null)).toBe(false)
+    expect(shouldShowExportSpinner(false, "png")).toBe(true)
+    expect(shouldShowExportSpinner(true, null)).toBe(true)
+    expect(getExportChevronClass(false)).toBe(
+      "shrink-0 opacity-50 transition-transform duration-200 "
+    )
+    expect(getExportChevronClass(true)).toBe(
+      "shrink-0 opacity-50 transition-transform duration-200 rotate-180"
+    )
+    expect(getExportMenuMotion()).toEqual({
+      initial: { opacity: 0, y: -4, scale: 0.95 },
+      animate: { opacity: 1, y: 0, scale: 1 },
+      exit: { opacity: 0, y: -4, scale: 0.95 },
+      transition: { duration: 0.15 },
+    })
+  })
+
+  it("passes the schedule namespace to i18next and stays idle without a spinner", () => {
+    render(<ExportDropdown />)
+    expect(translationMocks.useTranslation).toHaveBeenCalledWith(["schedule"])
+    expect(trigger().querySelector(".animate-spin")).not.toBeInTheDocument()
+  })
+
+  it("publishes stable export-format identifiers for each menu item", async () => {
+    const user = userEvent.setup()
+    render(<ExportDropdown gridRef={gridRefWithEl()} />)
+    await user.click(trigger())
+    expect(
+      Array.from(screen.getAllByRole("menuitem"), (item) => item.getAttribute("data-export-format"))
+    ).toEqual(["pdf", "png", "gcal"])
   })
 
   it("exports PNG via the dynamic-import path when a grid ref is present", async () => {
@@ -76,6 +121,18 @@ describe("ExportDropdown — branches", () => {
     // Menu closes in the finally block after a successful export.
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
     expect(logError).not.toHaveBeenCalled()
+  })
+
+  it("uses a replacement grid ref after rerendering", async () => {
+    const user = userEvent.setup()
+    const firstRef = gridRefWithEl()
+    const secondRef = gridRefWithEl()
+    const { rerender } = render(<ExportDropdown gridRef={firstRef} />)
+    rerender(<ExportDropdown gridRef={secondRef} />)
+    await user.click(trigger())
+    await user.click(screen.getByRole("menuitem", { name: "schedule:export.png" }))
+
+    await waitFor(() => expect(exportMocks.png).toHaveBeenCalledWith(secondRef.current))
   })
 
   it("logs when PNG export returns a non-success result", async () => {
@@ -108,6 +165,28 @@ describe("ExportDropdown — branches", () => {
 
     await waitFor(() => expect(exportMocks.pdf).toHaveBeenCalledTimes(1))
     expect(exportMocks.pdf).toHaveBeenCalledWith(expect.any(HTMLElement), "schedule:title.default")
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
+  })
+
+  it("keeps the PDF item busy until the PDF promise settles", async () => {
+    const user = userEvent.setup()
+    let resolveExport!: (result: ExportResult) => void
+    exportMocks.pdf.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveExport = resolve))
+    )
+    render(<ExportDropdown gridRef={gridRefWithEl()} />)
+    await user.click(trigger())
+    await user.click(screen.getByRole("menuitem", { name: "schedule:export.pdf" }))
+
+    const pdfItem = screen.getByRole("menuitem", { name: "schedule:export.pdf" })
+    const pngItem = screen.getByRole("menuitem", { name: "schedule:export.png" })
+    await waitFor(() => expect(pdfItem).toBeDisabled())
+    expect(pdfItem).toHaveAttribute("data-export-format", "pdf")
+    expect(pdfItem.querySelector(".animate-spin")).toBeInTheDocument()
+    expect(pngItem).toBeEnabled()
+    expect(pngItem.querySelector(".animate-spin")).not.toBeInTheDocument()
+    expect(pngItem.querySelector("svg")).toBeInTheDocument()
+    resolveExport({ success: true })
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
   })
 
@@ -149,6 +228,20 @@ describe("ExportDropdown — branches", () => {
     openSpy.mockRestore()
   })
 
+  it("rotates the chevron only while the menu is open and preserves custom classes", async () => {
+    const user = userEvent.setup()
+    render(<ExportDropdown className="custom-export" gridRef={gridRefWithEl()} />)
+    const button = trigger()
+    expect(button.parentElement).toHaveClass("custom-export")
+    expect(button.parentElement).toHaveClass("relative", "z-30")
+    expect(button.querySelector("svg")).not.toHaveClass("rotate-180")
+    await user.click(button)
+    const icons = screen
+      .getByRole("button", { name: /schedule:toolbar.export/ })
+      .querySelectorAll("svg")
+    expect(icons[icons.length - 1]).toHaveClass("rotate-180")
+  })
+
   it("PNG export is a no-op when there is no grid ref (early return)", async () => {
     const user = userEvent.setup()
     render(<ExportDropdown />)
@@ -181,9 +274,34 @@ describe("ExportDropdown — branches", () => {
     render(<ExportDropdown gridRef={gridRefWithEl()} />)
     await user.click(trigger())
 
-    fireEvent.keyDown(document, { key: "Tab" })
+    const event = new KeyboardEvent("keydown", { key: "Tab", cancelable: true })
+    document.dispatchEvent(event)
 
     expect(screen.getByRole("menu")).toBeInTheDocument()
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it("removes outside and keyboard listeners after the menu closes", async () => {
+    const addSpy = vi.spyOn(document, "addEventListener")
+    const removeSpy = vi.spyOn(document, "removeEventListener")
+    const user = userEvent.setup()
+    render(<ExportDropdown gridRef={gridRefWithEl()} />)
+    await user.click(trigger())
+    await user.click(trigger())
+    expect(removeSpy).toHaveBeenCalledWith("mousedown", expect.any(Function))
+    expect(removeSpy).toHaveBeenCalledWith("keydown", expect.any(Function))
+    expect(addSpy).toHaveBeenCalledWith("mousedown", expect.any(Function))
+    expect(addSpy).toHaveBeenCalledWith("keydown", expect.any(Function))
+    addSpy.mockRestore()
+    removeSpy.mockRestore()
+  })
+
+  it("applies the complete menu animation contract", async () => {
+    const user = userEvent.setup()
+    render(<ExportDropdown gridRef={gridRefWithEl()} />)
+    await user.click(trigger())
+    const menu = screen.getByRole("menu")
+    expect(menu).toHaveClass("sched-export-dropdown")
   })
 
   it("navigates menu items with ArrowDown / ArrowUp (keydown effect arrow branch)", async () => {
@@ -224,8 +342,12 @@ describe("ExportDropdown — branches", () => {
     await user.click(screen.getByRole("menuitem", { name: "schedule:export.png" }))
 
     const pngItem = screen.getByRole("menuitem", { name: "schedule:export.png" })
+    const pdfItem = screen.getByRole("menuitem", { name: "schedule:export.pdf" })
     await waitFor(() => expect(pngItem).toBeDisabled())
     expect(pngItem.querySelector(".animate-spin")).toBeInTheDocument()
+    expect(pdfItem).toBeEnabled()
+    expect(pdfItem.querySelector(".animate-spin")).not.toBeInTheDocument()
+    expect(pdfItem.querySelector("svg")).toBeInTheDocument()
     resolveExport({ success: true })
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
   })
