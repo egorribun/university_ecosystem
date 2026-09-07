@@ -71,9 +71,13 @@ describe("BackToTop mutation contract", () => {
 
     rerender(<BackToTop />)
 
-    expect(addEventListener.mock.calls.filter(([type]) => type === "scroll")).toHaveLength(1)
+    expect(addEventListener.mock.calls.filter(([type]) => String(type) === "scroll")).toHaveLength(
+      1
+    )
     unmount()
-    expect(removeEventListener.mock.calls.filter(([type]) => type === "scroll")).toHaveLength(1)
+    expect(
+      removeEventListener.mock.calls.filter(([type]) => String(type) === "scroll")
+    ).toHaveLength(1)
   })
 
   it("creates and observes the footer once across rerenders", () => {

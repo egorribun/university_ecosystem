@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createElement, type ReactNode } from "react"
 
@@ -191,9 +191,11 @@ describe("ScrollReveal", () => {
     expect(observers[0]?.disconnect).toHaveBeenCalledOnce()
   })
 
-  it("stops observing after becoming visible", () => {
+  it("stops observing after becoming visible", async () => {
     const { rerender } = render(<ScrollReveal>once</ScrollReveal>)
     trigger(0, [{ isIntersecting: true } as IntersectionObserverEntry])
+    await waitFor(() => expect(motionState.props.at(-1)?.animate).toBe("visible"))
+    expect(observers).toHaveLength(1)
     const count = observers.length
 
     rerender(<ScrollReveal>still visible</ScrollReveal>)

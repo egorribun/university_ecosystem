@@ -88,18 +88,19 @@ export const ScrollReveal = ({
 
   useEffect(() => {
     const el = ref.current
-    if (!shouldObserveScrollReveal(el, isVisible)) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          setIsVisible(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin: viewportMargin }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
+    if (shouldObserveScrollReveal(el, isVisible)) {
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry?.isIntersecting) {
+            setIsVisible(true)
+            observer.disconnect()
+          }
+        },
+        { rootMargin: viewportMargin }
+      )
+      observer.observe(el)
+      return () => observer.disconnect()
+    }
   }, [isVisible, viewportMargin])
 
   // Determine transition based on mode
