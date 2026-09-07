@@ -18,7 +18,14 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
   const [copied, setCopied] = useState(false)
   const [showTooltip, setShowTooltip] = useState(false)
 
-  const normalizedSecret = useMemo(() => secret.replace(/\s+/g, "").toUpperCase(), [secret])
+  const normalizedSecret = useMemo(
+    () =>
+      Array.from(secret)
+        .filter((character) => character.trim().length > 0)
+        .join("")
+        .toUpperCase(),
+    [secret]
+  )
 
   const handleCopy = useCallback(async () => {
     try {
