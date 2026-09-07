@@ -169,6 +169,15 @@ def test_configure_logging_json_preserves_serializer_and_foreign_chain():
         formatter_kwargs = formatter.call_args.kwargs
         foreign_pre_chain = formatter_kwargs["foreign_pre_chain"]
         assert structlog.processors.format_exc_info in foreign_pre_chain
+        stream_handlers = [
+            handler
+            for handler in logging.getLogger().handlers
+            if isinstance(handler, logging.StreamHandler)
+        ]
+        assert stream_handlers
+        assert all(
+            handler.formatter is formatter.return_value for handler in stream_handlers
+        )
     finally:
         for handler, previous_formatter in handlers:
             handler.setFormatter(previous_formatter)
