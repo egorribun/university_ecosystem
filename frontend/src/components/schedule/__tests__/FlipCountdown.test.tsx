@@ -9,7 +9,14 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 
-import { FlipCountdown } from "@/components/schedule/FlipCountdown"
+import {
+  FlipCountdown,
+  getSecondsUntilTarget,
+  isCountdownUrgent,
+  padTwo,
+  shouldFlipDigit,
+  shouldTickCountdown,
+} from "@/components/schedule/FlipCountdown"
 
 describe("FlipCountdown", () => {
   beforeEach(() => {
@@ -21,6 +28,22 @@ describe("FlipCountdown", () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it("keeps pure countdown formatting and boundary contracts exact", () => {
+    expect(padTwo(0)).toBe("00")
+    expect(padTwo(9)).toBe("09")
+    expect(padTwo(10)).toBe("10")
+    expect(getSecondsUntilTarget(600, new Date(2026, 5, 16, 9, 59, 55))).toBe(5)
+    expect(getSecondsUntilTarget(500, new Date(2026, 5, 16, 10, 0, 0))).toBe(0)
+    expect(shouldFlipDigit("4", "5")).toBe(true)
+    expect(shouldFlipDigit("5", "5")).toBe(false)
+    expect(shouldTickCountdown("visible")).toBe(true)
+    expect(shouldTickCountdown("hidden")).toBe(false)
+    expect(isCountdownUrgent(0)).toBe(false)
+    expect(isCountdownUrgent(1)).toBe(true)
+    expect(isCountdownUrgent(300)).toBe(true)
+    expect(isCountdownUrgent(301)).toBe(false)
   })
 
   it("renders the timer region with MM:SS flip digits and aria-label", () => {
@@ -55,14 +78,22 @@ describe("FlipCountdown", () => {
     const { container } = render(<FlipCountdown targetMinutes={600} />)
     // starts at 5s → units digit "5"
     expect(screen.getByLabelText("5 schedule:countdown.unitSeconds")).toBeInTheDocument()
+    expect(container.querySelector(".sched-flip-digit")).toBeInTheDocument()
+    expect(container.querySelector(".sched-flip-top-flap")).not.toBeInTheDocument()
     act(() => {
       vi.advanceTimersByTime(1000)
     })
     // now 4s → units digit "4", flip flap shows previous "5"
     expect(screen.getByLabelText("4 schedule:countdown.unitSeconds")).toBeInTheDocument()
     expect(container.querySelector(".sched-flip-active")).toBeInTheDocument()
+    expect(container.querySelector(".sched-flip-top-flap span")).toHaveTextContent("5")
+    expect(container.querySelector(".sched-flip-bottom-flap span")).toHaveTextContent("4")
     act(() => {
-      vi.advanceTimersByTime(600)
+      vi.advanceTimersByTime(499)
+    })
+    expect(container.querySelector(".sched-flip-active")).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(1)
     })
     expect(container.querySelector(".sched-flip-active")).not.toBeInTheDocument()
   })
@@ -94,6 +125,32 @@ describe("FlipCountdown", () => {
     // Still 5s left — interval body early-returns when hidden
     expect(screen.getByLabelText("5 schedule:countdown.unitSeconds")).toBeInTheDocument()
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+  })
+
+  it("uses the latest completion callback and tolerates an omitted callback", () => {
+    const first = vi.fn()
+    const latest = vi.fn()
+    vi.setSystemTime(new Date(2026, 5, 16, 9, 59, 59))
+    const { rerender } = render(<FlipCountdown targetMinutes={600} onComplete={first} />)
+    rerender(<FlipCountdown targetMinutes={600} onComplete={latest} />)
+    act(() => vi.advanceTimersByTime(1000))
+    expect(first).not.toHaveBeenCalled()
+    expect(latest).toHaveBeenCalledTimes(1)
+
+    expect(() => {
+      vi.setSystemTime(new Date(2026, 5, 16, 9, 59, 59))
+      render(<FlipCountdown targetMinutes={600} />)
+      act(() => vi.advanceTimersByTime(1000))
+    }).not.toThrow()
+  })
+
+  it("clears its interval when unmounted", () => {
+    const onComplete = vi.fn()
+    vi.setSystemTime(new Date(2026, 5, 16, 9, 59, 59))
+    const { unmount } = render(<FlipCountdown targetMinutes={600} onComplete={onComplete} />)
+    unmount()
+    act(() => vi.advanceTimersByTime(2000))
+    expect(onComplete).not.toHaveBeenCalled()
   })
 
   it("applies a custom className to the timer container", () => {
