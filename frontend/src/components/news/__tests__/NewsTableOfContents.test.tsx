@@ -128,6 +128,7 @@ describe("NewsTableOfContents", () => {
     expect(screen.getByRole("button", { name: "Background" })).toHaveClass("font-semibold")
 
     await user.click(screen.getByRole("button", { name: "Methodology" }))
+    expect(screen.getByRole("button", { name: "Background" })).toHaveClass("font-semibold")
     rerender(<NewsTableOfContents headings={[...HEADINGS]} />)
     expect(observerState.disconnects[0]).toHaveBeenCalled()
     document.body.removeChild(firstTarget)

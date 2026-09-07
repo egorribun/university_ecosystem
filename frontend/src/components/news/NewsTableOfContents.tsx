@@ -55,11 +55,11 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
   const scrollToHeading = useCallback(
     (id: string) => {
       const el = document.getElementById(id)
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" })
-        setActiveId(id)
-        if (!isDesktop) setCollapsed(true)
-      }
+      if (!el) return
+
+      el.scrollIntoView({ behavior: "smooth", block: "start" })
+      setActiveId(id)
+      if (!isDesktop) setCollapsed(true)
     },
     [isDesktop]
   )

@@ -40,7 +40,10 @@ vi.mock("@/components/media/SmartImage", () => ({
   ),
 }))
 
-import { NewsDetailEditDialog } from "@/components/news/NewsDetailEditDialog"
+import {
+  getSelectedNewsImageFile,
+  NewsDetailEditDialog,
+} from "@/components/news/NewsDetailEditDialog"
 
 const initialData = {
   title: "Запуск новой кампусной экосистемы",
@@ -188,6 +191,15 @@ describe("NewsDetailEditDialog mutation contracts", () => {
 
     createObjectURL.mockRestore()
     revokeObjectURL.mockRestore()
+  })
+
+  it("normalizes missing and empty file selections before preview work", () => {
+    const file = new File(["image"], "image.png", { type: "image/png" })
+
+    expect(getSelectedNewsImageFile(undefined)).toBeUndefined()
+    expect(getSelectedNewsImageFile(null)).toBeUndefined()
+    expect(getSelectedNewsImageFile([] as unknown as FileList)).toBeUndefined()
+    expect(getSelectedNewsImageFile([file] as unknown as FileList)).toBe(file)
   })
 
   it("shows deterministic saving state and updates the cache with edited fields", async () => {

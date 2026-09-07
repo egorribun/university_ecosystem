@@ -47,6 +47,12 @@ interface NewsDetailEditDialogProps {
   onError: (message: string) => void
 }
 
+/** Return the first selected image, treating every empty input state uniformly. */
+export function getSelectedNewsImageFile(files: FileList | null | undefined): File | undefined {
+  if (!files || files.length === 0) return undefined
+  return files[0]
+}
+
 export function NewsDetailEditDialog({
   open,
   onClose,
@@ -93,7 +99,7 @@ export function NewsDetailEditDialog({
   }, [resetPreview, onClose])
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+    const file = getSelectedNewsImageFile(event.target.files)
     if (!file) return
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setNewImage(file)
