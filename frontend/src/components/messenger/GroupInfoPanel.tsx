@@ -57,7 +57,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const [isEditingName, setIsEditingName] = useState(false)
-  const [nameDraft, setNameDraft] = useState("")
+  const [nameDraft, setNameDraft] = useState<string | undefined>()
   const [showAddSearch, setShowAddSearch] = useState(false)
   const [search, setSearch] = useState("")
   const debouncedSearch = useDebounced(search, "search")
@@ -85,7 +85,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
   useEffect(() => {
     if (open) return
     setIsEditingName(false)
-    setNameDraft("")
+    setNameDraft(undefined)
     setShowAddSearch(false)
     setSearch("")
   }, [open])
@@ -112,11 +112,11 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
   const addableResults = searchResults.filter((u) => !memberIds.has(String(u.id)))
 
   const startRename = () => {
-    setNameDraft(chat?.name ?? "")
+    setNameDraft(chat?.name ?? undefined)
     setIsEditingName(true)
   }
   const saveRename = () => {
-    const trimmed = nameDraft.trim()
+    const trimmed = nameDraft?.trim()
     if (trimmed) onRename(trimmed)
     setIsEditingName(false)
   }
@@ -174,7 +174,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
-                      value={nameDraft}
+                      value={nameDraft ?? ""}
                       onChange={(e) => setNameDraft(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") saveRename()
@@ -189,7 +189,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                     <button
                       type="button"
                       onClick={saveRename}
-                      disabled={isRenaming || !nameDraft.trim()}
+                      disabled={isRenaming || !nameDraft?.trim()}
                       aria-label={t("common:buttons.save")}
                       className="messenger-send-btn flex size-11 shrink-0 items-center justify-center rounded-full text-(--color-white) disabled:opacity-medium disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                     >
