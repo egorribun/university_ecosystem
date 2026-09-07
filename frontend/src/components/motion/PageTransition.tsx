@@ -1,4 +1,4 @@
-import { FC, ReactNode, useEffect, useRef, useState } from "react"
+import { FC, ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { DURATIONS, EASING } from "@/utils/motion"
 
 type Props = { children: ReactNode }
@@ -39,15 +39,18 @@ const PageTransition: FC<Props> = ({ children }) => {
   const [isInitialPaint] = useState(() => !didPaint)
   const [reduceMotion, setReduceMotion] = useState(getInitialReduceMotion)
   const mediaCleanupRef = useRef<(() => void) | null>(null)
-  const lifecycleRef = useRef<(node: HTMLDivElement | null) => void>((node) => {
-    if (node === null) {
-      mediaCleanupRef.current?.()
-      mediaCleanupRef.current = null
-      return
-    }
+  const lifecycleRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node === null) {
+        mediaCleanupRef.current?.()
+        mediaCleanupRef.current = null
+        return
+      }
 
-    didPaint = true
-  }).current
+      didPaint = true
+    },
+    [mediaCleanupRef]
+  )
 
   useEffect(() => {
     // The callback ref owns cleanup because this listener is intentionally

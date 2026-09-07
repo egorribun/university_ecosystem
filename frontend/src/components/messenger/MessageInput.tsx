@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+} from "react"
 import { m, AnimatePresence } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { CHAT_MESSAGE_MAX_LENGTH } from "@/api/schemas/messageLimits"
@@ -107,12 +114,15 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
   // A stable callback ref receives `null` when the hidden picker leaves the
   // tree, providing the same unmount-only cleanup without a dependency array
   // that mutation testing could replace with an equivalent static value.
-  const setFileInputRef = useRef<(node: HTMLInputElement | null) => void>((node) => {
-    if (node === null) {
-      selectedFilesRef.current.forEach((entry) => URL.revokeObjectURL(entry.previewUrl))
-    }
-    fileInputRef.current = node
-  }).current
+  const setFileInputRef = useCallback(
+    (node: HTMLInputElement | null) => {
+      if (node === null) {
+        selectedFilesRef.current.forEach((entry) => URL.revokeObjectURL(entry.previewUrl))
+      }
+      fileInputRef.current = node
+    },
+    [fileInputRef, selectedFilesRef]
+  )
   // Wave 181 SW3 — useReducedMotion guard for attach + send button micro-interactions.
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const attachHoverAnim = prefersReducedMotion ? undefined : { scale: 1.1 }

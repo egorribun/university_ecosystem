@@ -112,13 +112,16 @@ export function MapSearchBar({
   // A stable callback ref receives `null` exactly when the input leaves the
   // tree, so pending blur work is cancelled without an effect dependency
   // array (which can be mutated into an equivalent static value).
-  const setInputRef = useRef<(node: HTMLInputElement | null) => void>((node) => {
-    if (node === null && blurTimeoutRef.current !== null) {
-      clearTimeout(blurTimeoutRef.current)
-      blurTimeoutRef.current = null
-    }
-    inputRef.current = node
-  }).current
+  const setInputRef = useCallback(
+    (node: HTMLInputElement | null) => {
+      if (node === null && blurTimeoutRef.current !== null) {
+        clearTimeout(blurTimeoutRef.current)
+        blurTimeoutRef.current = null
+      }
+      inputRef.current = node
+    },
+    [blurTimeoutRef, inputRef]
+  )
 
   const results = useMemo((): SearchResult[] => {
     const q = query.trim().toLowerCase()

@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react"
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { motion as motionTokens } from "@/theme/tokens"
 
 type PageFadeInProps = {
@@ -18,13 +18,16 @@ export default function PageFadeIn({
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
   const mediaInitializedRef = useRef(false)
   const mediaCleanupRef = useRef<(() => void) | null>(null)
-  const lifecycleRef = useRef<(node: HTMLDivElement | null) => void>((node) => {
-    if (node === null) {
-      mediaCleanupRef.current?.()
-      mediaCleanupRef.current = null
-      mediaInitializedRef.current = false
-    }
-  }).current
+  const lifecycleRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node === null) {
+        mediaCleanupRef.current?.()
+        mediaCleanupRef.current = null
+        mediaInitializedRef.current = false
+      }
+    },
+    [mediaCleanupRef, mediaInitializedRef]
+  )
 
   useEffect(() => {
     if (isTestEnvironment || ready) return
