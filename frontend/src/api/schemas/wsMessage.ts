@@ -249,12 +249,15 @@ export function parseWsMessage(raw: string): WsServerMessage | null {
   // notifications-sub re-typing (hub.go:501) doesn't matter here.
   const parsedRecord =
     parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null
+  // `parsedRecord` is either a plain object or null.  Use an object fallback
+  // for envelope inspection so primitive JSON frames remain a safe no-op and
+  // the presence check cannot dereference null/primitive values.
+  const envelopeRecord = parsedRecord ?? {}
   const hasEnvelopePayload =
-    parsedRecord !== null &&
-    "payload" in parsedRecord &&
-    typeof parsedRecord.payload === "object" &&
-    parsedRecord.payload !== null
-  const frame = hasEnvelopePayload ? parsedRecord.payload : parsed
+    "payload" in envelopeRecord &&
+    typeof envelopeRecord.payload === "object" &&
+    envelopeRecord.payload !== null
+  const frame = hasEnvelopePayload ? envelopeRecord.payload : parsed
   const result = v.safeParse(WsServerMessageSchema, frame)
   if (!result.success) {
     return null
