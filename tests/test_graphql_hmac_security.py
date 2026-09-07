@@ -185,6 +185,12 @@ def test_gateway_signature_failure_preserves_locale_and_error_key(
 
     rejection.assert_called_once_with("ru", "errors.auth.credentials_invalid")
     assert "GraphQL gateway identity signature verification failed" in caplog.text
+    assert any(
+        "'message': 'GraphQL gateway identity signature verification failed',"
+        in record.getMessage()
+        for record in caplog.records
+        if record.levelno >= logging.WARNING
+    )
 
 
 def test_gateway_signature_requires_header_for_authenticated_requests(
