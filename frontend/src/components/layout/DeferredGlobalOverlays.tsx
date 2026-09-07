@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useState } from "react"
 import OfflineIndicator from "@/components/feedback/OfflineIndicator"
 import { ensurePushMessageBridge } from "@/push/pushMessageBus"
 
@@ -66,7 +66,6 @@ const InstallPrompt = lazy(() => import("@/components/pwa/InstallPrompt"))
  */
 export function DeferredGlobalOverlays() {
   const [ready, setReady] = useState(false)
-  const lifecycleEffectKey = useRef(Symbol("deferred-overlays"))
 
   useEffect(() => {
     ensurePushMessageBridge()
@@ -118,7 +117,7 @@ export function DeferredGlobalOverlays() {
         window.removeEventListener(eventName, promoteOnInteraction)
       )
     }
-  }, [lifecycleEffectKey])
+  }, [])
 
   return (
     <>
