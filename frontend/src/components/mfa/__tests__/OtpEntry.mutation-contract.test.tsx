@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("react-i18next", () => ({
@@ -149,21 +149,31 @@ describe("OtpEntry mutation contracts", () => {
     render(<OtpEntry onSubmit={vi.fn()} />)
     const fields = inputs()
 
-    fields[0]!.focus()
+    act(() => {
+      fields[0]!.focus()
+    })
     fireEvent.keyDown(fields[0]!, { key: "ArrowLeft" })
     expect(document.activeElement).toBe(fields[0])
     fireEvent.keyDown(fields[0]!, { key: "Backspace" })
     expect(document.activeElement).toBe(fields[0])
 
-    fields[5]!.focus()
+    act(() => {
+      fields[5]!.focus()
+    })
     fireEvent.keyDown(fields[5]!, { key: "ArrowRight" })
     expect(document.activeElement).toBe(fields[5])
 
-    fields[3]!.focus()
+    act(() => {
+      fields[3]!.focus()
+    })
     const left = new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })
-    fields[3]!.dispatchEvent(left)
+    act(() => {
+      fields[3]!.dispatchEvent(left)
+    })
     expect(document.activeElement).toBe(fields[2])
-    fields[2]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
+    act(() => {
+      fields[2]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
+    })
     expect(document.activeElement).toBe(fields[3])
   })
 

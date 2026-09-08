@@ -234,9 +234,16 @@ describe("useLoginForm suggestion", () => {
     await act(async () => {
       await result.current.handleEmailBlur()
     })
-    expect(result.current.emailSuggestion).toBe("user@gmail.com")
-    act(() => {
+    // React Hook Form publishes the resolver result through its subscription
+    // after `trigger` resolves.  Wait for that observable state transition so
+    // the subsequent suggestion assertions do not race a post-act update.
+    await waitFor(() => expect(result.current.emailSuggestion).toBe("user@gmail.com"))
+    await act(async () => {
       result.current.applySuggestion()
+      // `setValue(..., { shouldValidate: true })` starts RHF's resolver
+      // asynchronously.  Await an equivalent trigger in the same act scope
+      // so that both the value write and its subscription update are drained.
+      await result.current.form.trigger("email")
     })
     expect(result.current.emailSuggestion).toBeNull()
     expect(result.current.form.getValues("email")).toBe("user@gmail.com")
@@ -259,6 +266,9 @@ describe("useLoginForm suggestion", () => {
     await act(async () => {
       await result.current.handleEmailBlur()
     })
+    // The empty value is rejected by the resolver; waiting for the surfaced
+    // error also drains React Hook Form's asynchronous state notification.
+    await waitFor(() => expect(result.current.form.formState.errors.email).toBeDefined())
 
     expect(mocks.suggestEmailDomain).not.toHaveBeenCalled()
     expect(result.current.emailSuggestion).toBeNull()
