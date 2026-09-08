@@ -225,14 +225,14 @@ describe("DashboardStories", () => {
       configurable: true,
       value: "hidden",
     })
-    document.dispatchEvent(new Event("visibilitychange"))
+    act(() => document.dispatchEvent(new Event("visibilitychange")))
     await waitFor(() => expect(cancelAnimationFrame).toHaveBeenCalledWith(17))
 
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       value: "visible",
     })
-    document.dispatchEvent(new Event("visibilitychange"))
+    act(() => document.dispatchEvent(new Event("visibilitychange")))
     await waitFor(() =>
       expect(requestAnimationFrame.mock.calls.length).toBeGreaterThan(scheduledBeforeHide)
     )
