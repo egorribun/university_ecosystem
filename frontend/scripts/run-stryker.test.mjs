@@ -286,7 +286,11 @@ test("child close reports normal exits and retains timeout termination failures"
     assert.match(error.errors[0].message, /timed-out shard exceeded 456ms/u)
     assert.equal(error.errors[1], terminationError)
     assert.equal(error.cause, error.errors[0])
-    assert.equal(error.processQuiesced, true)
+    assert.equal(
+      error.processQuiesced,
+      false,
+      "a failed tree terminator cannot prove descendant quiescence even when the parent closed"
+    )
     return true
   })
   timedOutChild.emit("close", null, "SIGKILL")
@@ -329,6 +333,91 @@ test("child timeout has a bounded grace when termination or close hangs", async 
   assert.equal(child.listenerCount("error"), 0)
   assert.equal(child.listenerCount("exit"), 0)
   assert.equal(child.listenerCount("close"), 0)
+})
+
+test("process signals abort before lock acquisition and a second signal cannot bypass cleanup", async () => {
+  const { installProcessSignalCancellation, throwIfCancellationRequested } = await import(runnerUrl)
+  const processEvents = new EventEmitter()
+  const cancellation = installProcessSignalCancellation({ processEvents })
+  let abortEvents = 0
+  cancellation.signal.addEventListener("abort", () => {
+    abortEvents += 1
+  })
+
+  processEvents.emit("SIGINT")
+  assert.throws(() => throwIfCancellationRequested(cancellation.signal), /interrupted by SIGINT/u)
+  processEvents.emit("SIGTERM")
+
+  assert.equal(abortEvents, 1)
+  assert.match(cancellation.signal.reason.message, /interrupted by SIGINT/u)
+  assert.equal(processEvents.listenerCount("SIGINT"), 1)
+  assert.equal(processEvents.listenerCount("SIGTERM"), 1)
+  cancellation.dispose()
+  assert.equal(processEvents.listenerCount("SIGINT"), 0)
+  assert.equal(processEvents.listenerCount("SIGTERM"), 0)
+})
+
+test("a process signal terminates every active child, awaits close, and stops shard scheduling", async () => {
+  const { installProcessSignalCancellation, runPool, waitForChildClose } = await import(runnerUrl)
+  const processEvents = new EventEmitter()
+  const cancellation = installProcessSignalCancellation({ processEvents })
+  const children = [new EventEmitter(), new EventEmitter()]
+  for (const child of children) {
+    child.exitCode = null
+    child.signalCode = null
+  }
+  const terminations = []
+  const started = []
+  const execution = runPool(
+    [0, 1, 2, 3],
+    2,
+    async (index) => {
+      started.push(index)
+      return waitForChildClose(children[index], {
+        description: `signal shard ${index}`,
+        timeoutMs: 10_000,
+        abortSignal: cancellation.signal,
+        terminate: async () =>
+          new Promise((resolve) => {
+            terminations[index] = resolve
+          }),
+      })
+    },
+    { abortSignal: cancellation.signal }
+  )
+  let settled = false
+  void execution.catch(() => {
+    settled = true
+  })
+
+  await new Promise((resolve) => setImmediate(resolve))
+  processEvents.emit("SIGTERM")
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(started, [0, 1])
+  assert.equal(terminations.length, 2)
+
+  processEvents.emit("SIGINT")
+  children[0].emit("exit", null, "SIGTERM")
+  children[0].emit("close", null, "SIGTERM")
+  children[1].emit("exit", null, "SIGTERM")
+  children[1].emit("close", null, "SIGTERM")
+  await Promise.resolve()
+  assert.equal(settled, false, "close alone must not bypass awaited tree termination")
+
+  terminations[0]()
+  terminations[1]()
+  await assert.rejects(execution, (error) => {
+    assert.match(error.message, /SIGTERM/u)
+    assert.notEqual(error.processQuiesced, false)
+    return true
+  })
+  assert.deepEqual(started, [0, 1])
+  for (const child of children) {
+    assert.equal(child.listenerCount("error"), 0)
+    assert.equal(child.listenerCount("exit"), 0)
+    assert.equal(child.listenerCount("close"), 0)
+  }
+  cancellation.dispose()
 })
 
 test("temporary cleanup retries only bounded transient Windows failures", async () => {
@@ -375,6 +464,73 @@ test("temporary cleanup retries only bounded transient Windows failures", async 
     /denied/u
   )
   assert.equal(attempts, 1)
+})
+
+test("temporary cleanup retries a resolved removal until ENOENT proves the owned path is absent", async () => {
+  const { removeOwnedTemporaryDirectory } = await import(runnerUrl)
+  const runId = "verified-removal"
+  const root = path.join(
+    os.tmpdir(),
+    "university-ecosystem-stryker-runs",
+    "repository",
+    "b".repeat(40),
+    runId
+  )
+  const removedPaths = []
+  const inspectedPaths = []
+  const delays = []
+  let inspections = 0
+
+  await removeOwnedTemporaryDirectory(root, runId, {
+    platform: "win32",
+    retryDelaysMs: [10, 20],
+    remove: async (target) => removedPaths.push(target),
+    inspect: async (target) => {
+      inspectedPaths.push(target)
+      inspections += 1
+      if (inspections < 3) return { isDirectory: () => true }
+      throw Object.assign(new Error("absent"), { code: "ENOENT" })
+    },
+    delay: async (milliseconds) => delays.push(milliseconds),
+  })
+
+  assert.deepEqual(removedPaths, [root, root, root])
+  assert.deepEqual(inspectedPaths, [root, root, root])
+  assert.deepEqual(delays, [10, 20])
+
+  await assert.rejects(
+    () =>
+      removeOwnedTemporaryDirectory(root, runId, {
+        platform: "win32",
+        retryDelaysMs: [10],
+        remove: async () => undefined,
+        inspect: async () => ({ isDirectory: () => true }),
+        delay: async () => undefined,
+      }),
+    /still exists after removal/u
+  )
+})
+
+test("post-lock cancellation revokes markers and finalizes the owned temp and lock", async () => {
+  const { finalizeMutationRun, installProcessSignalCancellation } = await import(runnerUrl)
+  const processEvents = new EventEmitter()
+  const cancellation = installProcessSignalCancellation({ processEvents })
+  const calls = []
+
+  processEvents.emit("SIGTERM")
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        cancellationSignal: cancellation.signal,
+        cleanupTemporary: async () => calls.push("cleanup"),
+        revokeMarker: async () => calls.push("marker"),
+        releaseLock: async () => calls.push("release"),
+      }),
+    /interrupted by SIGTERM/u
+  )
+
+  assert.deepEqual(calls, ["cleanup", "marker", "release"])
+  cancellation.dispose()
 })
 
 test("finalization preserves the primary failure and always releases the lock", async () => {
