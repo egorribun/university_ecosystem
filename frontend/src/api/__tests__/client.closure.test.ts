@@ -4,6 +4,7 @@ import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
 import { http, HttpResponse } from "msw"
 
 import { server } from "@/tests/mocks/server"
+import { withExpectedConsole } from "@/tests/strictConsole"
 
 type DedupeMessage = { key: string; action: "add" | "delete" }
 type DedupeListener = (event: MessageEvent<DedupeMessage>) => void
@@ -197,10 +198,12 @@ describe("api/client — LHCI safe adapter", () => {
   it("tolerates a request without url or method and skips the CSRF endpoint guard", async () => {
     const { default: lhciApi } = await import("@/api/client")
 
-    await expect(lhciApi.request({ skipRateLimitQueue: true } as never)).resolves.toMatchObject({
-      status: 200,
-      data: { items: [] },
-    })
+    await withExpectedConsole("warn", "[rateLimit] skipRateLimitQueue=true", () =>
+      expect(lhciApi.request({ skipRateLimitQueue: true } as never)).resolves.toMatchObject({
+        status: 200,
+        data: { items: [] },
+      })
+    )
     await expect(lhciApi.post("/auth/csrf-cookie", {})).resolves.toMatchObject({ status: 200 })
   })
 

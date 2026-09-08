@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -239,7 +239,9 @@ describe("Settings container closure", () => {
 
   it("handles Spotify callback statuses and removes the query parameter", async () => {
     const { rerender } = render(<Settings />)
-    mocks.setSearch?.(() => ({ tab: 0, spotify: "connected" }))
+    act(() => {
+      mocks.setSearch?.(() => ({ tab: 0, spotify: "connected" }))
+    })
 
     await waitFor(() =>
       expect(
@@ -251,7 +253,9 @@ describe("Settings container closure", () => {
     )
     expect(mocks.navigate).toHaveBeenCalled()
 
-    mocks.setSearch?.(() => ({ tab: 0, spotify: "error" }))
+    act(() => {
+      mocks.setSearch?.(() => ({ tab: 0, spotify: "error" }))
+    })
     await waitFor(() =>
       expect(
         screen.getByText("settings:integrations.spotify.snackbar.connectFailed")

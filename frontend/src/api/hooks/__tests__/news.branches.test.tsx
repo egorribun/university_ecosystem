@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { NewsItem } from "@/api/news"
 import { StorageItem } from "@/utils/storage"
+import { withExpectedConsole } from "@/tests/strictConsole"
 
 // ── SDK + @/api/news mock ─────────────────────────────────────────────────────
 // useNewsListQuery imports `newsListApiV1NewsGet` statically; newsDetailQueryOptions
@@ -580,9 +581,14 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
     newsListMock.mockResolvedValue(okPage([], null))
 
     const queryClient = freshClient()
-    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
-      wrapper: makeWrapper(queryClient),
-    })
+    const { result } = await withExpectedConsole(
+      "warn",
+      '[Storage] Failed to parse key "news:list:ru"',
+      () =>
+        renderHook(() => useNewsListQuery({ language: "ru" }), {
+          wrapper: makeWrapper(queryClient),
+        })
+    )
     expect(result.current.news).toEqual([])
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })

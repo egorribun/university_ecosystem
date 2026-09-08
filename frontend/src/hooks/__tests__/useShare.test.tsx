@@ -2,6 +2,11 @@ import { renderHook, act } from "@testing-library/react"
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest"
 import { useShare } from "../useShare"
 
+// Error paths intentionally exercise user-facing fallback notifications. Keep
+// the structured logger observable without routing expected diagnostics through
+// the strict process-wide console guard.
+vi.mock("@/app/logger", () => ({ logError: vi.fn() }))
+
 describe("useShare", () => {
   const onNotify = vi.fn()
   const translations = {

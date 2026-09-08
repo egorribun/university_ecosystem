@@ -83,13 +83,12 @@ describe("useDndSettings", () => {
     mocks.put.mockResolvedValue({ data: updatedUser })
     const { result } = renderHook(() => useDndSettings(setSnackbar))
 
-    act(() => {
+    await act(async () => {
       result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
-    })
-
-    await vi.waitFor(() => {
-      expect(mocks.put).toHaveBeenCalledWith("/users/me", {
-        preferences: { dnd_enabled: true, dnd_start: "22:00:00", dnd_end: "07:00:00" },
+      await vi.waitFor(() => {
+        expect(mocks.put).toHaveBeenCalledWith("/users/me", {
+          preferences: { dnd_enabled: true, dnd_start: "22:00:00", dnd_end: "07:00:00" },
+        })
       })
     })
     expect(mocks.setUser).toHaveBeenCalledWith(updatedUser)
@@ -130,12 +129,11 @@ describe("useDndSettings", () => {
     })
     const { result } = renderHook(() => useDndSettings(setSnackbar))
 
-    act(() => {
+    await act(async () => {
       result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
-    })
-
-    await vi.waitFor(() => {
-      expect(setSnackbar).toHaveBeenCalledWith({ text: "Policy denied", severity: "error" })
+      await vi.waitFor(() => {
+        expect(setSnackbar).toHaveBeenCalledWith({ text: "Policy denied", severity: "error" })
+      })
     })
     expect(result.current.dndEnabled).toBe(false)
   })
@@ -153,11 +151,10 @@ describe("useDndSettings", () => {
     mocks.put.mockResolvedValue({ data: updatedUser })
     const { result } = renderHook(() => useDndSettings(setSnackbar))
 
-    act(() => {
+    await act(async () => {
       result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, false)
+      await vi.waitFor(() => expect(mocks.put).toHaveBeenCalled())
     })
-
-    await vi.waitFor(() => expect(mocks.put).toHaveBeenCalled())
     expect(mocks.put).toHaveBeenCalledWith("/users/me", {
       preferences: { dnd_enabled: false, dnd_start: null, dnd_end: null },
     })
@@ -180,12 +177,11 @@ describe("useDndSettings", () => {
     mocks.put.mockResolvedValue({ data: updatedUser })
     const { result } = renderHook(() => useDndSettings(setSnackbar))
 
-    act(() => {
+    await act(async () => {
       result.current.handleDndStartChange(changeEvent("23:45:30"))
       result.current.handleDndStartBlur(blurEvent("23:45:30"))
+      await vi.waitFor(() => expect(mocks.put).toHaveBeenCalled())
     })
-
-    await vi.waitFor(() => expect(mocks.put).toHaveBeenCalled())
     expect(mocks.put).toHaveBeenCalledWith("/users/me", {
       preferences: { dnd_enabled: true, dnd_start: "23:45:30", dnd_end: "07:00:00" },
     })
@@ -209,12 +205,11 @@ describe("useDndSettings", () => {
     })
     const { result } = renderHook(() => useDndSettings(setSnackbar))
 
-    act(() => {
+    await act(async () => {
       result.current.handleDndEndChange(changeEvent("invalid"))
       result.current.handleDndEndBlur(blurEvent("invalid"))
+      await vi.waitFor(() => expect(mocks.put).toHaveBeenCalled())
     })
-
-    await vi.waitFor(() => expect(mocks.put).toHaveBeenCalled())
     expect(mocks.put).toHaveBeenCalledWith("/users/me", {
       preferences: { dnd_enabled: true, dnd_start: "22:00:00", dnd_end: "invalid" },
     })
@@ -277,17 +272,20 @@ describe("useDndSettings", () => {
 
     let resolvePut!: (value: unknown) => void
     mocks.put.mockReturnValueOnce(new Promise((resolve) => (resolvePut = resolve)))
-    act(() => {
+    await act(async () => {
       result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
+      await vi.waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(1))
     })
-    await vi.waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(1))
 
     act(() => {
       result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, false)
     })
     expect(mocks.put).toHaveBeenCalledTimes(1)
-    resolvePut({ data: mocks.user })
-    await vi.waitFor(() => expect(result.current.dndSaving).toBe(false))
+    await act(async () => {
+      resolvePut({ data: mocks.user })
+      await Promise.resolve()
+    })
+    expect(result.current.dndSaving).toBe(false)
   })
 
   it("joins validation-array messages from an Axios error", async () => {
@@ -303,17 +301,16 @@ describe("useDndSettings", () => {
     mocks.put.mockRejectedValue(error)
     const { result } = renderHook(() => useDndSettings(setSnackbar))
 
-    act(() => {
+    await act(async () => {
       result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
+      await vi.waitFor(() =>
+        expect(setSnackbar).toHaveBeenCalledWith({
+          text: "Start is invalid; End is invalid",
+          severity: "error",
+        })
+      )
+      await vi.waitFor(() => expect(result.current.dndSaving).toBe(false))
     })
-
-    await vi.waitFor(() =>
-      expect(setSnackbar).toHaveBeenCalledWith({
-        text: "Start is invalid; End is invalid",
-        severity: "error",
-      })
-    )
-    await vi.waitFor(() => expect(result.current.dndSaving).toBe(false))
   })
 
   it("uses the generic fallback for a non-Axios persistence failure", async () => {
@@ -321,16 +318,15 @@ describe("useDndSettings", () => {
     mocks.put.mockRejectedValue({ reason: "offline" })
     const { result } = renderHook(() => useDndSettings(setSnackbar))
 
-    act(() => {
+    await act(async () => {
       result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
+      await vi.waitFor(() =>
+        expect(setSnackbar).toHaveBeenCalledWith({
+          text: "settings:dnd.snackbar.updateFailed",
+          severity: "error",
+        })
+      )
     })
-
-    await vi.waitFor(() =>
-      expect(setSnackbar).toHaveBeenCalledWith({
-        text: "settings:dnd.snackbar.updateFailed",
-        severity: "error",
-      })
-    )
   })
 
   it("uses the generic fallback for an Axios validation array without messages", async () => {
@@ -346,16 +342,15 @@ describe("useDndSettings", () => {
     mocks.put.mockRejectedValue(error)
     const { result } = renderHook(() => useDndSettings(setSnackbar))
 
-    act(() => {
+    await act(async () => {
       result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
+      await vi.waitFor(() =>
+        expect(setSnackbar).toHaveBeenCalledWith({
+          text: "settings:dnd.snackbar.updateFailed",
+          severity: "error",
+        })
+      )
     })
-
-    await vi.waitFor(() =>
-      expect(setSnackbar).toHaveBeenCalledWith({
-        text: "settings:dnd.snackbar.updateFailed",
-        severity: "error",
-      })
-    )
   })
 
   it("uses the generic fallback for an unsupported Axios detail shape", async () => {
@@ -371,15 +366,14 @@ describe("useDndSettings", () => {
     mocks.put.mockRejectedValue(error)
     const { result } = renderHook(() => useDndSettings(setSnackbar))
 
-    act(() => {
+    await act(async () => {
       result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
+      await vi.waitFor(() =>
+        expect(setSnackbar).toHaveBeenCalledWith({
+          text: "settings:dnd.snackbar.updateFailed",
+          severity: "error",
+        })
+      )
     })
-
-    await vi.waitFor(() =>
-      expect(setSnackbar).toHaveBeenCalledWith({
-        text: "settings:dnd.snackbar.updateFailed",
-        severity: "error",
-      })
-    )
   })
 })

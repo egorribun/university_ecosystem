@@ -28,6 +28,7 @@ import type { PropsWithChildren } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { Event } from "@/types/Event"
+import { withExpectedConsole } from "@/tests/strictConsole"
 
 // ── SDK mock ────────────────────────────────────────────────────────────────
 // The hooks/factories import `allEventsApiV1EventsGet` + `myEventsApiV1EventsMyGet`
@@ -526,9 +527,14 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
     allEventsMock.mockResolvedValue(okPage([], null))
 
     const queryClient = freshClient()
-    const { result } = renderHook(() => useEventsListQuery({ language: "ru", is_active: null }), {
-      wrapper: makeWrapper(queryClient),
-    })
+    const { result } = await withExpectedConsole(
+      "warn",
+      '[Storage] Failed to parse key "events:list:ru:all"',
+      () =>
+        renderHook(() => useEventsListQuery({ language: "ru", is_active: null }), {
+          wrapper: makeWrapper(queryClient),
+        })
+    )
     // malformed → no placeholder → loading until network
     expect(result.current.events).toEqual([])
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
@@ -542,9 +548,14 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
 
     try {
       const queryClient = freshClient()
-      const { result } = renderHook(() => useEventsListQuery({ language: "ru" }), {
-        wrapper: makeWrapper(queryClient),
-      })
+      const { result } = await withExpectedConsole(
+        "warn",
+        '[Storage] Failed to parse key "events:list:ru:all"',
+        () =>
+          renderHook(() => useEventsListQuery({ language: "ru" }), {
+            wrapper: makeWrapper(queryClient),
+          })
+      )
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
       expect(result.current.events).toEqual([])
     } finally {
@@ -774,9 +785,14 @@ describe("useMyEventsQuery (events.ts:329-354)", () => {
     myEventsMock.mockResolvedValue({ status: 200, data: [] })
 
     const queryClient = freshClient()
-    const { result } = renderHook(() => useMyEventsQuery({ language: "ru", userId: "u-bad" }), {
-      wrapper: makeWrapper(queryClient),
-    })
+    const { result } = await withExpectedConsole(
+      "warn",
+      '[Storage] Failed to parse key "events:my:ru:u-bad"',
+      () =>
+        renderHook(() => useMyEventsQuery({ language: "ru", userId: "u-bad" }), {
+          wrapper: makeWrapper(queryClient),
+        })
+    )
     expect(result.current.data).toBeUndefined() // no placeholder
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })
@@ -789,9 +805,14 @@ describe("useMyEventsQuery (events.ts:329-354)", () => {
 
     try {
       const queryClient = freshClient()
-      const { result } = renderHook(() => useMyEventsQuery({ language: "ru", userId: "u-throw" }), {
-        wrapper: makeWrapper(queryClient),
-      })
+      const { result } = await withExpectedConsole(
+        "warn",
+        '[Storage] Failed to parse key "events:my:ru:u-throw"',
+        () =>
+          renderHook(() => useMyEventsQuery({ language: "ru", userId: "u-throw" }), {
+            wrapper: makeWrapper(queryClient),
+          })
+      )
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
       expect(result.current.data).toEqual([])
     } finally {

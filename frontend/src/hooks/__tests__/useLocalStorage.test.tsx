@@ -239,14 +239,21 @@ describe("useLocalStorage", () => {
   })
 
   it("gracefully catches errors in removeValue", () => {
-    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+    const removeItemSpy = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
       throw new Error("Simulated localStorage remove failure")
     })
     const { result } = renderHook(() => useLocalStorage("fail-rm-key", "initial"))
-    act(() => {
-      result.current[2]()
-    })
-    expect(result.current[0]).toBe("initial")
+    try {
+      act(() => {
+        result.current[2]()
+      })
+      expect(result.current[0]).toBe("initial")
+    } finally {
+      // setupTests clears shared ETag state after every test. Restore the
+      // intentionally failing platform method before that cleanup runs so its
+      // own warning remains a real diagnostic rather than test interference.
+      removeItemSpy.mockRestore()
+    }
   })
 
   it("handles deserialization undefined string", () => {
