@@ -18,7 +18,12 @@ export const clearLegacyAccessToken = (
       return true
     } catch (error) {
       // A storage implementation may still reject writes/removals at call time.
-      logWarning("Unable to remove a legacy access token", error)
+      try {
+        logWarning("Unable to remove a legacy access token", error)
+      } catch {
+        // Logging is best-effort; legacy-token cleanup must remain fail-closed
+        // and never reject an auth bootstrap effect when telemetry is broken.
+      }
       return false
     }
   }
@@ -31,7 +36,11 @@ export const clearLegacyAccessToken = (
   } catch (error) {
     // Access to the storage getter itself may also be blocked by the browser.
     // Cookie auth remains authoritative in either case.
-    logWarning("Unable to access legacy token storage", error)
+    try {
+      logWarning("Unable to access legacy token storage", error)
+    } catch {
+      // Logging is best-effort; browser storage failures are non-fatal.
+    }
     return false
   }
 }

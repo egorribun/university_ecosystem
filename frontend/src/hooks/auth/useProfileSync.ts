@@ -157,12 +157,22 @@ const clearProfileCacheStorage = (
     | "invalid_data" = "parse_error"
 ) => {
   if (typeof localStorage === "undefined") return
+
+  // Clear the cache before emitting the diagnostic.  The test strict-console
+  // guard (and a misconfigured telemetry sink in production) may throw from
+  // the logger; cache invalidation is a security boundary and must still be
+  // completed when reporting fails.
   try {
-    logWarning("profile_cache.cleared", { reason })
     localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
     localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
   } catch {
     /* ignore */
+  }
+
+  try {
+    logWarning("profile_cache.cleared", { reason })
+  } catch {
+    // Diagnostics are best-effort and must never abort auth bootstrap.
   }
 }
 

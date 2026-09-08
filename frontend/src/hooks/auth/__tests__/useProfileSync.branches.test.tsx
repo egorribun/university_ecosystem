@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import api from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
 import { testUser } from "@/tests/mocks/handlers"
+import { withExpectedConsole } from "@/tests/strictConsole"
 import {
   PROFILE_CACHE_SCHEMA_VERSION,
   PROFILE_CACHE_STORAGE_KEY,
@@ -792,11 +793,15 @@ describe("useProfileSync — auto-fetch effect", () => {
       throw new Error(`Unexpected url: ${url}`)
     })
 
-    const { result, updateSessionSigningKey } = renderProfileSync({ signingKey: mockSigningKey })
+    await withExpectedConsole("error", "Failed to fetch current user", async () => {
+      const { result, updateSessionSigningKey } = renderProfileSync({
+        signingKey: mockSigningKey,
+      })
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
-    // Non-401 → no unauthorized handling; key untouched, user stays null.
-    expect(updateSessionSigningKey).not.toHaveBeenCalledWith(null)
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      // Non-401 → no unauthorized handling; key untouched, user stays null.
+      expect(updateSessionSigningKey).not.toHaveBeenCalledWith(null)
+    })
   })
 
   it("silently ignores a canceled profile query", async () => {
@@ -892,14 +897,16 @@ describe("useProfileSync — auto-fetch effect", () => {
       throw new Error(`Unexpected url: ${url}`)
     })
 
-    const { result } = renderProfileSync({
-      signingKey: mockSigningKey,
-      ensureSessionSigningKey: ensure,
-    })
+    await withExpectedConsole("warn", "Failed to obtain session signing key", async () => {
+      const { result } = renderProfileSync({
+        signingKey: mockSigningKey,
+        ensureSessionSigningKey: ensure,
+      })
 
-    // Even though ensureSessionSigningKey throws, the user is still set.
-    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
-    expect(ensure).toHaveBeenCalled()
+      // Even though ensureSessionSigningKey throws, the user is still set.
+      await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+      expect(ensure).toHaveBeenCalled()
+    })
   })
 
   it("suppresses signing-key diagnostics outside development", async () => {
@@ -1473,13 +1480,21 @@ describe("useProfileSync — cross-tab sync effect", () => {
     vi.stubGlobal("BroadcastChannel", ThrowingBroadcastChannel)
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
 
-    const { result, unmount } = renderProfileSync({ signingKey: mockSigningKey })
-    await waitFor(() => expect(result.current.loading).toBe(false))
-    await act(async () => {
-      result.current.updatePendingMfa({ ticket: "channel-error", methods: [] } as any)
-    })
-    expect(result.current.pendingMfa).toMatchObject({ ticket: "channel-error" })
-    unmount()
+    await withExpectedConsole(
+      "warn",
+      "Failed to subscribe to profile broadcast channel",
+      async () => {
+        await withExpectedConsole("warn", "Failed to broadcast profile event", async () => {
+          const { result, unmount } = renderProfileSync({ signingKey: mockSigningKey })
+          await waitFor(() => expect(result.current.loading).toBe(false))
+          await act(async () => {
+            result.current.updatePendingMfa({ ticket: "channel-error", methods: [] } as any)
+          })
+          expect(result.current.pendingMfa).toMatchObject({ ticket: "channel-error" })
+          unmount()
+        })
+      }
+    )
     vi.unstubAllGlobals()
   })
 
@@ -1783,7 +1798,9 @@ describe("useProfileSync crypto failure paths", () => {
       .spyOn(window.crypto.subtle, "encrypt")
       .mockRejectedValue(new Error("crypto unavailable"))
 
-    await expect(encryptData(snapshot, mockSigningKey)).resolves.toBeNull()
+    await withExpectedConsole("error", "Encryption failed", () =>
+      expect(encryptData(snapshot, mockSigningKey)).resolves.toBeNull()
+    )
     encryptSpy.mockRestore()
     deriveSpy.mockRestore()
     importSpy.mockRestore()
