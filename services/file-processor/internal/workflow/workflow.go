@@ -208,6 +208,9 @@ func sanitizeMinIOKey(key string) (string, error) {
 		return "", fmt.Errorf("absolute path is not allowed in object key: %q", key)
 	}
 	clean := path.Clean(key)
+	if objectkey.IsAbsolute(clean) {
+		return "", fmt.Errorf("absolute path is not allowed in object key: %q", key)
+	}
 	if strings.HasPrefix(clean, "..") || strings.Contains(clean, "/../") {
 		return "", fmt.Errorf("path traversal detected in object key: %q", key)
 	}

@@ -92,6 +92,9 @@ func validateProcessFileKey(key string) error {
 		return status.Errorf(codes.InvalidArgument, "absolute path is not allowed in key: %q", key)
 	}
 	cleaned := path.Clean(key)
+	if objectkey.IsAbsolute(cleaned) {
+		return status.Errorf(codes.InvalidArgument, "absolute path is not allowed in key: %q", key)
+	}
 	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") {
 		return status.Errorf(codes.InvalidArgument, "path traversal in key: %q", key)
 	}
