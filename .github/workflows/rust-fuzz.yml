@@ -97,7 +97,7 @@ jobs:
             fuzz_uuid
           )
           mapfile -t discovered < <(cargo +nightly fuzz list | awk 'NF { print $1 }' | sort)
-          expected=($(printf '%s\n' "${targets[@]}" | sort))
+          mapfile -t expected < <(printf '%s\n' "${targets[@]}" | sort)
           if [[ "${discovered[*]}" != "${expected[*]}" ]]; then
             echo "::error::cargo-fuzz target inventory drifted (expected: ${expected[*]}; discovered: ${discovered[*]})"
             exit 1
