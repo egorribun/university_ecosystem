@@ -106,6 +106,27 @@ describe("ActionMenu — trigger", () => {
 })
 
 describe("ActionMenu — open + close", () => {
+  it("lets a closed trigger bubble a cancelable Escape to its parent", () => {
+    const parentKeyDown = vi.fn()
+    render(
+      <div role="toolbar" aria-label="Actions boundary" onKeyDown={parentKeyDown}>
+        <ActionMenu items={items} />
+      </div>
+    )
+
+    const trigger = screen.getByRole("button", { name: /open menu/i })
+    trigger.focus()
+    const dispatched = fireEvent.keyDown(trigger, {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    })
+
+    expect(dispatched).toBe(true)
+    expect(parentKeyDown).toHaveBeenCalledOnce()
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+  })
+
   it("opens the menu on click and exposes role='menu'", async () => {
     const user = userEvent.setup()
     render(<ActionMenu items={items} />)
@@ -126,12 +147,25 @@ describe("ActionMenu — open + close", () => {
 
   it("closes on Escape", async () => {
     const user = userEvent.setup()
-    render(<ActionMenu items={items} />)
-    await user.click(screen.getByRole("button", { name: /open menu/i }))
+    const parentKeyDown = vi.fn()
+    render(
+      <div role="toolbar" aria-label="Actions boundary" onKeyDown={parentKeyDown}>
+        <ActionMenu items={items} />
+      </div>
+    )
+    const trigger = screen.getByRole("button", { name: /open menu/i })
+    await user.click(trigger)
     expect(screen.getByRole("menu")).toBeInTheDocument()
 
-    await user.keyboard("{Escape}")
+    const dispatched = fireEvent.keyDown(trigger, {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    })
+    expect(dispatched).toBe(false)
+    expect(parentKeyDown).not.toHaveBeenCalled()
     expect(screen.queryByRole("menu")).toBeNull()
+    expect(trigger).toHaveFocus()
   })
 
   it("supports arrow navigation, custom trigger content, and click-outside dismissal", async () => {
@@ -190,6 +224,7 @@ describe("ActionMenu — open + close", () => {
     expect(dispatched).toBe(false)
     expect(parentKeyDown).not.toHaveBeenCalled()
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /open menu/i })).toHaveFocus()
   })
 
   it("closes an open menu when the trigger becomes disabled", async () => {

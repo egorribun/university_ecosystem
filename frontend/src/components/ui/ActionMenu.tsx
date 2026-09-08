@@ -120,7 +120,7 @@ export const ActionMenu = ({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLButtonElement | HTMLDivElement>) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && isOpen) {
         event.preventDefault()
         event.stopPropagation()
         handleClose()
