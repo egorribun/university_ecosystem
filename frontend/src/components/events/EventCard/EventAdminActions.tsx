@@ -71,8 +71,7 @@ export function EventAdminActions({
       menuRef.current!.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not(:disabled)")
     )
     const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
-    const delta = event.key === "ArrowDown" ? 1 : -1
-    const nextIndex = (currentIndex + delta + items.length) % items.length
+    const nextIndex = (currentIndex + 1) % items.length
     items[nextIndex]?.focus()
   }
 

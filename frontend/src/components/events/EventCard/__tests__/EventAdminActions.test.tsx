@@ -61,6 +61,34 @@ describe("EventAdminActions", () => {
     expect(screen.queryByRole("button", { name: "common:buttons.edit" })).not.toBeInTheDocument()
   })
 
+  it("keeps a null controlled anchor inert while disabled", () => {
+    const setMenuAnchor = vi.fn()
+    render(
+      <EventAdminActions {...baseProps} disabled menuAnchor={null} setMenuAnchor={setMenuAnchor} />
+    )
+
+    expect(setMenuAnchor).not.toHaveBeenCalled()
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+  })
+
+  it("does not install outside-pointer behavior while the menu is closed", () => {
+    const setMenuAnchor = vi.fn()
+    const addEventListener = vi.spyOn(document, "addEventListener")
+    render(
+      <>
+        <button type="button">Outside</button>
+        <EventAdminActions {...baseProps} setMenuAnchor={setMenuAnchor} />
+      </>
+    )
+    const outside = screen.getByRole("button", { name: "Outside" })
+    outside.focus()
+
+    expect(addEventListener.mock.calls.some(([eventName]) => eventName === "mousedown")).toBe(false)
+    fireEvent.mouseDown(outside)
+    expect(setMenuAnchor).not.toHaveBeenCalled()
+    expect(outside).toHaveFocus()
+  })
+
   it("opens the menu by setting the anchor when the trigger is clicked", async () => {
     const user = userEvent.setup()
     const setMenuAnchor = vi.fn()
