@@ -192,6 +192,7 @@ export const EventCardView: FC<EventCardViewProps> = ({
               onEdit={onEditOpen}
               onDelete={onDeleteOpen}
               menuId={menuId}
+              disabled={loading}
             />
           </Suspense>
         </div>
