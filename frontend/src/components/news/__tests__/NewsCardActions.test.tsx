@@ -39,10 +39,11 @@ describe("NewsCardActions", () => {
     setup()
     const trigger = screen.getByRole("button", { name: "news:aria.cardActions" })
     expect(trigger).toBeInTheDocument()
-    expect(trigger).toHaveAttribute("aria-haspopup", "true")
-    expect(trigger).not.toHaveAttribute("aria-expanded")
+    expect(trigger).toHaveAttribute("aria-haspopup", "menu")
+    expect(trigger).toHaveAttribute("aria-expanded", "false")
     expect(trigger).not.toHaveAttribute("aria-controls")
-    expect(translationState.namespaces.at(-1)).toEqual(["news", "common"])
+    expect(trigger).toHaveClass("h-11", "w-11")
+    expect(translationState.namespaces).toContainEqual(["news", "common"])
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
   })
 
@@ -60,6 +61,10 @@ describe("NewsCardActions", () => {
       "aria-labelledby",
       "news-card-menu-article-7-button"
     )
+    expect(screen.getByRole("menu")).toHaveAttribute("data-news-card-menu")
+    for (const item of screen.getAllByRole("menuitem")) {
+      expect(item).toHaveClass("min-h-11")
+    }
     expect(screen.getByText("common:buttons.edit")).toHaveFocus()
   })
 
@@ -93,7 +98,7 @@ describe("NewsCardActions", () => {
     expect(screen.getByRole("button", { name: "news:aria.cardActions" })).toHaveFocus()
   })
 
-  it("removes document listeners when the menu closes", async () => {
+  it("removes the outside-pointer listener when the menu closes", async () => {
     const user = userEvent.setup()
     const removeEventListenerSpy = vi.spyOn(document, "removeEventListener")
     setup()
@@ -102,7 +107,6 @@ describe("NewsCardActions", () => {
     await user.keyboard("{Escape}")
 
     expect(removeEventListenerSpy).toHaveBeenCalledWith("mousedown", expect.any(Function))
-    expect(removeEventListenerSpy).toHaveBeenCalledWith("keydown", expect.any(Function))
   })
 
   it("keeps the menu open for unrelated keys", async () => {

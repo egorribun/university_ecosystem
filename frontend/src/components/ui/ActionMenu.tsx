@@ -19,6 +19,7 @@ import {
   useRef,
   useEffect,
   useCallback,
+  useId,
   type ReactNode,
   type MouseEvent,
   type KeyboardEvent,
@@ -43,6 +44,10 @@ export interface ActionMenuItem {
   ariaLabel?: string
 }
 
+type DataAttributes = {
+  [key: `data-${string}`]: string | number | boolean | undefined
+}
+
 export interface ActionMenuProps {
   /** Menu items to display */
   items: ActionMenuItem[]
@@ -56,6 +61,18 @@ export interface ActionMenuProps {
   placement?: "bottom-end" | "bottom-start"
   /** Aria label for trigger button */
   ariaLabel?: string
+  /** Stable identifier for the trigger button */
+  triggerId?: string
+  /** Stable identifier for the menu */
+  menuId?: string
+  /** Whether the trigger is disabled */
+  disabled?: boolean
+  /** Focus the first enabled item when the menu opens */
+  autoFocusFirstItem?: boolean
+  /** Data attributes forwarded to the trigger */
+  triggerDataAttributes?: DataAttributes
+  /** Data attributes forwarded to the menu */
+  menuDataAttributes?: DataAttributes
 }
 
 export const ActionMenu = ({
@@ -65,9 +82,18 @@ export const ActionMenu = ({
   menuClassName,
   placement = "bottom-end",
   ariaLabel,
+  triggerId,
+  menuId,
+  disabled,
+  autoFocusFirstItem,
+  triggerDataAttributes,
+  menuDataAttributes,
 }: ActionMenuProps) => {
   const { t } = useTranslation("navigation")
   const resolvedAriaLabel = ariaLabel ?? t("navigation:aria.openMenu")
+  const generatedId = useId()
+  const resolvedMenuId = menuId ?? (triggerId ? `${triggerId}-menu` : `action-menu-${generatedId}`)
+  const resolvedTriggerId = triggerId ?? (menuId ? `${menuId}-button` : `${resolvedMenuId}-button`)
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -95,6 +121,8 @@ export const ActionMenu = ({
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLButtonElement | HTMLDivElement>) => {
       if (event.key === "Escape") {
+        event.preventDefault()
+        event.stopPropagation()
         handleClose()
       } else if (event.key === "ArrowDown" && isOpen) {
         event.preventDefault()
@@ -117,13 +145,17 @@ export const ActionMenu = ({
 
       if (event.key === "ArrowDown") {
         event.preventDefault()
+        event.stopPropagation()
         const nextIndex = (currentIndex + 1) % menuItems.length
         menuItems[nextIndex]?.focus()
       } else if (event.key === "ArrowUp") {
         event.preventDefault()
+        event.stopPropagation()
         const prevIndex = (currentIndex - 1 + menuItems.length) % menuItems.length
         menuItems[prevIndex]?.focus()
       } else if (event.key === "Escape") {
+        event.preventDefault()
+        event.stopPropagation()
         handleClose()
       }
     },
@@ -144,6 +176,17 @@ export const ActionMenu = ({
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [isOpen, handleClose])
 
+  useEffect(() => {
+    if (!isOpen || !autoFocusFirstItem) return
+
+    const firstItem = menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+    firstItem?.focus()
+  }, [autoFocusFirstItem, isOpen])
+
+  useEffect(() => {
+    if (disabled && isOpen) setIsOpen(false)
+  }, [disabled, isOpen])
+
   const placementStyles = {
     "bottom-end": "right-0",
     "bottom-start": "left-0",
@@ -153,12 +196,16 @@ export const ActionMenu = ({
     <div ref={containerRef} className="relative">
       <button
         ref={triggerRef}
+        id={resolvedTriggerId}
         type="button"
+        disabled={disabled}
         onClick={handleToggle}
         onKeyDown={handleKeyDown}
         aria-label={resolvedAriaLabel}
         aria-haspopup="menu"
         aria-expanded={isOpen}
+        aria-controls={isOpen ? resolvedMenuId : undefined}
+        {...triggerDataAttributes}
         className={cn(
           "flex h-11 w-11 items-center justify-center rounded-full text-(--text-secondary) transition-fast hover:bg-(--bg-surface-hover) hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
           triggerClassName
@@ -170,9 +217,12 @@ export const ActionMenu = ({
       {isOpen && (
         <div
           ref={menuRef}
+          id={resolvedMenuId}
           role="menu"
+          aria-labelledby={resolvedTriggerId}
           tabIndex={-1}
           onKeyDown={handleKeyDown}
+          {...menuDataAttributes}
           className={cn(
             "absolute top-full z-overlay mt-1 w-40 overflow-hidden rounded-lg border border-glass-border-subtle bg-glass-elevated shadow-lg backdrop-blur-md",
             placementStyles[placement],

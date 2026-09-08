@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { axe } from "jest-axe"
 
@@ -30,6 +30,7 @@ describe("ActionMenu — trigger", () => {
     const trigger = screen.getByRole("button", { name: /open menu/i })
     expect(trigger).toHaveAttribute("aria-haspopup", "menu")
     expect(trigger).toHaveAttribute("aria-expanded", "false")
+    expect(trigger.id).not.toBe("")
   })
 
   it("uses a custom aria-label when supplied", () => {
@@ -48,6 +49,60 @@ describe("ActionMenu — trigger", () => {
       expect(item).toHaveClass("min-h-11")
     }
   })
+
+  it("forwards stable ids, data markers, disabled state, and opt-in initial focus", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <ActionMenu
+        items={items}
+        triggerId="article-menu-trigger"
+        menuId="article-menu"
+        disabled
+        autoFocusFirstItem
+        triggerDataAttributes={{ "data-card-menu-trigger": "true" }}
+        menuDataAttributes={{ "data-card-menu": "true" }}
+      />
+    )
+    const disabledTrigger = screen.getByRole("button", { name: /open menu/i })
+    expect(disabledTrigger).toBeDisabled()
+    expect(disabledTrigger).toHaveAttribute("id", "article-menu-trigger")
+    expect(disabledTrigger).toHaveAttribute("data-card-menu-trigger", "true")
+    await user.click(disabledTrigger)
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+
+    rerender(
+      <ActionMenu
+        items={items}
+        triggerId="article-menu-trigger"
+        menuId="article-menu"
+        autoFocusFirstItem
+        triggerDataAttributes={{ "data-card-menu-trigger": "true" }}
+        menuDataAttributes={{ "data-card-menu": "true" }}
+      />
+    )
+    await user.click(screen.getByRole("button", { name: /open menu/i }))
+    expect(screen.getByRole("menu")).toHaveAttribute("id", "article-menu")
+    expect(screen.getByRole("menu")).toHaveAttribute("aria-labelledby", "article-menu-trigger")
+    expect(screen.getByRole("menu")).toHaveAttribute("data-card-menu", "true")
+    expect(screen.getAllByRole("menuitem")[0]).toHaveFocus()
+  })
+
+  it("derives the missing ARIA counterpart from either caller-supplied id", async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(<ActionMenu items={items} triggerId="article-actions" />)
+
+    const trigger = screen.getByRole("button", { name: /open menu/i })
+    await user.click(trigger)
+    expect(trigger).toHaveAttribute("aria-controls", "article-actions-menu")
+    expect(screen.getByRole("menu")).toHaveAttribute("id", "article-actions-menu")
+    unmount()
+
+    render(<ActionMenu items={items} menuId="account-actions" />)
+    const derivedTrigger = screen.getByRole("button", { name: /open menu/i })
+    expect(derivedTrigger).toHaveAttribute("id", "account-actions-button")
+    await user.click(derivedTrigger)
+    expect(screen.getByRole("menu")).toHaveAttribute("aria-labelledby", "account-actions-button")
+  })
 })
 
 describe("ActionMenu — open + close", () => {
@@ -56,7 +111,12 @@ describe("ActionMenu — open + close", () => {
     render(<ActionMenu items={items} />)
     await user.click(screen.getByRole("button", { name: /open menu/i }))
 
-    expect(screen.getByRole("menu")).toBeInTheDocument()
+    const menu = screen.getByRole("menu")
+    const trigger = screen.getByRole("button", { name: /open menu/i })
+    expect(menu).toBeInTheDocument()
+    expect(menu.id).not.toBe("")
+    expect(trigger).toHaveAttribute("aria-controls", menu.id)
+    expect(menu).toHaveAttribute("aria-labelledby", trigger.id)
     expect(screen.getAllByRole("menuitem")).toHaveLength(items.length)
     expect(screen.getByRole("button", { name: /open menu/i })).toHaveAttribute(
       "aria-expanded",
@@ -100,12 +160,12 @@ describe("ActionMenu — open + close", () => {
     const edit = screen.getByRole("menuitem", { name: "Edit" })
     expect(document.activeElement).toBe(edit)
     const remove = screen.getByRole("menuitem", { name: "Remove item" })
-    const removeFocus = vi.spyOn(remove, "focus")
     fireEvent.keyDown(edit, { key: "ArrowDown" })
-    expect(removeFocus).toHaveBeenCalledOnce()
-    const editFocus = vi.spyOn(edit, "focus")
-    fireEvent.keyDown(remove, { key: "ArrowUp" })
-    expect(editFocus).toHaveBeenCalledOnce()
+    expect(remove).toHaveFocus()
+    fireEvent.keyDown(remove, { key: "ArrowDown" })
+    expect(edit).toHaveFocus()
+    fireEvent.keyDown(edit, { key: "ArrowUp" })
+    expect(remove).toHaveFocus()
 
     fireEvent.mouseDown(document.body)
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
@@ -114,15 +174,53 @@ describe("ActionMenu — open + close", () => {
 
   it("closes from a menu-item Escape key", async () => {
     const user = userEvent.setup()
-    render(<ActionMenu items={items} />)
+    const parentKeyDown = vi.fn()
+    render(
+      <div role="toolbar" aria-label="Actions boundary" onKeyDown={parentKeyDown}>
+        <ActionMenu items={items} />
+      </div>
+    )
     await user.click(screen.getByRole("button", { name: /open menu/i }))
     await user.click(screen.getByRole("menuitem", { name: "Edit" }))
 
     await user.click(screen.getByRole("button", { name: /open menu/i }))
     const edit = screen.getByRole("menuitem", { name: "Edit" })
     edit.focus()
-    await user.keyboard("{Escape}")
+    const dispatched = fireEvent.keyDown(edit, { key: "Escape", cancelable: true })
+    expect(dispatched).toBe(false)
+    expect(parentKeyDown).not.toHaveBeenCalled()
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+  })
+
+  it("closes an open menu when the trigger becomes disabled", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<ActionMenu items={items} />)
+    const trigger = screen.getByRole("button", { name: /open menu/i })
+
+    await user.click(trigger)
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+    rerender(<ActionMenu items={items} disabled />)
+
+    expect(trigger).toBeDisabled()
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
+  })
+
+  it("derives unique stable relationships for multiple menus without caller ids", async () => {
+    const user = userEvent.setup()
+    render(
+      <>
+        <ActionMenu items={items} ariaLabel="First actions" />
+        <ActionMenu items={items} ariaLabel="Second actions" />
+      </>
+    )
+    const firstTrigger = screen.getByRole("button", { name: "First actions" })
+    const secondTrigger = screen.getByRole("button", { name: "Second actions" })
+    expect(firstTrigger.id).not.toBe(secondTrigger.id)
+
+    await user.click(firstTrigger)
+    const firstMenu = screen.getByRole("menu")
+    expect(firstTrigger).toHaveAttribute("aria-controls", firstMenu.id)
+    expect(firstMenu).toHaveAttribute("aria-labelledby", firstTrigger.id)
   })
 
   it("keeps the menu open for an unrelated menu-item key", async () => {

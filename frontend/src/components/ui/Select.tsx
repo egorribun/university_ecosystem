@@ -284,7 +284,7 @@ const Select = ({
                       selectOption(index)
                     }}
                     className={cn(
-                      "flex w-full cursor-pointer items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-fast",
+                      "flex min-h-11 w-full cursor-pointer items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-fast",
                       isSelected
                         ? "bg-brand text-inverse-text shadow-sm"
                         : isActive

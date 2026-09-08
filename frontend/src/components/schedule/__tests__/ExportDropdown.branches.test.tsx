@@ -106,9 +106,15 @@ describe("ExportDropdown — branches", () => {
     const user = userEvent.setup()
     render(<ExportDropdown gridRef={gridRefWithEl()} />)
     await user.click(trigger())
-    expect(
-      Array.from(screen.getAllByRole("menuitem"), (item) => item.getAttribute("data-export-format"))
-    ).toEqual(["pdf", "png", "gcal"])
+    const items = screen.getAllByRole("menuitem")
+    expect(Array.from(items, (item) => item.getAttribute("data-export-format"))).toEqual([
+      "pdf",
+      "png",
+      "gcal",
+    ])
+    for (const item of items) {
+      expect(item).toHaveClass("min-h-11")
+    }
   })
 
   it("exports PNG via the dynamic-import path when a grid ref is present", async () => {

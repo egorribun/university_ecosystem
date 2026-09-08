@@ -1418,7 +1418,7 @@
 }
 
 @utility button-icon-glass {
-  @apply absolute top-2 right-2 z-surface flex h-7 w-7 items-center justify-center rounded-lg opacity-0 bg-(--error-bg) text-(--error-text) border border-(--error-text)/(--opacity-soft) shadow-sm hover:bg-(--error-text)/(--opacity-dim) hover:shadow-md group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/(--opacity-soft);
+  @apply absolute top-2 right-2 z-surface flex h-11 w-11 items-center justify-center rounded-lg opacity-0 bg-(--error-bg) text-(--error-text) border border-(--error-text)/(--opacity-soft) shadow-sm hover:bg-(--error-text)/(--opacity-dim) hover:shadow-md group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/(--opacity-soft);
   transition: var(--transition-premium);
 }
 
