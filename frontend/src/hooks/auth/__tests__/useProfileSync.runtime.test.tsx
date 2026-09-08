@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import api from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
 import { testUser } from "@/tests/mocks/handlers"
+import { withExpectedConsole } from "@/tests/strictConsole"
 import {
   PROFILE_CACHE_STORAGE_KEY,
   useProfileSync,
@@ -183,12 +184,15 @@ describe("useProfileSync runtime defensive paths", () => {
     })
 
     try {
-      const { result } = renderRuntime(
-        vi.fn(async () => null),
-        null
-      )
-      await waitFor(() => expect(result.current.loading).toBe(false))
-      expect(accesses).toBeGreaterThanOrEqual(3)
+      await withExpectedConsole("error", "Failed to fetch current user", async () => {
+        const view = renderRuntime(
+          vi.fn(async () => null),
+          null
+        )
+        await waitFor(() => expect(view.result.current.loading).toBe(false))
+        expect(accesses).toBeGreaterThanOrEqual(3)
+        view.unmount()
+      })
     } finally {
       if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor)
     }

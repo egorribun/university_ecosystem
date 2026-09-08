@@ -140,20 +140,25 @@ describe("PageTransition", () => {
     expect(motionState.lazyFeatures).toHaveLength(1)
   })
 
-  it("keeps the fallback wrapper when matchMedia is unavailable", () => {
+  it("keeps the fallback wrapper when matchMedia is unavailable", async () => {
     const originalMatchMedia = window.matchMedia
     try {
       Object.defineProperty(window, "matchMedia", {
         configurable: true,
         value: undefined,
       })
-      const { container } = render(
+      const view = render(
         <PageTransition>
           <div>No media child</div>
         </PageTransition>
       )
+      await act(async () => {
+        await loadMotionModule()
+      })
+      const { container } = view
       expect(screen.getByText("No media child")).toBeInTheDocument()
       expect(container.querySelector(".bg-page")).toBeInTheDocument()
+      view.unmount()
     } finally {
       Object.defineProperty(window, "matchMedia", {
         configurable: true,
