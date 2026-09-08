@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
-import { EventEmitter } from "node:events"
+import { EventEmitter, once } from "node:events"
+import { spawn } from "node:child_process"
 import { link, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -9,6 +10,86 @@ import test from "node:test"
 const runnerUrl = new URL("./run-stryker.mjs", import.meta.url)
 const expectedPatterns = ["src/**/*.{ts,tsx}", "!src/**/__tests__/**/*"]
 const location = { start: { line: 1, column: 21 }, end: { line: 1, column: 25 } }
+const processTreeFixtureSetupTimeoutMs = 5_000
+
+function processIsAlive(pid) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    if (error?.code === "ESRCH") return false
+    throw error
+  }
+}
+
+async function waitForProcessTreeFixtureMessage(child) {
+  const listenerController = new AbortController()
+  let setupTimer
+  const setupTimeout = new Promise((_, reject) => {
+    setupTimer = setTimeout(
+      () => reject(new Error("Process-tree fixture did not report readiness within 5000ms")),
+      processTreeFixtureSetupTimeoutMs
+    )
+  })
+  try {
+    return await Promise.race([
+      once(child, "message", { signal: listenerController.signal }).then(([message]) => message),
+      once(child, "close", { signal: listenerController.signal }).then(([code, signal]) => {
+        throw new Error(
+          `Process-tree fixture closed before readiness (code=${String(code)}, signal=${String(signal)})`
+        )
+      }),
+      setupTimeout,
+    ])
+  } finally {
+    clearTimeout(setupTimer)
+    listenerController.abort()
+  }
+}
+
+async function spawnProcessTreeFixture({
+  createProcessTreeOwnership,
+  processTreeSpawnOptions,
+  registerFixture,
+}) {
+  const fixtureScript = String.raw`
+    const { spawn } = require("node:child_process");
+    const descendant = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)", "university-ecosystem-stryker-descendant"],
+      { stdio: "ignore", windowsHide: true }
+    );
+    const abortFixture = () => {
+      try {
+        descendant.kill("SIGKILL");
+      } finally {
+        process.exit(1);
+      }
+    };
+    process.once("disconnect", abortFixture);
+    process.send({ descendantPid: descendant.pid }, (error) => {
+      if (error) abortFixture();
+    });
+    setInterval(() => {}, 1000);
+  `
+  const child = spawn(
+    process.execPath,
+    ["-e", fixtureScript, "university-ecosystem-stryker-parent"],
+    {
+      ...processTreeSpawnOptions(process.platform),
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+    }
+  )
+  const fixture = { child, descendantPid: undefined, ownership: undefined }
+  registerFixture(fixture)
+  fixture.ownership = createProcessTreeOwnership(child, { platform: process.platform })
+  const message = await waitForProcessTreeFixtureMessage(child)
+  assert.equal(Number.isSafeInteger(message.descendantPid), true)
+  assert.equal(message.descendantPid > 0, true)
+  fixture.descendantPid = message.descendantPid
+  return fixture
+}
 
 test("evidence identity makes dirty worktrees explicit and detects TOCTOU drift", async () => {
   const { buildEvidenceIdentity, assertEvidenceUnchanged } = await import(runnerUrl)
@@ -184,6 +265,342 @@ test("fresh run directories are recreated after cleanup and remain exclusive", a
   assert.match(String(rejected.reason), /EEXIST/u)
 })
 
+test("process-tree ownership is explicit and POSIX children start in a dedicated group", async () => {
+  const { createProcessTreeOwnership, processTreeSpawnOptions } = await import(runnerUrl)
+  const child = { pid: 4321 }
+
+  assert.deepEqual(processTreeSpawnOptions("linux"), {
+    detached: true,
+    windowsHide: true,
+  })
+  assert.deepEqual(processTreeSpawnOptions("win32"), {
+    detached: false,
+    windowsHide: true,
+  })
+  assert.deepEqual(createProcessTreeOwnership(child, { platform: "linux" }), {
+    kind: "posix-process-group",
+    rootPid: 4321,
+    groupId: 4321,
+  })
+  assert.deepEqual(createProcessTreeOwnership(child, { platform: "win32" }), {
+    kind: "windows-process-tree",
+    rootPid: 4321,
+  })
+  assert.throws(
+    () => createProcessTreeOwnership({ pid: 0 }, { platform: "linux" }),
+    /positive safe integer/u
+  )
+})
+
+test("process-tree termination rejects mismatched PID and PGID ownership", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const child = { pid: 2222, exitCode: null, signalCode: null }
+
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(child, {
+        kind: "windows-process-tree",
+        rootPid: 3333,
+      }),
+    /does not match the child PID/u
+  )
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(child, {
+        kind: "posix-process-group",
+        rootPid: 2222,
+        groupId: 3333,
+      }),
+    /must be led by the owned child/u
+  )
+})
+
+test("Windows tree-kill failure stays authoritative after a successful direct-child fallback", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const treeFailure = Object.assign(new Error("taskkill access denied"), { code: "EACCES" })
+  const calls = []
+  const child = {
+    pid: 5432,
+    exitCode: null,
+    signalCode: null,
+    kill(signal) {
+      calls.push(["direct", signal])
+      return true
+    },
+  }
+  const ownership = { kind: "windows-process-tree", rootPid: 5432 }
+
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(child, ownership, {
+        execFileCommand: async (command, args, options) => {
+          calls.push([command, args, options])
+          throw treeFailure
+        },
+      }),
+    (error) => error === treeFailure
+  )
+  assert.deepEqual(calls, [
+    ["taskkill", ["/pid", "5432", "/t", "/f"], { timeout: 10_000, windowsHide: true }],
+    ["direct", "SIGKILL"],
+  ])
+})
+
+test("Windows tree-kill retains direct fallback errors without replacing the tree failure", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const treeFailure = new Error("taskkill timed out")
+  const directFailure = new Error("direct kill failed")
+  const child = {
+    pid: 6543,
+    exitCode: null,
+    signalCode: null,
+    kill() {
+      throw directFailure
+    },
+  }
+
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(
+        child,
+        { kind: "windows-process-tree", rootPid: 6543 },
+        {
+          execFileCommand: async () => {
+            throw treeFailure
+          },
+        }
+      ),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true)
+      assert.equal(error.cause, treeFailure)
+      assert.deepEqual(error.errors, [treeFailure, directFailure])
+      return true
+    }
+  )
+
+  let postExitActions = 0
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(
+        {
+          pid: 6543,
+          exitCode: 0,
+          signalCode: null,
+          kill() {
+            postExitActions += 1
+            return true
+          },
+        },
+        { kind: "windows-process-tree", rootPid: 6543 },
+        {
+          execFileCommand: async () => {
+            postExitActions += 1
+          },
+        }
+      ),
+    /root exited before tree termination could be proven/u
+  )
+  assert.equal(postExitActions, 0)
+
+  const falseChild = {
+    pid: 6543,
+    exitCode: null,
+    signalCode: null,
+    kill: () => false,
+  }
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(
+        falseChild,
+        { kind: "windows-process-tree", rootPid: 6543 },
+        {
+          execFileCommand: async () => {
+            throw treeFailure
+          },
+        }
+      ),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true)
+      assert.equal(error.cause, treeFailure)
+      assert.equal(error.errors[0], treeFailure)
+      assert.match(error.errors[1].message, /direct child kill returned false/u)
+      return true
+    }
+  )
+})
+
+test("POSIX termination only probes the owned group after its leader exits", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const calls = []
+  let probes = 0
+  const child = {
+    pid: 7654,
+    exitCode: 0,
+    signalCode: null,
+    kill() {
+      assert.fail("a direct-child kill cannot prove POSIX process-group quiescence")
+    },
+  }
+
+  const result = await terminateOwnedProcessTree(
+    child,
+    { kind: "posix-process-group", rootPid: 7654, groupId: 7654 },
+    {
+      signalProcess(pid, signal) {
+        calls.push([pid, signal])
+        if (signal === 0) {
+          probes += 1
+          if (probes === 2) throw Object.assign(new Error("group absent"), { code: "ESRCH" })
+        }
+        return true
+      },
+      delay: async (milliseconds) => calls.push(["delay", milliseconds]),
+    }
+  )
+
+  assert.equal(result, true)
+  assert.deepEqual(calls, [
+    [-7654, 0],
+    ["delay", 25],
+    [-7654, 0],
+  ])
+})
+
+test("POSIX group kill and liveness uncertainty fail closed", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const child = {
+    pid: 8765,
+    exitCode: null,
+    signalCode: null,
+    kill() {
+      return true
+    },
+  }
+  const ownership = { kind: "posix-process-group", rootPid: 8765, groupId: 8765 }
+  const permissionFailure = Object.assign(new Error("operation not permitted"), { code: "EPERM" })
+
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(child, ownership, {
+        signalProcess() {
+          throw permissionFailure
+        },
+      }),
+    (error) => error === permissionFailure
+  )
+
+  let signals = 0
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(child, ownership, {
+        signalProcess() {
+          signals += 1
+          if (signals === 1) return true
+          throw permissionFailure
+        },
+      }),
+    (error) => error === permissionFailure
+  )
+
+  let nowCalls = 0
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(child, ownership, {
+        signalProcess: () => true,
+        now: () => {
+          nowCalls += 1
+          return nowCalls === 1 ? 1_000 : 1_011
+        },
+        groupVerificationTimeoutMs: 10,
+        delay: async () => assert.fail("an exhausted liveness bound must not sleep again"),
+      }),
+    /process group 8765 remained live after 10ms/u
+  )
+})
+
+test(
+  "real owned process trees terminate descendants before timeout or signal completion",
+  { timeout: 20_000 },
+  async (t) => {
+    const {
+      createProcessTreeOwnership,
+      processTreeSpawnOptions,
+      terminateOwnedProcessTree,
+      waitForChildClose,
+    } = await import(runnerUrl)
+    const fixtures = []
+    t.after(async () => {
+      for (const fixture of fixtures) {
+        if (processIsAlive(fixture.descendantPid)) {
+          try {
+            process.kill(fixture.descendantPid, "SIGKILL")
+          } catch (error) {
+            if (error?.code !== "ESRCH") throw error
+          }
+        }
+        if (processIsAlive(fixture.child.pid)) {
+          if (fixture.ownership) {
+            try {
+              await terminateOwnedProcessTree(fixture.child, fixture.ownership)
+            } catch {
+              fixture.child.kill("SIGKILL")
+            }
+          } else {
+            fixture.child.kill("SIGKILL")
+          }
+        }
+      }
+    })
+
+    for (const mode of ["signal", "timeout"]) {
+      const fixture = await spawnProcessTreeFixture({
+        createProcessTreeOwnership,
+        processTreeSpawnOptions,
+        registerFixture: (spawnedFixture) => fixtures.push(spawnedFixture),
+      })
+      assert.equal(processIsAlive(fixture.descendantPid), true)
+      const controller = new AbortController()
+      let fireTimeout
+      const timeoutToken = Symbol("timeout")
+      const result = waitForChildClose(fixture.child, {
+        description: `real ${mode} tree`,
+        timeoutMs: 60_000,
+        abortSignal: controller.signal,
+        processTreeOwnership: fixture.ownership,
+        scheduleTimeout(callback, milliseconds) {
+          if (fireTimeout === undefined) {
+            fireTimeout = callback
+            return timeoutToken
+          }
+          return setTimeout(callback, milliseconds)
+        },
+        cancelTimeout(timer) {
+          if (timer !== timeoutToken) clearTimeout(timer)
+        },
+      })
+
+      if (mode === "signal") {
+        controller.abort(
+          Object.assign(new Error("Stryker execution interrupted by SIGTERM"), {
+            code: "STRYKER_INTERRUPTED",
+            signalName: "SIGTERM",
+          })
+        )
+      } else {
+        fireTimeout()
+      }
+
+      await assert.rejects(result, (error) => {
+        assert.equal(error.processQuiesced, true)
+        assert.match(error.message, mode === "signal" ? /SIGTERM/u : /exceeded 60000ms/u)
+        return true
+      })
+      assert.equal(processIsAlive(fixture.descendantPid), false)
+      assert.equal(processIsAlive(fixture.child.pid), false)
+    }
+  }
+)
+
 test("child execution settles only after close and awaits timeout termination", async () => {
   const { waitForChildClose } = await import(runnerUrl)
   const child = new EventEmitter()
@@ -225,12 +642,158 @@ test("child execution settles only after close and awaits timeout termination", 
   await Promise.resolve()
   assert.equal(settled, false)
 
-  finishTermination()
+  finishTermination(true)
   await assert.rejects(result, /focused shard exceeded 123ms/u)
   assert.equal(cancelledTimer, "timer")
   assert.equal(child.listenerCount("error"), 0)
   assert.equal(child.listenerCount("exit"), 0)
   assert.equal(child.listenerCount("close"), 0)
+})
+
+test("direct-child close cannot replace explicit process-tree quiescence proof", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.exitCode = null
+  child.signalCode = null
+  let timeoutCallback
+  const result = waitForChildClose(child, {
+    description: "unproved tree",
+    timeoutMs: 321,
+    terminate: async () => undefined,
+    scheduleTimeout(callback) {
+      timeoutCallback = callback
+      return "timer"
+    },
+    cancelTimeout: () => undefined,
+  })
+
+  timeoutCallback()
+  child.emit("exit", null, "SIGKILL")
+  child.emit("close", null, "SIGKILL")
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.match(error.errors[0].message, /unproved tree exceeded 321ms/u)
+    assert.match(error.errors[1].message, /did not confirm process-tree quiescence/u)
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+})
+
+test("normal POSIX completion proves the owned group is absent before resolving", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 9876
+  child.exitCode = null
+  child.signalCode = null
+  let confirmGroupAbsent
+  const verification = new Promise((resolve) => {
+    confirmGroupAbsent = resolve
+  })
+  let verificationCalls = 0
+  const result = waitForChildClose(child, {
+    description: "normal POSIX shard",
+    timeoutMs: 10_000,
+    processTreeOwnership: {
+      kind: "posix-process-group",
+      rootPid: 9876,
+      groupId: 9876,
+    },
+    verifyProcessTree: async () => {
+      verificationCalls += 1
+      await verification
+      return true
+    },
+  })
+  let settled = false
+  void result.then(() => {
+    settled = true
+  })
+
+  child.emit("exit", 0, null)
+  child.exitCode = 0
+  child.emit("close", 0, null)
+  await Promise.resolve()
+  assert.equal(settled, false)
+  assert.equal(verificationCalls, 1)
+
+  confirmGroupAbsent()
+  await result
+  assert.equal(settled, true)
+})
+
+test("spontaneous POSIX failure proves the exited group absent before artifact finalization", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 9877
+  child.exitCode = null
+  child.signalCode = null
+  let confirmTreeQuiescence
+  const treeVerification = new Promise((resolve) => {
+    confirmTreeQuiescence = resolve
+  })
+  let verificationCalls = 0
+  const result = waitForChildClose(child, {
+    description: "spontaneously failed POSIX shard",
+    timeoutMs: 10_000,
+    processTreeOwnership: {
+      kind: "posix-process-group",
+      rootPid: 9877,
+      groupId: 9877,
+    },
+    terminate: async () => assert.fail("an exited process-group identity must not be signalled"),
+    verifyProcessTree: async () => {
+      verificationCalls += 1
+      return treeVerification
+    },
+  })
+  let settled = false
+  void result.catch(() => {
+    settled = true
+  })
+
+  child.emit("exit", 7, null)
+  child.exitCode = 7
+  child.emit("close", 7, null)
+  await Promise.resolve()
+  assert.equal(verificationCalls, 1)
+  assert.equal(settled, false)
+
+  confirmTreeQuiescence(true)
+  await assert.rejects(result, (error) => {
+    assert.match(error.message, /exited with code 7/u)
+    assert.equal(error.processQuiesced, true)
+    return true
+  })
+})
+
+test("spontaneous Windows failure stays fail-closed when the dead-root tree cannot be proven", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 9878
+  child.exitCode = null
+  child.signalCode = null
+  let terminationCalls = 0
+  const result = waitForChildClose(child, {
+    description: "spontaneously failed Windows shard",
+    timeoutMs: 10_000,
+    processTreeOwnership: { kind: "windows-process-tree", rootPid: 9878 },
+    terminate: async () => {
+      terminationCalls += 1
+      assert.fail("taskkill must not target a Windows PID after its root exited")
+    },
+  })
+
+  child.emit("exit", null, "SIGABRT")
+  child.signalCode = "SIGABRT"
+  child.emit("close", null, "SIGABRT")
+
+  await assert.rejects(result, (error) => {
+    assert.match(error.message, /exited due to signal SIGABRT/u)
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+  assert.equal(terminationCalls, 0)
 })
 
 test("child close reports normal exits and retains timeout termination failures", async () => {
@@ -404,8 +967,8 @@ test("a process signal terminates every active child, awaits close, and stops sh
   await Promise.resolve()
   assert.equal(settled, false, "close alone must not bypass awaited tree termination")
 
-  terminations[0]()
-  terminations[1]()
+  terminations[0](true)
+  terminations[1](true)
   await assert.rejects(execution, (error) => {
     assert.match(error.message, /SIGTERM/u)
     assert.notEqual(error.processQuiesced, false)
@@ -447,7 +1010,7 @@ test("a child error that precedes cancellation remains the primary execution fai
   child.emit("exit", null, "SIGKILL")
   child.emit("close", null, "SIGKILL")
   await new Promise((resolve) => setImmediate(resolve))
-  finishTermination()
+  finishTermination(true)
 
   await assert.rejects(result, (error) => {
     assert.equal(error instanceof AggregateError, true)
@@ -485,7 +1048,7 @@ test("a child error after cancellation is retained as a fail-closed secondary fa
   child.emit("error", lateChildError)
   child.emit("exit", null, "SIGKILL")
   child.emit("close", null, "SIGKILL")
-  finishTermination()
+  finishTermination(true)
 
   await assert.rejects(result, (error) => {
     assert.equal(error instanceof AggregateError, true)
@@ -533,9 +1096,10 @@ test("late child failures precede termination failures in cancellation diagnosti
   })
 })
 
-test("a signal after exit still awaits close without attempting a live-process kill", async () => {
+test("a signal after exit never targets the dead root and fails closed on Windows", async () => {
   const { waitForChildClose } = await import(runnerUrl)
   const child = new EventEmitter()
+  child.pid = 12_345
   child.exitCode = null
   child.signalCode = null
   const controller = new AbortController()
@@ -548,9 +1112,10 @@ test("a signal after exit still awaits close without attempting a live-process k
     description: "exited shard",
     timeoutMs: 10_000,
     abortSignal: controller.signal,
-    terminate: async (target) => {
+    processTreeOwnership: { kind: "windows-process-tree", rootPid: 12_345 },
+    terminate: async () => {
       terminationCalls += 1
-      assert.equal(target.exitCode, 0)
+      assert.fail("a post-exit cancellation must not taskkill a reusable PID")
     },
   })
   let settled = false
@@ -567,10 +1132,10 @@ test("a signal after exit still awaits close without attempting a live-process k
 
   await assert.rejects(result, (error) => {
     assert.equal(error, cancellationError)
-    assert.notEqual(error.processQuiesced, false)
+    assert.equal(error.processQuiesced, false)
     return true
   })
-  assert.equal(terminationCalls, 1)
+  assert.equal(terminationCalls, 0)
 })
 
 test("signal cancellation preserves termination failures and fails closed without close", async () => {
@@ -615,7 +1180,7 @@ test("signal cancellation preserves termination failures and fails closed withou
     timeoutMs: 10_000,
     terminationGraceMs: 75,
     abortSignal: missingCloseController.signal,
-    terminate: async () => undefined,
+    terminate: async () => true,
     scheduleTimeout: (callback, milliseconds) => {
       const timer = { callback, milliseconds }
       timers.push(timer)

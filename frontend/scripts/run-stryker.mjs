@@ -17,6 +17,7 @@ import {
 import { rmSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { performance } from "node:perf_hooks"
 import process from "node:process"
 import { promisify } from "node:util"
 import { fileURLToPath } from "node:url"
@@ -1439,6 +1440,7 @@ function boundedEnvironmentInteger(name, fallback, minimum, maximum) {
 
 const childTerminationCommandTimeoutMs = 10_000
 const childTerminationGraceMs = 15_000
+const processTreeQuiescencePollMs = 25
 
 function cancellationReason(signal) {
   if (signal?.reason instanceof Error) return signal.reason
@@ -1497,20 +1499,154 @@ export function runnerExitCode(error) {
   return 1
 }
 
-async function terminateChildTree(child) {
-  if (child.exitCode !== null || child.signalCode !== null) return
-  if (process.platform === "win32") {
+function assertPositiveProcessId(pid, description) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) {
+    throw new Error(`${description} must be a positive safe integer`)
+  }
+}
+
+export function processTreeSpawnOptions(platform = process.platform) {
+  return {
+    detached: platform !== "win32",
+    windowsHide: true,
+  }
+}
+
+export function createProcessTreeOwnership(child, { platform = process.platform } = {}) {
+  assertPositiveProcessId(child.pid, "Stryker child PID")
+  if (platform === "win32") {
+    return Object.freeze({ kind: "windows-process-tree", rootPid: child.pid })
+  }
+  return Object.freeze({
+    kind: "posix-process-group",
+    rootPid: child.pid,
+    groupId: child.pid,
+  })
+}
+
+function assertProcessTreeOwnership(child, ownership) {
+  if (!ownership || typeof ownership !== "object") {
+    throw new Error("Stryker process-tree ownership is required")
+  }
+  assertPositiveProcessId(child.pid, "Stryker child PID")
+  assertPositiveProcessId(ownership.rootPid, "Stryker process-tree root PID")
+  if (ownership.rootPid !== child.pid) {
+    throw new Error("Stryker process-tree ownership does not match the child PID")
+  }
+  if (ownership.kind === "windows-process-tree") return
+  if (ownership.kind !== "posix-process-group") {
+    throw new Error("Stryker process-tree ownership kind is invalid")
+  }
+  assertPositiveProcessId(ownership.groupId, "Stryker process-group ID")
+  if (ownership.groupId !== ownership.rootPid) {
+    throw new Error("Stryker process group must be led by the owned child")
+  }
+}
+
+function directChildKillFailure(child) {
+  try {
+    if (child.kill("SIGKILL") === false) {
+      return new Error("Stryker direct child kill returned false")
+    }
+  } catch (error) {
+    return error
+  }
+  return undefined
+}
+
+function treeTerminationFailure(treeError, directError) {
+  if (!directError) return treeError
+  return new AggregateError(
+    [treeError, directError],
+    `${treeError.message}; direct child fallback also failed`,
+    { cause: treeError }
+  )
+}
+
+export async function verifyOwnedProcessTreeQuiescence(
+  ownership,
+  {
+    signalProcess = (pid, signal) => process.kill(pid, signal),
+    delay = wait,
+    now = () => performance.now(),
+    groupVerificationTimeoutMs = childTerminationCommandTimeoutMs,
+    groupVerificationPollMs = processTreeQuiescencePollMs,
+  } = {}
+) {
+  if (ownership?.kind !== "posix-process-group") {
+    throw new Error("Only an owned POSIX process group supports independent liveness verification")
+  }
+  assertPositiveProcessId(ownership.groupId, "Stryker process-group ID")
+  const startedAt = now()
+  for (;;) {
     try {
-      await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+      signalProcess(-ownership.groupId, 0)
+    } catch (error) {
+      if (error?.code === "ESRCH") return true
+      throw error
+    }
+    const elapsedMs = Math.max(0, now() - startedAt)
+    if (elapsedMs >= groupVerificationTimeoutMs) {
+      throw new Error(
+        `Stryker process group ${ownership.groupId} remained live after ${groupVerificationTimeoutMs}ms`
+      )
+    }
+    await delay(Math.min(groupVerificationPollMs, groupVerificationTimeoutMs - elapsedMs))
+  }
+}
+
+export async function terminateOwnedProcessTree(
+  child,
+  ownership,
+  {
+    execFileCommand = execFileAsync,
+    signalProcess = (pid, signal) => process.kill(pid, signal),
+    delay = wait,
+    now = () => performance.now(),
+    groupVerificationTimeoutMs = childTerminationCommandTimeoutMs,
+    groupVerificationPollMs = processTreeQuiescencePollMs,
+  } = {}
+) {
+  assertProcessTreeOwnership(child, ownership)
+  if (child.exitCode !== null || child.signalCode !== null) {
+    if (ownership.kind === "posix-process-group") {
+      return verifyOwnedProcessTreeQuiescence(ownership, {
+        signalProcess,
+        delay,
+        now,
+        groupVerificationTimeoutMs,
+        groupVerificationPollMs,
+      })
+    }
+    throw new Error(
+      "Stryker Windows process-tree root exited before tree termination could be proven"
+    )
+  }
+  if (ownership.kind === "windows-process-tree") {
+    try {
+      await execFileCommand("taskkill", ["/pid", String(ownership.rootPid), "/t", "/f"], {
         timeout: childTerminationCommandTimeoutMs,
         windowsHide: true,
       })
-      return
-    } catch {
-      // Fall through to the direct child kill if taskkill is unavailable.
+      return true
+    } catch (treeError) {
+      throw treeTerminationFailure(treeError, directChildKillFailure(child))
     }
   }
-  child.kill("SIGKILL")
+
+  try {
+    signalProcess(-ownership.groupId, "SIGKILL")
+  } catch (treeError) {
+    if (treeError?.code === "ESRCH") return true
+    throw treeTerminationFailure(treeError, directChildKillFailure(child))
+  }
+  return verifyOwnedProcessTreeQuiescence(ownership, {
+    signalProcess,
+    delay,
+    now,
+    groupVerificationTimeoutMs,
+    groupVerificationPollMs,
+  })
 }
 
 export function waitForChildClose(
@@ -1519,7 +1655,9 @@ export function waitForChildClose(
     description,
     timeoutMs,
     abortSignal,
-    terminate = terminateChildTree,
+    processTreeOwnership,
+    terminate = terminateOwnedProcessTree,
+    verifyProcessTree = verifyOwnedProcessTreeQuiescence,
     terminationGraceMs = childTerminationGraceMs,
     scheduleTimeout = setTimeout,
     cancelTimeout = clearTimeout,
@@ -1535,7 +1673,10 @@ export function waitForChildClose(
     let closeResult
     let terminationSettled = false
     let terminationError
+    let terminationConfirmed = false
     let processErrorDuringTermination = false
+    let postCloseVerificationStarted = false
+    let postExitFailure
     let graceTimer
     let timeoutTimer
 
@@ -1573,7 +1714,7 @@ export function waitForChildClose(
       settle(
         terminationFailure(
           terminationError ? [terminationError] : [],
-          terminationError === undefined && !processErrorDuringTermination
+          terminationError === undefined && terminationConfirmed && !processErrorDuringTermination
         )
       )
     }
@@ -1592,9 +1733,16 @@ export function waitForChildClose(
         settle(terminationFailure(secondaryErrors, false))
       }, terminationGraceMs)
       void Promise.resolve()
-        .then(() => terminate(child))
+        .then(() => terminate(child, processTreeOwnership))
         .then(
-          () => {
+          (confirmation) => {
+            if (confirmation !== true) {
+              terminationError = new Error(
+                `${description} tree terminator did not confirm process-tree quiescence`
+              )
+            } else {
+              terminationConfirmed = true
+            }
             terminationSettled = true
             finishTerminatedExecution()
           },
@@ -1605,11 +1753,41 @@ export function waitForChildClose(
           }
         )
     }
+    const postCloseFailure = (primaryError, secondaryErrors, processQuiesced) => {
+      const failure =
+        secondaryErrors.length === 0
+          ? primaryError
+          : new AggregateError(
+              [primaryError, ...secondaryErrors],
+              `${primaryError.message}; process-tree quiescence was not confirmed`,
+              { cause: primaryError }
+            )
+      failure.processQuiesced = processQuiesced
+      return failure
+    }
+    const beginPostExitFailure = (error) => {
+      if (!postExitFailure) postExitFailure = error
+      if (timeoutTimer !== undefined) cancelTimeout(timeoutTimer)
+      if (graceTimer !== undefined) return
+      graceTimer = scheduleTimeout(() => {
+        if (settled) return
+        const primaryError = processError ?? postExitFailure
+        const secondaryErrors = processError ? [postExitFailure] : []
+        secondaryErrors.push(
+          new Error(`${description} did not close after its process-tree root exited`)
+        )
+        settle(postCloseFailure(primaryError, secondaryErrors, false))
+      }, terminationGraceMs)
+    }
     const onTimeout = () => {
-      beginTermination(new Error(`${description} exceeded ${timeoutMs}ms`))
+      const error = new Error(`${description} exceeded ${timeoutMs}ms`)
+      if (exitResult) beginPostExitFailure(error)
+      else beginTermination(error)
     }
     const onAbort = () => {
-      beginTermination(cancellationReason(abortSignal))
+      const error = cancellationReason(abortSignal)
+      if (exitResult) beginPostExitFailure(error)
+      else beginTermination(error)
     }
     const onError = (error) => {
       processError = error
@@ -1621,6 +1799,52 @@ export function waitForChildClose(
     const onExit = (code, signal) => {
       exitResult = { code, signal }
     }
+    const verifyPostCloseProcessTree = (primaryError) => {
+      if (postCloseVerificationStarted) return
+      postCloseVerificationStarted = true
+      if (timeoutTimer !== undefined) cancelTimeout(timeoutTimer)
+      const finishVerification = (verificationError, processQuiesced) => {
+        if (settled) return
+        let effectivePrimary = primaryError
+        const secondaryErrors = []
+        if (postExitFailure && postExitFailure !== effectivePrimary) {
+          if (effectivePrimary) secondaryErrors.push(postExitFailure)
+          else effectivePrimary = postExitFailure
+        }
+        if (verificationError) {
+          if (effectivePrimary) secondaryErrors.push(verificationError)
+          else effectivePrimary = verificationError
+        }
+        if (!effectivePrimary) {
+          settle()
+          return
+        }
+        settle(postCloseFailure(effectivePrimary, secondaryErrors, processQuiesced))
+      }
+      if (processTreeOwnership?.kind !== "posix-process-group") {
+        finishVerification(undefined, !Number.isSafeInteger(child.pid))
+        return
+      }
+      void Promise.resolve()
+        .then(() => verifyProcessTree(processTreeOwnership))
+        .then(
+          (confirmation) => {
+            if (confirmation !== true) {
+              finishVerification(
+                new Error(
+                  `${description} verifier did not confirm process-tree quiescence after exit`
+                ),
+                false
+              )
+              return
+            }
+            finishVerification(undefined, true)
+          },
+          (error) => {
+            finishVerification(error, false)
+          }
+        )
+    }
     const onClose = (code, signal) => {
       closeResult = { code, signal }
       if (terminationStarted) {
@@ -1628,11 +1852,22 @@ export function waitForChildClose(
         return
       }
       const result = exitResult ?? closeResult
-      if (processError) settle(processError)
-      else if (result.signal)
-        settle(new Error(`${description} exited due to signal ${result.signal}`))
+      let primaryError = processError
+      if (!primaryError && result.signal) {
+        primaryError = new Error(`${description} exited due to signal ${result.signal}`)
+      }
+      if (!primaryError && result.code !== 0) {
+        primaryError = new Error(`${description} exited with code ${result.code}`)
+      }
+      if (primaryError || postExitFailure) {
+        verifyPostCloseProcessTree(primaryError)
+      } else if (processTreeOwnership?.kind === "posix-process-group") {
+        verifyPostCloseProcessTree()
+      }
+      // Windows taskkill can prove an abnormal live-root tree termination, but it cannot
+      // enumerate a tree after its root has exited. Normal exit therefore remains the
+      // foreground Stryker CLI contract; no cancellation path infers quiescence from it.
       else if (result.code === 0) settle()
-      else settle(new Error(`${description} exited with code ${result.code}`))
     }
     child.once("error", onError)
     child.once("exit", onExit)
@@ -1650,8 +1885,17 @@ async function runNode(args, description, env, timeoutMs, abortSignal) {
     env,
     stdio: "inherit",
     shell: false,
+    ...processTreeSpawnOptions(process.platform),
   })
-  await waitForChildClose(child, { description, timeoutMs, abortSignal })
+  const processTreeOwnership = Number.isSafeInteger(child.pid)
+    ? createProcessTreeOwnership(child)
+    : undefined
+  await waitForChildClose(child, {
+    description,
+    timeoutMs,
+    abortSignal,
+    processTreeOwnership,
+  })
 }
 
 async function git(args) {
