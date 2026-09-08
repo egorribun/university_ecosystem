@@ -63,7 +63,7 @@ type DeferredOverlayStore = {
   getServerSnapshot: () => boolean
 }
 
-function createDeferredOverlayStore(): DeferredOverlayStore {
+export function createDeferredOverlayStore(): DeferredOverlayStore {
   let ready = false
   let cleanup: (() => void) | null = null
   const listeners = new Set<() => void>()

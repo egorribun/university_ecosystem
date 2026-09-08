@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
+  createMobileKeyboardStore,
   createMobileNavItems,
   isNavSectionActive,
   MOBILE_NAV_TRANSLATION_NAMESPACE,
@@ -12,6 +13,71 @@ import {
 } from "../MobileBottomNav"
 
 describe("MobileBottomNav pure navigation contracts", () => {
+  it("shares viewport resources until final unsubscribe and ignores a stale callback", () => {
+    const originalViewport = Object.getOwnPropertyDescriptor(window, "visualViewport")
+    const listeners = new Map<string, EventListener>()
+    const visualViewport = {
+      height: window.innerHeight,
+      scale: 1,
+      addEventListener: vi.fn((type: string, listener: EventListener) => {
+        listeners.set(type, listener)
+      }),
+      removeEventListener: vi.fn(),
+    }
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: visualViewport,
+    })
+
+    try {
+      const store = createMobileKeyboardStore()
+      const unsubscribeFirst = store.subscribe(vi.fn())
+      const unsubscribeSecond = store.subscribe(vi.fn())
+
+      expect(store.getServerSnapshot()).toBe(false)
+      expect(visualViewport.addEventListener).toHaveBeenCalledTimes(2)
+
+      unsubscribeFirst()
+      expect(visualViewport.removeEventListener).not.toHaveBeenCalled()
+
+      const staleResize = listeners.get("resize")
+      unsubscribeSecond()
+      expect(visualViewport.removeEventListener).toHaveBeenCalledTimes(2)
+      expect(store.getSnapshot()).toBe(false)
+      expect(() => staleResize?.(new Event("resize"))).not.toThrow()
+      expect(store.getSnapshot()).toBe(false)
+
+      const unsubscribeRestarted = store.subscribe(vi.fn())
+      expect(visualViewport.addEventListener).toHaveBeenCalledTimes(4)
+      unsubscribeRestarted()
+      expect(visualViewport.removeEventListener).toHaveBeenCalledTimes(4)
+    } finally {
+      if (originalViewport) {
+        Object.defineProperty(window, "visualViewport", originalViewport)
+      } else {
+        Reflect.deleteProperty(window, "visualViewport")
+      }
+    }
+  })
+
+  it("keeps a server-safe snapshot when Visual Viewport is unavailable", () => {
+    const originalViewport = Object.getOwnPropertyDescriptor(window, "visualViewport")
+    Reflect.deleteProperty(window, "visualViewport")
+
+    try {
+      const store = createMobileKeyboardStore()
+      const unsubscribe = store.subscribe(vi.fn())
+
+      expect(store.getSnapshot()).toBe(false)
+      expect(store.getServerSnapshot()).toBe(false)
+      unsubscribe()
+    } finally {
+      if (originalViewport) {
+        Object.defineProperty(window, "visualViewport", originalViewport)
+      }
+    }
+  })
+
   it.each([
     ["/dashboard", "/dashboard"],
     ["/dashboard/", "/dashboard"],

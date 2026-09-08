@@ -40,7 +40,7 @@ type MobileKeyboardStore = {
   getServerSnapshot: () => boolean
 }
 
-function createMobileKeyboardStore(): MobileKeyboardStore {
+export function createMobileKeyboardStore(): MobileKeyboardStore {
   let isOpen = false
   let viewport: VisualViewport | null = null
   let cleanup: (() => void) | null = null

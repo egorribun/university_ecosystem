@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   cancelDeferredIdle,
   clearDeferredTimer,
+  createDeferredOverlayStore,
   createMountedCommit,
   createDeferredMountLifecycle,
   DEFERRED_INTERACTION_EVENTS,
@@ -74,6 +75,47 @@ describe("DeferredGlobalOverlays", () => {
       "focusin",
     ])
     expect(DEFERRED_INTERACTION_OPTIONS).toStrictEqual({ once: true, passive: true })
+  })
+
+  it("shares one deferred lifecycle until the final subscriber leaves and can restart", () => {
+    vi.useFakeTimers()
+    const addEventListener = vi.spyOn(window, "addEventListener")
+    const removeEventListener = vi.spyOn(window, "removeEventListener")
+    const setTimeout = vi.spyOn(window, "setTimeout")
+    const promotionEvents = new Set<string>(DEFERRED_INTERACTION_EVENTS)
+    const promotionCalls = (calls: typeof addEventListener.mock.calls) =>
+      calls.filter(([eventName]) => promotionEvents.has(String(eventName)))
+
+    try {
+      const store = createDeferredOverlayStore()
+      const unsubscribeFirst = store.subscribe(vi.fn())
+      const unsubscribeSecond = store.subscribe(vi.fn())
+
+      expect(store.getServerSnapshot()).toBe(false)
+      expect(promotionCalls(addEventListener.mock.calls)).toHaveLength(4)
+      expect(
+        setTimeout.mock.calls.filter(([, delay]) => delay === DEFERRED_OVERLAY_DELAY_MS)
+      ).toHaveLength(1)
+
+      unsubscribeFirst()
+      expect(promotionCalls(removeEventListener.mock.calls)).toHaveLength(0)
+
+      unsubscribeSecond()
+      expect(promotionCalls(removeEventListener.mock.calls)).toHaveLength(4)
+
+      const unsubscribeRestarted = store.subscribe(vi.fn())
+      expect(promotionCalls(addEventListener.mock.calls)).toHaveLength(8)
+      expect(
+        setTimeout.mock.calls.filter(([, delay]) => delay === DEFERRED_OVERLAY_DELAY_MS)
+      ).toHaveLength(2)
+
+      unsubscribeRestarted()
+      expect(promotionCalls(removeEventListener.mock.calls)).toHaveLength(8)
+    } finally {
+      addEventListener.mockRestore()
+      removeEventListener.mockRestore()
+      setTimeout.mockRestore()
+    }
   })
 
   it("keeps the server and first client render empty, then mounts every overlay", async () => {

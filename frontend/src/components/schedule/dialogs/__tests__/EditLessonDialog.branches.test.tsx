@@ -142,6 +142,9 @@ describe("EditLessonDialog — branches", () => {
     expect(createLessonChoiceUpdater("practice")(SAMPLE)?.lesson_type).toBe("practice")
     expect(createLessonParityUpdater("even")(SAMPLE)?.parity).toBe("even")
     expect(createLessonFieldUpdater("subject", "ignored")(null)).toBeNull()
+    expect(createLessonTimeUpdater("start_time", "07:30", now)(null)).toBeNull()
+    expect(createLessonChoiceUpdater("practice")(null)).toBeNull()
+    expect(createLessonParityUpdater("even")(null)).toBeNull()
 
     const changed = { ...SAMPLE, subject: "Changed" }
     expect(replaceLessonById([SAMPLE], SAMPLE.id, changed)).toEqual([changed])

@@ -119,9 +119,8 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
   })
   const addableResults = searchResults.filter((u) => !memberIds.has(String(u.id)))
 
-  const startRename = () => {
-    if (!chat) return
-    setNameDraft(chat.name ?? undefined)
+  const startRename = (currentChat: Chat) => {
+    setNameDraft(currentChat.name ?? undefined)
     setIsEditingName(true)
   }
   const saveRename = () => {
@@ -208,7 +207,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                 ) : (
                   <button
                     type="button"
-                    onClick={startRename}
+                    onClick={() => startRename(chat)}
                     className="inline-flex min-h-[40px] items-center gap-2 rounded-xl px-3 text-sm font-semibold text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                   >
                     <Pencil className="size-4" strokeWidth={2} aria-hidden="true" />
