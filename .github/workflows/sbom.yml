@@ -36,6 +36,7 @@ env:
     crates/pyo3-sanitizer/fuzz/Cargo.lock
     frontend/rust-crypto/Cargo.lock
     frontend/rust-crypto/fuzz/Cargo.lock
+    frontend/tools/stryker-process-host/Cargo.lock
     frontend/wasm-sanitizer/Cargo.lock
     frontend/wasm-sanitizer/fuzz/Cargo.lock
     native/rust_ext/Cargo.lock
