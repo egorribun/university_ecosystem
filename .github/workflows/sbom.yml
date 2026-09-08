@@ -49,7 +49,7 @@ env:
 jobs:
   sbom-python:
     name: Python SBOM (anchore/sbom-action)
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -91,7 +91,7 @@ jobs:
 
   sbom-go:
     name: Go SBOM (osv-scanner)
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -184,7 +184,7 @@ jobs:
 
   sbom-rust:
     name: Rust SBOM (cargo-audit)
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -269,7 +269,7 @@ jobs:
   vuln-gate:
     # Keep the externally visible main-CI check context stable for run history.
     name: Vulnerability gate (CRITICAL/HIGH)
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     # Cold runs compile cargo-audit and execute three ecosystems sequentially.
     timeout-minutes: 30

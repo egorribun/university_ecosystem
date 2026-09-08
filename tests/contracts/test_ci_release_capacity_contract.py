@@ -154,7 +154,9 @@ def test_pr_vulnerability_gate_has_a_read_only_producer() -> None:
     assert "pull_request" in trigger
 
     jobs = workflow["jobs"]
-    assert jobs["vuln-gate"]["if"] == "${{ github.event_name != 'pull_request' }}"
+    assert jobs["vuln-gate"]["if"] == (
+        "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}"
+    )
     pr_gate = jobs["vuln-gate-pr"]
     assert pr_gate["name"] == "Vulnerability gate (CRITICAL/HIGH)"
     assert pr_gate["if"] == "${{ github.event_name == 'pull_request' }}"
@@ -185,9 +187,22 @@ def test_pr_vulnerability_gate_has_a_read_only_producer() -> None:
         assert "go-version-file" not in setup_go["with"]
 
     for job_name in ("sbom-python", "sbom-go", "sbom-rust"):
-        assert "pull_request" in str(jobs[job_name].get("if", ""))
-        assert "!= 'pull_request'" in str(jobs[job_name]["if"])
+        assert jobs[job_name]["if"] == (
+            "${{ github.ref == 'refs/heads/main' && "
+            "github.event_name != 'pull_request' }}"
+        )
     assert "id-token" not in pr_steps
+
+
+def test_privileged_sbom_jobs_are_bound_to_the_protected_main_ref() -> None:
+    """Manual dispatch must not promote a non-main checkout into a signer."""
+
+    workflow = _workflow(SBOM)
+    expected_guard = (
+        "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}"
+    )
+    for job_name in ("sbom-python", "sbom-go", "sbom-rust", "vuln-gate"):
+        assert workflow["jobs"][job_name]["if"] == expected_guard
 
 
 def test_release_policy_declares_a_pr_event_without_removing_push_policy() -> None:
