@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { CSSProperties, ReactEventHandler } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -200,7 +200,9 @@ describe("NewsDetailHero mutation contracts", () => {
     expect(lightboxImage).toHaveClass("max-h-[90vh]", "max-w-[90vw]", "object-contain")
     expect(focusTrapState.calls.at(-1)?.active).toBe(true)
 
-    focusTrapState.onDeactivate?.()
+    act(() => {
+      focusTrapState.onDeactivate?.()
+    })
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
   })
 

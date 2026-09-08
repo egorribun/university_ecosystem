@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AxiosHeaders } from "axios"
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
 
+import { withExpectedConsole } from "@/tests/strictConsole"
+
 import {
   applyEtagHeader,
   clearCachesOnLogout,
@@ -720,7 +722,9 @@ describe("etagCache — handleEtagResponse", () => {
     responseCache.set("short:hmac", { ...cached, hmac: "x" })
 
     const notModified = makeResponse(304, { etag: '"etag-short-hmac"' }, null)
-    await handleEtagResponse(notModified, "short:hmac")
+    await withExpectedConsole("warn", "[etagCache] HMAC mismatch for key:", () =>
+      handleEtagResponse(notModified, "short:hmac")
+    )
 
     expect(notModified.status).toBe(304)
     expect(responseCache.get("short:hmac")).toBeUndefined()
@@ -737,7 +741,9 @@ describe("etagCache — handleEtagResponse", () => {
     responseCache.set("empty:hmac", { ...cached, hmac: "" })
 
     const notModified = makeResponse(304, { etag: '"etag-empty-hmac"' }, null)
-    await handleEtagResponse(notModified, "empty:hmac")
+    await withExpectedConsole("warn", "[etagCache] HMAC mismatch for key:", () =>
+      handleEtagResponse(notModified, "empty:hmac")
+    )
 
     expect(notModified.status).toBe(304)
     expect(responseCache.get("empty:hmac")).toBeUndefined()
@@ -917,7 +923,7 @@ describe("etagCache — debounced flush + visibilitychange", () => {
     expect(etagCache.get("q:retry-fails")).toBeUndefined()
   })
 
-  it("swallows a non-quota localStorage flush failure", () => {
+  it("swallows a non-quota localStorage flush failure", async () => {
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("storage unavailable")
     })
@@ -927,7 +933,16 @@ describe("etagCache — debounced flush + visibilitychange", () => {
       configurable: true,
       get: () => "hidden",
     })
-    expect(() => document.dispatchEvent(new Event("visibilitychange"))).not.toThrow()
+    // Three earlier resetModules imports plus the static module each own a
+    // visibility listener, so this event intentionally emits four diagnostics.
+    await withExpectedConsole(
+      "warn",
+      "Failed to flush etag cache to localStorage",
+      () => {
+        expect(() => document.dispatchEvent(new Event("visibilitychange"))).not.toThrow()
+      },
+      4
+    )
     expect(etagCache.get("flush:error")).toBe('"tag"')
     expect(setItemSpy).toHaveBeenCalled()
   })

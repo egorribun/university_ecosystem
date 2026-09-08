@@ -25,6 +25,7 @@ import {
   useMyEventsQuery,
 } from "@/api/hooks/events"
 import { NEWS_PAGE_SIZE, newsListQueryKey } from "@/api/hooks/news"
+import { withExpectedConsole } from "@/tests/strictConsole"
 
 const makeClient = () =>
   new QueryClient({
@@ -132,17 +133,24 @@ describe("events filter and hydrated-state mutation contracts", () => {
     expect(result.current.pagination?.limit).toBe(EVENTS_PAGE_SIZE)
   })
 
-  it("fails closed when reading the persisted my-events placeholder throws", () => {
+  it("fails closed when reading the persisted my-events placeholder throws", async () => {
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("storage unavailable")
     })
     const client = makeClient()
 
-    expect(() =>
-      renderHook(() => useMyEventsQuery({ language: "en", userId: "user-1" }, { enabled: false }), {
-        wrapper: wrapperFor(client),
-      })
-    ).not.toThrow()
+    await withExpectedConsole(
+      "warn",
+      '[Storage] Failed to parse key "events:my:en:user-1":',
+      () => {
+        expect(() =>
+          renderHook(
+            () => useMyEventsQuery({ language: "en", userId: "user-1" }, { enabled: false }),
+            { wrapper: wrapperFor(client) }
+          )
+        ).not.toThrow()
+      }
+    )
   })
 })
 
