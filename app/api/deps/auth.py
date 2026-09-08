@@ -50,17 +50,11 @@ def get_redis_session_service() -> RedisSessionService:
     return RedisSessionService()
 
 
-async def get_current_user(
+async def _resolve_current_user(
     request: Request,
-    token: Annotated[str | None, Depends(oauth2_scheme)],
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
-    # RZ-04: Default None keeps direct callers (unit tests) working.
-    # FastAPI's Depends() always resolves this via get_redis_session_service()
-    # in production; tests that call the function directly fall back to a
-    # fresh instance, which is equivalent to the old inline construction.
-    redis_service: Annotated[
-        RedisSessionService | None, Depends(get_redis_session_service)
-    ] = None,
+    token: str | None,
+    db: AsyncDatabaseSession,
+    redis_service: RedisSessionService | None = None,
 ) -> User:
     if redis_service is None:
         redis_service = get_redis_session_service()
@@ -219,6 +213,40 @@ async def get_current_user(
     return user
 
 
+async def get_current_user(
+    request: Request,
+    token: Annotated[str | None, Depends(oauth2_scheme)],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    # RZ-04: Default None keeps direct callers (unit tests) working.
+    # FastAPI's Depends() always resolves this via get_redis_session_service()
+    # in production; tests that call the function directly fall back to a
+    # fresh instance, which is equivalent to the old inline construction.
+    redis_service: Annotated[
+        RedisSessionService | None, Depends(get_redis_session_service)
+    ] = None,
+) -> User:
+    """Compatibility adapter for routes that still use ``Depends(get_db)``."""
+
+    return await _resolve_current_user(request, token, db, redis_service)
+
+
+@inject
+async def get_current_user_from_dishka(
+    request: Request,
+    token: Annotated[str | None, Depends(oauth2_scheme)],
+    db: FromDishka[AsyncDatabaseSession],
+    redis_service: FromDishka[RedisSessionService],
+) -> User:
+    """Resolve the current user with Dishka's canonical request session.
+
+    This adapter deliberately delegates directly to the session-parameterised
+    resolver.  It never calls the legacy FastAPI adapter or opens a second
+    session, which keeps authentication and a migrated route on one owner.
+    """
+
+    return await _resolve_current_user(request, token, db, redis_service)
+
+
 async def get_current_user_dto(
     user: Annotated[User, Depends(get_current_user)],
 ) -> UserDTO:
@@ -243,6 +271,28 @@ async def get_current_user_optional(
         return await get_current_user(request, token, db)
     except HTTPException:
         return None
+
+
+@inject
+async def get_current_user_optional_from_dishka(
+    request: Request,
+    token: Annotated[str | None, Depends(oauth2_scheme)],
+    db: FromDishka[AsyncDatabaseSession],
+    redis_service: FromDishka[RedisSessionService],
+) -> User | None:
+    """Optional current-user adapter backed by Dishka's request session.
+
+    Only an authentication rejection is optional.  Infrastructure and
+    dependency failures must remain visible to the caller rather than being
+    turned into an anonymous response.
+    """
+
+    try:
+        return await _resolve_current_user(request, token, db, redis_service)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            return None
+        raise
 
 
 async def get_current_user_full(
@@ -349,6 +399,22 @@ async def require_fresh_mfa(
     # ``lazy="noload"`` collection can legitimately be empty in the identity
     # map even when a confirmed enrollment exists; relying only on that cached
     # collection allowed destructive endpoints to skip step-up enforcement.
+    has_totp = await mfa.has_totp_enabled(db, user)
+    has_email_otp = user.email_mfa_enabled_at is not None
+    if not has_totp and not has_email_otp:
+        return
+    _enforce_fresh_mfa(request)
+
+
+@inject
+async def require_fresh_mfa_from_dishka(
+    request: Request,
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    db: FromDishka[AsyncDatabaseSession],
+) -> None:
+    """Fresh-MFA guard sharing the canonical Dishka auth session."""
+
+    await ensure_mfa_relationships_loaded(db, user)
     has_totp = await mfa.has_totp_enabled(db, user)
     has_email_otp = user.email_mfa_enabled_at is not None
     if not has_totp and not has_email_otp:

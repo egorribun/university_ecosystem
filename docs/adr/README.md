@@ -27,3 +27,4 @@ This directory contains architectural decision records (ADRs) for the University
 21. [ADR-021: Go Circuit Breaker Pattern](ADR-021-go-circuit-breaker.md)
 22. [ADR-022: Go Services Integration Testing with Testcontainers](ADR-022-go-services-integration-testing-with-testcontainers.md)
 32. [ADR-032: KEDA Event-Driven Auto-Scaling and Off-Peak Resource Hibernation](ADR-032-keda-autoscale-and-hibernation.md)
+33. [ADR-033: Dishka Request-Scoped Database Session Ownership](ADR-033-request-scoped-database-session-ownership.md)

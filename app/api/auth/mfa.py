@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from app.api.deps import (
     get_current_user,
+    get_current_user_from_dishka,
     require_fresh_mfa,
 )
 from app.api.validation import raise_http_error
@@ -429,7 +430,7 @@ async def request_step_up(
     db: FromDishka[AsyncDatabaseSession],
     audit: FromDishka[AuditService],
     login_service: FromDishka[LoginService],
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> auth_schemas.PendingMfaResponse:
     from app.core.localization import resolve_locale
 
