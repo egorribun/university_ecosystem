@@ -124,6 +124,28 @@ def _extract_attempt_limit(
     return resolved
 
 
+def _challenge_epoch_matches_user(challenge: MfaChallenge, user: User) -> bool:
+    """Reject challenges issued before the account MFA epoch rotated.
+
+    The epoch marker is additive for backwards compatibility with challenges
+    created before this guard was introduced.  Malformed markers fail closed;
+    they are never coerced into the current epoch.
+    """
+
+    payload = getattr(challenge, "payload", None)
+    if not isinstance(payload, MutableMapping):
+        return True
+    raw_epoch = payload.get("mfa_epoch")
+    if raw_epoch is None:
+        return True
+    try:
+        expected_epoch = int(raw_epoch)
+        current_epoch = int(getattr(user, "mfa_epoch", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    return expected_epoch == current_epoch
+
+
 def describe_challenge_attempts(
     challenge: MfaChallenge,
     *,
@@ -525,6 +547,13 @@ async def consume_challenge(
         for_update=True,
         locale=locale,
     )
+
+    if not _challenge_epoch_matches_user(challenge, locked_user):
+        # A password reset or another MFA lifecycle mutation may have advanced
+        # the account epoch while this challenge token was in flight.
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
+        )
 
     validate_challenge_binding(
         challenge,

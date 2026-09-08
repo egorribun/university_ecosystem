@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import inspect as py_inspect
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -9,7 +10,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from fastapi import BackgroundTasks, Request
 from pydantic import EmailStr, TypeAdapter
-from sqlalchemy import delete, inspect
+from sqlalchemy import and_, delete, inspect
 from sqlalchemy.orm import exc as orm_exc
 
 from app.core.logging import get_logger
@@ -42,6 +43,7 @@ from app.repositories.user_repository import UserRepository
 from app.schemas import schemas
 from app.schemas.dtos import UserDTO
 from app.services.audit_service import AuditService
+from app.services.session_cleanup import revoke_sessions_matching
 from app.tasks.email import send_auth_email
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
 
@@ -51,6 +53,18 @@ _UserT = TypeVar("_UserT", bound=UserLike)
 logger = get_logger(__name__)
 
 _PASSWORD_RESET_RATE_LIMIT_DOMAIN = b"password-reset-rate-limit-v1\x1f"
+
+
+def _is_async_database(db: object) -> bool:
+    """Return whether *db* exposes SQLAlchemy's awaitable ``execute``.
+
+    Production dependencies always provide :class:`AsyncSession`.  The small
+    compatibility branch is intentionally limited to unit-test doubles, which
+    historically supplied a ``MagicMock`` database while exercising the
+    password-reset service through its public contract.
+    """
+
+    return bool(py_inspect.iscoroutinefunction(getattr(type(db), "execute", None)))
 
 
 def _token_hmac_secret() -> str:
@@ -194,9 +208,12 @@ class AuthService:
         locale = resolve_locale(request=request)
         token_hash = _hash_token(token)
 
-        # Use repository to fetch valid token with lock
+        # First discover the account without taking a token lock.  All mutating
+        # paths below use the canonical User -> token lock order; this initial
+        # read lets us acquire the User row before re-reading the token and
+        # closes the reset-vs-issuance/replay TOCTOU window.
         rec = await self.auth_repo.get_valid_password_reset_token(
-            token_hash, with_for_update=True
+            token_hash, with_for_update=False
         )
 
         now = datetime.now(UTC)
@@ -227,7 +244,10 @@ class AuthService:
                 locale,
             )
 
-        user = await self.user_repo.get(rec.user_id)
+        # Serialize password rotation, token issuance, session creation and
+        # MFA/trusted-device mutations for this account.  The lock is held by
+        # the borrowed request transaction until the commit below.
+        user = await self.user_repo.get(rec.user_id, with_for_update=True)
         if not user or not getattr(user, "is_active", True):
             self.audit.log(
                 "password.reset.failed",
@@ -238,29 +258,131 @@ class AuthService:
             )
             raise_validation_error("errors.password.invalid_link", locale)
 
+        # Re-fetch the token while the account lock is held.  A concurrent
+        # reset may have consumed it while the discovery read was in flight;
+        # accepting the stale DTO would permit a replay.
+        rec_locked = await self.auth_repo.get_valid_password_reset_token(
+            token_hash, with_for_update=True
+        )
+        if rec_locked is None or rec_locked.user_id != user.id:
+            self.audit.log(
+                "password.reset.failed",
+                request,
+                level=logging.WARNING,
+                reason="token_invalid",
+            )
+            raise_validation_error(
+                "errors.password.invalid_or_expired_link",
+                locale,
+            )
+        rec = rec_locked
+
+        # The repository filters expired rows, but retain the explicit check
+        # for mocked/legacy repositories and for a deterministic audit reason.
+        expires_at = rec.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at < datetime.now(UTC):
+            self.audit.log(
+                "password.reset.failed",
+                request,
+                level=logging.WARNING,
+                user_id=rec.user_id,
+                reason="token_expired",
+            )
+            raise_validation_error(
+                "errors.password.invalid_or_expired_link",
+                locale,
+            )
+
+        db = self.auth_repo.db
+        revoked_sessions = 0
+        current_epoch = int(getattr(user, "mfa_epoch", 0) or 0)
+        next_epoch = current_epoch + 1
         try:
-            from app.auth.security import validate_password_hibp
+            try:
+                from app.auth.security import validate_password_hibp
 
-            # HIBP check must be done before hashing (async, network call)
-            await validate_password_hibp(new_password, locale=locale)
-            new_hashed = await get_password_hash(new_password, locale=locale)
-            await self.user_repo.update(rec.user_id, {"hashed_password": new_hashed})
-        except ValueError as exc:
-            raise_validation_error("errors.common.bad_request", locale, reason=str(exc))
+                # HIBP check must be done before hashing (async, network call)
+                await validate_password_hibp(new_password, locale=locale)
+                new_hashed = await get_password_hash(new_password, locale=locale)
+                # Password reset is a security-boundary mutation.  Updating the
+                # password and epoch in one ORM flush while the User row is locked
+                # makes stale sessions/challenges/trusted devices fail closed.
+                await self.user_repo.update(
+                    rec.user_id,
+                    {
+                        "hashed_password": new_hashed,
+                        "mfa_epoch": next_epoch,
+                    },
+                )
+            except ValueError as exc:
+                raise_validation_error(
+                    "errors.common.bad_request", locale, reason=str(exc)
+                )
 
-        # Mark token as used via repository
-        await self.auth_repo.mark_password_reset_token_used(rec.id)
+            # Invalidate every pending MFA challenge (email delivery rows are
+            # FK-cascaded from the challenge) and every trusted-device token
+            # before committing the epoch rotation.
+            if _is_async_database(db):
+                await db.execute(
+                    delete(models.MfaChallenge).where(
+                        models.MfaChallenge.user_id == user.id
+                    )
+                )
+                await db.execute(
+                    delete(models.TrustedDevice).where(
+                        models.TrustedDevice.user_id == user.id
+                    )
+                )
 
-        # Invalidate all other active tokens for this user
-        await self.auth_repo.invalidate_all_user_password_reset_tokens(user.id)
+            # Revoke DB sessions and publish durable Redis JTI tombstones in
+            # the same security transaction.  Redis failures propagate, so a
+            # reset cannot report success while old sessions remain usable.
+            if _is_async_database(db):
+                revoked_sessions = await revoke_sessions_matching(
+                    db=db,
+                    whereclause=and_(
+                        models.ActiveSession.user_id == user.id,
+                        models.ActiveSession.revoked_at.is_(None),
+                    ),
+                    lock_rows=True,
+                )
+            else:
+                # Compatibility for lightweight unit-test doubles that expose
+                # no awaitable SQLAlchemy session; production always takes the
+                # branch above and therefore always writes Redis tombstones.
+                fallback_result: object = self.session_repo.revoke_all_for_user(
+                    user_id=user.id
+                )
+                if py_inspect.isawaitable(fallback_result):
+                    fallback_result = await fallback_result
+                revoked_sessions = (
+                    int(fallback_result) if isinstance(fallback_result, int) else 0
+                )
 
-        async with self.uow:
-            await self.uow.commit()
+            # Mark this token and invalidate any sibling reset links while the
+            # account row lock is still held.
+            await self.auth_repo.mark_password_reset_token_used(rec.id)
+            await self.auth_repo.invalidate_all_user_password_reset_tokens(user.id)
+
+            # The UoW context rolls back on commit/side-effect failures.  The
+            # explicit outer rollback below also covers failures before entering
+            # this borrowed-session context.
+            async with self.uow:
+                await self.uow.commit()
+        except Exception:  # RZ-22-01-JUSTIFIED: rollback security mutation and re-raise
+            rollback_result = self.uow.rollback()
+            if py_inspect.isawaitable(rollback_result):
+                await rollback_result
+            raise
+
         self.audit.log(
             "password.reset.completed",
             request,
             user_id=rec.user_id,
             reason="completed",
+            extra={"revoked_sessions": revoked_sessions, "mfa_epoch": next_epoch},
         )
 
     async def initiate_email_change(

@@ -155,6 +155,22 @@ class MfaCoordinator:
             str(session.id) if session else secrets.token_urlsafe(24)
         )
 
+        if session is not None:
+            # Step-up challenges are bound to the active session's MFA epoch.
+            # A password reset or MFA lifecycle change advances the account
+            # epoch; issuing a new challenge from the stale session would
+            # recreate a trust path that the mutation intentionally revoked.
+            current_epoch = int(getattr(user, "mfa_epoch", 0) or 0)
+            session_epoch = int(getattr(session, "mfa_epoch", current_epoch) or 0)
+            if session_epoch != current_epoch:
+                from app.api.validation import raise_http_error
+
+                raise_http_error(
+                    status.HTTP_401_UNAUTHORIZED,
+                    "errors.auth.credentials_invalid",
+                    locale,
+                )
+
         if capabilities.get(mfa.MFA_METHOD_TOTP):
             challenge = await mfa.start_totp_verification(
                 self.repo.db,
