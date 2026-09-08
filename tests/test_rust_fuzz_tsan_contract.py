@@ -72,6 +72,21 @@ def test_native_fuzz_inventory_uses_null_safe_array_population() -> None:
     assert "expected=($(" not in run_text
 
 
+def test_rust_fuzz_does_not_persist_pr_credentials() -> None:
+    """Fuzz jobs execute PR code and therefore must not retain a GitHub token."""
+
+    workflow = yaml.safe_load(FUZZ_WORKFLOW.read_text(encoding="utf-8"))
+    assert workflow["permissions"] == {"contents": "read"}
+
+    for job_name in ("fuzz", "fuzz-additional-rust-crates"):
+        checkout = next(
+            step
+            for step in workflow["jobs"][job_name]["steps"]
+            if step.get("uses", "").startswith("actions/checkout@")
+        )
+        assert checkout["with"]["persist-credentials"] is False
+
+
 def test_native_fuzz_uses_stable_pyo3_abi_for_standalone_binaries() -> None:
     """Fuzz binaries must not link private symbols from a runner libpython."""
 
