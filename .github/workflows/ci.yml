@@ -753,8 +753,8 @@ jobs:
       contents: read
     uses: ./.github/workflows/reusable-e2e-wasm-build.yml
 
-  # Generate the expensive instrumenter universe once after frontend readiness.
-  # This producer may overlap with aggregate coverage, but execution remains
+  # Generate the expensive instrumenter universe once after the fast pre-commit
+  # readiness gate. This producer overlaps frontend qualification, but execution remains
   # coverage-gated below. The artifact is named for an exact immutable GitHub
   # workflow attempt and commit; every consumer validates all bound metadata
   # before it can select a logical shard.
@@ -764,8 +764,7 @@ jobs:
     timeout-minutes: 30
     needs:
       - pre-commit-check
-      - frontend-tests
-    if: ${{ github.event_name == 'pull_request' && needs.frontend-tests.result == 'success' && needs.pre-commit-check.result == 'success' }}
+    if: ${{ github.event_name == 'pull_request' && needs.pre-commit-check.result == 'success' }}
     permissions:
       contents: read
       actions: read
@@ -891,13 +890,13 @@ jobs:
       # A c4 timing sample from exact run 33303107020 (6 completed Stryker
       # legs averaging 27.6m; 10 completed mutmut legs averaging 18.5m)
       # estimates total work at roughly 1,764 versus 2,368 runner-minutes
-      # for the 64 versus 128 legs. Keep the initial 8-runner Stryker lane
-      # alongside the 12-runner mutmut lane: together they use the hosted
-      # repository's 20-runner ceiling during the mutation phase. Required
-      # diagnostics/aggregation remain dependency-gated and start as slots
-      # free up. Rebalance only after three comparable green runs with queue,
-      # timeout and billed-minute evidence.
-      max-parallel: 8
+      # for the 64 versus 128 legs. Keep the initial six-runner Stryker lane
+      # alongside the ten-runner mutmut lane: together they use at most 16 of
+      # the hosted repository's 20-runner ceiling during the mutation phase.
+      # The four reserved slots keep required diagnostics and aggregation
+      # schedulable. Rebalance only after three comparable green runs with
+      # queue, timeout and billed-minute evidence.
+      max-parallel: 6
       matrix:
         shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
     permissions:
@@ -1298,10 +1297,9 @@ jobs:
       wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
       wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
-  # Phase 7.1: browser coverage is visible immediately but remains advisory
-  # during the 30-day stabilization window. Nightly runs execute the same
-  # four-project matrix; this PR job gives Firefox/WebKit/mobile-WebKit fast
-  # feedback without making pre-existing renderer flakes merge blockers.
+  # Cross-browser coverage is release-blocking for pull requests. Keep the
+  # browser projects in one deterministic matrix so missing, cancelled, or
+  # failed projects are visible to the CI Success finalizer.
   e2e-tests-cross-browser:
     name: E2E Tests (cross-browser ${{ matrix.browser }})
     needs:
@@ -1321,7 +1319,7 @@ jobs:
       browser: ${{ matrix.browser }}
       shard-index: 1
       shard-total: 1
-      advisory: true
+      advisory: false
       wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
       wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
       wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
@@ -3544,9 +3542,9 @@ jobs:
             echo "## Mutation matrix capacity"
             echo "- $matrix_summary"
             echo "- $descriptor_summary"
-            echo "- Mutmut producer max concurrency: 12"
-            echo "- Stryker producer max concurrency: 8"
-            echo "- GitHub global hosted-runner cap: 20 (12 mutmut + 8 Stryker after the coverage phase barrier)."
+            echo "- Mutmut producer max concurrency: 10"
+            echo "- Stryker producer max concurrency: 6"
+            echo "- GitHub global hosted-runner cap: 20 (10 mutmut + 6 Stryker after the coverage phase barrier; 4 reserved)."
             echo "- The coverage phase barrier prevents mutation fan-out when foundational evidence is red."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -3607,12 +3605,12 @@ jobs:
       fail-fast: false
       # Coverage is a deliberate phase barrier for both mutation families, so
       # expensive runners are not allocated when the foundational quality gate
-      # is already red. Once that gate is green, use the complete hosted-runner
-      # budget: eight Stryker workers plus twelve mutmut workers equals the
-      # repository's 20-runner ceiling. The bounded inner mutmut worker count,
+      # is already red. Once that gate is green, use at most 16 hosted runners:
+      # six Stryker workers plus ten mutmut workers, reserving four slots for
+      # required diagnostics and aggregation. The bounded inner mutmut worker count,
       # complete 128-assignment evidence plan, and at-most-64 physical groups
       # remain fail-closed.
-      max-parallel: 12
+      max-parallel: 10
       # The producer validates all 128 fixed assignments, then dynamically
       # emits at most 64 deterministic physical groups over their exact
       # nonempty entries. This preserves the full plan as evidence while
@@ -5031,12 +5029,10 @@ jobs:
     name: CI Success
     runs-on: ubuntu-24.04
     timeout-minutes: 5 # CI-03 (audit Wave 10)
-    # A superseded PR run is cancelled while its dependencies are unwinding.
-    # Do not enqueue an always-on finalizer in that cancelled run: a queued
-    # finalizer can retain the workflow concurrency group and delay the fresh
-    # SHA-bound run even though no result from the stale run is releasable.
-    # Active (non-cancelled) runs still evaluate every dependency below.
-    if: ${{ always() && !cancelled() }}
+    # The authoritative aggregate must execute even while dependencies are
+    # cancelled. A conditionally skipped required job is reported as success by
+    # GitHub, so cancellation is evaluated by the fail-closed result table below.
+    if: ${{ always() }}
     needs:
       - pre-commit-check
       - pre-commit-security-and-types
@@ -5108,10 +5104,6 @@ jobs:
           COVERAGE_RESULT: ${{ needs.coverage-policy-gate.result }}
         run: |
           set -euo pipefail
-          # The full load-and-chaos stack runs in nightly-full-gate.yml. It is
-          # deliberately absent from this fast PR gate until Temporal boot is
-          # reliable enough for a merge-blocking promotion.
-          #
           required_results=(
             "pre-commit-check|${{ needs.pre-commit-check.result }}"
             "pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}"
@@ -5139,6 +5131,7 @@ jobs:
             "provenance-check|${{ needs.provenance-check.result }}"
             "e2e-wasm-build|${{ needs.e2e-wasm-build.result }}"
             "e2e-tests|${{ needs.e2e-tests.result }}"
+            "e2e-tests-cross-browser|${{ needs.e2e-tests-cross-browser.result }}"
             "rust-ffi-asan|${{ needs.rust-ffi-asan.result }}"
             "rust-ffi-tsan|${{ needs.rust-ffi-tsan.result }}"
             "rust-tests|${{ needs.rust-tests.result }}"
@@ -5147,7 +5140,9 @@ jobs:
             "mutation-tests-stats|${{ needs.mutation-tests-stats.result }}"
             "mutation-tests-universe|${{ needs.mutation-tests-universe.result }}"
             "mutation-tests-incremental|${{ needs.mutation-tests-incremental.result }}"
+            "chaos-tests|${{ needs.chaos-tests.result }}"
             "chaos-loadtest-orchestrator|${{ needs.chaos-loadtest-orchestrator.result }}"
+            "db-migration-integrity|${{ needs.db-migration-integrity.result }}"
             "actionlint|${{ needs.actionlint.result }}"
             "dockerfile-lint|${{ needs.dockerfile-lint.result }}"
             "shellcheck|${{ needs.shellcheck.result }}"
@@ -5223,17 +5218,16 @@ jobs:
           }
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            # The frontend mutation lane is intentionally skipped when either
-            # readiness prerequisite fails.  The prerequisite is already a
-            # required result above; avoid reporting those expected skips as
-            # synthetic mutation failures while keeping every started lane
-            # fail-closed.
-            if [[ "$PRE_COMMIT_RESULT" == "success" && "$FRONTEND_TESTS_RESULT" == "success" && "$COVERAGE_RESULT" == "success" ]]; then
+            # The preflight is intentionally independent from frontend
+            # qualification so its immutable universe can overlap Lighthouse.
+            # Only the coverage gate may authorize execution/aggregation; any
+            # started producer is still required to conclude successfully.
+            if [[ "$PRE_COMMIT_RESULT" == "success" && "$COVERAGE_RESULT" == "success" ]]; then
               assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
               assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "success"
               assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "success"
               assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "success"
-            elif [[ "$PRE_COMMIT_RESULT" == "success" && "$FRONTEND_TESTS_RESULT" == "success" && "${{ needs.stryker-preflight.result }}" == "success" && "$COVERAGE_RESULT" != "success" ]]; then
+            elif [[ "$PRE_COMMIT_RESULT" == "success" && "${{ needs.stryker-preflight.result }}" == "success" ]]; then
               # Preflight is safe to overlap with coverage, but no execution or
               # aggregate lane may start on a failed/cancelled coverage gate.
               assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
@@ -5294,21 +5288,21 @@ jobs:
             echo "| stryker-aggregate (frontend, 100%) | $stryker |";
             echo "| stryker-evidence-roundtrip | $stryker_roundtrip |";
             echo "";
-            echo "## Load & chaos resilience (advisory)";
+             echo "## Load & chaos resilience (release-blocking)";
             echo "";
             echo "| Job | Result |";
             echo "|-----|--------|";
             echo "| chaos-tests (ToxiProxy W19) | $toxi |";
             echo "| db-migration-integrity (W21) | $dbmig |";
             echo "";
-            echo "_chaos-tests + db-migration-integrity advisory until ToxiProxy coverage baseline is established._";
+             echo "_Chaos resilience and migration rollback integrity are release-blocking checks._";
             echo "";
-            echo "## Cross-browser E2E (advisory - Phase 7 stabilization)";
+             echo "## Cross-browser E2E (release-blocking)";
             echo "";
             echo "| Job | Result |";
             echo "|-----|--------|";
             echo "| e2e-tests-cross-browser | $browsers |";
-            echo "_Promote after 30 consecutive green days and update required-check policy._";
+             echo "_All supported browser projects must pass for release promotion._";
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Required Go integration results - ws-hub: $ws, file-processor: $fp, gateway: $gw"
-          echo "Advisory results - browsers: $browsers, toxi: $toxi, dbmig: $dbmig"
+           echo "Release-blocking results - browsers: $browsers, chaos: $toxi, migration: $dbmig"

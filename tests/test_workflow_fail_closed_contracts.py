@@ -401,13 +401,13 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     assert 'echo "- $matrix_summary"' in matrix_step["run"]
     assert 'echo "- $descriptor_summary"' in matrix_step["run"]
     assert "coverage phase barrier" in matrix_step["run"]
-    assert 'echo "- Mutmut producer max concurrency: 12"' in matrix_step["run"]
-    assert 'echo "- Stryker producer max concurrency: 8"' in matrix_step["run"]
+    assert 'echo "- Mutmut producer max concurrency: 10"' in matrix_step["run"]
+    assert 'echo "- Stryker producer max concurrency: 6"' in matrix_step["run"]
     assert "global hosted-runner cap: 20" in matrix_step["run"]
 
     # After the coverage phase barrier, the two producer lanes consume the
-    # complete repository-wide 20-runner budget (12 mutmut + 8 Stryker).
-    for family, expected in ((runners, 12), (stryker, 8)):
+    # Keep four hosted runners reserved for required diagnostics/aggregation.
+    for family, expected in ((runners, 10), (stryker, 6)):
         max_parallel = family["strategy"]["max-parallel"]
         assert isinstance(max_parallel, int)
         assert 1 <= max_parallel <= 20
@@ -798,14 +798,11 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     assert "stryker-preflight" in job["needs"]
     assert (
         'if [[ "$PRE_COMMIT_RESULT" == "success" && '
-        '"$FRONTEND_TESTS_RESULT" == "success" && '
         '"$COVERAGE_RESULT" == "success" ]]; then' in gate
     )
     assert (
         'elif [[ "$PRE_COMMIT_RESULT" == "success" && '
-        '"$FRONTEND_TESTS_RESULT" == "success" && '
-        '"${{ needs.stryker-preflight.result }}" == "success" && '
-        '"$COVERAGE_RESULT" != "success" ]]; then' in gate
+        '"${{ needs.stryker-preflight.result }}" == "success" ]]; then' in gate
     )
     assert (
         'assert_event_result "stryker-preflight" '
@@ -827,12 +824,12 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
         )
     assert 'assert_event_result "codecov-upload"' in gate
     assert '"sbom-generate|${{ needs.sbom-generate.result }}"' in gate
-    for advisory in (
+    for blocking in (
         "e2e-tests-cross-browser",
         "chaos-tests",
         "db-migration-integrity",
     ):
-        assert f'"{advisory}|${{{{ needs.{advisory}.result }}}}"' not in gate
+        assert f'"{blocking}|${{{{ needs.{blocking}.result }}}}"' in gate
 
 
 def test_ci_success_allows_coverage_skip_only_after_producer_failure() -> None:
@@ -1002,11 +999,11 @@ def test_critical_pattern_downloads_have_explicit_payload_guards() -> None:
         assert "-type d" in following_runs or "expected=" in following_runs
 
 
-def test_ci_success_does_not_enqueue_a_finalizer_after_run_cancellation() -> None:
-    """Superseded PR runs must release the workflow concurrency group promptly."""
+def test_ci_success_runs_while_dependencies_are_cancelled() -> None:
+    """The finalizer must classify cancelled dependencies instead of skipping."""
 
     job = _workflow(CI)["jobs"]["ci-success"]
-    assert job["if"] == "${{ always() && !cancelled() }}"
+    assert job["if"] == "${{ always() }}"
 
 
 def test_sonar_optionality_is_explicit_and_isolated() -> None:

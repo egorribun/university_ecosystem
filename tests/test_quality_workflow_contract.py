@@ -652,16 +652,16 @@ def test_pact_privileged_install_preserves_configured_go_toolchain() -> None:
     assert "sudo go run" not in command
 
 
-def test_cross_browser_e2e_is_advisory_during_stabilization() -> None:
+def test_cross_browser_e2e_is_release_blocking() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
     cross_browser = jobs["e2e-tests-cross-browser"]
 
     # Reusable-workflow callers cannot use continue-on-error directly. The
-    # reusable job receives an explicit advisory input and applies the policy
+    # reusable job receives an explicit blocking input and applies the policy
     # at the executable job level.
     assert cross_browser.get("continue-on-error") is not True
-    assert cross_browser["with"]["advisory"] is True
+    assert cross_browser["with"]["advisory"] is False
     assert cross_browser["strategy"]["matrix"]["browser"] == [
         "firefox",
         "webkit",
@@ -669,7 +669,10 @@ def test_cross_browser_e2e_is_advisory_during_stabilization() -> None:
     ]
     assert "e2e-tests-cross-browser" in jobs["ci-success"]["needs"]
     blocking_script = jobs["ci-success"]["steps"][0]["run"]
-    assert "needs.e2e-tests-cross-browser.result" not in blocking_script
+    assert (
+        '"e2e-tests-cross-browser|${{ needs.e2e-tests-cross-browser.result }}"'
+        in blocking_script
+    )
 
 
 def test_trivy_job_id_matches_stable_code_scanning_configuration() -> None:
@@ -1167,7 +1170,7 @@ def test_dependency_audit_scanners_and_rust_policy_are_exactly_pinned() -> None:
 
     sbom_text = SBOM_WORKFLOW_PATH.read_text(encoding="utf-8")
     install_command = "cargo install cargo-audit --version 0.22.2 --locked"
-    assert sbom_text.count(install_command) == 2
+    assert sbom_text.count(install_command) == 3
     assert "cargo install cargo-audit --version 0.21.2" not in sbom_text
 
     audit_config = tomllib.loads(RUST_AUDIT_CONFIG_PATH.read_text(encoding="utf-8"))
@@ -1740,7 +1743,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     ]
     assert mutation_job["strategy"]["fail-fast"] is False
     assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
-    assert mutation_job["strategy"]["max-parallel"] == 12
+    assert mutation_job["strategy"]["max-parallel"] == 10
     assert mutation_job["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
     )
@@ -1976,10 +1979,7 @@ def test_mutation_lanes_are_readiness_gated_and_use_the_runner_budget() -> None:
     jobs = workflow["jobs"]
 
     assert "needs" not in jobs["frontend-tests"]
-    assert jobs["stryker-preflight"]["needs"] == [
-        "pre-commit-check",
-        "frontend-tests",
-    ]
+    assert jobs["stryker-preflight"]["needs"] == ["pre-commit-check"]
     assert jobs["stryker-shards"]["needs"] == [
         "stryker-preflight",
         "coverage-policy-gate",
@@ -1989,7 +1989,7 @@ def test_mutation_lanes_are_readiness_gated_and_use_the_runner_budget() -> None:
         "needs.stryker-preflight.result == 'success' && "
         "needs.coverage-policy-gate.result == 'success' }}"
     )
-    assert jobs["stryker-shards"]["strategy"]["max-parallel"] == 8
+    assert jobs["stryker-shards"]["strategy"]["max-parallel"] == 6
     assert jobs["mutation-tests-stats"]["strategy"]["max-parallel"] == 8
     assert jobs["mutation-tests-stats"]["needs"] == [
         "mutation-scope",
@@ -2000,7 +2000,7 @@ def test_mutation_lanes_are_readiness_gated_and_use_the_runner_budget() -> None:
         "backend-type-check",
         "coverage-policy-gate",
     ]
-    assert jobs["mutation-tests-incremental"]["strategy"]["max-parallel"] == 12
+    assert jobs["mutation-tests-incremental"]["strategy"]["max-parallel"] == 10
 
 
 def test_mutation_stats_scope_is_resolved_before_matrix_fanout() -> None:
@@ -2122,7 +2122,7 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
     )
     assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
-    assert mutation_job["strategy"]["max-parallel"] == 12
+    assert mutation_job["strategy"]["max-parallel"] == 10
 
     selection_step = _step_named(
         mutation_job, "Validate selected mutmut execution matrix entry"
@@ -4019,10 +4019,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     )
     jobs = ci_workflow["jobs"]
     mutation_preflight = jobs["stryker-preflight"]
-    assert mutation_preflight["needs"] == [
-        "pre-commit-check",
-        "frontend-tests",
-    ]
+    assert mutation_preflight["needs"] == ["pre-commit-check"]
     assert "github.event_name == 'pull_request'" in mutation_preflight["if"]
     assert mutation_preflight["permissions"] == {
         "contents": "read",
@@ -4071,7 +4068,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert mutation_shards["name"].endswith("/64")
     assert mutation_shards["strategy"]["fail-fast"] is False
     assert 1 <= mutation_shards["strategy"]["max-parallel"] <= 20
-    assert mutation_shards["strategy"]["max-parallel"] == 8
+    assert mutation_shards["strategy"]["max-parallel"] == 6
     assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
     assert mutation_shards["timeout-minutes"] == 120
     assert mutation_shards["needs"] == [
