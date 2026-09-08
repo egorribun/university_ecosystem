@@ -458,6 +458,81 @@ test("a child error that precedes cancellation remains the primary execution fai
   })
 })
 
+test("a child error after cancellation is retained as a fail-closed secondary failure", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.exitCode = null
+  child.signalCode = null
+  const controller = new AbortController()
+  const cancellationError = Object.assign(new Error("Stryker execution interrupted by SIGTERM"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGTERM",
+  })
+  const lateChildError = new Error("late child process failure")
+  let finishTermination
+  const result = waitForChildClose(child, {
+    description: "late-error shard",
+    timeoutMs: 10_000,
+    abortSignal: controller.signal,
+    terminate: async () =>
+      new Promise((resolve) => {
+        finishTermination = resolve
+      }),
+  })
+
+  controller.abort(cancellationError)
+  await Promise.resolve()
+  child.emit("error", lateChildError)
+  child.emit("exit", null, "SIGKILL")
+  child.emit("close", null, "SIGKILL")
+  finishTermination()
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.equal(error.cause, cancellationError)
+    assert.deepEqual(error.errors, [cancellationError, lateChildError])
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+})
+
+test("late child failures precede termination failures in cancellation diagnostics", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.exitCode = null
+  child.signalCode = null
+  const controller = new AbortController()
+  const cancellationError = Object.assign(new Error("Stryker execution interrupted by SIGINT"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGINT",
+  })
+  const lateChildError = new Error("child failed while stopping")
+  const terminationError = new Error("tree termination failed")
+  const result = waitForChildClose(child, {
+    description: "late-error termination shard",
+    timeoutMs: 10_000,
+    abortSignal: controller.signal,
+    terminate: async () => {
+      throw terminationError
+    },
+  })
+
+  controller.abort(cancellationError)
+  await Promise.resolve()
+  await Promise.resolve()
+  child.emit("error", lateChildError)
+  child.emit("exit", null, "SIGKILL")
+  child.emit("close", null, "SIGKILL")
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.equal(error.cause, cancellationError)
+    assert.deepEqual(error.errors, [cancellationError, lateChildError, terminationError])
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+})
+
 test("a signal after exit still awaits close without attempting a live-process kill", async () => {
   const { waitForChildClose } = await import(runnerUrl)
   const child = new EventEmitter()

@@ -1535,6 +1535,7 @@ export function waitForChildClose(
     let closeResult
     let terminationSettled = false
     let terminationError
+    let processErrorDuringTermination = false
     let graceTimer
     let timeoutTimer
 
@@ -1572,7 +1573,7 @@ export function waitForChildClose(
       settle(
         terminationFailure(
           terminationError ? [terminationError] : [],
-          terminationError === undefined
+          terminationError === undefined && !processErrorDuringTermination
         )
       )
     }
@@ -1612,6 +1613,10 @@ export function waitForChildClose(
     }
     const onError = (error) => {
       processError = error
+      if (terminationStarted) {
+        processErrorDuringTermination = true
+        primaryTerminationSecondaryErrors.push(error)
+      }
     }
     const onExit = (code, signal) => {
       exitResult = { code, signal }
