@@ -3012,3 +3012,147 @@ registry SBOM/provenance/attestations, digest Docker smoke, Kubernetes/TLS/
 ExternalSecrets/observability, real-device CWV, chaos/rollback и production
 release остаются внешними gates из §§29, 33 и 36 до получения их прямых
 доказательств.
+
+## 38. Current-SHA frontend and pre-push closure checkpoint (2026-09-09; source `752dabf9f`)
+
+This checkpoint supersedes the pending local frontend evidence note in §37. It
+records only reproducible local evidence and does not import results from the
+older PR runs or from the still-running remote matrix.
+
+### 38.1 Closed locally
+
+- The async React diagnostic owners identified by the previous full run are
+  closed by `d25707a46` (login/OTP), `3c5c0a3d8` (News interactions),
+  `694e0af83` (MapControls fullscreen/rejection), `25d72e30d`
+  (NewsCardEditDialog mounts), and `46619e2cb` (Dashboard skip-link). These
+  changes use scoped `act`/`waitFor` contracts and expected-console matchers;
+  they do not suppress unexpected diagnostics or change production behavior.
+- The exact canonical frontend command (`npm run test:ci`, whose runner
+  executes the WASM producer then Vitest with coverage/JUnit reporters) was
+  reproduced from the post-fix source. It completed **651/651 test files,
+  6656/6656 tests, zero unhandled errors**, JUnit output, and 100% for every
+  applicable metric: statements 18724/18724, branches 13241/13241, functions
+  4505/4505, lines 16874/16874. Duration was 881.71 seconds on the local
+  Windows host; the duration is a diagnostic baseline, not a release SLO.
+- `78f79d032` keeps the Python workflow contract fixture formatter-clean.
+  `ec7654283` makes Stryker execution and aggregate fail closed behind the
+  independent security/type qualification while preserving the complete
+  64-shard plan, empty exclusions/ignorers and viable-mutant denominator.
+  An independent review found 59 valid jobs, no missing dependencies/cycles,
+  unchanged mutation inventories and no permission broadening in that patch.
+- Full pre-commit was run with an isolated `PRE_COMMIT_HOME` after the
+  detect-secrets baseline was staged. Ruff check/import/format, detect-secrets,
+  strong-env-secrets, no-Python2-except, Bandit, mypy, actionlint, Docker
+  Semgrep and Renovate validation all passed. The only baseline delta is the
+  line number and timestamp metadata for an existing `Login.test.tsx` fixture;
+  it is committed separately as `752dabf9f` per repository policy.
+
+### 38.2 Fresh remote verification in progress
+
+- Source `752dabf9fd165084df0d897eef39fe93095e0ebb` is pushed to
+  `origin/egorribun`; PR 1266 currently points to this SHA. Fresh matrix run
+  `34287653082` and companion workflows were created at the same SHA. At the
+  time of writing they are non-terminal, so no remote test, mutation,
+  coverage, security or performance result is accepted as current evidence.
+- The matrix currently shows the repository-wide hosted-runner ceiling in
+  action: companion workflows occupy the active slots while the 59-job CI
+  matrix waits. This is an observed queue snapshot, not yet the required
+  three-comparable-green-run proof for changing fan-out. Continue collecting
+  start/end times, queue delay, timeout/error rate and billed minutes before
+  modifying the lane budgets.
+
+### 38.3 Remaining blockers and boundaries
+
+1. Wait for all fresh current-SHA workflows, download every artifact, and
+   verify manifest source/tested-merge SHA, report hashes, complete coverage
+   and mutation inventories. Investigate each final failure by exact log, not
+   by stale PR screenshots.
+2. Close the two currently reported high Dependabot alerts in Go only after
+   compatibility and test evidence: gRPC-Go `<=1.83.0` (CVE-2026-84304) and
+   transitive `moby/go-archive <0.3.0` (CVE-2026-17106). Do not suppress or
+   mark either alert as accepted without a documented, verified reason.
+3. Backend full-domain pytest remains incomplete on Windows because the prior
+   xdist run stalled near 99% without a final nodeid inventory. Use the bounded
+   agent/CI evidence to obtain a deterministic terminal result; do not infer
+   green status from the partial run.
+4. Stryker/mutmut 100% viable scores, fresh current-SHA coverage manifests,
+   Go race tests and Linux sanitizer/fuzz evidence remain CI-owned until
+   terminal artifacts are verified. The `frontend-coverage-ready` context and
+   measured three-run CI critical-path optimization are still open; current
+   fail-closed qualification is not a denominator reduction.
+5. External release gates remain open: merge-to-main recertification,
+   canonical exact-six immutable image producer, digest-pinned Docker smoke,
+   Kubernetes/TLS/ExternalSecrets/observability staging, real-device/browser
+   CWV, chaos/restart/rollback, production release and the final
+   SHA-bound `AUDIT_QUALITY_CLOSURE_<sha>.md`.
+
+User-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
+`.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
+excluded from all source commits.
+
+## 39. Current local closure state and corrected remote boundary (2026-09-09)
+
+This correction supersedes the time-sensitive statements in §38. The source
+SHA named there (`752dabf9fd165084df0d897eef39fe93095e0ebb`) and run
+`34287653082` are historical evidence only: that run reached a terminal
+failure on the old source and is not evidence for the commits recorded below.
+
+### 39.1 Changes now committed locally
+
+- `cd2510691` scopes generated WASM provenance from secret scanning with exact
+  path/format contracts; `67c910e03` removes the stale CLI migration finding
+  and refreshes the generated baseline metadata.
+- `c5aa0b821` closes file-processor nil handling before Temporal side effects
+  and updates the corresponding tests; `2d4d025b4` closes Pact NATS message
+  provider handlers, pins the SBOM/vulnerability Go setup to 1.26.6, and
+  selects a stable PyO3 ABI for fuzz targets; `882c1c4` documents the exported
+  file-processor validation limit; `868692489` makes the Rust fuzz inventory
+  check shellcheck-safe; `fcd35e909` makes WASM provenance ordering locale
+  independent; `0e89c8a62` patches frontend dependency advisories; and
+  `5b3b102c9` raises the frozen `httpx2`/`httpcore2` line to 2.12.0.
+- The frontend dependency audit is currently clean for high/critical findings
+  (seven low findings remain in non-release tooling). The Python OSV batch
+  audit and allowlist validator are green for the frozen production set.
+
+### 39.2 Reproducible local evidence
+
+- `python verify_harness.py --repo-only`: 29/29 passed.
+- Frontend WASM provenance/validator tests: 11/11 passed; `ensure-wasm.mjs`
+  and Windows `cargo check` for the fuzz binary pass with the `abi3-py311`
+  configuration.
+- The last canonical frontend run before the dependency refresh recorded
+  651/651 files, 6656/6656 tests, zero unhandled errors and 100% statements,
+  branches, functions and lines. A fresh dependency-refresh `npm run test:ci`
+  is still running and must finish with a terminal result before this evidence
+  is renewed for the current SHA.
+- Isolated pre-commit runs for every code commit passed the applicable
+  detect-secrets, strong-env-secrets, no-Python2-except, actionlint, Semgrep
+  and Renovate checks. The shared default pre-commit cache had a Windows
+  permission error; no hook was bypassed, and the isolated cache is the
+  reproducible path used for commits.
+
+### 39.3 Remaining current-SHA work
+
+1. Finish the in-flight frontend regression, then run typecheck, lint, build,
+   WASM checks and the focused test matrix again after all commits.
+2. Append the final checkpoint only after `git diff --check`, an isolated full
+   pre-commit run, backend/go/rust focused gates and a clean inventory of the
+   four user-owned untracked paths.
+3. Push the resulting `egorribun` SHA and wait for a **new** PR 1266 matrix and
+   companion workflows. Download every terminal artifact and classify every
+   failure by exact log. Confirm current-SHA report hashes, coverage/mutation
+   denominators, Go race/sanitizer/fuzz evidence, Schemathesis, Lighthouse,
+   E2E and security gates; do not reuse run `34287653082`.
+4. Re-query Dependabot after the `httpx2` and Go toolchain fixes. Alerts
+   `#117/#107` were verified as stale unused root-manifest records and closed
+   as `not_used`; the newly surfaced `httpx2` alert remains open remotely until
+   GitHub rescans the pushed source.
+5. Keep the external release boundary explicit: merge-to-main
+   recertification, exact-six immutable image/SBOM/provenance producer,
+   digest Docker smoke, Kubernetes/TLS/ExternalSecrets/observability,
+   real-device CWV, chaos/restart/rollback, production release and the final
+   SHA-bound `AUDIT_QUALITY_CLOSURE_<sha>.md` still require direct evidence.
+
+The user-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
+`.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
+excluded from source commits.
