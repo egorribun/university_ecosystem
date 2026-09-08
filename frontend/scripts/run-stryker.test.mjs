@@ -1092,6 +1092,71 @@ test("the checked-in Windows host contains the atomic Job Object lifecycle", asy
   assert.doesNotMatch(source, /taskkill/u)
 })
 
+test("Windows process-host termination failures fail closed without waiting for an empty proof", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 43227
+  child.exitCode = null
+  child.signalCode = null
+  let statusReads = 0
+  let timeoutCallback
+  const terminationFailure = new Error(
+    "Windows process-host reported TerminateJobObject failed with Win32 error 5"
+  )
+  const result = waitForChildClose(child, {
+    description: "Windows termination-failure shard",
+    timeoutMs: 1_000,
+    terminationGraceMs: 1_000,
+    processTreeOwnership: {
+      kind: "windows-job-object",
+      rootPid: 43227,
+      hostPid: 43227,
+      statusPath: "C:/runs/stryker/proof.json",
+      jobToken: "66666666-6666-4666-8666-666666666666",
+      protocolVersion: 1,
+      control: { write() {} },
+    },
+    terminate: async () => {
+      throw terminationFailure
+    },
+    verifyWindowsJob: async () => {
+      statusReads += 1
+      throw new Error("the runner must not claim quiescence after a failed native termination")
+    },
+    scheduleTimeout: (callback) => {
+      timeoutCallback = callback
+      return "timer"
+    },
+    cancelTimeout: () => undefined,
+  })
+
+  timeoutCallback()
+  child.emit("exit", null, "SIGTERM")
+  child.signalCode = "SIGTERM"
+  child.emit("close", null, "SIGTERM")
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error.processQuiesced, false)
+    assert.equal(error.errors?.[1], terminationFailure)
+    return true
+  })
+  assert.equal(statusReads, 0)
+})
+
+test("native host source returns immediately on failed termination and retains a false quiescence proof", async () => {
+  const source = await readFile(
+    new URL("../tools/stryker-process-host/src/main.rs", runnerUrl),
+    "utf8"
+  )
+  assert.match(source, /termination_error/u)
+  assert.match(source, /termination_error\.as_ref\(\)/u)
+  assert.match(source, /return Err\(clone_io_error\(error\)\)/u)
+  assert.match(source, /terminate_then_wait/u)
+  assert.match(source, /state: if quiesced \{\s*"job_terminated"\s*\} else \{\s*"error"/su)
+  assert.match(source, /quiesced: false/u)
+  assert.doesNotMatch(source, /let _ = terminate_job/u)
+})
+
 test("child close reports normal exits and retains timeout termination failures", async () => {
   const { waitForChildClose } = await import(runnerUrl)
   const successfulChild = new EventEmitter()

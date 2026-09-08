@@ -8,6 +8,76 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
+use std::io;
+
+/// Run the two-phase owned-job cleanup contract.
+///
+/// The empty-job proof is intentionally not attempted when the termination
+/// request itself fails.  A failed kill request is a terminal, fail-closed
+/// result; continuing to poll a known-live job can leave the host blocked for
+/// the long normal-completion watchdog.  The real Windows implementation
+/// supplies the Job Object call and bounded active-process proof below, while
+/// this small seam gives the same policy deterministic fault-injection tests on
+/// every build host.
+fn terminate_then_wait<Terminate, Wait>(
+    terminate: Terminate,
+    wait_for_empty: Wait,
+) -> io::Result<()>
+where
+    Terminate: FnOnce() -> io::Result<()>,
+    Wait: FnOnce() -> io::Result<()>,
+{
+    terminate()?;
+    wait_for_empty()
+}
+
+#[cfg(test)]
+mod lifecycle_policy_tests {
+    use super::terminate_then_wait;
+    use std::cell::Cell;
+    use std::io;
+
+    #[test]
+    fn failed_termination_is_returned_without_waiting_for_empty_proof() {
+        let waited = Cell::new(false);
+        let result = terminate_then_wait(
+            || {
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "access denied",
+                ))
+            },
+            || {
+                waited.set(true);
+                Ok(())
+            },
+        );
+
+        let error = result.expect_err("a failed termination request must fail closed");
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(
+            !waited.get(),
+            "known-live jobs must not enter an unbounded wait"
+        );
+    }
+
+    #[test]
+    fn successful_termination_still_requires_the_empty_job_proof() {
+        let result = terminate_then_wait(
+            || Ok(()),
+            || {
+                Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "active process remains",
+                ))
+            },
+        );
+
+        let error = result.expect_err("a missing empty-job proof must be surfaced");
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+    }
+}
+
 #[cfg(not(windows))]
 fn main() {
     eprintln!("stryker-process-host is supported only on Windows");
@@ -16,6 +86,7 @@ fn main() {
 
 #[cfg(windows)]
 mod windows_host {
+    use super::terminate_then_wait;
     use std::ffi::OsStr;
     use std::fs::{self, OpenOptions};
     use std::io::{self, BufRead, BufReader, Write};
@@ -58,6 +129,10 @@ mod windows_host {
     const JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION: Dword = 1;
     const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: Dword = 0x0000_2000;
     const MAX_STATUS_WAIT: Duration = Duration::from_secs(4 * 60 * 60);
+    // Cleanup after a startup/proof failure is deliberately much shorter than
+    // the normal completion watchdog.  KILL_ON_JOB_CLOSE on JobGuard is the
+    // final containment attempt when either operation cannot prove quiescence.
+    const FAILURE_CLEANUP_WAIT: Duration = Duration::from_secs(5);
     const STATUS_REPLACEMENT_RETRY_WINDOW: Duration = Duration::from_secs(10);
     const POLL_INTERVAL: Duration = Duration::from_millis(25);
     const PROTOCOL_VERSION: u32 = 1;
@@ -682,6 +757,7 @@ mod windows_host {
                 &mut info,
             )
         };
+        let creation_error = (created == 0).then(|| last_error("CreateProcessW"));
         let mut restore_error = None;
         if let Err(error) = stdout.restore() {
             restore_error = Some(error);
@@ -691,22 +767,25 @@ mod windows_host {
                 restore_error = Some(error);
             }
         }
-        if created == 0 {
-            return Err(last_error("CreateProcessW"));
+        if let Some(error) = creation_error {
+            return Err(error);
         }
         if let Some(error) = restore_error {
+            let cleanup = terminate_process_and_wait(info.process, 70, FAILURE_CLEANUP_WAIT);
+            // The process/thread handles are not wrapped in `OwnedProcess` on
+            // this error path, so close both explicitly after the suspended
+            // child has been terminated.  A failed termination is retained in
+            // the returned error and never silently converted into success.
             unsafe {
-                TerminateProcess(info.process, 70);
-                WaitForSingleObject(info.process, 5_000);
-                // The process/thread handles are not wrapped in `OwnedProcess`
-                // on this error path, so close both explicitly after the
-                // suspended child has been terminated.  Otherwise a failed
-                // std-handle restoration would leak one pair of kernel
-                // handles per shard.
                 CloseHandle(info.thread);
                 CloseHandle(info.process);
             }
-            return Err(error);
+            return Err(match cleanup {
+                Ok(()) => error,
+                Err(cleanup_error) => io::Error::other(format!(
+                    "{error}; suspended target cleanup failed: {cleanup_error}"
+                )),
+            });
         }
         // Attribute-list cleanup and the explicit standard-handle closure both
         // happen before the primary thread is resumed.  The target never gets
@@ -757,13 +836,17 @@ mod windows_host {
         Ok(accounting.active_processes)
     }
 
-    fn wait_for_empty(job: Handle, started: Instant) -> io::Result<()> {
+    fn wait_for_empty_with_timeout(
+        job: Handle,
+        started: Instant,
+        timeout: Duration,
+    ) -> io::Result<()> {
         loop {
             let active = active_processes(job)?;
             if active == 0 {
                 return Ok(());
             }
-            if started.elapsed() >= MAX_STATUS_WAIT {
+            if started.elapsed() >= timeout {
                 return Err(io::Error::new(
                     io::ErrorKind::TimedOut,
                     "job active-process count did not reach zero",
@@ -790,6 +873,37 @@ mod windows_host {
             return Err(last_error("TerminateJobObject"));
         }
         Ok(())
+    }
+
+    fn terminate_and_prove_empty(job: Handle, code: Dword, timeout: Duration) -> io::Result<()> {
+        terminate_then_wait(
+            || terminate_job(job, code),
+            || wait_for_empty_with_timeout(job, Instant::now(), timeout),
+        )
+    }
+
+    fn terminate_process_and_wait(
+        process: Handle,
+        code: Dword,
+        timeout: Duration,
+    ) -> io::Result<()> {
+        if unsafe { TerminateProcess(process, code) } == 0 {
+            return Err(last_error("TerminateProcess"));
+        }
+        let timeout_ms = timeout.as_millis().min(Dword::MAX as u128) as Dword;
+        let wait_result = unsafe { WaitForSingleObject(process, timeout_ms) };
+        if wait_result != WAIT_OBJECT_0 {
+            return Err(if wait_result == WAIT_TIMEOUT {
+                io::Error::new(io::ErrorKind::TimedOut, "terminated process did not exit")
+            } else {
+                last_error("WaitForSingleObject terminated process")
+            });
+        }
+        Ok(())
+    }
+
+    fn clone_io_error(error: &io::Error) -> io::Error {
+        io::Error::new(error.kind(), error.to_string())
     }
 
     fn start_control_reader() -> Receiver<ControlMessage> {
@@ -822,38 +936,70 @@ mod windows_host {
         Invalid,
     }
 
+    fn poll_control_with_terminator<Terminate>(
+        controls: &Receiver<ControlMessage>,
+        job: Handle,
+        termination_requested: &mut bool,
+        control_error: &mut Option<io::Error>,
+        termination_error: &mut Option<io::Error>,
+        terminate: Terminate,
+    ) where
+        Terminate: Fn(Handle, Dword) -> io::Result<()>,
+    {
+        let request_termination =
+            |code: Dword,
+             termination_requested: &mut bool,
+             control_error: &mut Option<io::Error>,
+             termination_error: &mut Option<io::Error>| {
+                if *termination_requested {
+                    return;
+                }
+                *termination_requested = true;
+                if let Err(error) = terminate(job, code) {
+                    if control_error.is_none() {
+                        *control_error = Some(clone_io_error(&error));
+                    }
+                    if termination_error.is_none() {
+                        *termination_error = Some(error);
+                    }
+                }
+            };
+        match controls.try_recv() {
+            Ok(ControlMessage::Terminate | ControlMessage::Eof) if !*termination_requested => {
+                request_termination(143, termination_requested, control_error, termination_error);
+            }
+            Ok(ControlMessage::Invalid) => {
+                if control_error.is_none() {
+                    *control_error = Some(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "invalid control command",
+                    ));
+                }
+                request_termination(70, termination_requested, control_error, termination_error);
+            }
+            Ok(_) => {}
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                request_termination(143, termination_requested, control_error, termination_error);
+            }
+        }
+    }
+
     fn poll_control(
         controls: &Receiver<ControlMessage>,
         job: Handle,
         termination_requested: &mut bool,
         control_error: &mut Option<io::Error>,
+        termination_error: &mut Option<io::Error>,
     ) {
-        match controls.try_recv() {
-            Ok(ControlMessage::Terminate | ControlMessage::Eof) if !*termination_requested => {
-                *termination_requested = true;
-                if let Err(error) = terminate_job(job, 143) {
-                    *control_error = Some(error);
-                }
-            }
-            Ok(ControlMessage::Invalid) => {
-                *control_error = Some(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "invalid control command",
-                ));
-                if !*termination_requested {
-                    *termination_requested = true;
-                    let _ = terminate_job(job, 70);
-                }
-            }
-            Ok(_) => {}
-            Err(TryRecvError::Empty) => {}
-            Err(TryRecvError::Disconnected) => {
-                if !*termination_requested {
-                    *termination_requested = true;
-                    let _ = terminate_job(job, 143);
-                }
-            }
-        }
+        poll_control_with_terminator(
+            controls,
+            job,
+            termination_requested,
+            control_error,
+            termination_error,
+            terminate_job,
+        );
     }
 
     fn wait_for_empty_with_control(
@@ -861,6 +1007,7 @@ mod windows_host {
         controls: &Receiver<ControlMessage>,
         termination_requested: &mut bool,
         control_error: &mut Option<io::Error>,
+        termination_error: &mut Option<io::Error>,
         started: Instant,
     ) -> io::Result<()> {
         loop {
@@ -868,7 +1015,19 @@ mod windows_host {
             // direct target has exited.  A normal target can leave detached
             // descendants in the Job Object; cancellation must still be able
             // to terminate those members instead of waiting for the watchdog.
-            poll_control(controls, job, termination_requested, control_error);
+            poll_control(
+                controls,
+                job,
+                termination_requested,
+                control_error,
+                termination_error,
+            );
+            if let Some(error) = termination_error.as_ref() {
+                // Do not wait for the four-hour normal-completion watchdog
+                // after a known failed kill request.  JobGuard's
+                // KILL_ON_JOB_CLOSE policy is the final containment attempt.
+                return Err(clone_io_error(error));
+            }
             let active = active_processes(job)?;
             if active == 0 {
                 return Ok(());
@@ -957,10 +1116,7 @@ mod windows_host {
         let target_pid = target.process_id;
         if unsafe { AssignProcessToJobObject(job.0, target.process) } == 0 {
             let error = last_error("AssignProcessToJobObject");
-            unsafe {
-                TerminateProcess(target.process, 70);
-                WaitForSingleObject(target.process, 5_000);
-            }
+            let cleanup = terminate_process_and_wait(target.process, 70, FAILURE_CLEANUP_WAIT);
             let _ = write_status(
                 &config.status,
                 &status_json(&StatusSnapshot {
@@ -971,15 +1127,19 @@ mod windows_host {
                     exit_code: None,
                     quiesced: false,
                     ready_acknowledged: false,
-                    reason: Some(&error.to_string()),
+                    reason: Some(&cleanup.as_ref().err().map_or_else(
+                        || error.to_string(),
+                        |cleanup_error| {
+                            format!("{error}; suspended target cleanup failed: {cleanup_error}")
+                        },
+                    )),
                 }),
             );
             return Err(error);
         }
         if unsafe { ResumeThread(target.thread) } == u32::MAX {
             let error = last_error("ResumeThread");
-            let _ = terminate_job(job.0, 70);
-            let _ = wait_for_empty(job.0, Instant::now());
+            let cleanup = terminate_and_prove_empty(job.0, 70, FAILURE_CLEANUP_WAIT);
             let _ = write_status(
                 &config.status,
                 &status_json(&StatusSnapshot {
@@ -990,7 +1150,10 @@ mod windows_host {
                     exit_code: None,
                     quiesced: false,
                     ready_acknowledged: false,
-                    reason: Some(&error.to_string()),
+                    reason: Some(&cleanup.as_ref().err().map_or_else(
+                        || error.to_string(),
+                        |cleanup_error| format!("{error}; job cleanup failed: {cleanup_error}"),
+                    )),
                 }),
             );
             return Err(error);
@@ -1011,18 +1174,21 @@ mod windows_host {
         let controls = start_control_reader();
         let mut termination_requested = false;
         let mut control_error = None;
+        let mut termination_error = None;
         loop {
             poll_control(
                 &controls,
                 job.0,
                 &mut termination_requested,
                 &mut control_error,
+                &mut termination_error,
             );
-            let target_state = unsafe { WaitForSingleObject(target.process, 0) };
-            if target_state == WAIT_FAILED {
-                let error = last_error("WaitForSingleObject target");
-                let _ = terminate_job(job.0, 70);
-                let _ = wait_for_empty(job.0, Instant::now());
+            if let Some(error) = termination_error.as_ref() {
+                // The target may still be running when TerminateJobObject
+                // fails.  Abort immediately instead of waiting for its handle
+                // (or the four-hour completion watchdog); dropping JobGuard
+                // invokes the kill-on-close containment policy.
+                let error = clone_io_error(error);
                 let _ = write_status(
                     &config.status,
                     &status_json(&StatusSnapshot {
@@ -1038,11 +1204,10 @@ mod windows_host {
                 );
                 return Err(error);
             }
-            if target_state != WAIT_OBJECT_0 && target_state != WAIT_TIMEOUT {
-                let error =
-                    io::Error::other(format!("unexpected target wait result {target_state}"));
-                let _ = terminate_job(job.0, 70);
-                let _ = wait_for_empty(job.0, Instant::now());
+            let target_state = unsafe { WaitForSingleObject(target.process, 0) };
+            if target_state == WAIT_FAILED {
+                let error = last_error("WaitForSingleObject target");
+                let cleanup = terminate_and_prove_empty(job.0, 70, FAILURE_CLEANUP_WAIT);
                 let _ = write_status(
                     &config.status,
                     &status_json(&StatusSnapshot {
@@ -1053,7 +1218,32 @@ mod windows_host {
                         exit_code: None,
                         quiesced: false,
                         ready_acknowledged: true,
-                        reason: Some(&error.to_string()),
+                        reason: Some(&cleanup.as_ref().err().map_or_else(
+                            || error.to_string(),
+                            |cleanup_error| format!("{error}; job cleanup failed: {cleanup_error}"),
+                        )),
+                    }),
+                );
+                return Err(error);
+            }
+            if target_state != WAIT_OBJECT_0 && target_state != WAIT_TIMEOUT {
+                let error =
+                    io::Error::other(format!("unexpected target wait result {target_state}"));
+                let cleanup = terminate_and_prove_empty(job.0, 70, FAILURE_CLEANUP_WAIT);
+                let _ = write_status(
+                    &config.status,
+                    &status_json(&StatusSnapshot {
+                        state: "error",
+                        token: &config.token,
+                        host_pid,
+                        target_pid: Some(target_pid),
+                        exit_code: None,
+                        quiesced: false,
+                        ready_acknowledged: true,
+                        reason: Some(&cleanup.as_ref().err().map_or_else(
+                            || error.to_string(),
+                            |cleanup_error| format!("{error}; job cleanup failed: {cleanup_error}"),
+                        )),
                     }),
                 );
                 return Err(error);
@@ -1063,17 +1253,43 @@ mod windows_host {
             }
             thread::sleep(POLL_INTERVAL);
         }
-        let target_code = wait_for_process(target.process)?;
+        let target_code = match wait_for_process(target.process) {
+            Ok(code) => code,
+            Err(error) => {
+                let cleanup = terminate_and_prove_empty(job.0, 70, FAILURE_CLEANUP_WAIT);
+                let reason = cleanup.as_ref().err().map_or_else(
+                    || error.to_string(),
+                    |cleanup_error| format!("{error}; job cleanup failed: {cleanup_error}"),
+                );
+                let _ = write_status(
+                    &config.status,
+                    &status_json(&StatusSnapshot {
+                        state: "error",
+                        token: &config.token,
+                        host_pid,
+                        target_pid: Some(target_pid),
+                        exit_code: None,
+                        quiesced: false,
+                        ready_acknowledged: true,
+                        reason: Some(&reason),
+                    }),
+                );
+                return Err(error);
+            }
+        };
         let proof_started = Instant::now();
         let empty_result = wait_for_empty_with_control(
             job.0,
             &controls,
             &mut termination_requested,
             &mut control_error,
+            &mut termination_error,
             proof_started,
         );
         if termination_requested {
-            let result = control_error.or_else(|| empty_result.err());
+            let result = termination_error
+                .or(control_error)
+                .or_else(|| empty_result.err());
             let state = if result.is_some() {
                 "error"
             } else {
@@ -1118,18 +1334,16 @@ mod windows_host {
                 // A target that exits while leaving members in the job is not
                 // a release-valid success.  Contain the members, prove the
                 // empty job, and report a non-zero host result.
-                let termination = terminate_job(job.0, 70);
-                let empty = wait_for_empty(job.0, Instant::now());
-                let quiesced = termination.is_ok() && empty.is_ok();
-                let reason = termination
-                    .as_ref()
-                    .err()
-                    .or_else(|| empty.as_ref().err())
-                    .map_or_else(|| error.to_string(), |failure| failure.to_string());
+                let cleanup = terminate_and_prove_empty(job.0, 70, FAILURE_CLEANUP_WAIT);
+                let quiesced = cleanup.is_ok();
+                let reason = cleanup.as_ref().err().map_or_else(
+                    || error.to_string(),
+                    |cleanup_error| format!("{error}; job cleanup failed: {cleanup_error}"),
+                );
                 let status_result = write_status(
                     &config.status,
                     &status_json(&StatusSnapshot {
-                        state: "job_terminated",
+                        state: if quiesced { "job_terminated" } else { "error" },
                         token: &config.token,
                         host_pid,
                         target_pid: Some(target_pid),
@@ -1152,6 +1366,70 @@ mod windows_host {
                 eprintln!("stryker-process-host: {error}");
                 70
             }
+        }
+    }
+
+    #[cfg(test)]
+    mod lifecycle_tests {
+        use super::*;
+        use std::cell::Cell;
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        #[test]
+        fn access_denied_termination_is_bounded_and_emits_false_quiescence() {
+            let (sender, receiver) = mpsc::channel();
+            sender
+                .send(ControlMessage::Terminate)
+                .expect("control channel remains open for the test");
+            let mut termination_requested = false;
+            let mut control_error = None;
+            let mut termination_error = None;
+            let calls = Cell::new(0);
+            poll_control_with_terminator(
+                &receiver,
+                123,
+                &mut termination_requested,
+                &mut control_error,
+                &mut termination_error,
+                |_job, _code| {
+                    calls.set(calls.get() + 1);
+                    Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "TerminateJobObject failed with Win32 error 5",
+                    ))
+                },
+            );
+            assert!(termination_requested);
+            assert_eq!(calls.get(), 1);
+            assert!(control_error.is_some());
+            assert!(termination_error.is_some());
+
+            let started = Instant::now();
+            let result = wait_for_empty_with_control(
+                0,
+                &receiver,
+                &mut termination_requested,
+                &mut control_error,
+                &mut termination_error,
+                started,
+            );
+            let error = result.expect_err("failed termination must be terminal");
+            assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+            assert!(started.elapsed() < Duration::from_millis(100));
+
+            let status = status_json(&StatusSnapshot {
+                state: "error",
+                token: "77777777-7777-4777-8777-777777777777",
+                host_pid: 123,
+                target_pid: Some(456),
+                exit_code: None,
+                quiesced: false,
+                ready_acknowledged: true,
+                reason: Some(&error.to_string()),
+            });
+            assert!(status.contains("\"state\":\"error\""));
+            assert!(status.contains("\"quiesced\":false"));
         }
     }
 }
