@@ -1,7 +1,7 @@
 """Consumer-Driven Contract Tests for the files.process NATS message boundary.
 
 Consumer: file-processor
-Provider: university-backend (or ws-hub)
+Provider: university-backend (the producer is an external/backend publisher)
 """
 
 from __future__ import annotations
@@ -59,6 +59,15 @@ def _files_process_handler(
     assert "type" in payload, "Missing required field: 'type'"
     assert "source_key" in payload, "Missing required field: 'source_key'"
     assert "dest_key" in payload, "Missing required field: 'dest_key'"
+    assert payload["type"] in {
+        "image_resize",
+        "image_compress",
+        "pdf_preview",
+        "video_transcode",
+    }, "Unsupported canonical file-processing type"
+    assert (
+        "name" not in payload and "args" not in payload and "kwargs" not in payload
+    ), "The stale generic task envelope is not valid on files.process"
 
     return payload
 
@@ -70,7 +79,7 @@ def test_files_process_event_contract(pact: Pact) -> None:
         .with_body(
             {
                 "id": match.like("uuid"),
-                "type": match.like("resize"),
+                "type": match.like("image_resize"),
                 "source_key": match.like("uploads/raw/img.jpg"),
                 "dest_key": match.like("uploads/processed/img.jpg"),
                 "options": match.like({"width": 800}),

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"crypto/tls"
@@ -10,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -22,7 +24,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/relay"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
@@ -31,6 +32,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -54,6 +56,7 @@ import (
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"github.com/university-ecosystem/file-processor/internal/config"
 	gql "github.com/university-ecosystem/file-processor/internal/graphql"
+	"github.com/university-ecosystem/file-processor/internal/jobcontract"
 	"github.com/university-ecosystem/file-processor/internal/middleware"
 	"github.com/university-ecosystem/file-processor/internal/service"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
@@ -107,6 +110,9 @@ var (
 // callback harness instead of requiring a broker for every error branch.
 type legacyNatsJetStream interface {
 	QueueSubscribe(subject, queue string, cb nats.MsgHandler, opts ...nats.SubOpt) (*nats.Subscription, error)
+	StreamNameBySubject(subject string, opts ...nats.JSOpt) (string, error)
+	ConsumerInfo(stream, consumer string, opts ...nats.JSOpt) (*nats.ConsumerInfo, error)
+	UpdateConsumer(stream string, cfg *nats.ConsumerConfig, opts ...nats.JSOpt) (*nats.ConsumerInfo, error)
 }
 
 type legacyNatsConnection interface {
@@ -172,7 +178,10 @@ func runMain(ctx context.Context) error {
 	defer w.Stop()
 	logger.InfoContext(ctx, "Temporal Worker started", "queue", "FILE_PROCESSING_TASK_QUEUE")
 
-	startNatsSubscriberFunc(ctx, cfg, c, logger)
+	if err := startNatsSubscriberFunc(ctx, cfg, c, logger); err != nil {
+		logger.ErrorContext(ctx, "Failed to start NATS subscriber", "err", err)
+		return err
+	}
 
 	spiffeClient, err := initSpiffeClientFunc(ctx, cfg, logger)
 	if err != nil {
@@ -395,7 +404,35 @@ func setupTemporalWorker(ctx context.Context, c client.Client, cfg *config.Confi
 	return w, activities, nil
 }
 
-func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Client, logger *slog.Logger) {
+const (
+	fileProcessSubject      = "files.process"
+	fileProcessConsumer     = "file-processors-temporal"
+	fileProcessMaxDeliver   = 5
+	fileProcessNakDelay     = 5 * time.Second
+	fileProcessWorkflowTTL  = 30 * time.Minute
+	fileProcessStartTimeout = 5 * time.Second
+)
+
+// processDeliveryMessage is the small acknowledgement seam used by the
+// callback. Keeping it transport-neutral makes every disposition testable
+// without relying on a live broker or accidentally inspecting payload bytes.
+type processDeliveryMessage interface {
+	Payload() []byte
+	Ack() error
+	NakWithDelay(time.Duration) error
+	Term() error
+}
+
+type natsProcessDeliveryMessage struct{ msg *nats.Msg }
+
+func (m natsProcessDeliveryMessage) Payload() []byte { return m.msg.Data }
+func (m natsProcessDeliveryMessage) Ack() error      { return m.msg.Ack() }
+func (m natsProcessDeliveryMessage) NakWithDelay(d time.Duration) error {
+	return m.msg.NakWithDelay(d)
+}
+func (m natsProcessDeliveryMessage) Term() error { return m.msg.Term() }
+
+func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Client, logger *slog.Logger) error {
 	var opts []nats.Option
 	if cfg.Environment == "testing" {
 		opts = append(opts, nats.Timeout(50*time.Millisecond))
@@ -405,61 +442,185 @@ func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Clien
 
 	nc, err := connectLegacyNats(cfg.NatsURL, opts...)
 	if err != nil {
-		logger.WarnContext(ctx, "Failed to connect to NATS (Legacy)", "err", err)
-		return
+		logger.ErrorContext(ctx, "Failed to connect to NATS (Legacy)", "err", err)
+		return fmt.Errorf("connect to NATS: %w", err)
 	}
 
 	js, err := nc.JetStream()
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to get JetStream context", "err", err)
 		nc.Close()
-		return
+		return fmt.Errorf("initialize JetStream: %w", err)
 	}
 
-	_, err = js.QueueSubscribe("files.process", "file-processors-temporal", func(msg *nats.Msg) {
-		var job workflow.ProcessJob
-		if err := json.Unmarshal(msg.Data, &job); err != nil {
-			logger.ErrorContext(ctx, "Failed to unmarshal NATS message", "err", err)
-			if nackErr := msg.Nak(); nackErr != nil {
-				logger.ErrorContext(ctx, "Failed to nack NATS message", "err", nackErr)
-			}
-			return
-		}
-
-		opt := client.StartWorkflowOptions{
-			ID:                       "proc-" + job.ID + ":" + uuid.NewString(),
-			TaskQueue:                "FILE_PROCESSING_TASK_QUEUE",
-			WorkflowExecutionTimeout: 30 * time.Minute,
-			WorkflowIDReusePolicy:    enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
-		}
-
-		wfCtx, wfCancel := context.WithTimeout(ctx, 5*time.Second)
-		defer wfCancel()
-
-		_, execErr := c.ExecuteWorkflow(wfCtx, opt, workflow.FileProcessingWorkflow, job)
-		if execErr != nil {
-			logger.ErrorContext(ctx, "Failed to execute workflow from NATS", "err", execErr)
-			// RZ-W16-02: Nak so JetStream redelivers immediately instead of
-			// waiting for AckWait timeout (which can be minutes).
-			if nakErr := msg.Nak(); nakErr != nil {
-				logger.ErrorContext(ctx, "Failed to Nak NATS message after workflow failure", "err", nakErr)
-			}
-			return
-		}
-
-		if ackErr := msg.Ack(); ackErr != nil {
-			logger.ErrorContext(ctx, "Failed to ack NATS message", "err", ackErr)
-		}
-	}, nats.ManualAck())
-
+	stream, existing, err := reconcileFileProcessConsumer(js, fileProcessSubject, fileProcessConsumer)
 	if err != nil {
-		logger.ErrorContext(ctx, "Failed to subscribe to NATS queue", "err", err)
+		logger.ErrorContext(ctx, "Failed to reconcile NATS consumer", "err", err,
+			"subject", fileProcessSubject, "consumer", fileProcessConsumer)
+		nc.Close()
+		return fmt.Errorf("reconcile NATS consumer: %w", err)
+	}
+
+	var subOpts []nats.SubOpt
+	if existing {
+		subOpts = append(subOpts, nats.Bind(stream, fileProcessConsumer))
+	} else {
+		// QueueSubscribe creates the durable with explicit bounded delivery when
+		// this is the first replica to start. A concurrent creator converges via
+		// the reconciliation/refetch path in the NATS client.
+		subOpts = append(subOpts, nats.Durable(fileProcessConsumer), nats.MaxDeliver(fileProcessMaxDeliver))
+	}
+	subOpts = append(subOpts, nats.ManualAck())
+	_, err = js.QueueSubscribe(fileProcessSubject, fileProcessConsumer, func(msg *nats.Msg) {
+		handleFileProcessDelivery(ctx, natsProcessDeliveryMessage{msg: msg}, c, logger)
+	}, subOpts...)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to subscribe to NATS queue", "err", err,
+			"subject", fileProcessSubject, "consumer", fileProcessConsumer)
+		nc.Close()
+		return fmt.Errorf("subscribe to NATS queue: %w", err)
 	}
 
 	go func() {
 		<-ctx.Done()
 		nc.Close()
 	}()
+	return nil
+}
+
+// reconcileFileProcessConsumer migrates the existing queue durable in place.
+// It deliberately changes only MaxDeliver, preserving pending state and every
+// other server-owned delivery setting. A bounded refetch loop handles two
+// replicas racing during rollout without deleting/recreating the durable.
+func reconcileFileProcessConsumer(js legacyNatsJetStream, subject, consumer string) (stream string, existing bool, err error) {
+	stream, err = js.StreamNameBySubject(subject)
+	if err != nil {
+		return "", false, err
+	}
+	info, err := js.ConsumerInfo(stream, consumer)
+	if errors.Is(err, nats.ErrConsumerNotFound) {
+		return stream, false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if info == nil {
+		return "", false, errors.New("NATS consumer info was nil")
+	}
+	if info.Config.MaxDeliver == fileProcessMaxDeliver {
+		return stream, true, nil
+	}
+
+	for attempt := 0; attempt < 3; attempt++ {
+		updated := info.Config
+		updated.MaxDeliver = fileProcessMaxDeliver
+		if _, updateErr := js.UpdateConsumer(stream, &updated); updateErr == nil {
+			return stream, true, nil
+		}
+		// Another replica may have completed the update. Refetch before deciding
+		// that reconciliation failed, and never delete/recreate the durable.
+		latest, refetchErr := js.ConsumerInfo(stream, consumer)
+		if refetchErr != nil {
+			return "", false, refetchErr
+		}
+		if latest == nil {
+			return "", false, errors.New("NATS consumer info was nil after update conflict")
+		}
+		if latest.Config.MaxDeliver == fileProcessMaxDeliver {
+			return stream, true, nil
+		}
+		info = latest
+	}
+	return "", false, fmt.Errorf("consumer %q did not converge to MaxDeliver=%d", consumer, fileProcessMaxDeliver)
+}
+
+func handleFileProcessDelivery(ctx context.Context, msg processDeliveryMessage, c client.Client, logger *slog.Logger) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.ErrorContext(ctx, "Recovered panic while handling NATS file-process message",
+				"reason", "callback_panic", "consumer", fileProcessConsumer)
+			nakWithDelay(ctx, msg, logger, "callback_panic")
+		}
+	}()
+
+	job, err := decodeProcessJob(msg.Payload())
+	if err != nil {
+		logger.ErrorContext(ctx, "Rejected NATS file-process message",
+			"reason", "malformed_payload", "consumer", fileProcessConsumer)
+		terminateWithFallback(ctx, msg, logger, "malformed_payload")
+		return
+	}
+	if err := jobcontract.Validate(job.ID, job.Type, job.SourceKey, job.DestKey, job.Options); err != nil {
+		var validationErr *jobcontract.ValidationError
+		reason := "validation_error"
+		if errors.As(err, &validationErr) {
+			reason = validationErr.Code
+		}
+		logger.ErrorContext(ctx, "Rejected NATS file-process message",
+			"reason", reason, "consumer", fileProcessConsumer)
+		terminateWithFallback(ctx, msg, logger, reason)
+		return
+	}
+
+	opt := client.StartWorkflowOptions{
+		ID:                       "file-process-" + job.ID,
+		TaskQueue:                "FILE_PROCESSING_TASK_QUEUE",
+		WorkflowExecutionTimeout: fileProcessWorkflowTTL,
+		WorkflowIDReusePolicy:    enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
+	}
+	wfCtx, wfCancel := context.WithTimeout(ctx, fileProcessStartTimeout)
+	defer wfCancel()
+	if _, execErr := c.ExecuteWorkflow(wfCtx, opt, workflow.FileProcessingWorkflow, job); execErr != nil {
+		if temporal.IsWorkflowExecutionAlreadyStartedError(execErr) {
+			ackProcessMessage(ctx, msg, logger, "workflow_already_started")
+			return
+		}
+		logger.ErrorContext(ctx, "Failed to execute workflow from NATS",
+			"reason", "temporal_start_failed", "consumer", fileProcessConsumer)
+		nakWithDelay(ctx, msg, logger, "temporal_start_failed")
+		return
+	}
+	ackProcessMessage(ctx, msg, logger, "workflow_started")
+}
+
+func decodeProcessJob(payload []byte) (workflow.ProcessJob, error) {
+	var job workflow.ProcessJob
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&job); err != nil {
+		return workflow.ProcessJob{}, err
+	}
+	var trailing interface{}
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return workflow.ProcessJob{}, errors.New("multiple JSON values")
+		}
+		return workflow.ProcessJob{}, err
+	}
+	return job, nil
+}
+
+func ackProcessMessage(ctx context.Context, msg processDeliveryMessage, logger *slog.Logger, reason string) {
+	if err := msg.Ack(); err != nil {
+		logger.ErrorContext(ctx, "Failed to ack NATS file-process message",
+			"reason", reason, "ack_error", true, "consumer", fileProcessConsumer)
+		nakWithDelay(ctx, msg, logger, "ack_failed")
+	}
+}
+
+func terminateWithFallback(ctx context.Context, msg processDeliveryMessage, logger *slog.Logger, reason string) {
+	if err := msg.Term(); err != nil {
+		logger.ErrorContext(ctx, "Failed to terminate NATS file-process message",
+			"reason", reason, "term_error", true, "consumer", fileProcessConsumer)
+		nakWithDelay(ctx, msg, logger, "term_failed")
+	}
+}
+
+func nakWithDelay(ctx context.Context, msg processDeliveryMessage, logger *slog.Logger, reason string) {
+	if err := msg.NakWithDelay(fileProcessNakDelay); err != nil {
+		logger.ErrorContext(ctx, "Failed to delay NATS file-process message",
+			"reason", reason, "nak_error", true, "consumer", fileProcessConsumer)
+	}
 }
 
 // W140 (z) #2: gRPC health probe (grpc.health.v1.Health) must be exempt

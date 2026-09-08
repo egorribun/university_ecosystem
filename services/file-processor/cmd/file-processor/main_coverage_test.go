@@ -1001,7 +1001,7 @@ func configureRunMainStubs(t *testing.T) {
 		}
 		return c, &mockWorker{}, nil
 	}
-	startNatsSubscriberFunc = func(context.Context, *config.Config, client.Client, *slog.Logger) {}
+	startNatsSubscriberFunc = func(context.Context, *config.Config, client.Client, *slog.Logger) error { return nil }
 }
 
 func TestRunMain_PropagatesSpiffeInitFailure(t *testing.T) {

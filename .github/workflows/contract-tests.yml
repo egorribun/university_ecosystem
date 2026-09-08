@@ -26,6 +26,8 @@ on:
       - "tests/contracts/test_ws_hub_contract.py"
       - "tests/contracts/test_gateway_rest_contract.py"
       - "tests/contracts/test_file_processor_grpc_contract.py"
+      - "tests/contracts/test_files_process_contract.py"
+      - "tests/contracts/test_nats_message_contract.py"
       - "tests/contracts/test_payload_migrations.py"
       - "app/schemas/schemas.py"
       - "services/ws-hub/internal/contract/**"
@@ -45,6 +47,8 @@ on:
       - "tests/contracts/test_ws_hub_contract.py"
       - "tests/contracts/test_gateway_rest_contract.py"
       - "tests/contracts/test_file_processor_grpc_contract.py"
+      - "tests/contracts/test_files_process_contract.py"
+      - "tests/contracts/test_nats_message_contract.py"
       - "tests/contracts/test_payload_migrations.py"
       - "app/schemas/schemas.py"
       - "services/ws-hub/internal/contract/**"
@@ -99,6 +103,8 @@ jobs:
             tests/contracts/test_ws_hub_contract.py \
             tests/contracts/test_gateway_rest_contract.py \
             tests/contracts/test_file_processor_grpc_contract.py \
+            tests/contracts/test_files_process_contract.py \
+            tests/contracts/test_nats_message_contract.py \
             tests/contracts/test_payload_migrations.py \
             -v \
             --tb=short \

@@ -605,6 +605,8 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
     assert "test_ws_hub_contract.py" in consumer_text
     assert "test_gateway_rest_contract.py" in consumer_text
     assert "test_file_processor_grpc_contract.py" in consumer_text
+    assert "test_files_process_contract.py" in consumer_text
+    assert "test_nats_message_contract.py" in consumer_text
     assert "ws-hub-university-backend.json" in artifact_path
     assert "gateway-university-backend.json" in artifact_path
     assert "university-backend-file-processor.json" in artifact_path
