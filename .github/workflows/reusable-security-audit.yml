@@ -424,8 +424,12 @@ jobs:
       - name: Scan repo (no baseline)
         # The baseline is scanner metadata, not application input. Scanning it
         # would recursively flag every stored digest and keyword entry and
-        # make finding-level verification impossible.
-        run: detect-secrets scan --exclude-files '^\.secrets\.baseline$' > /tmp/current_scan.json
+        # make finding-level verification impossible. The checked-in WASM
+        # provenance file is likewise a generated SHA-256 inventory; the
+        # provenance validator binds every listed source/package byte before
+        # the artifact is consumed. Keep both exclusions exact: all other
+        # repository files remain scan-covered.
+        run: detect-secrets scan --exclude-files '^(?:\.secrets\.baseline|frontend/WASM_SOURCE_PROVENANCE\.json)$' > /tmp/current_scan.json
 
       - name: Fetch trusted base baseline (pull requests)
         if: ${{ github.event_name == 'pull_request' }}
