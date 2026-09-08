@@ -32,9 +32,17 @@ vi.mock("@tanstack/react-router", () => ({
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
-  default: (props: { srcRaw?: string; alt?: string; sizes?: string; className?: string }) => (
-    <img {...props} src={props.srcRaw} alt={props.alt ?? ""} />
-  ),
+  default: ({
+    srcRaw,
+    alt,
+    sizes,
+    className,
+  }: {
+    srcRaw?: string
+    alt?: string
+    sizes?: string
+    className?: string
+  }) => <img src={srcRaw} alt={alt ?? ""} sizes={sizes} className={className} />,
 }))
 
 vi.mock("@/components/news/NewsCategoryBadge", () => ({

@@ -1,7 +1,7 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { axe } from "jest-axe"
 
 import Register, { resolveRegistrationEmailErrorKey } from "../Register"
@@ -50,10 +50,20 @@ const renderRegister = () =>
     ui: Register,
     path: "/register",
     initialPath: "/register",
+    // Registration is a public form and does not consume auth state. Avoid
+    // mounting the real AuthProvider's profile-sync effect in these tests;
+    // its asynchronous store update is unrelated to this page contract.
+    authProvider: false,
     extraRoutes: [{ path: "/login", Component: () => <div>Sign in page</div> }],
   })
 
 describe("Register page", () => {
+  afterEach(() => {
+    // Unmount before setupTests changes i18next's language; otherwise the
+    // external-store notification updates a detached AuthProvider/Select.
+    cleanup()
+  })
+
   beforeEach(() => {
     passwordAnalysis.mode = "normal"
     passwordAnalysis.calls = 0

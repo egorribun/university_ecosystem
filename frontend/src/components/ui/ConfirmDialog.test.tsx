@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { axe } from "jest-axe"
+import { readFileSync } from "node:fs"
+import path from "node:path"
 
 import { ConfirmDialog } from "./ConfirmDialog"
 
@@ -61,6 +63,22 @@ describe("ConfirmDialog — ARIA shape", () => {
 })
 
 describe("ConfirmDialog — interactions", () => {
+  it("does not animate background paint properties", () => {
+    const source = readFileSync(
+      path.join(process.cwd(), "src/components/ui/ConfirmDialog.tsx"),
+      "utf8"
+    )
+    expect(source).not.toMatch(/whileHover=\{\{[^}]*backgroundColor/)
+  })
+
+  it("uses paint-free hover motion for the cancel action", async () => {
+    const user = userEvent.setup()
+    render(<ConfirmDialog {...baseProps} />)
+
+    await user.hover(screen.getByRole("button", { name: "Cancel" }))
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
+  })
+
   it("calls onCancel when Cancel is clicked", async () => {
     const user = userEvent.setup()
     const onCancel = vi.fn()

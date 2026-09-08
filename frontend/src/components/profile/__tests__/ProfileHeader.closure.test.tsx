@@ -36,8 +36,14 @@ vi.mock("@/components/ui", () => ({
       children?: ReactNode
       onClick?: () => void
       "aria-label"?: string
+      variant?: string
+      size?: string
+      leadingIcon?: ReactNode
     }
-  >(function MockProfileButton({ children, onClick, ...props }, ref) {
+  >(function MockProfileButton(
+    { children, onClick, variant: _variant, size: _size, leadingIcon: _leadingIcon, ...props },
+    ref
+  ) {
     return (
       <button ref={ref} type="button" onClick={onClick} {...props}>
         {children}
