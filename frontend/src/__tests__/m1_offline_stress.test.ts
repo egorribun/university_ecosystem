@@ -12,6 +12,7 @@ import {
 } from "@/sw/offline"
 import { getDatabase, type AppDatabase } from "@/db"
 import { createIDBPersister, createQueryClient } from "@/app/queryClient"
+import { withExpectedConsole } from "@/tests/strictConsole"
 
 // Expected terminal queue outcomes are asserted as data below; keep logger
 // output from being mistaken for an unhandled test diagnostic by strictConsole.
@@ -65,7 +66,11 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
       let db: AppDatabase | null = null
       let err: any = null
       try {
-        db = await getDatabase()
+        await withExpectedConsole("warn", /RxDB Open Core RxStorage/i, () => getDatabase()).then(
+          (value) => {
+            db = value
+          }
+        )
       } catch (e) {
         err = e
       }
