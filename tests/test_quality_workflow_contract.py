@@ -6786,6 +6786,44 @@ def test_deploy_never_checks_out_untrusted_release_input() -> None:
         assert 'test "$(git rev-parse origin/main)" = "$RELEASE_SHA"' in run
 
 
+def test_deploy_reverifies_trusted_sha_immediately_before_oidc() -> None:
+    """OIDC must be requested only after a fresh immutable-source proof.
+
+    The initial checkout proof is separated from the privileged deployment
+    step by tool setup and contract validation.  A later checkout/ref race or
+    workflow-context mismatch must therefore fail closed at the trust-boundary
+    immediately before AWS receives an OIDC token.
+    """
+    workflow = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "deploy.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    steps = workflow["jobs"]["deploy"]["steps"]
+    oidc_index = next(
+        index
+        for index, step in enumerate(steps)
+        if str(step.get("uses", "")).startswith(
+            "aws-actions/configure-aws-credentials@"
+        )
+    )
+    assert oidc_index > 0
+    verify = steps[oidc_index - 1]
+    assert verify["name"] == "Reverify trusted release source before OIDC"
+    assert verify["env"] == {
+        "RELEASE_SHA": "${{ inputs.release-sha }}",
+        "GITHUB_REF": "${{ github.ref }}",
+        "GITHUB_SHA": "${{ github.sha }}",
+        "GITHUB_WORKFLOW_SHA": "${{ github.workflow_sha }}",
+    }
+    run = str(verify["run"])
+    assert 'test "$GITHUB_REF" = "refs/heads/main"' in run
+    assert 'test "$GITHUB_SHA" = "$RELEASE_SHA"' in run
+    assert 'test "$GITHUB_WORKFLOW_SHA" = "$RELEASE_SHA"' in run
+    assert 'test "$(git rev-parse HEAD)" = "$RELEASE_SHA"' in run
+    assert 'test "$(git rev-parse origin/main)" = "$RELEASE_SHA"' in run
+
+
 def test_contract_drift_serializes_openapi_deterministically() -> None:
     workflow = yaml.safe_load(
         CONTRACT_VALIDATION_WORKFLOW_PATH.read_text(encoding="utf-8")
