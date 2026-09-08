@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { useSessionCrypto } from "./useSessionCrypto"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 import { cryptoWorker } from "@/utils/cryptoWorker"
+import { expectConsoleWarning } from "@/tests/strictConsole"
 
 // ---------------------------------------------------------------------------
 // useSessionCrypto.branches — drives the stateful hook (the existing
@@ -31,6 +32,7 @@ beforeEach(() => {
 
 afterEach(() => {
   // Restore navigator.serviceWorker if a test swapped it.
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
 })
@@ -136,9 +138,14 @@ describe("ensureSessionSigningKey failure path", () => {
     await act(async () => {
       await result.current.ensureSessionSigningKey()
     })
-    await act(async () => {
-      await result.current.ensureSessionSigningKey()
-    })
+    await expectConsoleWarning(
+      "[SessionCrypto] Max retries reached for signing key fetch",
+      async () => {
+        await act(async () => {
+          await result.current.ensureSessionSigningKey()
+        })
+      }
+    )
 
     expect(result.current.signingKeyRetryCountRef.current).toBe(3)
     const events = dispatch.mock.calls.map((c) => c[0])
@@ -166,11 +173,18 @@ describe("ensureSessionSigningKey failure path", () => {
     })
     const { result } = renderHook(() => useSessionCrypto())
 
-    await act(async () => {
-      await result.current.ensureSessionSigningKey()
-      await result.current.ensureSessionSigningKey()
-      await expect(result.current.ensureSessionSigningKey()).rejects.toThrow("event unavailable")
-    })
+    await expectConsoleWarning(
+      "[SessionCrypto] Max retries reached for signing key fetch",
+      async () => {
+        await act(async () => {
+          await result.current.ensureSessionSigningKey()
+          await result.current.ensureSessionSigningKey()
+          await expect(result.current.ensureSessionSigningKey()).rejects.toThrow(
+            "event unavailable"
+          )
+        })
+      }
+    )
 
     expect(result.current.sessionSigningKeyPromiseRef.current).toBeNull()
     vi.runAllTimers()
@@ -284,16 +298,18 @@ describe("sendServiceWorkerMessage", () => {
     const postMessage = vi.fn(() => {
       throw new Error("worker stopped")
     })
+    const { result } = renderHook(() => useSessionCrypto())
     vi.stubGlobal("navigator", {
       serviceWorker: { controller: { postMessage }, ready: undefined },
     })
-    const { result } = renderHook(() => useSessionCrypto())
 
-    await expect(
-      act(async () => {
-        await result.current.sendSessionCacheUpdate("sk-throw", { force: true })
-      })
-    ).resolves.not.toThrow()
+    await expectConsoleWarning("Failed to post message to service worker", async () => {
+      await expect(
+        act(async () => {
+          await result.current.sendSessionCacheUpdate("sk-throw", { force: true })
+        })
+      ).resolves.not.toThrow()
+    })
     expect(postMessage).toHaveBeenCalled()
   })
 
@@ -302,10 +318,10 @@ describe("sendServiceWorkerMessage", () => {
     const postMessage = vi.fn(() => {
       throw new Error("worker stopped")
     })
+    const { result } = renderHook(() => useSessionCrypto())
     vi.stubGlobal("navigator", {
       serviceWorker: { controller: { postMessage }, ready: undefined },
     })
-    const { result } = renderHook(() => useSessionCrypto())
 
     await expect(
       act(async () => {
@@ -316,25 +332,27 @@ describe("sendServiceWorkerMessage", () => {
 
   it("swallows service-worker readiness failures", async () => {
     const ready = Promise.reject(new Error("registration failed"))
+    const { result } = renderHook(() => useSessionCrypto())
     vi.stubGlobal("navigator", {
       serviceWorker: { controller: null, ready },
     })
-    const { result } = renderHook(() => useSessionCrypto())
 
-    await act(async () => {
-      await result.current.sendSessionCacheUpdate("sk-ready-failure", { force: true })
-      await Promise.resolve()
-      await Promise.resolve()
+    await expectConsoleWarning("Failed to deliver message to service worker", async () => {
+      await act(async () => {
+        await result.current.sendSessionCacheUpdate("sk-ready-failure", { force: true })
+        await Promise.resolve()
+        await Promise.resolve()
+      })
     })
   })
 
   it("swallows readiness failures without development logging in production", async () => {
     vi.stubEnv("DEV", false)
     const ready = Promise.reject(new Error("registration failed"))
+    const { result } = renderHook(() => useSessionCrypto())
     vi.stubGlobal("navigator", {
       serviceWorker: { controller: null, ready },
     })
-    const { result } = renderHook(() => useSessionCrypto())
 
     await act(async () => {
       await result.current.sendSessionCacheUpdate("sk-ready-production", { force: true })
@@ -383,9 +401,17 @@ describe("sendServiceWorkerMessage", () => {
     await act(async () => {
       await result.current.ensureSessionSigningKey()
       await result.current.ensureSessionSigningKey()
-      await result.current.ensureSessionSigningKey()
-      await result.current.ensureSessionSigningKey()
     })
+    await expectConsoleWarning(
+      "[SessionCrypto] Max retries reached for signing key fetch",
+      async () => {
+        await act(async () => {
+          await result.current.ensureSessionSigningKey()
+          await result.current.ensureSessionSigningKey()
+        })
+      },
+      2
+    )
 
     expect(clearSpy).toHaveBeenCalled()
     clearSpy.mockRestore()
@@ -409,8 +435,15 @@ describe("unmount cleanup", () => {
     await act(async () => {
       await result.current.ensureSessionSigningKey()
       await result.current.ensureSessionSigningKey()
-      await result.current.ensureSessionSigningKey()
     })
+    await expectConsoleWarning(
+      "[SessionCrypto] Max retries reached for signing key fetch",
+      async () => {
+        await act(async () => {
+          await result.current.ensureSessionSigningKey()
+        })
+      }
+    )
 
     clearSpy.mockClear()
     act(() => {
