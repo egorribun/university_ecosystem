@@ -29,7 +29,7 @@ vi.mock("@/components/media/SmartImage", () => ({
   ),
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Button", () => ({
   Button: forwardRef<
     HTMLButtonElement,
     {

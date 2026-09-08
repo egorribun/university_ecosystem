@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui"
+import { Badge } from "@/components/ui/Badge"
 import { TrendingUp as TrendingUpIcon, TrendingDown as TrendingDownIcon } from "lucide-react"
 
 export default function TrendChip({ value }: { value?: number }) {

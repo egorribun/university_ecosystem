@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({
     open,
     onConfirm,
@@ -21,15 +21,10 @@ vi.mock("@/components/ui", () => ({
         </button>
       </div>
     ) : null,
-  Snackbar: ({
-    open,
-    message,
-    onClose,
-  }: {
-    open: boolean
-    message: string
-    onClose: () => void
-  }) =>
+}))
+
+vi.mock("@/components/ui/Snackbar", () => ({
+  default: ({ open, message, onClose }: { open: boolean; message: string; onClose: () => void }) =>
     open ? (
       <div role="status">
         <span>{message}</span>

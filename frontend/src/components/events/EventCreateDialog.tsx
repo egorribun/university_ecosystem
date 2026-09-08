@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { Search as SearchIcon } from "lucide-react"
 
 import SmartImage from "@/components/media/SmartImage"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import { TextField } from "@/components/ui/TextField"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import { uploadEventImage } from "@/api/events"

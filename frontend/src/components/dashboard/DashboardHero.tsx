@@ -1,7 +1,7 @@
 import type { User } from "@/types/User"
 import { useTranslation } from "react-i18next"
 import { useMemo } from "react"
-import { Badge } from "@/components/ui"
+import { Badge } from "@/components/ui/Badge"
 import WeatherWidget from "@/components/ui/WeatherWidget"
 import { Sparkles } from "lucide-react"
 import { useGreeting } from "@/hooks/useGreeting"

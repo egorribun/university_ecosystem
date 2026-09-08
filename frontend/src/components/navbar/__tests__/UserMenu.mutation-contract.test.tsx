@@ -36,7 +36,7 @@ vi.mock("@/components/media/SmartImage", () => ({
   ),
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Skeleton", () => ({
   Skeleton: ({ className }: { className?: string }) => (
     <div className={className} data-testid="skeleton" />
   ),

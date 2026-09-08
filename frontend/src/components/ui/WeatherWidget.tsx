@@ -1,4 +1,6 @@
-import { Badge, Skeleton, Tooltip } from "@/components/ui"
+import { Badge } from "@/components/ui/Badge"
+import { Skeleton } from "@/components/ui/Skeleton"
+import { Tooltip } from "@/components/ui/Tooltip"
 import { useWeather } from "@/hooks/useWeather"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"

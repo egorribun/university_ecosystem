@@ -1,4 +1,5 @@
-import { Snackbar, ConfirmDialog } from "@/components/ui"
+import Snackbar from "@/components/ui/Snackbar"
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import { SpotlightOverlay } from "@/components/ui/Spotlight"
 import { cn } from "@/utils/cn"
 import { m, MotionValue } from "framer-motion"

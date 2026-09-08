@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { ArrowRight } from "lucide-react"
 import { cn } from "@/utils/cn"
-import { Skeleton } from "@/components/ui"
+import { Skeleton } from "@/components/ui/Skeleton"
 import { DateBullet } from "./DateBullet"
 import type { NewsItem } from "@/api/news"
 

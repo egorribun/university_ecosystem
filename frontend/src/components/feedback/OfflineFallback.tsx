@@ -2,7 +2,7 @@ import { m } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "@tanstack/react-router"
 import { WifiOff, Home as HomeIcon, RotateCw as RefreshIcon } from "lucide-react"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 
 interface OfflineFallbackProps {
   onRetry?: () => void

@@ -6,7 +6,7 @@ import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "@/app/pw
 import { Trans, useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import { Button, SwitchControl } from "@/components/settings/SettingsUI"
-import { GlassCard } from "@/components/ui"
+import { GlassCard } from "@/components/ui/GlassCard"
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms?: string[]

@@ -16,7 +16,7 @@
     "preview": "vite preview",
     "start": "node ./scripts/server-prod.mjs",
     "lint": "eslint --max-warnings=0 --ext .ts,.tsx,.js,.mjs,.cjs \"src\" \"tests\" \"scripts\"",
-    "lint:architecture": "node --test scripts/eslint-architecture.test.mjs",
+    "lint:architecture": "node --test scripts/eslint-architecture.test.mjs scripts/ui-barrel-boundary.test.mjs",
     "lint:deadcode": "ts-prune",
     "lint:depcheck": "node scripts/lint-depcheck.mjs",
     "lint:all": "npm run lint && npm run lint:architecture && npm run manifests:check && npm run tokens:check && npm run tokens:sync && npm run lint:deadcode && npm run lint:depcheck",

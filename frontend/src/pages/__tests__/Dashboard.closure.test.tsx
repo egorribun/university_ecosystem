@@ -223,8 +223,11 @@ vi.mock("@/components/ui/SkeletonMorph", () => ({
   }) => (loaded ? <>{children}</> : <div data-testid="widget-skeleton">{skeleton}</div>),
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Card", () => ({
   Card: ({ children }: { children?: ReactNode }) => <section>{children}</section>,
+}))
+
+vi.mock("@/components/ui/Skeleton", () => ({
   Skeleton: ({ className }: { className?: string }) => (
     <span data-testid="skeleton" className={className} />
   ),

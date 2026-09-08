@@ -6,7 +6,9 @@ import {
   Trash2 as DeleteIcon,
   Send as SendIcon,
 } from "lucide-react"
-import { Button, Textarea, ConfirmDialog } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
+import { Textarea } from "@/components/ui/Textarea"
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import type { NewsComment } from "@/hooks/useNewsInteraction"
 import type { User } from "@/types/User"
 

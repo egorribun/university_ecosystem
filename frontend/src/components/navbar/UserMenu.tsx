@@ -6,7 +6,7 @@ import { Settings as SettingsIcon } from "lucide-react"
 import { type User } from "@/types/User"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { parseCacheVersion } from "@/utils/cache"
-import { Skeleton } from "@/components/ui"
+import { Skeleton } from "@/components/ui/Skeleton"
 import { cn } from "@/utils/cn"
 
 interface UserMenuProps {

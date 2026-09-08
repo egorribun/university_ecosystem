@@ -7,7 +7,7 @@ vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({
     open,
     title,
@@ -30,15 +30,10 @@ vi.mock("@/components/ui", () => ({
         </button>
       </div>
     ) : null,
-  Snackbar: ({
-    open,
-    message,
-    onClose,
-  }: {
-    open: boolean
-    message: string
-    onClose: () => void
-  }) =>
+}))
+
+vi.mock("@/components/ui/Snackbar", () => ({
+  default: ({ open, message, onClose }: { open: boolean; message: string; onClose: () => void }) =>
     open ? (
       <button type="button" data-testid="snackbar" onClick={onClose}>
         {message}

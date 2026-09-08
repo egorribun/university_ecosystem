@@ -20,7 +20,7 @@ vi.mock("lucide-react", () => ({
   ),
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Skeleton", () => ({
   Skeleton: () => <div data-testid="news-skeleton" />,
 }))
 

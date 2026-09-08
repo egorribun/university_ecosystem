@@ -71,9 +71,15 @@ vi.mock("@/components/settings", () => ({
   ),
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Badge", () => ({
   Badge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+}))
+
+vi.mock("@/components/ui/Card", () => ({
   Card: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
+}))
+
+vi.mock("@/components/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({
     open,
     title,

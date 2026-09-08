@@ -31,13 +31,16 @@ vi.mock("@/components/settings", () => ({
   DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }))
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Badge", () => ({
   Badge: ({ children, leadingIcon }: { children: ReactNode; leadingIcon?: ReactNode }) => (
     <span>
       {leadingIcon}
       {children}
     </span>
   ),
+}))
+
+vi.mock("@/components/ui/Button", () => ({
   Button: ({
     children,
     id,

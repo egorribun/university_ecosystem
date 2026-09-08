@@ -1,4 +1,4 @@
-import { Tooltip } from "@/components/ui"
+import { Tooltip } from "@/components/ui/Tooltip"
 import { MapPin as PlaceIcon, Calendar as EventIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { formatLocalDateTime } from "@/utils/date"

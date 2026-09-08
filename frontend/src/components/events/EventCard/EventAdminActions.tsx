@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import {
   MoreVertical as MoreVertIcon,
   Pencil as EditIcon,

@@ -2,7 +2,9 @@ import { useState, useEffect, type ChangeEvent, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
-import { Button, Input, Select } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
+import { Input } from "@/components/ui/Input"
+import { Select } from "@/components/ui/Select"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import {
   type LessonParity,

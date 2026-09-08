@@ -4,7 +4,7 @@ import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { Plus as AddIcon, CalendarOff as EmptyDayIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
-import { Badge } from "@/components/ui"
+import { Badge } from "@/components/ui/Badge"
 import { EmptyState } from "@/components/ui/EmptyState"
 import OfflineFallback from "@/components/feedback/OfflineFallback"
 

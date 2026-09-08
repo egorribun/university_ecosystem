@@ -31,7 +31,7 @@ vi.mock("@/components/feedback/OfflineFallback", () => ({
   ),
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Button", () => ({
   Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button type="button" {...props}>
       {children}

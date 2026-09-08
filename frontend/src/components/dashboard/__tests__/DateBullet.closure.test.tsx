@@ -14,7 +14,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Tooltip", () => ({
   Tooltip: ({ children, content }: { children: ReactNode; content: string }) => (
     <div data-tooltip={content}>{children}</div>
   ),
