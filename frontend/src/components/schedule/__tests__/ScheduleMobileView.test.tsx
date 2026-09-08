@@ -105,7 +105,7 @@ function renderView(props = baseProps, includeProbe = false) {
 }
 
 afterEach(() => {
-  useScheduleUIStore.setState({ weekOffset: 0 })
+  act(() => useScheduleUIStore.setState({ weekOffset: 0 }))
   prefersReducedMock.mockReturnValue(true)
 })
 

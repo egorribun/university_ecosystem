@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -103,17 +103,24 @@ describe("BackToTop", () => {
       expect(screen.getByRole("button", { name: getLabel() })).toBeInTheDocument()
     )
 
-    callback?.(
-      [{ isIntersecting: true, boundingClientRect: { top: 700 } } as IntersectionObserverEntry],
-      {} as IntersectionObserver
-    )
+    act(() => {
+      callback?.(
+        [{ isIntersecting: true, boundingClientRect: { top: 700 } } as IntersectionObserverEntry],
+        {} as IntersectionObserver
+      )
+    })
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: getLabel() }).parentElement?.parentElement
       ).toHaveStyle("bottom: 140px")
     )
 
-    callback?.([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver)
+    act(() => {
+      callback?.(
+        [{ isIntersecting: false } as IntersectionObserverEntry],
+        {} as IntersectionObserver
+      )
+    })
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: getLabel() }).parentElement?.parentElement
@@ -215,10 +222,12 @@ describe("BackToTop", () => {
 
     expect(options?.threshold).toEqual(Array.from({ length: 21 }, (_, i) => i / 20))
     expect(observe).toHaveBeenCalledWith(footer)
-    callback?.(
-      [{ isIntersecting: true, boundingClientRect: { top: 700 } } as IntersectionObserverEntry],
-      {} as IntersectionObserver
-    )
+    act(() => {
+      callback?.(
+        [{ isIntersecting: true, boundingClientRect: { top: 700 } } as IntersectionObserverEntry],
+        {} as IntersectionObserver
+      )
+    })
     setScrollY(500)
     fireEvent.scroll(window)
     await waitFor(() =>

@@ -13,6 +13,14 @@ import {
 import { getDatabase, type AppDatabase } from "@/db"
 import { createIDBPersister, createQueryClient } from "@/app/queryClient"
 
+// Expected terminal queue outcomes are asserted as data below; keep logger
+// output from being mistaken for an unhandled test diagnostic by strictConsole.
+vi.mock("../sw/logger", () => ({
+  log: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}))
+
 const CLICK_DB_NAME = "notification-interactions"
 
 describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => {

@@ -6,6 +6,7 @@ import { NewsList } from "../NewsList"
 vi.mock("@/components/news/NewsCard", () => ({
   default: ({ title }: { title: string }) => <div data-testid="news-card">{title}</div>,
 }))
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => () => undefined }))
 
 const mockNews: any[] = [
   {

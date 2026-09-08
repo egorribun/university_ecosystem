@@ -11,6 +11,7 @@ vi.mock("react-i18next", () => ({
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => () => undefined }))
 
 import { ScheduleListView } from "@/components/schedule/ScheduleListView"
 import { SchedulePageProvider, useSchedulePage } from "@/contexts/SchedulePageContext"
