@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
 import { describe, it, expect, vi } from "vitest"
@@ -123,6 +123,10 @@ describe("EventAdminActions", () => {
 
     expect(trigger).toBeDisabled()
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
+
+    rerender(<ControlledEventAdminActions />)
+    expect(trigger).toBeEnabled()
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
   })
 
   it("suppresses callbacks and stale controlled menu items while disabled", () => {
@@ -144,6 +148,8 @@ describe("EventAdminActions", () => {
 
     const trigger = screen.getByRole("button", { name: "events:card.aria.actions" })
     expect(trigger).toBeDisabled()
+    expect(trigger).toHaveAttribute("aria-expanded", "false")
+    expect(trigger).not.toHaveAttribute("aria-controls")
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
     expect(screen.queryByRole("menuitem")).not.toBeInTheDocument()
     fireEvent.click(trigger)
@@ -167,6 +173,19 @@ describe("EventAdminActions", () => {
 
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
     expect(outside).toHaveFocus()
+  })
+
+  it("ignores malformed outside-pointer targets without dismissing the menu", async () => {
+    const user = userEvent.setup()
+    const addEventListener = vi.spyOn(document, "addEventListener")
+    render(<ControlledEventAdminActions />)
+
+    await user.click(screen.getByRole("button", { name: "events:card.aria.actions" }))
+    const listener = addEventListener.mock.calls.find(([type]) => type === "mousedown")?.[1]
+    expect(listener).toBeTypeOf("function")
+
+    ;(listener as EventListener)({ target: null } as unknown as Event)
+    expect(screen.getByRole("menu")).toBeInTheDocument()
   })
 
   it("shows edit/delete and fires their callbacks when the menu is open", async () => {
@@ -232,5 +251,23 @@ describe("EventAdminActions", () => {
 
     fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" })
     expect(parentKeyDown).not.toHaveBeenCalled()
+  })
+
+  it("keeps non-navigation keys passive and tolerates a menu with no enabled items", () => {
+    const anchor = document.createElement("button")
+    render(<EventAdminActions {...baseProps} menuAnchor={anchor} />)
+    const menu = screen.getByRole("menu")
+    const edit = screen.getByRole("menuitem", { name: "common:buttons.edit" })
+    edit.focus()
+
+    const tabEvent = createEvent.keyDown(menu, { key: "Tab", cancelable: true })
+    fireEvent(menu, tabEvent)
+    expect(tabEvent.defaultPrevented).toBe(false)
+    expect(edit).toHaveFocus()
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+
+    menu.replaceChildren()
+    fireEvent.keyDown(menu, { key: "ArrowDown" })
+    expect(screen.getByRole("menu")).toBeInTheDocument()
   })
 })

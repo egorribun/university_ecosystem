@@ -65,8 +65,10 @@ export function EventAdminActions({
     }
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
     event.preventDefault()
+    // The handler is mounted on the same menu node that owns this ref, so a
+    // keyboard event cannot reach it before the ref is attached.
     const items = Array.from(
-      menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not(:disabled)") ?? []
+      menuRef.current!.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not(:disabled)")
     )
     if (items.length === 0) return
     const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
