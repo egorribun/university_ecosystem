@@ -18,13 +18,15 @@
  * `serviceWorker`/`SyncManager`), so the IDB queue write succeeds silently.
  */
 import { act, renderHook, waitFor } from "@testing-library/react"
+import { notifyManager } from "@tanstack/query-core"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { IDBFactory } from "fake-indexeddb"
 import { http, HttpResponse } from "msw"
 import { createElement, type PropsWithChildren } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { server } from "@/tests/mocks/server"
+import { withExpectedConsole } from "@/tests/strictConsole"
 import type { User } from "@/types/User"
 import { useNewsInteraction, type NewsComment, type NewsInteractions } from "../useNewsInteraction"
 
@@ -190,6 +192,19 @@ function precreateQueueDatabase(): Promise<void> {
     request.onerror = () => reject(request.error)
   })
 }
+
+beforeAll(() => {
+  // React Query schedules observer notifications after the mutation's async
+  // work. Keep those real hook state transitions inside React's act scope so
+  // strictConsole reports only application diagnostics.
+  notifyManager.setNotifyFunction((callback) => {
+    act(callback)
+  })
+})
+
+afterAll(() => {
+  notifyManager.setNotifyFunction((callback) => callback())
+})
 
 beforeEach(() => {
   // Fresh fake-indexeddb factory per test. The hook's openDatabase()
@@ -395,9 +410,11 @@ describe("useNewsInteraction — toggleLike", () => {
       await waitFor(() => expect(result.current.isLoading).toBe(false))
       setOnline(false)
 
-      act(() => result.current.toggleLike())
-      await waitFor(() => expect(register).toHaveBeenCalledWith("news-interaction:sync"))
-      await waitFor(() => expect(result.current.isLiking).toBe(false))
+      await withExpectedConsole("warn", "Failed to register background sync", async () => {
+        act(() => result.current.toggleLike())
+        await waitFor(() => expect(register).toHaveBeenCalledWith("news-interaction:sync"))
+        await waitFor(() => expect(result.current.isLiking).toBe(false))
+      })
       expect(await readQueue()).toHaveLength(1)
     } finally {
       Object.defineProperty(navigator, "serviceWorker", {
