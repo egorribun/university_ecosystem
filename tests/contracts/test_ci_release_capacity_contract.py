@@ -101,6 +101,14 @@ def test_mutation_budget_preserves_complete_logical_inventories() -> None:
     )
 
 
+def test_mutmut_artifact_producers_use_explicit_read_only_permissions() -> None:
+    jobs = _workflow(CI)["jobs"]
+    expected_permissions = {"contents": "read", "actions": "read"}
+
+    for job_name in ("mutation-tests-stats", "mutation-tests-universe"):
+        assert jobs[job_name]["permissions"] == expected_permissions
+
+
 def test_stryker_preflight_does_not_wait_for_frontend_lighthouse() -> None:
     jobs = _workflow(CI)["jobs"]
     preflight = jobs["stryker-preflight"]

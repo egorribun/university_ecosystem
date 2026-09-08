@@ -2916,6 +2916,9 @@ jobs:
   mutation-tests-stats:
     name: Incremental Mutation Stats (mutmut) / shard ${{ matrix.stats_shard }}/${{ matrix.stats_total }}
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     needs:
       - mutation-scope
       - mutation-tests-universe-base
@@ -3208,6 +3211,9 @@ jobs:
   mutation-tests-universe:
     name: Build central mutmut universe
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 35
     outputs:
       # The matrix is derived from the producer's complete, validated plan;
