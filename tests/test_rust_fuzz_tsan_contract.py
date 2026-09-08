@@ -55,6 +55,40 @@ def test_native_fuzz_job_executes_every_declared_target_and_caches_its_workspace
     assert "native/rust_ext/fuzz/Cargo.lock" in cache_key
 
 
+def test_native_fuzz_inventory_uses_null_safe_array_population() -> None:
+    """The actionlint/shellcheck gate must not flag command substitution splitting."""
+
+    workflow = yaml.safe_load(FUZZ_WORKFLOW.read_text(encoding="utf-8"))
+    run_step = next(
+        step
+        for step in workflow["jobs"]["fuzz"]["steps"]
+        if step.get("name") == "Run fuzz targets"
+    )
+    run_text = str(run_step["run"])
+
+    assert (
+        "mapfile -t expected < <(printf '%s\\n' \"${targets[@]}\" | sort)" in run_text
+    )
+    assert "expected=($(" not in run_text
+
+
+def test_native_fuzz_uses_stable_pyo3_abi_for_standalone_binaries() -> None:
+    """Fuzz binaries must not link private symbols from a runner libpython."""
+
+    manifest = tomllib.loads(
+        (ROOT / "native" / "rust_ext" / "Cargo.toml").read_text(encoding="utf-8")
+    )
+    pyo3 = manifest["dependencies"]["pyo3"]
+    assert "abi3-py311" in pyo3["features"]
+
+    fuzz_manifest = tomllib.loads(
+        (ROOT / "native" / "rust_ext" / "fuzz" / "Cargo.toml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert fuzz_manifest["dependencies"]["rust_ext"]["default-features"] is False
+
+
 def test_additional_fuzz_matrix_matches_all_checked_in_targets() -> None:
     workflow = yaml.safe_load(FUZZ_WORKFLOW.read_text(encoding="utf-8"))
     entries = workflow["jobs"]["fuzz-additional-rust-crates"]["strategy"]["matrix"][

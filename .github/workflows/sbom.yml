@@ -104,7 +104,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: services/gateway/go.mod
+          # Pin the complete patched toolchain. A go.mod minimum such as
+          # 1.26.4 can resolve to a runner image that still carries vulnerable
+          # standard-library symbols; govulncheck must analyze the same fixed
+          # toolchain used by the build jobs.
+          go-version: "1.26.6"
           cache: true
 
       - name: Install osv-scanner
@@ -310,7 +314,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: services/gateway/go.mod
+          go-version: "1.26.6"
           cache: true
 
       - name: Install govulncheck
@@ -426,7 +430,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: services/gateway/go.mod
+          go-version: "1.26.6"
           cache: true
 
       - name: Install govulncheck

@@ -177,6 +177,13 @@ def test_pr_vulnerability_gate_has_a_read_only_producer() -> None:
     for scanner in ("osv_batch_audit.py", "govulncheck", "cargo audit"):
         assert scanner in pr_steps
 
+    for job_name in ("sbom-go", "vuln-gate", "vuln-gate-pr"):
+        setup_go = next(
+            step for step in jobs[job_name]["steps"] if step.get("name") == "Set up Go"
+        )
+        assert setup_go["with"]["go-version"] == "1.26.6"
+        assert "go-version-file" not in setup_go["with"]
+
     for job_name in ("sbom-python", "sbom-go", "sbom-rust"):
         assert "pull_request" in str(jobs[job_name].get("if", ""))
         assert "!= 'pull_request'" in str(jobs[job_name]["if"])
