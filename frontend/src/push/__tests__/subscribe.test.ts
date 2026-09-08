@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 vi.unmock("@/push/subscribe")
 
 import { deleteSubscription, getVapidPublicKey, saveSubscription } from "@/api/notifications"
+import { withExpectedConsole } from "@/tests/strictConsole"
 
 vi.mock("@/api/notifications", () => ({
   deleteSubscription: vi.fn(),
@@ -177,7 +178,7 @@ describe("subscribe", () => {
       expect(localStorage.getItem("push:last_topics")).toBeNull()
     })
 
-    it("removes unusable per-user payloads and malformed raw values", () => {
+    it("removes unusable per-user payloads and malformed raw values", async () => {
       vi.spyOn(storageMod.profileCacheStorage, "get").mockReturnValue(null)
 
       localStorage.setItem("push:last_topics", JSON.stringify({ perUser: { invalid: "nope" } }))
@@ -185,7 +186,9 @@ describe("subscribe", () => {
       expect(localStorage.getItem("push:last_topics")).toBeNull()
 
       localStorage.setItem("push:last_topics", "{")
-      mod.setPersistedTopics(null)
+      await withExpectedConsole("warn", '[Storage] Failed to parse key "push:last_topics"', () =>
+        mod.setPersistedTopics(null)
+      )
       expect(localStorage.getItem("push:last_topics")).toBeNull()
 
       localStorage.clear()
@@ -205,7 +208,9 @@ describe("subscribe", () => {
       expect(localStorage.getItem("push:last_topics")).toBeNull()
 
       localStorage.setItem("push:last_topics", "{")
-      mod.setPersistedTopics(null, { userId: "missing" })
+      await withExpectedConsole("warn", '[Storage] Failed to parse key "push:last_topics"', () =>
+        mod.setPersistedTopics(null, { userId: "missing" })
+      )
       expect(localStorage.getItem("push:last_topics")).toBeNull()
     })
 
@@ -232,7 +237,7 @@ describe("subscribe", () => {
       })
     })
 
-    it("merges versioned, legacy, malformed, and shared topic payloads", () => {
+    it("merges versioned, legacy, malformed, and shared topic payloads", async () => {
       localStorage.setItem(
         "push:last_topics",
         JSON.stringify({
@@ -257,7 +262,9 @@ describe("subscribe", () => {
       })
 
       localStorage.setItem("push:last_topics", "{")
-      mod.setPersistedTopics(["after"], { userId: "selected" })
+      await withExpectedConsole("warn", '[Storage] Failed to parse key "push:last_topics"', () =>
+        mod.setPersistedTopics(["after"], { userId: "selected" })
+      )
       expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
         version: 2,
         perUser: { selected: ["after"] },
@@ -280,7 +287,9 @@ describe("subscribe", () => {
       })
 
       localStorage.setItem("push:last_topics", "{")
-      mod.setPersistedTopics(["after-malformed"], { userId: null })
+      await withExpectedConsole("warn", '[Storage] Failed to parse key "push:last_topics"', () =>
+        mod.setPersistedTopics(["after-malformed"], { userId: null })
+      )
       expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
         version: 2,
         shared: ["after-malformed"],
@@ -435,7 +444,9 @@ describe("subscribe", () => {
       vi.mocked(saveSubscription).mockRejectedValue({ response: { status: 429 } })
       vi.stubGlobal("Notification", { permission: "granted" })
 
-      await expect(mod.recoverPushConsentFromBrowser()).resolves.toBe(true)
+      await withExpectedConsole("warn", "Rate limited (429)", () =>
+        expect(mod.recoverPushConsentFromBrowser()).resolves.toBe(true)
+      )
       expect(mod.hasPushConsent()).toBe(true)
     })
 
@@ -452,10 +463,14 @@ describe("subscribe", () => {
       vi.mocked(saveSubscription).mockRejectedValue(new Error("server unavailable"))
       vi.stubGlobal("Notification", { permission: "granted" })
 
-      const promise = mod.recoverPushConsentFromBrowser()
-      await vi.runAllTimersAsync()
+      await withExpectedConsole("warn", "Failed to re-sync recovered push subscription", () =>
+        withExpectedConsole("error", "Failed to persist push subscription", async () => {
+          const promise = mod.recoverPushConsentFromBrowser()
+          await vi.runAllTimersAsync()
 
-      await expect(promise).resolves.toBe(true)
+          await expect(promise).resolves.toBe(true)
+        })
+      )
       expect(mod.hasPushConsent()).toBe(true)
       expect(saveSubscription).toHaveBeenCalledTimes(3)
     })
@@ -519,7 +534,9 @@ describe("subscribe", () => {
       })
       await saveStarted
 
-      await expect(mod.recoverPushConsentFromBrowser()).resolves.toBe(true)
+      await withExpectedConsole("warn", "Push subscription sync already in progress", () =>
+        expect(mod.recoverPushConsentFromBrowser()).resolves.toBe(true)
+      )
       expect(saveSubscription).toHaveBeenCalledOnce()
 
       releaseSave()
@@ -573,7 +590,12 @@ describe("subscribe", () => {
       mockSWContainer.getRegistration.mockRejectedValue(new Error("lookup failed"))
       mockSWContainer.ready = Promise.reject(new Error("ready failed"))
 
-      await expect(mod.resolveServiceWorkerRegistration()).resolves.toBe(fallbackReg)
+      await withExpectedConsole(
+        "warn",
+        /Failed to get existing service worker registration|Service worker ready promise rejected/,
+        () => expect(mod.resolveServiceWorkerRegistration()).resolves.toBe(fallbackReg),
+        2
+      )
     })
 
     it("uses the final registration lookup when auto-registration fails", async () => {
@@ -583,7 +605,9 @@ describe("subscribe", () => {
       mockSWContainer.ready = Promise.resolve(null)
       mockSWContainer.getRegistration.mockResolvedValueOnce(null).mockResolvedValueOnce(finalReg)
 
-      await expect(mod.resolveServiceWorkerRegistration()).resolves.toBe(finalReg)
+      await withExpectedConsole("warn", "Failed to auto-register service worker", () =>
+        expect(mod.resolveServiceWorkerRegistration()).resolves.toBe(finalReg)
+      )
       expect(mockSWContainer.getRegistration).toHaveBeenCalledTimes(2)
     })
 
@@ -604,7 +628,9 @@ describe("subscribe", () => {
         },
       })
 
-      await expect(mod.resolveServiceWorkerRegistration()).resolves.toBeNull()
+      await withExpectedConsole("warn", "Failed to await service worker readiness", () =>
+        expect(mod.resolveServiceWorkerRegistration()).resolves.toBeNull()
+      )
     })
 
     it("returns null when the final service worker lookup throws", async () => {
@@ -615,7 +641,11 @@ describe("subscribe", () => {
         .mockResolvedValueOnce(null)
         .mockRejectedValueOnce(new Error("final lookup failed"))
 
-      await expect(mod.resolveServiceWorkerRegistration()).resolves.toBeNull()
+      await withExpectedConsole(
+        "warn",
+        "Failed to get service worker registration after timeout",
+        () => expect(mod.resolveServiceWorkerRegistration()).resolves.toBeNull()
+      )
     })
   })
 
@@ -649,7 +679,9 @@ describe("subscribe", () => {
       vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "")
       vi.mocked(getVapidPublicKey).mockRejectedValue(new Error("vapid unavailable"))
 
-      await expect(mod.resolveVapidPublicKey()).resolves.toBeNull()
+      await withExpectedConsole("warn", "Failed to fetch VAPID public key", () =>
+        expect(mod.resolveVapidPublicKey()).resolves.toBeNull()
+      )
       await expect(mod.resolveVapidPublicKey()).resolves.toBeNull()
       expect(getVapidPublicKey).toHaveBeenCalledTimes(1)
     })
@@ -955,20 +987,22 @@ describe("subscribe", () => {
       vi.mocked(saveSubscription).mockResolvedValue({} as any)
       vi.stubGlobal("Notification", { permission: "granted" })
 
-      const first = mod.ensurePushSubscription({
-        registration: mockReg,
-        vapidPublicKey: "lock-key",
-        requestPermission: false,
-      })
-      const second = mod.ensurePushSubscription({
-        registration: mockReg,
-        vapidPublicKey: "lock-key",
-        requestPermission: false,
-      })
-      resolveLookup?.(null)
+      await withExpectedConsole("warn", "ensurePushSubscription already in progress", async () => {
+        const first = mod.ensurePushSubscription({
+          registration: mockReg,
+          vapidPublicKey: "lock-key",
+          requestPermission: false,
+        })
+        const second = mod.ensurePushSubscription({
+          registration: mockReg,
+          vapidPublicKey: "lock-key",
+          requestPermission: false,
+        })
+        resolveLookup?.(null)
 
-      await expect(first).resolves.toBe(mockSub)
-      await expect(second).resolves.toBe(mockSub)
+        await expect(first).resolves.toBe(mockSub)
+        await expect(second).resolves.toBe(mockSub)
+      })
       expect(mockReg.pushManager.getSubscription).toHaveBeenCalledOnce()
     })
 
@@ -991,13 +1025,15 @@ describe("subscribe", () => {
       vi.mocked(saveSubscription).mockResolvedValue({} as any)
       vi.stubGlobal("Notification", { permission: "granted" })
 
-      await expect(
-        mod.ensurePushSubscription({
-          registration: mockReg,
-          vapidPublicKey: "ZnJlc2g",
-          requestPermission: false,
-        })
-      ).resolves.toBe(freshSub)
+      await withExpectedConsole("warn", "Failed to unsubscribe push subscription", () =>
+        expect(
+          mod.ensurePushSubscription({
+            registration: mockReg,
+            vapidPublicKey: "ZnJlc2g",
+            requestPermission: false,
+          })
+        ).resolves.toBe(freshSub)
+      )
       expect(staleSub.unsubscribe).toHaveBeenCalledOnce()
       expect(mockReg.pushManager.subscribe).toHaveBeenCalledOnce()
     })
@@ -1051,7 +1087,9 @@ describe("subscribe", () => {
       vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "rate-key")
       vi.stubGlobal("Notification", { permission: "granted" })
 
-      await expect(mod.ensurePushSubscription({ requestPermission: false })).resolves.toBe(mockSub)
+      await withExpectedConsole("warn", "Rate limited (429)", () =>
+        expect(mod.ensurePushSubscription({ requestPermission: false })).resolves.toBe(mockSub)
+      )
       expect(saveSubscription).toHaveBeenCalledOnce()
     })
 
@@ -1097,10 +1135,17 @@ describe("subscribe", () => {
       vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "failure-key")
       vi.stubGlobal("Notification", { permission: "granted" })
 
-      const promise = mod.ensurePushSubscription({ requestPermission: false })
-      await vi.runAllTimersAsync()
+      await withExpectedConsole(
+        "error",
+        "Failed to persist push subscription",
+        async () => {
+          const promise = mod.ensurePushSubscription({ requestPermission: false })
+          await vi.runAllTimersAsync()
 
-      await expect(promise).resolves.toBe(mockSub)
+          await expect(promise).resolves.toBe(mockSub)
+        },
+        2
+      )
       expect(saveSubscription).toHaveBeenCalledTimes(3)
     })
   })
@@ -1140,7 +1185,9 @@ describe("subscribe", () => {
       mockSWContainer.getRegistration.mockResolvedValue(mockReg)
       vi.mocked(deleteSubscription).mockRejectedValue(new Error("server unavailable"))
 
-      await expect(mod.unsubscribePush()).resolves.toBe(false)
+      await withExpectedConsole("warn", "Failed to delete push subscription on server", () =>
+        expect(mod.unsubscribePush()).resolves.toBe(false)
+      )
       expect(unsubscribeSpy).toHaveBeenCalledOnce()
     })
 
@@ -1192,12 +1239,20 @@ describe("subscribe", () => {
       }
       mockSWContainer.getRegistration.mockResolvedValue(mockReg)
       vi.stubGlobal("Notification", { permission: "granted" })
+      vi.mocked(getVapidPublicKey).mockResolvedValue(null as any)
 
-      const p1 = mod.softSyncPushSubscription()
-      const p2 = mod.softSyncPushSubscription()
+      await withExpectedConsole(
+        "warn",
+        /VAPID public key is not configured|Push sync already in progress/,
+        async () => {
+          const p1 = mod.softSyncPushSubscription()
+          const p2 = mod.softSyncPushSubscription()
 
-      await p1
-      await p2
+          await p1
+          await p2
+        },
+        2
+      )
 
       expect(mockSWContainer.getRegistration).toHaveBeenCalledTimes(1)
     })
@@ -1249,9 +1304,11 @@ describe("subscribe", () => {
       vi.stubGlobal("Notification", { permission: "granted" })
       const mockReg = { pushManager: { getSubscription: vi.fn() } }
 
-      await expect(
-        mod.softSyncPushSubscription({ registration: mockReg, vapidPublicKey: "%" })
-      ).resolves.toBeNull()
+      await withExpectedConsole("error", "Failed to soft sync push subscription", () =>
+        expect(
+          mod.softSyncPushSubscription({ registration: mockReg, vapidPublicKey: "%" })
+        ).resolves.toBeNull()
+      )
     })
   })
 
@@ -1301,7 +1358,11 @@ describe("subscribe", () => {
         requestPermission: vi.fn(),
       })
 
-      const result = await mod.ensurePushSubscription({ requestPermission: false })
+      const result = await withExpectedConsole(
+        "warn",
+        "VAPID public key is not configured on the server",
+        () => mod.ensurePushSubscription({ requestPermission: false })
+      )
 
       expect(result).toBeNull()
     })
@@ -1389,9 +1450,11 @@ describe("subscribe", () => {
       vi.stubGlobal("Notification", { permission: "granted" })
 
       // Does NOT throw — 409 is treated as success internally
-      await expect(
-        mod.ensurePushSubscription({ requestPermission: false, topics: ["news"] })
-      ).resolves.toBeDefined()
+      await withExpectedConsole("warn", "Subscription already exists (409)", () =>
+        expect(
+          mod.ensurePushSubscription({ requestPermission: false, topics: ["news"] })
+        ).resolves.toBeDefined()
+      )
     })
 
     it("handles an Axios-marked 409 conflict as success", async () => {
@@ -1412,13 +1475,15 @@ describe("subscribe", () => {
       }
       vi.stubGlobal("Notification", { permission: "granted" })
 
-      await expect(
-        mod.ensurePushSubscription({
-          registration: mockReg,
-          vapidPublicKey: "YXhpb3g",
-          requestPermission: false,
-        })
-      ).resolves.toBe(mockSub)
+      await withExpectedConsole("warn", "Subscription already exists (409)", () =>
+        expect(
+          mod.ensurePushSubscription({
+            registration: mockReg,
+            vapidPublicKey: "YXhpb3g",
+            requestPermission: false,
+          })
+        ).resolves.toBe(mockSub)
+      )
     })
 
     it("uses requested topics when the server response is null", async () => {
@@ -1451,7 +1516,11 @@ describe("subscribe", () => {
     it("returns null from ensurePushSubscription when PushManager is absent", async () => {
       vi.stubGlobal("PushManager", undefined)
 
-      const result = await mod.ensurePushSubscription()
+      const result = await withExpectedConsole(
+        "warn",
+        "Cannot ensure push subscription without service worker registration",
+        () => mod.ensurePushSubscription()
+      )
       expect(result).toBeNull()
     })
 
@@ -1544,13 +1613,18 @@ describe("subscribe", () => {
 
       vi.stubGlobal("Notification", { permission: "granted" })
 
-      await expect(
-        mod.ensurePushSubscription({
-          registration: mockReg,
-          vapidPublicKey: "cGxhaW4",
-          requestPermission: false,
-        })
-      ).resolves.toBe(mockSub)
+      await withExpectedConsole(
+        "warn",
+        status === 409 ? "Subscription already exists (409)" : "Rate limited (429)",
+        () =>
+          expect(
+            mod.ensurePushSubscription({
+              registration: mockReg,
+              vapidPublicKey: "cGxhaW4",
+              requestPermission: false,
+            })
+          ).resolves.toBe(mockSub)
+      )
       expect(saveSubscription).toHaveBeenCalledOnce()
     })
   })
