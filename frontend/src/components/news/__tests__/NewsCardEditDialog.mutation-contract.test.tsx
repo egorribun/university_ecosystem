@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ComponentProps } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -69,9 +69,11 @@ describe("NewsCardEditDialog mutation contracts", () => {
     apiMocks.logError.mockReset()
   })
 
-  it("keeps the namespace, accessibility, field, and class contracts exact", () => {
+  it("keeps the namespace, accessibility, field, and class contracts exact", async () => {
     const props = makeProps()
-    render(<NewsCardEditDialog {...props} />)
+    await act(async () => {
+      render(<NewsCardEditDialog {...props} />)
+    })
 
     expect(translationMocks.namespaceCalls).toContainEqual(["news", "common"])
 
@@ -296,9 +298,11 @@ describe("NewsCardEditDialog mutation contracts", () => {
     await waitFor(() => expect(apiMocks.patch).toHaveBeenCalledTimes(1))
   })
 
-  it("renders empty translation fallbacks instead of leaking mutation text", () => {
+  it("renders empty translation fallbacks instead of leaking mutation text", async () => {
     translationMocks.returnUndefined = true
-    render(<NewsCardEditDialog {...makeProps()} />)
+    await act(async () => {
+      render(<NewsCardEditDialog {...makeProps()} />)
+    })
 
     const requiredTitleLabel = document.querySelector<HTMLLabelElement>(
       'label[for="news-edit-title-news-contract"]'
