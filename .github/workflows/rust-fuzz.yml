@@ -63,10 +63,11 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             native/rust_ext/target/
+            native/rust_ext/fuzz/target/
             crates/pyo3-sanitizer/fuzz/target/
             frontend/wasm-sanitizer/fuzz/target/
             frontend/rust-crypto/fuzz/target/
-          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('native/rust_ext/Cargo.toml', 'native/rust_ext/Cargo.lock', 'crates/pyo3-sanitizer/Cargo.toml', 'crates/pyo3-sanitizer/fuzz/Cargo.toml', 'crates/pyo3-sanitizer/fuzz/Cargo.lock', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/wasm-sanitizer/fuzz/Cargo.toml', 'frontend/wasm-sanitizer/fuzz/Cargo.lock', 'frontend/rust-crypto/Cargo.toml', 'frontend/rust-crypto/fuzz/Cargo.toml', 'frontend/rust-crypto/fuzz/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('native/rust_ext/Cargo.toml', 'native/rust_ext/Cargo.lock', 'native/rust_ext/fuzz/Cargo.toml', 'native/rust_ext/fuzz/Cargo.lock', 'crates/pyo3-sanitizer/Cargo.toml', 'crates/pyo3-sanitizer/fuzz/Cargo.toml', 'crates/pyo3-sanitizer/fuzz/Cargo.lock', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/wasm-sanitizer/fuzz/Cargo.toml', 'frontend/wasm-sanitizer/fuzz/Cargo.lock', 'frontend/rust-crypto/Cargo.toml', 'frontend/rust-crypto/fuzz/Cargo.toml', 'frontend/rust-crypto/fuzz/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-fuzz-
 
@@ -87,10 +88,24 @@ jobs:
           else
             DURATION=60
           fi
-          echo "Running fuzz_target_1 for $DURATION seconds..."
-          cargo +nightly fuzz run fuzz_target_1 -- -max_total_time=$DURATION
-          echo "Running fuzz_sanitizer for $DURATION seconds..."
-          cargo +nightly fuzz run fuzz_sanitizer -- -max_total_time=$DURATION
+          targets=(
+            fuzz_conflict_detection
+            fuzz_hmac
+            fuzz_sanitizer
+            fuzz_schedule_item
+            fuzz_target_1
+            fuzz_uuid
+          )
+          mapfile -t discovered < <(cargo +nightly fuzz list | awk 'NF { print $1 }' | sort)
+          expected=($(printf '%s\n' "${targets[@]}" | sort))
+          if [[ "${discovered[*]}" != "${expected[*]}" ]]; then
+            echo "::error::cargo-fuzz target inventory drifted (expected: ${expected[*]}; discovered: ${discovered[*]})"
+            exit 1
+          fi
+          for target in "${targets[@]}"; do
+            echo "Running $target for $DURATION seconds..."
+            cargo +nightly fuzz run "$target" -- -max_total_time="$DURATION"
+          done
 
       - name: Archive crashes
         if: failure()

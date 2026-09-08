@@ -162,6 +162,16 @@ jobs:
               output.write(f"artifact_name={provenance['artifact_name']}\n")
           PY
 
+      - name: Bind checked-in package bytes to source inventory
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { writeSourceProvenance } from "./scripts/wasm-source-provenance.mjs"
+          await writeSourceProvenance(process.cwd())
+          JS
+
       - name: Upload immutable E2E WASM modules
         id: upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -170,6 +180,7 @@ jobs:
           path: |
             frontend/rust-crypto/pkg
             frontend/wasm-sanitizer/pkg
+            frontend/WASM_SOURCE_PROVENANCE.json
             frontend/WASM_PROVENANCE.json
             frontend/WASM_INVENTORY.json
           if-no-files-found: error

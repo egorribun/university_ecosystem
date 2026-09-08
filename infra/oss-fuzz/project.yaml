@@ -6,8 +6,6 @@ auto_ccs:
   - egorribun@gmail.com
 fuzzing_engines:
   - libfuzzer
-  - afl
-  - honggfuzz
 sanitizers:
   - address
   - undefined

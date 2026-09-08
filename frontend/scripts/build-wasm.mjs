@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import process from "node:process"
 
 import { validateWasmArtifacts } from "./verify-wasm-artifacts.mjs"
+import { writeSourceProvenance } from "./wasm-source-provenance.mjs"
 
 function runWasmPack(command, args, { cwd }) {
   return new Promise((resolve, reject) => {
@@ -31,7 +32,7 @@ export async function buildWasmArtifacts(
 ) {
   if (process.env.SKIP_WASM_BUILD === "1") {
     console.log("SKIP_WASM_BUILD=1: skipping wasm-pack build and validating existing artifacts")
-    await validateArtifacts(frontendRoot)
+    await validateArtifacts(frontendRoot, { requireSourceProvenance: true })
     return
   }
 
@@ -48,8 +49,9 @@ export async function buildWasmArtifacts(
     // back to stale or partial output.
     if (error?.code !== "ENOENT") throw error
     console.warn("wasm-pack is unavailable; validating the checked-in WASM artifacts")
-    await validateArtifacts(frontendRoot)
+    await validateArtifacts(frontendRoot, { requireSourceProvenance: true })
     return
   }
-  await validateArtifacts(frontendRoot)
+  await writeSourceProvenance(frontendRoot)
+  await validateArtifacts(frontendRoot, { requireSourceProvenance: true })
 }

@@ -210,6 +210,7 @@ fn normalize_item_for_date(item: &ScheduleItem, target_midnight: i64) -> Schedul
 
 #[pyfunction(name = "detect_conflicts")]
 fn detect_conflicts_py(
+    py: Python<'_>,
     target: Bound<'_, PyAny>,
     existing: Bound<'_, PyAny>,
 ) -> PyResult<Vec<ScheduleItem>> {
@@ -218,7 +219,15 @@ fn detect_conflicts_py(
     let existing: Vec<ScheduleItem> = existing.extract()?;
     drop(_extract_guard);
 
-    detect_conflicts(target, existing)
+    if existing.len() > MAX_CONFLICT_ITEMS {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "existing exceeds maximum allowed items ({MAX_CONFLICT_ITEMS})"
+        )));
+    }
+
+    // Extraction above is GIL-bound by necessity. The pure Rust scan operates
+    // only on owned values, so release the interpreter lock during the work.
+    py.detach(|| detect_conflicts(target, existing))
 }
 
 fn detect_conflicts(
@@ -240,9 +249,50 @@ fn detect_conflicts(
 // so they can be found by grep and updated in one place.
 const MAX_CONFLICT_ITEMS: usize = 2500;
 const MAX_CONFLICT_PAIRS: usize = 50_000;
+// Bound the non-batched slot search at the Python boundary as well. Without
+// these limits a caller could materialise an arbitrarily large schedule and
+// force an O(blocks × items) scan while holding the GIL.
+const MAX_OPTIMAL_SLOT_ITEMS: usize = 2500;
+const MAX_AVAILABLE_BLOCKS: usize = 256;
+const MAX_SLOT_HOURS_PER_BLOCK: usize = 24;
+const MAX_SLOT_CANDIDATES: usize = 4_096;
 // Rayon scheduling overhead dominates tiny batches; keep those calls local while
 // retaining the bounded pool for the larger O(n²) workloads.
 const PARALLEL_CONFLICT_THRESHOLD: usize = 32;
+
+fn validate_optimal_slot_inputs(
+    existing_schedule: &[ScheduleItem],
+    available_blocks: &[(String, Vec<u32>)],
+) -> PyResult<()> {
+    if existing_schedule.len() > MAX_OPTIMAL_SLOT_ITEMS {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "existing_schedule exceeds maximum allowed items ({MAX_OPTIMAL_SLOT_ITEMS})"
+        )));
+    }
+    if available_blocks.len() > MAX_AVAILABLE_BLOCKS {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "available_blocks exceeds maximum allowed blocks ({MAX_AVAILABLE_BLOCKS})"
+        )));
+    }
+
+    let mut candidate_count = 0usize;
+    for (_, hours) in available_blocks {
+        if hours.len() > MAX_SLOT_HOURS_PER_BLOCK {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "available block exceeds maximum hours ({MAX_SLOT_HOURS_PER_BLOCK})"
+            )));
+        }
+        candidate_count = candidate_count.checked_add(hours.len()).ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err("available slot count overflow")
+        })?;
+    }
+    if candidate_count > MAX_SLOT_CANDIDATES {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "available slot candidates exceed maximum ({MAX_SLOT_CANDIDATES})"
+        )));
+    }
+    Ok(())
+}
 
 #[inline]
 fn canonical_weekday_code(weekday: &str) -> u8 {
@@ -438,6 +488,7 @@ fn batch_detect_conflicts_py(
 /// comparison of weekday + time overlap), but any caller using start_time/
 /// end_time as real dates would get incorrect results.
 fn find_optimal_slot_py(
+    py: Python<'_>,
     duration_minutes: u32,
     existing_schedule: Bound<'_, PyAny>,
     available_blocks: Bound<'_, PyAny>,
@@ -447,7 +498,12 @@ fn find_optimal_slot_py(
     let available_blocks: Vec<(String, Vec<u32>)> = available_blocks.extract()?;
     drop(_extract_guard);
 
-    find_optimal_slot(duration_minutes, existing_schedule, available_blocks)
+    validate_optimal_slot_inputs(&existing_schedule, &available_blocks)?;
+
+    // Date arithmetic and conflict scanning are performed entirely on owned
+    // Rust values after extraction; do not hold the interpreter lock while
+    // searching candidates.
+    py.detach(|| find_optimal_slot(duration_minutes, existing_schedule, available_blocks))
 }
 
 fn checked_slot_end(start: DateTime<Utc>, duration: Duration) -> Option<DateTime<Utc>> {
@@ -800,8 +856,16 @@ pub fn verify_event_chain(
                 return Ok((false, 0, "No signing keys provided".to_string()));
             }
 
-            for key_str in &signing_keys {
-                if key_str.is_empty() {
+            // Move each key into one zeroizing allocation before traversing
+            // the chain. Keeping the owned key ring avoids allocating and
+            // copying secret material once per event while still clearing all
+            // key bytes when verification returns.
+            let signing_keys: Vec<Zeroizing<Vec<u8>>> = signing_keys
+                .into_iter()
+                .map(|key| Zeroizing::new(key.into_bytes()))
+                .collect();
+            for key_bytes in &signing_keys {
+                if key_bytes.is_empty() {
                     return Err(hmac_key_error("HMAC key cannot be empty"));
                 }
             }
@@ -839,10 +903,9 @@ pub fn verify_event_chain(
                 let data = format!("{}|{}|{}", prev_hash, canonical_payload, timestamp_iso);
                 let mut hash_valid = Choice::from(0u8);
 
-                for key_str in &signing_keys {
-                    let key_bytes = Zeroizing::new(key_str.as_bytes().to_vec());
-                    let mut mac =
-                        Hmac::<Sha256>::new_from_slice(&key_bytes).map_err(hmac_key_error)?;
+                for key_bytes in &signing_keys {
+                    let mut mac = Hmac::<Sha256>::new_from_slice(key_bytes.as_slice())
+                        .map_err(hmac_key_error)?;
                     mac.update(data.as_bytes());
                     let computed = mac.finalize().into_bytes();
 
@@ -962,6 +1025,16 @@ mod tests {
                 .call1((&target, &invalid_existing))
                 .is_err());
             assert!(batch_detect_conflicts.call1((&invalid_existing,)).is_err());
+            let oversized_existing = pyo3::types::PyList::new(
+                py,
+                (0..=MAX_CONFLICT_ITEMS)
+                    .map(|_| item_cls.call1(("monday", 0i64, 3600i64, "both")).unwrap())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+            assert!(detect_conflicts
+                .call1((&target, &oversized_existing))
+                .is_err());
 
             // 4. find_optimal_slot
             let find_optimal_slot = m.getattr("find_optimal_slot").unwrap();
@@ -2284,6 +2357,37 @@ mod tests {
             err2.is_err(),
             "Empty key in verify_event_chain must return error"
         );
+    }
+
+    #[test]
+    fn optimal_slot_input_caps_reject_unbounded_schedule_data() {
+        let oversized_schedule = vec![
+            ScheduleItem {
+                id: None,
+                weekday: "monday".to_string(),
+                start_time: 0,
+                end_time: 1,
+                parity: "both".to_string(),
+            };
+            MAX_OPTIMAL_SLOT_ITEMS + 1
+        ];
+        assert!(validate_optimal_slot_inputs(&oversized_schedule, &[]).is_err());
+
+        let oversized_block = vec![("monday".to_string(), vec![0; MAX_SLOT_HOURS_PER_BLOCK + 1])];
+        assert!(validate_optimal_slot_inputs(&[], &oversized_block).is_err());
+
+        let oversized_blocks = (0..=MAX_AVAILABLE_BLOCKS)
+            .map(|_| ("monday".to_string(), vec![0]))
+            .collect::<Vec<_>>();
+        assert!(validate_optimal_slot_inputs(&[], &oversized_blocks).is_err());
+
+        let oversized_candidates = (0..MAX_AVAILABLE_BLOCKS)
+            .map(|_| ("monday".to_string(), vec![0; MAX_SLOT_HOURS_PER_BLOCK]))
+            .collect::<Vec<_>>();
+        assert!(validate_optimal_slot_inputs(&[], &oversized_candidates).is_err());
+
+        let valid = vec![("monday".to_string(), vec![9, 10])];
+        assert!(validate_optimal_slot_inputs(&[], &valid).is_ok());
     }
 
     #[test]
