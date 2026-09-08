@@ -104,7 +104,9 @@ def test_shared_e2e_wasm_producer_is_immutable_and_fail_closed() -> None:
     assert "for attempt in 1 2 3" in build_run
     assert "node scripts/verify-wasm-artifacts.mjs" in build_run
 
-    source_provenance = _step(build, "Bind checked-in package bytes to source inventory")
+    source_provenance = _step(
+        build, "Bind checked-in package bytes to source inventory"
+    )
     assert source_provenance["working-directory"] == "frontend"
     source_provenance_run = str(source_provenance["run"])
     assert "wasm-source-provenance.mjs" in source_provenance_run
