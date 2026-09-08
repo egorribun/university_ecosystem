@@ -135,6 +135,35 @@ test("canonical cleanup removes only stale mutation evidence", async (t) => {
   )
 })
 
+test("fresh run directories are recreated after cleanup and remain exclusive", async (t) => {
+  const { cleanupCanonicalArtifacts, createExclusiveRunDirectory } = await import(runnerUrl)
+  const root = await mkdtemp(path.join(os.tmpdir(), "stryker-run-directory-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await mkdir(path.join(root, "runs", "stale"), { recursive: true })
+
+  await cleanupCanonicalArtifacts(root)
+
+  const freshRunRoot = path.join(root, "runs", "fresh-run")
+  await createExclusiveRunDirectory(freshRunRoot)
+  await writeFile(path.join(freshRunRoot, "evidence.json"), "fresh")
+  assert.equal(await readFile(path.join(freshRunRoot, "evidence.json"), "utf8"), "fresh")
+  await assert.rejects(
+    () => createExclusiveRunDirectory(freshRunRoot),
+    /EEXIST/u,
+    "A colliding run ID must fail closed instead of reusing existing evidence"
+  )
+
+  const concurrentRunRoot = path.join(root, "runs", "concurrent-run")
+  const attempts = await Promise.allSettled([
+    createExclusiveRunDirectory(concurrentRunRoot),
+    createExclusiveRunDirectory(concurrentRunRoot),
+  ])
+  assert.equal(attempts.filter(({ status }) => status === "fulfilled").length, 1)
+  const rejected = attempts.find(({ status }) => status === "rejected")
+  assert.equal(rejected?.status, "rejected")
+  assert.match(String(rejected.reason), /EEXIST/u)
+})
+
 test("stages the canonical coverage policy beside every Stryker sandbox", async (t) => {
   const { stageStrykerSandboxInputs } = await import(runnerUrl)
   const root = await mkdtemp(path.join(os.tmpdir(), "stryker-sandbox-inputs-"))

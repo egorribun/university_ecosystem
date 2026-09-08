@@ -1001,6 +1001,11 @@ export async function cleanupCanonicalArtifacts(root = outputRoot) {
   await rm(path.join(root, "historical-costs"), { recursive: true, force: true })
 }
 
+export async function createExclusiveRunDirectory(runRoot) {
+  await mkdir(path.dirname(runRoot), { recursive: true })
+  await mkdir(runRoot, { recursive: false })
+}
+
 export async function acquireRunLock(lockPath, runId) {
   await mkdir(path.dirname(lockPath), { recursive: true })
   let handle
@@ -2444,7 +2449,7 @@ async function main() {
         externalShardIndex === undefined
           ? path.join(outputRoot, "runs", runId)
           : path.join(outputRoot, "shards")
-      await mkdir(runRoot, { recursive: false })
+      await createExclusiveRunDirectory(runRoot)
       const executionPlan =
         externalShardIndex === undefined ? shardPlan : [shardPlan[externalShardIndex]]
       shardResults = await runPool(executionPlan, shardParallelism, async (shard) => {
