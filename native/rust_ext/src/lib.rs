@@ -275,6 +275,11 @@ fn validate_optimal_slot_inputs(
         )));
     }
 
+    // The two preceding guards cap this sum at
+    // `MAX_AVAILABLE_BLOCKS * MAX_SLOT_HOURS_PER_BLOCK` (256 * 24 = 6144),
+    // far below `usize::MAX`.  A checked-add error branch would therefore be
+    // unreachable for every accepted input while still creating an uncovered
+    // closure in LLVM's function/line inventory.
     let mut candidate_count = 0usize;
     for (_, hours) in available_blocks {
         if hours.len() > MAX_SLOT_HOURS_PER_BLOCK {
@@ -282,9 +287,7 @@ fn validate_optimal_slot_inputs(
                 "available block exceeds maximum hours ({MAX_SLOT_HOURS_PER_BLOCK})"
             )));
         }
-        candidate_count = candidate_count.checked_add(hours.len()).ok_or_else(|| {
-            pyo3::exceptions::PyValueError::new_err("available slot count overflow")
-        })?;
+        candidate_count += hours.len();
     }
     if candidate_count > MAX_SLOT_CANDIDATES {
         return Err(pyo3::exceptions::PyValueError::new_err(format!(
