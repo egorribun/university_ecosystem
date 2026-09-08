@@ -19,8 +19,8 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/minio v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/nats v0.44.0
 	github.com/university-ecosystem/core/gen/go v0.0.0-00010101000000-000000000000
-	github.com/university-ecosystem/services/pkg/spiffe v0.0.0
 	github.com/university-ecosystem/services/pkg/logging v0.0.0
+	github.com/university-ecosystem/services/pkg/spiffe v0.0.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.70.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
 	go.opentelemetry.io/otel v1.45.0
@@ -30,7 +30,7 @@ require (
 	go.temporal.io/sdk v1.48.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/image v0.45.0
-	google.golang.org/grpc v1.83.1
+	google.golang.org/grpc v1.83.2
 )
 
 require (
