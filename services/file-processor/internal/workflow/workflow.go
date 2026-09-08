@@ -17,6 +17,7 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/university-ecosystem/file-processor/internal/config"
+	"github.com/university-ecosystem/file-processor/internal/objectkey"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 	"golang.org/x/image/draw"
@@ -203,7 +204,7 @@ func sanitizeMinIOKey(key string) (string, error) {
 	// Keys are scoped object names, never filesystem paths.  Validate the raw
 	// input before cleaning it: path.Clean("/../../etc/passwd") becomes
 	// "/etc/passwd" and would otherwise bypass the traversal check below.
-	if path.IsAbs(key) || strings.HasPrefix(key, "/") || strings.HasPrefix(key, "\\") {
+	if objectkey.IsAbsolute(key) {
 		return "", fmt.Errorf("absolute path is not allowed in object key: %q", key)
 	}
 	clean := path.Clean(key)

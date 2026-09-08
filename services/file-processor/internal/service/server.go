@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
+	"github.com/university-ecosystem/file-processor/internal/objectkey"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
 	"go.temporal.io/sdk/client"
 	"google.golang.org/grpc/codes"
@@ -87,7 +88,7 @@ func validateProcessFileKeys(sourceKey, destKey string) error {
 }
 
 func validateProcessFileKey(key string) error {
-	if path.IsAbs(key) || strings.HasPrefix(key, "/") || strings.HasPrefix(key, "\\") {
+	if objectkey.IsAbsolute(key) {
 		return status.Errorf(codes.InvalidArgument, "absolute path is not allowed in key: %q", key)
 	}
 	cleaned := path.Clean(key)
