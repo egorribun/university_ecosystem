@@ -1,7 +1,7 @@
-import { screen, waitFor } from "@testing-library/react"
+import { act, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { axe } from "jest-axe"
 import { QueryClient } from "@tanstack/react-query"
 
@@ -11,6 +11,24 @@ import { testUser } from "@/tests/mocks/handlers"
 import i18n from "../../i18n/config"
 import { createTestQueryClient, renderWithRouter } from "@/tests/helpers/renderWithRouter"
 import { useAuthStore } from "@/stores/useAuthStore"
+
+// Login's successful path warms the dashboard in the background.  Keep the
+// page contract under test while making those optional dynamic imports settle
+// inside this file's test environment; otherwise Vitest can tear down the
+// module runner while the fire-and-forget warm-up is still resolving.
+vi.mock("@/hooks/useDashboardStories", () => ({
+  prefetchDashboardStories: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock("@/hooks/useDashboardNews", () => ({
+  prefetchDashboardNews: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock("@/hooks/useDashboardEvents", () => ({
+  prefetchDashboardEvents: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock("@/api/hooks/events", () => ({
+  EVENTS_PAGE_SIZE: 10,
+  prefetchEventsListQuery: vi.fn().mockResolvedValue(undefined),
+}))
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
 const matchText = (text: string) => (content: string) => content.startsWith(text)
@@ -45,7 +63,7 @@ interface RenderLoginOptions {
   extraRoutes?: Array<{ path: string; Component: React.ComponentType }>
 }
 
-const renderLogin = (options: RenderLoginOptions = {}) => {
+const renderLogin = async (options: RenderLoginOptions = {}) => {
   const client = createTestQueryClient()
   clients.push(client)
   if (!options.skipMeOverride) {
@@ -54,7 +72,7 @@ const renderLogin = (options: RenderLoginOptions = {}) => {
     // the default mock that returns testUser.
     server.use(http.get("*/users/me", () => HttpResponse.json(null, { status: 401 })))
   }
-  return renderWithRouter({
+  const result = await renderWithRouter({
     ui: Login,
     path: "/login",
     initialPath: options.initialPath ?? "/login",
@@ -63,6 +81,15 @@ const renderLogin = (options: RenderLoginOptions = {}) => {
     ],
     queryClient: client,
   })
+
+  // AuthProvider performs the initial `/users/me` probe asynchronously.  Let
+  // that decision settle before driving the form so its Zustand mirror cannot
+  // update Login outside the `act` boundary established by user-event.  This
+  // also prevents a late anonymous probe from racing a successful login and
+  // clearing the freshly authenticated user before the redirect assertion.
+  await waitFor(() => expect(useAuthStore.getState().loading).toBe(false), { timeout: 5_000 })
+
+  return result
 }
 
 describe("Login page", () => {
@@ -79,11 +106,13 @@ describe("Login page", () => {
     // useEffect makes prior-test user-state pollution observable
     // (redirect-to-/dashboard fires immediately on mount). Match the
     // initial state from useAuthStore.ts:22-26 (loading:true optimistic).
-    useAuthStore.setState({
-      user: null,
-      loading: true,
-      pendingMfa: null,
-      authOperation: false,
+    act(() => {
+      useAuthStore.setState({
+        user: null,
+        loading: true,
+        pendingMfa: null,
+        authOperation: false,
+      })
     })
   })
 

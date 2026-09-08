@@ -31,6 +31,8 @@ const API_TIMEOUT_MS = 8000
  * Any other endpoint with skipRateLimitQueue=true will be demoted to the queue.
  */
 const RATE_LIMIT_SKIP_ALLOWLIST = new Set([
+  "/auth/login",
+  "/auth/mfa/verify",
   "/auth/session/signing-key",
   "/users/me",
   "/auth/refresh",
