@@ -1402,6 +1402,9 @@ export function indexShardProducerEvidence(shardResults, root = repositoryRoot) 
     ) {
       throw new Error(`Mutation shard producer evidence is malformed: ${shard?.id ?? "unknown"}`)
     }
+    if (shard.shardEvidence.windowsProcessHost !== undefined) {
+      assertWindowsProcessHostEvidence(shard.shardEvidence.windowsProcessHost)
+    }
     const relativePath = normalizePath(path.relative(root, shard.shardEvidencePath))
     if (relativePath.startsWith("../") || path.isAbsolute(relativePath)) {
       throw new Error(`Mutation shard producer evidence escapes the repository: ${relativePath}`)
@@ -1419,6 +1422,9 @@ export function indexShardProducerEvidence(shardResults, root = repositoryRoot) 
       workflowRunId: shard.shardEvidence.workflowRunId,
       workflowRunAttempt: shard.shardEvidence.workflowRunAttempt,
       reportSha256: shard.shardEvidence.reportSha256,
+      ...(shard.shardEvidence.windowsProcessHost
+        ? { windowsProcessHost: shard.shardEvidence.windowsProcessHost }
+        : {}),
     }
   })
 }
@@ -1441,6 +1447,28 @@ function boundedEnvironmentInteger(name, fallback, minimum, maximum) {
 const childTerminationCommandTimeoutMs = 10_000
 const childTerminationGraceMs = 15_000
 const processTreeQuiescencePollMs = 25
+const windowsProcessHostProtocolVersion = 1
+const windowsProcessHostStatusTimeoutMs = childTerminationCommandTimeoutMs
+const windowsProcessHostProjectPath = path.join(
+  frontendRoot,
+  "tools",
+  "stryker-process-host",
+  "Cargo.toml"
+)
+const windowsProcessHostBinaryPath = path.join(
+  frontendRoot,
+  "tools",
+  "stryker-process-host",
+  "target",
+  "release",
+  "stryker-process-host.exe"
+)
+const windowsProcessHostSourcePaths = [
+  path.join(frontendRoot, "tools", "stryker-process-host", "Cargo.toml"),
+  path.join(frontendRoot, "tools", "stryker-process-host", "Cargo.lock"),
+  path.join(frontendRoot, "tools", "stryker-process-host", "src", "main.rs"),
+]
+let windowsProcessHostBuildPromise
 
 function cancellationReason(signal) {
   if (signal?.reason instanceof Error) return signal.reason
@@ -1512,9 +1540,71 @@ export function processTreeSpawnOptions(platform = process.platform) {
   }
 }
 
-export function createProcessTreeOwnership(child, { platform = process.platform } = {}) {
+function assertWindowsJobToken(value, description = "Windows process-host job token") {
+  if (typeof value !== "string" || !/^[a-z0-9_-]{1,128}$/iu.test(value) || value.length > 128) {
+    throw new Error(`${description} has an unsafe shape`)
+  }
+}
+
+function assertWindowsProcessHostEvidence(value, description = "Windows process-host evidence") {
+  assertExactObjectKeys(value, ["sourceSha256", "binarySha256"], description)
+  assertSha256(value.sourceSha256, `${description} source digest`)
+  assertSha256(value.binarySha256, `${description} binary digest`)
+  return value
+}
+
+function isAbsoluteWindowsPath(value) {
+  return path.isAbsolute(value) || path.win32.isAbsolute(value)
+}
+
+export function createWindowsJobOwnership(
+  child,
+  {
+    statusPath,
+    jobToken,
+    control,
+    hostSourceSha256,
+    hostBinarySha256,
+    protocolVersion = windowsProcessHostProtocolVersion,
+  } = {}
+) {
+  assertPositiveProcessId(child?.pid, "Stryker Windows process-host PID")
+  if (
+    typeof statusPath !== "string" ||
+    !isAbsoluteWindowsPath(statusPath) ||
+    statusPath.includes("\0")
+  ) {
+    throw new Error("Windows process-host status path is required")
+  }
+  assertWindowsJobToken(jobToken)
+  if (protocolVersion !== windowsProcessHostProtocolVersion) {
+    throw new Error("Windows process-host protocol version is unsupported")
+  }
+  if (!control || typeof control.write !== "function") {
+    throw new Error("Windows process-host control pipe is required")
+  }
+  if (hostSourceSha256 !== undefined) assertSha256(hostSourceSha256, "Windows host source digest")
+  if (hostBinarySha256 !== undefined) assertSha256(hostBinarySha256, "Windows host binary digest")
+  return Object.freeze({
+    kind: "windows-job-object",
+    rootPid: child.pid,
+    hostPid: child.pid,
+    statusPath,
+    jobToken,
+    protocolVersion,
+    control,
+    ...(hostSourceSha256 ? { hostSourceSha256 } : {}),
+    ...(hostBinarySha256 ? { hostBinarySha256 } : {}),
+  })
+}
+
+export function createProcessTreeOwnership(
+  child,
+  { platform = process.platform, windowsJob } = {}
+) {
   assertPositiveProcessId(child.pid, "Stryker child PID")
   if (platform === "win32") {
+    if (windowsJob) return createWindowsJobOwnership(child, windowsJob)
     return Object.freeze({ kind: "windows-process-tree", rootPid: child.pid })
   }
   return Object.freeze({
@@ -1534,6 +1624,27 @@ function assertProcessTreeOwnership(child, ownership) {
     throw new Error("Stryker process-tree ownership does not match the child PID")
   }
   if (ownership.kind === "windows-process-tree") return
+  if (ownership.kind === "windows-job-object") {
+    if (ownership.hostPid !== ownership.rootPid) {
+      throw new Error("Windows process-host identity does not match its owned root")
+    }
+    assertPositiveProcessId(ownership.hostPid, "Stryker Windows process-host PID")
+    if (
+      typeof ownership.statusPath !== "string" ||
+      !isAbsoluteWindowsPath(ownership.statusPath) ||
+      ownership.statusPath.includes("\0")
+    ) {
+      throw new Error("Windows process-host status path is invalid")
+    }
+    assertWindowsJobToken(ownership.jobToken)
+    if (ownership.protocolVersion !== windowsProcessHostProtocolVersion) {
+      throw new Error("Windows process-host protocol version is unsupported")
+    }
+    if (!ownership.control || typeof ownership.control.write !== "function") {
+      throw new Error("Windows process-host control pipe is required")
+    }
+    return
+  }
   if (ownership.kind !== "posix-process-group") {
     throw new Error("Stryker process-tree ownership kind is invalid")
   }
@@ -1541,6 +1652,161 @@ function assertProcessTreeOwnership(child, ownership) {
   if (ownership.groupId !== ownership.rootPid) {
     throw new Error("Stryker process group must be led by the owned child")
   }
+}
+
+const windowsProcessHostStatusKeys = [
+  "schemaVersion",
+  "protocolVersion",
+  "state",
+  "hostPid",
+  "targetPid",
+  "jobToken",
+  "exitCode",
+  "quiesced",
+  "readyAcknowledged",
+  "reason",
+]
+const windowsProcessHostFinalStates = new Set(["job_empty", "job_terminated"])
+
+export function parseWindowsProcessHostStatus(text) {
+  let status
+  try {
+    status = JSON.parse(text)
+  } catch (error) {
+    throw new Error(`Windows process-host status is not valid JSON: ${error.message}`)
+  }
+  assertExactObjectKeys(status, windowsProcessHostStatusKeys, "Windows process-host status")
+  if (status.schemaVersion !== 1 || status.protocolVersion !== windowsProcessHostProtocolVersion) {
+    throw new Error("Windows process-host status protocol version is unsupported")
+  }
+  if (
+    typeof status.state !== "string" ||
+    !/^(?:starting|ready|job_empty|job_terminated|error)$/u.test(status.state)
+  ) {
+    throw new Error("Windows process-host status state is invalid")
+  }
+  if (!Number.isSafeInteger(status.hostPid) || status.hostPid <= 0) {
+    throw new Error("Windows process-host status host PID is invalid")
+  }
+  if (
+    status.targetPid !== null &&
+    (!Number.isSafeInteger(status.targetPid) || status.targetPid <= 0)
+  ) {
+    throw new Error("Windows process-host status target PID is invalid")
+  }
+  assertWindowsJobToken(status.jobToken, "Windows process-host status job token")
+  if (status.exitCode !== null && (!Number.isInteger(status.exitCode) || status.exitCode < 0)) {
+    throw new Error("Windows process-host status exit code is invalid")
+  }
+  if (typeof status.quiesced !== "boolean") {
+    throw new Error("Windows process-host status quiescence flag is invalid")
+  }
+  if (typeof status.readyAcknowledged !== "boolean") {
+    throw new Error("Windows process-host READY acknowledgement is invalid")
+  }
+  if (status.reason !== null && typeof status.reason !== "string") {
+    throw new Error("Windows process-host status reason is invalid")
+  }
+  return status
+}
+
+async function readWindowsProcessHostStatus(statusPath) {
+  try {
+    return parseWindowsProcessHostStatus(await readFile(statusPath, "utf8"))
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") return undefined
+    throw error
+  }
+}
+
+function assertWindowsProcessHostStatusIdentity(status, ownership) {
+  if (
+    status.hostPid !== ownership.hostPid ||
+    status.jobToken !== ownership.jobToken ||
+    status.protocolVersion !== ownership.protocolVersion
+  ) {
+    throw new Error("Windows process-host status identity does not match its owned job")
+  }
+}
+
+async function waitForWindowsProcessHostTerminalStatus(
+  ownership,
+  {
+    readStatus = readWindowsProcessHostStatus,
+    delay = wait,
+    now = () => performance.now(),
+    timeoutMs = windowsProcessHostStatusTimeoutMs,
+    requireReady = false,
+  } = {}
+) {
+  const startedAt = now()
+  let readySeen = false
+  for (;;) {
+    const status = await readStatus(ownership.statusPath)
+    if (status) {
+      assertWindowsProcessHostStatusIdentity(status, ownership)
+      if (status.state === "ready") readySeen = true
+      if (status.state === "error") {
+        throw new Error(
+          `Windows process-host reported ${status.reason ?? "an unspecified lifecycle failure"}`
+        )
+      }
+      if (windowsProcessHostFinalStates.has(status.state)) {
+        if (requireReady && !readySeen && status.readyAcknowledged !== true) {
+          throw new Error("Windows process-host closed without a READY acknowledgement")
+        }
+        if (status.quiesced !== true) {
+          throw new Error("Windows process-host did not confirm an empty owned job")
+        }
+        return status
+      }
+    }
+    const elapsedMs = Math.max(0, now() - startedAt)
+    if (elapsedMs >= timeoutMs) {
+      throw new Error(`Windows process-host status did not prove quiescence within ${timeoutMs}ms`)
+    }
+    await delay(Math.min(processTreeQuiescencePollMs, timeoutMs - elapsedMs))
+  }
+}
+
+export async function verifyWindowsJobQuiescence(ownership, options = {}) {
+  if (ownership?.kind !== "windows-job-object") {
+    throw new Error("Only an owned Windows Job Object supports independent liveness verification")
+  }
+  assertWindowsJobToken(ownership.jobToken)
+  const status = await waitForWindowsProcessHostTerminalStatus(ownership, {
+    ...options,
+    requireReady: true,
+  })
+  return status.quiesced === true
+}
+
+const windowsJobTerminationPromises = new WeakMap()
+
+async function terminateWindowsJobHost(child, ownership, options = {}) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    throw new Error(
+      "Stryker Windows process-host exited before durable job termination could be proven"
+    )
+  }
+  const existing = windowsJobTerminationPromises.get(ownership)
+  if (existing) return existing
+  const termination = (async () => {
+    await new Promise((resolve, reject) => {
+      try {
+        ownership.control.write("TERMINATE\n", (error) => (error ? reject(error) : resolve()))
+      } catch (error) {
+        reject(error)
+      }
+    })
+    await waitForWindowsProcessHostTerminalStatus(ownership, {
+      ...options,
+      requireReady: false,
+    })
+    return true
+  })()
+  windowsJobTerminationPromises.set(ownership, termination)
+  return termination
 }
 
 function directChildKillFailure(child) {
@@ -1603,6 +1869,7 @@ export async function terminateOwnedProcessTree(
     signalProcess = (pid, signal) => process.kill(pid, signal),
     delay = wait,
     now = () => performance.now(),
+    readStatus = readWindowsProcessHostStatus,
     groupVerificationTimeoutMs = childTerminationCommandTimeoutMs,
     groupVerificationPollMs = processTreeQuiescencePollMs,
   } = {}
@@ -1619,8 +1886,18 @@ export async function terminateOwnedProcessTree(
       })
     }
     throw new Error(
-      "Stryker Windows process-tree root exited before tree termination could be proven"
+      ownership.kind === "windows-job-object"
+        ? "Stryker Windows process-host exited before durable job termination could be proven"
+        : "Stryker Windows process-tree root exited before tree termination could be proven"
     )
+  }
+  if (ownership.kind === "windows-job-object") {
+    return terminateWindowsJobHost(child, ownership, {
+      readStatus,
+      delay,
+      now,
+      timeoutMs: groupVerificationTimeoutMs,
+    })
   }
   if (ownership.kind === "windows-process-tree") {
     try {
@@ -1628,8 +1905,13 @@ export async function terminateOwnedProcessTree(
         timeout: childTerminationCommandTimeoutMs,
         windowsHide: true,
       })
-      return true
+      const failure = new Error(
+        "Legacy Windows PID tree termination is diagnostic-only and cannot prove process quiescence"
+      )
+      failure.processQuiesced = false
+      throw failure
     } catch (treeError) {
+      if (treeError?.processQuiesced === false) throw treeError
       throw treeTerminationFailure(treeError, directChildKillFailure(child))
     }
   }
@@ -1658,6 +1940,7 @@ export function waitForChildClose(
     processTreeOwnership,
     terminate = terminateOwnedProcessTree,
     verifyProcessTree = verifyOwnedProcessTreeQuiescence,
+    verifyWindowsJob = verifyWindowsJobQuiescence,
     terminationGraceMs = childTerminationGraceMs,
     scheduleTimeout = setTimeout,
     cancelTimeout = clearTimeout,
@@ -1821,6 +2104,41 @@ export function waitForChildClose(
         }
         settle(postCloseFailure(effectivePrimary, secondaryErrors, processQuiesced))
       }
+      if (processTreeOwnership?.kind === "windows-job-object") {
+        void Promise.resolve()
+          .then(() => verifyWindowsJob(processTreeOwnership))
+          .then(
+            (confirmation) => {
+              if (confirmation !== true) {
+                finishVerification(
+                  new Error(
+                    `${description} verifier did not confirm durable Windows job quiescence after exit`
+                  ),
+                  false
+                )
+                return
+              }
+              finishVerification(undefined, true)
+            },
+            (error) => {
+              finishVerification(error, false)
+            }
+          )
+        return
+      }
+      if (processTreeOwnership?.kind === "windows-process-tree") {
+        if (primaryError || postExitFailure) {
+          // Preserve the established diagnostics for an already-failed legacy
+          // injected seam, while refusing to release a normal PID-only close.
+          finishVerification(undefined, false)
+          return
+        }
+        finishVerification(
+          new Error("Windows process-tree completion requires durable Windows job proof"),
+          false
+        )
+        return
+      }
       if (processTreeOwnership?.kind !== "posix-process-group") {
         finishVerification(undefined, !Number.isSafeInteger(child.pid))
         return
@@ -1861,13 +2179,9 @@ export function waitForChildClose(
       }
       if (primaryError || postExitFailure) {
         verifyPostCloseProcessTree(primaryError)
-      } else if (processTreeOwnership?.kind === "posix-process-group") {
+      } else if (processTreeOwnership) {
         verifyPostCloseProcessTree()
-      }
-      // Windows taskkill can prove an abnormal live-root tree termination, but it cannot
-      // enumerate a tree after its root has exited. Normal exit therefore remains the
-      // foreground Stryker CLI contract; no cancellation path infers quiescence from it.
-      else if (result.code === 0) settle()
+      } else if (result.code === 0) settle()
     }
     child.once("error", onError)
     child.once("exit", onExit)
@@ -1878,8 +2192,199 @@ export function waitForChildClose(
   })
 }
 
+async function windowsProcessHostProvenance() {
+  const sourceBytes = await Promise.all(windowsProcessHostSourcePaths.map((file) => readFile(file)))
+  const sourceSha256 = sha256(
+    Buffer.concat(
+      sourceBytes.map((bytes, index) => {
+        const relative = normalizePath(
+          path.relative(repositoryRoot, windowsProcessHostSourcePaths[index])
+        )
+        return Buffer.concat([
+          Buffer.from(`${relative}\0`, "utf8"),
+          bytes,
+          Buffer.from("\0", "utf8"),
+        ])
+      })
+    )
+  )
+  return { sourceSha256 }
+}
+
+async function ensureWindowsProcessHost() {
+  if (process.platform !== "win32") {
+    throw Object.assign(new Error("Windows process-host requested on an unsupported platform"), {
+      processQuiesced: false,
+    })
+  }
+  if (!windowsProcessHostBuildPromise) {
+    windowsProcessHostBuildPromise = (async () => {
+      let provenance
+      try {
+        provenance = await windowsProcessHostProvenance()
+      } catch (error) {
+        const failure = new Error(
+          `Windows process-host source provenance is unavailable: ${error instanceof Error ? error.message : String(error)}`
+        )
+        failure.cause = error
+        failure.processQuiesced = false
+        throw failure
+      }
+      try {
+        await execFileAsync(
+          "cargo",
+          [
+            "build",
+            "--release",
+            "--locked",
+            "--offline",
+            "--manifest-path",
+            windowsProcessHostProjectPath,
+          ],
+          {
+            cwd: frontendRoot,
+            encoding: "utf8",
+            maxBuffer: 8 * 1024 * 1024,
+          }
+        )
+      } catch (error) {
+        const failure = new Error(
+          `Windows process-host build failed closed: ${error instanceof Error ? error.message : String(error)}`
+        )
+        failure.cause = error
+        failure.processQuiesced = false
+        throw failure
+      }
+      let postBuildProvenance
+      try {
+        postBuildProvenance = await windowsProcessHostProvenance()
+      } catch (error) {
+        const failure = new Error(
+          `Windows process-host source provenance changed or became unavailable after build: ${error instanceof Error ? error.message : String(error)}`
+        )
+        failure.cause = error
+        failure.processQuiesced = false
+        throw failure
+      }
+      if (postBuildProvenance.sourceSha256 !== provenance.sourceSha256) {
+        const failure = new Error("Windows process-host source changed during its trusted build")
+        failure.processQuiesced = false
+        throw failure
+      }
+      let binary
+      try {
+        const binaryStats = await lstat(windowsProcessHostBinaryPath)
+        if (!binaryStats.isFile() || binaryStats.isSymbolicLink()) {
+          throw new Error("Windows process-host executable is not a regular file")
+        }
+        binary = await readFile(windowsProcessHostBinaryPath)
+      } catch (error) {
+        const failure = new Error("Windows process-host build produced no trusted executable")
+        failure.cause = error
+        failure.processQuiesced = false
+        throw failure
+      }
+      if (binary.length === 0) {
+        const failure = new Error("Windows process-host executable is empty")
+        failure.processQuiesced = false
+        throw failure
+      }
+      return {
+        binaryPath: windowsProcessHostBinaryPath,
+        hostSourceSha256: provenance.sourceSha256,
+        hostBinarySha256: sha256(binary),
+      }
+    })()
+  }
+  return windowsProcessHostBuildPromise
+}
+
+async function spawnWindowsJobHost(args, env) {
+  const provenance = await ensureWindowsProcessHost()
+  const temporaryRoot = env?.STRYKER_TEMP_DIR
+  if (typeof temporaryRoot !== "string" || !path.isAbsolute(temporaryRoot)) {
+    const error = new Error("Windows process-host requires an absolute STRYKER_TEMP_DIR")
+    error.processQuiesced = false
+    throw error
+  }
+  const statusPath = path.join(temporaryRoot, `.windows-process-host-${randomUUID()}.json`)
+  const jobToken = randomUUID()
+  const hostArgs = [
+    "--target",
+    process.execPath,
+    "--cwd",
+    frontendRoot,
+    "--status",
+    statusPath,
+    "--token",
+    jobToken,
+  ]
+  for (const argument of args) {
+    if (typeof argument !== "string" || argument.includes("\0")) {
+      const error = new Error("Windows process-host target arguments must be NUL-free strings")
+      error.processQuiesced = false
+      throw error
+    }
+    hostArgs.push("--arg", argument)
+  }
+  let child
+  try {
+    child = spawn(provenance.binaryPath, hostArgs, {
+      cwd: frontendRoot,
+      env,
+      shell: false,
+      stdio: ["pipe", "inherit", "inherit"],
+      windowsHide: true,
+    })
+  } catch (error) {
+    const failure = new Error(
+      `Windows process-host could not start: ${error instanceof Error ? error.message : String(error)}`
+    )
+    failure.cause = error
+    failure.processQuiesced = false
+    throw failure
+  }
+  return {
+    child,
+    statusPath,
+    jobToken,
+    hostSourceSha256: provenance.hostSourceSha256,
+    hostBinarySha256: provenance.hostBinarySha256,
+    protocolVersion: windowsProcessHostProtocolVersion,
+  }
+}
+
 async function runNode(args, description, env, timeoutMs, abortSignal) {
   throwIfCancellationRequested(abortSignal)
+  if (process.platform === "win32") {
+    const hosted = await spawnWindowsJobHost(args, env)
+    if (!Number.isSafeInteger(hosted.child.pid)) {
+      const error = new Error(`${description} process-host did not expose a safe PID`)
+      error.processQuiesced = false
+      throw error
+    }
+    const processTreeOwnership = createProcessTreeOwnership(hosted.child, {
+      platform: "win32",
+      windowsJob: {
+        statusPath: hosted.statusPath,
+        jobToken: hosted.jobToken,
+        control: hosted.child.stdin,
+        protocolVersion: hosted.protocolVersion,
+        hostSourceSha256: hosted.hostSourceSha256,
+        hostBinarySha256: hosted.hostBinarySha256,
+      },
+    })
+    await waitForChildClose(hosted.child, {
+      description,
+      timeoutMs,
+      abortSignal,
+      processTreeOwnership,
+    })
+    return {
+      sourceSha256: hosted.hostSourceSha256,
+      binarySha256: hosted.hostBinarySha256,
+    }
+  }
   const child = spawn(process.execPath, args, {
     cwd: frontendRoot,
     env,
@@ -2892,6 +3397,9 @@ export async function loadExternalShardResults({
       const evidencePath = path.join(aggregateRoot, relativeEvidencePath)
       const evidenceText = await readFile(evidencePath, "utf8")
       const evidence = JSON.parse(evidenceText)
+      if (evidence.windowsProcessHost !== undefined) {
+        assertWindowsProcessHostEvidence(evidence.windowsProcessHost)
+      }
       const expected = shardPlan.find((shard) => shard.id === evidence.shardId)
       const producerAttempt = parseWorkflowRunAttempt(evidence.workflowRunAttempt)
       if (
@@ -3203,7 +3711,7 @@ async function main() {
           // so place an exact, fail-closed copy beside (never inside) the sandbox.
           await stageStrykerSandboxInputs(shardTemp)
           const executionStartedAt = Date.now()
-          await runNode(
+          const windowsProcessHost = await runNode(
             [strykerEntry, "run"],
             `Stryker ${shard.id}`,
             {
@@ -3245,6 +3753,7 @@ async function main() {
             durationMs,
             reportSha256: sha256(reportText),
             generatedAt: new Date().toISOString(),
+            ...(windowsProcessHost ? { windowsProcessHost } : {}),
           }
           const shardEvidencePath = path.join(shardRoot, "SHARD_EVIDENCE.json")
           const shardEvidenceText = jsonText(shardEvidence)
@@ -3258,6 +3767,7 @@ async function main() {
             shardEvidenceText,
             shardEvidence,
             durationMs,
+            ...(windowsProcessHost ? { windowsProcessHost } : {}),
           }
         },
         { abortSignal: cancellation.signal }
@@ -3328,6 +3838,21 @@ async function main() {
     const finalSnapshot = await captureEvidence(sourceFiles)
     assertEvidenceUnchanged(before, finalSnapshot.identity)
     const releaseEligible = isMutationRunReleaseEligible(finalSnapshot.identity, focusedMutationRun)
+    const windowsProcessHosts = shardResults.map(
+      (shard) => shard.windowsProcessHost ?? shard.shardEvidence?.windowsProcessHost
+    )
+    const windowsProcessHost = windowsProcessHosts.find((value) => value !== undefined)
+    if (windowsProcessHost !== undefined) {
+      assertWindowsProcessHostEvidence(windowsProcessHost)
+      if (
+        windowsProcessHosts.some(
+          (value) =>
+            value === undefined || JSON.stringify(value) !== JSON.stringify(windowsProcessHost)
+        )
+      ) {
+        throw new Error("Stryker shard evidence has inconsistent Windows process-host provenance")
+      }
+    }
     const inventory = {
       schemaVersion: "2.0",
       runId,
@@ -3350,6 +3875,7 @@ async function main() {
           instrumenter: instrumenterVersion,
           vitest: vitestVersion,
         },
+        ...(windowsProcessHost ? { windowsProcessHost } : {}),
       },
       sourcePolicy: {
         path: "quality/coverage-source-policy.json",

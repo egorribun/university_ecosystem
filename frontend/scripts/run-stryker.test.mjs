@@ -1,16 +1,18 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { EventEmitter, once } from "node:events"
-import { spawn } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
 import { link, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
+import { promisify } from "node:util"
 
 const runnerUrl = new URL("./run-stryker.mjs", import.meta.url)
 const expectedPatterns = ["src/**/*.{ts,tsx}", "!src/**/__tests__/**/*"]
 const location = { start: { line: 1, column: 21 }, end: { line: 1, column: 25 } }
 const processTreeFixtureSetupTimeoutMs = 5_000
+const execFileAsync = promisify(execFile)
 
 function processIsAlive(pid) {
   if (!Number.isSafeInteger(pid) || pid <= 0) return false
@@ -567,6 +569,25 @@ test(
         timeoutMs: 60_000,
         abortSignal: controller.signal,
         processTreeOwnership: fixture.ownership,
+        // The production runner never creates legacy PID ownership on
+        // Windows.  This explicit test seam keeps the real descendant
+        // lifecycle check meaningful on hosts without a prebuilt Job Object
+        // helper, while proving taskkill's result by observing the fixture's
+        // descendant rather than treating the command exit as proof.
+        terminate:
+          process.platform === "win32"
+            ? async (child) => {
+                await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+                  windowsHide: true,
+                })
+                const startedAt = Date.now()
+                while (processIsAlive(fixture.descendantPid)) {
+                  if (Date.now() - startedAt >= 5_000) return false
+                  await new Promise((resolve) => setTimeout(resolve, 25))
+                }
+                return true
+              }
+            : undefined,
         scheduleTimeout(callback, milliseconds) {
           if (fireTimeout === undefined) {
             fireTimeout = callback
@@ -794,6 +815,281 @@ test("spontaneous Windows failure stays fail-closed when the dead-root tree cann
     return true
   })
   assert.equal(terminationCalls, 0)
+})
+
+test("Windows job ownership is durable and status identity is strict", async () => {
+  const { createWindowsJobOwnership, parseWindowsProcessHostStatus } = await import(runnerUrl)
+  const child = { pid: 43210 }
+  const control = { write() {} }
+  const ownership = createWindowsJobOwnership(child, {
+    statusPath: "C:/runs/stryker/proof.json",
+    jobToken: "11111111-1111-4111-8111-111111111111",
+    control,
+  })
+
+  assert.deepEqual(
+    {
+      kind: ownership.kind,
+      rootPid: ownership.rootPid,
+      hostPid: ownership.hostPid,
+      statusPath: ownership.statusPath,
+      jobToken: ownership.jobToken,
+      protocolVersion: ownership.protocolVersion,
+    },
+    {
+      kind: "windows-job-object",
+      rootPid: 43210,
+      hostPid: 43210,
+      statusPath: "C:/runs/stryker/proof.json",
+      jobToken: "11111111-1111-4111-8111-111111111111",
+      protocolVersion: 1,
+    }
+  )
+  assert.throws(
+    () =>
+      parseWindowsProcessHostStatus(
+        JSON.stringify({
+          schemaVersion: 1,
+          protocolVersion: 1,
+          state: "job_empty",
+          hostPid: 43210,
+          targetPid: 43211,
+          jobToken: "not a token!",
+          exitCode: 0,
+          quiesced: true,
+          readyAcknowledged: true,
+          reason: null,
+        })
+      ),
+    /job token has an unsafe shape/u
+  )
+  assert.throws(
+    () =>
+      createWindowsJobOwnership(child, {
+        statusPath: "relative/proof.json",
+        jobToken: "11111111-1111-4111-8111-111111111111",
+        control,
+      }),
+    /status path is required/u
+  )
+})
+
+test("Windows normal success waits for an authoritative empty-job proof", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 43220
+  child.exitCode = null
+  child.signalCode = null
+  let proveEmpty
+  const proof = new Promise((resolve) => {
+    proveEmpty = resolve
+  })
+  let verified = 0
+  const result = waitForChildClose(child, {
+    description: "Windows job shard",
+    timeoutMs: 10_000,
+    processTreeOwnership: {
+      kind: "windows-job-object",
+      rootPid: 43220,
+      hostPid: 43220,
+      statusPath: "C:/runs/stryker/proof.json",
+      jobToken: "22222222-2222-4222-8222-222222222222",
+      protocolVersion: 1,
+    },
+    verifyWindowsJob: async () => {
+      verified += 1
+      await proof
+      return true
+    },
+  })
+  let settled = false
+  void result.then(() => {
+    settled = true
+  })
+
+  child.emit("exit", 0, null)
+  child.exitCode = 0
+  child.emit("close", 0, null)
+  await Promise.resolve()
+  assert.equal(verified, 1)
+  assert.equal(settled, false)
+
+  proveEmpty()
+  await result
+  assert.equal(settled, true)
+})
+
+test("Windows legacy PID ownership cannot claim normal close success", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 43221
+  child.exitCode = null
+  child.signalCode = null
+  const result = waitForChildClose(child, {
+    description: "unowned Windows shard",
+    timeoutMs: 10_000,
+    processTreeOwnership: { kind: "windows-process-tree", rootPid: 43221 },
+  })
+
+  child.emit("exit", 0, null)
+  child.exitCode = 0
+  child.emit("close", 0, null)
+  await assert.rejects(result, (error) => {
+    assert.equal(error.processQuiesced, false)
+    assert.match(error.message, /durable Windows job proof/u)
+    return true
+  })
+})
+
+test("Windows job termination uses its control pipe and accepts only final proof", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const writes = []
+  const child = {
+    pid: 43222,
+    exitCode: null,
+    signalCode: null,
+    stdin: {
+      write(value, callback) {
+        writes.push(value)
+        callback?.()
+      },
+    },
+  }
+  const ownership = {
+    kind: "windows-job-object",
+    rootPid: 43222,
+    hostPid: 43222,
+    statusPath: "C:/runs/stryker/proof.json",
+    jobToken: "33333333-3333-4333-8333-333333333333",
+    protocolVersion: 1,
+    control: child.stdin,
+  }
+  let reads = 0
+  const result = await terminateOwnedProcessTree(child, ownership, {
+    readStatus: async () => {
+      reads += 1
+      return reads < 2
+        ? undefined
+        : {
+            schemaVersion: 1,
+            protocolVersion: 1,
+            state: "job_terminated",
+            hostPid: 43222,
+            targetPid: 43223,
+            jobToken: ownership.jobToken,
+            exitCode: 143,
+            quiesced: true,
+            readyAcknowledged: true,
+            reason: null,
+          }
+    },
+    delay: async () => undefined,
+  })
+
+  assert.equal(result, true)
+  assert.deepEqual(writes, ["TERMINATE\n"])
+})
+
+test("Windows job termination never targets a reused host PID after close", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const calls = []
+  const child = {
+    pid: 43224,
+    exitCode: 0,
+    signalCode: null,
+    stdin: {
+      write() {
+        calls.push("write")
+      },
+    },
+  }
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(
+        child,
+        {
+          kind: "windows-job-object",
+          rootPid: 43224,
+          hostPid: 43224,
+          statusPath: "C:/runs/stryker/proof.json",
+          jobToken: "44444444-4444-4444-8444-444444444444",
+          protocolVersion: 1,
+          control: { write() {} },
+        },
+        {
+          execFileCommand: async (...args) => calls.push(args),
+        }
+      ),
+    /host exited before durable job termination could be proven/u
+  )
+  assert.deepEqual(calls, [])
+})
+
+test("Windows terminal proof is token-bound and records READY durably", async (t) => {
+  const { verifyWindowsJobQuiescence } = await import(runnerUrl)
+  const root = await mkdtemp(path.join(os.tmpdir(), "stryker-windows-proof-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const statusPath = path.join(root, "proof.json")
+  const ownership = {
+    kind: "windows-job-object",
+    rootPid: 43225,
+    hostPid: 43225,
+    statusPath,
+    jobToken: "55555555-5555-4555-8555-555555555555",
+    protocolVersion: 1,
+    control: { write() {} },
+  }
+  await writeFile(
+    statusPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      protocolVersion: 1,
+      state: "job_empty",
+      hostPid: 43225,
+      targetPid: 43226,
+      jobToken: ownership.jobToken,
+      exitCode: 0,
+      quiesced: true,
+      readyAcknowledged: true,
+      reason: null,
+    }),
+    "utf8"
+  )
+  assert.equal(await verifyWindowsJobQuiescence(ownership), true)
+
+  await writeFile(
+    statusPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      protocolVersion: 1,
+      state: "job_empty",
+      hostPid: 43225,
+      targetPid: 43226,
+      jobToken: ownership.jobToken,
+      exitCode: 0,
+      quiesced: true,
+      readyAcknowledged: false,
+      reason: null,
+    }),
+    "utf8"
+  )
+  await assert.rejects(
+    () => verifyWindowsJobQuiescence(ownership, { timeoutMs: 0 }),
+    /READY acknowledgement/u
+  )
+})
+
+test("the checked-in Windows host contains the atomic Job Object lifecycle", async () => {
+  const source = await readFile(
+    new URL("../tools/stryker-process-host/src/main.rs", runnerUrl),
+    "utf8"
+  )
+  assert.match(source, /CREATE_SUSPENDED/u)
+  assert.match(source, /AssignProcessToJobObject/u)
+  assert.match(source, /JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE/u)
+  assert.match(source, /TerminateJobObject/u)
+  assert.match(source, /PROC_THREAD_ATTRIBUTE_HANDLE_LIST/u)
+  assert.doesNotMatch(source, /taskkill/u)
 })
 
 test("child close reports normal exits and retains timeout termination failures", async () => {
@@ -1823,6 +2119,62 @@ test("indexes every shard producer evidence document by content hash", async () 
         path.join(root, "repository")
       ),
     /malformed|escapes/u
+  )
+})
+
+test("indexes and validates Windows process-host provenance when present", async () => {
+  const { indexShardProducerEvidence } = await import(runnerUrl)
+  const root = path.join(os.tmpdir(), "stryker-producer-index-windows")
+  const windowsProcessHost = {
+    sourceSha256: "d".repeat(64),
+    binarySha256: "e".repeat(64),
+  }
+  const evidence = {
+    schemaVersion: "1.0",
+    shardId: "shard-000",
+    revision: "a".repeat(40),
+    sourceHeadSha: "b".repeat(40),
+    baseSha: "c".repeat(40),
+    baseRef: "main",
+    evidenceDigest: "b".repeat(64),
+    workflowRunId: "42",
+    workflowRunAttempt: "2",
+    reportSha256: "c".repeat(64),
+    windowsProcessHost,
+  }
+  const evidenceText = `${JSON.stringify(evidence)}\n`
+  const indexed = indexShardProducerEvidence(
+    [
+      {
+        id: "shard-000",
+        shardEvidencePath: path.join(root, "SHARD_EVIDENCE.json"),
+        shardEvidenceText: evidenceText,
+        shardEvidence: evidence,
+      },
+    ],
+    root
+  )
+  assert.deepEqual(indexed[0].windowsProcessHost, windowsProcessHost)
+  assert.throws(
+    () =>
+      indexShardProducerEvidence(
+        [
+          {
+            id: "shard-000",
+            shardEvidencePath: path.join(root, "SHARD_EVIDENCE.json"),
+            shardEvidenceText: `${JSON.stringify({
+              ...evidence,
+              windowsProcessHost: { sourceSha256: "d".repeat(64) },
+            })}\n`,
+            shardEvidence: {
+              ...evidence,
+              windowsProcessHost: { sourceSha256: "d".repeat(64) },
+            },
+          },
+        ],
+        root
+      ),
+    /Windows process-host evidence has an unexpected shape/u
   )
 })
 
