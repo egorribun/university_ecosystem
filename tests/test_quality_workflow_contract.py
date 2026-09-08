@@ -1983,11 +1983,13 @@ def test_mutation_lanes_are_readiness_gated_and_use_the_runner_budget() -> None:
     assert jobs["stryker-shards"]["needs"] == [
         "stryker-preflight",
         "coverage-policy-gate",
+        "pre-commit-security-and-types",
     ]
     assert jobs["stryker-shards"]["if"] == (
         "${{ github.event_name == 'pull_request' && "
         "needs.stryker-preflight.result == 'success' && "
-        "needs.coverage-policy-gate.result == 'success' }}"
+        "needs.coverage-policy-gate.result == 'success' && "
+        "needs.pre-commit-security-and-types.result == 'success' }}"
     )
     assert jobs["stryker-shards"]["strategy"]["max-parallel"] == 6
     assert jobs["mutation-tests-stats"]["strategy"]["max-parallel"] == 8
@@ -4074,11 +4076,13 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert mutation_shards["needs"] == [
         "stryker-preflight",
         "coverage-policy-gate",
+        "pre-commit-security-and-types",
     ]
     assert mutation_shards["if"] == (
         "${{ github.event_name == 'pull_request' && "
         "needs.stryker-preflight.result == 'success' && "
-        "needs.coverage-policy-gate.result == 'success' }}"
+        "needs.coverage-policy-gate.result == 'success' && "
+        "needs.pre-commit-security-and-types.result == 'success' }}"
     )
     assert "pre-commit-check" in jobs["ci-success"]["needs"]
     assert "stryker-preflight" in jobs["ci-success"]["needs"]
@@ -4155,11 +4159,13 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         "stryker-preflight",
         "stryker-shards",
         "coverage-policy-gate",
+        "pre-commit-security-and-types",
     ]
     assert mutation_aggregate["if"] == (
         "${{ always() && !cancelled() && github.event_name == 'pull_request' "
         "&& needs.stryker-preflight.result != 'skipped' "
-        "&& needs.coverage-policy-gate.result == 'success' }}"
+        "&& needs.coverage-policy-gate.result == 'success' "
+        "&& needs.pre-commit-security-and-types.result == 'success' }}"
     )
     assert mutation_aggregate["env"]["STRYKER_AGGREGATE_ROOT"] == (
         "reports/mutation/external"

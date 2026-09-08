@@ -109,6 +109,7 @@ def test_stryker_preflight_does_not_wait_for_frontend_lighthouse() -> None:
     assert jobs["stryker-shards"]["needs"] == [
         "stryker-preflight",
         "coverage-policy-gate",
+        "pre-commit-security-and-types",
     ]
     reusable_text = (WORKFLOWS / "reusable-frontend-tests.yml").read_text(
         encoding="utf-8"
@@ -116,6 +117,26 @@ def test_stryker_preflight_does_not_wait_for_frontend_lighthouse() -> None:
     assert "run-lighthouse" in reusable_text
     assert "lighthouse-shards:" in reusable_text
     assert "lighthouse:" in reusable_text
+
+
+def test_stryker_fanout_waits_for_security_type_qualification() -> None:
+    """A red security/type qualification must not allocate 64 Stryker runners."""
+
+    jobs = _workflow(CI)["jobs"]
+    shards = jobs["stryker-shards"]
+    assert shards["needs"] == [
+        "stryker-preflight",
+        "coverage-policy-gate",
+        "pre-commit-security-and-types",
+    ]
+    assert "needs.pre-commit-security-and-types.result == 'success'" in shards["if"]
+
+    aggregate = jobs["stryker-aggregate"]
+    assert "pre-commit-security-and-types" in aggregate["needs"]
+    assert "needs.pre-commit-security-and-types.result == 'success'" in aggregate["if"]
+
+    finalizer = _check_step(jobs["ci-success"], "Check all jobs passed")["run"]
+    assert '"$PRE_COMMIT_SECURITY_RESULT" == "success"' in finalizer
 
 
 def test_pr_vulnerability_gate_has_a_read_only_producer() -> None:

@@ -884,7 +884,8 @@ jobs:
     needs:
       - stryker-preflight
       - coverage-policy-gate
-    if: ${{ github.event_name == 'pull_request' && needs.stryker-preflight.result == 'success' && needs.coverage-policy-gate.result == 'success' }}
+      - pre-commit-security-and-types
+    if: ${{ github.event_name == 'pull_request' && needs.stryker-preflight.result == 'success' && needs.coverage-policy-gate.result == 'success' && needs.pre-commit-security-and-types.result == 'success' }}
     strategy:
       fail-fast: false
       # A c4 timing sample from exact run 33303107020 (6 completed Stryker
@@ -1027,14 +1028,15 @@ jobs:
     name: Frontend Mutation Evidence (100%)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    needs: [stryker-preflight, stryker-shards, coverage-policy-gate]
-    # The preflight is intentionally gated on frontend readiness.  Coverage is
-    # an explicit prerequisite for both shard execution and aggregation: a
-    # preflight artifact may exist while coverage is still running, but a
-    # failed/cancelled coverage gate must never produce mutation evidence.
+    needs: [stryker-preflight, stryker-shards, coverage-policy-gate, pre-commit-security-and-types]
+    # The preflight is intentionally independent of frontend readiness and may
+    # overlap it. Coverage and security/type qualification are explicit
+    # prerequisites for both shard execution and aggregation: a preflight
+    # artifact may exist while coverage is still running, but a failed/
+    # cancelled qualification gate must never produce mutation evidence.
     # Once preflight started, keep the aggregate fail-closed for failed/
     # cancelled shard producers.
-    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-preflight.result != 'skipped' && needs.coverage-policy-gate.result == 'success' }}
+    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-preflight.result != 'skipped' && needs.coverage-policy-gate.result == 'success' && needs.pre-commit-security-and-types.result == 'success' }}
     permissions:
       contents: read
       actions: read
@@ -5220,9 +5222,9 @@ jobs:
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             # The preflight is intentionally independent from frontend
             # qualification so its immutable universe can overlap Lighthouse.
-            # Only the coverage gate may authorize execution/aggregation; any
-            # started producer is still required to conclude successfully.
-            if [[ "$PRE_COMMIT_RESULT" == "success" && "$COVERAGE_RESULT" == "success" ]]; then
+            # Coverage and security/type gates authorize execution/aggregation;
+            # any started producer is still required to conclude successfully.
+            if [[ "$PRE_COMMIT_RESULT" == "success" && "$PRE_COMMIT_SECURITY_RESULT" == "success" && "$COVERAGE_RESULT" == "success" ]]; then
               assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
               assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "success"
               assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "success"

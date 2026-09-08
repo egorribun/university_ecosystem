@@ -798,6 +798,7 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     assert "stryker-preflight" in job["needs"]
     assert (
         'if [[ "$PRE_COMMIT_RESULT" == "success" && '
+        '"$PRE_COMMIT_SECURITY_RESULT" == "success" && '
         '"$COVERAGE_RESULT" == "success" ]]; then' in gate
     )
     assert (
