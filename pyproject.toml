@@ -79,7 +79,7 @@ dependencies = [
   "strawberry-graphql[fastapi]>=0.314.3,<0.325.0",    # FIX-41-02: Python 3.14 compat; Renovate opens PR to advance
   "structlog>=25.5.0",
   "typer>=0.24.1",
-  "urllib3>=2.6.3,<2.8",                              # PY-P1-01 (audit Wave 10): tight minor bound — urllib3 v3 breaks transport API; update via Renovate
+  "urllib3>=2.7.0,<2.8",                              # PY-P1-01 (audit Wave 10): require the patched 2.7.x line; urllib3 v3 breaks transport API
   "uvicorn[standard]>=0.44.0",
   "uvloop>=0.22.1 ; sys_platform != 'win32'",
   "zxcvbn>=4.5.0",

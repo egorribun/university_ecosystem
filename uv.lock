@@ -4990,7 +4990,7 @@ requires-dist = [
     { name = "strawberry-graphql", extras = ["fastapi"], specifier = ">=0.314.3,<0.325.0" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "typer", specifier = ">=0.24.1" },
-    { name = "urllib3", specifier = ">=2.6.3,<2.8" },
+    { name = "urllib3", specifier = ">=2.7.0,<2.8" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.44.0" },
     { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.22.1" },
     { name = "zxcvbn", specifier = ">=4.5.0" },
