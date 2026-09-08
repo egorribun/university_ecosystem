@@ -12,6 +12,9 @@ import (
 	"github.com/university-ecosystem/file-processor/internal/objectkey"
 )
 
+// MaxIDLen is the maximum length accepted for a process-job identifier.  The
+// remaining constants in this block define the corresponding validation
+// limits for keys, options, and option values.
 const (
 	MaxIDLen          = 256
 	MaxKeyLen         = 1024
