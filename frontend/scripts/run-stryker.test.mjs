@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
+import { EventEmitter } from "node:events"
 import { link, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -107,6 +108,25 @@ test("workflow provenance maps PR source and base identities without trusting th
   )
 })
 
+test("focused source snapshots bind the complete frontend evidence graph", async () => {
+  const { captureEvidence } = await import(runnerUrl)
+  const selectedSource = "src/components/ui/Button.tsx"
+
+  const snapshot = await captureEvidence([selectedSource])
+
+  assert.deepEqual([...snapshot.sourceByFile.keys()], [selectedSource])
+  assert.equal(typeof snapshot.identity.inputHashes[`frontend/${selectedSource}`], "string")
+  assert.equal(
+    typeof snapshot.identity.inputHashes["frontend/src/components/ui/Select.tsx"],
+    "string"
+  )
+  assert.equal(typeof snapshot.identity.inputHashes["frontend/scripts/run-stryker.mjs"], "string")
+  assert.equal(
+    typeof snapshot.identity.inputHashes["quality/coverage-source-policy.json"],
+    "string"
+  )
+})
+
 test("canonical cleanup removes only stale mutation evidence", async (t) => {
   const { cleanupCanonicalArtifacts } = await import(runnerUrl)
   const root = await mkdtemp(path.join(os.tmpdir(), "stryker-cleanup-"))
@@ -162,6 +182,311 @@ test("fresh run directories are recreated after cleanup and remain exclusive", a
   const rejected = attempts.find(({ status }) => status === "rejected")
   assert.equal(rejected?.status, "rejected")
   assert.match(String(rejected.reason), /EEXIST/u)
+})
+
+test("child execution settles only after close and awaits timeout termination", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.exitCode = null
+  child.signalCode = null
+  let timeoutCallback
+  let cancelledTimer
+  let finishTermination
+  const termination = new Promise((resolve) => {
+    finishTermination = resolve
+  })
+  const result = waitForChildClose(child, {
+    description: "focused shard",
+    timeoutMs: 123,
+    terminate: async () => termination,
+    scheduleTimeout: (callback) => {
+      timeoutCallback = callback
+      return "timer"
+    },
+    cancelTimeout: (timer) => {
+      cancelledTimer = timer
+    },
+  })
+  let settled = false
+  void result.then(
+    () => {
+      settled = true
+    },
+    () => {
+      settled = true
+    }
+  )
+
+  timeoutCallback()
+  child.emit("exit", null, "SIGKILL")
+  await Promise.resolve()
+  assert.equal(settled, false)
+  child.emit("close", null, "SIGKILL")
+  await Promise.resolve()
+  assert.equal(settled, false)
+
+  finishTermination()
+  await assert.rejects(result, /focused shard exceeded 123ms/u)
+  assert.equal(cancelledTimer, "timer")
+  assert.equal(child.listenerCount("error"), 0)
+  assert.equal(child.listenerCount("exit"), 0)
+  assert.equal(child.listenerCount("close"), 0)
+})
+
+test("child close reports normal exits and retains timeout termination failures", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const successfulChild = new EventEmitter()
+  const success = waitForChildClose(successfulChild, {
+    description: "successful shard",
+    timeoutMs: 1_000,
+  })
+  successfulChild.emit("exit", 0, null)
+  successfulChild.emit("close", 0, null)
+  await success
+  assert.equal(successfulChild.listenerCount("error"), 0)
+  assert.equal(successfulChild.listenerCount("exit"), 0)
+  assert.equal(successfulChild.listenerCount("close"), 0)
+
+  const failedChild = new EventEmitter()
+  const failure = waitForChildClose(failedChild, {
+    description: "failed shard",
+    timeoutMs: 1_000,
+  })
+  failedChild.emit("exit", 7, null)
+  failedChild.emit("close", 7, null)
+  await assert.rejects(failure, /failed shard exited with code 7/u)
+  assert.equal(failedChild.listenerCount("error"), 0)
+  assert.equal(failedChild.listenerCount("exit"), 0)
+  assert.equal(failedChild.listenerCount("close"), 0)
+
+  const timedOutChild = new EventEmitter()
+  const terminationError = new Error("taskkill failed")
+  let timeoutCallback
+  let rejectionCount = 0
+  const timedOut = waitForChildClose(timedOutChild, {
+    description: "timed-out shard",
+    timeoutMs: 456,
+    terminate: async () => {
+      throw terminationError
+    },
+    scheduleTimeout: (callback) => {
+      timeoutCallback = callback
+      return "timer"
+    },
+    cancelTimeout: () => undefined,
+  })
+  void timedOut.catch(() => {
+    rejectionCount += 1
+  })
+  timeoutCallback()
+  timedOutChild.emit("exit", null, "SIGKILL")
+  timedOutChild.emit("close", null, "SIGKILL")
+  await assert.rejects(timedOut, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.match(error.errors[0].message, /timed-out shard exceeded 456ms/u)
+    assert.equal(error.errors[1], terminationError)
+    assert.equal(error.cause, error.errors[0])
+    assert.equal(error.processQuiesced, true)
+    return true
+  })
+  timedOutChild.emit("close", null, "SIGKILL")
+  await Promise.resolve()
+  assert.equal(rejectionCount, 1)
+  assert.equal(timedOutChild.listenerCount("error"), 0)
+  assert.equal(timedOutChild.listenerCount("exit"), 0)
+  assert.equal(timedOutChild.listenerCount("close"), 0)
+})
+
+test("child timeout has a bounded grace when termination or close hangs", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  const timers = []
+  const result = waitForChildClose(child, {
+    description: "hung shard",
+    timeoutMs: 500,
+    terminationGraceMs: 75,
+    terminate: async () => new Promise(() => undefined),
+    scheduleTimeout: (callback, milliseconds) => {
+      const timer = { callback, milliseconds }
+      timers.push(timer)
+      return timer
+    },
+    cancelTimeout: () => undefined,
+  })
+
+  assert.equal(timers[0].milliseconds, 500)
+  timers[0].callback()
+  assert.equal(timers[1].milliseconds, 75)
+  timers[1].callback()
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.match(error.errors[0].message, /hung shard exceeded 500ms/u)
+    assert.match(error.errors[1].message, /did not terminate and close within 75ms/u)
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+  assert.equal(child.listenerCount("error"), 0)
+  assert.equal(child.listenerCount("exit"), 0)
+  assert.equal(child.listenerCount("close"), 0)
+})
+
+test("temporary cleanup retries only bounded transient Windows failures", async () => {
+  const { removeOwnedTemporaryDirectory } = await import(runnerUrl)
+  const runId = "run-id"
+  const root = path.join(
+    os.tmpdir(),
+    "university-ecosystem-stryker-runs",
+    "repository",
+    "a".repeat(40),
+    runId
+  )
+  const codes = ["EPERM", "EBUSY", "ENOTEMPTY"]
+  const delays = []
+  let attempts = 0
+
+  await removeOwnedTemporaryDirectory(root, runId, {
+    platform: "win32",
+    retryDelaysMs: [10, 20, 40],
+    remove: async () => {
+      const code = codes[attempts]
+      attempts += 1
+      if (code) throw Object.assign(new Error(code), { code })
+    },
+    delay: async (milliseconds) => {
+      delays.push(milliseconds)
+    },
+  })
+  assert.equal(attempts, 4)
+  assert.deepEqual(delays, [10, 20, 40])
+
+  attempts = 0
+  await assert.rejects(
+    () =>
+      removeOwnedTemporaryDirectory(root, runId, {
+        platform: "win32",
+        retryDelaysMs: [10, 20],
+        remove: async () => {
+          attempts += 1
+          throw Object.assign(new Error("denied"), { code: "EACCES" })
+        },
+        delay: async () => assert.fail("non-transient cleanup must not retry"),
+      }),
+    /denied/u
+  )
+  assert.equal(attempts, 1)
+})
+
+test("finalization preserves the primary failure and always releases the lock", async () => {
+  const { finalizeMutationRun } = await import(runnerUrl)
+  const primary = new Error("test timeout")
+  const cleanup = new Error("cleanup failed")
+  const release = new Error("release failed")
+  const calls = []
+
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        primaryError: primary,
+        cleanupTemporary: async () => {
+          calls.push("cleanup")
+          throw cleanup
+        },
+        releaseLock: async () => {
+          calls.push("release")
+          throw release
+        },
+        revokeMarker: async () => calls.push("marker"),
+      }),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true)
+      assert.equal(error.cause, primary)
+      assert.deepEqual(error.errors, [primary, cleanup, release])
+      return true
+    }
+  )
+  assert.deepEqual(calls, ["cleanup", "marker", "release"])
+})
+
+test("finalization retains lock and temp when child close is unconfirmed", async () => {
+  const { finalizeMutationRun } = await import(runnerUrl)
+  const primary = Object.assign(new Error("timeout"), { processQuiesced: false })
+  const calls = []
+
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        primaryError: primary,
+        cleanupTemporary: async () => calls.push("cleanup"),
+        releaseLock: async () => calls.push("release"),
+        revokeMarker: async () => calls.push("marker"),
+      }),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true)
+      assert.equal(error.cause, primary)
+      assert.equal(error.errors[0], primary)
+      assert.match(error.errors[1].message, /run lock were retained/u)
+      return true
+    }
+  )
+  assert.deepEqual(calls, ["marker"])
+})
+
+test("parallel shard pool waits for every worker before surfacing a failure", async () => {
+  const { runPool } = await import(runnerUrl)
+  let releaseSecond
+  const second = new Promise((resolve) => {
+    releaseSecond = resolve
+  })
+  const firstError = new Error("first shard failed")
+  const started = []
+  const execution = runPool(["first", "second", "third", "fourth"], 2, async (item) => {
+    started.push(item)
+    if (item === "first") throw firstError
+    await second
+    return "completed"
+  })
+  let settled = false
+  void execution.then(
+    () => {
+      settled = true
+    },
+    () => {
+      settled = true
+    }
+  )
+
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(settled, false)
+  releaseSecond()
+  await assert.rejects(execution, (error) => error === firstError)
+  assert.deepEqual(started, ["first", "second"])
+})
+
+test("failed marker revocation retains the owned run lock", async () => {
+  const { finalizeMutationRun } = await import(runnerUrl)
+  const primary = new Error("test failure")
+  const markerError = new Error("marker cleanup failed")
+  const calls = []
+
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        primaryError: primary,
+        cleanupTemporary: async () => calls.push("cleanup"),
+        revokeMarker: async () => {
+          calls.push("marker")
+          throw markerError
+        },
+        releaseLock: async () => calls.push("release"),
+      }),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true)
+      assert.deepEqual(error.errors, [primary, markerError])
+      return true
+    }
+  )
+  assert.deepEqual(calls, ["cleanup", "marker"])
 })
 
 test("stages the canonical coverage policy beside every Stryker sandbox", async (t) => {
@@ -221,6 +546,81 @@ test("local evidence never creates a release VALIDATED marker", async (t) => {
   assert.equal(typeof JSON.parse(markerText).preflightSha256, "string")
   assert.match(inventoryText, /"schemaVersion": "2\.0"/u)
   await assert.rejects(() => readFile(path.join(root, "VALIDATED.json")), /ENOENT/u)
+})
+
+test("focused evidence stays isolated from every canonical artifact", async (t) => {
+  const {
+    cleanupCanonicalArtifacts,
+    mutationRunPaths,
+    persistMutationEvidence,
+    resolveMutationSourceSelection,
+  } = await import(runnerUrl)
+  const root = await mkdtemp(path.join(os.tmpdir(), "stryker-focused-evidence-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const canonicalRoot = path.join(root, "mutation")
+  const canonicalArtifacts = [
+    "mutation.json",
+    "inventory.json",
+    "preflight.json",
+    "LOCAL_VALIDATION.json",
+    "VALIDATED.json",
+  ]
+  await mkdir(path.join(canonicalRoot, "historical-costs"), { recursive: true })
+  await Promise.all([
+    ...canonicalArtifacts.map((name) => writeFile(path.join(canonicalRoot, name), "canonical")),
+    writeFile(path.join(canonicalRoot, "historical-costs", "HISTORICAL_COSTS.json"), "canonical"),
+  ])
+  const selection = resolveMutationSourceSelection(["src/a.ts", "src/b.ts"], {
+    STRYKER_LOCAL_MUTATE_JSON: '["src/a.ts"]',
+  })
+  const paths = mutationRunPaths(selection, canonicalRoot)
+  await mkdir(path.join(paths.outputRoot, "runs", "stale"), { recursive: true })
+  await writeFile(path.join(paths.outputRoot, "mutation.json"), "stale-focused")
+
+  await cleanupCanonicalArtifacts(paths.outputRoot)
+
+  for (const name of canonicalArtifacts) {
+    assert.equal(await readFile(path.join(canonicalRoot, name), "utf8"), "canonical")
+  }
+  assert.equal(
+    await readFile(path.join(canonicalRoot, "historical-costs", "HISTORICAL_COSTS.json"), "utf8"),
+    "canonical"
+  )
+
+  const inventory = {
+    schemaVersion: "2.0",
+    runId: "focused-run",
+    revision: "sha-dirty.digest",
+    releaseEligible: false,
+    summary: { viableMutantScore: 100 },
+  }
+  const preflight = { schemaVersion: "1.0", runId: "focused-run", files: {} }
+  const persisted = await persistMutationEvidence({ paths, inventory, preflight })
+
+  assert.equal(persisted.markerWritten, false)
+  assert.match(persisted.inventorySha256, /^[a-f0-9]{64}$/u)
+  assert.equal(
+    JSON.parse(await readFile(path.join(paths.outputRoot, "inventory.json"))).runId,
+    "focused-run"
+  )
+  assert.equal(
+    JSON.parse(await readFile(path.join(paths.outputRoot, "preflight.json"))).runId,
+    "focused-run"
+  )
+  await assert.rejects(
+    () => readFile(path.join(paths.outputRoot, "LOCAL_VALIDATION.json")),
+    /ENOENT/u
+  )
+  await assert.rejects(() => readFile(path.join(paths.outputRoot, "VALIDATED.json")), /ENOENT/u)
+  await assert.rejects(
+    () =>
+      persistMutationEvidence({
+        paths,
+        inventory: { ...inventory, releaseEligible: true },
+        preflight,
+      }),
+    /cannot be release eligible/u
+  )
 })
 
 test("release marker eligibility is derived from the complete inventory", async (t) => {
@@ -336,6 +736,99 @@ test("runner rejects all raw Stryker CLI overrides", async () => {
   ]) {
     assert.throws(() => assertRunnerArguments(args), /does not accept Stryker CLI overrides/u)
   }
+})
+
+test("local focused mutation scope selects only canonical policy sources", async () => {
+  const { mutationRunPaths, resolveMutationSourceSelection } = await import(runnerUrl)
+  const canonicalSources = ["src/a.ts", "src/b.ts", "src/c.ts"]
+  const canonicalOutputRoot = path.join("reports", "mutation")
+
+  const canonical = resolveMutationSourceSelection(canonicalSources, {})
+  assert.deepEqual(canonical, {
+    focused: false,
+    sourceFiles: canonicalSources,
+  })
+  assert.deepEqual(mutationRunPaths(canonical, canonicalOutputRoot), {
+    allowReleaseMarkers: true,
+    historicalCostOutputPath: path.join(
+      canonicalOutputRoot,
+      "historical-costs",
+      "HISTORICAL_COSTS.json"
+    ),
+    lockPath: path.join(canonicalOutputRoot, ".run.lock"),
+    outputRoot: canonicalOutputRoot,
+  })
+
+  const focused = resolveMutationSourceSelection(canonicalSources, {
+    STRYKER_LOCAL_MUTATE_JSON: '["src/c.ts","src/a.ts"]',
+  })
+  assert.deepEqual(focused, {
+    focused: true,
+    sourceFiles: ["src/a.ts", "src/c.ts"],
+  })
+  const focusedPaths = mutationRunPaths(focused, canonicalOutputRoot)
+  assert.equal(path.dirname(focusedPaths.outputRoot), path.join(canonicalOutputRoot, "focused"))
+  assert.equal(focusedPaths.lockPath, path.join(focusedPaths.outputRoot, ".run.lock"))
+  assert.equal(focusedPaths.historicalCostOutputPath, null)
+  assert.equal(focusedPaths.allowReleaseMarkers, false)
+  assert.notEqual(focusedPaths.outputRoot, canonicalOutputRoot)
+  assert.deepEqual(mutationRunPaths(focused, canonicalOutputRoot), focusedPaths)
+
+  assert.throws(
+    () =>
+      resolveMutationSourceSelection(canonicalSources, {
+        STRYKER_MUTATE_JSON: '["src/a.ts"]',
+      }),
+    /reserved for child shards/u
+  )
+
+  for (const raw of [
+    "not-json",
+    "[]",
+    '["src/a.ts","src/a.ts"]',
+    '["src/missing.ts"]',
+    '["../src/a.ts"]',
+  ]) {
+    assert.throws(
+      () =>
+        resolveMutationSourceSelection(canonicalSources, {
+          STRYKER_LOCAL_MUTATE_JSON: raw,
+        }),
+      /focused mutation scope/u
+    )
+  }
+})
+
+test("workflow and producer evidence reject ad-hoc focused mutation scope", async () => {
+  const { resolveMutationSourceSelection } = await import(runnerUrl)
+  const canonicalSources = ["src/a.ts", "src/b.ts"]
+  const scope = '["src/a.ts"]'
+  const privilegedModes = [
+    { GITHUB_ACTIONS: "true" },
+    { GITHUB_RUN_ID: "42" },
+    { STRYKER_SHARD_COUNT: "2" },
+    { STRYKER_SHARD_INDEX: "0" },
+    { STRYKER_AGGREGATE_ROOT: "reports/mutation/external" },
+    { STRYKER_PREFLIGHT_MODE: "generate" },
+    { STRYKER_PREFLIGHT_ARTIFACT: "required" },
+    { STRYKER_SHARD_RUN: "1" },
+  ]
+
+  for (const env of privilegedModes) {
+    assert.throws(
+      () =>
+        resolveMutationSourceSelection(canonicalSources, {
+          ...env,
+          STRYKER_LOCAL_MUTATE_JSON: scope,
+        }),
+      /local-only/u
+    )
+  }
+
+  assert.deepEqual(resolveMutationSourceSelection(canonicalSources, { GITHUB_ACTIONS: "true" }), {
+    focused: false,
+    sourceFiles: canonicalSources,
+  })
 })
 
 test("weighted shard plan is deterministic, complete, and bounded by the largest file", async () => {
@@ -2127,7 +2620,7 @@ test("rejects ambiguous, foreign-run, and future external shard candidates", asy
 })
 
 test("release eligibility requires a clean exact-SHA workflow run and attempt", async () => {
-  const { isReleaseEligible } = await import(runnerUrl)
+  const { isMutationRunReleaseEligible, isReleaseEligible } = await import(runnerUrl)
   const headSha = "a".repeat(40)
   const identity = { headSha, repositoryDirty: false }
   const complete = {
@@ -2141,4 +2634,6 @@ test("release eligibility requires a clean exact-SHA workflow run and attempt", 
   assert.equal(isReleaseEligible(identity, { ...complete, GITHUB_RUN_ATTEMPT: "" }), false)
   assert.equal(isReleaseEligible(identity, { ...complete, GITHUB_RUN_ATTEMPT: undefined }), false)
   assert.equal(isReleaseEligible(identity, { ...complete, GITHUB_SHA: "b".repeat(40) }), false)
+  assert.equal(isMutationRunReleaseEligible(identity, false, complete), true)
+  assert.equal(isMutationRunReleaseEligible(identity, true, complete), false)
 })

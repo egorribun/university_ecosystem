@@ -39,11 +39,6 @@ const preflightArtifactOutputPath = path.join(
 )
 const preflightCandidateRoot = path.join(outputRoot, "preflight-candidates")
 const historicalCostCandidateRoot = path.join(outputRoot, "cost-candidates")
-const historicalCostArtifactOutputPath = path.join(
-  outputRoot,
-  "historical-costs",
-  "HISTORICAL_COSTS.json"
-)
 const sourcePolicyPath = path.join(repositoryRoot, "quality", "coverage-source-policy.json")
 const strykerEntry = path.join(
   frontendRoot,
@@ -125,6 +120,74 @@ function canonicalSourceFiles(sourceFiles) {
     throw new Error("Preflight artifact source denominator contains duplicate paths")
   }
   return normalized
+}
+
+const focusedMutationForbiddenEnvironmentKeys = [
+  "GITHUB_RUN_ID",
+  "GITHUB_RUN_ATTEMPT",
+  "GITHUB_SHA",
+  "STRYKER_AGGREGATE_ROOT",
+  "STRYKER_BASE_REF",
+  "STRYKER_BASE_SHA",
+  "STRYKER_HISTORICAL_COSTS_ARTIFACT",
+  "STRYKER_PREFLIGHT_ARTIFACT",
+  "STRYKER_SHARD_COUNT",
+  "STRYKER_SHARD_INDEX",
+  "STRYKER_SHARD_RUN",
+  "STRYKER_SOURCE_HEAD_SHA",
+]
+
+export function resolveMutationSourceSelection(policySourceFiles, env = process.env) {
+  const canonical = canonicalSourceFiles(policySourceFiles)
+  if (env.STRYKER_MUTATE_JSON !== undefined) {
+    throw new Error(
+      "STRYKER_MUTATE_JSON is reserved for child shards; use STRYKER_LOCAL_MUTATE_JSON for focused local runs"
+    )
+  }
+  const rawScope = env.STRYKER_LOCAL_MUTATE_JSON
+  if (rawScope === undefined) return { focused: false, sourceFiles: canonical }
+  if (
+    env.GITHUB_ACTIONS === "true" ||
+    env.STRYKER_PREFLIGHT_MODE === "generate" ||
+    env.STRYKER_PREFLIGHT_MODE === "validate" ||
+    focusedMutationForbiddenEnvironmentKeys.some((key) => env[key] !== undefined)
+  ) {
+    throw new Error("Focused mutation scope is local-only and cannot produce workflow evidence")
+  }
+
+  let requested
+  try {
+    requested = canonicalSourceFiles(JSON.parse(rawScope))
+  } catch {
+    throw new Error("Invalid focused mutation scope")
+  }
+  const allowed = new Set(canonical)
+  if (requested.some((file) => !allowed.has(file))) {
+    throw new Error("Invalid focused mutation scope: every source must belong to the policy")
+  }
+  return { focused: true, sourceFiles: requested }
+}
+
+export function mutationRunPaths(selection, canonicalRoot = outputRoot) {
+  if (
+    !selection ||
+    typeof selection.focused !== "boolean" ||
+    !Array.isArray(selection.sourceFiles) ||
+    selection.sourceFiles.length === 0
+  ) {
+    throw new Error("Mutation source selection is invalid")
+  }
+  const targetRoot = selection.focused
+    ? path.join(canonicalRoot, "focused", sha256(JSON.stringify(selection.sourceFiles)))
+    : canonicalRoot
+  return {
+    allowReleaseMarkers: !selection.focused,
+    historicalCostOutputPath: selection.focused
+      ? null
+      : path.join(targetRoot, "historical-costs", "HISTORICAL_COSTS.json"),
+    lockPath: path.join(targetRoot, ".run.lock"),
+    outputRoot: targetRoot,
+  }
 }
 
 function assertCanonicalStringArray(value, description) {
@@ -985,6 +1048,10 @@ export function isReleaseEligible(identity, env = process.env) {
   )
 }
 
+export function isMutationRunReleaseEligible(identity, focused, env = process.env) {
+  return focused === false && isReleaseEligible(identity, env)
+}
+
 export async function cleanupCanonicalArtifacts(root = outputRoot) {
   await Promise.all(
     [
@@ -1004,6 +1071,87 @@ export async function cleanupCanonicalArtifacts(root = outputRoot) {
 export async function createExclusiveRunDirectory(runRoot) {
   await mkdir(path.dirname(runRoot), { recursive: true })
   await mkdir(runRoot, { recursive: false })
+}
+
+const windowsTemporaryCleanupRetryDelaysMs = [50, 100, 200, 400]
+const transientWindowsCleanupCodes = new Set(["EPERM", "EBUSY", "ENOTEMPTY"])
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds))
+}
+
+export async function removeOwnedTemporaryDirectory(
+  temporaryRoot,
+  runId,
+  {
+    remove = rm,
+    delay = wait,
+    platform = process.platform,
+    retryDelaysMs = windowsTemporaryCleanupRetryDelaysMs,
+  } = {}
+) {
+  assertOwnedTemporaryDirectory(temporaryRoot, runId)
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await remove(temporaryRoot, { recursive: true, force: true })
+      return
+    } catch (error) {
+      const transient =
+        platform === "win32" &&
+        error &&
+        typeof error === "object" &&
+        transientWindowsCleanupCodes.has(error.code)
+      if (!transient || attempt >= retryDelaysMs.length) throw error
+      await delay(retryDelaysMs[attempt])
+    }
+  }
+}
+
+export async function finalizeMutationRun({
+  primaryError,
+  cleanupTemporary,
+  releaseLock,
+  revokeMarker,
+}) {
+  const finalizationErrors = []
+  const runOperation = async (operation) => {
+    if (!operation) return true
+    try {
+      await operation()
+      return true
+    } catch (error) {
+      finalizationErrors.push(error)
+      return false
+    }
+  }
+  const processQuiesced = primaryError?.processQuiesced !== false
+  if (!processQuiesced) {
+    finalizationErrors.push(
+      new Error(
+        "Stryker child close was not confirmed; the temporary directory and run lock were retained for manual process termination and cleanup"
+      )
+    )
+    await runOperation(revokeMarker)
+  } else {
+    await runOperation(cleanupTemporary)
+    const markerRevocationRequired = Boolean(primaryError || finalizationErrors.length > 0)
+    let markerRevoked = !markerRevocationRequired || !revokeMarker
+    if (markerRevocationRequired && revokeMarker) {
+      markerRevoked = await runOperation(revokeMarker)
+    }
+    if (markerRevoked) {
+      const releaseSucceeded = await runOperation(releaseLock)
+      if (!releaseSucceeded && !markerRevocationRequired) await runOperation(revokeMarker)
+    }
+  }
+  if (!primaryError && finalizationErrors.length === 0) return
+  if (primaryError && finalizationErrors.length === 0) throw primaryError
+  if (!primaryError && finalizationErrors.length === 1) throw finalizationErrors[0]
+  const errors = primaryError ? [primaryError, ...finalizationErrors] : finalizationErrors
+  const cause = primaryError ?? finalizationErrors[0]
+  throw new AggregateError(errors, primaryError?.message ?? "Mutation run finalization failed", {
+    cause,
+  })
 }
 
 export async function acquireRunLock(lockPath, runId) {
@@ -1096,6 +1244,36 @@ export async function writeValidatedEvidence({
   return marker
 }
 
+export async function persistMutationEvidence({ paths, inventory, preflight }) {
+  if (paths?.allowReleaseMarkers === true) {
+    const marker = await writeValidatedEvidence({
+      outputRoot: paths.outputRoot,
+      inventory,
+      preflight,
+    })
+    return { inventorySha256: marker.inventorySha256, markerWritten: true }
+  }
+  if (paths?.allowReleaseMarkers !== false || typeof paths.outputRoot !== "string") {
+    throw new Error("Mutation evidence paths are invalid")
+  }
+  if (inventory?.releaseEligible !== false) {
+    throw new Error("Focused mutation evidence cannot be release eligible")
+  }
+  if (inventory?.summary?.viableMutantScore !== 100) {
+    throw new Error("Focused evidence requires a 100% viable mutation score")
+  }
+  if (preflight?.runId !== inventory?.runId) {
+    throw new Error("Preflight and inventory must belong to the same Stryker run")
+  }
+  const inventoryText = `${JSON.stringify(inventory, null, 2)}\n`
+  const preflightText = `${JSON.stringify(preflight, null, 2)}\n`
+  await Promise.all([
+    atomicText(path.join(paths.outputRoot, "inventory.json"), inventoryText),
+    atomicText(path.join(paths.outputRoot, "preflight.json"), preflightText),
+  ])
+  return { inventorySha256: sha256(inventoryText), markerWritten: false }
+}
+
 export function indexShardProducerEvidence(shardResults, root = repositoryRoot) {
   if (!Array.isArray(shardResults) || shardResults.length === 0) {
     throw new Error("Mutation shard producer evidence is missing")
@@ -1157,11 +1335,15 @@ function boundedEnvironmentInteger(name, fallback, minimum, maximum) {
   return value
 }
 
+const childTerminationCommandTimeoutMs = 10_000
+const childTerminationGraceMs = 15_000
+
 async function terminateChildTree(child) {
   if (child.exitCode !== null || child.signalCode !== null) return
   if (process.platform === "win32") {
     try {
       await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+        timeout: childTerminationCommandTimeoutMs,
         windowsHide: true,
       })
       return
@@ -1172,31 +1354,117 @@ async function terminateChildTree(child) {
   child.kill("SIGKILL")
 }
 
-async function runNode(args, description, env, timeoutMs) {
-  await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, args, {
-      cwd: frontendRoot,
-      env,
-      stdio: "inherit",
-      shell: false,
-    })
+export function waitForChildClose(
+  child,
+  {
+    description,
+    timeoutMs,
+    terminate = terminateChildTree,
+    terminationGraceMs = childTerminationGraceMs,
+    scheduleTimeout = setTimeout,
+    cancelTimeout = clearTimeout,
+  }
+) {
+  return new Promise((resolve, reject) => {
+    let settled = false
     let timedOut = false
-    const timer = setTimeout(() => {
+    let processError
+    let exitResult
+    let closeResult
+    let terminationSettled = false
+    let terminationError
+    let graceTimer
+
+    const detachListeners = () => {
+      child.removeListener("error", onError)
+      child.removeListener("exit", onExit)
+      child.removeListener("close", onClose)
+    }
+    const settle = (error) => {
+      if (settled) return
+      settled = true
+      cancelTimeout(timeoutTimer)
+      if (graceTimer !== undefined) cancelTimeout(graceTimer)
+      detachListeners()
+      if (error) reject(error)
+      else resolve()
+    }
+    const timeoutFailure = (secondaryErrors = [], processQuiesced = true) => {
+      const timeoutError = new Error(`${description} exceeded ${timeoutMs}ms`)
+      const failure =
+        secondaryErrors.length === 0
+          ? timeoutError
+          : new AggregateError(
+              [timeoutError, ...secondaryErrors],
+              `${description} timed out and process shutdown failed`,
+              { cause: timeoutError }
+            )
+      failure.processQuiesced = processQuiesced
+      return failure
+    }
+    const finishTimedOutExecution = () => {
+      if (!closeResult || !terminationSettled) return
+      settle(timeoutFailure(terminationError ? [terminationError] : []))
+    }
+    const onTimeout = () => {
+      if (settled) return
       timedOut = true
-      void terminateChildTree(child)
-    }, timeoutMs)
-    child.on("error", (error) => {
-      clearTimeout(timer)
-      reject(error)
-    })
-    child.on("exit", (code, signal) => {
-      clearTimeout(timer)
-      if (timedOut) reject(new Error(`${description} exceeded ${timeoutMs}ms`))
-      else if (signal) reject(new Error(`${description} exited due to signal ${signal}`))
-      else if (code === 0) resolve()
-      else reject(new Error(`${description} exited with code ${code}`))
-    })
+      graceTimer = scheduleTimeout(() => {
+        if (settled) return
+        const secondaryErrors = terminationError ? [terminationError] : []
+        secondaryErrors.push(
+          new Error(`${description} did not terminate and close within ${terminationGraceMs}ms`)
+        )
+        settle(timeoutFailure(secondaryErrors, closeResult !== undefined))
+      }, terminationGraceMs)
+      void Promise.resolve()
+        .then(() => terminate(child))
+        .then(
+          () => {
+            terminationSettled = true
+            finishTimedOutExecution()
+          },
+          (error) => {
+            terminationError = error
+            terminationSettled = true
+            finishTimedOutExecution()
+          }
+        )
+    }
+    const onError = (error) => {
+      processError = error
+    }
+    const onExit = (code, signal) => {
+      exitResult = { code, signal }
+    }
+    const onClose = (code, signal) => {
+      closeResult = { code, signal }
+      if (timedOut) {
+        finishTimedOutExecution()
+        return
+      }
+      const result = exitResult ?? closeResult
+      if (processError) settle(processError)
+      else if (result.signal)
+        settle(new Error(`${description} exited due to signal ${result.signal}`))
+      else if (result.code === 0) settle()
+      else settle(new Error(`${description} exited with code ${result.code}`))
+    }
+    const timeoutTimer = scheduleTimeout(onTimeout, timeoutMs)
+    child.once("error", onError)
+    child.once("exit", onExit)
+    child.once("close", onClose)
   })
+}
+
+async function runNode(args, description, env, timeoutMs) {
+  const child = spawn(process.execPath, args, {
+    cwd: frontendRoot,
+    env,
+    stdio: "inherit",
+    shell: false,
+  })
+  await waitForChildClose(child, { description, timeoutMs })
 }
 
 async function git(args) {
@@ -1208,7 +1476,7 @@ async function git(args) {
   return stdout.trim()
 }
 
-async function captureEvidence(sourceFiles) {
+export async function captureEvidence(sourceFiles) {
   const [headSha, status, listedFiles] = await Promise.all([
     git(["rev-parse", "HEAD"]),
     git(["status", "--porcelain=v1", "--untracked-files=all"]),
@@ -2112,18 +2380,35 @@ function assertOwnedTemporaryDirectory(temporaryRoot, runId) {
   }
 }
 
-async function runPool(items, concurrency, worker) {
+export async function runPool(items, concurrency, worker) {
   let nextIndex = 0
+  let stopScheduling = false
   const results = new Array(items.length)
-  await Promise.all(
+  const workers = await Promise.allSettled(
     Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-      while (nextIndex < items.length) {
+      while (!stopScheduling && nextIndex < items.length) {
         const index = nextIndex
         nextIndex += 1
-        results[index] = await worker(items[index], index)
+        try {
+          results[index] = await worker(items[index], index)
+        } catch (error) {
+          stopScheduling = true
+          throw error
+        }
       }
     })
   )
+  const errors = workers
+    .filter((result) => result.status === "rejected")
+    .map((result) => result.reason)
+  if (errors.length === 1) throw errors[0]
+  if (errors.length > 1) {
+    const failure = new AggregateError(errors, "Multiple Stryker shard workers failed", {
+      cause: errors[0],
+    })
+    failure.processQuiesced = errors.every((error) => error?.processQuiesced !== false)
+    throw failure
+  }
   return results
 }
 
@@ -2244,17 +2529,23 @@ async function main() {
   assertRunnerArguments(process.argv.slice(2))
   const started = Date.now()
   const runId = randomUUID()
-  const lock = await acquireRunLock(path.join(outputRoot, ".run.lock"), runId)
+  let lock
+  let runPaths
+  let focusedMutationRun = false
   let temporaryRoot
-  let markerWritten = false
-  let releaseError
+  let primaryError
   try {
     const artifactExecution = preflightArtifactExecution()
-    if (artifactExecution.mode !== "validate") {
-      await cleanupCanonicalArtifacts(outputRoot)
-    }
     const policy = JSON.parse(await readFile(sourcePolicyPath, "utf8"))
-    const sourceFiles = await listPolicyFiles(policy)
+    const policySourceFiles = await listPolicyFiles(policy)
+    const sourceSelection = resolveMutationSourceSelection(policySourceFiles)
+    focusedMutationRun = sourceSelection.focused
+    const sourceFiles = sourceSelection.sourceFiles
+    runPaths = mutationRunPaths(sourceSelection)
+    lock = await acquireRunLock(runPaths.lockPath, runId)
+    if (artifactExecution.mode !== "validate") {
+      await cleanupCanonicalArtifacts(runPaths.outputRoot)
+    }
     const beforeSnapshot = await captureEvidence(sourceFiles)
     const { identity: before, sourceByFile } = beforeSnapshot
     const shardTarget = boundedEnvironmentInteger("STRYKER_SHARD_TARGET", 750, 50, 2_000)
@@ -2386,11 +2677,13 @@ async function main() {
         instrumenterOptions,
       })
       assertEvidenceUnchanged(before, (await captureEvidence(sourceFiles)).identity)
-      const historicalCostArtifact = await loadHistoricalCostArtifact({
-        sourceRevision: before,
-        config: historicalCostConfig,
-        preflightByFile,
-      })
+      const historicalCostArtifact = focusedMutationRun
+        ? undefined
+        : await loadHistoricalCostArtifact({
+            sourceRevision: before,
+            config: historicalCostConfig,
+            preflightByFile,
+          })
       shardPlan = planMutationShards(
         preflightByFile,
         shardTarget,
@@ -2447,8 +2740,8 @@ async function main() {
       await mkdir(temporaryRoot, { recursive: true })
       const runRoot =
         externalShardIndex === undefined
-          ? path.join(outputRoot, "runs", runId)
-          : path.join(outputRoot, "shards")
+          ? path.join(runPaths.outputRoot, "runs", runId)
+          : path.join(runPaths.outputRoot, "shards")
       await createExclusiveRunDirectory(runRoot)
       const executionPlan =
         externalShardIndex === undefined ? shardPlan : [shardPlan[externalShardIndex]]
@@ -2534,19 +2827,22 @@ async function main() {
     const shardTimingValues = shardResults.map(
       (shard) => shard.durationMs ?? shard.shardEvidence?.durationMs
     )
-    if (shardTimingValues.every((durationMs) => durationMs !== undefined)) {
+    if (
+      runPaths.historicalCostOutputPath !== null &&
+      shardTimingValues.every((durationMs) => durationMs !== undefined)
+    ) {
       const historicalCostArtifact = buildHistoricalCostArtifactFromShardTimings({
         sourceRevision: before,
         config: historicalCostConfig,
         preflightByFile,
         shardResults,
       })
-      await atomicText(historicalCostArtifactOutputPath, jsonText(historicalCostArtifact))
+      await atomicText(runPaths.historicalCostOutputPath, jsonText(historicalCostArtifact))
     }
     if (serializedPreflight === undefined) {
       throw new Error("Aggregate Stryker evidence requires a canonical preflight universe")
     }
-    const expectedPatterns = mutationPatternsFromPolicy(policy)
+    const expectedPatterns = focusedMutationRun ? sourceFiles : mutationPatternsFromPolicy(policy)
     const report = mergeShardReports({
       shards: shardResults,
       expectedPatterns,
@@ -2554,7 +2850,7 @@ async function main() {
       sourceByFile,
     })
     const reportText = jsonText(report)
-    const reportPath = path.join(outputRoot, "mutation.json")
+    const reportPath = path.join(runPaths.outputRoot, "mutation.json")
     await atomicText(reportPath, reportText)
     const inventoryResult = buildMutationInventory({
       sourceFiles,
@@ -2578,13 +2874,12 @@ async function main() {
     }
     const preflightSha256 = sha256(jsonText(preflight))
     if (temporaryRoot) {
-      assertOwnedTemporaryDirectory(temporaryRoot, runId)
-      await rm(temporaryRoot, { recursive: true, force: true })
+      await removeOwnedTemporaryDirectory(temporaryRoot, runId)
       temporaryRoot = undefined
     }
     const finalSnapshot = await captureEvidence(sourceFiles)
     assertEvidenceUnchanged(before, finalSnapshot.identity)
-    const releaseEligible = isReleaseEligible(finalSnapshot.identity)
+    const releaseEligible = isMutationRunReleaseEligible(finalSnapshot.identity, focusedMutationRun)
     const inventory = {
       schemaVersion: "2.0",
       runId,
@@ -2593,6 +2888,9 @@ async function main() {
       generatedAt: new Date().toISOString(),
       durationMs: Date.now() - started,
       releaseEligible,
+      scope: focusedMutationRun
+        ? { kind: "local-focused", sourceFiles }
+        : { kind: "canonical", sourceFiles },
       provenance: {
         workflowRunId: process.env.GITHUB_RUN_ID ?? null,
         workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
@@ -2624,7 +2922,9 @@ async function main() {
         forceFresh: true,
       },
       preflight: {
-        path: "frontend/reports/mutation/preflight.json",
+        path: normalizePath(
+          path.relative(repositoryRoot, path.join(runPaths.outputRoot, "preflight.json"))
+        ),
         sha256: preflightSha256,
         files: sourceFiles.length,
         mutants: [...preflightByFile.values()].reduce(
@@ -2650,38 +2950,30 @@ async function main() {
       shardEvidence: indexShardProducerEvidence(shardResults),
       ...inventoryResult,
     }
-    const marker = await writeValidatedEvidence({ outputRoot, inventory, preflight })
-    markerWritten = true
+    const persisted = await persistMutationEvidence({ paths: runPaths, inventory, preflight })
     process.stdout.write(
-      `Validated ${inventory.summary.denominatorFiles} frontend source files and ${inventory.summary.totalMutants} mutants at ${inventory.summary.viableMutantScore}% (${marker.inventorySha256})\n`
+      `Validated ${inventory.summary.denominatorFiles} frontend source files and ${inventory.summary.totalMutants} mutants at ${inventory.summary.viableMutantScore}% (${persisted.inventorySha256})\n`
     )
   } catch (error) {
-    if (markerWritten) {
-      await Promise.all([
-        rm(path.join(outputRoot, "VALIDATED.json"), { force: true }),
-        rm(path.join(outputRoot, "LOCAL_VALIDATION.json"), { force: true }),
-      ])
-      markerWritten = false
-    }
-    throw error
+    primaryError = error
   } finally {
-    if (temporaryRoot) {
-      assertOwnedTemporaryDirectory(temporaryRoot, runId)
-      await rm(temporaryRoot, { recursive: true, force: true })
-    }
-    try {
-      await lock.release()
-    } catch (error) {
-      if (markerWritten) {
-        await Promise.all([
-          rm(path.join(outputRoot, "VALIDATED.json"), { force: true }),
-          rm(path.join(outputRoot, "LOCAL_VALIDATION.json"), { force: true }),
-        ])
-      }
-      releaseError = error
-    }
+    await finalizeMutationRun({
+      primaryError,
+      cleanupTemporary: temporaryRoot
+        ? async () => removeOwnedTemporaryDirectory(temporaryRoot, runId)
+        : undefined,
+      releaseLock: lock ? async () => lock.release() : undefined,
+      revokeMarker:
+        lock && runPaths
+          ? async () => {
+              await Promise.all([
+                rm(path.join(runPaths.outputRoot, "VALIDATED.json"), { force: true }),
+                rm(path.join(runPaths.outputRoot, "LOCAL_VALIDATION.json"), { force: true }),
+              ])
+            }
+          : undefined,
+    })
   }
-  if (releaseError) throw releaseError
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
