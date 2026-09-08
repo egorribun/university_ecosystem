@@ -916,6 +916,7 @@ def test_launcher_manages_independent_application_secrets() -> None:
     launcher = _read("start-docker.ps1")
     example = _env_values(".env.docker.example")
     managed = {
+        "TOKEN_HMAC_SECRET",
         "CSRF_HMAC_SECRET",
         "INTERNAL_HMAC_SECRET",
         "IDEMPOTENCY_HMAC_SECRET",
@@ -1296,6 +1297,8 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "backend.config.spicedbPresharedKey=ci-placeholder",
         "--set",
         "backend.config.auditLogSecret=ci-placeholder",
+        "--set",
+        "backend.config.tokenHMACSecret=ci-placeholder",
         "--set",
         "backend.config.idempotencyHMACSecret=ci-placeholder",
         "--set",

@@ -96,6 +96,11 @@ spec:
                 secretKeyRef:
                   name: backend-secrets
                   key: IDEMPOTENCY_HMAC_SECRET
+            - name: TOKEN_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: TOKEN_HMAC_SECRET
           # MOD-06: preStop sleep ensures load balancer drains before pod dies.
           # K8s sends SIGTERM + starts preStop concurrently; the sleep lets the
           # readiness probe flip to 503 and LB endpoint lists propagate first.

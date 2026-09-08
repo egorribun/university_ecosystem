@@ -19,6 +19,7 @@ def test_external_secret_contains_all_backend_security_state_keys() -> None:
         "WS_HUB_INTERNAL_SECRET",
         "IDEMPOTENCY_HMAC_SECRET",
         "AUDIT_LOG_SECRET",
+        "TOKEN_HMAC_SECRET",
         "jwt-rsa-private-key",
     } <= keys
 
@@ -46,6 +47,11 @@ def test_backend_mounts_rsa_key_and_requires_distinct_redis_urls() -> None:
             "name": "backend-secrets",
             "key": name,
         }
+
+    assert env["TOKEN_HMAC_SECRET"]["valueFrom"]["secretKeyRef"] == {
+        "name": "backend-secrets",
+        "key": "TOKEN_HMAC_SECRET",
+    }
 
     volumes = {
         item["name"]: item for item in deployment["spec"]["template"]["spec"]["volumes"]

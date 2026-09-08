@@ -50,6 +50,46 @@ _UserT = TypeVar("_UserT", bound=UserLike)
 
 logger = get_logger(__name__)
 
+_PASSWORD_RESET_RATE_LIMIT_DOMAIN = b"password-reset-rate-limit-v1\x1f"
+
+
+def _token_hmac_secret() -> str:
+    """Resolve the dedicated token key, with a development-only fallback."""
+
+    hmac_secret: str | None = getattr(settings, "token_hmac_secret", None)
+    if hmac_secret:
+        return hmac_secret
+    environment = str(getattr(settings, "environment", "development")).lower()
+    if environment in {"production", "staging"}:
+        raise RuntimeError(
+            "TOKEN_HMAC_SECRET must be set explicitly in production/staging. "
+            "Falling back to secret_key couples JWT rotation to token invalidation."
+        )
+    # LOW-W19: Development/testing only — emit a loud warning so engineers notice.
+    logger.warning(
+        "TOKEN_HMAC_SECRET is unset — falling back to secret_key (DEV/TESTING ONLY). "
+        "Set TOKEN_HMAC_SECRET before deploying to staging or production."
+    )
+    return str(settings.secret_key)
+
+
+def _password_reset_rate_limit_identifier(email: str) -> str:
+    """Return a stable, irreversible bucket for one canonical email identity.
+
+    The address is normalized before both rate limiting and repository lookup,
+    then used only as HMAC input.  The resulting opaque key is safe to include
+    in storage diagnostics: it contains no email, user id, token, or reversible
+    encoding and is domain-separated from reset-token digests.
+    """
+
+    canonical_email = str(email).strip().lower()
+    digest = hmac.new(
+        _token_hmac_secret().encode("utf-8"),
+        _PASSWORD_RESET_RATE_LIMIT_DOMAIN + canonical_email.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"password-reset:{digest}"
+
 
 class AuthService:
     def __init__(
@@ -79,15 +119,17 @@ class AuthService:
         try:
             from app.core.ratelimit import enforce_rate_limit, get_default_strategy
 
+            canonical_email = str(email).strip().lower()
+
             # MOD-3: Rate limit password reset emails to prevent Temporal task exhaustion
             await enforce_rate_limit(
-                identifier=f"email:reset:{email}",
+                identifier=_password_reset_rate_limit_identifier(canonical_email),
                 limit=3,
                 window_seconds=3600,  # max 3 reset emails per hour per address
                 strategy=get_default_strategy("email"),
             )
 
-            user = await self.user_repo.get_by_email(email)
+            user = await self.user_repo.get_by_email(canonical_email)
 
             if user:
                 # RZ-2: 48 bytes (384 bits) exceeds NIST SP 800-131A requirements
@@ -471,19 +513,7 @@ def _hash_token(token: str) -> str:
     invalidation — rotating JWT keys would silently invalidate all in-flight
     password-reset and email-change tokens (OWASP A02).
     """
-    hmac_secret: str | None = getattr(settings, "token_hmac_secret", None)
-    if not hmac_secret:
-        if settings.environment in {"production", "staging"}:
-            raise RuntimeError(
-                "TOKEN_HMAC_SECRET must be set explicitly in production/staging. "
-                "Falling back to secret_key couples JWT rotation to token invalidation."
-            )
-        # LOW-W19: Development/testing only — emit a loud warning so engineers notice.
-        logger.warning(
-            "TOKEN_HMAC_SECRET is unset — falling back to secret_key (DEV/TESTING ONLY). "
-            "Set TOKEN_HMAC_SECRET before deploying to staging or production."
-        )
-        hmac_secret = settings.secret_key
+    hmac_secret = _token_hmac_secret()
     return hmac.new(
         hmac_secret.encode(),
         token.encode(),

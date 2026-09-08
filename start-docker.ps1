@@ -276,6 +276,7 @@ function Ensure-ApplicationSecrets {
         # cache. Do not merge this with REDIS_PASSWORD: cache-only workers must
         # be unable to erase revoked-JTI tombstones.
         @{ Key = "REVOCATION_REDIS_PASSWORD"; Length = 32; Fernet = $false },
+        @{ Key = "TOKEN_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "CSRF_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "INTERNAL_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "IDEMPOTENCY_HMAC_SECRET"; Length = 48; Fernet = $false },
@@ -865,6 +866,7 @@ if ($needsEnvDocker -and $needsEnvCompose) {
     $minioPassword     = New-Secret -Length 32
     $redisPassword     = New-Secret -Length 32
     $revocationRedisPassword = New-Secret -Length 32
+    $tokenHmacSecret  = New-Secret -Length 48
     $elasticPassword   = New-Secret -Length 32
     $natsPassword      = New-Secret -Length 32
     $spicedbKey        = New-Secret -Length 32
@@ -899,6 +901,7 @@ GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=$grafanaPassword
 REDIS_PASSWORD=$redisPassword
 REVOCATION_REDIS_PASSWORD=$revocationRedisPassword
+TOKEN_HMAC_SECRET=$tokenHmacSecret
 ENABLE_METRICS_ENDPOINT=true
 METRICS_BASIC_AUTH_USERNAME=metrics_scraper
 METRICS_BASIC_AUTH_PASSWORD=$metricsPassword
@@ -940,6 +943,7 @@ GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=$grafanaPassword
 REDIS_PASSWORD=$redisPassword
 REVOCATION_REDIS_PASSWORD=$revocationRedisPassword
+TOKEN_HMAC_SECRET=$tokenHmacSecret
 ENABLE_METRICS_ENDPOINT=true
 METRICS_BASIC_AUTH_USERNAME=metrics_scraper
 METRICS_BASIC_AUTH_PASSWORD=$metricsPassword

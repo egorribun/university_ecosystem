@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from typing import Any
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
@@ -217,6 +218,14 @@ class SecuritySettings(
     # application bootable without extra config in local environments.
     csrf_hmac_secret: str = ""
 
+    # Password-reset and email-change tokens use a dedicated HMAC key.  Keep
+    # this key independent from SECRET_KEY so JWT rotation cannot invalidate
+    # outstanding account-recovery links (OWASP A02).  The *_FILE variant is
+    # intentionally resolved before Pydantic's normal environment parsing so
+    # Docker/Kubernetes secret mounts never need to expose key material in the
+    # process environment.
+    token_hmac_secret: str | None = None
+
     # ── Internal gateway signature (RZ-14-05, audit 2026-03-18) ─────────────
     # Shared secret used to verify that X-User-ID / X-Session-ID headers were
     # injected by the trusted gateway (not forged by a client or SSRF).
@@ -328,6 +337,73 @@ class SecuritySettings(
     @classmethod
     def _load_hmac_secret_file(cls, v: str | None) -> str | None:
         return _load_file_secret("INTERNAL_HMAC_SECRET_FILE", v)
+
+    @field_validator("token_hmac_secret", mode="before")
+    @classmethod
+    def _load_token_hmac_secret_file(cls, v: str | None) -> str | None:
+        """Load ``TOKEN_HMAC_SECRET_FILE`` without leaking the secret."""
+
+        return _load_file_secret("TOKEN_HMAC_SECRET_FILE", v)
+
+    @field_validator("token_hmac_secret")
+    @classmethod
+    def _validate_token_hmac_secret(
+        cls, v: str | None, info: ValidationInfo
+    ) -> str | None:
+        """Require a dedicated, non-placeholder recovery key outside local envs.
+
+        A length check alone accepts values such as ``"a" * 64`` and common
+        example strings.  Those values provide effectively no key entropy, so
+        reject obvious repeated/patterned material while keeping the key format
+        deliberately opaque (any printable UTF-8 value is valid).
+        """
+
+        if v is None:
+            normalized: str | None = None
+        else:
+            normalized = v.strip()
+            if not normalized:
+                normalized = None
+
+        env = str(
+            info.data.get("environment")
+            or os.environ.get("ENVIRONMENT", "development")
+            or "development"
+        ).lower()
+        if env in _DEVELOPMENT_ENVIRONMENTS:
+            return normalized
+
+        if normalized is None:
+            raise ValueError(
+                "TOKEN_HMAC_SECRET must be explicitly configured in production/staging"
+            )
+
+        encoded = normalized.encode("utf-8")
+        if len(encoded) < 32:
+            raise ValueError(
+                "TOKEN_HMAC_SECRET must contain at least 32 bytes of entropy"
+            )
+
+        lowered = normalized.lower()
+        placeholder_parts = (
+            "change_me",
+            "change-me",
+            "changeme",
+            "placeholder",
+            "example",
+            "your-secret",
+            "token_hmac_secret",
+        )
+        repeated = (
+            len(set(encoded)) < 4
+            or re.fullmatch(r"(.{1,8})\1+", normalized) is not None
+        )
+        if repeated or any(part in lowered for part in placeholder_parts):
+            raise ValueError(
+                "TOKEN_HMAC_SECRET must contain at least 32 bytes of entropy; "
+                "placeholder or repeated values are not allowed"
+            )
+        return normalized
 
     @field_validator("internal_hmac_secret")
     @classmethod
