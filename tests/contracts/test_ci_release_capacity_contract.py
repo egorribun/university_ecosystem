@@ -134,6 +134,14 @@ def test_pr_vulnerability_gate_has_a_read_only_producer() -> None:
         key not in pr_gate["permissions"]
         for key in ("id-token", "attestations", "security-events", "actions")
     )
+    checkout = pr_gate["steps"][0]
+    assert checkout["with"]["persist-credentials"] is False
+    install = next(
+        step
+        for step in pr_gate["steps"]
+        if step.get("name") == "Install pinned Python audit tools"
+    )
+    assert "--no-install-project" in install["run"]
     pr_steps = "\n".join(
         str(step.get("run", "")) for step in pr_gate["steps"] if isinstance(step, dict)
     )
