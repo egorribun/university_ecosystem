@@ -29,6 +29,14 @@ function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex")
 }
 
+// Locale-aware comparison is not reproducible across Windows and Linux
+// runners (and can reorder JSON object keys).  Provenance bytes are an
+// integrity contract, so sort paths by their stable UTF-16 code-unit order.
+function compareCanonicalPaths(left, right) {
+  if (left === right) return 0
+  return left < right ? -1 : 1
+}
+
 function canonicalJson(value) {
   return JSON.stringify(value)
 }
@@ -96,13 +104,13 @@ export async function buildSourceProvenance(root, { sourceFiles = DEFAULT_SOURCE
     seen.add(record.path)
     sourceRecords.push(record)
   }
-  sourceRecords.sort((left, right) => left.path.localeCompare(right.path))
+  sourceRecords.sort((left, right) => compareCanonicalPaths(left.path, right.path))
 
   const packageRecordList = []
   for (const packageRoot of PACKAGE_ROOTS) {
     packageRecordList.push(...(await packageRecords(rootAbsolute, packageRoot)))
   }
-  packageRecordList.sort((left, right) => left.path.localeCompare(right.path))
+  packageRecordList.sort((left, right) => compareCanonicalPaths(left.path, right.path))
   const sourceTreeSha256 = sha256(canonicalJson(sourceRecords))
 
   return {

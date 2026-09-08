@@ -52,14 +52,18 @@ async function withFixture(callback) {
 test("source provenance is deterministic and records source/package hashes", async () => {
   await withFixture(async (root) => {
     const first = await buildSourceProvenance(root, {
-      sourceFiles: ["rust-crypto/Cargo.toml", "rust-crypto/Cargo.lock", "rust-crypto/src/lib.rs"],
+      sourceFiles: ["rust-crypto/src/lib.rs", "rust-crypto/Cargo.toml", "rust-crypto/Cargo.lock"],
     })
     const second = await buildSourceProvenance(root, {
-      sourceFiles: ["rust-crypto/Cargo.toml", "rust-crypto/Cargo.lock", "rust-crypto/src/lib.rs"],
+      sourceFiles: ["rust-crypto/Cargo.lock", "rust-crypto/src/lib.rs", "rust-crypto/Cargo.toml"],
     })
     assert.deepEqual(first, second)
     assert.equal(first.schema_version, 1)
     assert.equal(first.source_files.length, 3)
+    assert.deepEqual(
+      first.source_files.map(({ path: relativePath }) => relativePath),
+      ["rust-crypto/Cargo.lock", "rust-crypto/Cargo.toml", "rust-crypto/src/lib.rs"]
+    )
     assert.equal(first.packages["rust-crypto/pkg/uni_wasm_crypto_bg.wasm"].size, 4)
   })
 })

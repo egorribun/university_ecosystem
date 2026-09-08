@@ -42,14 +42,6 @@
       "size": 305,
       "sha256": "b6fa8ca6bd52b940bb55338299b80968082b5fc90e8607b3cdb0304a0a030d4c"
     },
-    "rust-crypto/pkg/uni_wasm_crypto_bg.wasm": {
-      "size": 45456,
-      "sha256": "484482c3c8522918186010225b7b38980f22ebdcb2395871ddd3225227a815ba"
-    },
-    "rust-crypto/pkg/uni_wasm_crypto_bg.wasm.d.ts": {
-      "size": 853,
-      "sha256": "f9feb8c6d53a710ccdca24449925a36b223c18d3cb883caf8c231c3330ef84b8"
-    },
     "rust-crypto/pkg/uni_wasm_crypto.d.ts": {
       "size": 2154,
       "sha256": "ee248b85c086e004641bcdd6eab3e495d78ef08e73e666422e285ac135684d91"
@@ -57,6 +49,14 @@
     "rust-crypto/pkg/uni_wasm_crypto.js": {
       "size": 9279,
       "sha256": "df36f7227ea418af16af0c6d3bcfdb787e366e10da010f528f48fdae6439f3a0"
+    },
+    "rust-crypto/pkg/uni_wasm_crypto_bg.wasm": {
+      "size": 45456,
+      "sha256": "484482c3c8522918186010225b7b38980f22ebdcb2395871ddd3225227a815ba"
+    },
+    "rust-crypto/pkg/uni_wasm_crypto_bg.wasm.d.ts": {
+      "size": 853,
+      "sha256": "f9feb8c6d53a710ccdca24449925a36b223c18d3cb883caf8c231c3330ef84b8"
     },
     "wasm-sanitizer/pkg/.gitignore": {
       "size": 1,
@@ -66,14 +66,6 @@
       "size": 337,
       "sha256": "0a5c58be5f999e3b441e7f18476d10f182b0fadf4c5dd8da5f8ab34993eddb1c"
     },
-    "wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm": {
-      "size": 782601,
-      "sha256": "4365c912c9f01999b75d8d601451262eeeaa0f1ea685d24cdfa61cc598f5fbd6"
-    },
-    "wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm.d.ts": {
-      "size": 791,
-      "sha256": "3f0b3f08dcd05795350e807b0802186d16e537398798dffb08476b9d1ccf9fa4"
-    },
     "wasm-sanitizer/pkg/wasm_sanitizer.d.ts": {
       "size": 2021,
       "sha256": "a417f6beebf9caac5bce607eeb8067b4875d25f83024866bbe49d37f5e5edac1"
@@ -81,6 +73,14 @@
     "wasm-sanitizer/pkg/wasm_sanitizer.js": {
       "size": 8607,
       "sha256": "df1ba6e6fd517f42b9a6358b3101e747a6460add85ccc11af7fbfb9a3ef8d266"
+    },
+    "wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm": {
+      "size": 782601,
+      "sha256": "4365c912c9f01999b75d8d601451262eeeaa0f1ea685d24cdfa61cc598f5fbd6"
+    },
+    "wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm.d.ts": {
+      "size": 791,
+      "sha256": "3f0b3f08dcd05795350e807b0802186d16e537398798dffb08476b9d1ccf9fa4"
     }
   }
 }
