@@ -9,6 +9,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 use std::io;
+use std::time::{Duration, Instant};
 
 /// Run the two-phase owned-job cleanup contract.
 ///
@@ -31,11 +32,63 @@ where
     wait_for_empty()
 }
 
+/// Poll an owned-job emptiness probe with an explicit deadline.
+///
+/// This helper is deliberately independent from Win32 so the cancellation
+/// deadline can be exercised on every CI host.  The native implementation
+/// supplies the authoritative Job Object active-process probe; a non-empty
+/// result at the deadline is always an error and therefore can never be
+/// serialized as a positive quiescence proof.
+fn wait_until_empty_bounded<Observe>(
+    mut observe_empty: Observe,
+    started: Instant,
+    timeout: Duration,
+    poll_interval: Duration,
+) -> io::Result<()>
+where
+    Observe: FnMut() -> io::Result<bool>,
+{
+    loop {
+        if observe_empty()? {
+            return Ok(());
+        }
+        if started.elapsed() >= timeout {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "job active-process count did not reach zero",
+            ));
+        }
+        std::thread::sleep(poll_interval);
+    }
+}
+
+/// Terminate an owned job and require an emptiness proof within `timeout`.
+///
+/// The termination request is intentionally performed before starting the
+/// proof clock.  A successful `TerminateJobObject` call therefore cannot
+/// fall through to the four-hour normal-completion watchdog when a descendant
+/// is stuck or the proof source is otherwise unavailable.
+fn terminate_then_wait_bounded<Terminate, Observe>(
+    terminate: Terminate,
+    observe_empty: Observe,
+    timeout: Duration,
+    poll_interval: Duration,
+) -> io::Result<()>
+where
+    Terminate: FnOnce() -> io::Result<()>,
+    Observe: FnMut() -> io::Result<bool>,
+{
+    terminate_then_wait(terminate, || {
+        wait_until_empty_bounded(observe_empty, Instant::now(), timeout, poll_interval)
+    })
+}
+
 #[cfg(test)]
 mod lifecycle_policy_tests {
-    use super::terminate_then_wait;
+    use super::{terminate_then_wait, terminate_then_wait_bounded};
     use std::cell::Cell;
     use std::io;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn failed_termination_is_returned_without_waiting_for_empty_proof() {
@@ -76,6 +129,31 @@ mod lifecycle_policy_tests {
         let error = result.expect_err("a missing empty-job proof must be surfaced");
         assert_eq!(error.kind(), io::ErrorKind::TimedOut);
     }
+
+    #[test]
+    fn successful_termination_with_stuck_empty_proof_is_bounded_and_not_quiesced() {
+        let termination_attempts = Cell::new(0);
+        let started = Instant::now();
+        let result = terminate_then_wait_bounded(
+            || {
+                termination_attempts.set(termination_attempts.get() + 1);
+                Ok(())
+            },
+            || Ok(false),
+            Duration::from_millis(20),
+            Duration::from_millis(1),
+        );
+
+        let error = result.expect_err(
+            "a stuck post-termination empty proof must fail closed instead of claiming quiescence",
+        );
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert_eq!(termination_attempts.get(), 1);
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "bounded cancellation proof exceeded its local safety budget"
+        );
+    }
 }
 
 #[cfg(not(windows))]
@@ -86,7 +164,7 @@ fn main() {
 
 #[cfg(windows)]
 mod windows_host {
-    use super::terminate_then_wait;
+    use super::terminate_then_wait_bounded;
     use std::ffi::OsStr;
     use std::fs::{self, OpenOptions};
     use std::io::{self, BufRead, BufReader, Write};
@@ -836,26 +914,6 @@ mod windows_host {
         Ok(accounting.active_processes)
     }
 
-    fn wait_for_empty_with_timeout(
-        job: Handle,
-        started: Instant,
-        timeout: Duration,
-    ) -> io::Result<()> {
-        loop {
-            let active = active_processes(job)?;
-            if active == 0 {
-                return Ok(());
-            }
-            if started.elapsed() >= timeout {
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "job active-process count did not reach zero",
-                ));
-            }
-            thread::sleep(POLL_INTERVAL);
-        }
-    }
-
     fn wait_for_process(process: Handle) -> io::Result<Dword> {
         let result = unsafe { WaitForSingleObject(process, INFINITE) };
         if result != WAIT_OBJECT_0 {
@@ -876,9 +934,11 @@ mod windows_host {
     }
 
     fn terminate_and_prove_empty(job: Handle, code: Dword, timeout: Duration) -> io::Result<()> {
-        terminate_then_wait(
+        terminate_then_wait_bounded(
             || terminate_job(job, code),
-            || wait_for_empty_with_timeout(job, Instant::now(), timeout),
+            || active_processes(job).map(|active| active == 0),
+            timeout,
+            POLL_INTERVAL,
         )
     }
 
@@ -1010,11 +1070,22 @@ mod windows_host {
         termination_error: &mut Option<io::Error>,
         started: Instant,
     ) -> io::Result<()> {
+        // A cancellation proof has a short, independent deadline.  Keep the
+        // four-hour watchdog exclusively for normal target completion, where
+        // a long-running descendant may still be making legitimate progress.
+        // If cancellation arrives while this loop is already running, start
+        // the bounded clock at the exact poll that observed the request.
+        let mut cancellation_started = if *termination_requested {
+            Some(Instant::now())
+        } else {
+            None
+        };
         loop {
             // Keep consuming the dedicated control pipe even after the host's
             // direct target has exited.  A normal target can leave detached
             // descendants in the Job Object; cancellation must still be able
             // to terminate those members instead of waiting for the watchdog.
+            let was_termination_requested = *termination_requested;
             poll_control(
                 controls,
                 job,
@@ -1022,6 +1093,9 @@ mod windows_host {
                 control_error,
                 termination_error,
             );
+            if *termination_requested && !was_termination_requested {
+                cancellation_started = Some(Instant::now());
+            }
             if let Some(error) = termination_error.as_ref() {
                 // Do not wait for the four-hour normal-completion watchdog
                 // after a known failed kill request.  JobGuard's
@@ -1032,11 +1106,22 @@ mod windows_host {
             if active == 0 {
                 return Ok(());
             }
-            if started.elapsed() >= MAX_STATUS_WAIT {
-                return Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
+            let (proof_started, proof_timeout, timeout_reason) = cancellation_started.map_or(
+                (
+                    started,
+                    MAX_STATUS_WAIT,
                     "job active-process count did not reach zero",
-                ));
+                ),
+                |cancellation_started| {
+                    (
+                        cancellation_started,
+                        FAILURE_CLEANUP_WAIT,
+                        "job active-process count did not reach zero after cancellation",
+                    )
+                },
+            );
+            if proof_started.elapsed() >= proof_timeout {
+                return Err(io::Error::new(io::ErrorKind::TimedOut, timeout_reason));
             }
             thread::sleep(POLL_INTERVAL);
         }

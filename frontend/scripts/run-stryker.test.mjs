@@ -1157,6 +1157,22 @@ test("native host source returns immediately on failed termination and retains a
   assert.doesNotMatch(source, /let _ = terminate_job/u)
 })
 
+test("native host bounds successful cancellation while the empty proof is stuck", async () => {
+  const source = await readFile(
+    new URL("../tools/stryker-process-host/src/main.rs", runnerUrl),
+    "utf8"
+  )
+  const start = source.indexOf("fn wait_for_empty_with_control")
+  const end = source.indexOf("fn run()", start)
+  assert.ok(start >= 0 && end > start, "controlled empty-proof loop is present")
+  const controlledProof = source.slice(start, end)
+  assert.match(controlledProof, /cancellation_started/u)
+  assert.match(controlledProof, /cancellation_started[\s\S]*FAILURE_CLEANUP_WAIT/u)
+  assert.match(controlledProof, /MAX_STATUS_WAIT/u)
+  assert.match(controlledProof, /job active-process count did not reach zero after cancellation/u)
+  assert.match(source, /quiesced = result\.is_none\(\)/u)
+})
+
 test("child close reports normal exits and retains timeout termination failures", async () => {
   const { waitForChildClose } = await import(runnerUrl)
   const successfulChild = new EventEmitter()
