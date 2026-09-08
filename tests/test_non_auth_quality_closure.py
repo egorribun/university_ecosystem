@@ -31,6 +31,9 @@ SECRET = "cwv-signing-secret-with-at-least-32-bytes"  # pragma: allowlist secret
 INTERNAL_HMAC_SECRET = (
     "internal-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret
 )
+TOKEN_HMAC_SECRET = (
+    "token-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret
+)
 TESTER_IDS = [f"00000000-0000-0000-0000-{index:012d}" for index in range(1, 26)]
 
 
@@ -560,6 +563,7 @@ def _settings_values() -> dict[str, object]:
         # the length and placeholder rules while detect-secrets ignores it.
         "audit_log_secret": "auditlog-" + "a" * 56,  # pragma: allowlist secret
         "internal_hmac_secret": INTERNAL_HMAC_SECRET,
+        "token_hmac_secret": TOKEN_HMAC_SECRET,
         "cwv_rum_enabled": True,
         "cwv_rum_signing_secret": SECRET,
         "cwv_release_sha": SHA,
