@@ -223,15 +223,16 @@ func TestHandleFileProcessDelivery_AckFailureIsDelayedAndDoesNotChangeWorkflowID
 	require.Equal(t, "file-process-job-1", stub.options[0].ID)
 }
 
-func TestHandleFileProcessDelivery_PanicIsRecoveredAndDelayed(t *testing.T) {
+func TestHandleFileProcessDelivery_MissingClientIsDelayed(t *testing.T) {
 	msg := &fakeProcessDeliveryMessage{payload: validProcessPayload()}
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	// A nil client triggers the callback's panic recovery after validation.
+	// A missing Temporal client is a transient dependency failure. The callback
+	// must requeue the message without attempting a nil interface call.
 	handleFileProcessDelivery(context.Background(), msg, nil, logger)
 	require.Equal(t, 1, msg.nakCount)
 	require.Equal(t, []time.Duration{fileProcessNakDelay}, msg.nakDelays)
-	require.Contains(t, logs.String(), "callback_panic")
+	require.Contains(t, logs.String(), "temporal_client_unavailable")
 	require.NotContains(t, logs.String(), string(msg.payload))
 }
 

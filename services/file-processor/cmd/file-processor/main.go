@@ -553,12 +553,18 @@ func handleFileProcessDelivery(ctx context.Context, msg processDeliveryMessage, 
 	if err := jobcontract.Validate(job.ID, job.Type, job.SourceKey, job.DestKey, job.Options); err != nil {
 		var validationErr *jobcontract.ValidationError
 		reason := "validation_error"
-		if errors.As(err, &validationErr) {
+		if errors.As(err, &validationErr) && validationErr != nil {
 			reason = validationErr.Code
 		}
 		logger.ErrorContext(ctx, "Rejected NATS file-process message",
 			"reason", reason, "consumer", fileProcessConsumer)
 		terminateWithFallback(ctx, msg, logger, reason)
+		return
+	}
+	if c == nil {
+		logger.ErrorContext(ctx, "Failed to execute workflow from NATS",
+			"reason", "temporal_client_unavailable", "consumer", fileProcessConsumer)
+		nakWithDelay(ctx, msg, logger, "temporal_client_unavailable")
 		return
 	}
 

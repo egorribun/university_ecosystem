@@ -16,6 +16,7 @@ func requireCode(t *testing.T, err error, code string) {
 	t.Helper()
 	var validationErr *ValidationError
 	require.ErrorAs(t, err, &validationErr)
+	require.NotNil(t, validationErr)
 	require.Equal(t, code, validationErr.Code)
 }
 
