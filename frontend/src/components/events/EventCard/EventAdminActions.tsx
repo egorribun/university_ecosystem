@@ -70,7 +70,6 @@ export function EventAdminActions({
     const items = Array.from(
       menuRef.current!.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not(:disabled)")
     )
-    if (items.length === 0) return
     const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
     const delta = event.key === "ArrowDown" ? 1 : -1
     const nextIndex = (currentIndex + delta + items.length) % items.length
