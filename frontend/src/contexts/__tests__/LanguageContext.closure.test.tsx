@@ -24,12 +24,14 @@ const Probe = () => {
   )
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   window.localStorage.clear()
   delete window.__UE_SELECTED_LANG__
-  void i18n.changeLanguage("ru")
+  await act(async () => {
+    await i18n.changeLanguage("ru")
+  })
   document.cookie = "ue:language=; Max-Age=0; Path=/"
   Object.defineProperty(window.navigator, "language", {
     configurable: true,

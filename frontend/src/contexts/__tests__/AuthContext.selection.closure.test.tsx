@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from "react"
-import { renderHook } from "@testing-library/react"
+import { act, renderHook } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { AuthContext, useAuth } from "@/contexts/AuthContext"
@@ -41,17 +41,21 @@ const actionSet = () => ({
 })
 
 afterEach(() => {
-  useAuthStore.setState({
-    user: null,
-    loading: true,
-    pendingMfa: null,
-    authOperation: false,
+  act(() => {
+    useAuthStore.setState({
+      user: null,
+      loading: true,
+      pendingMfa: null,
+      authOperation: false,
+    })
   })
 })
 
 describe("useAuth context/store selection", () => {
   it("prefers explicitly provided context state over the Zustand fallback", () => {
-    useAuthStore.setState({ user: null, pendingMfa: null, loading: true, authOperation: false })
+    act(() => {
+      useAuthStore.setState({ user: null, pendingMfa: null, loading: true, authOperation: false })
+    })
     const contextValue = {
       ...actionSet(),
       user: contextUser,
@@ -71,11 +75,13 @@ describe("useAuth context/store selection", () => {
   })
 
   it("falls back to Zustand state when context leaves optional state undefined", () => {
-    useAuthStore.setState({
-      user: storeUser,
-      pendingMfa: pending,
-      loading: false,
-      authOperation: false,
+    act(() => {
+      useAuthStore.setState({
+        user: storeUser,
+        pendingMfa: pending,
+        loading: false,
+        authOperation: false,
+      })
     })
     const contextValue = actionSet()
     const wrapper = ({ children }: PropsWithChildren) => (
@@ -91,7 +97,9 @@ describe("useAuth context/store selection", () => {
   })
 
   it("includes an active context operation in the loading state", () => {
-    useAuthStore.setState({ user: null, pendingMfa: null, loading: false, authOperation: false })
+    act(() => {
+      useAuthStore.setState({ user: null, pendingMfa: null, loading: false, authOperation: false })
+    })
     const contextValue = { ...actionSet(), loading: false, authOperation: true }
     const wrapper = ({ children }: PropsWithChildren) => (
       <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>

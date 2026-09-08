@@ -6,6 +6,7 @@ import {
 } from "../scheduleExport"
 import type { Lesson } from "@/components/schedule/scheduleUtils"
 import { toPng } from "html-to-image"
+import { withExpectedConsole } from "@/tests/strictConsole"
 
 // Mock dependencies
 vi.mock("html-to-image", () => ({
@@ -120,14 +121,18 @@ describe("scheduleExport", () => {
 
     it("handles error during toPng import or generation", async () => {
       vi.mocked(toPng).mockRejectedValueOnce(new Error("toPng error"))
-      const result = await exportScheduleAsPng(mockElement)
+      const result = await withExpectedConsole("error", "LOGGED ERROR:", () =>
+        exportScheduleAsPng(mockElement)
+      )
       expect(result.success).toBe(false)
       expect(result.error).toBe("toPng error")
     })
 
     it("handles non-Error rejection", async () => {
       vi.mocked(toPng).mockRejectedValueOnce("some string error")
-      const result = await exportScheduleAsPng(mockElement)
+      const result = await withExpectedConsole("error", "LOGGED ERROR:", () =>
+        exportScheduleAsPng(mockElement)
+      )
       expect(result.success).toBe(false)
       expect(result.error).toBe("PNG export failed")
     })
@@ -202,7 +207,9 @@ describe("scheduleExport", () => {
         }
       } as unknown as typeof Image
 
-      const result = await exportScheduleAsPdf(mockElement, "Test Schedule", "test.pdf")
+      const result = await withExpectedConsole("error", "LOGGED ERROR:", () =>
+        exportScheduleAsPdf(mockElement, "Test Schedule", "test.pdf")
+      )
       expect(result.success).toBe(false)
       expect(result.error).toBe("Image load failed")
     })
@@ -217,12 +224,15 @@ describe("scheduleExport", () => {
         height: number = 600
       } as unknown as typeof Image
 
-      const promise = exportScheduleAsPdf(mockElement, "Test Schedule", "test.pdf")
+      const result = await withExpectedConsole("error", "LOGGED ERROR:", async () => {
+        const promise = exportScheduleAsPdf(mockElement, "Test Schedule", "test.pdf")
 
-      // Fast-forward time to trigger timeout
-      await vi.advanceTimersByTimeAsync(11000)
+        // Fast-forward time to trigger timeout while the expected diagnostic
+        // is active, so the rejection-path logger remains scoped to this test.
+        await vi.advanceTimersByTimeAsync(11000)
 
-      const result = await promise
+        return promise
+      })
       expect(result.success).toBe(false)
       expect(result.error).toBe("Image load timed out")
       vi.useRealTimers()
@@ -230,14 +240,18 @@ describe("scheduleExport", () => {
 
     it("handles error during toPng or PDF generation", async () => {
       vi.mocked(toPng).mockRejectedValueOnce(new Error("PDF generation error"))
-      const result = await exportScheduleAsPdf(mockElement, "Test Schedule", "test.pdf")
+      const result = await withExpectedConsole("error", "LOGGED ERROR:", () =>
+        exportScheduleAsPdf(mockElement, "Test Schedule", "test.pdf")
+      )
       expect(result.success).toBe(false)
       expect(result.error).toBe("PDF generation error")
     })
 
     it("uses the generic PDF error for a non-Error rejection", async () => {
       vi.mocked(toPng).mockRejectedValueOnce("PDF generation failed")
-      const result = await exportScheduleAsPdf(mockElement)
+      const result = await withExpectedConsole("error", "LOGGED ERROR:", () =>
+        exportScheduleAsPdf(mockElement)
+      )
       expect(result).toEqual({ success: false, error: "PDF export failed" })
     })
   })

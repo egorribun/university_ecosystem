@@ -32,6 +32,7 @@ const API_TIMEOUT_MS = 8000
  */
 const RATE_LIMIT_SKIP_ALLOWLIST = new Set([
   "/auth/login",
+  "/auth/mfa/step-up",
   "/auth/mfa/verify",
   "/auth/session/signing-key",
   "/users/me",

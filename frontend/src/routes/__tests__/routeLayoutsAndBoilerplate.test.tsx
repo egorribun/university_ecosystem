@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { Route as IndexRoute } from "../index"
 import { Route as AdminRoute } from "../_admin"
 import { Route as AuthRoute } from "../_auth"
@@ -47,21 +47,25 @@ vi.mock("@/features/admin/components/AdminBackdrop", () => ({
   AdminBackdrop: () => <div data-testid="admin-backdrop" />,
 }))
 
-vi.mock("@/pages/AdminAudit", () => ({ default: () => <div /> }))
-vi.mock("@/pages/AdminFeatureFlags", () => ({ default: () => <div /> }))
-vi.mock("@/pages/AdminNotifications", () => ({ default: () => <div /> }))
-vi.mock("@/pages/AdminUsers", () => ({ default: () => <div /> }))
+vi.mock("@/pages/AdminAudit", () => ({ default: () => <div data-testid="route-admin-audit" /> }))
+vi.mock("@/pages/AdminFeatureFlags", () => ({
+  default: () => <div data-testid="route-admin-feature-flags" />,
+}))
+vi.mock("@/pages/AdminNotifications", () => ({
+  default: () => <div data-testid="route-admin-notifications" />,
+}))
+vi.mock("@/pages/AdminUsers", () => ({ default: () => <div data-testid="route-admin-users" /> }))
 vi.mock("@/pages/Dashboard", () => ({ default: () => <div /> }))
-vi.mock("@/pages/Messenger", () => ({ default: () => <div /> }))
-vi.mock("@/pages/NewsDetail", () => ({ default: () => <div /> }))
-vi.mock("@/pages/Profile", () => ({ default: () => <div /> }))
-vi.mock("@/pages/Activity", () => ({ default: () => <div /> }))
-vi.mock("@/pages/EventDetail", () => ({ default: () => <div /> }))
-vi.mock("@/pages/Events", () => ({ default: () => <div /> }))
-vi.mock("@/pages/Map", () => ({ default: () => <div /> }))
-vi.mock("@/pages/News", () => ({ default: () => <div /> }))
-vi.mock("@/pages/Schedule", () => ({ default: () => <div /> }))
-vi.mock("@/pages/Settings", () => ({ default: () => <div /> }))
+vi.mock("@/pages/Messenger", () => ({ default: () => <div data-testid="route-messenger" /> }))
+vi.mock("@/pages/NewsDetail", () => ({ default: () => <div data-testid="route-news-detail" /> }))
+vi.mock("@/pages/Profile", () => ({ default: () => <div data-testid="route-profile" /> }))
+vi.mock("@/pages/Activity", () => ({ default: () => <div data-testid="route-activity" /> }))
+vi.mock("@/pages/EventDetail", () => ({ default: () => <div data-testid="route-event-detail" /> }))
+vi.mock("@/pages/Events", () => ({ default: () => <div data-testid="route-events" /> }))
+vi.mock("@/pages/Map", () => ({ default: () => <div data-testid="route-map" /> }))
+vi.mock("@/pages/News", () => ({ default: () => <div data-testid="route-news" /> }))
+vi.mock("@/pages/Schedule", () => ({ default: () => <div data-testid="route-schedule" /> }))
+vi.mock("@/pages/Settings", () => ({ default: () => <div data-testid="route-settings" /> }))
 
 describe("Routes layouts and boilerplate", () => {
   it("IndexRoute redirect is defined and throws redirect", () => {
@@ -99,23 +103,32 @@ describe("Routes layouts and boilerplate", () => {
     const AdminComponent = AdminRoute.options.component as any
     expect(AdminComponent).toBeDefined()
 
-    useAuthStore.setState({ user: { role: "admin" } as any, loading: false })
+    act(() => {
+      useAuthStore.setState({ user: { role: "admin" } as any, loading: false })
+    })
     const view = render(<AdminComponent />)
     expect(screen.getByTestId("admin-backdrop")).toBeInTheDocument()
 
-    useAuthStore.setState({ user: { role: "student" } as any, loading: false })
+    act(() => {
+      useAuthStore.setState({ user: { role: "student" } as any, loading: false })
+    })
     await waitFor(() =>
       expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/dashboard", replace: true })
     )
 
-    useAuthStore.setState({ user: null, loading: false })
+    act(() => {
+      useAuthStore.setState({ user: null, loading: false })
+    })
     await waitFor(() =>
       expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/login", replace: true })
     )
 
-    useAuthStore.setState({ user: null, loading: true })
+    act(() => {
+      useAuthStore.setState({ user: null, loading: true })
+    })
     view.rerender(<AdminComponent />)
     expect(screen.getByTestId("admin-backdrop")).toBeInTheDocument()
+    view.unmount()
   })
 
   it("AuthLayout rendering", () => {
@@ -130,28 +143,41 @@ describe("Routes layouts and boilerplate", () => {
     expect(PublicComponent).toBeDefined()
 
     // Simulate user state transition
-    useAuthStore.setState({ user: { role: "student" } as any })
-    render(<PublicComponent />)
+    act(() => {
+      useAuthStore.setState({ user: { role: "student" } as any })
+    })
+    const view = render(<PublicComponent />)
     expect(screen.getByTestId("outlet")).toBeInTheDocument()
 
     // Clear user state
-    useAuthStore.setState({ user: null })
+    act(() => {
+      useAuthStore.setState({ user: null })
+    })
+    view.unmount()
   })
 
-  it("renders Audit, FeatureFlags, Notifications, Users route components", () => {
+  it("renders Audit, FeatureFlags, Notifications, Users route components", async () => {
     const AuditComp = AdminAuditRoute.options.component as any
     const FFComp = AdminFeatureFlagsRoute.options.component as any
     const NotifComp = AdminNotificationsRoute.options.component as any
     const UsersComp = AdminUsersRoute.options.component as any
 
-    render(<AuditComp />)
-    render(<FFComp />)
-    render(<NotifComp />)
-    render(<UsersComp />)
-    expect(screen.queryAllByTestId("outlet")).toBeDefined()
+    const views = [
+      render(<AuditComp />),
+      render(<FFComp />),
+      render(<NotifComp />),
+      render(<UsersComp />),
+    ]
+    await waitFor(() => {
+      expect(screen.getByTestId("route-admin-audit")).toBeInTheDocument()
+      expect(screen.getByTestId("route-admin-feature-flags")).toBeInTheDocument()
+      expect(screen.getByTestId("route-admin-notifications")).toBeInTheDocument()
+      expect(screen.getByTestId("route-admin-users")).toBeInTheDocument()
+    })
+    views.forEach((view) => view.unmount())
   })
 
-  it("renders simple page route components", () => {
+  it("renders simple page route components", async () => {
     const MessengerChatComp = MessengerChatRoute.options.component as any
     const MessengerComp = MessengerRoute.options.component as any
     const NewsDetailComp = NewsDetailRoute.options.component as any
@@ -164,18 +190,32 @@ describe("Routes layouts and boilerplate", () => {
     const ScheduleComp = ScheduleRoute.options.component as any
     const SettingsComp = SettingsRoute.options.component as any
 
-    render(<MessengerChatComp />)
-    render(<MessengerComp />)
-    render(<NewsDetailComp />)
-    render(<ProfileComp />)
-    render(<ActivityComp />)
-    render(<EventsDetailComp />)
-    render(<EventsComp />)
-    render(<MapComp />)
-    render(<NewsComp />)
-    render(<ScheduleComp />)
-    render(<SettingsComp />)
-    expect(screen.queryAllByTestId("outlet")).toBeDefined()
+    const views = [
+      render(<MessengerChatComp />),
+      render(<MessengerComp />),
+      render(<NewsDetailComp />),
+      render(<ProfileComp />),
+      render(<ActivityComp />),
+      render(<EventsDetailComp />),
+      render(<EventsComp />),
+      render(<MapComp />),
+      render(<NewsComp />),
+      render(<ScheduleComp />),
+      render(<SettingsComp />),
+    ]
+    await waitFor(() => {
+      expect(screen.getAllByTestId("route-messenger")).toHaveLength(2)
+      expect(screen.getByTestId("route-news-detail")).toBeInTheDocument()
+      expect(screen.getByTestId("route-profile")).toBeInTheDocument()
+      expect(screen.getByTestId("route-activity")).toBeInTheDocument()
+      expect(screen.getByTestId("route-event-detail")).toBeInTheDocument()
+      expect(screen.getByTestId("route-events")).toBeInTheDocument()
+      expect(screen.getByTestId("route-map")).toBeInTheDocument()
+      expect(screen.getByTestId("route-news")).toBeInTheDocument()
+      expect(screen.getByTestId("route-schedule")).toBeInTheDocument()
+      expect(screen.getByTestId("route-settings")).toBeInTheDocument()
+    })
+    views.forEach((view) => view.unmount())
   })
 
   it("DashboardRoute loader test", async () => {
