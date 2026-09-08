@@ -14,6 +14,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises"
+import { rmSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
@@ -1087,10 +1088,12 @@ export async function removeOwnedTemporaryDirectory(
     remove = rm,
     inspect = lstat,
     delay = wait,
+    now = Date.now,
     platform = process.platform,
     retryDelaysMs = windowsTemporaryCleanupRetryDelaysMs,
   } = {}
 ) {
+  const startedAt = now()
   for (let attempt = 0; ; attempt += 1) {
     try {
       assertOwnedTemporaryDirectory(temporaryRoot, runId)
@@ -1111,7 +1114,18 @@ export async function removeOwnedTemporaryDirectory(
         error &&
         typeof error === "object" &&
         transientWindowsCleanupCodes.has(error.code)
-      if (!transient || attempt >= retryDelaysMs.length) throw error
+      if (!transient) throw error
+      if (attempt >= retryDelaysMs.length) {
+        const attempts = attempt + 1
+        const elapsedMs = Math.max(0, now() - startedAt)
+        throw Object.assign(
+          new Error(
+            `Failed to remove owned Stryker temp directory ${temporaryRoot} after ${attempts} attempts over ${elapsedMs}ms; terminal code ${error.code}: ${error.message}`,
+            { cause: error }
+          ),
+          { attempts, code: error.code, elapsedMs, path: temporaryRoot }
+        )
+      }
       await delay(retryDelaysMs[attempt])
     }
   }
@@ -1126,6 +1140,8 @@ export async function finalizeMutationRun({
 }) {
   let effectivePrimaryError = primaryError
   const finalizationErrors = []
+  let markerRevocationAttempted = false
+  let markerRevoked = false
   const captureCancellation = () => {
     if (!effectivePrimaryError && cancellationSignal?.aborted) {
       effectivePrimaryError = cancellationReason(cancellationSignal)
@@ -1141,30 +1157,80 @@ export async function finalizeMutationRun({
       return false
     }
   }
+  const requireMarkerRevocation = async () => {
+    if (markerRevoked) return true
+    if (markerRevocationAttempted) return false
+    markerRevocationAttempted = true
+    if (!revokeMarker) {
+      finalizationErrors.push(
+        new Error(
+          "Stryker marker revocation is required but unavailable; the run lock was retained"
+        )
+      )
+      return false
+    }
+    markerRevoked = await runOperation(revokeMarker)
+    return markerRevoked
+  }
+  const ownsRunArtifacts = Boolean(releaseLock || revokeMarker)
+  const markerRevocationRequired = () =>
+    ownsRunArtifacts && Boolean(effectivePrimaryError || finalizationErrors.length > 0)
   captureCancellation()
   const processQuiesced = effectivePrimaryError?.processQuiesced !== false
   if (!processQuiesced) {
-    finalizationErrors.push(
-      new Error(
-        "Stryker child close was not confirmed; the temporary directory and run lock were retained for manual process termination and cleanup"
+    if (ownsRunArtifacts) {
+      finalizationErrors.push(
+        new Error(
+          "Stryker child close was not confirmed; the temporary directory and run lock were retained for manual process termination and cleanup"
+        )
       )
-    )
-    await runOperation(revokeMarker)
+      await requireMarkerRevocation()
+    }
   } else {
     await runOperation(cleanupTemporary)
     captureCancellation()
-    const markerRevocationRequired = Boolean(effectivePrimaryError || finalizationErrors.length > 0)
-    let markerRevoked = !markerRevocationRequired || !revokeMarker
-    if (markerRevocationRequired && revokeMarker) {
-      markerRevoked = await runOperation(revokeMarker)
-    }
-    if (markerRevoked) {
-      const releaseSucceeded = await runOperation(releaseLock)
-      captureCancellation()
-      if (effectivePrimaryError && !markerRevocationRequired) {
-        await runOperation(revokeMarker)
+    if (markerRevocationRequired()) await requireMarkerRevocation()
+    if (!markerRevocationRequired() || markerRevoked) {
+      let releasePreparationCalled = false
+      let releaseGuardError
+      const prepareRelease = async () => {
+        releasePreparationCalled = true
+        captureCancellation()
+        if (markerRevocationRequired() && !(await requireMarkerRevocation())) {
+          releaseGuardError = new Error(
+            "Stryker run lock retained because marker revocation was not confirmed"
+          )
+          throw releaseGuardError
+        }
+        return () => {
+          captureCancellation()
+          if (markerRevocationRequired() && !markerRevoked) {
+            releaseGuardError = new Error(
+              "Stryker run lock retained because cancellation raced with lock release"
+            )
+            throw releaseGuardError
+          }
+        }
       }
-      if (!releaseSucceeded && !markerRevocationRequired) await runOperation(revokeMarker)
+      let releaseSucceeded = true
+      if (releaseLock) {
+        try {
+          await releaseLock(prepareRelease)
+        } catch (error) {
+          releaseSucceeded = false
+          if (error !== releaseGuardError) finalizationErrors.push(error)
+        }
+        if (!releasePreparationCalled) {
+          releaseSucceeded = false
+          finalizationErrors.push(
+            new Error("Stryker run lock release bypassed its fail-closed preparation guard")
+          )
+        }
+      }
+      captureCancellation()
+      if ((!releaseSucceeded || markerRevocationRequired()) && !markerRevoked) {
+        await requireMarkerRevocation()
+      }
     }
   }
   captureCancellation()
@@ -1198,13 +1264,21 @@ export async function acquireRunLock(lockPath, runId) {
   await handle.close()
   let released = false
   return {
-    async release() {
+    async release(prepareRelease) {
       if (released) return
+      if (typeof prepareRelease !== "function") {
+        throw new Error("Stryker run lock release requires a fail-closed preparation guard")
+      }
       const current = JSON.parse(await readFile(lockPath, "utf8"))
       if (current.runId !== runId) {
         throw new Error("Refusing to release a Stryker lock owned by another run")
       }
-      await rm(lockPath)
+      const commitRelease = await prepareRelease()
+      if (typeof commitRelease !== "function") {
+        throw new Error("Stryker run lock preparation did not return a commit guard")
+      }
+      commitRelease()
+      rmSync(lockPath)
       released = true
     },
   }
@@ -1405,6 +1479,24 @@ export function installProcessSignalCancellation({
   }
 }
 
+function interruptedSignal(error, seen = new Set()) {
+  if (!error || typeof error !== "object" || seen.has(error)) return undefined
+  seen.add(error)
+  if (error.code === "STRYKER_INTERRUPTED") {
+    if (error.signalName === "SIGINT" || error.signalName === "SIGTERM") {
+      return error.signalName
+    }
+  }
+  return interruptedSignal(error.cause, seen)
+}
+
+export function runnerExitCode(error) {
+  const signal = interruptedSignal(error)
+  if (signal === "SIGINT") return 130
+  if (signal === "SIGTERM") return 143
+  return 1
+}
+
 async function terminateChildTree(child) {
   if (child.exitCode !== null || child.signalCode !== null) return
   if (process.platform === "win32") {
@@ -1437,6 +1529,7 @@ export function waitForChildClose(
     let settled = false
     let terminationStarted = false
     let primaryTerminationError
+    let primaryTerminationSecondaryErrors = []
     let processError
     let exitResult
     let closeResult
@@ -1462,11 +1555,12 @@ export function waitForChildClose(
     }
     const terminationFailure = (secondaryErrors = [], processQuiesced = true) => {
       const primaryError = primaryTerminationError
+      const allSecondaryErrors = [...primaryTerminationSecondaryErrors, ...secondaryErrors]
       const failure =
-        secondaryErrors.length === 0
+        allSecondaryErrors.length === 0
           ? primaryError
           : new AggregateError(
-              [primaryError, ...secondaryErrors],
+              [primaryError, ...allSecondaryErrors],
               `${primaryError.message}; process shutdown failed`,
               { cause: primaryError }
             )
@@ -1485,7 +1579,8 @@ export function waitForChildClose(
     const beginTermination = (primaryError) => {
       if (settled || terminationStarted) return
       terminationStarted = true
-      primaryTerminationError = primaryError
+      primaryTerminationError = processError ?? primaryError
+      primaryTerminationSecondaryErrors = processError ? [primaryError] : []
       if (timeoutTimer !== undefined) cancelTimeout(timeoutTimer)
       graceTimer = scheduleTimeout(() => {
         if (settled) return
@@ -1513,13 +1608,7 @@ export function waitForChildClose(
       beginTermination(new Error(`${description} exceeded ${timeoutMs}ms`))
     }
     const onAbort = () => {
-      const reason = cancellationReason(abortSignal)
-      beginTermination(
-        Object.assign(new Error(reason.message, { cause: reason }), {
-          code: reason.code,
-          signalName: reason.signalName,
-        })
-      )
+      beginTermination(cancellationReason(abortSignal))
     }
     const onError = (error) => {
       processError = error
@@ -3074,7 +3163,7 @@ async function main() {
         cleanupTemporary: temporaryRoot
           ? async () => removeOwnedTemporaryDirectory(temporaryRoot, runId)
           : undefined,
-        releaseLock: lock ? async () => lock.release() : undefined,
+        releaseLock: lock ? async (prepareRelease) => lock.release(prepareRelease) : undefined,
         revokeMarker:
           lock && runPaths
             ? async () => {
@@ -3094,6 +3183,6 @@ async function main() {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.message : error}\n`)
-    process.exitCode = 1
+    process.exitCode = runnerExitCode(error)
   })
 }

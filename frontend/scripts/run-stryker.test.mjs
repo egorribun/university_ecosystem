@@ -420,6 +420,176 @@ test("a process signal terminates every active child, awaits close, and stops sh
   cancellation.dispose()
 })
 
+test("a child error that precedes cancellation remains the primary execution failure", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.exitCode = null
+  child.signalCode = null
+  const controller = new AbortController()
+  const childError = new Error("spawn pipe failed")
+  const cancellationError = Object.assign(new Error("Stryker execution interrupted by SIGINT"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGINT",
+  })
+  let finishTermination
+  const result = waitForChildClose(child, {
+    description: "errored shard",
+    timeoutMs: 10_000,
+    abortSignal: controller.signal,
+    terminate: async () =>
+      new Promise((resolve) => {
+        finishTermination = resolve
+      }),
+  })
+
+  child.emit("error", childError)
+  controller.abort(cancellationError)
+  child.emit("exit", null, "SIGKILL")
+  child.emit("close", null, "SIGKILL")
+  await new Promise((resolve) => setImmediate(resolve))
+  finishTermination()
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.equal(error.cause, childError)
+    assert.deepEqual(error.errors, [childError, cancellationError])
+    assert.equal(error.processQuiesced, true)
+    return true
+  })
+})
+
+test("a signal after exit still awaits close without attempting a live-process kill", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.exitCode = null
+  child.signalCode = null
+  const controller = new AbortController()
+  const cancellationError = Object.assign(new Error("Stryker execution interrupted by SIGTERM"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGTERM",
+  })
+  let terminationCalls = 0
+  const result = waitForChildClose(child, {
+    description: "exited shard",
+    timeoutMs: 10_000,
+    abortSignal: controller.signal,
+    terminate: async (target) => {
+      terminationCalls += 1
+      assert.equal(target.exitCode, 0)
+    },
+  })
+  let settled = false
+  void result.catch(() => {
+    settled = true
+  })
+
+  child.emit("exit", 0, null)
+  child.exitCode = 0
+  controller.abort(cancellationError)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(settled, false)
+  child.emit("close", 0, null)
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error, cancellationError)
+    assert.notEqual(error.processQuiesced, false)
+    return true
+  })
+  assert.equal(terminationCalls, 1)
+})
+
+test("signal cancellation preserves termination failures and fails closed without close", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const cancellationError = Object.assign(new Error("Stryker execution interrupted by SIGTERM"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGTERM",
+  })
+
+  const failedChild = new EventEmitter()
+  failedChild.exitCode = null
+  failedChild.signalCode = null
+  const failedController = new AbortController()
+  const terminationError = new Error("taskkill denied")
+  const failed = waitForChildClose(failedChild, {
+    description: "termination failure shard",
+    timeoutMs: 10_000,
+    abortSignal: failedController.signal,
+    terminate: async () => {
+      throw terminationError
+    },
+  })
+  failedController.abort(cancellationError)
+  failedChild.emit("exit", null, "SIGKILL")
+  failedChild.emit("close", null, "SIGKILL")
+  await assert.rejects(failed, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.equal(error.cause, cancellationError)
+    assert.equal(error.errors[0], cancellationError)
+    assert.equal(error.errors[1], terminationError)
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+
+  const missingCloseChild = new EventEmitter()
+  missingCloseChild.exitCode = null
+  missingCloseChild.signalCode = null
+  const missingCloseController = new AbortController()
+  const timers = []
+  const missingClose = waitForChildClose(missingCloseChild, {
+    description: "missing-close shard",
+    timeoutMs: 10_000,
+    terminationGraceMs: 75,
+    abortSignal: missingCloseController.signal,
+    terminate: async () => undefined,
+    scheduleTimeout: (callback, milliseconds) => {
+      const timer = { callback, milliseconds }
+      timers.push(timer)
+      return timer
+    },
+    cancelTimeout: () => undefined,
+  })
+  missingCloseController.abort(cancellationError)
+  await Promise.resolve()
+  assert.equal(timers[1].milliseconds, 75)
+  timers[1].callback()
+  await assert.rejects(missingClose, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.equal(error.cause, cancellationError)
+    assert.equal(error.errors[0], cancellationError)
+    assert.match(error.errors[1].message, /did not terminate and close within 75ms/u)
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+})
+
+test("executable exit codes preserve conventional SIGINT and SIGTERM semantics", async () => {
+  const { runnerExitCode } = await import(runnerUrl)
+  const sigint = Object.assign(new Error("interrupted"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGINT",
+  })
+  const sigterm = Object.assign(new Error("interrupted"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGTERM",
+  })
+
+  assert.equal(runnerExitCode(sigint), 130)
+  assert.equal(
+    runnerExitCode(new AggregateError([sigterm], "finalization", { cause: sigterm })),
+    143
+  )
+  const ordinaryPrimary = new Error("spawn failed before cancellation")
+  assert.equal(
+    runnerExitCode(
+      new AggregateError([ordinaryPrimary, sigterm], "spawn failed before cancellation", {
+        cause: ordinaryPrimary,
+      })
+    ),
+    1
+  )
+  assert.equal(runnerExitCode(new Error("ordinary failure")), 1)
+})
+
 test("temporary cleanup retries only bounded transient Windows failures", async () => {
   const { removeOwnedTemporaryDirectory } = await import(runnerUrl)
   const runId = "run-id"
@@ -511,6 +681,48 @@ test("temporary cleanup retries a resolved removal until ENOENT proves the owned
   )
 })
 
+test("exhausted temporary cleanup reports bounded diagnostic provenance", async () => {
+  const { removeOwnedTemporaryDirectory } = await import(runnerUrl)
+  const runId = "cleanup-diagnostic"
+  const root = path.join(
+    os.tmpdir(),
+    "university-ecosystem-stryker-runs",
+    "repository",
+    "c".repeat(40),
+    runId
+  )
+  const terminalError = Object.assign(new Error("directory remains busy"), { code: "EBUSY" })
+  let nowCalls = 0
+
+  await assert.rejects(
+    () =>
+      removeOwnedTemporaryDirectory(root, runId, {
+        platform: "win32",
+        retryDelaysMs: [10, 20],
+        remove: async () => {
+          throw terminalError
+        },
+        delay: async () => undefined,
+        now: () => {
+          nowCalls += 1
+          return nowCalls === 1 ? 1_000 : 1_375
+        },
+      }),
+    (error) => {
+      assert.equal(error.cause, terminalError)
+      assert.equal(error.code, "EBUSY")
+      assert.equal(error.path, root)
+      assert.equal(error.attempts, 3)
+      assert.equal(error.elapsedMs, 375)
+      assert.match(error.message, /3 attempts/u)
+      assert.match(error.message, /375ms/u)
+      assert.match(error.message, /terminal code EBUSY/u)
+      assert.equal(error.message.includes(root), true)
+      return true
+    }
+  )
+})
+
 test("post-lock cancellation revokes markers and finalizes the owned temp and lock", async () => {
   const { finalizeMutationRun, installProcessSignalCancellation } = await import(runnerUrl)
   const processEvents = new EventEmitter()
@@ -524,13 +736,104 @@ test("post-lock cancellation revokes markers and finalizes the owned temp and lo
         cancellationSignal: cancellation.signal,
         cleanupTemporary: async () => calls.push("cleanup"),
         revokeMarker: async () => calls.push("marker"),
-        releaseLock: async () => calls.push("release"),
+        releaseLock: async (prepareRelease) => {
+          const commitRelease = await prepareRelease()
+          commitRelease()
+          calls.push("release")
+        },
       }),
     /interrupted by SIGTERM/u
   )
 
   assert.deepEqual(calls, ["cleanup", "marker", "release"])
   cancellation.dispose()
+})
+
+test("a signal during lock release revokes markers before the release commit", async () => {
+  const { finalizeMutationRun, installProcessSignalCancellation } = await import(runnerUrl)
+  const processEvents = new EventEmitter()
+  const cancellation = installProcessSignalCancellation({ processEvents })
+  const calls = []
+
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        cancellationSignal: cancellation.signal,
+        cleanupTemporary: async () => calls.push("cleanup"),
+        revokeMarker: async () => calls.push("marker"),
+        releaseLock: async (beforeRelease) => {
+          calls.push("release-start")
+          processEvents.emit("SIGTERM")
+          const commitRelease = await beforeRelease()
+          commitRelease()
+          calls.push("release-commit")
+        },
+      }),
+    /interrupted by SIGTERM/u
+  )
+
+  assert.deepEqual(calls, ["cleanup", "release-start", "marker", "release-commit"])
+  cancellation.dispose()
+})
+
+test("a signal after release preparation retains the lock until marker revocation", async () => {
+  const { finalizeMutationRun, installProcessSignalCancellation } = await import(runnerUrl)
+  const processEvents = new EventEmitter()
+  const cancellation = installProcessSignalCancellation({ processEvents })
+  const calls = []
+
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        cancellationSignal: cancellation.signal,
+        cleanupTemporary: async () => calls.push("cleanup"),
+        revokeMarker: async () => calls.push("marker"),
+        releaseLock: async (prepareRelease) => {
+          calls.push("release-start")
+          const commitRelease = await prepareRelease()
+          processEvents.emit("SIGINT")
+          commitRelease()
+          calls.push("release-commit")
+        },
+      }),
+    /interrupted by SIGINT/u
+  )
+
+  assert.deepEqual(calls, ["cleanup", "release-start", "marker"])
+  cancellation.dispose()
+})
+
+test("required marker revocation without a callback retains the run lock", async () => {
+  const { finalizeMutationRun } = await import(runnerUrl)
+  const primary = new Error("mutation failed")
+  const calls = []
+
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        primaryError: primary,
+        cleanupTemporary: async () => calls.push("cleanup"),
+        releaseLock: async () => calls.push("release"),
+      }),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true)
+      assert.equal(error.cause, primary)
+      assert.equal(error.errors[0], primary)
+      assert.match(error.errors[1].message, /marker revocation is required but unavailable/u)
+      return true
+    }
+  )
+  assert.deepEqual(calls, ["cleanup"])
+})
+
+test("a failure before lock acquisition is surfaced without fictitious marker cleanup", async () => {
+  const { finalizeMutationRun } = await import(runnerUrl)
+  const primary = new Error("invalid runner arguments")
+
+  await assert.rejects(
+    () => finalizeMutationRun({ primaryError: primary }),
+    (error) => error === primary
+  )
 })
 
 test("finalization preserves the primary failure and always releases the lock", async () => {
@@ -548,7 +851,9 @@ test("finalization preserves the primary failure and always releases the lock", 
           calls.push("cleanup")
           throw cleanup
         },
-        releaseLock: async () => {
+        releaseLock: async (prepareRelease) => {
+          const commitRelease = await prepareRelease()
+          commitRelease()
           calls.push("release")
           throw release
         },
@@ -674,9 +979,9 @@ test("exclusive run locks fail closed and release only their owner", async (t) =
   const lockPath = path.join(root, ".run.lock")
   const first = await acquireRunLock(lockPath, "run-a")
   await assert.rejects(() => acquireRunLock(lockPath, "run-b"), /already active/u)
-  await first.release()
+  await first.release(async () => () => undefined)
   const second = await acquireRunLock(lockPath, "run-b")
-  await second.release()
+  await second.release(async () => () => undefined)
 })
 
 test("local evidence never creates a release VALIDATED marker", async (t) => {
