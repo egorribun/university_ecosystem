@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
@@ -93,6 +93,26 @@ test("validator rejects source or generated package drift", async () => {
           ],
         }),
       /source inventory drift/i
+    )
+  })
+})
+
+test("validator rejects unexpected provenance metadata fields", async () => {
+  await withFixture(async (root) => {
+    const sourceFiles = [
+      "rust-crypto/Cargo.toml",
+      "rust-crypto/Cargo.lock",
+      "rust-crypto/src/lib.rs",
+    ]
+    await writeSourceProvenance(root, { sourceFiles })
+    const metadataPath = path.join(root, PROVENANCE_FILENAME)
+    const metadata = JSON.parse(await readFile(metadataPath, "utf8"))
+    metadata.unexpected = "not part of the integrity contract"
+    await writeFile(metadataPath, `${JSON.stringify(metadata)}\n`, "utf8")
+
+    await assert.rejects(
+      () => validateSourceProvenance(root, { sourceFiles }),
+      /unexpected provenance metadata field/i
     )
   })
 })

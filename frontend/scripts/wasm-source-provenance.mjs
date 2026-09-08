@@ -140,6 +140,11 @@ function assertMetadataShape(metadata) {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
     throw new Error(`${PROVENANCE_FILENAME} must contain a JSON object`)
   }
+  const expectedKeys = ["packages", "schema_version", "source_files", "source_tree_sha256"]
+  const actualKeys = Object.keys(metadata).sort(compareCanonicalPaths)
+  if (canonicalJson(actualKeys) !== canonicalJson(expectedKeys)) {
+    throw new Error(`${PROVENANCE_FILENAME} has an unexpected provenance metadata field`)
+  }
   if (metadata.schema_version !== 1) {
     throw new Error(`${PROVENANCE_FILENAME} has an unsupported schema version`)
   }
