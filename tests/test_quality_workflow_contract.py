@@ -2100,7 +2100,7 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
     assert "scripts/mutmut_shard_matrix.py" in matrix_step["run"]
     assert "mutmut_shard_matrix.py groups" in matrix_step["run"]
     assert "--expected-shards 128" in matrix_step["run"]
-    assert "--target-groups 64" in matrix_step["run"]
+    assert "--target-groups 128" in matrix_step["run"]
     assert "scripts/validate_mutmut_group_budgets.py" in matrix_step["run"]
     assert "--output-manifest /tmp/mutmut-group-budgets.json" in matrix_step["run"]
     assert '"include"' in matrix_step["run"]
@@ -2114,10 +2114,10 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
     assert "21,600 - 630 - 90" in matrix_step["run"]
     assert '"${#nonempty_plan_files[@]}" -eq 0' in matrix_step["run"]
     assert "descriptor_count=" in matrix_step["run"]
-    assert '"$descriptor_count" -gt 64' in matrix_step["run"]
+    assert '"$descriptor_count" -gt 128' in matrix_step["run"]
     assert "Mutation matrix capacity" in matrix_step["run"]
     assert (
-        'matrix_summary="Fully validated 128 logical assignments; up to 64 budget-validated physical groups"'
+        'matrix_summary="Fully validated 128 logical assignments; up to 128 budget-validated physical groups"'
         in matrix_step["run"]
     )
     assert (
@@ -2163,7 +2163,7 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
         "MATRIX_SELECTION_SHA256": "${{ matrix.selection_sha256 }}",
         "MATRIX_GROUP_SHA256": "${{ matrix.group_sha256 }}",
         "MATRIX_ESTIMATED_LOAD_MICROS": "${{ matrix.estimated_load_micros }}",
-        "MUTMUT_TARGET_GROUPS": "64",
+        "MUTMUT_TARGET_GROUPS": "128",
     }
     assert '"$MATRIX_GROUP_ID"' in selection_text
     assert '"$MATRIX_LOGICAL_SHARDS"' in selection_text

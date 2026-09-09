@@ -94,7 +94,7 @@ def test_mutation_budget_preserves_complete_logical_inventories() -> None:
         for step in jobs["mutation-tests-universe"]["steps"]
         if isinstance(step, dict)
     )
-    assert "target-groups 64" in "\n".join(
+    assert "target-groups 128" in "\n".join(
         str(step.get("run", ""))
         for step in jobs["mutation-tests-universe"]["steps"]
         if isinstance(step, dict)
