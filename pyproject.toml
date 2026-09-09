@@ -591,6 +591,7 @@ also_copy = [
     ".agents/hooks",
     ".agents/hooks/stop_quality_gate.py",
     ".gitignore",
+    ".gitleaks.toml",
     ".dockerignore",
     ".lighthouserc.js",
     ".trivyignore.yaml",

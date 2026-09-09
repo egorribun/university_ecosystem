@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED_ALSO_COPY = {
+    ".gitleaks.toml",
     "SECURITY.md",
     "security",
     "security/audit-allowlist.yaml",
