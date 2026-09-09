@@ -3156,3 +3156,75 @@ failure on the old source and is not evidence for the commits recorded below.
 The user-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
 `.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
 excluded from source commits.
+
+## 40. Security/dependency closure before fresh CI (2026-09-09; local HEAD `e2a0fce10`)
+
+### 40.1 Current source commits
+
+- `a7c59fb1e` binds every privileged SBOM/report writer and the main
+  vulnerability gate to `refs/heads/main` in addition to the non-PR guard;
+  the PR vulnerability gate remains read-only. This closes the
+  workflow-dispatch trust-boundary path without changing the PR check name.
+- `eb6cfe043` reduces Rust fuzz permissions to `contents: read` and sets
+  `persist-credentials: false` on both checkout steps before executing PR
+  code or using caches.
+- `727c9aed5` makes the checked-in WASM provenance validator reject unknown
+  top-level metadata fields and adds a regression test, preserving the exact
+  source/package byte inventory contract.
+- `43eaab7e6` requires the patched `urllib3>=2.7.0,<2.8` line;
+  `71ae71040` pins the root npm override to `js-yaml^4.3.2`; and
+  `e2a0fce10` upgrades all actual gRPC module requirements, sums and Docker
+  build overrides from 1.83.1 to 1.83.2. No artificial dependency was added
+  to the root, logging, SpiceDB or CLI modules that do not import gRPC.
+
+### 40.2 Verification completed on this SHA
+
+- Focused Python contract/security/Docker suite: **148 passed** using an
+  isolated pre-commit cache. The default Windows cache still has an ACL error
+  opening a cloned `.pre-commit-hooks.yaml`; this is an environment defect,
+  not a skipped hook or a code suppression.
+- WASM/provenance unit tests: **12 passed**; full `npm run test:wasm` suite:
+  **248 passed**; `verify-wasm-artifacts.mjs` and `ensure-wasm.mjs` pass.
+- Frontend typecheck, lint, production client+SSR/PWA build and post-security
+  WASM checks pass. The dependency-refresh canonical `npm run test:ci` run
+  completed **651/651 files, 6656/6656 tests, zero unhandled errors, 100%**
+  statements/branches/functions/lines; the new provenance test is additionally
+  covered by the 248-test WASM suite.
+- Python `uv lock --check` and the frozen OSV batch/audit allowlist pass;
+  root `npm ci --ignore-scripts --no-audit` and root `npm audit
+  --package-lock-only --audit-level=high` pass with zero high/critical/
+  moderate findings. Frontend audit likewise has zero high/critical findings;
+  only seven low AI-SDK/MSW transitive advisories remain and no breaking
+  downgrade was applied without compatibility evidence.
+- All five tracked Go modules pass `go test ./...`, `go mod tidy -diff` and
+  `go mod verify`; local tests used Go 1.26.5 while the security/build
+  workflows explicitly install patched Go 1.26.6. Docker contract tests pass
+  with the 1.83.2 overrides. Isolated full pre-commit passes Ruff,
+  detect-secrets, gitleaks/hardcoded-secrets, Bandit, mypy, no-Python2-except,
+  actionlint, Semgrep and Renovate validation.
+
+### 40.3 Fresh-CI boundary and remaining work
+
+1. Push exactly `e2a0fce10136f43e1fde59ad7605f18fa1876f04` (plus any subsequent
+   contract/documentation commits) to `origin/egorribun`; old run
+   `34287653082` at `752dabf9f` remains stale and is never reused.
+2. Re-query GitHub Dependabot after the rescan. Alerts #125/#139/#140–#143,
+   #128–#130/#134 and #131–#138 should close only from the patched manifests;
+   alerts #117/#107 remain historical `not_used` dismissals. Any still-open
+   high/critical alert requires another fixed-version investigation.
+3. Await every new matrix/companion workflow to terminal state and download
+   all artifacts. Validate current source/tested-merge SHA, report hashes,
+   full coverage/mutation denominators, Go race/sanitizer/fuzz, Pact,
+   Schemathesis, Lighthouse, E2E, CodeQL, SBOM and performance evidence.
+4. Keep CI fan-out unchanged until the required three comparable green runs
+   prove a safe under-20-job optimization; no inventory reduction, exclusion,
+   quarantine or unproven suppression is allowed.
+5. External release gates are still intentionally open: merge-to-main
+   recertification, exact-six immutable image/SBOM/provenance/attestation
+   producer, digest Docker smoke, Kubernetes/TLS/ExternalSecrets/
+   observability staging, real-device CWV, chaos/restart/rollback,
+   production release and final SHA-bound `AUDIT_QUALITY_CLOSURE_<sha>.md`.
+
+User-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
+`.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
+excluded from all source commits.
