@@ -92,6 +92,22 @@ async def test_count_resets_rls_bypass_when_query_fails():
     assert migrate_passwords.bypass_rls_ctx.get() is False
 
 
+@pytest.mark.asyncio
+async def test_report_bcrypt_users_rejects_negative_limit() -> None:
+    with pytest.raises(ValueError, match="limit must be zero or positive"):
+        await migrate_passwords._report_bcrypt_users(limit=-1, show_ids=True)
+
+
+@pytest.mark.asyncio
+async def test_report_bcrypt_users_zero_limit_skips_database_query() -> None:
+    with patch.object(migrate_passwords, "_privileged_session") as session_factory:
+        assert (
+            await migrate_passwords._report_bcrypt_users(limit=0, show_ids=True) == []
+        )
+
+    session_factory.assert_not_called()
+
+
 def test_report_is_count_only_without_explicit_id_opt_in():
     with (
         patch.object(
