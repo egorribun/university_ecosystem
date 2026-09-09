@@ -394,7 +394,9 @@ dev = [
   "pre-commit>=4.5.1",
   "bandit[toml]>=1.9.4",
   "pytest>=9.0.3",
-  "pytest-asyncio>=1.3.0",
+  # pytest-asyncio 1.4.0 removes imports of Python 3.14-deprecated asyncio
+  # aliases, so strict warning-as-error collection remains clean on 3.14.
+  "pytest-asyncio>=1.4.0",
   "pytest-cov>=7.1.0",
   # Mutation workers receive hundreds of mapped tests. Bound a single mutant-
   # induced hang so pytest classifies it as killed before mutmut's 15x watchdog

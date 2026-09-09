@@ -5,6 +5,7 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 import tomllib
 from copy import deepcopy
 from pathlib import Path
@@ -1180,6 +1181,25 @@ def test_dependency_audit_scanners_and_rust_policy_are_exactly_pinned() -> None:
     }
     assert DEPENDENCY_AUDIT_VALIDATOR_PATH.is_file()
     assert OSV_BATCH_AUDIT_PATH.is_file()
+
+
+def test_pytest_asyncio_import_is_clean_under_python314_deprecation_errors() -> None:
+    """Keep the Python 3.14 test runner free of import-time deprecation errors."""
+
+    result = subprocess.run(  # noqa: S603 -- trusted interpreter, fixed import probe
+        [
+            sys.executable,
+            "-W",
+            "error::DeprecationWarning",
+            "-c",
+            "import pytest_asyncio",
+        ],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_sbom_python_and_rust_audits_capture_then_validate_reports() -> None:
