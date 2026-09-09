@@ -44,6 +44,14 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Setup Rust toolchain
+        # Keep E2E's same-run producer byte-identical to the checked-in
+        # packages and the frontend producer despite hosted-image updates.
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # pinned action
+        with:
+          toolchain: 1.97.1
+          targets: wasm32-unknown-unknown
+
       - name: Install wasm-pack
         uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
         with:
@@ -54,6 +62,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          rustc --version
+          cargo --version
+          wasm-pack --version
           rustup target add wasm32-unknown-unknown
           rustup target list --installed | grep -Fxq "wasm32-unknown-unknown"
           for attempt in 1 2 3; do

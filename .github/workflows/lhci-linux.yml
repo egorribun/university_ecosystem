@@ -114,6 +114,14 @@ jobs:
         with:
           tool: wasm-pack@0.13.1
 
+      - name: Setup Rust toolchain
+        # Reproduce the checked-in WASM bytes independently of runner image
+        # updates and keep Lighthouse's build input deterministic.
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # pinned action
+        with:
+          toolchain: 1.97.1
+          targets: wasm32-unknown-unknown
+
       - name: Build WASM modules
         run: |
           wasm-pack build rust-crypto --target web

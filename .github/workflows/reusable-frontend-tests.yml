@@ -48,6 +48,16 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
+      - name: Setup Rust toolchain
+        # Pin the compiler that produced the checked-in WASM bytes.  The
+        # hosted runner's `stable` channel is mutable and a compiler update
+        # changes optimized binaries, which must fail closed at provenance
+        # validation rather than silently replacing the release artifact.
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # pinned action
+        with:
+          toolchain: 1.97.1
+          targets: wasm32-unknown-unknown
+
       - name: Install wasm-pack
         uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
         with:
@@ -56,6 +66,9 @@ jobs:
       - name: Build immutable WASM modules
         run: |
           set -euo pipefail
+          rustc --version
+          cargo --version
+          wasm-pack --version
           rustup target add wasm32-unknown-unknown
           rustup target list --installed | grep -Fxq "wasm32-unknown-unknown"
           crypto_status=0

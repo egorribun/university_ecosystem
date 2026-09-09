@@ -182,6 +182,14 @@ jobs:
         with:
           tool: wasm-pack@0.13.1
 
+      - name: Setup Rust toolchain
+        # Keep the visual-audit build aligned with the canonical provenance
+        # producer rather than the mutable hosted `stable` channel.
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # pinned action
+        with:
+          toolchain: 1.97.1
+          targets: wasm32-unknown-unknown
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
