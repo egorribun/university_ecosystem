@@ -31,13 +31,13 @@ def test_gitleaks_allowlist_contains_only_existing_lockfile_paths() -> None:
     assert "regexes" not in allowlist
 
 
-def test_gitleaks_scans_main_and_active_development_branch_pushes() -> None:
-    """Direct pushes to the maintained branch must receive the same scan."""
+def test_gitleaks_scans_main_pushes_and_pull_requests_without_duplicate_runs() -> None:
+    """The protected branch and PR receive one authoritative scan each."""
 
     workflow = yaml.safe_load(GITLEAKS_WORKFLOW_PATH.read_text(encoding="utf-8"))
     triggers = _workflow_triggers(workflow)
 
-    assert triggers["push"]["branches"] == ["main", "egorribun"]
+    assert triggers["push"]["branches"] == ["main"]
     # ``pull_request.branches`` filters the base branch, so PRs into main stay
-    # covered without duplicating scans for the active source branch.
+    # covered without duplicating the push scan on the source branch.
     assert triggers["pull_request"]["branches"] == ["main"]
