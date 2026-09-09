@@ -38,3 +38,12 @@ def test_tsan_canary_synchronizes_start_before_unsynchronized_writes() -> None:
     assert "pthread_barrier_t" in source
     assert "pthread_barrier_wait" in source
     assert "volatile int shared_value" in source
+
+
+def test_tsan_canary_disables_pie_for_stable_tsan_address_space() -> None:
+    """PIE can make libtsan silently miss the canary on hosted Linux images."""
+
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert "-fno-pie" in script
+    assert "-no-pie" in script

@@ -85,7 +85,11 @@ cleanup_tsan_canary() {
   rm -f -- "${TSAN_CANARY_BIN}" "${TSAN_CANARY_LOG}"
 }
 trap cleanup_tsan_canary EXIT
-"${TSAN_CC}" -fsanitize=thread -fno-omit-frame-pointer -O1 -g \
+# Ubuntu hosted runners build PIE executables by default.  libtsan can then
+# reserve a conflicting address range and either miss the canary race or abort
+# before producing a diagnostic.  Keep the probe non-PIE so the runtime has a
+# stable, deterministic address space on every supported runner image.
+"${TSAN_CC}" -fsanitize=thread -fno-omit-frame-pointer -fno-pie -no-pie -O1 -g \
   "${TSAN_CANARY_SOURCE}" -pthread -o "${TSAN_CANARY_BIN}"
 set +e
 TSAN_OPTIONS="halt_on_error=1:exitcode=66:report_signal_unsafe=0" \
