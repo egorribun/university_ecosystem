@@ -53,6 +53,31 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
+      # Helm dependencies are generated (and ignored by Git), but the
+      # isolated mutmut tree copies the chart directory as a contract input.
+      # Build the lock-bound archives before mutmut creates that tree so
+      # chart-lock tests see the exact reviewed dependency set on a clean
+      # scheduled checkout as well as on a developer worktree.
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Resolve Helm chart dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem/; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
+
       - name: Collect full mutmut stats shard
         run: |
           rm -rf mutants
@@ -216,6 +241,30 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --group dev
+
+      # Recreate the ignored chart archives in every execution checkout. The
+      # full mutation runner regenerates mutmut's isolated tree and executes
+      # infrastructure contract tests inside it, so relying on the stats
+      # producer's filesystem would make the result non-reproducible.
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Resolve Helm chart dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem/; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       # The preflight job merges the isolated stats populations once, reduces
       # the primary map monotonically, and rejects any shard that cannot fit

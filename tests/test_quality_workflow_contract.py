@@ -3645,6 +3645,12 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     )
     assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     stats_steps = stats_job["steps"]
+    stats_helm = next(step for step in stats_steps if step.get("name") == "Set up Helm")
+    stats_dependencies = next(
+        step
+        for step in stats_steps
+        if step.get("name") == "Resolve Helm chart dependencies"
+    )
     stats_step = next(
         step
         for step in stats_steps
@@ -3677,6 +3683,30 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     )
     stats_script = stats_step["run"]
     run_script = mutation_steps[run_step_index]["run"]
+
+    assert stats_helm["uses"].startswith("azure/setup-helm@")
+    assert stats_helm["with"] == {"version": "v3.17.0"}
+    assert (
+        "helm dependency build charts/university-ecosystem/"
+        in stats_dependencies["run"]
+    )
+    assert stats_steps.index(stats_dependencies) < stats_steps.index(stats_step)
+
+    mutation_helm = next(
+        step for step in mutation_steps if step.get("name") == "Set up Helm"
+    )
+    mutation_dependencies = next(
+        step
+        for step in mutation_steps
+        if step.get("name") == "Resolve Helm chart dependencies"
+    )
+    assert mutation_helm["uses"].startswith("azure/setup-helm@")
+    assert mutation_helm["with"] == {"version": "v3.17.0"}
+    assert (
+        "helm dependency build charts/university-ecosystem/"
+        in mutation_dependencies["run"]
+    )
+    assert mutation_steps.index(mutation_dependencies) < run_step_index
 
     assert "rm -rf mutants" in stats_script
     assert "scripts/mutmut_stats_shard.py" in stats_script
