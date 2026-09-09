@@ -29,6 +29,9 @@ REQUIRED_ALSO_COPY = {
     "k8s/ingress.yaml",
     "k8s/secrets-example.yaml",
     "k8s/README.md",
+    "native/rust_ext/fuzz/fuzz_targets",
+    "native/rust_ext/Cargo.toml",
+    "native/rust_ext/fuzz/Cargo.toml",
 }
 
 
@@ -40,6 +43,11 @@ def test_mutmut_also_copy_covers_contract_inputs() -> None:
 
     configured = set(project["tool"]["mutmut"]["also_copy"])
     assert REQUIRED_ALSO_COPY <= configured
+    # Copy only the manifests needed by the fuzz contract. Copying the whole
+    # native/rust_ext tree would pull ignored target/ build outputs into every
+    # isolated mutmut checkout and make the mutation lane needlessly huge.
+    assert "native/rust_ext" not in configured
+    assert "native/rust_ext/fuzz" not in configured
 
     missing = sorted(path for path in REQUIRED_ALSO_COPY if not (ROOT / path).exists())
     assert not missing, f"also_copy contract inputs are missing: {missing}"
@@ -62,6 +70,8 @@ def test_mutmut_also_copy_creates_file_parents_before_exact_files() -> None:
         "k8s/ingress.yaml": "k8s/kyverno",
         "k8s/secrets-example.yaml": "k8s/kyverno",
         "k8s/README.md": "k8s/kyverno",
+        "native/rust_ext/Cargo.toml": "native/rust_ext/fuzz/fuzz_targets",
+        "native/rust_ext/fuzz/Cargo.toml": "native/rust_ext/fuzz/fuzz_targets",
     }
     for file_path, parent in parent_providers.items():
         assert configured.index(parent) < configured.index(file_path), file_path

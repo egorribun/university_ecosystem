@@ -571,6 +571,9 @@ pytest_add_cli_args_test_selection = [
 #   - test_husky_fail_closed        → .husky/pre-commit (hook policy)
 #   - test_secrets_baseline_paths   → .secrets.baseline (detect-secrets
 #                                      wrapper integration contract)
+#   - test_rust_fuzz_tsan_contract  → the two native/rust_ext Cargo manifests
+#                                      (the fuzz_targets directory supplies
+#                                      their destination parents)
 # Copy the repository-contract paths into the isolated tree so the full nightly
 # run can measure them without a false collection failure. The mutation-score
 # parser contract imports `scripts/check_mutation_score.py`; copying its parent
@@ -653,6 +656,13 @@ also_copy = [
     # copy their common parent because mutmut's sandbox copier needs the
     # parent directory present for nested repository inputs.
     "services",
+    # Rust fuzz contract tests inspect both manifests. Use the small
+    # fuzz_targets directory as a parent provider so the exact Cargo files
+    # can be copied without dragging ignored native target/ build trees into
+    # every isolated mutmut checkout.
+    "native/rust_ext/fuzz/fuzz_targets",
+    "native/rust_ext/Cargo.toml",
+    "native/rust_ext/fuzz/Cargo.toml",
     "crates/pyo3-sanitizer/src",
     "frontend/scripts",
     "frontend/openapi.json",
