@@ -68,6 +68,14 @@ def test_shared_e2e_wasm_producer_is_immutable_and_fail_closed() -> None:
     )
     assert checkout["with"]["persist-credentials"] is False
 
+    wasm_opt = _step(build, "Install pinned wasm-opt")
+    assert "binaryen-$binaryen_version-x86_64-linux.tar.gz" in wasm_opt["run"]
+    assert (
+        "3dc677006555b355ea2da5e82602065a161d5e83eaefd3f759afa00b96e83212"  # pragma: allowlist secret -- public Binaryen release checksum
+        in wasm_opt["run"]
+    )
+    assert "GITHUB_PATH" in wasm_opt["run"]
+
     publish = _step(build, "Write immutable WASM provenance")
     publish_run = str(publish["run"])
     for required in (

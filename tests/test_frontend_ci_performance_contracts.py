@@ -38,6 +38,13 @@ def test_frontend_wasm_is_built_once_and_reused_by_all_consumers() -> None:
 
     assert producer["name"] == "Build WASM modules"
     assert producer["timeout-minutes"] == 15
+    wasm_opt = _step(producer, "Install pinned wasm-opt")
+    assert "binaryen-$binaryen_version-x86_64-linux.tar.gz" in wasm_opt["run"]
+    assert (
+        "3dc677006555b355ea2da5e82602065a161d5e83eaefd3f759afa00b96e83212"  # pragma: allowlist secret -- public Binaryen release checksum
+        in wasm_opt["run"]
+    )
+    assert "GITHUB_PATH" in wasm_opt["run"]
     build = _step(producer, "Build immutable WASM modules")
     assert build["run"].count("wasm-pack build") == 2
     assert "wasm-pack build rust-crypto --target web --release" in build["run"]
@@ -121,6 +128,16 @@ def test_frontend_wasm_build_pins_the_artifact_toolchain() -> None:
     }
     build_run = _step(producer, "Build immutable WASM modules")["run"]
     assert "rustc --version" in build_run
+
+
+def test_frontend_wasm_build_uses_pinned_binaryen_before_system_wasm_opt() -> None:
+    workflow = _load(FRONTEND_WORKFLOW_PATH)
+    producer = workflow["jobs"]["wasm-build"]  # type: ignore[index]
+    install = _step(producer, "Install pinned wasm-opt")
+    run = install["run"]
+    assert "version_117" in run
+    assert "sha256sum --check --strict" in run
+    assert "GITHUB_PATH" in run
 
 
 def test_frontend_typecheck_runs_once_in_a_required_static_gate() -> None:
