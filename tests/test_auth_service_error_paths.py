@@ -128,6 +128,37 @@ async def test_perform_password_reset_naive_expired_token(auth_service, request_
     )
 
 
+async def test_perform_password_reset_locked_token_disappears(
+    auth_service, request_mock
+):
+    """A token consumed during the user-lock handoff must be rejected (L269-278)."""
+
+    user_id = uuid.uuid4()
+    discovered = MagicMock()
+    discovered.user_id = user_id
+    discovered.expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    auth_service.auth_repo.get_valid_password_reset_token = AsyncMock(
+        side_effect=[discovered, None]
+    )
+    user = MagicMock(spec=models.User)
+    user.id = user_id
+    user.is_active = True
+    auth_service.user_repo.get = AsyncMock(return_value=user)
+
+    with pytest.raises(HTTPException) as exc:
+        await auth_service.perform_password_reset(
+            "consumed-in-flight", "new-password-888", request_mock
+        )
+
+    assert exc.value.status_code == 400
+    auth_service.audit.log.assert_called_with(
+        "password.reset.failed",
+        request_mock,
+        level=logging.WARNING,
+        reason="token_invalid",
+    )
+
+
 async def test_perform_password_reset_hibp_rejection(
     auth_service, request_mock, monkeypatch
 ):
