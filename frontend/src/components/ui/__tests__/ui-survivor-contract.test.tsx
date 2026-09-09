@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -45,16 +45,21 @@ import {
 } from "@/app/globalErrorHandlers"
 import { ContentCard } from "@/components/ui/ContentCard"
 import { Checkbox } from "@/components/ui/Checkbox"
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
+import { Dialog } from "@/components/ui/Dialog"
 import { MediaSlot } from "@/components/ui/MediaSlot"
+import { NotificationRelevanceScore } from "@/components/ui/NotificationRelevanceScore"
 import NewsCardSkeleton, {
   NewsCardSkeleton as NamedNewsCardSkeleton,
 } from "@/components/ui/NewsCardSkeleton"
+import { ProfileCardSkeleton } from "@/components/ui/ProfileCardSkeleton"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/RadioGroup"
 import { DataTablePagination } from "@/components/ui/data-table/DataTablePagination"
 import type { DataTableInstance } from "@/components/ui/data-table/dataTableFeatures"
 import { FadeIn } from "@/components/ui/motion/FadeIn"
 import { ScaleIn } from "@/components/ui/motion/ScaleIn"
 import { motion as motionTokens } from "@/theme/tokens"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 type Listener = (event: unknown) => void
 
@@ -86,6 +91,7 @@ afterEach(() => {
   cleanup()
   resetGlobalErrorHandlersForTesting()
   motionState.calls.length = 0
+  document.body.style.overflow = ""
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
 })
@@ -483,5 +489,267 @@ describe("global error handler survivor contract", () => {
       "[GlobalErrors] Promise rejected with a non-error value",
       null
     )
+  })
+})
+
+describe("Dialog survivor contract", () => {
+  it("gates portal content, wires ARIA, locks body scroll, and restores trigger focus", async () => {
+    document.body.style.overflow = "scroll"
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const view = render(
+      <>
+        <button type="button">Open dialog</button>
+        <Dialog open={false} onClose={onClose} title="Record details" subtitle="Read-only">
+          <p>Dialog content</p>
+        </Dialog>
+      </>
+    )
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    const trigger = screen.getByRole("button", { name: "Open dialog" })
+    trigger.focus()
+
+    view.rerender(
+      <>
+        <button type="button">Open dialog</button>
+        <Dialog open onClose={onClose} title="Record details" subtitle="Read-only">
+          <p>Dialog content</p>
+        </Dialog>
+      </>
+    )
+
+    const dialog = await screen.findByRole("dialog", { name: "Record details" })
+    expect(dialog).toHaveAttribute("aria-modal", "true")
+    const labelledBy = dialog.getAttribute("aria-labelledby")
+    const describedBy = dialog.getAttribute("aria-describedby")
+    expect(labelledBy).toBeTruthy()
+    expect(describedBy).toBeTruthy()
+    expect(document.getElementById(labelledBy!)).toHaveTextContent("Record details")
+    expect(document.getElementById(describedBy!)).toHaveTextContent("Read-only")
+    expect(screen.getByText("Dialog content")).toBeInTheDocument()
+    expect(document.body.style.overflow).toBe("hidden")
+    await waitFor(() => expect(dialog).toContainElement(document.activeElement as HTMLElement))
+
+    await user.click(screen.getByRole("button", { name: "Close" }))
+    expect(onClose).toHaveBeenCalledOnce()
+
+    view.rerender(
+      <>
+        <button type="button">Open dialog</button>
+        <Dialog open={false} onClose={onClose} title="Record details" subtitle="Read-only">
+          <p>Dialog content</p>
+        </Dialog>
+      </>
+    )
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(document.body.style.overflow).toBe("scroll")
+    await waitFor(() => expect(screen.getByRole("button", { name: "Open dialog" })).toHaveFocus())
+  })
+
+  it("preserves explicit accessible names and size/mobile/footer geometry", async () => {
+    render(
+      <Dialog
+        open
+        onClose={vi.fn()}
+        ariaLabel="Keyboard shortcuts"
+        size="lg"
+        fullScreenOnMobile
+        className="dialog-custom"
+        bodyClassName="body-custom"
+        footerClassName="footer-custom"
+        footer={<button type="button">Apply</button>}
+      >
+        <p>Shortcut list</p>
+      </Dialog>
+    )
+
+    const dialog = await screen.findByRole("dialog", { name: "Keyboard shortcuts" })
+    expect(dialog).not.toHaveAttribute("aria-labelledby")
+    expect(dialog).toHaveClass(
+      "sm:max-w-[42rem]",
+      "h-dvh",
+      "max-h-dvh",
+      "rounded-none",
+      "dialog-custom"
+    )
+    expect(dialog.querySelector(".body-custom")).toHaveTextContent("Shortcut list")
+    expect(dialog.querySelector(".footer-custom")).toContainElement(
+      screen.getByRole("button", { name: "Apply" })
+    )
+    expect(screen.getByRole("button", { name: "Close" })).toHaveClass("h-11", "w-11")
+  })
+
+  it("honors initialFocus=false without moving focus to dialog content", async () => {
+    render(
+      <Dialog open onClose={vi.fn()} title="Focus policy" initialFocus={false}>
+        <button type="button">Dialog target</button>
+      </Dialog>
+    )
+
+    const dialog = await screen.findByRole("dialog", { name: "Focus policy" })
+    expect(dialog).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Dialog target" })).not.toHaveFocus()
+  })
+})
+
+describe("ConfirmDialog survivor contract", () => {
+  const makeProps = () => ({
+    open: true,
+    title: "Delete item?",
+    message: "This cannot be undone.",
+    confirmText: "Delete",
+    cancelText: "Cancel",
+    onConfirm: vi.fn(),
+    onCancel: vi.fn(),
+  })
+
+  it("renders an alertdialog with fully linked title and message", () => {
+    render(<ConfirmDialog {...makeProps()} />)
+    const dialog = screen.getByRole("alertdialog")
+    expect(dialog).toHaveAttribute("aria-modal", "true")
+    const labelledBy = dialog.getAttribute("aria-labelledby")
+    const describedBy = dialog.getAttribute("aria-describedby")
+    expect(labelledBy).toBeTruthy()
+    expect(describedBy).toBeTruthy()
+    expect(document.getElementById(labelledBy!)).toHaveTextContent("Delete item?")
+    expect(document.getElementById(describedBy!)).toHaveTextContent("This cannot be undone.")
+    expect(dialog.parentElement).toHaveAttribute("role", "presentation")
+  })
+
+  it.each([
+    ["default", "bg-primary-main"],
+    ["warning", "bg-warning-text"],
+    ["danger", "bg-error-text"],
+  ] as const)("keeps the %s confirm color contract", (variant, colorClass) => {
+    render(<ConfirmDialog {...makeProps()} variant={variant} />)
+    const confirm = screen.getByRole("button", { name: "Delete" })
+    expect(confirm).toHaveClass(colorClass, "px-6", "py-3", "focus-ring-premium")
+    expect(confirm).not.toHaveClass(
+      ...(["bg-primary-main", "bg-warning-text", "bg-error-text"].filter(
+        (candidate) => candidate !== colorClass
+      ) as [string, ...string[]])
+    )
+  })
+
+  it("disables both actions and exposes the loading state without losing labels", async () => {
+    const props = makeProps()
+    const user = userEvent.setup()
+    const view = render(<ConfirmDialog {...props} isLoading />)
+    const cancel = screen.getByRole("button", { name: "Cancel" })
+    const confirm = screen.getByRole("button", { name: "Delete" })
+    expect(cancel).toBeDisabled()
+    expect(confirm).toBeDisabled()
+    expect(confirm).toHaveAttribute("aria-busy", "true")
+    expect(confirm.querySelector(".animate-spin")).toBeInTheDocument()
+
+    await user.click(cancel)
+    await user.click(confirm)
+    expect(props.onCancel).not.toHaveBeenCalled()
+    expect(props.onConfirm).not.toHaveBeenCalled()
+
+    view.rerender(<ConfirmDialog {...props} isLoading={false} />)
+    expect(screen.getByRole("button", { name: "Cancel" })).not.toBeDisabled()
+    expect(screen.getByRole("button", { name: "Delete" })).not.toBeDisabled()
+    expect(screen.getByRole("button", { name: "Delete" })).not.toHaveAttribute("aria-busy", "true")
+  })
+
+  it("dispatches the correct action and gates the closed state", async () => {
+    const props = makeProps()
+    const user = userEvent.setup()
+    const view = render(<ConfirmDialog {...props} open={false} />)
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+
+    view.rerender(<ConfirmDialog {...props} open />)
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
+    await user.click(screen.getByRole("button", { name: "Delete" }))
+    expect(props.onCancel).toHaveBeenCalledOnce()
+    expect(props.onConfirm).toHaveBeenCalledOnce()
+  })
+})
+
+describe("NotificationRelevanceScore survivor contract", () => {
+  it.each([
+    ["high", "High relevance", "bg-brand", [true, false, false]],
+    ["medium", "Medium relevance", "bg-warning-text", [true, true, false]],
+    ["low", "Low relevance", "bg-(--text-tertiary)", [true, true, true]],
+  ] as const)(
+    "renders translated labels and exact dot progression for %s",
+    async (relevance, label, activeColor, activeDots) => {
+      window.localStorage.setItem("ue:language", "en")
+      const { container } = await renderWithRouter({
+        ui: () => <NotificationRelevanceScore relevance={relevance} />,
+        authProvider: false,
+      })
+
+      const indicator = await screen.findByLabelText(label)
+      expect(indicator).toHaveAttribute("title", label)
+      expect(indicator).toHaveClass("flex", "items-center", "gap-1")
+      expect(container.querySelectorAll('[aria-hidden="true"]')).toHaveLength(3)
+      const dots = Array.from(indicator.querySelectorAll<HTMLElement>('span[aria-hidden="true"]'))
+      expect(dots).toHaveLength(3)
+      expect(dots.map((dot) => dot.classList.contains(activeColor))).toEqual(activeDots)
+      expect(
+        dots.map((dot) => dot.classList.contains("bg-(--text-tertiary)/(--opacity-faint)"))
+      ).toEqual(activeDots.map((active) => !active))
+    }
+  )
+
+  it("forwards custom styling without changing the accessible translation", async () => {
+    window.localStorage.setItem("ue:language", "en")
+    const { container } = await renderWithRouter({
+      ui: () => <NotificationRelevanceScore relevance="high" className="relevance-custom" />,
+      authProvider: false,
+    })
+    const indicator = await screen.findByLabelText("High relevance")
+    expect(container.querySelector("div.relevance-custom")).toBe(indicator)
+    expect(indicator).toHaveAttribute("aria-label", "High relevance")
+  })
+})
+
+describe("ProfileCardSkeleton survivor contract", () => {
+  it("keeps translated loading semantics and predictable cover/content geometry", async () => {
+    window.localStorage.setItem("ue:language", "en")
+    await renderWithRouter({
+      ui: () => <ProfileCardSkeleton className="profile-skeleton-custom" />,
+      authProvider: false,
+    })
+    const card = await screen.findByLabelText("Loading profile")
+    expect(card).toHaveAttribute("aria-busy", "true")
+    expect(card).toHaveClass(
+      "rounded-2xl",
+      "border",
+      "bg-input-mix",
+      "overflow-hidden",
+      "profile-skeleton-custom"
+    )
+    expect(card.querySelector(".animate-skeleton-wave")).toHaveClass("h-32", "sm:h-40", "lg:h-48")
+    expect(await screen.findByRole("status", { name: "Loading avatar" })).toHaveStyle({
+      width: "80px",
+      height: "80px",
+    })
+    expect(await screen.findByRole("status", { name: "Loading name" })).toHaveStyle({
+      width: "180px",
+      height: "24px",
+    })
+    expect(card.querySelectorAll('[role="status"]')).toHaveLength(2)
+    expect(card.querySelectorAll('.skeleton[aria-hidden="true"]')).toHaveLength(9)
+    expect(card.querySelectorAll(".flex.flex-col.items-center")).toHaveLength(3)
+  })
+
+  it("omits the cover while retaining avatar overlap fallback geometry", async () => {
+    window.localStorage.setItem("ue:language", "en")
+    await renderWithRouter({
+      ui: () => <ProfileCardSkeleton showCover={false} />,
+      authProvider: false,
+    })
+    const card = await screen.findByLabelText("Loading profile")
+    const content = card.querySelector(".relative")
+    const avatarOffset = content?.querySelector(".mb-4")
+    expect(card.querySelector(".animate-skeleton-wave")).toBeNull()
+    expect(avatarOffset).toHaveClass("mt-4")
+    expect(avatarOffset).not.toHaveClass("-mt-12")
+    expect(await screen.findByRole("status", { name: "Loading avatar" })).toBeInTheDocument()
+    expect(card.querySelectorAll(".flex.flex-col.items-center")).toHaveLength(3)
   })
 })
