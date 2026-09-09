@@ -1,6 +1,7 @@
 from pathlib import Path
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "run_tsan_tests.sh"
+CANARY = SCRIPT.parents[1] / "tests" / "tsan_race_canary.c"
 
 
 def test_tsan_preloads_python_directly_instead_of_uv() -> None:
@@ -27,3 +28,13 @@ def test_tsan_suppresses_only_known_pyo3_argument_adapters() -> None:
 
     assert "race:__pyfunction_batch_detect_conflicts_py" in content
     assert "race:__pyfunction_verify_audit_signature" in content
+
+
+def test_tsan_canary_synchronizes_start_before_unsynchronized_writes() -> None:
+    """The runner canary must make the race observable on every Linux runner."""
+
+    source = CANARY.read_text(encoding="utf-8")
+
+    assert "pthread_barrier_t" in source
+    assert "pthread_barrier_wait" in source
+    assert "volatile int shared_value" in source
