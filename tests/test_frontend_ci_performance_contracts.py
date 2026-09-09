@@ -42,10 +42,9 @@ def test_frontend_wasm_is_built_once_and_reused_by_all_consumers() -> None:
     assert build["run"].count("wasm-pack build") == 2
     assert "wasm-pack build rust-crypto --target web --release" in build["run"]
     assert "wasm-pack build wasm-sanitizer --target web --release" in build["run"]
-    assert "crypto_pid=$!" in build["run"]
-    assert "sanitizer_pid=$!" in build["run"]
-    assert 'wait "$crypto_pid" || crypto_status=$?' in build["run"]
-    assert 'wait "$sanitizer_pid" || sanitizer_status=$?' in build["run"]
+    assert "crypto_pid=$!" not in build["run"]
+    assert "sanitizer_pid=$!" not in build["run"]
+    assert "&" not in build["run"]
     assert "node scripts/verify-wasm-artifacts.mjs" in build["run"]
 
     artifact_name = (
@@ -87,7 +86,7 @@ def test_frontend_wasm_is_built_once_and_reused_by_all_consumers() -> None:
     assert _step(jobs["build"], "Build app")["env"] == {"SKIP_WASM_BUILD": "1"}
 
 
-def test_frontend_wasm_target_is_installed_once_before_parallel_builds() -> None:
+def test_frontend_wasm_target_is_installed_once_before_sequential_builds() -> None:
     workflow = _load(FRONTEND_WORKFLOW_PATH)
     producer = workflow["jobs"]["wasm-build"]  # type: ignore[index]
     build_run = _step(producer, "Build immutable WASM modules")["run"]
@@ -96,12 +95,15 @@ def test_frontend_wasm_target_is_installed_once_before_parallel_builds() -> None
     target_verify = (
         'rustup target list --installed | grep -Fxq "wasm32-unknown-unknown"'
     )
-    first_parallel_build = "wasm-pack build rust-crypto --target web --release &"
+    first_build = "wasm-pack build rust-crypto --target web --release"
+    second_build = "wasm-pack build wasm-sanitizer --target web --release"
 
     assert build_run.count(target_install) == 1
     assert build_run.count(target_verify) == 1
-    assert build_run.index(target_install) < build_run.index(first_parallel_build)
-    assert build_run.index(target_verify) < build_run.index(first_parallel_build)
+    assert build_run.index(target_install) < build_run.index(first_build)
+    assert build_run.index(target_verify) < build_run.index(first_build)
+    assert build_run.index(first_build) < build_run.index(second_build)
+    assert "&" not in build_run
 
 
 def test_frontend_wasm_build_pins_the_artifact_toolchain() -> None:

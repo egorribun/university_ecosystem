@@ -97,10 +97,12 @@ def test_shared_e2e_wasm_producer_is_immutable_and_fail_closed() -> None:
     build_step = _step(build, "Build immutable WASM modules")
     build_run = str(build_step["run"])
     assert build_run.count("wasm-pack build") == 2
-    assert "crypto_pid=$!" in build_run
-    assert "sanitizer_pid=$!" in build_run
-    assert 'wait "$crypto_pid"' in build_run
-    assert 'wait "$sanitizer_pid"' in build_run
+    assert "crypto_pid=$!" not in build_run
+    assert "sanitizer_pid=$!" not in build_run
+    assert not any(line.rstrip().endswith("&") for line in build_run.splitlines())
+    first_build = "wasm-pack build rust-crypto --target web --release"
+    second_build = "wasm-pack build wasm-sanitizer --target web --release"
+    assert build_run.index(first_build) < build_run.index(second_build)
     assert "for attempt in 1 2 3" in build_run
     assert "node scripts/verify-wasm-artifacts.mjs" in build_run
 

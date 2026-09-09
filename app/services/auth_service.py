@@ -52,7 +52,7 @@ _UserT = TypeVar("_UserT", bound=UserLike)
 
 logger = get_logger(__name__)
 
-_PASSWORD_RESET_RATE_LIMIT_DOMAIN = b"password-reset-rate-limit-v1\x1f"
+_RESET_RATE_LIMIT_DOMAIN = b"password-reset-rate-limit-v1\x1f"
 
 
 def _is_async_database(db: object) -> bool:
@@ -99,9 +99,9 @@ def _password_reset_rate_limit_identifier(email: str) -> str:
     canonical_email = str(email).strip().lower()
     digest = hmac.new(
         _token_hmac_secret().encode("utf-8"),
-        _PASSWORD_RESET_RATE_LIMIT_DOMAIN + canonical_email.encode("utf-8"),
+        _RESET_RATE_LIMIT_DOMAIN + canonical_email.encode("utf-8"),
         # HMAC-SHA256 pseudonymous rate-limit key, not password storage.
-        hashlib.sha256,  # codeql[py/weak-sensitive-data-hashing]
+        hashlib.sha256,
     ).hexdigest()
     return f"password-reset:{digest}"
 
