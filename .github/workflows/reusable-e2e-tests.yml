@@ -361,34 +361,7 @@ jobs:
         working-directory: frontend
         env:
           BROWSER: ${{ inputs.browser }}
-        run: |
-          set -euo pipefail
-          # Playwright's --with-deps path invokes apt. Hosted Ubuntu images can
-          # ship an out-of-sync optional Chrome index; disable only that source
-          # so a mirror hash mismatch cannot mask browser E2E evidence.
-          for source in \
-            /etc/apt/sources.list.d/google-chrome.list \
-            /etc/apt/sources.list.d/google-chrome.sources; do
-            if [[ -f "$source" ]]; then
-              sudo mv "$source" "$source.disabled"
-            fi
-          done
-          INSTALL_BROWSER="$BROWSER"
-          if [[ "$INSTALL_BROWSER" == "mobile-webkit" ]]; then
-            INSTALL_BROWSER="webkit"
-          fi
-          for attempt in 1 2 3; do
-            if npx playwright install --with-deps "$INSTALL_BROWSER"; then
-              echo "Playwright browser installed on attempt $attempt"
-              exit 0
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "::error::Playwright installation failed after 3 attempts" >&2
-              exit 1
-            fi
-            echo "Playwright installation failed on attempt $attempt; retrying..." >&2
-            sleep $((attempt * 10))
-          done
+        run: bash ../scripts/ci/install-playwright-with-deps.sh "$BROWSER"
 
       - name: Run database migrations
         run: uv run alembic upgrade head

@@ -264,8 +264,7 @@ jobs:
         # chromium only (wave138 needs that path for axe-core compat); admin
         # smoke (wave165) uses real Chrome for visual fidelity.
         working-directory: frontend
-        run: |
-          npx playwright install --with-deps chromium chrome
+        run: bash ../scripts/ci/install-playwright-with-deps.sh chromium chrome
 
       - name: Start backend
         # Mirrors visual-audit.yml:285-287.

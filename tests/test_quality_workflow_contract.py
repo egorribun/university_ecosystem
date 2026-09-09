@@ -1570,13 +1570,52 @@ def test_e2e_playwright_install_retries_and_ignores_stale_chrome_apt_source() ->
         for step in workflow["jobs"]["e2e"]["steps"]
         if step.get("name") == "Install Playwright"
     )
-    run = install_step["run"]
+    assert install_step["run"].strip() == (
+        'bash ../scripts/ci/install-playwright-with-deps.sh "$BROWSER"'
+    )
 
-    assert "google-chrome.list" in run
-    assert "google-chrome.sources" in run
-    assert "for attempt in 1 2 3" in run
-    assert 'npx playwright install --with-deps "$INSTALL_BROWSER"' in run
-    assert "Playwright installation failed after 3 attempts" in run
+    helper = (
+        REPOSITORY_ROOT / "scripts" / "ci" / "install-playwright-with-deps.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "google-chrome.list" in helper
+    assert "google-chrome.sources" in helper
+    assert "for attempt in 1 2 3" in helper
+    assert 'npx playwright install --with-deps "${browsers[@]}"' in helper
+    assert "Playwright installation failed after 3 attempts" in helper
+
+
+def test_all_linux_playwright_bootstraps_use_the_resilient_helper() -> None:
+    helper = REPOSITORY_ROOT / "scripts" / "ci" / "install-playwright-with-deps.sh"
+    assert helper.is_file()
+    helper_text = helper.read_text(encoding="utf-8")
+    for workflow_path in (
+        E2E_WORKFLOW_PATH,
+        REPOSITORY_ROOT / ".github" / "workflows" / "unauthenticated-routes-smoke.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "admin-smoke-monitoring.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "visual-audit.yml",
+    ):
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        install_steps = [
+            step
+            for job in workflow.get("jobs", {}).values()
+            if isinstance(job, dict)
+            for step in job.get("steps", [])
+            if isinstance(step, dict)
+            and (
+                "playwright install --with-deps" in str(step.get("run", ""))
+                or "install-playwright-with-deps.sh" in str(step.get("run", ""))
+            )
+        ]
+        assert install_steps, f"{workflow_path.name} has no Playwright bootstrap"
+        assert all(
+            "install-playwright-with-deps.sh" in str(step["run"])
+            for step in install_steps
+        )
+
+    assert "set -euo pipefail" in helper_text
+    assert "Acquire::Retries" not in helper_text
+    assert "exit 1" in helper_text
 
 
 def test_cross_browser_navigation_retries_only_transient_abort_errors() -> None:

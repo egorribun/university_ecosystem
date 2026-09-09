@@ -170,7 +170,7 @@ jobs:
       - name: Install Playwright bundled Chromium
         # The runner prefers installed Chrome and falls back to this bundled browser.
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: bash ../scripts/ci/install-playwright-with-deps.sh chromium
 
       - name: Start backend
         run: |

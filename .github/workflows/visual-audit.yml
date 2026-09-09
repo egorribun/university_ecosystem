@@ -281,7 +281,7 @@ jobs:
         # On Linux this distinction is moot for the wall (Linux doesn't have
         # the wall) but we keep bundled chromium for consistency with W138 SW3.
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: bash ../scripts/ci/install-playwright-with-deps.sh chromium
 
       - name: Start backend
         # uvicorn on 127.0.0.1:8000 with --log-level debug + redirect to log file
