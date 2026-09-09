@@ -31,6 +31,21 @@ def test_sql_predicate_filters_before_limit_and_projects_only_ids():
     assert compiled.index("LIKE") < compiled.index("LIMIT")
 
 
+def test_sql_predicate_requires_active_users_and_all_bcrypt_prefixes():
+    """The inventory must never include inactive users or non-bcrypt hashes."""
+
+    statement = select(User.id).where(migrate_passwords._bcrypt_predicate())
+    compiled = str(
+        statement.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    ).lower()
+
+    assert "users.is_active is true" in compiled
+    for prefix in ("$2a$%", "$2b$%", "$2y$%"):
+        assert prefix in compiled
+
+
 def test_cli_has_no_legacy_mutation_or_completion_claims():
     source = inspect.getsource(migrate_passwords)
 
@@ -56,6 +71,29 @@ async def test_count_uses_scalar_count_query_and_resets_rls_context():
         assert await migrate_passwords._count_bcrypt_users() == 0
 
     assert migrate_passwords.bypass_rls_ctx.get() is False
+
+
+@pytest.mark.asyncio
+async def test_count_executes_a_count_query_with_the_bcrypt_predicate():
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    session.__aexit__.return_value = None
+    result = MagicMock()
+    result.scalar_one.return_value = 4
+    session.execute.return_value = result
+
+    with patch.object(migrate_passwords, "async_session", return_value=session):
+        assert await migrate_passwords._count_bcrypt_users() == 4
+
+    statement = session.execute.await_args.args[0]
+    compiled = str(
+        statement.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    ).lower()
+    assert "count(*)" in compiled
+    assert "users.is_active is true" in compiled
+    assert "$2a$%" in compiled
 
 
 @pytest.mark.asyncio
@@ -104,6 +142,14 @@ async def test_report_bcrypt_users_zero_limit_skips_database_query() -> None:
         assert (
             await migrate_passwords._report_bcrypt_users(limit=0, show_ids=True) == []
         )
+
+    session_factory.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_report_bcrypt_users_is_count_only_by_default() -> None:
+    with patch.object(migrate_passwords, "_privileged_session") as session_factory:
+        assert await migrate_passwords._report_bcrypt_users(limit=1) == []
 
     session_factory.assert_not_called()
 
