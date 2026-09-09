@@ -125,6 +125,42 @@ func validIntegrationJob(id string) workflow.ProcessJob {
 	}
 }
 
+func requireNatsAckPendingToSettle(
+	t *testing.T,
+	ctx context.Context,
+	js nats.JetStreamContext,
+) {
+	t.Helper()
+
+	// Msg.Ack publishes asynchronously.  The callback's Temporal invocation
+	// signal therefore only proves that processing completed; the server-side
+	// consumer state may need one request/response turn to observe the ack.
+	// Bound polling by the same five-second processing deadline used by the
+	// subscriber instead of asserting on an immediate eventually-consistent
+	// snapshot or sleeping for an arbitrary duration.
+	ackCtx, cancel := context.WithTimeout(ctx, fileProcessStartTimeout)
+	defer cancel()
+
+	var (
+		info *nats.ConsumerInfo
+		err  error
+	)
+	require.Eventually(t, func() bool {
+		info, err = js.ConsumerInfo(
+			"FILE_EVENTS",
+			fileProcessConsumer,
+			nats.Context(ackCtx),
+		)
+		return err == nil && info != nil && info.NumAckPending == 0
+	}, fileProcessStartTimeout, 10*time.Millisecond,
+		"NATS consumer ack did not settle: info=%+v err=%v", info, err)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	if info != nil {
+		require.Zero(t, info.NumAckPending)
+	}
+}
+
 func TestIntegration_StartNatsSubscriberExecutesWorkflow(t *testing.T) {
 	nc, js, cleanup := startFileProcessStream(t)
 	t.Cleanup(cleanup)
@@ -264,9 +300,7 @@ func TestIntegration_StartNatsSubscriberDelaysTransientRedelivery(t *testing.T) 
 	}
 	second := <-callTimes
 	require.GreaterOrEqual(t, second.Sub(first), fileProcessNakDelay)
-	info, err := js.ConsumerInfo("FILE_EVENTS", fileProcessConsumer)
-	require.NoError(t, err)
-	require.Equal(t, 0, info.NumAckPending)
+	requireNatsAckPendingToSettle(t, ctx, js)
 }
 
 func TestIntegration_StartNatsSubscriberMigratesLegacyDurableInPlace(t *testing.T) {
