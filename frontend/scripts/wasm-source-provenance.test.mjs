@@ -30,6 +30,10 @@ async function withFixture(callback) {
       Buffer.from([0, 97, 115, 109])
     )
     await writeFile(
+      path.join(root, "rust-crypto", "pkg", "uni_wasm_crypto_bg.wasm.d.ts"),
+      "// wasm-bindgen private declaration\n"
+    )
+    await writeFile(
       path.join(root, "wasm-sanitizer", "Cargo.toml"),
       "[package]\nname='sanitizer'\n"
     )
@@ -42,6 +46,10 @@ async function withFixture(callback) {
     await writeFile(
       path.join(root, "wasm-sanitizer", "pkg", "wasm_sanitizer_bg.wasm"),
       Buffer.from([0, 97, 115, 109])
+    )
+    await writeFile(
+      path.join(root, "wasm-sanitizer", "pkg", "wasm_sanitizer_bg.wasm.d.ts"),
+      "// wasm-bindgen private declaration\n"
     )
     await callback(root)
   } finally {
@@ -65,6 +73,8 @@ test("source provenance is deterministic and records source/package hashes", asy
       ["rust-crypto/Cargo.lock", "rust-crypto/Cargo.toml", "rust-crypto/src/lib.rs"]
     )
     assert.equal(first.packages["rust-crypto/pkg/uni_wasm_crypto_bg.wasm"].size, 4)
+    assert.equal(first.packages["rust-crypto/pkg/uni_wasm_crypto_bg.wasm.d.ts"], undefined)
+    assert.equal(first.packages["wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm.d.ts"], undefined)
   })
 })
 

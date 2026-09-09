@@ -1,5 +1,8 @@
 """Regression coverage for fail-closed Alembic revision metadata parsing."""
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -96,3 +99,31 @@ def test_ci_uses_the_fail_closed_revision_metadata_parser() -> None:
         in workflow
     )
     assert 're.search(r"^revision' not in workflow
+
+
+def test_alembic_history_does_not_require_runtime_secrets() -> None:
+    """Revision discovery must work before application configuration exists."""
+
+    environment = os.environ.copy()
+    environment["ENV_FILE_PATH"] = ""
+    for name in (
+        "DATABASE_URL",
+        "SECRET_KEY",
+        "ENVIRONMENT",
+        "APP_PROCESS_ROLE",
+        "REVOCATION_REDIS_URL",
+        "CACHE_REDIS_URL",
+    ):
+        environment.pop(name, None)
+
+    result = subprocess.run(  # noqa: S603 - fixed local Alembic module invocation
+        [sys.executable, "-m", "alembic", "history", "--verbose"],
+        cwd=Path(__file__).resolve().parents[1],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "202503150001" in result.stdout

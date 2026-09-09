@@ -2,7 +2,7 @@ name: Gitleaks
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "egorribun" ]
   pull_request:
     branches: [ "main" ]
 

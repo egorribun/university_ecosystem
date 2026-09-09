@@ -6,7 +6,6 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from alembic import op
-from app.utils.encryption import decrypt_string, encrypt_string
 
 # revision identifiers, used by Alembic.
 revision: str = "202503150001"
@@ -25,6 +24,10 @@ def _column_exists(bind, table_name: str, column_name: str) -> bool:
 
 
 def _encrypt_existing_tokens(session: Session) -> None:
+    # Keep runtime configuration out of Alembic's revision discovery path.
+    # The helper is imported only when the data migration actually runs.
+    from app.utils.encryption import encrypt_string
+
     bind = session.get_bind()
     if not (
         _column_exists(bind, "users", "spotify_access_token")
@@ -55,6 +58,10 @@ def _encrypt_existing_tokens(session: Session) -> None:
 
 
 def _decrypt_existing_tokens(session: Session) -> None:
+    # Keep runtime configuration out of Alembic's revision discovery path.
+    # The helper is imported only when the data migration actually runs.
+    from app.utils.encryption import decrypt_string
+
     bind = session.get_bind()
     if not (
         _column_exists(bind, "users", "spotify_access_token")

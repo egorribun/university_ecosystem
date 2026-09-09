@@ -25,6 +25,12 @@ const DEFAULT_SOURCE_FILES = [
 
 const PACKAGE_ROOTS = ["rust-crypto/pkg", "wasm-sanitizer/pkg"]
 
+// wasm-bindgen emits these private low-level declarations next to the public
+// package typings.  They are ignored by each package's .gitignore and are not
+// listed in package.json#files, so they are absent from a clean checkout.  Do
+// not bind checkout validity to an optional local build by hashing them.
+const OPTIONAL_WASM_BINDGEN_DECLARATION = /\.wasm\.d\.ts$/
+
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex")
 }
@@ -76,6 +82,7 @@ async function packageRecords(root, packageRoot) {
   async function visit(directory, prefix) {
     const entries = await readdir(directory, { withFileTypes: true })
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      if (OPTIONAL_WASM_BINDGEN_DECLARATION.test(entry.name)) continue
       const entryRelative = `${prefix}/${entry.name}`
       const entryPath = path.join(directory, entry.name)
       if (entry.isSymbolicLink()) throw new Error(`symlink in WASM package: ${entryRelative}`)

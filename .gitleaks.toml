@@ -1,7 +1,5 @@
 title = "university ecosystem gitleaks configuration"
 
 [allowlist]
-description = "Allow development placeholders and lock files that are not real secrets"
+description = "Allow generated dependency lockfiles; source and example files remain scanned"
 paths = ["uv.lock", "package-lock.json", "go.sum"]
-files = ["root/.env.example"]
-regexes = ["""(?m)^SECRET_KEY=your_super_secret_key_here$"""]
