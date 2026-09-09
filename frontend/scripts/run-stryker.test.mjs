@@ -2752,6 +2752,13 @@ test("isolates the recurrent unmeasured API/core timeout graph in dedicated firs
   assert.equal(new Set(assignments).size, assignments.length)
   assert.deepEqual(plan, reversePlan)
 
+  const isRegularPattern = (pattern) =>
+    regularFiles.some(([file]) => pattern === file || pattern.startsWith(`${file}:`))
+  const regularStart = plan.findIndex(
+    (shard) => shard.files.length > 0 && shard.files.every(isRegularPattern)
+  )
+  assert.ok(regularStart > 0, "the first-attempt prefix must precede regular work")
+
   for (const [file] of [...recurrentHotspots, ...measuredHotspots]) {
     const assignedShardIndexes = plan.flatMap((shard, shardIndex) =>
       shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
@@ -2760,7 +2767,7 @@ test("isolates the recurrent unmeasured API/core timeout graph in dedicated firs
     )
     assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
     assert.ok(
-      assignedShardIndexes.every((shardIndex) => shardIndex < 13),
+      assignedShardIndexes.every((shardIndex) => shardIndex < regularStart),
       `${file} leaked into a regular first-attempt shard`
     )
   }
@@ -2773,11 +2780,7 @@ test("isolates the recurrent unmeasured API/core timeout graph in dedicated firs
     backendOriginShard.files.every((pattern) => pattern.startsWith("src/api/backendOrigin.ts"))
   )
   assert.ok(
-    plan
-      .slice(13)
-      .every((shard) =>
-        shard.files.every((pattern) => regularFiles.some(([file]) => pattern.startsWith(file)))
-      ),
+    plan.slice(regularStart).every((shard) => shard.files.every(isRegularPattern)),
     "regular shards must not inherit the recurrent timeout graph"
   )
 })
@@ -2862,6 +2865,12 @@ test("isolates every source from the observed UI and auth timeout shards", async
   )
 
   const hotspotFiles = [...uiHotspots, ...authHotspots]
+  const isRegularPattern = (pattern) =>
+    regularFiles.some(([file]) => pattern === file || pattern.startsWith(`${file}:`))
+  const regularStart = plan.findIndex(
+    (shard) => shard.files.length > 0 && shard.files.every(isRegularPattern)
+  )
+  assert.ok(regularStart > 0, "the first-attempt prefix must precede regular work")
   for (const file of hotspotFiles) {
     const assignedShardIndexes = plan.flatMap((shard, shardIndex) =>
       shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
@@ -2870,8 +2879,23 @@ test("isolates every source from the observed UI and auth timeout shards", async
     )
     assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
     assert.ok(
-      assignedShardIndexes.every((shardIndex) => shardIndex < 13),
+      assignedShardIndexes.every((shardIndex) => shardIndex < regularStart),
       `${file} leaked into a regular first-attempt shard`
+    )
+  }
+  for (const file of authHotspots) {
+    const authShardIndexes = plan.flatMap((shard, shardIndex) =>
+      shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+        ? [shardIndex]
+        : []
+    )
+    assert.ok(
+      authShardIndexes.every((shardIndex) =>
+        plan[shardIndex].files.every(
+          (pattern) => pattern === file || pattern.startsWith(`${file}:`)
+        )
+      ),
+      `${file} must not share an isolated auth range shard`
     )
   }
 
@@ -2885,11 +2909,7 @@ test("isolates every source from the observed UI and auth timeout shards", async
     "the UI timeout graph must be distributed across multiple cost-aware shards"
   )
   assert.ok(
-    plan
-      .slice(13)
-      .every((shard) =>
-        shard.files.every((pattern) => regularFiles.some(([file]) => pattern.startsWith(file)))
-      ),
+    plan.slice(regularStart).every((shard) => shard.files.every(isRegularPattern)),
     "regular shards must not inherit either observed timeout graph"
   )
 })

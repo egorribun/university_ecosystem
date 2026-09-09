@@ -587,8 +587,11 @@ const firstAttemptSourceCostWeights = new Map([
   ["src/components/ui/motion/ScaleIn.tsx", 8],
   ["src/components/ui/motion/StaggerChildren.tsx", 8],
   // The same run timed out with the unsplittable useProfileSync enclosing
-  // range and useSessionCrypto mixed into a regular shard. Keep both auth
-  // graphs isolated even when their ranges cannot be split further.
+  // range and useSessionCrypto mixed into a regular shard. Keep every emitted
+  // range from both auth graphs isolated on its own first-attempt shard. A
+  // range can contain an enclosing AST mutation and therefore cannot always
+  // be split further without dropping a mutation from the canonical
+  // denominator.
   ["src/hooks/auth/useProfileSync.ts", 600],
   ["src/hooks/auth/useSessionCrypto.ts", 260],
 ])
@@ -600,10 +603,18 @@ const firstAttemptSourceCostWeights = new Map([
 // API ranges across enough isolated runners to stay below the observed cap.
 const firstAttemptCostAwareShardCount = 12
 // backendOrigin is imported by the SSR/client bootstrap graph, so even its
-// tiny source file selects a broad static test set. Keep that graph on a
-// dedicated first-attempt shard; mixing it with another static-heavy range
-// turns a handful of mutants into a hard-to-diagnose shard timeout.
-const firstAttemptDedicatedFiles = new Set(["src/api/backendOrigin.ts"])
+// tiny source file selects a broad static test set. The auth sources below
+// were observed in the same multi-hour related-test graph as the timed-out
+// shard 11/64. Keep each emitted range from these sources on its own
+// first-attempt shard; mixing it with another static-heavy range turns a
+// handful of mutants into a hard-to-diagnose shard timeout. The order is
+// deterministic so shard zero remains the backendOrigin-only boundary used
+// by existing contracts.
+const firstAttemptDedicatedFiles = [
+  "src/api/backendOrigin.ts",
+  "src/hooks/auth/useProfileSync.ts",
+  "src/hooks/auth/useSessionCrypto.ts",
+]
 
 function mutationPatternStartsWithSource(pattern, sourcePath) {
   return pattern === sourcePath || pattern.startsWith(`${sourcePath}:`)
@@ -662,26 +673,60 @@ function assignFirstAttemptMutationUnits(weightedUnits, shards) {
     assignWeightedMutationUnits(weightedUnits, shards)
     return
   }
-  const dedicatedUnits = expensiveUnits.filter((entry) =>
-    [...firstAttemptDedicatedFiles].some((sourcePath) =>
-      mutationPatternStartsWithSource(entry.pattern, sourcePath)
+  // Keep each dedicated range on a separate shard. This is intentionally
+  // range-based: useProfileSync and useSessionCrypto contain enclosing AST
+  // mutations that are not safely splittable, but their independent ranges
+  // must not share a related-test graph with another source.
+  const dedicatedUnits = expensiveUnits
+    .filter((entry) =>
+      firstAttemptDedicatedFiles.some((sourcePath) =>
+        mutationPatternStartsWithSource(entry.pattern, sourcePath)
+      )
     )
-  )
+    .sort((left, right) => {
+      const leftRank = firstAttemptDedicatedFiles.findIndex((sourcePath) =>
+        mutationPatternStartsWithSource(left.pattern, sourcePath)
+      )
+      const rightRank = firstAttemptDedicatedFiles.findIndex((sourcePath) =>
+        mutationPatternStartsWithSource(right.pattern, sourcePath)
+      )
+      return (
+        leftRank - rightRank ||
+        right.estimatedCost - left.estimatedCost ||
+        right.mutantCount - left.mutantCount ||
+        left.pattern.localeCompare(right.pattern)
+      )
+    })
   const remainingExpensiveUnits = expensiveUnits.filter((entry) => !dedicatedUnits.includes(entry))
-  const remainingShards = dedicatedUnits.length > 0 ? shards.slice(1) : shards
-  if (dedicatedUnits.length > 0) {
-    assignWeightedMutationUnits(dedicatedUnits, [shards[0]])
+
+  // Leave at least one shard for non-dedicated work whenever it exists. The
+  // fallback is relevant only to tiny local inventories that request fewer
+  // shards than isolated ranges; production's 64-shard universe has ample
+  // capacity and gets one range per dedicated shard.
+  const dedicatedShardCount = Math.min(
+    dedicatedUnits.length,
+    Math.max(0, shards.length - (remainingExpensiveUnits.length + regularUnits.length > 0 ? 1 : 0))
+  )
+  for (let index = 0; index < dedicatedShardCount; index += 1) {
+    assignWeightedMutationUnits([dedicatedUnits[index]], [shards[index]])
   }
+  const spilledDedicatedUnits = dedicatedUnits.slice(dedicatedShardCount)
+  const remainingShards = shards.slice(dedicatedShardCount)
   if (remainingShards.length === 0) {
-    assignWeightedMutationUnits(remainingExpensiveUnits, [shards[0]])
+    assignWeightedMutationUnits(
+      [...remainingExpensiveUnits, ...regularUnits, ...spilledDedicatedUnits],
+      [shards[shards.length - 1]]
+    )
     return
   }
   if (remainingShards.length === 1) {
-    // A dedicated source already occupies shard zero.  When only one shard
-    // remains, it must carry both the residual expensive graph and regular
-    // work; reserving a separate expensive shard would leave an empty target
-    // and make the planner fail with `Reduce of empty array`.
-    assignWeightedMutationUnits([...remainingExpensiveUnits, ...regularUnits], remainingShards)
+    // A dedicated source already occupies the prefix. When only one shard
+    // remains, it must carry both residual expensive and regular work; keep
+    // any spilled dedicated ranges here rather than dropping them.
+    assignWeightedMutationUnits(
+      [...remainingExpensiveUnits, ...regularUnits, ...spilledDedicatedUnits],
+      remainingShards
+    )
     return
   }
   // Keep the expensive related-test graphs in a bounded group of dedicated shards.  The
@@ -701,7 +746,10 @@ function assignFirstAttemptMutationUnits(weightedUnits, shards) {
   const expensiveShards = remainingShards.slice(0, expensiveShardCount)
   const regularShards = remainingShards.slice(expensiveShardCount)
 
-  assignWeightedMutationUnits(remainingExpensiveUnits, expensiveShards)
+  assignWeightedMutationUnits(
+    [...remainingExpensiveUnits, ...spilledDedicatedUnits],
+    expensiveShards
+  )
   assignLocalityAwareMutationUnits(regularUnits, regularShards)
 }
 
