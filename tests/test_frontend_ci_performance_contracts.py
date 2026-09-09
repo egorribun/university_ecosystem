@@ -52,6 +52,9 @@ def test_frontend_wasm_is_built_once_and_reused_by_all_consumers() -> None:
     assert "crypto_pid=$!" not in build["run"]
     assert "sanitizer_pid=$!" not in build["run"]
     assert "&" not in build["run"]
+    assert "--remap-path-prefix=$HOME/.cargo=/usr/local/cargo" in build["run"]
+    assert "--remap-path-prefix=$GITHUB_WORKSPACE=/work" in build["run"]
+    assert "RUSTFLAGS:+$RUSTFLAGS " in build["run"]
     assert "node scripts/verify-wasm-artifacts.mjs" in build["run"]
 
     artifact_name = (
@@ -138,6 +141,15 @@ def test_frontend_wasm_build_uses_pinned_binaryen_before_system_wasm_opt() -> No
     assert "version_117" in run
     assert "sha256sum --check --strict" in run
     assert "GITHUB_PATH" in run
+
+
+def test_frontend_wasm_build_remaps_host_paths_and_preserves_existing_flags() -> None:
+    workflow = _load(FRONTEND_WORKFLOW_PATH)
+    producer = workflow["jobs"]["wasm-build"]  # type: ignore[index]
+    build_run = _step(producer, "Build immutable WASM modules")["run"]
+    assert 'export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }' in build_run
+    assert "--remap-path-prefix=$HOME/.cargo=/usr/local/cargo" in build_run
+    assert "--remap-path-prefix=$GITHUB_WORKSPACE=/work" in build_run
 
 
 def test_frontend_typecheck_runs_once_in_a_required_static_gate() -> None:

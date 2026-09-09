@@ -88,6 +88,10 @@ jobs:
           wasm-pack --version
           rustup target add wasm32-unknown-unknown
           rustup target list --installed | grep -Fxq "wasm32-unknown-unknown"
+          # Rust embeds source and dependency paths in optimized WASM custom
+          # sections. Remap runner-specific paths to canonical Linux paths
+          # while preserving any caller-provided flags.
+          export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix=$HOME/.cargo=/usr/local/cargo --remap-path-prefix=$GITHUB_WORKSPACE=/work"
           for attempt in 1 2 3; do
             rm -rf -- rust-crypto/pkg wasm-sanitizer/pkg
             # wasm-pack installs shared wasm-bindgen/wasm-opt helpers under

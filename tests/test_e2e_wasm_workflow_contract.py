@@ -108,6 +108,9 @@ def test_shared_e2e_wasm_producer_is_immutable_and_fail_closed() -> None:
     assert "crypto_pid=$!" not in build_run
     assert "sanitizer_pid=$!" not in build_run
     assert not any(line.rstrip().endswith("&") for line in build_run.splitlines())
+    assert "--remap-path-prefix=$HOME/.cargo=/usr/local/cargo" in build_run
+    assert "--remap-path-prefix=$GITHUB_WORKSPACE=/work" in build_run
+    assert "RUSTFLAGS:+$RUSTFLAGS " in build_run
     first_build = "wasm-pack build rust-crypto --target web --release"
     second_build = "wasm-pack build wasm-sanitizer --target web --release"
     assert build_run.index(first_build) < build_run.index(second_build)
