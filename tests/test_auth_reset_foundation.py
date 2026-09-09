@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -100,6 +101,19 @@ def test_password_reset_identifier_is_canonical_domain_separated(monkeypatch):
     assert len(first.rsplit(":", 1)[-1]) == 64
     assert "student@example.edu" not in first
     assert "@" not in first
+
+
+def test_rate_limit_hmac_false_positive_has_narrow_codeql_disposition():
+    source = (
+        Path(__file__).parents[1] / "app" / "services" / "auth_service.py"
+    ).read_text(encoding="utf-8")
+    helper = source.split("def _password_reset_rate_limit_identifier", 1)[1].split(
+        "class AuthService", 1
+    )[0]
+
+    assert "hmac.new" in helper
+    assert "HMAC-SHA256 pseudonymous rate-limit key, not password storage" in helper
+    assert "# codeql[py/weak-sensitive-data-hashing]" in helper
 
 
 @pytest.mark.asyncio

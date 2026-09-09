@@ -100,7 +100,8 @@ def _password_reset_rate_limit_identifier(email: str) -> str:
     digest = hmac.new(
         _token_hmac_secret().encode("utf-8"),
         _PASSWORD_RESET_RATE_LIMIT_DOMAIN + canonical_email.encode("utf-8"),
-        hashlib.sha256,
+        # HMAC-SHA256 pseudonymous rate-limit key, not password storage.
+        hashlib.sha256,  # codeql[py/weak-sensitive-data-hashing]
     ).hexdigest()
     return f"password-reset:{digest}"
 
