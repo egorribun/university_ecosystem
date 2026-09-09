@@ -502,6 +502,8 @@ const firstAttemptUnitSplitFactor = 16
 // checked in: a first attempt has no historical timing model, but these
 // modules fan out to materially different related-test graphs.  A weight of
 // one means that the regular locality-aware count model remains in effect.
+// Explicit timeout guard weights below are annotated separately and are based
+// on complete, provenance-bound shard inventories rather than coverage claims.
 const firstAttemptSourceCostWeights = new Map([
   // The first attempt in runs 33863748227 and 33994803565 repeatedly placed
   // this API/core block in logical shard 8.  That shard reached the 120-minute
@@ -553,6 +555,42 @@ const firstAttemptSourceCostWeights = new Map([
   ["src/hooks/auth/ssrAuthHint.ts", 166], // 32 mutants / 166 tests
   ["src/hooks/useFocusTrap.ts", 226], // 31 mutants / 226 tests
   ["src/hooks/useMediaQuery.ts", 217], // 57 mutants / 217 tests
+  // Run 34336062499 timed out while the UI primitives below were kept in one
+  // locality shard (730 mutants across 27 source files).  These conservative
+  // guard weights move each source range into the bounded cost-aware group so
+  // a fresh first attempt cannot recreate that all-or-nothing graph.
+  ["src/components/ui/Button.tsx", 8],
+  ["src/components/ui/Card.tsx", 8],
+  ["src/components/ui/CardActionArea.tsx", 8],
+  ["src/components/ui/Checkbox.tsx", 8],
+  ["src/components/ui/ConfirmDialog.tsx", 8],
+  ["src/components/ui/ContentCard.tsx", 8],
+  ["src/components/ui/ContentSummary.tsx", 8],
+  ["src/components/ui/Dialog.tsx", 8],
+  ["src/components/ui/EmptyState.tsx", 8],
+  ["src/components/ui/GlassCard.tsx", 8],
+  ["src/components/ui/GlobalHapticsListener.tsx", 8],
+  ["src/components/ui/Input.tsx", 8],
+  ["src/components/ui/LiveRegionProvider.tsx", 8],
+  ["src/components/ui/MediaSlot.tsx", 8],
+  ["src/components/ui/NewsCardSkeleton.tsx", 8],
+  ["src/components/ui/NotificationRelevanceScore.tsx", 8],
+  ["src/components/ui/ParticleAuthBackground.tsx", 8],
+  ["src/components/ui/ProfileCardSkeleton.tsx", 8],
+  ["src/components/ui/ProgressBar.tsx", 8],
+  ["src/components/ui/RadioGroup.tsx", 8],
+  ["src/components/ui/data-table/DataTable.tsx", 8],
+  ["src/components/ui/data-table/DataTableColumnHeader.tsx", 8],
+  ["src/components/ui/data-table/DataTablePagination.tsx", 8],
+  ["src/components/ui/data-table/dataTableFeatures.ts", 8],
+  ["src/components/ui/motion/FadeIn.tsx", 8],
+  ["src/components/ui/motion/ScaleIn.tsx", 8],
+  ["src/components/ui/motion/StaggerChildren.tsx", 8],
+  // The same run timed out with the unsplittable useProfileSync enclosing
+  // range and useSessionCrypto mixed into a regular shard. Keep both auth
+  // graphs isolated even when their ranges cannot be split further.
+  ["src/hooks/auth/useProfileSync.ts", 600],
+  ["src/hooks/auth/useSessionCrypto.ts", 260],
 ])
 // The previous first-attempt plan reserved only eight cost-aware shards.  The
 // immutable CI evidence for run 34003977528 shows that two of those shards

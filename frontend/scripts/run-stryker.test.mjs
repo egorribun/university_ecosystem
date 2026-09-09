@@ -2782,6 +2782,118 @@ test("isolates the recurrent unmeasured API/core timeout graph in dedicated firs
   )
 })
 
+test("isolates every source from the observed UI and auth timeout shards", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count, startLine = 0) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: startLine + index * 2, column: 0 },
+        end: { line: startLine + index * 2, column: 4 },
+      },
+    }))
+  const makeProfileSyncMutants = (file) => [
+    ...Array.from({ length: 353 }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BlockStatement",
+      replacement: "{}",
+      location: {
+        start: { line: 675, column: 88 },
+        end: { line: 1200, column: 1 },
+      },
+      index,
+    })),
+    ...makeMutants(file, 385, 2_000),
+  ]
+  const uiHotspots = [
+    "src/components/ui/Button.tsx",
+    "src/components/ui/Card.tsx",
+    "src/components/ui/CardActionArea.tsx",
+    "src/components/ui/Checkbox.tsx",
+    "src/components/ui/ConfirmDialog.tsx",
+    "src/components/ui/ContentCard.tsx",
+    "src/components/ui/ContentSummary.tsx",
+    "src/components/ui/Dialog.tsx",
+    "src/components/ui/EmptyState.tsx",
+    "src/components/ui/GlassCard.tsx",
+    "src/components/ui/GlobalHapticsListener.tsx",
+    "src/components/ui/Input.tsx",
+    "src/components/ui/LiveRegionProvider.tsx",
+    "src/components/ui/MediaSlot.tsx",
+    "src/components/ui/NewsCardSkeleton.tsx",
+    "src/components/ui/NotificationRelevanceScore.tsx",
+    "src/components/ui/ParticleAuthBackground.tsx",
+    "src/components/ui/ProfileCardSkeleton.tsx",
+    "src/components/ui/ProgressBar.tsx",
+    "src/components/ui/RadioGroup.tsx",
+    "src/components/ui/data-table/DataTable.tsx",
+    "src/components/ui/data-table/DataTableColumnHeader.tsx",
+    "src/components/ui/data-table/DataTablePagination.tsx",
+    "src/components/ui/data-table/dataTableFeatures.ts",
+    "src/components/ui/motion/FadeIn.tsx",
+    "src/components/ui/motion/ScaleIn.tsx",
+    "src/components/ui/motion/StaggerChildren.tsx",
+  ]
+  const authHotspots = ["src/hooks/auth/useProfileSync.ts", "src/hooks/auth/useSessionCrypto.ts"]
+  const regularFiles = Array.from({ length: 12 }, (_, index) => {
+    const file = `src/aaa-regular-timeout-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    ["src/api/backendOrigin.ts", { mutants: makeMutants("src/api/backendOrigin.ts", 20) }],
+    ...uiHotspots.map((file) => [file, { mutants: makeMutants(file, 32) }]),
+    [authHotspots[0], { mutants: makeProfileSyncMutants(authHotspots[0]) }],
+    [authHotspots[1], { mutants: makeMutants(authHotspots[1], 177) }],
+    ...regularFiles,
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  const expectedMutants = [...preflight.values()].reduce(
+    (total, entry) => total + entry.mutants.length,
+    0
+  )
+
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    expectedMutants
+  )
+
+  const hotspotFiles = [...uiHotspots, ...authHotspots]
+  for (const file of hotspotFiles) {
+    const assignedShardIndexes = plan.flatMap((shard, shardIndex) =>
+      shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+        ? [shardIndex]
+        : []
+    )
+    assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
+    assert.ok(
+      assignedShardIndexes.every((shardIndex) => shardIndex < 13),
+      `${file} leaked into a regular first-attempt shard`
+    )
+  }
+
+  const uiShardIndexes = plan.flatMap((shard, shardIndex) =>
+    shard.files.some((pattern) => uiHotspots.some((file) => pattern.startsWith(file)))
+      ? [shardIndex]
+      : []
+  )
+  assert.ok(
+    new Set(uiShardIndexes).size > 1,
+    "the UI timeout graph must be distributed across multiple cost-aware shards"
+  )
+  assert.ok(
+    plan
+      .slice(13)
+      .every((shard) =>
+        shard.files.every((pattern) => regularFiles.some(([file]) => pattern.startsWith(file)))
+      ),
+    "regular shards must not inherit either observed timeout graph"
+  )
+})
+
 test("keeps the dedicated first-attempt planner total with two requested shards", async () => {
   const { planMutationShards } = await import(runnerUrl)
   const makeMutants = (file, count) =>
