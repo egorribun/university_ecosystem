@@ -12,13 +12,15 @@ type DedupeListener = (event: MessageEvent<DedupeMessage>) => void
 class RecordingBroadcastChannel {
   static instances: RecordingBroadcastChannel[] = []
   readonly messages: unknown[] = []
+  readonly eventTypes: string[] = []
   listener: DedupeListener | undefined
 
   constructor(readonly name: string) {
     RecordingBroadcastChannel.instances.push(this)
   }
 
-  addEventListener(_type: string, listener: DedupeListener) {
+  addEventListener(type: string, listener: DedupeListener) {
+    this.eventTypes.push(type)
     this.listener = listener
   }
 
@@ -305,6 +307,7 @@ describe("api/client — BroadcastChannel idempotency coordination", () => {
     const { default: channelApi } = await import("@/api/client")
     const channel = RecordingBroadcastChannel.instances[0]
     expect(channel?.name).toBe("ecosystem.idempotency.dedup")
+    expect(channel?.eventTypes).toEqual(["message"])
 
     channel?.listener?.({
       data: { key: "remote-key", action: "add" },

@@ -20,6 +20,18 @@ afterEach(() => {
 })
 
 describe("schedule time parser closure", () => {
+  it("fails closed for a non-string time with a coercible object value", () => {
+    const coercibleTime = {
+      toString: () => "09:30",
+    } as unknown as string
+
+    expect(
+      getTimeStr({
+        start_time: coercibleTime,
+      } as Lesson)
+    ).toBe("")
+  })
+
   it("fails closed for every missing time input", () => {
     expect(parseMinutes()).toBeNull()
     expect(parseMinutes(undefined)).toBeNull()
