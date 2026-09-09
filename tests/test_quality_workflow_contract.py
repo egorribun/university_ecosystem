@@ -847,6 +847,26 @@ def test_reusable_trivy_materializes_and_validates_each_helm_chart() -> None:
     ]
 
 
+def test_reusable_trivy_install_isolated_from_hosted_apt_mirror_drift() -> None:
+    """An unrelated hosted apt source must not prevent the security gate."""
+
+    security_workflow = yaml.safe_load(
+        SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    install = next(
+        step
+        for step in security_workflow["jobs"]["docker-security"]["steps"]
+        if step.get("name") == "Install Trivy (via apt repo)"
+    )
+    script = str(install["run"])
+
+    assert "google-chrome.list" in script
+    assert "google-chrome.sources" in script
+    assert "apt-get update -qq -o Acquire::Retries=3" in script
+    assert script.count("apt_update") >= 2
+    assert "return 1" in script
+
+
 def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
     """Keep documented IaC exceptions active instead of silently ignored."""
 
