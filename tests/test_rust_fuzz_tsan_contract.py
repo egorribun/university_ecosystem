@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).parents[1]
+ROOT = Path(__file__).resolve().parents[1]
 FUZZ_WORKFLOW = ROOT / ".github" / "workflows" / "rust-fuzz.yml"
 OSS_BUILD = ROOT / "infra" / "oss-fuzz" / "build.sh"
 OSS_PROJECT = ROOT / "infra" / "oss-fuzz" / "project.yaml"

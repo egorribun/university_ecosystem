@@ -132,17 +132,23 @@ func (f *natsTemporalClientStub) ExecuteWorkflow(
 }
 
 type fakeProcessDeliveryMessage struct {
-	payload   []byte
-	ackErr    error
-	nakErr    error
-	termErr   error
-	ackCount  int
-	nakCount  int
-	termCount int
-	nakDelays []time.Duration
+	payload      []byte
+	payloadPanic bool
+	ackErr       error
+	nakErr       error
+	termErr      error
+	ackCount     int
+	nakCount     int
+	termCount    int
+	nakDelays    []time.Duration
 }
 
-func (m *fakeProcessDeliveryMessage) Payload() []byte { return m.payload }
+func (m *fakeProcessDeliveryMessage) Payload() []byte {
+	if m.payloadPanic {
+		panic("payload panic")
+	}
+	return m.payload
+}
 func (m *fakeProcessDeliveryMessage) Ack() error {
 	m.ackCount++
 	return m.ackErr
@@ -234,6 +240,20 @@ func TestHandleFileProcessDelivery_MissingClientIsDelayed(t *testing.T) {
 	require.Equal(t, []time.Duration{fileProcessNakDelay}, msg.nakDelays)
 	require.Contains(t, logs.String(), "temporal_client_unavailable")
 	require.NotContains(t, logs.String(), string(msg.payload))
+}
+
+func TestHandleFileProcessDelivery_RecoversPayloadPanic(t *testing.T) {
+	msg := &fakeProcessDeliveryMessage{payloadPanic: true}
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+
+	handleFileProcessDelivery(context.Background(), msg, nil, logger)
+
+	require.Zero(t, msg.ackCount)
+	require.Zero(t, msg.termCount)
+	require.Equal(t, 1, msg.nakCount)
+	require.Equal(t, []time.Duration{fileProcessNakDelay}, msg.nakDelays)
+	require.Contains(t, logs.String(), "callback_panic")
 }
 
 func TestHandleFileProcessDelivery_DiagnosticsNeverIncludePayload(t *testing.T) {
