@@ -1563,6 +1563,22 @@ def test_e2e_wasm_build_retries_transient_binaryen_downloads() -> None:
     assert "WASM build failed after 3 attempts" in run
 
 
+def test_e2e_playwright_install_retries_and_ignores_stale_chrome_apt_source() -> None:
+    workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    install_step = next(
+        step
+        for step in workflow["jobs"]["e2e"]["steps"]
+        if step.get("name") == "Install Playwright"
+    )
+    run = install_step["run"]
+
+    assert "google-chrome.list" in run
+    assert "google-chrome.sources" in run
+    assert "for attempt in 1 2 3" in run
+    assert 'npx playwright install --with-deps "$INSTALL_BROWSER"' in run
+    assert "Playwright installation failed after 3 attempts" in run
+
+
 def test_cross_browser_navigation_retries_only_transient_abort_errors() -> None:
     source = (
         REPOSITORY_ROOT / "frontend" / "tests" / "e2e" / "utils" / "navigation.ts"
