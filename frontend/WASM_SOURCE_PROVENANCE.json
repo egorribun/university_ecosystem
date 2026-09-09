@@ -34,10 +34,6 @@
   ],
   "source_tree_sha256": "d3dbe4efbb9b43bc051af583c0f1dd2f6560196ad745dc3cadb9db260c772699",
   "packages": {
-    "rust-crypto/pkg/.gitignore": {
-      "size": 1,
-      "sha256": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1"
-    },
     "rust-crypto/pkg/package.json": {
       "size": 305,
       "sha256": "b6fa8ca6bd52b940bb55338299b80968082b5fc90e8607b3cdb0304a0a030d4c"
@@ -53,10 +49,6 @@
     "rust-crypto/pkg/uni_wasm_crypto_bg.wasm": {
       "size": 45456,
       "sha256": "484482c3c8522918186010225b7b38980f22ebdcb2395871ddd3225227a815ba"
-    },
-    "wasm-sanitizer/pkg/.gitignore": {
-      "size": 1,
-      "sha256": "684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1"
     },
     "wasm-sanitizer/pkg/package.json": {
       "size": 337,

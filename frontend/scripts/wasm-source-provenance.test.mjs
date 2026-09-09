@@ -18,6 +18,8 @@ async function withFixture(callback) {
     await mkdir(path.join(root, "rust-crypto", "pkg"), { recursive: true })
     await mkdir(path.join(root, "wasm-sanitizer", "src"), { recursive: true })
     await mkdir(path.join(root, "wasm-sanitizer", "pkg"), { recursive: true })
+    await writeFile(path.join(root, "rust-crypto", "pkg", ".gitignore"), "*\n")
+    await writeFile(path.join(root, "wasm-sanitizer", "pkg", ".gitignore"), "*\n")
     await writeFile(path.join(root, "rust-crypto", "Cargo.toml"), "[package]\nname='crypto'\n")
     await writeFile(path.join(root, "rust-crypto", "Cargo.lock"), "version = 4\n")
     await writeFile(
@@ -73,6 +75,8 @@ test("source provenance is deterministic and records source/package hashes", asy
       ["rust-crypto/Cargo.lock", "rust-crypto/Cargo.toml", "rust-crypto/src/lib.rs"]
     )
     assert.equal(first.packages["rust-crypto/pkg/uni_wasm_crypto_bg.wasm"].size, 4)
+    assert.equal(first.packages["rust-crypto/pkg/.gitignore"], undefined)
+    assert.equal(first.packages["wasm-sanitizer/pkg/.gitignore"], undefined)
     assert.equal(first.packages["rust-crypto/pkg/uni_wasm_crypto_bg.wasm.d.ts"], undefined)
     assert.equal(first.packages["wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm.d.ts"], undefined)
   })
