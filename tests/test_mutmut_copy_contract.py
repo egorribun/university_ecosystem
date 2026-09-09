@@ -32,6 +32,12 @@ REQUIRED_ALSO_COPY = {
     "native/rust_ext/fuzz/fuzz_targets",
     "native/rust_ext/Cargo.toml",
     "native/rust_ext/fuzz/Cargo.toml",
+    "crates/pyo3-sanitizer/fuzz/fuzz_targets",
+    "crates/pyo3-sanitizer/fuzz/Cargo.toml",
+    "frontend/wasm-sanitizer/fuzz/fuzz_targets",
+    "frontend/wasm-sanitizer/fuzz/Cargo.toml",
+    "frontend/rust-crypto/fuzz/fuzz_targets",
+    "frontend/rust-crypto/fuzz/Cargo.toml",
 }
 
 
@@ -72,6 +78,9 @@ def test_mutmut_also_copy_creates_file_parents_before_exact_files() -> None:
         "k8s/README.md": "k8s/kyverno",
         "native/rust_ext/Cargo.toml": "native/rust_ext/fuzz/fuzz_targets",
         "native/rust_ext/fuzz/Cargo.toml": "native/rust_ext/fuzz/fuzz_targets",
+        "crates/pyo3-sanitizer/fuzz/Cargo.toml": "crates/pyo3-sanitizer/fuzz/fuzz_targets",
+        "frontend/wasm-sanitizer/fuzz/Cargo.toml": "frontend/wasm-sanitizer/fuzz/fuzz_targets",
+        "frontend/rust-crypto/fuzz/Cargo.toml": "frontend/rust-crypto/fuzz/fuzz_targets",
     }
     for file_path, parent in parent_providers.items():
         assert configured.index(parent) < configured.index(file_path), file_path
