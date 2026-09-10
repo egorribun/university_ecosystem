@@ -893,6 +893,18 @@ describe("useProfileSync mutation contracts", () => {
     )
   })
 
+  it("does not call dynamic cache eviction for an empty schema marker", () => {
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, "")
+    const removeItemSpy = vi.spyOn(Storage.prototype, "removeItem")
+
+    migrateProfileCache()
+
+    expect(removeItemSpy).not.toHaveBeenCalledWith("ecosystem.profile.cache.v")
+    expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY)).toBe(
+      String(PROFILE_CACHE_SCHEMA_VERSION)
+    )
+  })
+
   it("fails closed and emits only a generic diagnostic when the storage accessor throws", () => {
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
     const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
