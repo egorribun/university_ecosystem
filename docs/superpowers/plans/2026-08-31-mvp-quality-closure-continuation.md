@@ -2576,7 +2576,7 @@ finding был проверяемым.
 | SEC-03 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Production rejects repository-known audit secret sentinel; scanner must verify no plaintext secret/PII enters logs or baseline. |
 | SEC-04 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Shared Go slog redacting handler is implemented and wired to gateway/ws-hub/file-processor with recursive key/value, URL and panic-safe redaction; package coverage is 100%. Require current service logging evidence. |
 | SEC-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Quality contract/normalizer/validator now use explicit metric applicability and machine-readable `N/A`; unsupported metrics cannot be silently converted to 100%. Require current aggregate manifest. |
-| SEC-06 | `BACKLOG / TOOLING REVIEW` | Verify gitleaks allowlist paths and branch guards against current workflow; no allowlist broadening is permitted. |
+| SEC-06 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Current `.gitleaks.toml` allowlists only existing lockfiles and the workflow covers protected `main` pushes plus PRs into `main` without duplicate source-branch scans; fresh Linux scan and current-SHA artifact remain required. |
 | SEC-07 | `FRESH-EVIDENCE-PENDING` | Baseline finding identities/hashes must be revalidated by current detect-secrets; stale or unexplained entries fail closed. |
 | SEC-08 | `EXTERNAL-ONLY / TOOLING` | Bandit target/Windows encoding is runner/tooling hygiene; keep production scan scope explicit and reproduce on Linux. |
 | SEC-09 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | ADR-035 and the fail-closed dependency policy add upper bounds to all 32 previously unbounded external production requirements; current-SHA frozen install, vulnerability, SBOM and compatibility evidence remain required. |
@@ -2738,9 +2738,10 @@ rebalancing threshold is not met.
    includes `k8s/ingress.yaml` and `k8s/secrets-example.yaml`; all stats and
    execution artifacts must prove the exact copy inventory on the new SHA.
 4. **External-audit architecture debt remains explicit and scoped.** BE-02
-   (dual Python/DDL defaults), BE-04 (Dishka/Depends coexistence), BE-08
-   (CDC worker lifecycle) and SEC-06 (allowlist review) need separate ADRs or
-   measured phased work. SEC-09 is now recorded in ADR-035 and code-fixed, but
+   (dual Python/DDL defaults), BE-04 (Dishka/Depends coexistence) and BE-08
+   (CDC worker lifecycle) need separate ADRs or measured phased work. SEC-06
+   is now contract-verified and code-fixed, while SEC-09 is recorded in ADR-035
+   and code-fixed, but
    its fresh current-SHA compatibility evidence is still required. INFRA-02's
    scope decision is now recorded in ADR-034; current-SHA Helm/staging
    evidence is still required and it is not silently treated as runtime proof.
