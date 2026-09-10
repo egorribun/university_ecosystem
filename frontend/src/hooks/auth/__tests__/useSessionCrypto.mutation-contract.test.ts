@@ -223,6 +223,27 @@ describe("useSessionCrypto mutation contracts", () => {
     expect(postMessage).toHaveBeenCalledTimes(1)
   })
 
+  it("does not synchronize the service worker from an SSR-like runtime", async () => {
+    const originalWindow = globalThis.window
+    const pbkdf2 = vi.mocked(cryptoWorker.pbkdf2)
+    const postMessage = vi.fn()
+    vi.stubGlobal("window", { document: globalThis.document })
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: { postMessage }, ready: undefined },
+    })
+
+    try {
+      renderHook(() => useSessionCrypto())
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(pbkdf2).not.toHaveBeenCalled()
+      expect(postMessage).not.toHaveBeenCalled()
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
   it("publishes the first exponential backoff delay and resets after its deadline", async () => {
     vi.useFakeTimers()
     vi.stubEnv("DEV", false)

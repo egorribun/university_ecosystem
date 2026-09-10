@@ -19,8 +19,19 @@ import {
   buildLhciMockUser,
   createOptimisticUser,
   encryptData,
+  areDeepEqual,
   fetchCurrentUser,
+  getCachedEnvelopeHeader,
+  isAscii,
   isProfileSyncBrowserRuntime,
+  isCachedSnapshotObject,
+  migrateProfileCache,
+  persistUserToCacheAsync,
+  resolveInitialInitializingState,
+  resolveInitialUserState,
+  resolveSsrInitialInitializing,
+  resolveSsrInitialUserState,
+  verifyHmacAsync,
   useProfileSync,
   type CacheSignaturePayload,
   type CachedUserSnapshot,
@@ -157,6 +168,85 @@ describe("useProfileSync mutation contracts", () => {
     })
   })
 
+  it.each([
+    ["no hint", undefined, null],
+    ["anonymous hint", { isAuth: false, user: null }, null],
+    ["authenticated hint without user", { isAuth: true, user: null }, null],
+    ["authenticated teacher hint", { isAuth: true, user: { role: "teacher" } }, "teacher"],
+    ["authenticated unknown-role hint", { isAuth: true, user: { role: "unknown" } }, "student"],
+  ] as const)("resolves SSR initial user for %s", (_label, hint, expectedRole) => {
+    const resolved = resolveSsrInitialUserState(hint)
+    if (expectedRole === null) {
+      expect(resolved).toBeNull()
+    } else {
+      expect(resolved).toMatchObject({ id: "ssr-stub", role: expectedRole })
+    }
+  })
+
+  it.each([
+    ["no hint", undefined, true],
+    ["anonymous hint", { isAuth: false, user: null }, true],
+    ["authenticated hint", { isAuth: true, user: { role: "student" } }, false],
+  ] as const)("resolves SSR initializing state for %s", (_label, hint, expected) => {
+    expect(resolveSsrInitialInitializing(hint)).toBe(expected)
+  })
+
+  it.each([
+    ["LHCI", { lhci: true, isServer: false, signingKey: null }, "lhci-mock-user"],
+    [
+      "authenticated SSR",
+      {
+        lhci: false,
+        isServer: true,
+        signingKey: null,
+        ssrAuthHint: { isAuth: true, user: { role: "teacher" } },
+      },
+      "ssr-stub",
+    ],
+    [
+      "anonymous SSR",
+      { lhci: false, isServer: true, signingKey: null, ssrAuthHint: { isAuth: false, user: null } },
+      null,
+    ],
+    [
+      "authenticated hydration hint",
+      {
+        lhci: false,
+        isServer: false,
+        signingKey: null,
+        ssrAuthHint: { isAuth: true, user: { role: "student" } },
+      },
+      "ssr-stub",
+    ],
+    ["missing signing key", { lhci: false, isServer: false, signingKey: null }, null],
+  ] as const)("resolves initial user for %s", (_label, options, expectedId) => {
+    const resolved = resolveInitialUserState(options)
+    expect(resolved?.id ?? null).toBe(expectedId)
+  })
+
+  it.each([
+    ["LHCI", { lhci: true, isServer: false, userState: null }, false],
+    [
+      "authenticated SSR",
+      {
+        lhci: false,
+        isServer: true,
+        ssrAuthHint: { isAuth: true, user: { role: "student" } },
+        userState: null,
+      },
+      false,
+    ],
+    [
+      "anonymous SSR",
+      { lhci: false, isServer: true, ssrAuthHint: { isAuth: false, user: null }, userState: null },
+      true,
+    ],
+    ["hydrated user", { lhci: false, isServer: false, userState: buildLhciMockUser() }, false],
+    ["cold browser", { lhci: false, isServer: false, userState: null }, true],
+  ] as const)("resolves initial loading flag for %s", (_label, options, expected) => {
+    expect(resolveInitialInitializingState(options)).toBe(expected)
+  })
+
   it("keeps the LHCI synthetic profile defaults stable", () => {
     expect(buildLhciMockUser()).toMatchObject({
       id: "lhci-mock-user",
@@ -167,13 +257,314 @@ describe("useProfileSync mutation contracts", () => {
   })
 
   it("keeps optimistic-user construction restricted to object snapshots", () => {
-    expect(createOptimisticUser(snapshot("valid-optimistic-user")).id).toBe("valid-optimistic-user")
+    const optimisticUser = createOptimisticUser(snapshot("valid-optimistic-user"))
+    expect(optimisticUser).toMatchObject({
+      id: "valid-optimistic-user",
+      email: "",
+      role: "student",
+      is_active: false,
+    })
+    expect(optimisticUser.totp_enrollments).toEqual([])
     expect(() => createOptimisticUser(42 as unknown as CachedUserSnapshot)).toThrow(
       "Profile cache snapshot must be an object"
     )
     expect(() => createOptimisticUser([] as unknown as CachedUserSnapshot)).toThrow(
       "Profile cache snapshot must be an object"
     )
+    expect(() => createOptimisticUser(null as unknown as CachedUserSnapshot)).toThrow(
+      "Profile cache snapshot must be an object"
+    )
+  })
+
+  it.each([
+    ["a plain object", snapshot("predicate-object"), true],
+    ["null", null, false],
+    ["a primitive", 42, false],
+    ["an array", [], false],
+    ["a function", Object.assign(() => undefined, { id: "function-snapshot" }), false],
+  ] as const)("classifies %s as a cache snapshot object=%s", (_label, value, expected) => {
+    expect(isCachedSnapshotObject(value)).toBe(expected)
+  })
+
+  it.each([
+    ["empty", "", true],
+    ["ASCII text", "Profile-Cache_123", true],
+    ["DEL", "\u007f", true],
+    ["leading non-ASCII", "\u0080cache", false],
+    ["trailing non-ASCII", "cache\u0080", false],
+    ["emoji", "cache🔒", false],
+  ] as const)("classifies %s cache headers as ASCII=%s", (_label, value, expected) => {
+    expect(isAscii(value)).toBe(expected)
+  })
+
+  it.each([
+    ["the same primitive", "same", "same", true],
+    ["different primitives", "left", "right", false],
+    ["a primitive and object", "left", {}, false],
+    ["an object and primitive", {}, "right", false],
+    ["null and object", null, {}, false],
+    ["object and null", {}, null, false],
+    ["empty records", {}, {}, true],
+    ["different key counts", { id: "u", role: "student" }, { id: "u" }, false],
+    ["a missing key", { id: "u", name: "Alice" }, { id: "u", email: "a@example.test" }, false],
+    [
+      "equal nested records",
+      { profile: { id: "u", tags: ["one", "two"] } },
+      { profile: { id: "u", tags: ["one", "two"] } },
+      true,
+    ],
+    [
+      "different nested records",
+      { profile: { id: "u", tags: ["one", "two"] } },
+      { profile: { id: "u", tags: ["one", "three"] } },
+      false,
+    ],
+  ] as const)(
+    "compares %s with the expected structural result",
+    (_label, left, right, expected) => {
+      expect(areDeepEqual(left, right)).toBe(expected)
+    }
+  )
+
+  it("returns true for the same object reference", () => {
+    const value = snapshot("same-reference")
+    expect(areDeepEqual(value, value)).toBe(true)
+  })
+
+  it("persists only the allowlisted profile snapshot with a bounded TTL", async () => {
+    const persistedUser = {
+      ...testUser,
+      full_name: "Persisted User",
+      group_id: "group-1",
+      avatar_url: "https://cdn.example.test/avatar.png",
+      cover_url: "https://cdn.example.test/cover.png",
+      spotify_connected: true,
+      preferences: { dnd_enabled: true, timezone: "Europe/Moscow", dnd_start: null, dnd_end: null },
+      is_active: true,
+      mfa_required: true,
+      mfa_default_method: "totp" as const,
+      mfa_last_verified_at: "2026-09-10T00:00:00Z",
+      totp_enrollments: [
+        {
+          id: "enrollment-1",
+          user_id: testUser.id,
+          is_active: true,
+          created_at: "2026-09-01T00:00:00Z",
+          label: "primary",
+          confirmed_at: "2026-09-01T00:00:00Z",
+          revoked_at: null,
+        },
+      ],
+    }
+    let encryptedSnapshot: unknown
+    vi.spyOn(window.crypto.subtle, "importKey").mockResolvedValue({} as CryptoKey)
+    vi.spyOn(window.crypto.subtle, "deriveKey").mockResolvedValue({} as CryptoKey)
+    vi.spyOn(window.crypto.subtle, "encrypt").mockImplementation(async (_algorithm, _key, data) => {
+      encryptedSnapshot = JSON.parse(new TextDecoder().decode(data as ArrayBuffer))
+      return Uint8Array.from([1, 2, 3]).buffer
+    })
+    vi.spyOn(window.crypto.subtle, "sign").mockResolvedValue(Uint8Array.from([4, 5, 6]).buffer)
+    vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000)
+
+    await persistUserToCacheAsync(persistedUser, signingKey)
+
+    expect(encryptedSnapshot).toEqual({
+      id: persistedUser.id,
+      full_name: persistedUser.full_name,
+      group_id: persistedUser.group_id,
+      avatar_url: persistedUser.avatar_url,
+      cover_url: persistedUser.cover_url,
+      spotify_connected: persistedUser.spotify_connected,
+      preferences: persistedUser.preferences,
+      is_active: persistedUser.is_active,
+      mfa_required: persistedUser.mfa_required,
+      mfa_default_method: persistedUser.mfa_default_method,
+      mfa_last_verified_at: persistedUser.mfa_last_verified_at,
+      totp_enrollments: persistedUser.totp_enrollments,
+    })
+    expect(Object.keys(encryptedSnapshot as object)).not.toContain("email")
+    expect(Object.keys(encryptedSnapshot as object)).not.toContain("role")
+    expect(JSON.parse(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY) ?? "")).toMatchObject({
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: 1_700_000_300_000,
+      data: expect.any(String),
+      signature: expect.any(String),
+    })
+    expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY)).toBe(
+      String(PROFILE_CACHE_SCHEMA_VERSION)
+    )
+  })
+
+  it.each([
+    ["null value", null, signingKey],
+    ["missing signing key", testUser, null],
+  ] as const)(
+    "clears the cache when persistence inputs are incomplete (%s)",
+    async (_label, value, key) => {
+      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "stale")
+      localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+      const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+
+      await persistUserToCacheAsync(value, key)
+
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+      expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY)).toBeNull()
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", { reason: "parse_error" })
+    }
+  )
+
+  it("does not write an encrypted snapshot after the component unmounts", async () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
+    vi.spyOn(window.crypto.subtle, "importKey").mockResolvedValue({} as CryptoKey)
+    vi.spyOn(window.crypto.subtle, "deriveKey").mockResolvedValue({} as CryptoKey)
+    vi.spyOn(window.crypto.subtle, "encrypt").mockResolvedValue(Uint8Array.from([1]).buffer)
+    vi.spyOn(window.crypto.subtle, "sign").mockResolvedValue(Uint8Array.from([2]).buffer)
+
+    await persistUserToCacheAsync(testUser, signingKey, () => false)
+
+    expect(setItemSpy).not.toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY, expect.any(String))
+    expect(setItemSpy).not.toHaveBeenCalledWith(PROFILE_CACHE_VERSION_KEY, expect.any(String))
+  })
+
+  it("swallows storage failures while persisting an encrypted snapshot", async () => {
+    vi.spyOn(window.crypto.subtle, "importKey").mockResolvedValue({} as CryptoKey)
+    vi.spyOn(window.crypto.subtle, "deriveKey").mockResolvedValue({} as CryptoKey)
+    vi.spyOn(window.crypto.subtle, "encrypt").mockResolvedValue(Uint8Array.from([1]).buffer)
+    vi.spyOn(window.crypto.subtle, "sign").mockResolvedValue(Uint8Array.from([2]).buffer)
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage quota exceeded")
+    })
+
+    await expect(persistUserToCacheAsync(testUser, signingKey)).resolves.toBeUndefined()
+  })
+
+  it("migrates every legacy cache key and writes the current schema marker", () => {
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, "7")
+    for (const key of [
+      "ecosystem.profile.cache.v1",
+      "ecosystem.profile.cache.v4",
+      "ecosystem.profile.cache.v5",
+      "ecosystem.profile.cache.v7",
+    ]) {
+      localStorage.setItem(key, "legacy")
+    }
+
+    migrateProfileCache()
+
+    expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY)).toBe(
+      String(PROFILE_CACHE_SCHEMA_VERSION)
+    )
+    for (const key of [
+      "ecosystem.profile.cache.v1",
+      "ecosystem.profile.cache.v4",
+      "ecosystem.profile.cache.v5",
+      "ecosystem.profile.cache.v7",
+      PROFILE_CACHE_STORAGE_KEY,
+    ]) {
+      expect(localStorage.getItem(key)).toBeNull()
+    }
+  })
+
+  it("leaves an already-current cache version untouched during migration", () => {
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "current-envelope")
+    localStorage.setItem("ecosystem.profile.cache.v7", "legacy")
+
+    migrateProfileCache()
+
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe("current-envelope")
+    expect(localStorage.getItem("ecosystem.profile.cache.v7")).toBe("legacy")
+  })
+
+  it("does not emit a cache-cleared diagnostic when localStorage is unavailable", async () => {
+    const originalStorage = globalThis.localStorage
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+
+    try {
+      const { result, unmount } = renderProfile(null, { value: testUser })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      warningSpy.mockClear()
+      vi.stubGlobal("localStorage", undefined)
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: PROFILE_CACHE_STORAGE_KEY,
+          })
+        )
+      })
+      await waitFor(() => expect(result.current.user).toBeNull())
+
+      expect(warningSpy).not.toHaveBeenCalledWith(
+        "profile_cache.cleared",
+        expect.objectContaining({ reason: "parse_error" })
+      )
+      unmount()
+    } finally {
+      vi.stubGlobal("localStorage", originalStorage)
+    }
+  })
+
+  it("returns a null cache header without touching an unavailable storage object", () => {
+    const originalStorage = globalThis.localStorage
+    vi.stubGlobal("localStorage", undefined)
+
+    try {
+      expect(getCachedEnvelopeHeader()).toBeNull()
+    } finally {
+      vi.stubGlobal("localStorage", originalStorage)
+    }
+  })
+
+  it("normalizes a storage read failure to a null cache header", () => {
+    const storageSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("private mode")
+    })
+
+    expect(getCachedEnvelopeHeader()).toBeNull()
+    storageSpy.mockRestore()
+  })
+
+  it("leaves an empty cache envelope untouched instead of treating it as malformed JSON", async () => {
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "")
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+
+    const { fetchQuery, unmount } = renderProfile(signingKey)
+    await waitFor(() => expect(fetchQuery).toHaveBeenCalled())
+
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe("")
+    expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY)).toBe(
+      String(PROFILE_CACHE_SCHEMA_VERSION)
+    )
+    expect(warningSpy).not.toHaveBeenCalledWith("profile_cache.cleared", {
+      reason: "parse_error",
+    })
+    unmount()
+  })
+
+  it.each([
+    ["malformed JSON", "not-json"],
+    ["JSON null", "null"],
+    ["a JSON primitive", "42"],
+  ])("clears %s with the parse_error reason", async (_label, rawEnvelope) => {
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, rawEnvelope)
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+
+    const { unmount } = renderProfile(signingKey)
+    await waitFor(() =>
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+        reason: "parse_error",
+      })
+    )
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    // The migration effect restores the current schema marker after the
+    // malformed envelope has been evicted.
+    expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY)).toBe(
+      String(PROFILE_CACHE_SCHEMA_VERSION)
+    )
+    unmount()
   })
 
   it.each([
@@ -219,6 +610,29 @@ describe("useProfileSync mutation contracts", () => {
     const { result, unmount } = renderProfile()
     expect(result.current.user).toBeNull()
     await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+    unmount()
+  })
+
+  it("fails closed for a signed legacy snapshot whose id is not a string", async () => {
+    const payload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: { ...snapshot("numeric-id"), id: 42 },
+    } as unknown as CacheSignaturePayload
+    localStorage.setItem(
+      PROFILE_CACHE_STORAGE_KEY,
+      JSON.stringify({ ...payload, signature: signEnvelope(payload) })
+    )
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+
+    const { result, unmount } = renderProfile()
+
+    expect(result.current.user).toBeNull()
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+    expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+      reason: "invalid_data",
+    })
     unmount()
   })
 
@@ -284,6 +698,7 @@ describe("useProfileSync mutation contracts", () => {
   })
 
   it("silently settles a cancelled auto-fetch without invoking logout", async () => {
+    const errorSpy = vi.spyOn(logger, "logError").mockImplementation(() => undefined)
     const { result, updateSessionSigningKey, unmount } = renderProfile(null, {
       error: { __CANCEL__: true },
     })
@@ -291,6 +706,7 @@ describe("useProfileSync mutation contracts", () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.user).toBeNull()
     expect(updateSessionSigningKey).not.toHaveBeenCalled()
+    expect(errorSpy).not.toHaveBeenCalledWith("Failed to fetch current user", expect.anything())
     unmount()
   })
 
@@ -334,6 +750,105 @@ describe("useProfileSync mutation contracts", () => {
 
     const posted = channels.flatMap((channel) => channel.postMessage.mock.calls)
     expect(posted).toEqual([[{ type: "mfa-pending", payload: pending }], [{ type: "mfa-cleared" }]])
+    unmount()
+  })
+
+  it("ignores null, primitive, unknown, and payload-less broadcast messages", async () => {
+    type MessageListener = (event: MessageEvent<unknown>) => void
+    const listeners: MessageListener[] = []
+    class DeterministicBroadcastChannel {
+      addEventListener = vi.fn((_type: string, listener: EventListener) => {
+        listeners.push(listener as MessageListener)
+      })
+      removeEventListener = vi.fn()
+      postMessage = vi.fn()
+      close = vi.fn()
+
+      constructor(_name: string) {}
+
+      emit(data: unknown) {
+        for (const listener of listeners) {
+          listener(new MessageEvent("message", { data }))
+        }
+      }
+    }
+    vi.stubGlobal("BroadcastChannel", DeterministicBroadcastChannel)
+
+    const { result, unmount } = renderProfile(null)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const channel = new DeterministicBroadcastChannel("ecosystem.profile.sync")
+
+    await act(async () => {
+      channel.emit(null)
+      channel.emit(42)
+      channel.emit({ noType: true })
+      channel.emit({ type: "ignored" })
+      channel.emit({ type: "ignored", payload: { ticket: "not-a-challenge" } })
+      channel.emit({ type: "mfa-pending" })
+      await Promise.resolve()
+    })
+
+    expect(result.current.pendingMfa).toBeNull()
+    unmount()
+  })
+
+  it("does not echo remote profile events back to sibling tabs", async () => {
+    type MessageListener = (event: MessageEvent<unknown>) => void
+    const listeners: MessageListener[] = []
+    const channels: Array<{
+      postMessage: ReturnType<typeof vi.fn>
+      addEventListener: ReturnType<typeof vi.fn>
+      removeEventListener: ReturnType<typeof vi.fn>
+      close: ReturnType<typeof vi.fn>
+      emit: (data: unknown) => void
+    }> = []
+    class DeterministicBroadcastChannel {
+      postMessage = vi.fn()
+      addEventListener = vi.fn((_type: string, listener: EventListener) => {
+        listeners.push(listener as MessageListener)
+      })
+      removeEventListener = vi.fn()
+      close = vi.fn()
+
+      constructor(_name: string) {
+        channels.push(this)
+      }
+
+      emit(data: unknown) {
+        for (const listener of listeners) listener(new MessageEvent("message", { data }))
+      }
+    }
+    vi.stubGlobal("BroadcastChannel", DeterministicBroadcastChannel)
+
+    const { result, unmount } = renderProfile(null)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(channels).toHaveLength(1)
+    const inbound = channels[0]!
+
+    const pending = { ticket: "remote-ticket", methods: ["totp"] } as never
+    await act(async () => {
+      inbound.emit({ type: "mfa-pending", payload: pending })
+      await Promise.resolve()
+    })
+    expect(result.current.pendingMfa).toEqual(pending)
+
+    await act(async () => {
+      inbound.emit({ type: "mfa-cleared" })
+      await Promise.resolve()
+    })
+    expect(result.current.pendingMfa).toBeNull()
+
+    await act(async () => {
+      inbound.emit({ type: "unauthorized" })
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current.user).toBeNull())
+
+    expect(channels.flatMap((channel) => channel.postMessage.mock.calls)).toEqual([])
     unmount()
   })
 
@@ -396,6 +911,67 @@ describe("useProfileSync mutation contracts", () => {
 
     await waitFor(() => expect(result.current.user?.id).toBe("encrypted-cache-user"))
     unmount()
+  })
+
+  it("imports HMAC verification keys as non-extractable verify-only keys", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("legacy-object-cache-user"),
+    }
+    writeSignedEnvelope(payload)
+    const importKeySpy = vi.spyOn(window.crypto.subtle, "importKey")
+
+    const { result, unmount } = renderProfile(signingKey)
+
+    await waitFor(() => expect(result.current.user?.id).toBe("legacy-object-cache-user"))
+    await waitFor(() =>
+      expect(
+        importKeySpy.mock.calls.some((call) => Array.isArray(call[4]) && call[4].includes("verify"))
+      ).toBe(true)
+    )
+
+    const verifyCall = importKeySpy.mock.calls.find(
+      (call) => Array.isArray(call[4]) && call[4].includes("verify")
+    )
+    expect(verifyCall?.[3]).toBe(false)
+    expect(verifyCall?.[4]).toEqual(["verify"])
+    unmount()
+  })
+
+  it("converts async HMAC crypto failures into invalid-signature cache eviction", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("async-hmac-error-cache-user"),
+    }
+    writeSignedEnvelope(payload)
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+    const importKeySpy = vi
+      .spyOn(window.crypto.subtle, "importKey")
+      .mockRejectedValueOnce(new Error("HMAC key import unavailable"))
+
+    const { unmount } = renderProfile(signingKey)
+
+    await waitFor(() =>
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+        reason: "invalid_signature",
+      })
+    )
+    expect(importKeySpy).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    unmount()
+  })
+
+  it("returns an explicit false result when async HMAC verification throws", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("direct-hmac-error-user"),
+    }
+    vi.spyOn(window.crypto.subtle, "importKey").mockRejectedValueOnce(new Error("HMAC unavailable"))
+
+    await expect(verifyHmacAsync(payload, signEnvelope(payload), signingKey)).resolves.toBe(false)
   })
 
   it("preserves encrypted key material when parsing odd-length hex segments", async () => {
@@ -480,6 +1056,44 @@ describe("useProfileSync mutation contracts", () => {
     unmount()
   })
 
+  it("keeps the encryption failure diagnostic error payload intact", async () => {
+    const encryptionError = new Error("encryption primitive unavailable")
+    vi.spyOn(window.crypto.subtle, "importKey").mockResolvedValue({} as CryptoKey)
+    vi.spyOn(window.crypto.subtle, "deriveKey").mockResolvedValue({} as CryptoKey)
+    vi.spyOn(window.crypto.subtle, "encrypt").mockRejectedValue(encryptionError)
+    const errorSpy = vi.spyOn(logger, "logError").mockImplementation(() => undefined)
+
+    await expect(encryptData(snapshot("encryption-error-user"), signingKey)).resolves.toBeNull()
+
+    expect(errorSpy).toHaveBeenCalledWith("Encryption failed", { error: encryptionError })
+  })
+
+  it("does not emit an encryption error when Web Crypto is unavailable", async () => {
+    const errorSpy = vi.spyOn(logger, "logError").mockImplementation(() => undefined)
+    vi.spyOn(window.crypto, "subtle", "get").mockReturnValue(undefined as unknown as SubtleCrypto)
+
+    await expect(encryptData(snapshot("no-encryption-crypto-user"), signingKey)).resolves.toBeNull()
+
+    expect(errorSpy).not.toHaveBeenCalled()
+  })
+
+  it("does not emit an encryption error when Web Crypto disappears before derivation", async () => {
+    const originalSubtle = window.crypto.subtle
+    let subtleReads = 0
+    const errorSpy = vi.spyOn(logger, "logError").mockImplementation(() => undefined)
+    vi.spyOn(window.crypto, "subtle", "get").mockImplementation(() => {
+      subtleReads += 1
+      return (subtleReads <= 2 ? originalSubtle : undefined) as SubtleCrypto
+    })
+
+    await expect(
+      encryptData(snapshot("derive-crypto-unavailable-user"), signingKey)
+    ).resolves.toBeNull()
+
+    expect(subtleReads).toBeGreaterThanOrEqual(3)
+    expect(errorSpy).not.toHaveBeenCalled()
+  })
+
   it("rejects an encrypted payload with extra segments before importing its key", async () => {
     const payload: CacheSignaturePayload = {
       version: PROFILE_CACHE_SCHEMA_VERSION,
@@ -501,6 +1115,7 @@ describe("useProfileSync mutation contracts", () => {
   it("short-circuits encrypted-cache parsing when Web Crypto is unavailable", async () => {
     const payload = await writeEncryptedEnvelope(snapshot("no-crypto-cache-user"))
     const splitSpy = vi.spyOn(String.prototype, "split")
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
     const originalSubtle = window.crypto.subtle
     let subtleReads = 0
     vi.spyOn(window.crypto, "subtle", "get").mockImplementation(() => {
@@ -515,6 +1130,50 @@ describe("useProfileSync mutation contracts", () => {
     // No parser/import work is allowed after that guard returns null.
     expect(subtleReads).toBe(2)
     expect(splitSpy.mock.instances.some((instance) => instance === payload.data)).toBe(false)
+    expect(warningSpy).not.toHaveBeenCalledWith("profile_cache.decryption_failed")
+    unmount()
+  })
+
+  it("fails closed when async HMAC verification has no Web Crypto", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("no-hmac-crypto-cache-user"),
+    }
+    writeSignedEnvelope(payload)
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+    vi.spyOn(window.crypto, "subtle", "get").mockReturnValue(undefined as unknown as SubtleCrypto)
+
+    const { unmount } = renderProfile(signingKey)
+
+    await waitFor(() =>
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+        reason: "invalid_signature",
+      })
+    )
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    unmount()
+  })
+
+  it("keeps crypto loss at key derivation on the invalid-data path without a decryption diagnostic", async () => {
+    await writeEncryptedEnvelope(snapshot("derive-crypto-loss-user"))
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+    const originalSubtle = window.crypto.subtle
+    let subtleReads = 0
+    vi.spyOn(window.crypto, "subtle", "get").mockImplementation(() => {
+      subtleReads += 1
+      return (subtleReads <= 3 ? originalSubtle : undefined) as SubtleCrypto
+    })
+
+    const { unmount } = renderProfile(signingKey)
+
+    await waitFor(() =>
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+        reason: "invalid_data",
+      })
+    )
+    expect(warningSpy).not.toHaveBeenCalledWith("profile_cache.decryption_failed")
+    expect(subtleReads).toBeGreaterThanOrEqual(4)
     unmount()
   })
 
@@ -538,6 +1197,7 @@ describe("useProfileSync mutation contracts", () => {
           reason: "invalid_data",
         })
       )
+      expect(warningSpy).not.toHaveBeenCalledWith("profile_cache.decryption_failed")
       expect(deriveKeySpy).not.toHaveBeenCalled()
       expect(decryptSpy).not.toHaveBeenCalled()
       unmount()
@@ -691,6 +1351,62 @@ describe("useProfileSync mutation contracts", () => {
       })
     )
     expect(result.current.user).toBeNull()
+    unmount()
+  })
+
+  it("rejects signatures whose length differs despite an otherwise valid prefix", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("length-mismatch-cache-user"),
+    }
+    const validSignature = signEnvelope(payload)
+    writeSignedEnvelope(payload, `${validSignature}A`)
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+
+    const { result, unmount } = renderProfile(signingKey)
+
+    await waitFor(() =>
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+        reason: "invalid_signature",
+      })
+    )
+    expect(result.current.user).toBeNull()
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    unmount()
+  })
+
+  it("bounds the constant-time signature comparison to both string lengths", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("bounded-signature-cache-user"),
+    }
+    const validSignature = signEnvelope(payload)
+    writeSignedEnvelope(payload, validSignature)
+    const originalCharCodeAt = String.prototype.charCodeAt
+    const observedIndexes: number[] = []
+    const charCodeAtSpy = vi.spyOn(String.prototype, "charCodeAt").mockImplementation(function (
+      this: string,
+      index: number
+    ) {
+      if (String(this) === validSignature) {
+        if (index < 0 || index >= validSignature.length) {
+          throw new Error(`signature comparison escaped bounds at ${index}`)
+        }
+        observedIndexes.push(index)
+      }
+      return originalCharCodeAt.call(this, index)
+    })
+
+    const { result, unmount } = renderProfile(signingKey)
+
+    expect(result.current.user?.id).toBe("bounded-signature-cache-user")
+    expect(charCodeAtSpy).toHaveBeenCalled()
+    expect(observedIndexes).toHaveLength(validSignature.length * 2)
+    expect(observedIndexes).toEqual(
+      expect.arrayContaining(Array.from({ length: validSignature.length }, (_, index) => index))
+    )
     unmount()
   })
 

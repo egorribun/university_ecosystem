@@ -939,6 +939,7 @@ describe("useProfileSync — auto-fetch effect", () => {
     const { result } = renderProfileSync({ signingKey: mockSigningKey, queryClient })
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
     await waitFor(() => expect(cancelQueries).toHaveBeenCalled())
+    expect(cancelQueries).toHaveBeenCalledWith({ queryKey: currentUserQueryKey })
 
     await act(async () => {
       result.current.handleUnauthorized()
@@ -1177,7 +1178,7 @@ describe("useProfileSync — cross-tab sync effect", () => {
 
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
 
-    act(() => {
+    await act(async () => {
       window.dispatchEvent(
         new StorageEvent("storage", {
           key: "some.unrelated.key",
@@ -1185,6 +1186,11 @@ describe("useProfileSync — cross-tab sync effect", () => {
           storageArea: localStorage,
         })
       )
+      // Keep any mutated listener path inside React's act boundary so a
+      // deliberately over-broad subscription is observed as a state failure,
+      // not as an asynchronous test-harness warning.
+      await Promise.resolve()
+      await Promise.resolve()
     })
 
     // Unrelated key → no syncFromCache → user unchanged.

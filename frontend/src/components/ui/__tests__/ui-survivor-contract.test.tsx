@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -55,6 +55,7 @@ import { ContentCard } from "@/components/ui/ContentCard"
 import { Checkbox } from "@/components/ui/Checkbox"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import { Dialog } from "@/components/ui/Dialog"
+import { EmptyState } from "@/components/ui/EmptyState"
 import { GlobalHapticsListener } from "@/components/ui/GlobalHapticsListener"
 import { MediaSlot } from "@/components/ui/MediaSlot"
 import { NotificationRelevanceScore } from "@/components/ui/NotificationRelevanceScore"
@@ -62,6 +63,7 @@ import NewsCardSkeleton, {
   NewsCardSkeleton as NamedNewsCardSkeleton,
 } from "@/components/ui/NewsCardSkeleton"
 import { ProfileCardSkeleton } from "@/components/ui/ProfileCardSkeleton"
+import { ProgressBar } from "@/components/ui/ProgressBar"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/RadioGroup"
 import { DataTablePagination } from "@/components/ui/data-table/DataTablePagination"
 import type { DataTableInstance } from "@/components/ui/data-table/dataTableFeatures"
@@ -291,6 +293,147 @@ describe("ContentCard and RadioGroup survivor contracts", () => {
     expect(onChange).toHaveBeenCalledWith(null, "two")
     expect(onChange).toHaveBeenCalledTimes(1)
   })
+
+  it("keeps optional changes, visual states, and selected motion observable", () => {
+    render(
+      <RadioGroup value="one" name="visual-choice" row aria-label="Visual choices">
+        <RadioGroupItem value="one" aria-label="Selected" />
+        <RadioGroupItem value="two" aria-label="Unselected" />
+        <RadioGroupItem value="disabled" aria-label="Disabled" disabled />
+      </RadioGroup>
+    )
+
+    const selected = screen.getByRole("radio", { name: "Selected" })
+    const unselected = screen.getByRole("radio", { name: "Unselected" })
+    const disabled = screen.getByRole("radio", { name: "Disabled" })
+    const selectedTarget = selected.nextElementSibling as HTMLElement
+    const unselectedTarget = unselected.nextElementSibling as HTMLElement
+    const disabledTarget = disabled.nextElementSibling as HTMLElement
+    const selectedVisual = selectedTarget.firstElementChild as HTMLElement
+    const unselectedVisual = unselectedTarget.firstElementChild as HTMLElement
+
+    expect(selectedVisual).toHaveClass(
+      "flex",
+      "h-6",
+      "w-6",
+      "items-center",
+      "justify-center",
+      "rounded-full",
+      "border-2",
+      "transition-all",
+      "border-brand",
+      "bg-brand/(--opacity-subtle)",
+      "shadow-glow-primary"
+    )
+    expect(unselectedVisual).toHaveClass(
+      "border-glass-border",
+      "bg-glass-bg",
+      "backdrop-blur-glass",
+      "shadow-glass",
+      "hover:border-brand/(--opacity-medium)",
+      "hover:bg-glass-tint1",
+      "peer-focus-visible:ring-4",
+      "peer-focus-visible:ring-brand/(--opacity-dim)"
+    )
+    expect(unselectedVisual).not.toHaveClass(
+      "border-brand",
+      "bg-brand/(--opacity-subtle)",
+      "shadow-glow-primary"
+    )
+    expect(disabledTarget).toHaveClass("cursor-not-allowed", "opacity-medium", "grayscale")
+    expect(disabledTarget).not.toHaveClass("cursor-pointer")
+
+    const selectedDot = selectedVisual.querySelector("span")
+    expect(selectedDot).toHaveClass("h-2.5", "w-2.5", "rounded-full", "bg-brand")
+    expect(unselectedVisual.querySelector("span")).toBeNull()
+    const dotCall = motionState.calls.find(
+      (entry) =>
+        entry.element === "span" && entry.props.className === "h-2.5 w-2.5 rounded-full bg-brand"
+    )
+    expect(dotCall).toBeDefined()
+    expect(dotCall?.props).toMatchObject({
+      initial: { scale: 0 },
+      animate: { scale: 1 },
+      exit: { scale: 0 },
+      transition: { type: "spring", stiffness: 500, damping: 30 },
+    })
+
+    const reactPropsKey = Object.keys(unselected).find((key) => key.startsWith("__reactProps$"))
+    expect(reactPropsKey).toBeDefined()
+    type ChangeHandler = () => void
+    const onChange = (
+      unselected as unknown as Record<string, { onChange?: ChangeHandler } | undefined>
+    )[reactPropsKey ?? ""]?.onChange
+    expect(onChange).toBeTypeOf("function")
+    expect(() => onChange?.()).not.toThrow()
+    expect(RadioGroupItem.displayName).toBe("RadioGroupItem")
+  })
+})
+
+describe("EmptyState and ProgressBar survivor contracts", () => {
+  it("keeps the empty-state shell and optional regions conditional", () => {
+    const { container } = render(<EmptyState title="No records" />)
+    const root = container.firstElementChild as HTMLElement
+
+    expect(root).toHaveClass(
+      "flex",
+      "w-full",
+      "max-w-[28rem]",
+      "flex-col",
+      "items-center",
+      "gap-5",
+      "rounded-2xl",
+      "py-14",
+      "text-center",
+      "shadow-glass",
+      "backdrop-blur-md"
+    )
+    expect(screen.getByRole("heading", { name: "No records" })).toBeInTheDocument()
+    expect(root.querySelector(".h-16.w-16")).toBeNull()
+    expect(root.querySelector("p")).toBeNull()
+    expect(root.querySelector(".mt-2")).toBeNull()
+  })
+
+  it("normalizes progress values and exposes animation/live-region contracts", () => {
+    const { rerender } = render(<ProgressBar value={25} />)
+    const progress = screen.getByRole("progressbar")
+    const bar = progress.firstElementChild as HTMLElement
+
+    expect(progress).toHaveClass(
+      "relative",
+      "h-2.5",
+      "w-full",
+      "overflow-hidden",
+      "rounded-full",
+      "bg-progress-track"
+    )
+    expect(progress).not.toHaveAttribute("aria-live")
+    expect(progress).toHaveAttribute("aria-valuenow", "25")
+    expect(bar).toHaveClass(
+      "h-full",
+      "rounded-full",
+      "bg-progress-bar",
+      "transition-all",
+      "duration-base",
+      "ease-out",
+      "motion-reduce:transition-none"
+    )
+    expect(bar).toHaveStyle({ width: "25%" })
+
+    rerender(<ProgressBar value={Number.NaN} />)
+    expect(screen.getByRole("progressbar")).not.toHaveAttribute("aria-valuenow")
+    expect(screen.getByRole("progressbar").firstElementChild).toHaveStyle({ width: "0%" })
+
+    rerender(<ProgressBar value={null} liveRegion animated={false} />)
+    const inactiveProgress = screen.getByRole("progressbar")
+    const inactiveBar = inactiveProgress.firstElementChild as HTMLElement
+    expect(inactiveProgress).toHaveAttribute("aria-live", "polite")
+    expect(inactiveProgress).not.toHaveAttribute("aria-valuenow")
+    expect(inactiveBar).toHaveStyle({ width: "0%" })
+    expect(inactiveBar).not.toHaveClass("transition-all", "duration-base", "ease-out")
+    expect(inactiveBar.className).not.toContain("Stryker")
+    expect(ProgressBar.displayName).toBe("ProgressBar")
+  })
 })
 
 describe("MediaSlot survivor contract", () => {
@@ -362,6 +505,15 @@ describe("MediaSlot survivor contract", () => {
     fireEvent.error(image)
     expect(onError).toHaveBeenCalledOnce()
     expect(screen.getByText("Error fallback")).toBeInTheDocument()
+    const errorWrapper = screen.getByText("Error fallback").parentElement
+    expect(errorWrapper).toHaveClass(
+      "relative",
+      "w-full",
+      "overflow-hidden",
+      "bg-(--glass-bg)",
+      "container-class"
+    )
+    expect(errorWrapper).toHaveStyle({ aspectRatio: "1/1" })
     expect(container.querySelector("img")).toBeNull()
   })
 
@@ -372,8 +524,19 @@ describe("MediaSlot survivor contract", () => {
     const image = screen.getByRole("img")
     expect(image).not.toHaveClass("group-hover:scale-105")
     expect(container.querySelector(".animate-spin")).not.toBeNull()
-    expect(() => fireEvent.load(image)).not.toThrow()
-    expect(() => fireEvent.error(image)).not.toThrow()
+    const reactPropsKey = Object.keys(image).find((key) => key.startsWith("__reactProps$"))
+    expect(reactPropsKey).toBeDefined()
+    type ImageHandler = () => void
+    const handlers = (
+      image as unknown as Record<
+        string,
+        { onLoad?: ImageHandler; onError?: ImageHandler } | undefined
+      >
+    )[reactPropsKey ?? ""]
+    expect(handlers?.onLoad).toBeTypeOf("function")
+    expect(handlers?.onError).toBeTypeOf("function")
+    expect(() => act(() => handlers?.onLoad?.())).not.toThrow()
+    expect(() => act(() => handlers?.onError?.())).not.toThrow()
     expect(container.querySelector("img")).toBeNull()
     expect(container.querySelector("svg")).toHaveClass("h-10", "w-10", "text-(--text-tertiary)")
     expect(MediaSlot.displayName).toBe("MediaSlot")
@@ -451,7 +614,9 @@ describe("DataTablePagination survivor contract", () => {
     const combobox = screen.getByRole("combobox")
     expect(combobox).toHaveAttribute("aria-labelledby", "data-table-pagination-pagesize-label")
     expect(combobox).toHaveTextContent("20")
-    expect(document.getElementById("data-table-pagination-pagesize-label")).toHaveTextContent(/\S/u)
+    expect(document.getElementById("data-table-pagination-pagesize-label")).toHaveTextContent(
+      "Rows per page"
+    )
     expect(screen.getAllByRole("button").every((button) => button.textContent?.trim())).toBe(true)
     await user.click(combobox)
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
@@ -544,6 +709,19 @@ describe("motion survivor contract", () => {
       },
       exit: { opacity: 0, transition: { duration: motionTokens.durationFast } },
     })
+  })
+
+  it("keeps default direction/distance and the Lighthouse initial state observable", () => {
+    render(<FadeIn>Default entrance</FadeIn>)
+    expect(latestMotionProps("div").variants).toMatchObject({
+      hidden: { opacity: 0, y: 20 },
+    })
+
+    cleanup()
+    motionState.calls.length = 0
+    vi.stubEnv("VITE_LHCI", "true")
+    render(<FadeIn>Lighthouse entrance</FadeIn>)
+    expect(latestMotionProps("div").initial).toBe(false)
   })
 })
 
@@ -697,6 +875,37 @@ describe("ConfirmDialog survivor contract", () => {
     expect(document.getElementById(labelledBy!)).toHaveTextContent("Delete item?")
     expect(document.getElementById(describedBy!)).toHaveTextContent("This cannot be undone.")
     expect(dialog.parentElement).toHaveAttribute("role", "presentation")
+  })
+
+  it("keeps overlay, dialog, and action motion contracts stable", () => {
+    render(<ConfirmDialog {...makeProps()} />)
+    const overlay = motionState.calls.find(
+      (entry) => entry.element === "div" && entry.props.role === "presentation"
+    )
+    const dialog = motionState.calls.find(
+      (entry) => entry.element === "div" && entry.props.role === "alertdialog"
+    )
+    const buttons = motionState.calls.filter((entry) => entry.element === "button")
+
+    expect(overlay).toBeDefined()
+    expect(overlay?.props).toMatchObject({
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+    })
+    expect(dialog).toBeDefined()
+    expect(dialog?.props).toMatchObject({
+      initial: { scale: 0.9, opacity: 0, y: 20 },
+      animate: { scale: 1, opacity: 1, y: 0 },
+      exit: { scale: 0.9, opacity: 0, y: 20 },
+    })
+    expect(buttons).toHaveLength(2)
+    for (const button of buttons) {
+      expect(button.props).toMatchObject({
+        whileHover: { scale: 1.05 },
+        whileTap: { scale: 0.95 },
+      })
+    }
   })
 
   it.each([

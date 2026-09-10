@@ -99,9 +99,24 @@ type HandleUnauthorizedOptions = {
   persist?: boolean
 }
 
-const isAscii = (value: string) => {
-  for (let index = 0; index < value.length; index += 1) {
-    if (value.charCodeAt(index) > 0x7f) {
+/**
+ * Resolve browser storage once at a trust boundary.  SSR has no storage and
+ * Safari private browsing may throw while evaluating the accessor itself;
+ * callers treat either case as an unavailable cache rather than propagating
+ * a platform exception into auth state transitions.
+ */
+const getLocalStorage = (): Storage | undefined => {
+  try {
+    return globalThis.localStorage as Storage | undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** @internal — cache headers accept only printable ASCII code units. */
+export const isAscii = (value: string): boolean => {
+  for (const character of value) {
+    if (character.charCodeAt(0) > 0x7f) {
       return false
     }
   }
@@ -109,7 +124,8 @@ const isAscii = (value: string) => {
   return true
 }
 
-const areDeepEqual = (a: unknown, b: unknown): boolean => {
+/** @internal — structural comparison used to avoid redundant profile updates. */
+export const areDeepEqual = (a: unknown, b: unknown): boolean => {
   if (a === b) return true
   if (typeof a !== "object" || a === null || typeof b !== "object" || b === null) return false
   const keysA = Object.keys(a)
@@ -123,12 +139,15 @@ const areDeepEqual = (a: unknown, b: unknown): boolean => {
   return true
 }
 
-/** @internal — exported for the runtime-boundary mutation contract. */
+/** @internal — runtime-boundary predicate shared by cache decoding paths. */
+export const isCachedSnapshotObject = (value: unknown): value is CachedUserSnapshot =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+
 export const createOptimisticUser = (snapshot: CachedUserSnapshot): User => {
   // Cache data crosses a runtime trust boundary. Keep this helper defensive
   // so a future parser call cannot construct an optimistic user from a
   // primitive or null value.
-  if (snapshot === null || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+  if (!isCachedSnapshotObject(snapshot)) {
     throw new TypeError("Profile cache snapshot must be an object")
   }
 
@@ -166,15 +185,16 @@ const clearProfileCacheStorage = (
     | "version_mismatch"
     | "invalid_data" = "parse_error"
 ) => {
-  if (typeof localStorage === "undefined") return
+  const storage = getLocalStorage()
+  if (!storage) return
 
   // Clear the cache before emitting the diagnostic.  The test strict-console
   // guard (and a misconfigured telemetry sink in production) may throw from
   // the logger; cache invalidation is a security boundary and must still be
   // completed when reporting fails.
   try {
-    localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
-    localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
+    storage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+    storage.removeItem(PROFILE_CACHE_VERSION_KEY)
   } catch {
     /* ignore */
   }
@@ -187,9 +207,10 @@ const clearProfileCacheStorage = (
 }
 
 const readCachedEnvelope = (): CachedProfileEnvelope | undefined => {
-  if (typeof localStorage === "undefined") return undefined
+  const storage = getLocalStorage()
+  if (!storage) return undefined
   try {
-    const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    const raw = storage.getItem(PROFILE_CACHE_STORAGE_KEY)
     if (!raw) return undefined
     const parsed: unknown = JSON.parse(raw)
     if (!parsed || typeof parsed !== "object") {
@@ -203,10 +224,18 @@ const readCachedEnvelope = (): CachedProfileEnvelope | undefined => {
   }
 }
 
-const getCachedEnvelopeHeader = (): string | null => {
-  if (typeof localStorage === "undefined") return null
+/**
+ * Read the cache envelope header without assuming that browser storage is
+ * available.  Safari private browsing can throw while resolving the storage
+ * accessor itself, while SSR has no storage object at all; both cases are a
+ * normal cache miss and must not reach the request layer as an error.
+ */
+export const getCachedEnvelopeHeader = (): string | null => {
+  const storage = getLocalStorage()
+  if (!storage) return null
+  const getItem = storage.getItem
   try {
-    return localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    return getItem.call(storage, PROFILE_CACHE_STORAGE_KEY)
   } catch {
     return null
   }
@@ -261,7 +290,11 @@ const uint8ToBase64 = (bytes: Uint8Array): string => {
 const timingSafeEqual = (a: string, b: string): boolean => {
   if (a.length !== b.length) return false
   let result = 0
-  for (let i = 0; i < a.length; i++) {
+  // Iterate the string's UTF-16 code-unit indexes through a bounded native
+  // iterator.  This keeps the comparison constant-time for equal-length
+  // inputs without an update operator that a mutation can turn into an
+  // unbounded `i--` loop.
+  for (const i of a.split("").keys()) {
     result |= a.charCodeAt(i) ^ b.charCodeAt(i)
   }
   return result === 0
@@ -271,7 +304,8 @@ const timingSafeEqual = (a: string, b: string): boolean => {
  * Preferred over re-computing the HMAC and comparing with === or timingSafeEqual,
  * because crypto.subtle.verify is mandated by the W3C spec to be constant-time.
  */
-const verifyHmacAsync = async (
+/** @internal — exported only for the cache crypto mutation contract. */
+export const verifyHmacAsync = async (
   payload: CacheSignaturePayload,
   signature: string,
   signingKey: string
@@ -441,13 +475,15 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
     return undefined
   }
 
-  const snapshotData: CachedUserSnapshot | null =
-    typeof candidate.data === "string"
-      ? await decryptData(candidate.data, signingKey)
-      : candidate.data && typeof candidate.data === "object"
-        ? // Legacy V3 support for unencrypted object data
-          (candidate.data as CachedUserSnapshot)
-        : null
+  let snapshotData: CachedUserSnapshot | null
+  if (typeof candidate.data === "string") {
+    snapshotData = await decryptData(candidate.data, signingKey)
+  } else if (isCachedSnapshotObject(candidate.data)) {
+    // Legacy V3 support for unencrypted object data
+    snapshotData = candidate.data
+  } else {
+    snapshotData = null
+  }
 
   if (!snapshotData || typeof snapshotData.id !== "string") {
     clearProfileCacheStorage("invalid_data")
@@ -456,12 +492,14 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
   return createOptimisticUser(snapshotData)
 }
 
-const persistUserToCacheAsync = async (
+/** @internal — exported for cache persistence mutation contracts. */
+export const persistUserToCacheAsync = async (
   value: User | null,
   signingKey: string | null,
   isMounted?: () => boolean
 ) => {
-  if (typeof localStorage === "undefined") return
+  const storage = getLocalStorage()
+  if (!storage) return
   try {
     if (value != null && signingKey) {
       // TD-14-07: Allowlist filter — only non-PII fields are persisted to localStorage.
@@ -499,8 +537,8 @@ const persistUserToCacheAsync = async (
         ...payload,
         signature,
       }
-      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(envelope))
-      localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+      storage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify(envelope))
+      storage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
     } else {
       clearProfileCacheStorage()
     }
@@ -509,20 +547,22 @@ const persistUserToCacheAsync = async (
   }
 }
 
-const migrateProfileCache = () => {
+/** @internal — exported for cache migration mutation contracts. */
+export const migrateProfileCache = () => {
   clearLegacyAccessToken()
   try {
-    if (typeof localStorage === "undefined") return
-    const storedVersion = localStorage.getItem(PROFILE_CACHE_VERSION_KEY)
+    const storage = getLocalStorage()
+    if (!storage) return
+    const storedVersion = storage.getItem(PROFILE_CACHE_VERSION_KEY)
     if (storedVersion !== String(PROFILE_CACHE_SCHEMA_VERSION)) {
       for (const legacyKey of LEGACY_PROFILE_CACHE_KEYS) {
-        localStorage.removeItem(legacyKey)
+        storage.removeItem(legacyKey)
       }
       if (storedVersion && storedVersion !== String(PROFILE_CACHE_SCHEMA_VERSION)) {
-        localStorage.removeItem(`${PROFILE_CACHE_BASE_KEY}.v${storedVersion}`)
+        storage.removeItem(`${PROFILE_CACHE_BASE_KEY}.v${storedVersion}`)
       }
-      localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
-      localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+      storage.removeItem(PROFILE_CACHE_STORAGE_KEY)
+      storage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
     }
   } catch {
     /* ignore */
@@ -713,6 +753,96 @@ export const resolveSsrInitialInitializing = (hint: SsrAuthHint | undefined): bo
   return !hint?.isAuth
 }
 
+type InitialUserStateOptions = {
+  lhci: boolean
+  isServer: boolean
+  signingKey: string | null
+  ssrAuthHint?: SsrAuthHint
+}
+
+/**
+ * Resolve the first client/server user snapshot without React effects.  The
+ * pure boundary keeps the SSR/LHCI/cache decisions deterministic and lets the
+ * mutation contract exercise every branch without racing follow-up effects.
+ */
+export const resolveInitialUserState = ({
+  lhci,
+  isServer,
+  signingKey,
+  ssrAuthHint,
+}: InitialUserStateOptions): UserState => {
+  if (lhci) return buildLhciMockUser()
+  if (isServer) return resolveSsrInitialUserState(ssrAuthHint)
+
+  const ssrUser = resolveSsrInitialUserState(ssrAuthHint)
+  if (ssrUser !== null) return ssrUser
+  if (!signingKey) return null
+
+  const candidate = readCachedEnvelope()
+  if (!candidate) return null
+  if (candidate.version !== PROFILE_CACHE_SCHEMA_VERSION) return null
+  if (candidate.expiresAt <= Date.now()) return null
+
+  const payload: CacheSignaturePayload = {
+    version: candidate.version,
+    expiresAt: candidate.expiresAt,
+    data: candidate.data,
+  }
+
+  if (!verifySignatureSync(payload, candidate.signature, signingKey)) return null
+  if (typeof candidate.data !== "string") {
+    if (!isCachedSnapshotObject(candidate.data) || typeof candidate.data.id !== "string") {
+      clearProfileCacheStorage("invalid_data")
+      return null
+    }
+    return createOptimisticUser(candidate.data)
+  }
+
+  // v4+ encrypted data cannot be decrypted synchronously.  Return a minimal
+  // placeholder until the async init effect verifies and decrypts the cache.
+  return {
+    id: "-1",
+    email: "",
+    full_name: "",
+    role: "student",
+    group_id: null,
+    avatar_url: null,
+    cover_url: null,
+    spotify_connected: false,
+    profile_detail: undefined,
+    education_path: undefined,
+    preferences: undefined,
+    is_active: false,
+    mfa_required: false,
+    mfa_default_method: null,
+    mfa_last_verified_at: null,
+    totp_enrollments: [],
+    recovery_codes_left: 0,
+    avatar_url_optimized: null,
+    cover_url_optimized: null,
+  } as User
+}
+
+type InitializingStateOptions = {
+  lhci: boolean
+  isServer: boolean
+  ssrAuthHint?: SsrAuthHint
+  userState: UserState
+}
+
+/** Resolve the initial loading flag alongside `resolveInitialUserState`. */
+export const resolveInitialInitializingState = ({
+  lhci,
+  isServer,
+  ssrAuthHint,
+  userState,
+}: InitializingStateOptions): boolean => {
+  if (lhci) return false
+  if (isServer) return resolveSsrInitialInitializing(ssrAuthHint)
+  if (userState !== null) return false
+  return true
+}
+
 export const useProfileSync = (
   updateSessionSigningKey: (key: string | null) => void,
   sessionSigningKeyRef: React.MutableRefObject<string | null>,
@@ -721,92 +851,26 @@ export const useProfileSync = (
   ssrAuthHint?: SsrAuthHint | undefined
 ) => {
   const queryClient = useQueryClient()
-  const [userState, setUserState] = useState<UserState>(() => {
-    if (import.meta.env.VITE_LHCI === "true") {
-      return buildLhciMockUser()
-    }
-    if (typeof window === "undefined") {
-      // Wave 128 SW1 Strategy A — see resolveSsrInitialUserState helper.
-      // Returns role-only stub when ssrAuthHint indicates authenticated
-      // server-side render (JWT cookie validated by server.ts W126 SW3).
-      // Full user hydrates from /users/me cache or client-side useEffect.
-      return resolveSsrInitialUserState(ssrAuthHint)
-    }
-    // RootShell carries a non-sensitive role marker from the SSR request.
-    // Prefer the same role-only stub during hydration so an authenticated
-    // server tree is not reconciled against a cold anonymous skeleton. The
-    // normal /users/me fetch below replaces it with the full profile.
-    const ssrUser = resolveSsrInitialUserState(ssrAuthHint)
-    if (ssrUser !== null) return ssrUser
-    const signingKey = sessionSigningKeyRef.current
-    if (!signingKey) return null
-    const candidate = readCachedEnvelope()
-    if (!candidate) return null
-    if (candidate.version !== PROFILE_CACHE_SCHEMA_VERSION) return null
-    if (candidate.expiresAt <= Date.now()) return null
-
-    const payload: CacheSignaturePayload = {
-      version: candidate.version,
-      expiresAt: candidate.expiresAt,
-      data: candidate.data,
-    }
-
-    if (verifySignatureSync(payload, candidate.signature, signingKey)) {
-      if (typeof candidate.data !== "string") {
-        if (!candidate.data || typeof candidate.data.id !== "string") {
-          clearProfileCacheStorage("invalid_data")
-          return null
-        }
-        // Legacy v3 format with unencrypted object data
-        return createOptimisticUser(candidate.data)
-      }
-      // v4 format: data is encrypted string, cannot decrypt synchronously
-      // Return a minimal placeholder user to prevent null state during async decryption
-      // The async init useEffect will replace this with the fully decrypted user
-      // We set a marker ID of -1 to indicate this is a placeholder pending async restore
-      return {
-        id: "-1", // Placeholder ID, will be replaced by async init
-        email: "",
-        full_name: "",
-        role: "student",
-        group_id: null,
-        avatar_url: null,
-        cover_url: null,
-        spotify_connected: false,
-        profile_detail: undefined,
-        education_path: undefined,
-        preferences: undefined,
-        is_active: false,
-        mfa_required: false,
-        mfa_default_method: null,
-        mfa_last_verified_at: null,
-        totp_enrollments: [],
-        recovery_codes_left: 0,
-        avatar_url_optimized: null,
-        cover_url_optimized: null,
-      } as User
-    }
-    return null
-  })
+  const [userState, setUserState] = useState<UserState>(() =>
+    resolveInitialUserState({
+      lhci: import.meta.env.VITE_LHCI === "true",
+      isServer: typeof window === "undefined",
+      signingKey: sessionSigningKeyRef.current,
+      ssrAuthHint,
+    })
+  )
   const [pendingMfaState, setPendingMfaState] = useState<PendingMfaState | null>(null)
   const cachedUserRef = useRef<UserState>(userState)
   const userStateRef = useRef<UserState>(userState)
   const pendingMfaRef = useRef<PendingMfaState | null>(pendingMfaState)
-  const [initializing, setInitializing] = useState<boolean>(() => {
-    if (import.meta.env.VITE_LHCI === "true") return false
-    if (typeof window === "undefined") {
-      // Wave 128 SW1 — see resolveSsrInitialInitializing helper.
-      return resolveSsrInitialInitializing(ssrAuthHint)
-    }
-    if (userState !== null) return false
-    // A browser render with no synchronous profile is not authenticated yet,
-    // but it still needs one asynchronous /users/me decision.  Keep the
-    // provider in its loading state for that first render so route guards do
-    // not redirect before the fetch effect can resolve a cookie-backed session.
-    // The initialization effect and the fetch `finally` below always settle
-    // this flag, including a fast 401 for a genuinely anonymous visitor.
-    return true
-  })
+  const [initializing, setInitializing] = useState<boolean>(() =>
+    resolveInitialInitializingState({
+      lhci: import.meta.env.VITE_LHCI === "true",
+      isServer: typeof window === "undefined",
+      ssrAuthHint,
+      userState,
+    })
+  )
   const [authOperation, setAuthOperation] = useState(false)
   // Wave 135 SW1 — `activeRequestRef` (AbortController for the /users/me
   // fetch) was removed alongside the controller pattern in the auto-fetch
@@ -912,7 +976,7 @@ export const useProfileSync = (
   )
 
   const clearProfile = useCallback(
-    ({ persist = true }: { persist?: boolean } = {}) => {
+    ({ persist }: { persist: boolean }) => {
       // Wave 135 SW1 — replace AbortController.abort() with
       // queryClient.cancelQueries. Was: `controller?.abort()` cancelling
       // the activeRequestRef-tracked controller. Now: the bridged
@@ -921,7 +985,7 @@ export const useProfileSync = (
       // CanceledError, swallowed by the auto-fetch catch block (isCancel
       // guard).
       queryClient.cancelQueries({ queryKey: currentUserQueryKey }).catch(() => undefined)
-      applyUserState(() => null, { persist })
+      applyUserState(null, { persist })
       cachedUserRef.current = null
     },
     [applyUserState, queryClient]

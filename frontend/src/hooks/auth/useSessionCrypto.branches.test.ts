@@ -128,7 +128,9 @@ describe("ensureSessionSigningKey failure path", () => {
   it("enters backoff + dispatches the crypto-failed event on the 3rd failure (lines 314-342)", async () => {
     vi.useFakeTimers()
     const dispatch = vi.spyOn(window, "dispatchEvent")
-    mocks.apiGet.mockRejectedValue(new Error("503"))
+    const failure = new Error("503")
+    mocks.apiGet.mockRejectedValue(failure)
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     const { result } = renderHook(() => useSessionCrypto())
 
     // Three consecutive failures trip MAX_SIGNING_KEY_RETRIES (3).
@@ -138,16 +140,15 @@ describe("ensureSessionSigningKey failure path", () => {
     await act(async () => {
       await result.current.ensureSessionSigningKey()
     })
-    await expectConsoleWarning(
-      "[SessionCrypto] Max retries reached for signing key fetch",
-      async () => {
-        await act(async () => {
-          await result.current.ensureSessionSigningKey()
-        })
-      }
-    )
+    await act(async () => {
+      await result.current.ensureSessionSigningKey()
+    })
 
     expect(result.current.signingKeyRetryCountRef.current).toBe(3)
+    expect(warningSpy).toHaveBeenCalledWith(
+      "[SessionCrypto] Max retries reached for signing key fetch",
+      { err: failure }
+    )
     const events = dispatch.mock.calls.map((c) => c[0])
     const cryptoFailed = events.find(
       (e) => e instanceof CustomEvent && e.type === "auth:session-crypto-failed"
@@ -162,6 +163,7 @@ describe("ensureSessionSigningKey failure path", () => {
     expect(result.current.signingKeyRetryCountRef.current).toBe(0)
 
     dispatch.mockRestore()
+    warningSpy.mockRestore()
     vi.useRealTimers()
   })
 
@@ -257,6 +259,11 @@ describe("sendServiceWorkerMessage", () => {
 
   it("does not post when the ready registration has no active worker", async () => {
     const postMessage = vi.fn()
+    // Keep the strict console guard active for the normal path, but capture a
+    // diagnostic if a mutant attempts to call postMessage on the null active
+    // worker.  The assertion below must fail that mutant without converting
+    // its expected negative-path probe into an out-of-test runtime error.
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     vi.stubGlobal("navigator", {
       serviceWorker: {
         controller: null,
@@ -270,6 +277,8 @@ describe("sendServiceWorkerMessage", () => {
     })
 
     expect(postMessage).not.toHaveBeenCalled()
+    expect(warningSpy).not.toHaveBeenCalled()
+    warningSpy.mockRestore()
   })
 
   it("returns safely when navigator is unavailable", async () => {
@@ -298,19 +307,22 @@ describe("sendServiceWorkerMessage", () => {
     const postMessage = vi.fn(() => {
       throw new Error("worker stopped")
     })
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     const { result } = renderHook(() => useSessionCrypto())
     vi.stubGlobal("navigator", {
       serviceWorker: { controller: { postMessage }, ready: undefined },
     })
 
-    await expectConsoleWarning("Failed to post message to service worker", async () => {
-      await expect(
-        act(async () => {
-          await result.current.sendSessionCacheUpdate("sk-throw", { force: true })
-        })
-      ).resolves.not.toThrow()
-    })
+    await expect(
+      act(async () => {
+        await result.current.sendSessionCacheUpdate("sk-throw", { force: true })
+      })
+    ).resolves.not.toThrow()
     expect(postMessage).toHaveBeenCalled()
+    expect(warningSpy).toHaveBeenCalledWith("Failed to post message to service worker", {
+      error: expect.any(Error),
+    })
+    warningSpy.mockRestore()
   })
 
   it("swallows controller failures without development logging in production", async () => {
@@ -332,23 +344,27 @@ describe("sendServiceWorkerMessage", () => {
 
   it("swallows service-worker readiness failures", async () => {
     const ready = Promise.reject(new Error("registration failed"))
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     const { result } = renderHook(() => useSessionCrypto())
     vi.stubGlobal("navigator", {
       serviceWorker: { controller: null, ready },
     })
 
-    await expectConsoleWarning("Failed to deliver message to service worker", async () => {
-      await act(async () => {
-        await result.current.sendSessionCacheUpdate("sk-ready-failure", { force: true })
-        await Promise.resolve()
-        await Promise.resolve()
-      })
+    await act(async () => {
+      await result.current.sendSessionCacheUpdate("sk-ready-failure", { force: true })
+      await Promise.resolve()
+      await Promise.resolve()
     })
+    expect(warningSpy).toHaveBeenCalledWith("Failed to deliver message to service worker", {
+      error: expect.any(Error),
+    })
+    warningSpy.mockRestore()
   })
 
   it("swallows readiness failures without development logging in production", async () => {
     vi.stubEnv("DEV", false)
     const ready = Promise.reject(new Error("registration failed"))
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     const { result } = renderHook(() => useSessionCrypto())
     vi.stubGlobal("navigator", {
       serviceWorker: { controller: null, ready },
@@ -359,6 +375,8 @@ describe("sendServiceWorkerMessage", () => {
       await Promise.resolve()
       await Promise.resolve()
     })
+    expect(warningSpy).not.toHaveBeenCalled()
+    warningSpy.mockRestore()
   })
 
   it("does not dispatch when the service-worker readiness handle is absent", async () => {
@@ -407,13 +425,24 @@ describe("sendServiceWorkerMessage", () => {
       async () => {
         await act(async () => {
           await result.current.ensureSessionSigningKey()
-          await result.current.ensureSessionSigningKey()
         })
-      },
-      2
+      }
     )
 
-    expect(clearSpy).toHaveBeenCalled()
+    // The first circuit opening owns one live timer.  A fourth failure must
+    // cancel exactly that timer before replacing it; checking the count makes
+    // the null/non-null guard observable to mutation testing.
+    clearSpy.mockClear()
+    await expectConsoleWarning(
+      "[SessionCrypto] Max retries reached for signing key fetch",
+      async () => {
+        await act(async () => {
+          await result.current.ensureSessionSigningKey()
+        })
+      }
+    )
+
+    expect(clearSpy).toHaveBeenCalledTimes(1)
     clearSpy.mockRestore()
     vi.runAllTimers()
     vi.useRealTimers()
@@ -425,6 +454,21 @@ describe("sendServiceWorkerMessage", () => {
 // ---------------------------------------------------------------------------
 
 describe("unmount cleanup", () => {
+  it("does not clear a timer when no backoff is pending", () => {
+    vi.useFakeTimers()
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout")
+    const { unmount } = renderHook(() => useSessionCrypto())
+
+    clearSpy.mockClear()
+    act(() => {
+      unmount()
+    })
+
+    expect(clearSpy).not.toHaveBeenCalled()
+    clearSpy.mockRestore()
+    vi.useRealTimers()
+  })
+
   it("clears a pending backoff timer on unmount (lines 369-372)", async () => {
     vi.useFakeTimers()
     mocks.apiGet.mockRejectedValue(new Error("503"))
