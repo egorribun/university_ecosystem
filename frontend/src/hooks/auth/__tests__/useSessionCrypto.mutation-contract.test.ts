@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 import { cryptoWorker } from "@/utils/cryptoWorker"
 import {
+  clearLegacySessionSigningKey,
   hashSessionIdentifier,
   isSessionCryptoBrowserRuntime,
   signSnapshot,
@@ -48,6 +49,25 @@ describe("useSessionCrypto mutation contracts", () => {
     } finally {
       vi.stubGlobal("window", originalWindow)
     }
+  })
+
+  it("clears the legacy session signing key through the explicit cleanup contract", () => {
+    const removeItem = vi.fn()
+    vi.stubGlobal("sessionStorage", { removeItem })
+
+    clearLegacySessionSigningKey()
+
+    expect(removeItem).toHaveBeenCalledWith("ecosystem.profile.cache.sessionKey")
+  })
+
+  it("swallows legacy session signing-key cleanup failures", () => {
+    const removeItem = vi.fn(() => {
+      throw new Error("storage unavailable")
+    })
+    vi.stubGlobal("sessionStorage", { removeItem })
+
+    expect(() => clearLegacySessionSigningKey()).not.toThrow()
+    expect(removeItem).toHaveBeenCalledWith("ecosystem.profile.cache.sessionKey")
   })
 
   it("passes the complete fixed PBKDF2 namespace contract to the worker", async () => {
@@ -129,6 +149,20 @@ describe("useSessionCrypto mutation contracts", () => {
       ]),
       key: "session-key",
     })
+  })
+
+  it("preserves a scalar root payload before signing", async () => {
+    const hmac = vi.mocked(cryptoWorker.hmacSha256)
+
+    await signSnapshot("plain string", "session-key", "user-salt")
+    await signSnapshot(42, "session-key", "user-salt")
+    await signSnapshot(null, "session-key", "user-salt")
+
+    expect(hmac.mock.calls.slice(-3)).toEqual([
+      [{ json: JSON.stringify("plain string"), key: "session-key" }],
+      [{ json: JSON.stringify(42), key: "session-key" }],
+      [{ json: JSON.stringify(null), key: "session-key" }],
+    ])
   })
 
   it("sends one purge and one keyed cache message with an exact session hash", async () => {

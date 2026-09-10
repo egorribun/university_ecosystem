@@ -38,15 +38,22 @@ const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 // Kept for one-time migration: clear any key previously persisted in sessionStorage.
 const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
 
-// One-time cleanup: remove legacy key that was incorrectly stored in sessionStorage.
-// Safe to run on every load — no-op if key is already absent.
-if (typeof sessionStorage !== "undefined") {
+/** Remove the legacy session signing key without allowing storage failures to
+ * interrupt module initialization or authentication state.  Keeping the
+ * cleanup behind an explicit function makes the security boundary directly
+ * testable and avoids a slow module re-import for every mutation case. */
+export const clearLegacySessionSigningKey = (): void => {
+  if (typeof sessionStorage === "undefined") return
   try {
     sessionStorage.removeItem(SESSION_SIGNING_KEY_STORAGE_KEY)
   } catch {
     /* ignore */
   }
 }
+
+// One-time cleanup: remove legacy key that was incorrectly stored in
+// sessionStorage. Safe to run on every load — no-op if key is absent.
+clearLegacySessionSigningKey()
 
 type SessionSigningKeyResponse = SessionSigningKeyOut
 
