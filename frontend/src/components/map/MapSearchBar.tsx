@@ -69,6 +69,26 @@ export function focusSearchInput(input: HTMLInputElement | null): void {
   if (input) input.focus()
 }
 
+/**
+ * Keep the callback-ref lifecycle explicit: attaching a node must never cancel
+ * a pending blur close, while detaching one must cancel that close before the
+ * DOM reference is cleared. Keeping this boundary total also makes the
+ * unmount race directly testable without relying on React internals.
+ */
+export function updateSearchInputRef(
+  node: HTMLInputElement | null,
+  inputRef: { current: HTMLInputElement | null },
+  blurTimeoutRef: { current: ReturnType<typeof setTimeout> | null },
+  publicRef?: { current: HTMLInputElement | null }
+): void {
+  if (node === null && blurTimeoutRef.current !== null) {
+    clearTimeout(blurTimeoutRef.current)
+    blurTimeoutRef.current = null
+  }
+  inputRef.current = node
+  if (publicRef) publicRef.current = node
+}
+
 /** Focus may reopen the list only when the current query has results. */
 export function shouldOpenSearchOnFocus(resultCount: number): boolean {
   return resultCount > 0
@@ -114,13 +134,12 @@ export function MapSearchBar({
   // array (which can be mutated into an equivalent static value).
   const setInputRef = useCallback(
     (node: HTMLInputElement | null) => {
-      if (node === null && blurTimeoutRef.current !== null) {
-        clearTimeout(blurTimeoutRef.current)
-        blurTimeoutRef.current = null
-      }
-      inputRef.current = node
+      updateSearchInputRef(node, inputRef, blurTimeoutRef, searchInputRef)
     },
-    [blurTimeoutRef, inputRef]
+    // A changed external ref represents a new parent-owned binding. Let React
+    // detach/attach the callback so pending blur work is cleaned up at the old
+    // binding boundary instead of racing the new one.
+    [blurTimeoutRef, inputRef, searchInputRef]
   )
 
   const results = useMemo((): SearchResult[] => {

@@ -22,6 +22,7 @@ import {
   getInitialSearchOpenState,
   MapSearchBar,
   shouldOpenSearchOnFocus,
+  updateSearchInputRef,
 } from "@/components/map/MapSearchBar"
 import type { CampusBuilding } from "@/data/campusBuildings"
 
@@ -135,6 +136,26 @@ describe("MapSearchBar", () => {
     expect(blur).toHaveBeenCalledOnce()
     expect(focus).toHaveBeenCalledOnce()
     expect(onSelectionApplied).toHaveBeenCalledOnce()
+  })
+
+  it("updates the input ref without cancelling a pending blur when a node is attached", () => {
+    const input = document.createElement("input")
+    const inputRef: { current: HTMLInputElement | null } = { current: null }
+    const blurTimeoutRef: { current: ReturnType<typeof setTimeout> | null } = {
+      current: setTimeout(() => undefined, 1_000),
+    }
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+
+    try {
+      updateSearchInputRef(input, inputRef, blurTimeoutRef)
+
+      expect(inputRef.current).toBe(input)
+      expect(blurTimeoutRef.current).not.toBeNull()
+      expect(clearTimeoutSpy).not.toHaveBeenCalled()
+    } finally {
+      if (blurTimeoutRef.current !== null) clearTimeout(blurTimeoutRef.current)
+      clearTimeoutSpy.mockRestore()
+    }
   })
 
   it("applies a valid selection when the completion callback is omitted", () => {
@@ -602,6 +623,28 @@ describe("MapSearchBar", () => {
 
     expect(firstRef.current).toBeNull()
     expect(secondRef.current).toBe(input)
+  })
+
+  it("cancels a pending blur close when the parent swaps the imperative ref", () => {
+    vi.useFakeTimers()
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+    const firstRef: { current: HTMLInputElement | null } = { current: null }
+    const secondRef: { current: HTMLInputElement | null } = { current: null }
+
+    try {
+      const view = render(<MapSearchBar {...baseProps} searchInputRef={firstRef} />)
+      const input = screen.getByRole("combobox")
+      fireEvent.change(input, { target: { value: "Главный" } })
+      fireEvent.blur(input)
+
+      view.rerender(<MapSearchBar {...baseProps} searchInputRef={secondRef} />)
+
+      expect(clearTimeoutSpy).toHaveBeenCalledOnce()
+      expect(secondRef.current).toBe(input)
+    } finally {
+      clearTimeoutSpy.mockRestore()
+      vi.useRealTimers()
+    }
   })
 
   it("uses the latest selection callbacks after rerender", () => {

@@ -40,6 +40,16 @@ type MobileKeyboardStore = {
   getServerSnapshot: () => boolean
 }
 
+/** Detach both VisualViewport listeners only when a viewport was subscribed. */
+export function removeMobileKeyboardListeners(
+  viewport: Pick<VisualViewport, "removeEventListener"> | null,
+  listener: () => void
+): void {
+  if (viewport === null) return
+  viewport.removeEventListener("resize", listener)
+  viewport.removeEventListener("scroll", listener)
+}
+
 export function createMobileKeyboardStore(): MobileKeyboardStore {
   let isOpen = false
   let viewport: VisualViewport | null = null
@@ -71,8 +81,7 @@ export function createMobileKeyboardStore(): MobileKeyboardStore {
     viewport.addEventListener("resize", syncKeyboardState)
     viewport.addEventListener("scroll", syncKeyboardState)
     cleanup = () => {
-      viewport?.removeEventListener("resize", syncKeyboardState)
-      viewport?.removeEventListener("scroll", syncKeyboardState)
+      removeMobileKeyboardListeners(viewport, syncKeyboardState)
       viewport = null
       isOpen = false
       cleanup = null

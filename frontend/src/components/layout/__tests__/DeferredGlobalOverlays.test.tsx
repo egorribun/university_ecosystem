@@ -153,6 +153,40 @@ describe("DeferredGlobalOverlays", () => {
     clearTimeout.mockRestore()
   })
 
+  it("does not notify listeners twice when an idle promotion races interaction", async () => {
+    vi.useFakeTimers()
+    let idleCallback: (() => void) | undefined
+    Object.defineProperty(window, "requestIdleCallback", {
+      configurable: true,
+      value: vi.fn((callback: () => void) => {
+        idleCallback = callback
+        return 41
+      }),
+    })
+
+    try {
+      const store = createDeferredOverlayStore()
+      const listener = vi.fn()
+      const unsubscribe = store.subscribe(listener)
+      await act(async () => {
+        vi.advanceTimersByTime(DEFERRED_OVERLAY_DELAY_MS)
+        await Promise.resolve()
+        window.dispatchEvent(new Event("pointerdown"))
+        await Promise.resolve()
+      })
+
+      expect(listener).toHaveBeenCalledOnce()
+      await act(async () => {
+        idleCallback?.()
+        await Promise.resolve()
+      })
+      expect(listener).toHaveBeenCalledOnce()
+      unsubscribe()
+    } finally {
+      Reflect.deleteProperty(window, "requestIdleCallback")
+    }
+  })
+
   it("registers every promotion listener with one-shot passive options", () => {
     const addEventListener = vi.spyOn(window, "addEventListener")
     const { rerender, unmount } = render(<DeferredGlobalOverlays />)
@@ -368,5 +402,13 @@ describe("DeferredGlobalOverlays", () => {
       Reflect.deleteProperty(window, "requestIdleCallback")
       Reflect.deleteProperty(window, "cancelIdleCallback")
     }
+  })
+
+  it("keeps final-subscriber cleanup idempotent after the store has already stopped", () => {
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+
+    unsubscribe()
+    expect(() => unsubscribe()).not.toThrow()
   })
 })

@@ -930,7 +930,17 @@ export const useProfileSync = (
   // The resolved initial user already captures the SSR hint, LHCI identity
   // and cache state. A null snapshot is the only state that needs the
   // browser bootstrap; authenticated SSR/LHCI/cache snapshots are ready.
-  const [initializing, setInitializing] = useState<boolean>(() => userState === null)
+  const [initializing, setInitializing] = useState<boolean>(() => {
+    // Keep the LHCI loading branch compile-time visible as well. Rolldown can
+    // eliminate this synthetic-auth path from ordinary bundles while the
+    // non-LHCI resolver remains the single SSR/hydration contract.
+    if (import.meta.env.VITE_LHCI === "true") return false
+    return resolveInitialInitializingStateWithoutLhci({
+      isServer: typeof window === "undefined",
+      ssrAuthHint,
+      userState,
+    })
+  })
   const [authOperation, setAuthOperation] = useState(false)
   // Wave 135 SW1 — `activeRequestRef` (AbortController for the /users/me
   // fetch) was removed alongside the controller pattern in the auto-fetch

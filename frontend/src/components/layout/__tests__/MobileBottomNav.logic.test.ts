@@ -7,12 +7,23 @@ import {
   mobileNavAriaCurrent,
   mobileNavAriaHidden,
   navScrollBehavior,
+  removeMobileKeyboardListeners,
   normalizeNavPath,
   sameNavPath,
   shouldHideForVirtualKeyboard,
 } from "../MobileBottomNav"
 
 describe("MobileBottomNav pure navigation contracts", () => {
+  it("detaches both viewport listeners and tolerates an absent viewport", () => {
+    const removeEventListener = vi.fn()
+    const listener = vi.fn()
+
+    removeMobileKeyboardListeners({ removeEventListener }, listener)
+    expect(removeEventListener).toHaveBeenNthCalledWith(1, "resize", listener)
+    expect(removeEventListener).toHaveBeenNthCalledWith(2, "scroll", listener)
+    expect(() => removeMobileKeyboardListeners(null, listener)).not.toThrow()
+  })
+
   it("shares viewport resources until final unsubscribe and ignores a stale callback", () => {
     const originalViewport = Object.getOwnPropertyDescriptor(window, "visualViewport")
     const listeners = new Map<string, EventListener>()
@@ -31,11 +42,15 @@ describe("MobileBottomNav pure navigation contracts", () => {
 
     try {
       const store = createMobileKeyboardStore()
-      const unsubscribeFirst = store.subscribe(vi.fn())
+      const listener = vi.fn()
+      const unsubscribeFirst = store.subscribe(listener)
       const unsubscribeSecond = store.subscribe(vi.fn())
 
       expect(store.getServerSnapshot()).toBe(false)
       expect(visualViewport.addEventListener).toHaveBeenCalledTimes(2)
+
+      listeners.get("resize")?.(new Event("resize"))
+      expect(listener).not.toHaveBeenCalled()
 
       unsubscribeFirst()
       expect(visualViewport.removeEventListener).not.toHaveBeenCalled()
@@ -46,6 +61,7 @@ describe("MobileBottomNav pure navigation contracts", () => {
       expect(store.getSnapshot()).toBe(false)
       expect(() => staleResize?.(new Event("resize"))).not.toThrow()
       expect(store.getSnapshot()).toBe(false)
+      expect(() => unsubscribeSecond()).not.toThrow()
 
       const unsubscribeRestarted = store.subscribe(vi.fn())
       expect(visualViewport.addEventListener).toHaveBeenCalledTimes(4)
