@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import weakref
 from collections.abc import Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -36,6 +38,86 @@ _STATS_PATH = Path("mutants/mutmut-stats.json")
 _REQUIRED_STATS_KEYS = frozenset(
     {"tests_by_mangled_function_name", "duration_by_test", "stats_time"}
 )
+
+# OpenTelemetry 1.41 registers an ``after_in_child`` callback containing a
+# WeakMethod for every finite PeriodicExportingMetricReader.  Its callback is
+# left registered after shutdown and raises ``TypeError`` when a mutmut fork
+# runs after the reader has been collected.  The guard below is installed only
+# by this mutation runner (never by application startup) and changes no test or
+# mutant selection: callbacks with a live target behave exactly as before,
+# while a callback whose weak target is gone is safely a no-op.
+_ATFORK_ORIGINAL: Any | None = None
+_ATFORK_GUARD_INSTALLED = False
+
+
+def _callback_weak_references(callback: Any) -> tuple[weakref.ReferenceType[Any], ...]:
+    """Return weak references captured by a callback closure."""
+
+    closure = getattr(callback, "__closure__", None)
+    if not closure:
+        return ()
+    references: list[weakref.ReferenceType[Any]] = []
+    for cell in closure:
+        try:
+            value = cell.cell_contents
+        except ValueError:
+            continue
+        if isinstance(value, weakref.ReferenceType):
+            references.append(value)
+    return tuple(references)
+
+
+def _guard_atfork_callback(callback: Any) -> Any:
+    """Avoid invoking an upstream callback after its weak target was collected."""
+
+    references = _callback_weak_references(callback)
+    if not references:
+        return callback
+
+    def guarded_callback() -> Any:
+        if any(reference() is None for reference in references):
+            return None
+        return callback()
+
+    return guarded_callback
+
+
+def install_mutation_atfork_guard() -> None:
+    """Install the mutation-only OpenTelemetry weak-callback compatibility guard."""
+
+    global _ATFORK_GUARD_INSTALLED, _ATFORK_ORIGINAL
+    if _ATFORK_GUARD_INSTALLED:
+        return
+    original = getattr(os, "register_at_fork", None)
+    if original is None:
+        return
+
+    def register_at_fork_guarded(
+        *, before: Any = None, after_in_parent: Any = None, after_in_child: Any = None
+    ) -> Any:
+        return original(
+            before=before,
+            after_in_parent=after_in_parent,
+            after_in_child=(
+                _guard_atfork_callback(after_in_child)
+                if after_in_child is not None
+                else None
+            ),
+        )
+
+    _ATFORK_ORIGINAL = original
+    os.register_at_fork = register_at_fork_guarded  # type: ignore[attr-defined]
+    _ATFORK_GUARD_INSTALLED = True
+
+
+def restore_mutation_atfork_guard() -> None:
+    """Restore the process-global fork registration function for unit tests."""
+
+    global _ATFORK_GUARD_INSTALLED, _ATFORK_ORIGINAL
+    if _ATFORK_ORIGINAL is not None:
+        os.register_at_fork = _ATFORK_ORIGINAL  # type: ignore[attr-defined]
+    _ATFORK_ORIGINAL = None
+    _ATFORK_GUARD_INSTALLED = False
 
 
 def _parse_args() -> argparse.Namespace:
@@ -167,6 +249,9 @@ def run_mutmut_from_stats(
 
 def main() -> None:
     args = _parse_args()
+    # Install before mutmut imports/collects the application so forked test
+    # workers inherit the narrow OTel lifecycle guard.
+    install_mutation_atfork_guard()
     run_mutmut_from_stats(
         mutant_names=args.mutant_names,
         max_children=args.max_children,

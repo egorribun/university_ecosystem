@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import gc
 import json
+import weakref
 from types import SimpleNamespace
 
 import pytest
@@ -8,6 +10,132 @@ import pytest
 import scripts.run_mutmut_with_stats as run_module
 from scripts.mutmut_stats_shard import _stats_selection_args
 from scripts.run_mutmut_with_stats import run_mutmut_from_stats
+
+
+def test_mutation_worker_atfork_guard_skips_dead_otel_weakmethod(
+    monkeypatch,
+) -> None:
+    """A dead OTel weak callback must not raise from a mutation fork."""
+
+    registered: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        run_module.os,
+        "register_at_fork",
+        lambda **kwargs: registered.append(kwargs),
+        raising=False,
+    )
+    monkeypatch.setattr(run_module, "_ATFORK_GUARD_INSTALLED", False)
+    monkeypatch.setattr(run_module, "_ATFORK_ORIGINAL", None)
+
+    run_module.install_mutation_atfork_guard()
+
+    class Target:
+        def callback(self) -> str:
+            return "alive"
+
+    target = Target()
+    weak_method = weakref.WeakMethod(target.callback)
+    callback = lambda: weak_method()()  # noqa: E731 - mirrors the OTel callback
+    run_module.os.register_at_fork(after_in_child=callback)
+
+    guarded = registered[0]["after_in_child"]
+    assert callable(guarded)
+    assert guarded() == "alive"
+
+    del target
+    gc.collect()
+    assert guarded() is None
+
+    run_module.restore_mutation_atfork_guard()
+
+
+def test_mutation_worker_atfork_guard_preserves_unrelated_callbacks() -> None:
+    """Callbacks without weak targets and their failures remain untouched."""
+
+    called: list[str] = []
+
+    def callback() -> str:
+        called.append("called")
+        return "result"
+
+    guarded = run_module._guard_atfork_callback(callback)
+    assert guarded is callback
+    assert guarded() == "result"
+    assert called == ["called"]
+
+    def failing_callback() -> None:
+        raise TypeError("unrelated callback failure")
+
+    guarded_failure = run_module._guard_atfork_callback(failing_callback)
+    with pytest.raises(TypeError, match="unrelated callback failure"):
+        guarded_failure()
+
+
+def test_mutation_worker_installs_atfork_guard_before_running_mutmut(
+    monkeypatch,
+) -> None:
+    """The guard must be active before mutmut can import/collect the app."""
+
+    events: list[str] = []
+    monkeypatch.setattr(
+        run_module,
+        "_parse_args",
+        lambda: SimpleNamespace(
+            mutant_names=("app.fn__mutmut_1",),
+            max_children=2,
+            reuse_generated_universe=True,
+        ),
+    )
+    monkeypatch.setattr(
+        run_module,
+        "install_mutation_atfork_guard",
+        lambda: events.append("guard"),
+    )
+    monkeypatch.setattr(
+        run_module,
+        "run_mutmut_from_stats",
+        lambda **_: events.append("run"),
+    )
+
+    run_module.main()
+
+    assert events == ["guard", "run"]
+
+
+def test_mutation_worker_guard_covers_finite_otel_reader(monkeypatch) -> None:
+    """Exercise the real SDK callback shape, not only a synthetic weak method."""
+
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import (
+        ConsoleMetricExporter,
+        PeriodicExportingMetricReader,
+    )
+
+    registered: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        run_module.os,
+        "register_at_fork",
+        lambda **kwargs: registered.append(kwargs),
+        raising=False,
+    )
+    monkeypatch.setattr(run_module, "_ATFORK_GUARD_INSTALLED", False)
+    monkeypatch.setattr(run_module, "_ATFORK_ORIGINAL", None)
+
+    run_module.install_mutation_atfork_guard()
+    reader = PeriodicExportingMetricReader(
+        ConsoleMetricExporter(), export_interval_millis=60_000
+    )
+    provider = MeterProvider(metric_readers=[reader])
+    try:
+        provider.shutdown()
+        assert registered
+        callback = registered[0]["after_in_child"]
+        assert callable(callback)
+        del reader, provider
+        gc.collect()
+        assert callback() is None
+    finally:
+        run_module.restore_mutation_atfork_guard()
 
 
 class _FakeListAllTestsResult:
