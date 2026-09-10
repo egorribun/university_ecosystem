@@ -925,6 +925,9 @@ export const useProfileSync = (
   const mountedRef = useRef(true)
 
   useEffect(() => {
+    // React StrictMode replays effect setup after its development-only
+    // cleanup. Restore the live marker before every setup so the second
+    // pass is not treated as an unmounted component.
     mountedRef.current = true
     return () => {
       mountedRef.current = false
@@ -932,33 +935,25 @@ export const useProfileSync = (
   }, [])
 
   useEffect(() => {
-    let mounted = true
     const init = async () => {
       if (!isProfileSyncBrowserRuntime()) return
       migrateProfileCache()
 
       // Read from the ref for initialization
       const signingKey = sessionSigningKeyRef.current
-      let restoredProfile = false
       if (signingKey) {
         const cached = await readCachedUserAsync(signingKey)
-        if (mounted && cached) {
+        if (mountedRef.current && cached) {
           setUserState(cached)
-          restoredProfile = true
+          // A verified cache snapshot is safe to render immediately.  The
+          // auto-fetch effect continues in the background, while this
+          // transition prevents route guards from treating the restored
+          // profile as an unauthenticated cold start.
+          setInitializing(false)
         }
       }
-      // A cold browser has no synchronous signing key, so the auto-fetch
-      // effect owns the loading transition and must be allowed to settle it
-      // after `/users/me` resolves (including a fast 401).  Only a genuinely
-      // restored, verified cache can finish initialization here; otherwise
-      // clearing the flag would expose a transient unauthenticated state to
-      // route guards before the cookie-backed request runs.
-      if (mounted && restoredProfile) setInitializing(false)
     }
     init()
-    return () => {
-      mounted = false
-    }
   }, [sessionSigningKeyRef])
 
   const broadcastProfileEvent = useCallback((message: ProfileBroadcastMessage) => {
