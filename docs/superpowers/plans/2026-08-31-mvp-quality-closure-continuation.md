@@ -546,7 +546,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 Интерфейс:
 
-    uv run python scripts/quality/analyze_ci_critical_path.py --repository egorribun/university_ecosystem --run-id 33543238962 --concurrency-cap 20 --output artifacts/quality/ci-critical-path.json
+    uv run python scripts/quality/analyze_ci_critical_path.py --repository egorribun/university_ecosystem --run-id 33543238962 --concurrency-cap 20 --diagnostic-lower-bound --output artifacts/quality/ci-critical-path.json
 
 Отчёт должен содержать:
 

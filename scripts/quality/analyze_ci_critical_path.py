@@ -5,12 +5,15 @@ The analyzer deliberately treats the GitHub API payload as evidence rather than
 as an instruction.  It never mutates a run, retries a job, or accepts a report
 from another run.  A fixture can be supplied with ``--jobs-json`` for local
 reproducibility; otherwise ``gh api --paginate`` is used to read the jobs for
-the requested run.
+the requested run. Exact critical-path analysis requires an attempt-bound DAG
+sidecar supplied with ``--dag-json``. API-only timing is available only through
+the explicitly labelled ``--diagnostic-lower-bound`` mode.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -22,6 +25,8 @@ from pathlib import Path
 
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 ISO_RE = re.compile(r"Z$", re.ASCII)
+SHA_RE = re.compile(r"^[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?$")
+SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 class AnalysisError(ValueError):
@@ -80,6 +85,9 @@ class JobTiming:
     needs: tuple[str, ...]
     steps: tuple[StepTiming, ...]
     core_failure: bool
+    api_run_id: int | None = None
+    api_run_attempt: int | None = None
+    api_head_sha: str | None = None
 
     @property
     def duration_seconds(self) -> float:
@@ -92,6 +100,32 @@ class JobTiming:
         if self.queued_at is None or self.started_at is None:
             return 0.0
         return max(0.0, (self.started_at - self.queued_at).total_seconds())
+
+
+@dataclass(frozen=True)
+class DAGEvidence:
+    """Validated, attempt-bound dependency metadata from a trusted sidecar."""
+
+    dependency_ids: dict[int, tuple[int, ...]]
+    logical_ids: dict[int, str]
+    core_failures: dict[int, bool]
+
+
+def _canonical_json(value: Mapping[str, object]) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _validate_sha(value: object, field: str, *, sha256_only: bool = False) -> str:
+    text = _text(value, field)
+    matcher = SHA256_RE if sha256_only else SHA_RE
+    if not matcher.fullmatch(text):
+        expected = (
+            "a 64-character SHA-256 digest"
+            if sha256_only
+            else "a 40- or 64-character commit SHA"
+        )
+        raise AnalysisError(f"{field} must be {expected}")
+    return text.lower()
 
 
 def _decode_jobs_payload(payload: object) -> list[Mapping[str, object]]:
@@ -239,6 +273,23 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
                 needs=_parse_needs(record.get("needs"), name),
                 steps=_parse_steps(record.get("steps"), name),
                 core_failure=bool(record.get("core_failure", False)),
+                api_run_id=(
+                    None
+                    if record.get("run_id") is None
+                    else _positive_integer(record.get("run_id"), f"job {name!r}.run_id")
+                ),
+                api_run_attempt=(
+                    None
+                    if record.get("run_attempt") is None
+                    else _positive_integer(
+                        record.get("run_attempt"), f"job {name!r}.run_attempt"
+                    )
+                ),
+                api_head_sha=(
+                    None
+                    if record.get("head_sha") is None
+                    else _validate_sha(record.get("head_sha"), f"job {name!r}.head_sha")
+                ),
             )
         )
     return tuple(
@@ -250,6 +301,138 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
             ),
         )
     )
+
+
+def _validate_dag_sidecar(
+    dag: object,
+    jobs: Sequence[JobTiming],
+    *,
+    repository: str,
+    run_id: int,
+) -> DAGEvidence:
+    """Validate a normalized, immutable DAG envelope for exact analysis."""
+    if not isinstance(dag, Mapping):
+        raise AnalysisError("strict analysis requires a DAG sidecar object")
+    if dag.get("schema_version") != 1:
+        raise AnalysisError("DAG sidecar schema_version must be 1")
+    if dag.get("repository") != repository:
+        raise AnalysisError("DAG sidecar repository does not match run repository")
+    if dag.get("run_id") != run_id:
+        raise AnalysisError("DAG sidecar run_id does not match requested run_id")
+    sidecar_run_attempt = _positive_integer(
+        dag.get("run_attempt"), "DAG sidecar run_attempt"
+    )
+    sidecar_source_sha = _validate_sha(
+        dag.get("source_head_sha"), "DAG sidecar source_head_sha"
+    )
+    _validate_sha(dag.get("tested_commit_sha"), "DAG sidecar tested_commit_sha")
+    _text(dag.get("workflow_path"), "DAG sidecar workflow_path")
+    _text(dag.get("workflow_ref"), "DAG sidecar workflow_ref")
+    _validate_sha(dag.get("workflow_sha"), "DAG sidecar workflow_sha")
+
+    workflow_hashes = dag.get("workflow_files_sha256")
+    if not isinstance(workflow_hashes, Mapping) or not workflow_hashes:
+        raise AnalysisError(
+            "DAG sidecar workflow_files_sha256 must be a non-empty object"
+        )
+    for path, digest in workflow_hashes.items():
+        _text(path, "DAG sidecar workflow file path")
+        _validate_sha(
+            digest, f"DAG sidecar workflow_files_sha256[{path!r}]", sha256_only=True
+        )
+
+    supplied_digest = _validate_sha(
+        dag.get("dag_sha256"), "DAG sidecar dag_sha256", sha256_only=True
+    )
+    canonical = dict(dag)
+    canonical.pop("dag_sha256", None)
+    expected_digest = hashlib.sha256(
+        _canonical_json(canonical).encode("utf-8")
+    ).hexdigest()
+    if supplied_digest != expected_digest:
+        raise AnalysisError("DAG sidecar dag_sha256 does not match its contents")
+
+    nonterminal = [job.job_id for job in jobs if job.status != "completed"]
+    if nonterminal:
+        raise AnalysisError(
+            "strict analysis requires terminal jobs; nonterminal job IDs: "
+            + ", ".join(str(job_id) for job_id in nonterminal)
+        )
+
+    nodes = dag.get("nodes")
+    if not isinstance(nodes, list) or len(nodes) != len(jobs):
+        raise AnalysisError("DAG sidecar nodes must contain exactly one node per job")
+    jobs_by_id = {job.job_id: job for job in jobs}
+    for job in jobs:
+        if (
+            job.api_run_id is None
+            or job.api_run_attempt is None
+            or job.api_head_sha is None
+        ):
+            raise AnalysisError(
+                f"strict analysis requires API identity fields for job {job.job_id}"
+            )
+        if job.api_run_id is not None and job.api_run_id != run_id:
+            raise AnalysisError(
+                f"job {job.job_id} run_id does not match requested run_id"
+            )
+        if (
+            job.api_run_attempt is not None
+            and job.api_run_attempt != sidecar_run_attempt
+        ):
+            raise AnalysisError(
+                f"job {job.job_id} run_attempt does not match DAG sidecar"
+            )
+        if job.api_head_sha is not None and job.api_head_sha != sidecar_source_sha:
+            raise AnalysisError(
+                f"job {job.job_id} head_sha does not match DAG sidecar source_head_sha"
+            )
+    dependency_ids: dict[int, tuple[int, ...]] = {}
+    logical_ids: dict[int, str] = {}
+    core_failures: dict[int, bool] = {}
+    for index, node in enumerate(nodes):
+        if not isinstance(node, Mapping):
+            raise AnalysisError(f"DAG sidecar nodes[{index}] must be an object")
+        job_id = _positive_integer(
+            node.get("job_id"), f"DAG sidecar nodes[{index}].job_id"
+        )
+        if job_id in dependency_ids:
+            raise AnalysisError(f"duplicate DAG sidecar job_id {job_id}")
+        if job_id not in jobs_by_id:
+            raise AnalysisError(f"DAG sidecar references unknown job id {job_id}")
+        logical_id = _text(
+            node.get("logical_id"), f"DAG sidecar nodes[{index}].logical_id"
+        )
+        if logical_id in logical_ids.values():
+            raise AnalysisError(f"duplicate DAG sidecar logical_id {logical_id!r}")
+        for field in ("phase", "core_role", "skip_classification"):
+            _text(node.get(field), f"DAG sidecar nodes[{index}].{field}")
+        core_failure = node.get("core_failure")
+        if not isinstance(core_failure, bool):
+            raise AnalysisError(
+                f"DAG sidecar nodes[{index}].core_failure must be boolean"
+            )
+        raw_needs = node.get("needs")
+        if not isinstance(raw_needs, list):
+            raise AnalysisError(f"DAG sidecar nodes[{index}].needs must be an array")
+        needs = tuple(
+            _positive_integer(value, f"DAG sidecar nodes[{index}].needs[{need_index}]")
+            for need_index, value in enumerate(raw_needs)
+        )
+        if len(set(needs)) != len(needs):
+            raise AnalysisError(f"DAG sidecar nodes[{index}].needs contains duplicates")
+        dependency_ids[job_id] = needs
+        logical_ids[job_id] = logical_id
+        core_failures[job_id] = core_failure
+    if set(dependency_ids) != set(jobs_by_id):
+        raise AnalysisError("DAG sidecar job IDs do not match the jobs payload")
+    for job_id, needs in dependency_ids.items():
+        for dependency_id in needs:
+            if dependency_id not in jobs_by_id:
+                raise AnalysisError(
+                    f"DAG sidecar job {job_id} references unknown dependency id {dependency_id}"
+                )
+    return DAGEvidence(dependency_ids, logical_ids, core_failures)
 
 
 def _interval_union_seconds(intervals: Iterable[tuple[datetime, datetime]]) -> float:
@@ -313,27 +496,56 @@ def _duration_buckets(job: JobTiming) -> tuple[float, float, float]:
 
 def _longest_dependency_path(
     jobs: Sequence[JobTiming],
+    dependency_ids: Mapping[int, tuple[int, ...]] | None = None,
 ) -> tuple[dict[int, float], dict[int, bool]]:
     by_name = {job.name: job for job in jobs}
+    by_id = {job.job_id: job for job in jobs}
     end_times: dict[int, float] = {}
     upstream_failure: dict[int, bool] = {}
     dependency_chain_failure: dict[int, bool] = {}
-    visiting: set[str] = set()
+    visiting: set[int] = set()
 
     def visit(job: JobTiming) -> float:
         if job.job_id in end_times:
             return end_times[job.job_id]
-        if job.name in visiting:
+        if job.job_id in visiting:
             raise AnalysisError(f"dependency cycle includes job {job.name!r}")
-        visiting.add(job.name)
+        visiting.add(job.job_id)
         predecessor_ends: list[float] = []
         dependency_failed = False
-        for dependency_name in job.needs:
-            predecessor = by_name.get(dependency_name)
-            if predecessor is None:
-                raise AnalysisError(
-                    f"job {job.name!r} references missing dependency {dependency_name!r}"
+        if dependency_ids is None:
+            predecessors = [
+                by_name.get(dependency_name) for dependency_name in job.needs
+            ]
+            missing_names = [
+                dependency_name
+                for dependency_name, predecessor in zip(
+                    job.needs, predecessors, strict=True
                 )
+                if predecessor is None
+            ]
+            if missing_names:
+                raise AnalysisError(
+                    f"job {job.name!r} references missing dependency {missing_names[0]!r}"
+                )
+        else:
+            predecessors = [
+                by_id.get(dependency_id) for dependency_id in dependency_ids[job.job_id]
+            ]
+            missing_ids = [
+                dependency_id
+                for dependency_id, predecessor in zip(
+                    dependency_ids[job.job_id], predecessors, strict=True
+                )
+                if predecessor is None
+            ]
+            if missing_ids:
+                raise AnalysisError(
+                    f"job {job.name!r} references missing dependency id {missing_ids[0]}"
+                )
+        for predecessor in predecessors:
+            if predecessor is None:
+                raise AnalysisError(f"job {job.name!r} has an unknown dependency")
             predecessor_ends.append(visit(predecessor))
             dependency_failed = dependency_failed or (
                 predecessor.conclusion not in {"success", "skipped"}
@@ -341,7 +553,7 @@ def _longest_dependency_path(
             )
         start = max(predecessor_ends, default=0.0)
         end = start + job.duration_seconds
-        visiting.remove(job.name)
+        visiting.remove(job.job_id)
         end_times[job.job_id] = end
         # A dependency failure is only a *blocked* job when the job never ran.
         # Jobs using ``always()`` may legitimately execute after a failed need;
@@ -391,8 +603,78 @@ def _utilization(jobs: Sequence[JobTiming], cap: int) -> tuple[float, float, flo
     return peak, (area / wall / cap if wall and cap else 0.0), wall
 
 
-def analyze_jobs(
+def _diagnostic_lower_bound_report(
     jobs: Sequence[JobTiming], *, repository: str, run_id: int, concurrency_cap: int
+) -> dict[str, object]:
+    """Report observable timing without inventing dependencies or core roles."""
+    peak, average_utilization, wall_seconds = _utilization(jobs, concurrency_cap)
+    setup_signatures: Counter[str] = Counter()
+    job_rows: list[dict[str, object]] = []
+    for job in jobs:
+        setup, actual, artifact = _duration_buckets(job)
+        for step in job.steps:
+            if _step_bucket(step.name) in {"setup", "artifact"}:
+                setup_signatures[step.name.casefold()] += 1
+        queue_wait: float | None = None
+        if job.status != "queued":
+            queue_wait = round(job.queue_wait_seconds, 3)
+        job_rows.append(
+            {
+                "id": job.job_id,
+                "name": job.name,
+                "status": job.status,
+                "conclusion": job.conclusion,
+                "needs": "unknown",
+                "duration_seconds": round(job.duration_seconds, 3),
+                "dependency_wait_seconds": None,
+                "github_queue_wait_seconds": queue_wait,
+                "setup_install_seconds": round(setup, 3),
+                "actual_test_seconds": round(actual, 3),
+                "artifact_seconds": round(artifact, 3),
+                "critical_path_end_seconds": None,
+                "upstream_failure_blocked": "unknown",
+                "continued_after_core_failure": "unknown",
+                "steps": [
+                    {"name": step.name, "seconds": round(step.seconds, 3)}
+                    for step in job.steps
+                ],
+            }
+        )
+    duplicate_setup = [
+        {"step": name, "count": count}
+        for name, count in sorted(setup_signatures.items())
+        if count > 1
+    ]
+    return {
+        "schema_version": 1,
+        "repository": repository,
+        "run_id": run_id,
+        "concurrency_cap": concurrency_cap,
+        "analysis_mode": "diagnostic-lower-bound",
+        "summary": {
+            "job_count": len(jobs),
+            "analysis_mode": "diagnostic-lower-bound",
+            "critical_path_kind": "lower-bound",
+            "critical_path_lower_bound_seconds": round(wall_seconds, 3),
+            "wall_clock_seconds": round(wall_seconds, 3),
+            "peak_slot_utilization": peak,
+            "average_slot_utilization": round(average_utilization, 6),
+            "duplicate_setup_download_work": duplicate_setup,
+            "upstream_failure_blocked_jobs": "unknown",
+            "jobs_continued_after_core_failure": "unknown",
+        },
+        "jobs": job_rows,
+    }
+
+
+def analyze_jobs(
+    jobs: Sequence[JobTiming],
+    *,
+    repository: str,
+    run_id: int,
+    concurrency_cap: int,
+    dag: object | None = None,
+    diagnostic_lower_bound: bool = False,
 ) -> dict[str, object]:
     if not REPOSITORY_RE.fullmatch(repository):
         raise AnalysisError("repository must be an owner/name pair")
@@ -400,12 +682,30 @@ def analyze_jobs(
     _positive_integer(concurrency_cap, "concurrency_cap")
     if not jobs:
         raise AnalysisError("run contains no jobs")
-    end_times, upstream_failure = _longest_dependency_path(jobs)
+    if diagnostic_lower_bound and dag is not None:
+        raise AnalysisError("DAG sidecar cannot be combined with diagnostic mode")
+    if dag is None:
+        if not diagnostic_lower_bound:
+            raise AnalysisError(
+                "strict analysis requires a DAG sidecar; use diagnostic-lower-bound mode for API-only jobs"
+            )
+        return _diagnostic_lower_bound_report(
+            jobs,
+            repository=repository,
+            run_id=run_id,
+            concurrency_cap=concurrency_cap,
+        )
+    dag_evidence = _validate_dag_sidecar(
+        dag, jobs, repository=repository, run_id=run_id
+    )
+    end_times, upstream_failure = _longest_dependency_path(
+        jobs, dag_evidence.dependency_ids
+    )
     peak, average_utilization, wall_seconds = _utilization(jobs, concurrency_cap)
     core_failures = [
         job.completed_at
         for job in jobs
-        if job.core_failure and job.completed_at is not None
+        if dag_evidence.core_failures[job.job_id] and job.completed_at is not None
     ]
     earliest_core_failure = min(core_failures) if core_failures else None
     setup_signatures: Counter[str] = Counter()
@@ -419,7 +719,7 @@ def analyze_jobs(
             earliest_core_failure
             and job.started_at
             and job.started_at > earliest_core_failure
-            and not job.core_failure
+            and not dag_evidence.core_failures[job.job_id]
         )
         job_rows.append(
             {
@@ -427,7 +727,10 @@ def analyze_jobs(
                 "name": job.name,
                 "status": job.status,
                 "conclusion": job.conclusion,
-                "needs": list(job.needs),
+                "needs": [
+                    dag_evidence.logical_ids[dependency_id]
+                    for dependency_id in dag_evidence.dependency_ids[job.job_id]
+                ],
                 "duration_seconds": round(job.duration_seconds, 3),
                 "dependency_wait_seconds": round(
                     max(0.0, end_times[job.job_id] - job.duration_seconds), 3
@@ -459,8 +762,11 @@ def analyze_jobs(
         "repository": repository,
         "run_id": run_id,
         "concurrency_cap": concurrency_cap,
+        "analysis_mode": "strict",
         "summary": {
             "job_count": len(jobs),
+            "analysis_mode": "strict",
+            "critical_path_kind": "exact",
             "critical_path_seconds": round(critical_path, 3),
             "wall_clock_seconds": round(wall_seconds, 3),
             "peak_slot_utilization": peak,
@@ -520,6 +826,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help="read an offline fixture instead of invoking gh api",
     )
+    parser.add_argument(
+        "--dag-json",
+        type=Path,
+        help="read the required attempt-bound normalized DAG sidecar",
+    )
+    parser.add_argument(
+        "--diagnostic-lower-bound",
+        action="store_true",
+        help="report API-only timing as a lower bound without dependency claims",
+    )
     args = parser.parse_args(argv)
     try:
         payload = (
@@ -527,11 +843,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.jobs_json
             else _fetch_jobs(args.repository, args.run_id)
         )
+        dag = _load_json(args.dag_json) if args.dag_json else None
         report = analyze_jobs(
             parse_jobs(payload),
             repository=args.repository,
             run_id=args.run_id,
             concurrency_cap=args.concurrency_cap,
+            dag=dag,
+            diagnostic_lower_bound=args.diagnostic_lower_bound,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(

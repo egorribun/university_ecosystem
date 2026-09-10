@@ -54,13 +54,15 @@ The measurements were produced with the repository's read-only analyzer:
 ```text
 uv run python scripts/quality/analyze_ci_critical_path.py \
   --repository egorribun/university_ecosystem \
-  --run-id <run> --concurrency-cap 20 --output <temporary-file>
+  --run-id <run> --concurrency-cap 20 --diagnostic-lower-bound \
+  --output <temporary-file>
 ```
 
 The Jobs API does not expose the workflow `needs` graph for every nested
-reusable-workflow leg. Consequently, `critical_path_lower_bound_s` is the
-analyzer's dependency-free lower bound for the returned job records, while
-`wall_clock_s`, queue waits, and observed peak are direct timing observations.
+reusable-workflow leg. Consequently, `critical_path_lower_bound_seconds` is the
+analyzer's dependency-free lower bound for the returned job records (strict
+exact analysis requires an attempt-bound `--dag-json` sidecar), while
+`wall_clock_seconds`, queue waits, and observed peak are direct timing observations.
 
 | Run | Source head | Result | Job records | Wall clock | Lower bound | Observed peak | Average utilization | Max queue wait |
 |---:|---|---|---:|---:|---:|---:|---:|---:|
