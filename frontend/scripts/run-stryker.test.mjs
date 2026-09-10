@@ -3002,6 +3002,83 @@ test("isolates every source from the observed UI and auth timeout shards", async
   )
 })
 
+test("keeps static reload hotspots within bounded first-attempt assignments", async () => {
+  const { mutationPatternCoversMutant, planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 5, column: 0 },
+        end: { line: index * 5, column: 4 },
+      },
+    }))
+  const staticHotspots = [
+    ["src/contexts/LanguageContext.tsx", 64],
+    ["src/db/index.ts", 36],
+  ]
+  const regularFiles = Array.from({ length: 12 }, (_, index) => {
+    const file = `src/static-cost-regular-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    ...staticHotspots.map(([file, count]) => [file, { mutants: makeMutants(file, count) }]),
+    ...regularFiles,
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  const expectedMutants = [...preflight.values()].reduce(
+    (total, entry) => total + entry.mutants.length,
+    0
+  )
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    expectedMutants
+  )
+
+  for (const [file] of staticHotspots) {
+    const assignedShards = plan.filter((shard) =>
+      shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+    )
+    assert.ok(assignedShards.length > 0, `${file} is missing from the shard plan`)
+    assert.ok(
+      assignedShards.every((shard) => {
+        const assignedHotspotMutants = shard.files.reduce(
+          (total, pattern) =>
+            total +
+            preflight
+              .get(file)
+              .mutants.filter((mutant) => mutationPatternCoversMutant(pattern, mutant, file))
+              .length,
+          0
+        )
+        return assignedHotspotMutants <= 6
+      }),
+      `${file} exceeds the conservative six-mutant static reload budget`
+    )
+  }
+  const hotspotShardSets = staticHotspots.map(
+    ([file]) =>
+      new Set(
+        plan.flatMap((shard, index) =>
+          shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+            ? [index]
+            : []
+        )
+      )
+  )
+  const sharedHotspotShards = [...hotspotShardSets[0]].filter((index) =>
+    hotspotShardSets[1].has(index)
+  )
+  assert.equal(
+    sharedHotspotShards.length,
+    0,
+    "static reload hotspots must not share a first-attempt shard"
+  )
+})
+
 test("keeps the dedicated first-attempt planner total with two requested shards", async () => {
   const { planMutationShards } = await import(runnerUrl)
   const makeMutants = (file, count) =>
@@ -3068,6 +3145,11 @@ test("isolates proven non-API test-graph hotspots without dropping regular work"
     plan.reduce((total, shard) => total + shard.mutantCount, 0),
     12_500
   )
+  const isRegularPattern = (pattern) => pattern.startsWith("src/regular-")
+  const regularStart = plan.findIndex(
+    (shard) => shard.files.length > 0 && shard.files.every(isRegularPattern)
+  )
+  assert.ok(regularStart > 0, "the first-attempt prefix must precede regular work")
 
   for (const file of hotspotFiles) {
     const assignedShardIndexes = plan.flatMap((shard, shardIndex) =>
@@ -3077,13 +3159,13 @@ test("isolates proven non-API test-graph hotspots without dropping regular work"
     )
     assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
     assert.ok(
-      assignedShardIndexes.every((shardIndex) => shardIndex < 12),
+      assignedShardIndexes.every((shardIndex) => shardIndex < regularStart),
       `${file} leaked into a regular first-attempt shard`
     )
   }
   assert.ok(
     plan
-      .slice(12)
+      .slice(regularStart)
       .every((shard) => shard.files.every((pattern) => pattern.startsWith("src/regular-"))),
     "regular shards must not inherit a proven expensive graph"
   )

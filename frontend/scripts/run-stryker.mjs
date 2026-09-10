@@ -618,19 +618,36 @@ const firstAttemptCostAwareShardCount = 12
 // backendOrigin is imported by the SSR/client bootstrap graph, so even its
 // tiny source file selects a broad static test set. The auth sources below
 // were observed in the same multi-hour related-test graph as the timed-out
-// shard 11/64. Keep each emitted range from these sources on its own
-// first-attempt shard; mixing it with another static-heavy range turns a
-// handful of mutants into a hard-to-diagnose shard timeout. The order is
-// deterministic so shard zero remains the backendOrigin-only boundary used
-// by existing contracts.
+// shard 11/64. The order is deterministic so shard zero remains the
+// backendOrigin-only boundary used by existing contracts. LanguageContext and
+// db/index were both present in the exact 551-mutant shard 22/64 that spent
+// 82% of its estimated runtime on static mutants; their ranges are therefore
+// fine-grained below before the remaining weighted placement.
 const firstAttemptDedicatedFiles = [
   "src/api/backendOrigin.ts",
   "src/hooks/auth/useProfileSync.ts",
   "src/hooks/auth/useSessionCrypto.ts",
 ]
 
+// These module-level sources were present in the timed-out shard 22/64. Their
+// static mutants force a complete test-environment reload, so keep their
+// first-attempt ranges below the normal count budget before cost-aware
+// packing. This changes only placement granularity; no mutant is removed.
+const firstAttemptStaticHotspotFiles = new Set([
+  "src/contexts/LanguageContext.tsx",
+  "src/db/index.ts",
+])
+
+function firstAttemptUnitBudget(file, budget) {
+  return firstAttemptStaticHotspotFiles.has(file) ? Math.max(1, Math.floor(budget / 2)) : budget
+}
+
 function mutationPatternStartsWithSource(pattern, sourcePath) {
   return pattern === sourcePath || pattern.startsWith(`${sourcePath}:`)
+}
+
+function mutationPatternSource(pattern) {
+  return pattern.split(":", 1)[0]
 }
 
 function firstAttemptSourceCostWeight(file) {
@@ -659,7 +676,27 @@ function assignWeightedMutationUnits(weightedUnits, shards) {
 
   for (; cursor < orderedUnits.length; cursor += 1) {
     const entry = orderedUnits[cursor]
-    const target = shards.reduce((lightest, shard) => {
+    const source = mutationPatternSource(entry.pattern)
+    const sourceFreeShards = firstAttemptStaticHotspotFiles.has(source)
+      ? shards.filter(
+          (shard) => !shard.files.some((pattern) => mutationPatternSource(pattern) === source)
+        )
+      : shards
+    const staticHotspotFreeShards = firstAttemptStaticHotspotFiles.has(source)
+      ? sourceFreeShards.filter(
+          (shard) =>
+            !shard.files.some((pattern) =>
+              firstAttemptStaticHotspotFiles.has(mutationPatternSource(pattern))
+            )
+        )
+      : sourceFreeShards
+    const candidateShards =
+      staticHotspotFreeShards.length > 0
+        ? staticHotspotFreeShards
+        : sourceFreeShards.length > 0
+          ? sourceFreeShards
+          : shards
+    const target = candidateShards.reduce((lightest, shard) => {
       return shard.estimatedCost < lightest.estimatedCost ||
         (shard.estimatedCost === lightest.estimatedCost && shard.id < lightest.id)
         ? shard
@@ -748,12 +785,16 @@ function assignFirstAttemptMutationUnits(weightedUnits, shards) {
   const minimumExpensiveShards = Math.max(1, remainingShards.length - regularUnits.length)
   const maximumExpensiveShards =
     regularUnits.length > 0 ? remainingShards.length - 1 : remainingShards.length
+  const staticHotspotUnitCount = remainingExpensiveUnits.filter((entry) =>
+    firstAttemptStaticHotspotFiles.has(mutationPatternSource(entry.pattern))
+  ).length
   const expensiveShardCount = Math.min(
     remainingExpensiveUnits.length,
     maximumExpensiveShards,
     Math.max(
       minimumExpensiveShards,
-      Math.min(firstAttemptCostAwareShardCount, remainingShards.length)
+      Math.min(firstAttemptCostAwareShardCount, remainingShards.length),
+      staticHotspotUnitCount
     )
   )
   const expensiveShards = remainingShards.slice(0, expensiveShardCount)
@@ -852,7 +893,7 @@ export function planMutationShards(
     const units = splitMutationUnits({
       file,
       mutants,
-      budget: unitBudget,
+      budget: firstAttempt ? firstAttemptUnitBudget(file, unitBudget) : unitBudget,
       estimatedCost: estimatedCost ?? mutantCount * costWeight,
     })
     return units.map((unit) => ({ ...unit, costWeight }))
