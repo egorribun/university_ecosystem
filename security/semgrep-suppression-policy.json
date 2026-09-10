@@ -31,8 +31,8 @@
     {
       "rule_id": "python.lang.security.audit.formatted-sql-query.formatted-sql-query",
       "path": "app/workers/cdc_outbox.py",
-      "start_line": 488,
-      "end_line": 490,
+      "start_line": 508,
+      "end_line": 510,
       "owner": "security@university.example",
       "expires": "2026-12-31",
       "reason": "PostgreSQL publication names are identifiers and cannot be bound as asyncpg parameters; the value is reduced to alphanumeric characters/underscore before interpolation, with the source name fixed by trusted configuration and covered by provisioning tests."
@@ -40,8 +40,8 @@
     {
       "rule_id": "python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query",
       "path": "app/workers/cdc_outbox.py",
-      "start_line": 488,
-      "end_line": 490,
+      "start_line": 508,
+      "end_line": 510,
       "owner": "security@university.example",
       "expires": "2026-12-31",
       "reason": "This call uses an asyncpg replication connection rather than SQLAlchemy; the only interpolated token is the sanitized publication identifier, while all data-bearing queries use positional parameters."
