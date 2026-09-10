@@ -3096,6 +3096,56 @@ User-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
 `.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
 excluded from all source commits.
 
+## 43. Current local audit-policy checkpoint (2026-09-10; snapshot HEAD `a9be722e5`)
+
+This checkpoint is a pre-push source snapshot. It records local changes and
+evidence only; the old remote matrix remains non-terminal and cannot certify
+this snapshot.
+
+### 43.1 Source and preservation boundary
+
+- Branch: `egorribun`; snapshot `HEAD`:
+  `a9be722e51f876a0030cdec65692b2a78f861e16`.
+- Remote `origin/egorribun` remains
+  `78d03e1379a0c428ae509039d4942677ed89a7d9`; local delta is 11 commits,
+  with no tracked worktree changes.
+- User-owned untracked files remain exactly the six inventoried paths under
+  `.tmp_preflight/`, `.tmp_stryker_18/shard-018/`,
+  `.tmp_stryker_22/shard-022/` and `docs/audits/AUDIT_PLATFORM_FULL.md`;
+  stash is empty and no cleanup was performed.
+
+### 43.2 Bounded audit closure work
+
+- ADR-034 formalizes Helm as the sole canonical application deployment
+  producer; infrastructure/Helm contracts are green (**211/211**).
+- ADR-035 plus `pyproject.toml`/`uv.lock` add upper bounds to all 32
+  previously unbounded external production requirements; dependency-policy
+  and gitleaks contracts are green (**16/16 combined**), and `uv lock --check`
+  passes.
+- ADR-036 records the measured BE-02 defaults inventory (54 explicit
+  Python-only candidates, 19 server-only, 37 UUIDv7 exceptions) and a
+  PostgreSQL catalog/preflight migration policy; no unsafe blanket DDL rewrite
+  was attempted.
+- Isolated pre-commit hooks pass (Ruff, detect-secrets, hardcoded-secrets,
+  Bandit, mypy, strong-env-secrets, no-Python2-except, actionlint, Semgrep and
+  Renovate); harness is **29/29** and frontend typecheck pre-push dry-run is
+  green.
+
+### 43.3 CI and remaining boundary
+
+- Old run `34486140554` is bound to remote SHA `78d03e137` and remains
+  non-terminal. Latest Jobs API snapshot: **230 success**, **12 skipped**,
+  **16 in progress**, **52 queued**, with no failure/cancellation/timeout.
+- Read-only scheduler analysis measured current PR mutation usage at
+  `6 + 10 = 16` runners (Stryker plus mutmut), leaving four of the 20-job
+  budget; manual/nightly workflows can overlap and must not be raised until
+  three comparable green runs justify a change.
+- Next safe action is to await terminal old-run classification, perform the
+  final diff/pre-push inventory, push this complete delta without force, and
+  require a fresh current-SHA matrix. BE-04/BE-08, live BE-02 PostgreSQL
+  migration evidence, and all merge/main, immutable-image, staging,
+  real-device and release gates remain open.
+
 ## 42. Current local verification checkpoint (2026-09-10; local HEAD `f5bb93655`)
 
 This checkpoint records a fresh read-only verification pass while the old
