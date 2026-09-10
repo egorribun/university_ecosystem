@@ -288,6 +288,38 @@ describe("useProfileSync mutation contracts", () => {
     expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(serialized)
   })
 
+  it("never hydrates a signed browser cache during a server render", () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("server-cache-boundary-user"),
+    }
+    writeSignedEnvelope(payload)
+
+    const originalWindow = globalThis.window
+    vi.stubGlobal("window", undefined)
+    const Probe = () => {
+      const state = useProfileSync(
+        vi.fn(),
+        { current: signingKey },
+        { current: null },
+        vi.fn(async () => signingKey)
+      )
+      return <output>{`${state.user?.id ?? "none"}:${state.loading}`}</output>
+    }
+
+    try {
+      const html = renderToString(
+        <QueryClientProvider client={createQueryClient()}>
+          <Probe />
+        </QueryClientProvider>
+      )
+      expect(html).toContain("none:true")
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
   it.each([
     ["empty", ""],
     ["null", null],
