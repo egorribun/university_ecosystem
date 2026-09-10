@@ -3149,6 +3149,23 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     assert "continue-on-error" not in semgrep_upload
 
 
+def test_frontend_unit_aggregate_publishes_hidden_junit_reports() -> None:
+    """The aggregate job must not silently drop reports from a dot-directory.
+
+    ``actions/upload-artifact`` excludes hidden files by default.  The unit
+    aggregate downloads shard reports into ``.vitest-reports``; without the
+    explicit opt-in the job can pass while publishing no JUnit evidence.
+    """
+    frontend = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    upload = next(
+        step
+        for step in frontend["jobs"]["unit-tests"]["steps"]
+        if step.get("name") == "Upload Vitest report"
+    )
+    assert upload["with"]["include-hidden-files"] is True
+    assert upload["with"]["if-no-files-found"] == "error"
+
+
 def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
     workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
     shard_job = workflow["jobs"]["unit-tests-shard"]

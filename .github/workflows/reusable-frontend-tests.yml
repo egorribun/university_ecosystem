@@ -543,7 +543,11 @@ jobs:
         with:
           name: frontend-vitest-report
           path: ${{ inputs.working-directory }}/.vitest-reports/
-          if-no-files-found: warn
+          # The aggregate report directory is intentionally dot-prefixed.
+          # upload-artifact excludes hidden paths by default; opting in keeps
+          # the downloaded shard JUnit evidence from disappearing silently.
+          include-hidden-files: true
+          if-no-files-found: error
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
