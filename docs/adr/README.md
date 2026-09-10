@@ -31,3 +31,4 @@ This directory contains architectural decision records (ADRs) for the University
 34. [ADR-034: Helm as the Canonical Application Deployment Artifact](ADR-034-helm-canonical-application-deployment.md)
 35. [ADR-035: Python Dependency Compatibility Policy](ADR-035-python-dependency-compatibility-policy.md)
 36. [ADR-036: SQLAlchemy Dual-Defaults Migration Policy](ADR-036-sqlalchemy-dual-default-migration-policy.md)
+37. [ADR-037: CDC Outbox Transport Ownership and Lifecycle Boundary](ADR-037-cdc-outbox-transport-ownership.md)
