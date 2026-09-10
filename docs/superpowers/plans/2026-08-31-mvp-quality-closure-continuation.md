@@ -2579,7 +2579,7 @@ finding был проверяемым.
 | SEC-06 | `BACKLOG / TOOLING REVIEW` | Verify gitleaks allowlist paths and branch guards against current workflow; no allowlist broadening is permitted. |
 | SEC-07 | `FRESH-EVIDENCE-PENDING` | Baseline finding identities/hashes must be revalidated by current detect-secrets; stale or unexplained entries fail closed. |
 | SEC-08 | `EXTERNAL-ONLY / TOOLING` | Bandit target/Windows encoding is runner/tooling hygiene; keep production scan scope explicit and reproduce on Linux. |
-| SEC-09 | `BACKLOG / SUPPLY-CHAIN POLICY` | Upper bounds for 19 Python dependencies require compatibility matrix and Renovate policy; do not pin arbitrarily in closure patch. |
+| SEC-09 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | ADR-035 and the fail-closed dependency policy add upper bounds to all 32 previously unbounded external production requirements; current-SHA frozen install, vulnerability, SBOM and compatibility evidence remain required. |
 | SEC-10 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Same cursor-SCAN fix as GO-05. |
 | SEC-11 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Same readiness healthcheck fix as INFRA-07. |
 | SEC-12 | `BACKLOG / TOOLING REVIEW` | Expand mypy hook only after measuring generated/model scope and preserving strict config; current CI mypy remains required. |
@@ -2739,8 +2739,9 @@ rebalancing threshold is not met.
    execution artifacts must prove the exact copy inventory on the new SHA.
 4. **External-audit architecture debt remains explicit and scoped.** BE-02
    (dual Python/DDL defaults), BE-04 (Dishka/Depends coexistence), BE-08
-   (CDC worker lifecycle), SEC-06 (allowlist review) and SEC-09 (dependency
-   upper-bound policy) need separate ADRs or measured phased work. INFRA-02's
+   (CDC worker lifecycle) and SEC-06 (allowlist review) need separate ADRs or
+   measured phased work. SEC-09 is now recorded in ADR-035 and code-fixed, but
+   its fresh current-SHA compatibility evidence is still required. INFRA-02's
    scope decision is now recorded in ADR-034; current-SHA Helm/staging
    evidence is still required and it is not silently treated as runtime proof.
 5. **Release evidence is still external.** Merge-to-main recertification,
