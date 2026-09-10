@@ -174,6 +174,7 @@ describe("useSessionCrypto mutation contracts", () => {
 
   it("does not assume a service-worker ready registration or a callable then property", async () => {
     const postMessage = vi.fn()
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     vi.stubGlobal("navigator", {
       serviceWorker: {
         controller: null,
@@ -198,6 +199,12 @@ describe("useSessionCrypto mutation contracts", () => {
         await result.current.sendSessionCacheUpdate("sk-non-callable-ready", { force: true })
       })
     ).resolves.not.toThrow()
+    // A missing registration is a normal startup race, not a delivery error.
+    // This assertion keeps the optional registration guard observable: removing
+    // `registration?.active` would dereference undefined and reach the catch
+    // warning instead of remaining a no-op.
+    expect(warningSpy).not.toHaveBeenCalled()
+    warningSpy.mockRestore()
   })
 
   it("deduplicates an unchanged cache hash unless force is requested", async () => {
