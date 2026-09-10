@@ -71,6 +71,39 @@ def test_mutation_worker_atfork_guard_preserves_unrelated_callbacks() -> None:
         guarded_failure()
 
 
+def test_mutation_worker_atfork_guard_omits_unset_callbacks(monkeypatch) -> None:
+    """Python 3.14's native API requires absent callbacks to be omitted."""
+
+    registered: list[dict[str, object]] = []
+
+    def strict_register(**kwargs: object) -> None:
+        if any(value is None for value in kwargs.values()):
+            raise TypeError("callbacks must be callable when supplied")
+        registered.append(kwargs)
+
+    monkeypatch.setattr(
+        run_module.os, "register_at_fork", strict_register, raising=False
+    )
+    monkeypatch.setattr(run_module, "_ATFORK_GUARD_INSTALLED", False)
+    monkeypatch.setattr(run_module, "_ATFORK_ORIGINAL", None)
+
+    run_module.install_mutation_atfork_guard()
+    try:
+        run_module.os.register_at_fork()
+        assert registered == [{}]
+
+        def before() -> None:
+            return None
+
+        def after_in_parent() -> None:
+            return None
+
+        run_module.os.register_at_fork(before=before, after_in_parent=after_in_parent)
+        assert registered[1] == {"before": before, "after_in_parent": after_in_parent}
+    finally:
+        run_module.restore_mutation_atfork_guard()
+
+
 def test_mutation_worker_installs_atfork_guard_before_running_mutmut(
     monkeypatch,
 ) -> None:

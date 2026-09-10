@@ -95,15 +95,14 @@ def install_mutation_atfork_guard() -> None:
     def register_at_fork_guarded(
         *, before: Any = None, after_in_parent: Any = None, after_in_child: Any = None
     ) -> Any:
-        return original(
-            before=before,
-            after_in_parent=after_in_parent,
-            after_in_child=(
-                _guard_atfork_callback(after_in_child)
-                if after_in_child is not None
-                else None
-            ),
-        )
+        callbacks: dict[str, Any] = {}
+        if before is not None:
+            callbacks["before"] = before
+        if after_in_parent is not None:
+            callbacks["after_in_parent"] = after_in_parent
+        if after_in_child is not None:
+            callbacks["after_in_child"] = _guard_atfork_callback(after_in_child)
+        return original(**callbacks)
 
     _ATFORK_ORIGINAL = original
     os.register_at_fork = register_at_fork_guarded  # type: ignore[attr-defined]
