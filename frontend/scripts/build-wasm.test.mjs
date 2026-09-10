@@ -91,3 +91,22 @@ test("keeps portable absolute paths stable on every host", () => {
   assert.match(environment.RUSTFLAGS, /--remap-path-prefix=C:\/cargo=\/usr\/local\/cargo/u)
   assert.match(environment.RUSTFLAGS, /--remap-path-prefix=C:\/workspace=\/work/u)
 })
+
+test("normalizes dot segments in portable drive and UNC paths", () => {
+  const driveEnvironment = canonicalWasmBuildEnvironment("C:/runner/../workspace/frontend", {
+    CARGO_HOME: "C:/runner/../cargo",
+    GITHUB_WORKSPACE: "C:/runner/../workspace",
+  })
+  const uncEnvironment = canonicalWasmBuildEnvironment("//server/share/repo/frontend", {
+    CARGO_HOME: "//server/share/cargo/../rust",
+    GITHUB_WORKSPACE: "//server/share/workspace/../repo",
+  })
+
+  assert.match(driveEnvironment.RUSTFLAGS, /--remap-path-prefix=C:\/cargo=\/usr\/local\/cargo/u)
+  assert.match(driveEnvironment.RUSTFLAGS, /--remap-path-prefix=C:\/workspace=\/work/u)
+  assert.match(
+    uncEnvironment.RUSTFLAGS,
+    /--remap-path-prefix=\/\/server\/share\/rust=\/usr\/local\/cargo/u
+  )
+  assert.match(uncEnvironment.RUSTFLAGS, /--remap-path-prefix=\/\/server\/share\/repo=\/work/u)
+})

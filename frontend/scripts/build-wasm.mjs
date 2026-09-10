@@ -32,7 +32,9 @@ function canonicalPath(value) {
   const normalized = String(value).replaceAll("\\", "/")
   // Keep portable drive/UNC paths intact when a Windows fixture is evaluated
   // by a POSIX CI runner; resolving them there would prepend the repo cwd.
-  if (/^(?:[A-Za-z]:\/|\/\/)/u.test(normalized)) return normalized
+  if (/^(?:[A-Za-z]:\/|\/\/)/u.test(normalized)) {
+    return path.win32.normalize(normalized).replaceAll("\\", "/")
+  }
   return path.resolve(normalized).replaceAll("\\", "/")
 }
 
