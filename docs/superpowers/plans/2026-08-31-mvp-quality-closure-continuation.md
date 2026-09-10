@@ -3144,6 +3144,45 @@ The user-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
 `.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
 excluded from source commits.
 
+## 42. Stryker runtime and CI fan-out audit (2026-09-10; read-only)
+
+### 42.1 Evidence and diagnosis
+
+- A bounded independent audit of stale run `34486140554` found no proven
+  deadlock. The six remaining jobs were executing `Run fresh Stryker shard`
+  and each was still within the configured `timeout-minutes: 120` envelope;
+  the apparent multi-hour delay was the age of the whole run plus matrix
+  queueing, not six jobs running for multiple hours.
+- `.github/workflows/ci.yml` keeps 64 frontend shards but caps the matrix at
+  `max-parallel: 6`. Shards 0–5 started near `14:26Z`; the final queue wave
+  (54, 59–63) started between `18:35Z` and `19:23Z`. This explains the
+  observed wall-clock latency without weakening any quality gate.
+- `frontend/stryker.config.mjs` intentionally retains `vitest.related: true`,
+  `coverageAnalysis: "perTest"` and `incremental: false`. Completed same-run
+  evidence shows test-graph size, not mutant count alone, controls duration:
+  shard 18 had 123 mutants and 238.80 tests/mutant (~101.8 min), shard 40 had
+  995 mutants and 34.70 tests/mutant (~90.8 min), while shard 52 had 1098
+  mutants and 9.03 tests/mutant (~51.4 min).
+
+### 42.2 Safe optimization boundary
+
+1. Preserve all 64 shards, full mutant/source/test inventory,
+   `vitest.related`, per-test coverage analysis, non-incremental release
+   evidence and the 20-runner account ceiling.
+2. Do not increase fan-out on this stale run. After **three comparable green
+   current-SHA runs**, use the recorded queue time, per-shard duration,
+   tests-per-mutant and reserved mutmut/aggregation capacity to trial
+   `max-parallel: 7`, then 8 only when the evidence proves the under-20-job
+   budget remains safe. Roll back on any queue starvation, resource pressure,
+   timeout or evidence-integrity regression.
+3. Optimize only proven test-graph/setup hotspots; do not disable `related`,
+   lower thresholds, reuse stale reports or hide timeout/cancelled targets.
+   Keep per-shard telemetry as a required diagnostic artifact so future runs
+   distinguish queue latency from a genuine execution stall.
+
+The Stryker audit was read-only; no source, workflow or user-owned file was
+changed by the audit.
+
 ## 44. Current bounded closure checkpoint (2026-09-10; local HEAD `6679aa3b`)
 
 This checkpoint records new evidence and bounded fixes without promoting the
