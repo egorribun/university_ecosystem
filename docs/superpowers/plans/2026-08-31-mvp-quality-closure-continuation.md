@@ -3090,6 +3090,51 @@ User-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
 `.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
 excluded from all source commits.
 
+## 42. Current local verification checkpoint (2026-09-10; local HEAD `f5bb93655`)
+
+This checkpoint records a fresh read-only verification pass while the old
+remote matrix is still running. It does not promote that remote run to
+current-SHA evidence and does not close the release boundary.
+
+### 42.1 Identity and preservation
+
+- Active branch is `egorribun`; local `HEAD` is `f5bb936559ca13196571ea5ee83008b23bce07be`.
+- `origin/egorribun` remains `78d03e1379a0c428ae509039d4942677ed89a7d9`; local
+  branch is five commits ahead and has no tracked worktree changes.
+- `git stash list` is empty and no stash operation was performed.
+- The six user-owned untracked files remain untouched and unstaged:
+  `.tmp_preflight/PREFLIGHT_ARTIFACT.json`, the two files under
+  `.tmp_stryker_18/shard-018/`, the two files under
+  `.tmp_stryker_22/shard-022/`, and `docs/audits/AUDIT_PLATFORM_FULL.md`.
+- `git diff --check` passes; `git fsck --full --no-progress` exits zero with
+  no missing, corrupt or error objects. No files, Docker resources or user
+  state were deleted or overwritten.
+
+### 42.2 Fresh local evidence
+
+- `python verify_harness.py --repo-only`: **29/29 passed**.
+- `frontend/npm run typecheck`: exit **0**.
+- Isolated `pre-commit run --all-files`: **Passed** for Ruff check/import/format,
+  detect-secrets, hardcoded-secrets, Bandit, mypy, strong-env-secrets,
+  no-Python2-except, actionlint, Semgrep and Renovate validation. The manual
+  Trivy hook is not part of the default stage and was not misclassified as a
+  pass.
+- The user-owned artifact SHA-256 prefixes remain stable (`47F859B3FEFE`,
+  `05102C77E54A`, `8D9DAE6BCA70`, `336349DB0D4B`, `40FA747094EC`,
+  `E3E5F87AA93C`), matching the prior preservation inventory.
+
+### 42.3 Remote-run boundary
+
+- Run `34486140554` is still tied to the old remote source SHA
+  `78d03e1379a0c428ae509039d4942677ed89a7d9`; it is not evidence for local
+  `f5bb93655` and remains non-terminal.
+- Latest Jobs API snapshot: **204 completed-success**, **12 completed-skipped**,
+  **16 in progress**, **78 queued**, with no failure, cancellation or timeout.
+- Because `.github/workflows/ci.yml` uses `cancel-in-progress: true`, the five
+  local commits remain intentionally unpushed until this old run reaches a
+  terminal state. The next action is a non-force push followed by a fresh
+  current-SHA matrix and complete artifact/annotation inventory.
+
 ## 41. Current local and remote continuation checkpoint (2026-09-10; local HEAD `1a22082de`)
 
 This checkpoint records the latest bounded progress without promoting the
