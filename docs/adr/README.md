@@ -29,3 +29,4 @@ This directory contains architectural decision records (ADRs) for the University
 32. [ADR-032: KEDA Event-Driven Auto-Scaling and Off-Peak Resource Hibernation](ADR-032-keda-autoscale-and-hibernation.md)
 33. [ADR-033: Dishka Request-Scoped Database Session Ownership](ADR-033-request-scoped-database-session-ownership.md)
 34. [ADR-034: Helm as the Canonical Application Deployment Artifact](ADR-034-helm-canonical-application-deployment.md)
+35. [ADR-035: Python Dependency Compatibility Policy](ADR-035-python-dependency-compatibility-policy.md)

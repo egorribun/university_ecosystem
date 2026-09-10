@@ -3,6 +3,8 @@ import re
 import tomllib
 from pathlib import Path
 
+from packaging.requirements import Requirement
+
 ROOT = Path(__file__).resolve().parents[1]
 if not (ROOT / "renovate.json").exists() and (ROOT.parent / "renovate.json").exists():
     ROOT = ROOT.parent
@@ -38,6 +40,11 @@ RENOVATE_VALIDATOR_COMMAND = "pre-commit run renovate-config-validator --all-fil
 CI_RENOVATE_VALIDATOR_COMMAND = (
     "python -m pre_commit run renovate-config-validator --all-files"
 )
+
+# Local workspace members are versioned with the repository, not independently
+# resolved from PyPI.  Every external production requirement must carry an
+# explicit upper bound; adding an exception requires a reviewed policy change.
+REVIEWED_UNBOUNDED_DEPENDENCIES = frozenset()
 
 
 def _read_toml(relative_path: str) -> dict[str, object]:
@@ -183,3 +190,43 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
         assert audit_field in runbook
     for prohibited_bypass in PROHIBITED_BYPASSES:
         assert f"Do not use `{prohibited_bypass}`" in runbook
+
+
+def test_all_external_production_dependencies_have_upper_bounds() -> None:
+    """Prevent future lock refreshes from silently widening major versions."""
+
+    pyproject = _read_toml("pyproject.toml")
+    dependencies = pyproject["project"]["dependencies"]
+    assert isinstance(dependencies, list)
+
+    unbounded: set[str] = set()
+    for entry in dependencies:
+        assert isinstance(entry, str)
+        requirement = Requirement(entry)
+        if requirement.name == "rust_ext":
+            continue
+        if not any(specifier.operator == "<" for specifier in requirement.specifier):
+            unbounded.add(requirement.name)
+
+    unexpected = unbounded - REVIEWED_UNBOUNDED_DEPENDENCIES
+    assert not unexpected, (
+        "External production dependencies require explicit upper bounds; "
+        f"unbounded={sorted(unbounded)}, reviewed={sorted(REVIEWED_UNBOUNDED_DEPENDENCIES)}"
+    )
+
+
+def test_dependency_upper_bound_policy_is_recorded_in_adr_index() -> None:
+    """The SEC-09 decision and its exception policy must be discoverable."""
+
+    adr_path = ROOT / "docs/adr/ADR-035-python-dependency-compatibility-policy.md"
+    index_path = ROOT / "docs/adr/README.md"
+    assert adr_path.is_file()
+    adr = adr_path.read_text(encoding="utf-8").lower()
+    assert "status" in adr and "accepted" in adr
+    for heading in ("## context", "## decision", "## consequences", "## policy"):
+        assert heading in adr
+    assert "upper bound" in adr
+    assert "reviewed exception" in adr
+    index = index_path.read_text(encoding="utf-8")
+    assert "ADR-035" in index
+    assert "Python Dependency Compatibility Policy" in index
