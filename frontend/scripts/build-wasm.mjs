@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process"
+import os from "node:os"
+import path from "node:path"
 import process from "node:process"
 
 import { validateWasmArtifacts } from "./verify-wasm-artifacts.mjs"
 import { writeSourceProvenance } from "./wasm-source-provenance.mjs"
 
-function runWasmPack(command, args, { cwd }) {
+function runWasmPack(command, args, { cwd, env = process.env }) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, shell: false, stdio: "inherit" })
+    const child = spawn(command, args, { cwd, env, shell: false, stdio: "inherit" })
     let settled = false
     const finish = (callback, value) => {
       if (!settled) {
@@ -26,6 +28,35 @@ function runWasmPack(command, args, { cwd }) {
   })
 }
 
+function canonicalPath(value) {
+  return path.resolve(value).replaceAll("\\", "/")
+}
+
+/**
+ * Return a build environment whose Rust path metadata is stable across hosts.
+ *
+ * wasm-pack embeds dependency and workspace paths in optimized WASM custom
+ * sections.  The checked-in packages use the same canonical roots as the CI
+ * producer; injecting these remaps here prevents a local Windows build from
+ * rewriting provenance with machine-specific paths.  Caller-provided flags
+ * are preserved verbatim and the remaps are added only when absent.
+ */
+export function canonicalWasmBuildEnvironment(frontendRoot, baseEnvironment = process.env) {
+  const environment = { ...baseEnvironment }
+  const workspaceRoot = environment.GITHUB_WORKSPACE
+    ? canonicalPath(environment.GITHUB_WORKSPACE)
+    : canonicalPath(path.dirname(path.resolve(frontendRoot)))
+  const cargoRoot = canonicalPath(environment.CARGO_HOME || path.join(os.homedir(), ".cargo"))
+  const requiredFlags = [
+    `--remap-path-prefix=${cargoRoot}=/usr/local/cargo`,
+    `--remap-path-prefix=${workspaceRoot}=/work`,
+  ]
+  const existingFlags = typeof environment.RUSTFLAGS === "string" ? environment.RUSTFLAGS : ""
+  const additions = requiredFlags.filter((flag) => !existingFlags.includes(flag))
+  environment.RUSTFLAGS = [existingFlags.trim(), ...additions].filter(Boolean).join(" ")
+  return environment
+}
+
 export async function buildWasmArtifacts(
   frontendRoot,
   { runCommand = runWasmPack, validateArtifacts = validateWasmArtifacts } = {}
@@ -37,10 +68,17 @@ export async function buildWasmArtifacts(
   }
 
   const buildArgs = (directory) => ["build", directory, "--target", "web", "--release"]
+  const buildEnvironment = canonicalWasmBuildEnvironment(frontendRoot)
 
   try {
-    await runCommand("wasm-pack", buildArgs("rust-crypto"), { cwd: frontendRoot })
-    await runCommand("wasm-pack", buildArgs("wasm-sanitizer"), { cwd: frontendRoot })
+    await runCommand("wasm-pack", buildArgs("rust-crypto"), {
+      cwd: frontendRoot,
+      env: buildEnvironment,
+    })
+    await runCommand("wasm-pack", buildArgs("wasm-sanitizer"), {
+      cwd: frontendRoot,
+      env: buildEnvironment,
+    })
   } catch (error) {
     // Standard Node build workers may not install the Rust toolchain.  The
     // repository carries generated, integrity-checked packages, so reuse
