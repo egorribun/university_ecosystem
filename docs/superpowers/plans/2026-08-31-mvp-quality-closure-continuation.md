@@ -3154,6 +3154,23 @@ still-running historical PR matrix to current-SHA release evidence.
   migration evidence, current INFRA/SEC reports and all merge/staging/release
   gates remain open.
 
+## 45. Go mutation diagnostic governance checkpoint (2026-09-10; `1104739ba`)
+
+- `1104739ba` implements ADR-038's fail-closed advisory boundary for Go
+  mutation diagnostics. The required PR Go coverage/race/security producer is
+  independent; diagnostic execution is schedule/manual-only and no longer
+  uses job-level `continue-on-error` to hide tool failures.
+- Every changed non-generated Go source target is written to an exact
+  `expected-targets.txt` ledger before workers start. Finalization materializes
+  an outcome for each target; missing or failed targets are explicitly
+  `unreported`/`failed`, report and source hashes are retained, and a
+  `complete` summary is rejected unless all expected targets succeeded.
+- Governance contracts and workflow fail-closed tests are green (**38/38**);
+  isolated hooks including actionlint, detect-secrets, Semgrep and mypy pass.
+  This is not a Go mutation score claim: the diagnostic remains non-contract
+  evidence and cannot replace required native coverage, race or security
+  checks.
+
 ## 43. Current local audit-policy checkpoint (2026-09-10; snapshot HEAD `a9be722e5`)
 
 This checkpoint is a pre-push source snapshot. It records local changes and
