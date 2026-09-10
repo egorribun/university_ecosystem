@@ -138,10 +138,30 @@ test("profile bootstrap keeps the LHCI branch compile-time tree-shakeable", asyn
     /if \(import\.meta\.env\.VITE_LHCI === "true"\)/u,
     "the production initializer must expose a static VITE_LHCI guard"
   )
+  assert.match(
+    initializer,
+    /resolveInitialUserStateWithoutLhci\(/u,
+    "the non-LHCI initializer must delegate to the covered cache resolver"
+  )
   assert.doesNotMatch(
     initializer,
     /resolveInitialUserState\(/u,
-    "a runtime boolean helper would retain the LHCI mock in non-LHCI bundles"
+    "the production initializer must not route through a runtime LHCI boolean"
+  )
+
+  const initializingStart = profileSyncSource.indexOf("const [initializing", initializerEnd)
+  const initializingEnd = profileSyncSource.indexOf("const [authOperation", initializingStart)
+  assert.ok(initializingStart >= 0 && initializingEnd > initializingStart)
+  const initializingInitializer = profileSyncSource.slice(initializingStart, initializingEnd)
+  assert.match(
+    initializingInitializer,
+    /if \(import\.meta\.env\.VITE_LHCI === "true"\)/u,
+    "the loading initializer must expose a static VITE_LHCI guard"
+  )
+  assert.match(
+    initializingInitializer,
+    /resolveInitialInitializingStateWithoutLhci\(/u,
+    "the non-LHCI loading initializer must delegate to the covered resolver"
   )
 })
 

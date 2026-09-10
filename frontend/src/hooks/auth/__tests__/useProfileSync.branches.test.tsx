@@ -10,7 +10,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import api from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
 import { testUser } from "@/tests/mocks/handlers"
-import { withExpectedConsole } from "@/tests/strictConsole"
+import {
+  getStrictConsoleDiagnostics,
+  resetStrictConsoleDiagnostics,
+  withExpectedConsole,
+} from "@/tests/strictConsole"
 import {
   PROFILE_CACHE_SCHEMA_VERSION,
   PROFILE_CACHE_STORAGE_KEY,
@@ -788,6 +792,7 @@ describe("useProfileSync — auto-fetch effect", () => {
   })
 
   it("logs but does not clear on a non-401 server error (e.g. 500)", async () => {
+    resetStrictConsoleDiagnostics()
     vi.spyOn(api, "get").mockImplementation((url) => {
       if (url === "/users/me") {
         // Pre-seed envelope present so the 500 path inside fetchCurrentUser
@@ -805,6 +810,29 @@ describe("useProfileSync — auto-fetch effect", () => {
       await waitFor(() => expect(result.current.loading).toBe(false))
       // Non-401 → no unauthorized handling; key untouched, user stays null.
       expect(updateSessionSigningKey).not.toHaveBeenCalledWith(null)
+    })
+    const diagnostic = getStrictConsoleDiagnostics()
+      .filter((entry) => entry.method === "error")
+      .find((entry) => entry.args[0] === "Failed to fetch current user")
+    expect(diagnostic?.args[1]).toEqual(
+      expect.objectContaining({
+        message: expect.any(String),
+        status: 503,
+      })
+    )
+  })
+
+  it("handles an Axios failure without a response in the auto-fetch status guard", async () => {
+    vi.spyOn(api, "get").mockImplementation((url) => {
+      if (url === "/users/me") {
+        return Promise.reject({ isAxiosError: true })
+      }
+      throw new Error(`Unexpected url: ${url}`)
+    })
+
+    await withExpectedConsole("error", "Failed to fetch current user", async () => {
+      const { result } = renderProfileSync({ signingKey: mockSigningKey })
+      await waitFor(() => expect(result.current.loading).toBe(false))
     })
   })
 
@@ -834,10 +862,13 @@ describe("useProfileSync — auto-fetch effect", () => {
     await act(async () => {
       result.current.setUser(testUser)
     })
-    resolveProfile?.({ data: testUser })
+    // Equal content must not replace the authoritative object. A distinct
+    // reference makes the no-op branch observable and protects against an
+    // unconditional setUser mutation.
+    resolveProfile?.({ data: { ...testUser } })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.user).toEqual(testUser)
+    expect(result.current.user).toBe(testUser)
   })
 
   it("walks nested equal snapshots before leaving the current user intact", async () => {
@@ -850,7 +881,7 @@ describe("useProfileSync — auto-fetch effect", () => {
     resolveFetch({ ...cached, preferences: { dnd_enabled: false } })
 
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.user).toEqual(cached)
+    expect(result.current.user).toBe(cached)
   })
 
   it("replaces the profile when a nested value changes", async () => {
@@ -1352,6 +1383,19 @@ describe("useProfileSync — cross-tab sync effect", () => {
     })
 
     await waitFor(() => expect(result.current.user?.id).toBe("cache-only-user"))
+    expect(result.current.user).toMatchObject({
+      id: "cache-only-user",
+      full_name: "Cache Only User",
+      email: "",
+      role: "student",
+      group_id: null,
+      avatar_url: null,
+      cover_url: null,
+      spotify_connected: false,
+      is_active: false,
+      mfa_required: false,
+      totp_enrollments: [],
+    })
   })
 
   it("merges a cross-tab cache snapshot into an existing authoritative user", async () => {
@@ -1482,6 +1526,7 @@ describe("useProfileSync — cross-tab sync effect", () => {
   })
 
   it("swallows BroadcastChannel construction failures", async () => {
+    resetStrictConsoleDiagnostics()
     class ThrowingBroadcastChannel {
       constructor() {
         throw new Error("BroadcastChannel unavailable")
@@ -1505,6 +1550,15 @@ describe("useProfileSync — cross-tab sync effect", () => {
         })
       }
     )
+    const diagnostics = getStrictConsoleDiagnostics().filter((entry) => entry.method === "warn")
+    expect(
+      diagnostics.find(
+        (entry) => entry.args[0] === "Failed to subscribe to profile broadcast channel"
+      )?.args[1]
+    ).toEqual(expect.objectContaining({ error: expect.any(Error) }))
+    expect(
+      diagnostics.find((entry) => entry.args[0] === "Failed to broadcast profile event")?.args[1]
+    ).toEqual(expect.objectContaining({ error: expect.any(Error) }))
     vi.unstubAllGlobals()
   })
 

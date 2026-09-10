@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import type { MutableRefObject, PropsWithChildren } from "react"
+import { renderToString } from "react-dom/server"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { hmac } from "@noble/hashes/hmac.js"
 import { sha256 } from "@noble/hashes/sha2.js"
@@ -12,17 +13,19 @@ import { createQueryClient } from "@/app/queryClient"
 import * as logger from "@/app/logger"
 import { testUser } from "@/tests/mocks/handlers"
 import { withExpectedConsole } from "@/tests/strictConsole"
+import type { UserState } from "@/types/Auth"
 import {
   PROFILE_CACHE_SCHEMA_VERSION,
   PROFILE_CACHE_STORAGE_KEY,
   buildSsrStubUser,
   buildLhciMockUser,
   createOptimisticUser,
+  currentUserQueryKey,
   decryptData,
   encryptData,
+  getCachedEnvelopeHeader,
   areDeepEqual,
   fetchCurrentUser,
-  getCachedEnvelopeHeader,
   isAscii,
   isProfileSyncBrowserRuntime,
   isCachedSnapshotObject,
@@ -37,6 +40,7 @@ import {
   useProfileSync,
   type CacheSignaturePayload,
   type CachedUserSnapshot,
+  type SsrAuthHint,
 } from "@/hooks/auth/useProfileSync"
 
 const PROFILE_CACHE_VERSION_KEY = "ecosystem.profile.cache.version"
@@ -50,8 +54,11 @@ const bytesToBase64 = (bytes: Uint8Array): string => {
   return btoa(binary)
 }
 
+const signEnvelopeForKey = (payload: CacheSignaturePayload, key: string): string =>
+  bytesToBase64(hmac(sha256, utf8ToBytes(key), utf8ToBytes(JSON.stringify(payload))))
+
 const signEnvelope = (payload: CacheSignaturePayload): string =>
-  bytesToBase64(hmac(sha256, utf8ToBytes(signingKey), utf8ToBytes(JSON.stringify(payload))))
+  signEnvelopeForKey(payload, signingKey)
 
 const snapshot = (id = "cached-user"): CachedUserSnapshot =>
   ({
@@ -160,6 +167,41 @@ describe("useProfileSync mutation contracts", () => {
     unmount()
   })
 
+  it("renders deterministic LHCI and SSR loading states before effects can run", () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    const Probe = ({ hint }: { hint?: SsrAuthHint }) => {
+      const state = useProfileSync(
+        vi.fn(),
+        { current: null },
+        { current: null },
+        vi.fn(async () => null),
+        hint
+      )
+      return <output>{`${state.user?.id ?? "none"}:${state.loading}`}</output>
+    }
+
+    const lhciHtml = renderToString(
+      <QueryClientProvider client={createQueryClient()}>
+        <Probe />
+      </QueryClientProvider>
+    )
+    expect(lhciHtml).toContain("lhci-mock-user:false")
+
+    vi.stubEnv("VITE_LHCI", "false")
+    const authenticatedSsrHtml = renderToString(
+      <QueryClientProvider client={createQueryClient()}>
+        <Probe hint={{ isAuth: true, user: { role: "teacher" } }} />
+      </QueryClientProvider>
+    )
+    const anonymousSsrHtml = renderToString(
+      <QueryClientProvider client={createQueryClient()}>
+        <Probe hint={{ isAuth: false, user: null }} />
+      </QueryClientProvider>
+    )
+    expect(authenticatedSsrHtml).toContain("ssr-stub:false")
+    expect(anonymousSsrHtml).toContain("none:true")
+  })
+
   it("keeps the SSR stub defaults non-sensitive and deterministic", () => {
     expect(buildSsrStubUser("teacher")).toMatchObject({
       id: "ssr-stub",
@@ -224,6 +266,17 @@ describe("useProfileSync mutation contracts", () => {
   ] as const)("resolves initial user for %s", (_label, options, expectedId) => {
     const resolved = resolveInitialUserState(options)
     expect(resolved?.id ?? null).toBe(expectedId)
+  })
+
+  it("refuses to hydrate even a validly signed cache when the signing key is empty", () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("empty-signing-key-cache-user"),
+    }
+    writeSignedEnvelope(payload, signEnvelopeForKey(payload, ""))
+
+    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey: "" })).toBeNull()
   })
 
   it("returns no user for a cold client cache", () => {
@@ -294,6 +347,38 @@ describe("useProfileSync mutation contracts", () => {
       email: "",
       is_active: false,
     })
+  })
+
+  it("seeds the query cache from a legacy snapshot but never from the encrypted placeholder", async () => {
+    const legacyPayload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("legacy-query-cache-user"),
+    }
+    writeSignedEnvelope(legacyPayload)
+
+    const legacy = renderProfile(signingKey)
+    expect(legacy.result.current.user?.id).toBe("legacy-query-cache-user")
+    expect(legacy.queryClient.getQueryData<UserState>(currentUserQueryKey)?.id).toBe(
+      "legacy-query-cache-user"
+    )
+    legacy.unmount()
+
+    const encryptedPayload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "encrypted-cache-placeholder",
+    }
+    writeSignedEnvelope(encryptedPayload)
+
+    const encrypted = renderProfile(signingKey)
+    expect(encrypted.result.current.user?.id).toBe("-1")
+    expect(encrypted.queryClient.getQueryData<UserState>(currentUserQueryKey)).toBeUndefined()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(encrypted.queryClient.getQueryData<UserState>(currentUserQueryKey)).toBeUndefined()
+    encrypted.unmount()
   })
 
   it("clears a signed legacy snapshot with an invalid id", () => {
@@ -399,9 +484,18 @@ describe("useProfileSync mutation contracts", () => {
     ["an object and primitive", {}, "right", false],
     ["null and object", null, {}, false],
     ["object and null", {}, null, false],
+    ["a string and record with matching enumerable keys", "0", { 0: "0" }, false],
+    ["a record and string with matching enumerable keys", { 0: "0" }, "0", false],
     ["empty records", {}, {}, true],
     ["different key counts", { id: "u", role: "student" }, { id: "u" }, false],
+    [
+      "a record whose keys are a strict subset of the other record",
+      { id: "u" },
+      { id: "u", role: "student" },
+      false,
+    ],
     ["a missing key", { id: "u", name: "Alice" }, { id: "u", email: "a@example.test" }, false],
+    ["an undefined-valued key missing from the other record", { optional: undefined }, {}, false],
     [
       "equal nested records",
       { profile: { id: "u", tags: ["one", "two"] } },
@@ -557,6 +651,25 @@ describe("useProfileSync mutation contracts", () => {
       PROFILE_CACHE_STORAGE_KEY,
     ]) {
       expect(localStorage.getItem(key)).toBeNull()
+    }
+  })
+
+  it("fails closed and emits only a generic diagnostic when the storage accessor throws", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      get: () => {
+        throw new Error("private browsing")
+      },
+    })
+
+    try {
+      expect(getCachedEnvelopeHeader()).toBeNull()
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.storage_unavailable")
+    } finally {
+      if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor)
     }
   })
 
@@ -830,6 +943,17 @@ describe("useProfileSync mutation contracts", () => {
     })
     expect(channels).toHaveLength(1) // the inbound subscription
 
+    const localPending = { ticket: "local-only-ticket", methods: ["totp"] } as never
+    await act(async () => {
+      result.current.updatePendingMfa(localPending, { broadcast: false })
+    })
+    expect(result.current.pendingMfa).toEqual(localPending)
+    expect(channels.flatMap((channel) => channel.postMessage.mock.calls)).toEqual([])
+    await act(async () => {
+      result.current.updatePendingMfa(null, { broadcast: false })
+    })
+    expect(channels.flatMap((channel) => channel.postMessage.mock.calls)).toEqual([])
+
     await act(async () => {
       result.current.updatePendingMfa(null)
     })
@@ -845,6 +969,83 @@ describe("useProfileSync mutation contracts", () => {
 
     const posted = channels.flatMap((channel) => channel.postMessage.mock.calls)
     expect(posted).toEqual([[{ type: "mfa-pending", payload: pending }], [{ type: "mfa-cleared" }]])
+    unmount()
+  })
+
+  it("honors handleUnauthorized defaults and explicit broadcast/persistence options", async () => {
+    const channels: Array<{ postMessage: ReturnType<typeof vi.fn> }> = []
+    class FakeBroadcastChannel {
+      postMessage = vi.fn()
+      addEventListener = vi.fn()
+      removeEventListener = vi.fn()
+      close = vi.fn()
+
+      constructor(_name: string) {
+        channels.push(this)
+      }
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+
+    const { result, queryClient, unmount } = renderProfile(null)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(channels).toHaveLength(1)
+    const cancelQueriesSpy = vi.spyOn(queryClient, "cancelQueries")
+
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "stale-cache")
+    const pending = { ticket: "local-pending", methods: ["totp"] } as never
+    await act(async () => {
+      result.current.updatePendingMfa(pending, { broadcast: false })
+    })
+
+    await act(async () => {
+      result.current.handleUnauthorized({ broadcast: false, persist: true })
+    })
+
+    expect(cancelQueriesSpy).toHaveBeenCalledWith({ queryKey: currentUserQueryKey })
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    expect(channels.flatMap((channel) => channel.postMessage.mock.calls)).toEqual([])
+
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "stale-cache")
+    await act(async () => {
+      result.current.handleUnauthorized()
+    })
+
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    expect(channels.flatMap((channel) => channel.postMessage.mock.calls)).toEqual([
+      [{ type: "unauthorized" }],
+    ])
+    unmount()
+  })
+
+  it("keeps BroadcastChannel diagnostics generic while retaining the failure context", async () => {
+    class ThrowingBroadcastChannel {
+      constructor() {
+        throw new Error("channel unavailable")
+      }
+    }
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+    vi.stubGlobal("BroadcastChannel", ThrowingBroadcastChannel)
+
+    const { result, unmount } = renderProfile(null)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(warningSpy).toHaveBeenCalledWith(
+      "Failed to subscribe to profile broadcast channel",
+      expect.objectContaining({ error: expect.any(Error) })
+    )
+    warningSpy.mockClear()
+
+    await act(async () => {
+      result.current.updatePendingMfa({ ticket: "channel-error", methods: [] } as never)
+    })
+
+    expect(warningSpy).toHaveBeenCalledWith(
+      "Failed to broadcast profile event",
+      expect.objectContaining({ error: expect.any(Error) })
+    )
     unmount()
   })
 

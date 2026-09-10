@@ -46,7 +46,7 @@ const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 export const PROFILE_CACHE_SCHEMA_VERSION = 8
 export const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_CACHE_SCHEMA_VERSION}`
 const PROFILE_CACHE_VERSION_KEY = `${PROFILE_CACHE_BASE_KEY}.version`
-const LEGACY_PROFILE_CACHE_KEYS = [
+const getLegacyProfileCacheKeys = (): readonly string[] => [
   "ecosystem.profile.cache.v1",
   "ecosystem.profile.cache.v4",
   "ecosystem.profile.cache.v5",
@@ -109,6 +109,14 @@ const getLocalStorage = (): Storage | undefined => {
   try {
     return globalThis.localStorage as Storage | undefined
   } catch {
+    // Storage access can fail before a Storage object exists (for example in
+    // Safari private browsing). Keep the diagnostic generic so browser errors
+    // and platform details never cross the logging boundary.
+    try {
+      logWarning("profile_cache.storage_unavailable")
+    } catch {
+      // Diagnostics are best-effort and must not abort auth bootstrap.
+    }
     return undefined
   }
 }
@@ -557,7 +565,7 @@ export const migrateProfileCache = () => {
     if (!storage) return
     const storedVersion = storage.getItem(PROFILE_CACHE_VERSION_KEY)
     if (storedVersion !== String(PROFILE_CACHE_SCHEMA_VERSION)) {
-      for (const legacyKey of LEGACY_PROFILE_CACHE_KEYS) {
+      for (const legacyKey of getLegacyProfileCacheKeys()) {
         storage.removeItem(legacyKey)
       }
       if (storedVersion && storedVersion !== String(PROFILE_CACHE_SCHEMA_VERSION)) {
@@ -762,18 +770,18 @@ type InitialUserStateOptions = {
   ssrAuthHint?: SsrAuthHint
 }
 
+type InitialUserStateWithoutLhciOptions = Omit<InitialUserStateOptions, "lhci">
+
 /**
- * Resolve the first client/server user snapshot without React effects.  The
- * pure boundary keeps the SSR/LHCI/cache decisions deterministic and lets the
- * mutation contract exercise every branch without racing follow-up effects.
+ * Resolve the first non-LHCI client/server user snapshot without React
+ * effects. The no-LHCI seam is what lets the production initializer retain a
+ * compile-time LHCI guard while sharing every cache/SSR branch with tests.
  */
-export const resolveInitialUserState = ({
-  lhci,
+const resolveInitialUserStateWithoutLhci = ({
   isServer,
   signingKey,
   ssrAuthHint,
-}: InitialUserStateOptions): UserState => {
-  if (lhci) return buildLhciMockUser()
+}: InitialUserStateWithoutLhciOptions): UserState => {
   if (isServer) return resolveSsrInitialUserState(ssrAuthHint)
 
   const ssrUser = resolveSsrInitialUserState(ssrAuthHint)
@@ -825,6 +833,12 @@ export const resolveInitialUserState = ({
   } as User
 }
 
+/** Public contract wrapper retained for direct LHCI and cache branch tests. */
+export const resolveInitialUserState = (options: InitialUserStateOptions): UserState => {
+  if (options.lhci) return buildLhciMockUser()
+  return resolveInitialUserStateWithoutLhci(options)
+}
+
 type InitializingStateOptions = {
   lhci: boolean
   isServer: boolean
@@ -832,17 +846,22 @@ type InitializingStateOptions = {
   userState: UserState
 }
 
+type InitializingStateWithoutLhciOptions = Omit<InitializingStateOptions, "lhci">
+
 /** Resolve the initial loading flag alongside `resolveInitialUserState`. */
-export const resolveInitialInitializingState = ({
-  lhci,
+const resolveInitialInitializingStateWithoutLhci = ({
   isServer,
   ssrAuthHint,
   userState,
-}: InitializingStateOptions): boolean => {
-  if (lhci) return false
+}: InitializingStateWithoutLhciOptions): boolean => {
   if (isServer) return resolveSsrInitialInitializing(ssrAuthHint)
   if (userState !== null) return false
   return true
+}
+
+export const resolveInitialInitializingState = (options: InitializingStateOptions): boolean => {
+  if (options.lhci) return false
+  return resolveInitialInitializingStateWithoutLhci(options)
 }
 
 export const useProfileSync = (
@@ -860,68 +879,14 @@ export const useProfileSync = (
     if (import.meta.env.VITE_LHCI === "true") {
       return buildLhciMockUser()
     }
-    if (typeof window === "undefined") {
-      // Wave 128 SW1 Strategy A — see resolveSsrInitialUserState helper.
-      // Returns role-only stub when ssrAuthHint indicates authenticated
-      // server-side render (JWT cookie validated by server.ts W126 SW3).
-      // Full user hydrates from /users/me cache or client-side useEffect.
-      return resolveSsrInitialUserState(ssrAuthHint)
-    }
-    // RootShell carries a non-sensitive role marker from the SSR request.
-    // Prefer the same role-only stub during hydration so an authenticated
-    // server tree is not reconciled against a cold anonymous skeleton. The
-    // normal /users/me fetch below replaces it with the full profile.
-    const ssrUser = resolveSsrInitialUserState(ssrAuthHint)
-    if (ssrUser !== null) return ssrUser
-    const signingKey = sessionSigningKeyRef.current
-    if (!signingKey) return null
-    const candidate = readCachedEnvelope()
-    if (!candidate) return null
-    if (candidate.version !== PROFILE_CACHE_SCHEMA_VERSION) return null
-    if (candidate.expiresAt <= Date.now()) return null
-
-    const payload: CacheSignaturePayload = {
-      version: candidate.version,
-      expiresAt: candidate.expiresAt,
-      data: candidate.data,
-    }
-
-    if (verifySignatureSync(payload, candidate.signature, signingKey)) {
-      if (typeof candidate.data !== "string") {
-        if (!isCachedSnapshotObject(candidate.data) || typeof candidate.data.id !== "string") {
-          clearProfileCacheStorage("invalid_data")
-          return null
-        }
-        // Legacy v3 format with unencrypted object data
-        return createOptimisticUser(candidate.data)
-      }
-      // v4 format: data is encrypted string, cannot decrypt synchronously
-      // Return a minimal placeholder user to prevent null state during async decryption
-      // The async init useEffect will replace this with the fully decrypted user
-      // We set a marker ID of -1 to indicate this is a placeholder pending async restore
-      return {
-        id: "-1",
-        email: "",
-        full_name: "",
-        role: "student",
-        group_id: null,
-        avatar_url: null,
-        cover_url: null,
-        spotify_connected: false,
-        profile_detail: undefined,
-        education_path: undefined,
-        preferences: undefined,
-        is_active: false,
-        mfa_required: false,
-        mfa_default_method: null,
-        mfa_last_verified_at: null,
-        totp_enrollments: [],
-        recovery_codes_left: 0,
-        avatar_url_optimized: null,
-        cover_url_optimized: null,
-      } as User
-    }
-    return null
+    // Keep all non-LHCI decisions in the pure, directly-tested resolver so
+    // SSR, hydration, signing-key and cache behavior cannot drift between the
+    // hook and its standalone contract surface.
+    return resolveInitialUserStateWithoutLhci({
+      isServer: typeof window === "undefined",
+      signingKey: sessionSigningKeyRef.current,
+      ssrAuthHint,
+    })
   })
   const [pendingMfaState, setPendingMfaState] = useState<PendingMfaState | null>(null)
   const cachedUserRef = useRef<UserState>(userState)
@@ -929,18 +894,11 @@ export const useProfileSync = (
   const pendingMfaRef = useRef<PendingMfaState | null>(pendingMfaState)
   const [initializing, setInitializing] = useState<boolean>(() => {
     if (import.meta.env.VITE_LHCI === "true") return false
-    if (typeof window === "undefined") {
-      // Wave 128 SW1 — see resolveSsrInitialInitializing helper.
-      return resolveSsrInitialInitializing(ssrAuthHint)
-    }
-    if (userState !== null) return false
-    // A browser render with no synchronous profile is not authenticated yet,
-    // but it still needs one asynchronous /users/me decision. Keep the
-    // provider in its loading state for that first render so route guards do
-    // not redirect before the fetch effect can resolve a cookie-backed session.
-    // The initialization effect and the fetch `finally` below always settle
-    // this flag, including a fast 401 for a genuinely anonymous visitor.
-    return true
+    return resolveInitialInitializingStateWithoutLhci({
+      isServer: typeof window === "undefined",
+      ssrAuthHint,
+      userState,
+    })
   })
   const [authOperation, setAuthOperation] = useState(false)
   // Wave 135 SW1 — `activeRequestRef` (AbortController for the /users/me
