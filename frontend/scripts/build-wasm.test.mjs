@@ -81,3 +81,13 @@ test("preserves caller Rust flags without mutating the base environment", () => 
   assert.match(environment.RUSTFLAGS, /--remap-path-prefix=C:\/cargo=\/usr\/local\/cargo/u)
   assert.match(environment.RUSTFLAGS, /--remap-path-prefix=C:\/workspace=\/work/u)
 })
+
+test("keeps portable absolute paths stable on every host", () => {
+  const environment = canonicalWasmBuildEnvironment("C:/workspace/frontend", {
+    CARGO_HOME: "C:/cargo",
+    GITHUB_WORKSPACE: "C:/workspace",
+  })
+
+  assert.match(environment.RUSTFLAGS, /--remap-path-prefix=C:\/cargo=\/usr\/local\/cargo/u)
+  assert.match(environment.RUSTFLAGS, /--remap-path-prefix=C:\/workspace=\/work/u)
+})

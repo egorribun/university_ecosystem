@@ -29,7 +29,11 @@ function runWasmPack(command, args, { cwd, env = process.env }) {
 }
 
 function canonicalPath(value) {
-  return path.resolve(value).replaceAll("\\", "/")
+  const normalized = String(value).replaceAll("\\", "/")
+  // Keep portable drive/UNC paths intact when a Windows fixture is evaluated
+  // by a POSIX CI runner; resolving them there would prepend the repo cwd.
+  if (/^(?:[A-Za-z]:\/|\/\/)/u.test(normalized)) return normalized
+  return path.resolve(normalized).replaceAll("\\", "/")
 }
 
 /**
