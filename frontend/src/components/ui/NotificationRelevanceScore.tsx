@@ -29,7 +29,7 @@ export function NotificationRelevanceScore({
   relevance,
   className,
 }: NotificationRelevanceScoreProps) {
-  const { t } = useTranslation(["common"])
+  const { t } = useTranslation("common")
   const config = relevanceConfig[relevance]
 
   return (

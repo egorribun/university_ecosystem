@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 const focusTrap = vi.hoisted(() => ({
@@ -12,7 +12,7 @@ vi.mock("@/hooks/useFocusTrap", () => ({
   },
 }))
 
-import { Dialog } from "@/components/ui/Dialog"
+import { Dialog, shouldRenderDialog } from "@/components/ui/Dialog"
 
 afterEach(() => {
   cleanup()
@@ -41,6 +41,15 @@ describe("Dialog mutation contracts", () => {
     )
     expect(await screen.findByRole("dialog", { name: "Small size" })).toHaveClass(
       "sm:max-w-[24rem]"
+    )
+
+    view.rerender(
+      <Dialog open onClose={vi.fn()} title="Large size" size="lg">
+        body
+      </Dialog>
+    )
+    expect(await screen.findByRole("dialog", { name: "Large size" })).toHaveClass(
+      "sm:max-w-[42rem]"
     )
   })
 
@@ -116,5 +125,53 @@ describe("Dialog mutation contracts", () => {
 
     view.unmount()
     expect(document.querySelectorAll('[data-dialog-root="true"]')).toHaveLength(0)
+  })
+
+  it("owns the portal root only while open", async () => {
+    const view = render(
+      <Dialog open onClose={vi.fn()} title="Toggleable">
+        content
+      </Dialog>
+    )
+    await screen.findByRole("dialog", { name: "Toggleable" })
+    expect(document.querySelectorAll('[data-dialog-root="true"]')).toHaveLength(1)
+
+    view.rerender(
+      <Dialog open={false} onClose={vi.fn()} title="Toggleable">
+        content
+      </Dialog>
+    )
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-dialog-root="true"]')).toHaveLength(0)
+    })
+  })
+
+  it("updates labelled and described references when content is added after mount", async () => {
+    const view = render(
+      <Dialog open onClose={vi.fn()} ariaLabel="Untitled">
+        content
+      </Dialog>
+    )
+    const dialog = await screen.findByRole("dialog", { name: "Untitled" })
+    expect(dialog).not.toHaveAttribute("aria-labelledby")
+    expect(dialog).not.toHaveAttribute("aria-describedby")
+
+    view.rerender(
+      <Dialog open onClose={vi.fn()} title="Added title" subtitle="Added subtitle">
+        content
+      </Dialog>
+    )
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Added title" })).toHaveAttribute("aria-labelledby")
+    })
+    expect(screen.getByRole("dialog", { name: "Added title" })).toHaveAttribute("aria-describedby")
+  })
+
+  it.each([
+    [true, document.createElement("div"), true],
+    [true, null, false],
+    [false, document.createElement("div"), false],
+  ] as const)("keeps the portal renderability contract for open=%s", (open, node, expected) => {
+    expect(shouldRenderDialog(open, node)).toBe(expected)
   })
 })

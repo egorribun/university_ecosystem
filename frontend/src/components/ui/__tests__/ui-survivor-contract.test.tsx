@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -538,19 +538,11 @@ describe("MediaSlot survivor contract", () => {
     const image = screen.getByRole("img")
     expect(image).not.toHaveClass("group-hover:scale-105")
     expect(container.querySelector(".animate-spin")).not.toBeNull()
-    const reactPropsKey = Object.keys(image).find((key) => key.startsWith("__reactProps$"))
-    expect(reactPropsKey).toBeDefined()
-    type ImageHandler = () => void
-    const handlers = (
-      image as unknown as Record<
-        string,
-        { onLoad?: ImageHandler; onError?: ImageHandler } | undefined
-      >
-    )[reactPropsKey ?? ""]
-    expect(handlers?.onLoad).toBeTypeOf("function")
-    expect(handlers?.onError).toBeTypeOf("function")
-    expect(() => act(() => handlers?.onLoad?.())).not.toThrow()
-    expect(() => act(() => handlers?.onError?.())).not.toThrow()
+    // Use the public DOM event contract instead of reading React's private
+    // `__reactProps$` field, which is renderer-specific and brittle across
+    // React/Vite upgrades.
+    expect(() => fireEvent.load(image)).not.toThrow()
+    expect(() => fireEvent.error(image)).not.toThrow()
     expect(container.querySelector("img")).toBeNull()
     expect(container.querySelector("svg")).toHaveClass("h-10", "w-10", "text-(--text-tertiary)")
     expect(MediaSlot.displayName).toBe("MediaSlot")

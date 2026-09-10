@@ -16,6 +16,26 @@ interface EventAdminActionsProps {
   disabled?: boolean
 }
 
+export function focusElement(element: HTMLElement | null): void {
+  if (element === null) return
+  element.focus()
+}
+
+export function focusFirstMenuItem(menu: HTMLElement | null): void {
+  if (menu === null) return
+  const item = menu.querySelector<HTMLButtonElement>("[role='menuitem']:not(:disabled)")
+  focusElement(item)
+}
+
+export function focusMenuItemAt(items: readonly HTMLButtonElement[], index: number): void {
+  const item = items[index]
+  focusElement(item ?? null)
+}
+
+export function containsNode(element: Node | null, target: Node): boolean {
+  return element !== null && element.contains(target)
+}
+
 export function EventAdminActions({
   menuAnchor,
   setMenuAnchor,
@@ -32,7 +52,7 @@ export function EventAdminActions({
 
   const closeMenu = useCallback(() => {
     setMenuAnchor(null)
-    triggerRef.current?.focus()
+    focusElement(triggerRef.current)
   }, [setMenuAnchor])
 
   useEffect(() => {
@@ -41,7 +61,7 @@ export function EventAdminActions({
       setMenuAnchor(null)
       return
     }
-    menuRef.current?.querySelector<HTMLButtonElement>("[role='menuitem']:not(:disabled)")?.focus()
+    focusFirstMenuItem(menuRef.current)
   }, [disabled, menuAnchor, setMenuAnchor])
 
   useEffect(() => {
@@ -49,7 +69,7 @@ export function EventAdminActions({
     const handleOutsidePointer = (event: globalThis.MouseEvent) => {
       const target = event.target
       if (!(target instanceof Node)) return
-      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return
+      if (containsNode(triggerRef.current, target) || containsNode(menuRef.current, target)) return
       closeMenu()
     }
     document.addEventListener("mousedown", handleOutsidePointer)
@@ -72,7 +92,7 @@ export function EventAdminActions({
     )
     const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
     const nextIndex = (currentIndex + 1) % items.length
-    items[nextIndex]?.focus()
+    focusMenuItemAt(items, nextIndex)
   }
 
   return (

@@ -21,7 +21,13 @@ vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
 }))
 
-import { EventAdminActions } from "@/components/events/EventCard/EventAdminActions"
+import {
+  containsNode,
+  EventAdminActions,
+  focusElement,
+  focusFirstMenuItem,
+  focusMenuItemAt,
+} from "@/components/events/EventCard/EventAdminActions"
 
 const baseProps = {
   menuAnchor: null,
@@ -107,6 +113,7 @@ describe("EventAdminActions", () => {
     await user.click(trigger)
     const menu = screen.getByRole("menu")
     expect(menu).toHaveAttribute("aria-labelledby", "evt-admin-menu-button")
+    expect(menu).toHaveAttribute("tabindex", "-1")
     expect(screen.getByRole("menuitem", { name: "common:buttons.edit" })).toHaveFocus()
 
     await user.click(trigger)
@@ -297,5 +304,50 @@ describe("EventAdminActions", () => {
     menu.replaceChildren()
     fireEvent.keyDown(menu, { key: "ArrowDown" })
     expect(screen.getByRole("menu")).toBeInTheDocument()
+  })
+
+  it("keeps focus helpers safe for missing elements and out-of-range indexes", () => {
+    const first = document.createElement("button")
+    const second = document.createElement("button")
+    const menu = document.createElement("div")
+    menu.append(first)
+
+    expect(() => focusElement(null)).not.toThrow()
+    expect(() => focusFirstMenuItem(null)).not.toThrow()
+    expect(() => focusFirstMenuItem(menu)).not.toThrow()
+    expect(() => focusMenuItemAt([], 0)).not.toThrow()
+    expect(() => focusMenuItemAt([first, second], 4)).not.toThrow()
+    expect(containsNode(null, first)).toBe(false)
+    expect(containsNode(menu, first)).toBe(true)
+  })
+
+  it("uses the latest controlled setter when the menu callback is refreshed", async () => {
+    const firstSetter = vi.fn()
+    const secondSetter = vi.fn()
+    const anchor = document.createElement("button")
+    const view = render(
+      <EventAdminActions {...baseProps} menuAnchor={anchor} setMenuAnchor={firstSetter} />
+    )
+    view.rerender(
+      <EventAdminActions {...baseProps} menuAnchor={anchor} setMenuAnchor={secondSetter} />
+    )
+
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" })
+    expect(secondSetter).toHaveBeenCalledWith(null)
+    expect(firstSetter).not.toHaveBeenCalled()
+  })
+
+  it("removes the outside listener when the menu closes", async () => {
+    const user = userEvent.setup()
+    const addEventListener = vi.spyOn(document, "addEventListener")
+    const removeEventListener = vi.spyOn(document, "removeEventListener")
+    render(<ControlledEventAdminActions />)
+
+    await user.click(screen.getByRole("button", { name: "events:card.aria.actions" }))
+    const listener = addEventListener.mock.calls.find(([type]) => type === "mousedown")?.[1]
+    expect(listener).toBeTypeOf("function")
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" })
+
+    expect(removeEventListener).toHaveBeenCalledWith("mousedown", listener)
   })
 })

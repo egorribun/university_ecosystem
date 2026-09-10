@@ -63,7 +63,7 @@ type NormalizedNewsListFilters = {
  * contract explicit for both consumers and mutation tests.
  */
 export const normalizeNewsListLimit = (value: number | undefined): number => {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 1) {
     return Math.floor(value)
   }
   return NEWS_PAGE_SIZE
