@@ -224,6 +224,79 @@ describe("useProfileSync mutation contracts", () => {
     expect(resolved?.id ?? null).toBe(expectedId)
   })
 
+  it("returns no user for a cold client cache", () => {
+    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
+  })
+
+  it.each([
+    ["a schema mismatch", PROFILE_CACHE_SCHEMA_VERSION - 1, Date.now() + 60_000],
+    ["an expired envelope", PROFILE_CACHE_SCHEMA_VERSION, Date.now() - 1],
+  ] as const)("rejects %s before synchronous cache hydration", (_label, version, expiresAt) => {
+    const payload: CacheSignaturePayload = {
+      version,
+      expiresAt,
+      data: snapshot("rejected-bootstrap-cache-user"),
+    }
+    writeSignedEnvelope(payload)
+
+    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
+  })
+
+  it("hydrates a valid signed legacy snapshot synchronously", () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("synchronous-legacy-cache-user"),
+    }
+    writeSignedEnvelope(payload)
+
+    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toMatchObject({
+      id: "synchronous-legacy-cache-user",
+      role: "student",
+      email: "",
+      is_active: false,
+    })
+  })
+
+  it("returns a minimal placeholder for a valid encrypted envelope", () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "encrypted-cache-payload",
+    }
+    writeSignedEnvelope(payload)
+
+    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toMatchObject({
+      id: "-1",
+      role: "student",
+      email: "",
+      is_active: false,
+    })
+  })
+
+  it("clears a signed legacy snapshot with an invalid id", () => {
+    const payload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: { ...snapshot("invalid-synchronous-id"), id: 42 },
+    } as unknown as CacheSignaturePayload
+    writeSignedEnvelope(payload)
+
+    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+  })
+
+  it("rejects a tampered synchronous cache signature", () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("tampered-synchronous-cache-user"),
+    }
+    writeSignedEnvelope(payload, "tampered-signature")
+
+    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
+  })
+
   it.each([
     ["LHCI", { lhci: true, isServer: false, userState: null }, false],
     [
