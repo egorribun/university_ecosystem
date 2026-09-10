@@ -7,12 +7,100 @@ import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 const runnerUrl = new URL("./run-stryker.mjs", import.meta.url)
 const expectedPatterns = ["src/**/*.{ts,tsx}", "!src/**/__tests__/**/*"]
 const location = { start: { line: 1, column: 21 }, end: { line: 1, column: 25 } }
 const processTreeFixtureSetupTimeoutMs = 5_000
 const execFileAsync = promisify(execFile)
+
+test("formats Vitest null-prototype errors without weakening native String", async () => {
+  const safeStringModuleUrl = new URL("./stryker-safe-error-string.mjs", import.meta.url)
+  const { formatSerializedError, safeString } = await import(safeStringModuleUrl)
+  const serialized = Object.create(null)
+  serialized.name = "TypeError"
+  serialized.message = "mutant callback failed"
+  serialized.stack = "TypeError: mutant callback failed\n    at mutant-test"
+
+  assert.equal(
+    formatSerializedError(serialized),
+    "TypeError: mutant callback failed\n    at mutant-test"
+  )
+  assert.equal(safeString(serialized), "TypeError: mutant callback failed\n    at mutant-test")
+  assert.equal(String(42), "42")
+  assert.equal(String(Symbol("native")), "Symbol(native)")
+  assert.equal(new safeString(42).valueOf(), "42")
+  assert.equal(new safeString(42) instanceof String, true)
+  assert.equal(safeString.raw({ raw: ["left", "right"] }, "-"), "left-right")
+
+  const throwingPrimitive = {
+    [Symbol.toPrimitive]() {
+      throw new Error("native conversion failure")
+    },
+  }
+  assert.throws(() => String(throwingPrimitive), /native conversion failure/u)
+
+  const throwingTypeErrorPrimitive = {
+    [Symbol.toPrimitive]() {
+      throw new TypeError("ordinary conversion failure")
+    },
+  }
+  assert.throws(() => safeString(throwingTypeErrorPrimitive), /ordinary conversion failure/u)
+})
+
+test("Stryker preload safely formats the child error object through NODE_OPTIONS", async () => {
+  const safeStringModulePath = fileURLToPath(
+    new URL("./stryker-safe-error-string.mjs", import.meta.url)
+  )
+  const preloadOption = `--import=${pathToFileURL(safeStringModulePath).href}`
+  const childScript = String.raw`
+    const serialized = Object.create(null)
+    serialized.name = "TypeError"
+    serialized.message = "mutant callback failed"
+    serialized.stack = "TypeError: mutant callback failed\n    at mutant-test"
+    process.stdout.write(JSON.stringify({
+      formatted: String(serialized),
+      ordinary: String(42),
+      symbol: String(Symbol("native")),
+    }))
+  `
+
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    ["--input-type=module", "-e", childScript],
+    {
+      cwd: path.dirname(safeStringModulePath),
+      env: {
+        ...process.env,
+        NODE_OPTIONS: preloadOption,
+        STRYKER_SHARD_RUN: "1",
+      },
+      encoding: "utf8",
+    }
+  )
+
+  assert.deepEqual(JSON.parse(stdout), {
+    formatted: "TypeError: mutant callback failed\n    at mutant-test",
+    ordinary: "42",
+    symbol: "Symbol(native)",
+  })
+})
+
+test("Stryker child environment preserves NODE_OPTIONS and appends the trusted preload", async () => {
+  const { buildStrykerChildEnvironment, strykerSafeErrorStringPreloadOption } = await import(
+    runnerUrl
+  )
+  const parentEnv = { NODE_OPTIONS: "--trace-warnings", STRYKER_SHARD_RUN: "1" }
+
+  const childEnv = buildStrykerChildEnvironment(parentEnv)
+
+  assert.equal(parentEnv.NODE_OPTIONS, "--trace-warnings")
+  assert.equal(childEnv.STRYKER_SHARD_RUN, "1")
+  assert.match(childEnv.NODE_OPTIONS, /^--trace-warnings\s/u)
+  assert.match(childEnv.NODE_OPTIONS, /--import=/u)
+  assert.equal(childEnv.NODE_OPTIONS.endsWith(strykerSafeErrorStringPreloadOption), true)
+})
 
 function processIsAlive(pid) {
   if (!Number.isSafeInteger(pid) || pid <= 0) return false

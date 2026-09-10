@@ -20,7 +20,7 @@ import path from "node:path"
 import { performance } from "node:perf_hooks"
 import process from "node:process"
 import { promisify } from "node:util"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 import {
   buildMutationInventory,
@@ -50,11 +50,24 @@ const strykerEntry = path.join(
   "bin",
   "stryker.js"
 )
+export const strykerSafeErrorStringPreloadOption = `--import=${
+  pathToFileURL(path.join(frontendRoot, "scripts", "stryker-safe-error-string.mjs")).href
+}`
 const instrumenterOptions = { plugins: null, excludedMutations: [], ignorers: [] }
 const preflightArtifactSchemaVersion = "1.0"
 const historicalCostArtifactSchemaVersion = "1.0"
 const maximumHistoricalCostMs = 14_400_000
 const windowsDeviceNamePattern = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9]|clock\$)(?:\..*)?$/iu
+
+export function buildStrykerChildEnvironment(parentEnv = process.env) {
+  const existingNodeOptions = parentEnv.NODE_OPTIONS?.trim()
+  return {
+    ...parentEnv,
+    NODE_OPTIONS: [existingNodeOptions, strykerSafeErrorStringPreloadOption]
+      .filter(Boolean)
+      .join(" "),
+  }
+}
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex")
@@ -3801,7 +3814,7 @@ async function main() {
             [strykerEntry, "run"],
             `Stryker ${shard.id}`,
             {
-              ...process.env,
+              ...buildStrykerChildEnvironment(),
               STRYKER_CONCURRENCY: String(runnerConcurrency),
               STRYKER_TEMP_DIR: shardTemp,
               STRYKER_JSON_REPORT: reportPath,
