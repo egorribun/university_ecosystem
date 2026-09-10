@@ -3625,3 +3625,74 @@ excluded from source commits.
 User-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
 `.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
 excluded from all source commits.
+
+## 47. Current-SHA Semgrep ledger correction and CI capacity audit (2026-09-10; source `3acb592d8`)
+
+### 47.1 Current-SHA failure and fail-closed response
+
+- Fresh run `34527417327` started from `5662a4750c16913171bbb557674e26fe94219eaf`
+  and produced one independent failure before mutation execution:
+  `Security Audit / Semgrep SAST` (job `103039590954`). The job's annotation
+  identified `app/workers/cdc_outbox.py:508` as an inline-suppressed finding
+  missing from the reviewed ledger.
+- Code Scanning analysis `1757721940` and the Semgrep alert instances confirmed
+  the exact pair of CDC findings:
+  `python.lang.security.audit.formatted-sql-query.formatted-sql-query` and
+  `python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query`,
+  each with region `508–510`. The policy still referenced the pre-refactor
+  region `488–490`; this was line-bound provenance drift, not a new suppression
+  or a scanner false positive.
+- The run had not entered Stryker or mutmut execution when the blocker was
+  captured. It was cancelled through the GitHub Actions API to avoid spending
+  the long mutation critical path on a known failing source. Cancellation is
+  not evidence and the run is excluded from every release claim.
+
+### 47.2 RED → GREEN policy correction
+
+- Updated both existing CDC entries in
+  `security/semgrep-suppression-policy.json` from `488–490` to the exact
+  current `508–510` region. The sanitization implementation, rule IDs, owners,
+  expiry and rationale are unchanged; no entry was added or broadened.
+- JSON parsing and the Semgrep validator/security workflow contract suite are
+  green (**39/39**); isolated pre-commit runs detect-secrets,
+  hardcoded-secrets, no-Python2-except, actionlint, Semgrep and Renovate checks
+  successfully. Source commit: `3acb592d8` (`fix: align semgrep suppression line ranges`).
+- The next fresh Semgrep SARIF must contain the same exact 15 reviewed
+  in-source results and no unledgered finding; a missing or extra result remains
+  fail-closed. Do not close Code Scanning alerts by hand in place of a valid
+  current-SHA SARIF/ledger pair.
+
+### 47.3 CI fan-out audit and bounded speed plan
+
+- Read-only workflow inventory found 59 top-level jobs, 64 Stryker shards
+  (`max-parallel: 6`, 120-minute timeout), 8 mutmut-stats shards
+  (`max-parallel: 8`), and 1–128 mutmut execution groups
+  (`max-parallel: 10`, 360-minute timeout). Backend, Go, frontend/Lighthouse,
+  E2E and Schemathesis matrices have no local cap, while companion workflows
+  add roughly 40 eligible leaf jobs. Matrix caps are workflow-local, so the
+  repository has no global semaphore enforcing the operational 20-runner
+  ceiling.
+- Historical run `34486140554` consumed the Stryker critical path for about
+  356 minutes (longest shard about 105.2 minutes) and completed in about 384.5
+  minutes; this proves queue/critical-path pressure but not a deadlock or a
+  timeout defect. Current run snapshots also showed hosted-runner saturation.
+- Preserve every source/test/mutant and all fail-closed validators. Keep
+  Stryker 6 and mutmut 10 unchanged until three comparable green current-SHA
+  runs provide queue, timeout, resource and billed-minute evidence. Only then
+  trial a cap or shared dependency artifact; any optimization must retain
+  checksum/provenance validation, exact shard ledgers and the under-20-runner
+  budget. Never solve latency by raising timeouts, disabling `vitest.related`,
+  changing coverage/mutation thresholds or adding exclusions.
+
+### 47.4 Acceptance boundary
+
+1. Push the policy correction plus this checkpoint as one new non-force
+   `egorribun` SHA and treat its PR matrix as the only valid CI evidence.
+2. Require Semgrep, CodeQL, dependency/security scans, coverage/preflight,
+   all 64 Stryker shards, all mutmut groups, E2E/browser, Lighthouse,
+   Schemathesis, Go/Rust and aggregate CI Success to reach terminal success
+   with current-SHA hashes and complete denominators.
+3. Record any subsequent failure from its exact job annotation/artifact before
+   changing code. Keep merge-to-main, exact-six immutable images, digest Docker
+   smoke, Kubernetes/TLS/observability, real-device CWV, chaos/rollback,
+   production release and final SHA-bound audit explicitly external.
