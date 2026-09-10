@@ -5,7 +5,10 @@ import i18n, { fallbackLng, supportedLngs } from "@/i18n/config"
 const acceptLanguageHeader = "Accept-Language"
 
 const normalizeLanguageCandidate = (candidate: string) =>
-  candidate.toLowerCase().replace(/_/g, "-").split(",", 1)[0]?.trim() ?? ""
+  // `String.prototype.split` always returns at least one item for a string;
+  // the non-null assertion keeps that invariant explicit for strict indexed
+  // access without introducing an unreachable branch into the coverage map.
+  candidate.toLowerCase().replace(/_/g, "-").split(",", 1)[0]!.trim()
 
 const resolveAcceptLanguage = (language: string) => {
   const fallbackLanguage = fallbackLng
