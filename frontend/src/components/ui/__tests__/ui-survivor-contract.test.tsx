@@ -171,9 +171,21 @@ describe("Checkbox survivor contract", () => {
 
   it("does not require a callback for native changes", () => {
     render(<Checkbox aria-label="No callback" />)
-    expect(() =>
-      fireEvent.click(screen.getByRole("checkbox", { name: "No callback" }))
-    ).not.toThrow()
+    const input = screen.getByRole("checkbox", { name: "No callback" })
+    // Invoke React's bound handler directly instead of dispatching a browser
+    // event.  React intentionally rethrows event-handler failures through the
+    // global error channel, which would make the OptionalChaining mutant look
+    // like a Stryker runtime error instead of a killed mutant.  Calling the
+    // exact handler synchronously keeps the optional-callback contract
+    // observable while allowing the assertion to capture the mutant throw.
+    const reactPropsKey = Object.keys(input).find((key) => key.startsWith("__reactProps$"))
+    expect(reactPropsKey).toBeDefined()
+    type ChangeHandler = (event: { target: HTMLInputElement }) => void
+    const onChange = (input as unknown as Record<string, { onChange?: ChangeHandler } | undefined>)[
+      reactPropsKey ?? ""
+    ]?.onChange
+    expect(onChange).toBeTypeOf("function")
+    expect(() => onChange?.({ target: input as HTMLInputElement })).not.toThrow()
   })
 })
 
