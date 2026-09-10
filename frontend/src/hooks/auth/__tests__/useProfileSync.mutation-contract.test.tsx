@@ -18,6 +18,7 @@ import {
   buildSsrStubUser,
   buildLhciMockUser,
   createOptimisticUser,
+  decryptData,
   encryptData,
   areDeepEqual,
   fetchCurrentUser,
@@ -27,6 +28,7 @@ import {
   isCachedSnapshotObject,
   migrateProfileCache,
   persistUserToCacheAsync,
+  readCachedUserAsync,
   resolveInitialInitializingState,
   resolveInitialUserState,
   resolveSsrInitialInitializing,
@@ -227,6 +229,26 @@ describe("useProfileSync mutation contracts", () => {
   it("returns no user for a cold client cache", () => {
     expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
   })
+
+  it.each([
+    ["an array", Object.assign([], { id: "array-cache-user" })],
+    ["a function", Object.assign(() => undefined, { id: "function-cache-user" })],
+  ] as const)(
+    "rejects a %s returned by the async cache parser even when it has an id",
+    async (_label, data) => {
+      localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "malformed-runtime-boundary")
+      vi.spyOn(JSON, "parse").mockReturnValue({
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + 60_000,
+        data,
+        signature: btoa("x".repeat(32)),
+      } as never)
+      vi.spyOn(window.crypto.subtle, "verify").mockResolvedValue(true)
+
+      await expect(readCachedUserAsync(signingKey)).resolves.toBeUndefined()
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    }
+  )
 
   it.each([
     ["a schema mismatch", PROFILE_CACHE_SCHEMA_VERSION - 1, Date.now() + 60_000],
@@ -1141,6 +1163,22 @@ describe("useProfileSync mutation contracts", () => {
     expect(errorSpy).toHaveBeenCalledWith("Encryption failed", { error: encryptionError })
   })
 
+  it("performs encryption when Web Crypto is available", async () => {
+    const encrypted = await encryptData(snapshot("direct-encryption-user"), signingKey)
+
+    expect(encrypted).toEqual(expect.any(String))
+    expect(encrypted?.split(":")).toHaveLength(3)
+  })
+
+  it("performs decryption when Web Crypto is available", async () => {
+    const encrypted = await encryptData(snapshot("direct-decryption-user"), signingKey)
+    expect(encrypted).toEqual(expect.any(String))
+
+    await expect(decryptData(encrypted as string, signingKey)).resolves.toMatchObject({
+      id: "direct-decryption-user",
+    })
+  })
+
   it("does not emit an encryption error when Web Crypto is unavailable", async () => {
     const errorSpy = vi.spyOn(logger, "logError").mockImplementation(() => undefined)
     vi.spyOn(window.crypto, "subtle", "get").mockReturnValue(undefined as unknown as SubtleCrypto)
@@ -1148,6 +1186,15 @@ describe("useProfileSync mutation contracts", () => {
     await expect(encryptData(snapshot("no-encryption-crypto-user"), signingKey)).resolves.toBeNull()
 
     expect(errorSpy).not.toHaveBeenCalled()
+  })
+
+  it("returns null without parsing when Web Crypto is unavailable for decryption", async () => {
+    const splitSpy = vi.spyOn(String.prototype, "split")
+    vi.spyOn(window.crypto, "subtle", "get").mockReturnValue(undefined as unknown as SubtleCrypto)
+
+    await expect(decryptData("aa:bb:ZmFr", signingKey)).resolves.toBeNull()
+
+    expect(splitSpy).not.toHaveBeenCalledWith(":")
   })
 
   it("does not emit an encryption error when Web Crypto disappears before derivation", async () => {

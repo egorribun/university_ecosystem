@@ -364,7 +364,8 @@ export const encryptData = async (
   }
 }
 
-const decryptData = async (
+/** @internal — exported for direct asynchronous cache-crypto contracts. */
+export const decryptData = async (
   encryptedString: string,
   signingKey: string
 ): Promise<CachedUserSnapshot | null> => {
@@ -439,7 +440,8 @@ const verifySignatureSync = (
   }
 }
 
-const readCachedUserAsync = async (signingKey: string | null): Promise<User | undefined> => {
+/** @internal — exported for direct asynchronous cache-boundary contracts. */
+export const readCachedUserAsync = async (signingKey: string | null): Promise<User | undefined> => {
   if (!signingKey) {
     clearProfileCacheStorage()
     return undefined
