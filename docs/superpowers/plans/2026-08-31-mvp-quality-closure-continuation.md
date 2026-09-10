@@ -3096,6 +3096,54 @@ User-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
 `.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
 excluded from all source commits.
 
+## 41. Current stale-PR mutation evidence and bounded remediation (2026-09-10; local HEAD `5a04b3e34`)
+
+### 41.1 Exact stale-run findings
+
+- PR #1266 run `34486140554` is based on the old remote SHA
+  `78d03e1379a0c428ae509039d4942677ed89a7d9` and is not evidence for the
+  current branch. At the latest inspection it had 355 completed checks, 8
+  active mutation jobs and two failures: the previously fixed group-91
+  survivor and a newly terminal group-123 survivor.
+- Group 123 artifact `mutmut-exact-evidence-34486140554-1-group-123`
+  (`10168759110`) selected 19 mutants and recorded exactly one survivor:
+  `app.cli.migrate_passwords.x__report_bcrypt_users__mutmut_1`.
+  The isolated mutant changed only `_report_bcrypt_users`' default sample
+  limit from 50 to 51; no test asserted that documented safety bound.
+
+### 41.2 RED → GREEN remediation
+
+- Added `test_report_bcrypt_users_default_sample_limit_is_fifty` to
+  `tests/test_cli_migrate_passwords_closure.py`. It executes the real query
+  path with ID opt-in and asserts the compiled PostgreSQL statement contains
+  `LIMIT 50`, killing the exact default-value mutant without changing
+  production behavior.
+- Focused closure suite: **14 passed**; Ruff check/format pass for the changed
+  test. The fix is committed as `5a04b3e34` (`test: cover bcrypt sample limit
+  contract`). The prior exact error-message survivor remains covered by
+  commit `5b5473320`.
+- The full isolated pre-commit run completed successfully (Ruff, secrets,
+  Bandit, mypy, no-Python2-except, actionlint, Semgrep and Renovate checks).
+  The default Windows pre-commit cache ACL failure remains an environment
+  limitation; no hook was bypassed.
+
+### 41.3 Fresh-SHA boundary
+
+1. Do not push while stale run `34486140554` is still active because the CI
+   concurrency group would cancel expensive mutation evidence. After its
+   terminal state, re-query every failed/cancelled job and artifact; any new
+   survivor is handled with the same exact-evidence TDD loop.
+2. Re-run the full local inventory after the final source commit, then push
+   current SHA `5a04b3e34` (and any subsequent evidence-only commit) and treat
+   only the resulting current-SHA matrix as merge evidence.
+3. Keep all product/release/staging gates open until current-SHA CI and the
+   post-merge exact-six image, digest smoke, Kubernetes/TLS/observability,
+   device-CWV, chaos/rollback and SHA-bound audit evidence are captured.
+
+The user-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
+`.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
+excluded from source commits.
+
 ## 44. Current bounded closure checkpoint (2026-09-10; local HEAD `6679aa3b`)
 
 This checkpoint records new evidence and bounded fixes without promoting the
