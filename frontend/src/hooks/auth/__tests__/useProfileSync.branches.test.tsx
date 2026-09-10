@@ -617,10 +617,12 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
     const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
 
-    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+    await withExpectedConsole("warn", "profile_cache.signature_verification_failed", async () => {
+      const { result } = renderProfileSync({ signingKey: mockSigningKey })
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
+    })
   })
 
   it("handles a decryption exception as invalid cache data", async () => {
@@ -635,10 +637,12 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
     const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
 
-    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+    await withExpectedConsole("warn", "profile_cache.decryption_failed", async () => {
+      const { result } = renderProfileSync({ signingKey: mockSigningKey })
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
-    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY))
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      await waitFor(() => expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY))
+    })
   })
 
   it("migrates an older cache version and evicts legacy keys", async () => {

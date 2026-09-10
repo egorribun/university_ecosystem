@@ -11,11 +11,13 @@ import api from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
 import * as logger from "@/app/logger"
 import { testUser } from "@/tests/mocks/handlers"
+import { withExpectedConsole } from "@/tests/strictConsole"
 import {
   PROFILE_CACHE_SCHEMA_VERSION,
   PROFILE_CACHE_STORAGE_KEY,
   buildSsrStubUser,
   buildLhciMockUser,
+  createOptimisticUser,
   encryptData,
   fetchCurrentUser,
   isProfileSyncBrowserRuntime,
@@ -164,6 +166,13 @@ describe("useProfileSync mutation contracts", () => {
     })
   })
 
+  it("keeps optimistic-user construction restricted to object snapshots", () => {
+    expect(createOptimisticUser(snapshot("valid-optimistic-user")).id).toBe("valid-optimistic-user")
+    expect(() => createOptimisticUser(42 as unknown as CachedUserSnapshot)).toThrow(
+      "Profile cache snapshot must be an object"
+    )
+  })
+
   it.each([
     ["exactly at", 0, true],
     ["one millisecond after", 1, false],
@@ -224,10 +233,17 @@ describe("useProfileSync mutation contracts", () => {
       )
       localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
 
-      const { result, unmount } = renderProfile()
-      await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
-      expect(result.current.user?.id).toBe("-1")
-      unmount()
+      const verify = async () => {
+        const { result, unmount } = renderProfile()
+        await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+        expect(result.current.user?.id).toBe("-1")
+        unmount()
+      }
+      if (data === "00:00:%%%") {
+        await withExpectedConsole("warn", "profile_cache.decryption_failed", verify)
+      } else {
+        await verify()
+      }
     }
   )
 
@@ -480,7 +496,8 @@ describe("useProfileSync mutation contracts", () => {
   })
 
   it("short-circuits encrypted-cache parsing when Web Crypto is unavailable", async () => {
-    await writeEncryptedEnvelope(snapshot("no-crypto-cache-user"))
+    const payload = await writeEncryptedEnvelope(snapshot("no-crypto-cache-user"))
+    const splitSpy = vi.spyOn(String.prototype, "split")
     const originalSubtle = window.crypto.subtle
     let subtleReads = 0
     vi.spyOn(window.crypto, "subtle", "get").mockImplementation(() => {
@@ -494,8 +511,35 @@ describe("useProfileSync mutation contracts", () => {
     // One read verifies the HMAC envelope; the second is the decrypt guard.
     // No parser/import work is allowed after that guard returns null.
     expect(subtleReads).toBe(2)
+    expect(splitSpy.mock.instances.some((instance) => instance === payload.data)).toBe(false)
     unmount()
   })
+
+  it.each([":bb:ZmFr", "aa::ZmFr"])(
+    "does not derive or decrypt when an encrypted cache segment is empty (%s)",
+    async (data) => {
+      const payload: CacheSignaturePayload = {
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + 60_000,
+        data,
+      }
+      writeSignedEnvelope(payload)
+      const deriveKeySpy = vi.spyOn(window.crypto.subtle, "deriveKey")
+      const decryptSpy = vi.spyOn(window.crypto.subtle, "decrypt")
+      const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+
+      const { unmount } = renderProfile(signingKey)
+
+      await waitFor(() =>
+        expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+          reason: "invalid_data",
+        })
+      )
+      expect(deriveKeySpy).not.toHaveBeenCalled()
+      expect(decryptSpy).not.toHaveBeenCalled()
+      unmount()
+    }
+  )
 
   it("clears cache through the no-key path without attempting cryptography", async () => {
     await writeEncryptedEnvelope(snapshot("no-key-cache-user"))
@@ -642,13 +686,48 @@ describe("useProfileSync mutation contracts", () => {
     unmount()
   })
 
-  it("fails closed when synchronous signature verification throws", () => {
+  it("rejects a truthy primitive received through cross-tab cache sync", async () => {
+    const { result, unmount } = renderProfile(signingKey)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const payload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: 42,
+    } as unknown as CacheSignaturePayload
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+    const serialized = JSON.stringify({ ...payload, signature: signEnvelope(payload) })
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, serialized)
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          newValue: serialized,
+        })
+      )
+    })
+
+    await waitFor(() =>
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+        reason: "invalid_data",
+      })
+    )
+    expect(result.current.user).toBeNull()
+    unmount()
+  })
+
+  it("fails closed when synchronous signature verification throws", async () => {
     const payload: CacheSignaturePayload = {
       version: PROFILE_CACHE_SCHEMA_VERSION,
       expiresAt: Date.now() + 60_000,
       data: snapshot("sync-verifier-error-user"),
     }
     writeSignedEnvelope(payload)
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
     vi.spyOn(TextEncoder.prototype, "encode").mockImplementation(() => {
       throw new Error("encoder unavailable")
     })
@@ -656,6 +735,14 @@ describe("useProfileSync mutation contracts", () => {
     const { result, unmount } = renderProfile(signingKey)
 
     expect(result.current.user).toBeNull()
+    await waitFor(() =>
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+        reason: "invalid_signature",
+      })
+    )
+    expect(warningSpy).not.toHaveBeenCalledWith("profile_cache.cleared", {
+      reason: "parse_error",
+    })
     unmount()
   })
 })

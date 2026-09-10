@@ -123,30 +123,40 @@ const areDeepEqual = (a: unknown, b: unknown): boolean => {
   return true
 }
 
-const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
-  id: snapshot.id,
-  // TD-14-07: email and role are not cached; provide safe defaults for optimistic render.
-  // The authoritative values arrive from the /users/me API response shortly after mount.
-  email: "",
-  full_name: snapshot.full_name ?? null,
-  role: "student",
-  group_id: snapshot.group_id ?? null,
-  avatar_url: snapshot.avatar_url ?? null,
-  cover_url: snapshot.cover_url ?? null,
-  spotify_connected: snapshot.spotify_connected ?? false,
-  // TD-14-07: profile_detail and education_path are not cached (contain PII).
-  profile_detail: undefined,
-  education_path: undefined,
-  preferences: snapshot.preferences ?? null,
-  is_active: false,
-  mfa_required: Boolean(snapshot.mfa_required),
-  mfa_default_method: snapshot.mfa_default_method ?? null,
-  mfa_last_verified_at: snapshot.mfa_last_verified_at ?? null,
-  totp_enrollments: snapshot.totp_enrollments ?? [],
-  recovery_codes_left: 0,
-  avatar_url_optimized: null,
-  cover_url_optimized: null,
-})
+/** @internal — exported for the runtime-boundary mutation contract. */
+export const createOptimisticUser = (snapshot: CachedUserSnapshot): User => {
+  // Cache data crosses a runtime trust boundary. Keep this helper defensive
+  // so a future parser call cannot construct an optimistic user from a
+  // primitive or null value.
+  if (snapshot === null || typeof snapshot !== "object") {
+    throw new TypeError("Profile cache snapshot must be an object")
+  }
+
+  return {
+    id: snapshot.id,
+    // TD-14-07: email and role are not cached; provide safe defaults for optimistic render.
+    // The authoritative values arrive from the /users/me API response shortly after mount.
+    email: "",
+    full_name: snapshot.full_name ?? null,
+    role: "student",
+    group_id: snapshot.group_id ?? null,
+    avatar_url: snapshot.avatar_url ?? null,
+    cover_url: snapshot.cover_url ?? null,
+    spotify_connected: snapshot.spotify_connected ?? false,
+    // TD-14-07: profile_detail and education_path are not cached (contain PII).
+    profile_detail: undefined,
+    education_path: undefined,
+    preferences: snapshot.preferences ?? null,
+    is_active: false,
+    mfa_required: Boolean(snapshot.mfa_required),
+    mfa_default_method: snapshot.mfa_default_method ?? null,
+    mfa_last_verified_at: snapshot.mfa_last_verified_at ?? null,
+    totp_enrollments: snapshot.totp_enrollments ?? [],
+    recovery_codes_left: 0,
+    avatar_url_optimized: null,
+    cover_url_optimized: null,
+  }
+}
 
 const clearProfileCacheStorage = (
   reason:
@@ -347,7 +357,9 @@ const decryptData = async (
     const decoded = new TextDecoder().decode(decrypted)
     return JSON.parse(decoded) as CachedUserSnapshot
   } catch (_e) {
-    // Decryption failed (wrong key or tampering)
+    // Decryption failed (wrong key or tampering).  Keep diagnostics generic so
+    // encrypted cache material never reaches logs or telemetry.
+    logWarning("profile_cache.decryption_failed")
     return null
   }
 }
@@ -377,6 +389,8 @@ const verifySignatureSync = (
     const expected = uint8ToBase64(signatureBytes)
     return timingSafeEqual(signature, expected)
   } catch {
+    // Do not expose the verifier exception or any cache material.
+    logWarning("profile_cache.signature_verification_failed")
     return false
   }
 }
@@ -425,7 +439,7 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
           (candidate.data as CachedUserSnapshot)
         : null
 
-  if (!snapshotData || typeof snapshotData.id !== "string") {
+  if (snapshotData === null || typeof snapshotData.id !== "string") {
     clearProfileCacheStorage("invalid_data")
     return undefined
   }
