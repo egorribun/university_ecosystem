@@ -32,7 +32,9 @@ function readStringProperty(value, key) {
  * invoking the record's missing prototype conversion hooks.
  */
 export function formatSerializedError(value) {
-  if (!hasNullPrototype(value)) return nativeString(value)
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) {
+    return nativeString(value)
+  }
 
   const stack = readStringProperty(value, "stack")
   if (stack) return stack
@@ -42,6 +44,18 @@ export function formatSerializedError(value) {
   if (name && message) return `${name}: ${message}`
   if (message) return message
   if (name) return name
+
+  // Preserve native String semantics for ordinary objects.  Only the
+  // conversion failure handled by safeStringValue reaches this branch for a
+  // non-null-prototype object, where a diagnostic placeholder is safer than
+  // rethrowing the serializer crash.
+  if (!hasNullPrototype(value)) {
+    try {
+      return nativeString(value)
+    } catch {
+      return "<unserializable error object>"
+    }
+  }
   return "<unserializable error object>"
 }
 
@@ -56,7 +70,11 @@ function safeStringValue(value) {
     // retain their native behavior.
     const errorName =
       error !== null && typeof error === "object" ? readStringProperty(error, "name") : ""
-    if ((error instanceof TypeError || errorName === "TypeError") && hasNullPrototype(value)) {
+    const errorMessage = readStringProperty(error, "message")
+    const isPrimitiveConversionError =
+      (error instanceof TypeError || errorName === "TypeError") &&
+      errorMessage.includes("Cannot convert object to primitive value")
+    if (isPrimitiveConversionError) {
       return formatSerializedError(value)
     }
     throw error
