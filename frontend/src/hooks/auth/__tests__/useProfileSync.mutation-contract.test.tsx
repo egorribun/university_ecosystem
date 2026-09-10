@@ -826,7 +826,8 @@ describe("useProfileSync mutation contracts", () => {
   })
 
   it("keeps the PII-bearing v7 key in the legacy eviction contract", () => {
-    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, "7")
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, "6")
+    localStorage.setItem("ecosystem.profile.cache.v7", "legacy-pii")
     const removeItemSpy = vi.spyOn(Storage.prototype, "removeItem")
 
     migrateProfileCache()
@@ -1519,7 +1520,7 @@ describe("useProfileSync mutation contracts", () => {
   it("does not invoke key derivation after Web Crypto disappears", async () => {
     const originalWindow = globalThis.window
     let subtleReads = 0
-    const errorSpy = vi.spyOn(logger, "logError").mockImplementation(() => undefined)
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined)
     const fakeSubtle = {
       importKey: vi.fn(async () => ({}) as CryptoKey),
       deriveKey: vi.fn(async () => ({}) as CryptoKey),
@@ -1528,7 +1529,7 @@ describe("useProfileSync mutation contracts", () => {
       crypto: {
         get subtle() {
           subtleReads += 1
-          return (subtleReads <= 2 ? fakeSubtle : undefined) as SubtleCrypto
+          return (subtleReads <= 4 ? fakeSubtle : undefined) as SubtleCrypto
         },
         getRandomValues: (bytes: Uint8Array) => bytes,
       },
@@ -1537,9 +1538,10 @@ describe("useProfileSync mutation contracts", () => {
 
     try {
       await expect(encryptData(snapshot("derive-guard-user"), signingKey)).resolves.toBeNull()
-      expect(subtleReads).toBeGreaterThanOrEqual(3)
+      expect(subtleReads).toBe(5)
+      expect(fakeSubtle.importKey).toHaveBeenCalledTimes(1)
       expect(fakeSubtle.deriveKey).not.toHaveBeenCalled()
-      expect(errorSpy).not.toHaveBeenCalledWith("Encryption failed", expect.anything())
+      expect(consoleErrorSpy).not.toHaveBeenCalledWith("Encryption failed", expect.anything())
     } finally {
       vi.stubGlobal("window", originalWindow)
     }
