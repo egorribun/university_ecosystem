@@ -6,8 +6,9 @@ export function GlobalHapticsListener() {
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      const hapticElement = target.closest("[data-haptic]") as HTMLElement
+      const target = e.target
+      if (!(target instanceof Element)) return
+      const hapticElement = target.closest("[data-haptic]") as HTMLElement | null
 
       if (hapticElement) {
         // Prevent double triggering if nested

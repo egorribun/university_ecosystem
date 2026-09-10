@@ -9,11 +9,19 @@ const logger = vi.hoisted(() => ({
   logInfo: vi.fn(),
 }))
 
+const haptics = vi.hoisted(() => ({
+  trigger: vi.fn(),
+}))
+
 const motionState = vi.hoisted(() => ({
   calls: [] as Array<{ element: string; props: Record<string, unknown> }>,
 }))
 
 vi.mock("@/app/logger", () => logger)
+
+vi.mock("@/hooks/useHaptics", () => ({
+  useHaptics: () => ({ trigger: haptics.trigger }),
+}))
 
 vi.mock("framer-motion", async () => {
   const { framerMotionMock } = await import("@/tests/helpers/framerMotionMock")
@@ -47,6 +55,7 @@ import { ContentCard } from "@/components/ui/ContentCard"
 import { Checkbox } from "@/components/ui/Checkbox"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import { Dialog } from "@/components/ui/Dialog"
+import { GlobalHapticsListener } from "@/components/ui/GlobalHapticsListener"
 import { MediaSlot } from "@/components/ui/MediaSlot"
 import { NotificationRelevanceScore } from "@/components/ui/NotificationRelevanceScore"
 import NewsCardSkeleton, {
@@ -91,6 +100,7 @@ afterEach(() => {
   cleanup()
   resetGlobalErrorHandlersForTesting()
   motionState.calls.length = 0
+  haptics.trigger = vi.fn()
   document.body.style.overflow = ""
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
@@ -138,6 +148,7 @@ describe("Checkbox survivor contract", () => {
       "shadow-glow-primary"
     )
     expect(input.parentElement?.querySelector("svg path")).toHaveAttribute("d", "M5 12h14")
+    expect(input.parentElement?.querySelector("svg")).toHaveStyle({ strokeWidth: "3" })
 
     rerender(<Checkbox aria-label="Select record" checked disabled />)
     expect(input).toBeChecked()
@@ -147,6 +158,8 @@ describe("Checkbox survivor contract", () => {
       opacity: "var(--opacity-medium)",
     })
     expect(input.parentElement?.querySelector("svg path")).toHaveAttribute("d", "M20 6 9 17l-5-5")
+    expect(input.parentElement?.querySelector("svg")).toHaveStyle({ strokeWidth: "4" })
+    expect(Checkbox.displayName).toBe("Checkbox")
     expect(latestMotionProps("div")).toMatchObject({
       initial: { scale: 0.5, opacity: 0 },
       animate: { scale: 1, opacity: 1 },
@@ -161,6 +174,63 @@ describe("Checkbox survivor contract", () => {
     expect(() =>
       fireEvent.click(screen.getByRole("checkbox", { name: "No callback" }))
     ).not.toThrow()
+  })
+})
+
+describe("GlobalHapticsListener lifecycle contract", () => {
+  it("fails closed for clicks outside a haptic target", () => {
+    const errorEvents: ErrorEvent[] = []
+    const onError = (event: ErrorEvent) => {
+      event.preventDefault()
+      errorEvents.push(event)
+    }
+    window.addEventListener("error", onError)
+    try {
+      render(<GlobalHapticsListener />)
+      fireEvent.click(document.body)
+      expect(haptics.trigger).not.toHaveBeenCalled()
+      expect(errorEvents).toHaveLength(0)
+    } finally {
+      window.removeEventListener("error", onError)
+    }
+  })
+
+  it("guards the listener when invoked with a non-element event target", () => {
+    const addEventListener = vi.spyOn(document, "addEventListener")
+    render(<GlobalHapticsListener />)
+    const registered = addEventListener.mock.calls.find(([type]) => type === "click")?.[1]
+    expect(registered).toEqual(expect.any(Function))
+
+    expect(() => (registered as EventListener)(new MouseEvent("click"))).not.toThrow()
+    expect(haptics.trigger).not.toHaveBeenCalled()
+  })
+
+  it("removes the exact click listener on unmount", () => {
+    const addEventListener = vi.spyOn(document, "addEventListener")
+    const removeEventListener = vi.spyOn(document, "removeEventListener")
+    const { unmount } = render(<GlobalHapticsListener />)
+
+    const registered = addEventListener.mock.calls.find(([type]) => type === "click")?.[1]
+    expect(registered).toEqual(expect.any(Function))
+
+    unmount()
+    expect(removeEventListener).toHaveBeenCalledWith("click", registered)
+  })
+
+  it("rebinds the listener when the haptic trigger identity changes", () => {
+    const addEventListener = vi.spyOn(document, "addEventListener")
+    const removeEventListener = vi.spyOn(document, "removeEventListener")
+    const { rerender, unmount } = render(<GlobalHapticsListener />)
+
+    const firstRegistered = addEventListener.mock.calls.find(([type]) => type === "click")?.[1]
+    expect(firstRegistered).toEqual(expect.any(Function))
+
+    haptics.trigger = vi.fn()
+    rerender(<GlobalHapticsListener />)
+    expect(removeEventListener).toHaveBeenCalledWith("click", firstRegistered)
+    expect(addEventListener.mock.calls.filter(([type]) => type === "click")).toHaveLength(2)
+
+    unmount()
   })
 })
 
