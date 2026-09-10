@@ -660,13 +660,37 @@ describe("useProfileSync mutation contracts", () => {
     writeSignedEnvelope(payload, "tampered")
     const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
 
-    const { unmount } = renderProfile(signingKey)
+    const { result, unmount } = renderProfile(signingKey)
 
     await waitFor(() =>
       expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
         reason: "invalid_signature",
       })
     )
+    expect(result.current.user).toBeNull()
+    unmount()
+  })
+
+  it("rejects same-length signature tampering before restoring a cache placeholder", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("same-length-tampered-user"),
+    }
+    const validSignature = signEnvelope(payload)
+    const tamperedSignature = `${validSignature[0] === "A" ? "B" : "A"}${validSignature.slice(1)}`
+    writeSignedEnvelope(payload, tamperedSignature)
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+
+    const { result, unmount } = renderProfile(signingKey)
+
+    expect(result.current.user).toBeNull()
+    await waitFor(() =>
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+        reason: "invalid_signature",
+      })
+    )
+    expect(result.current.user).toBeNull()
     unmount()
   })
 
