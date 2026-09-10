@@ -34,6 +34,7 @@ import {
   readCachedUserAsync,
   resolveInitialInitializingState,
   resolveInitialUserState,
+  shouldEvictDynamicProfileCacheKey,
   resolveSsrInitialInitializing,
   resolveSsrInitialUserState,
   verifyHmacAsync,
@@ -903,6 +904,12 @@ describe("useProfileSync mutation contracts", () => {
     expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY)).toBe(
       String(PROFILE_CACHE_SCHEMA_VERSION)
     )
+  })
+
+  it("requires a non-empty schema marker before evicting a dynamic cache key", () => {
+    expect(shouldEvictDynamicProfileCacheKey(null)).toBe(false)
+    expect(shouldEvictDynamicProfileCacheKey("")).toBe(false)
+    expect(shouldEvictDynamicProfileCacheKey("6")).toBe(true)
   })
 
   it("fails closed and emits only a generic diagnostic when the storage accessor throws", () => {

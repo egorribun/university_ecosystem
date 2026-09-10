@@ -585,6 +585,9 @@ export const persistUserToCacheAsync = async (
 }
 
 /** @internal — exported for cache migration mutation contracts. */
+export const shouldEvictDynamicProfileCacheKey = (storedVersion: string | null): boolean =>
+  storedVersion !== null && storedVersion !== ""
+
 export const migrateProfileCache = () => {
   clearLegacyAccessToken()
   const storage = getLocalStorage()
@@ -603,7 +606,7 @@ export const migrateProfileCache = () => {
       for (const legacyKey of getLegacyProfileCacheKeys()) {
         storage.removeItem(legacyKey)
       }
-      if (storedVersion !== null && storedVersion !== "") {
+      if (shouldEvictDynamicProfileCacheKey(storedVersion)) {
         storage.removeItem(`${PROFILE_CACHE_BASE_KEY}.v${storedVersion}`)
       }
       storage.removeItem(PROFILE_CACHE_STORAGE_KEY)
