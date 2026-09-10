@@ -299,7 +299,6 @@ jobs:
     # runner for every changed file.  Scheduled/manual invocations opt in
     # explicitly and still receive the complete, content-addressed report.
     if: ${{ inputs.run-mutation-diagnostic && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
-    continue-on-error: true
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     permissions:
@@ -422,6 +421,9 @@ jobs:
               "timestamp": generated_at,
               "outcomes": [],
               "outcome_count": 0,
+              "expected_targets": [],
+              "expected_target_count": 0,
+              "unreported_targets": [],
           }
           (root / "mutation-diagnostic-summary.json").write_text(
               json.dumps(summary, sort_keys=True, indent=2) + "\n",
@@ -515,11 +517,23 @@ jobs:
           root = Path(sys.argv[1])
           summary_path = Path(sys.argv[2])
           payload = json.loads(summary_path.read_text(encoding="utf-8"))
+          expected_targets_path = root / "expected-targets.txt"
+          expected_targets = (
+              [
+                  line.strip()
+                  for line in expected_targets_path.read_text(encoding="utf-8").splitlines()
+                  if line.strip()
+              ]
+              if expected_targets_path.is_file()
+              else []
+          )
           outcomes = []
+          observed_targets = set()
           for shard in sorted(root.iterdir(), key=lambda item: item.name):
               if not shard.is_dir() or not (shard / "target.txt").is_file():
                   continue
               target = (shard / "target.txt").read_text(encoding="utf-8").strip()
+              observed_targets.add(target)
               status_path = shard / "status.txt"
               source_hash_path = shard / "source.sha256"
               target_hash_path = shard / "target-hash.txt"
@@ -551,8 +565,25 @@ jobs:
                       "report_sha256": report_hash,
                   }
               )
+          unreported_targets = [
+              target for target in expected_targets if target not in observed_targets
+          ]
+          for target in unreported_targets:
+              outcomes.append(
+                  {
+                      "shard": None,
+                      "target": target,
+                      "target_hash": hashlib.sha256(target.encode("utf-8")).hexdigest(),
+                      "status": "unreported",
+                      "source_sha256": None,
+                      "report_sha256": None,
+                  }
+              )
           payload["outcomes"] = outcomes
           payload["outcome_count"] = len(outcomes)
+          payload["expected_targets"] = expected_targets
+          payload["expected_target_count"] = len(expected_targets)
+          payload["unreported_targets"] = unreported_targets
           payload["updated_at"] = (
               datetime.now(timezone.utc)
               .replace(microsecond=0)
@@ -621,6 +652,7 @@ jobs:
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "No changed Go source files found in $SERVICE_DIRECTORY."
+            : > "$EVIDENCE_ROOT/expected-targets.txt"
             write_summary no_changed_source
             DIAGNOSTIC_FINALIZED=1
             exit 0
@@ -635,6 +667,7 @@ jobs:
             fail_diagnostic "Changed Go files were found, but no diagnostic targets were resolved."
             exit 1
           fi
+          printf '%s\n' "${TARGETS[@]}" > "$EVIDENCE_ROOT/expected-targets.txt"
 
           for target in "${TARGETS[@]}"; do
             if [ ! -f "$target" ] || [ -L "$target" ]; then
@@ -834,15 +867,28 @@ jobs:
           }:
               raise SystemExit("mutation diagnostic summary is missing or invalid")
 
+          expected_targets_path = evidence_root / "expected-targets.txt"
+          expected_targets = (
+              [
+                  line.strip()
+                  for line in expected_targets_path.read_text(encoding="utf-8").splitlines()
+                  if line.strip()
+              ]
+              if expected_targets_path.is_file()
+              else []
+          )
           outcomes = []
+          observed_targets = set()
           for shard in sorted(evidence_root.iterdir(), key=lambda item: item.name):
               if not shard.is_dir() or not (shard / "target.txt").is_file():
                   continue
               report_path = shard / "report.json"
+              target = (shard / "target.txt").read_text(encoding="utf-8").strip()
+              observed_targets.add(target)
               outcomes.append(
                   {
                       "shard": shard.name,
-                      "target": (shard / "target.txt").read_text(encoding="utf-8").strip(),
+                      "target": target,
                       "target_hash": (
                           (shard / "target-hash.txt").read_text(encoding="utf-8").strip()
                           if (shard / "target-hash.txt").is_file()
@@ -865,8 +911,34 @@ jobs:
                       ),
                   }
               )
+          unreported_targets = [
+              target for target in expected_targets if target not in observed_targets
+          ]
+          for target in unreported_targets:
+              outcomes.append(
+                  {
+                      "shard": None,
+                      "target": target,
+                      "target_hash": hashlib.sha256(target.encode("utf-8")).hexdigest(),
+                      "status": "unreported",
+                      "source_sha256": None,
+                      "report_sha256": None,
+                  }
+              )
           payload["outcomes"] = outcomes
           payload["outcome_count"] = len(outcomes)
+          payload["expected_targets"] = expected_targets
+          payload["expected_target_count"] = len(expected_targets)
+          payload["unreported_targets"] = unreported_targets
+          if payload.get("status") == "complete" and (
+              unreported_targets
+              or any(outcome["status"] != "success" for outcome in outcomes)
+          ):
+              payload["status"] = "failed"
+              payload["failure_reason"] = (
+                  "incomplete mutation diagnostic evidence: expected targets are "
+                  "missing or have a non-success outcome"
+              )
           payload["updated_at"] = now
           payload["timestamp"] = now
           summary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -881,6 +953,7 @@ jobs:
         env:
           DIAGNOSTIC_OUTCOME: ${{ steps.go-mutation.outcome }}
           FINALIZER_OUTCOME: ${{ steps.finalize-diagnostic-evidence.outcome }}
+          EVIDENCE_ROOT: ${{ github.workspace }}/artifacts/go-mutation-diagnostic
         run: |
           set -euo pipefail
           if [ "$DIAGNOSTIC_OUTCOME" != "success" ]; then
@@ -891,6 +964,31 @@ jobs:
             echo "::error::Mutation diagnostic failure finalizer failed."
             exit 1
           fi
+          SUMMARY_STATUS="$(python3 - "$EVIDENCE_ROOT/mutation-diagnostic-summary.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          status = payload.get("status")
+          expected_count = payload.get("expected_target_count")
+          outcome_count = payload.get("outcome_count")
+          unreported = payload.get("unreported_targets")
+          if not isinstance(expected_count, int) or not isinstance(outcome_count, int):
+              raise SystemExit("mutation diagnostic summary has invalid target counts")
+          if not isinstance(unreported, list):
+              raise SystemExit("mutation diagnostic summary has invalid unreported targets")
+          if status == "complete" and (
+              outcome_count != expected_count
+              or unreported
+          ):
+              raise SystemExit("incomplete mutation diagnostic evidence")
+          if status not in {"complete", "no_changed_source"}:
+              raise SystemExit(f"mutation diagnostic summary is not successful: {status!r}")
+          print(status)
+          PY
+          )"
+          echo "Go mutation diagnostic summary status: $SUMMARY_STATUS"
 
       - name: Upload mutation diagnostic evidence
         if: always()
@@ -900,6 +998,7 @@ jobs:
           path: |
             artifacts/go-mutation-diagnostic/mutation-diagnostic-summary.json
             artifacts/go-mutation-diagnostic/diagnostic-failure.txt
+            artifacts/go-mutation-diagnostic/expected-targets.txt
             artifacts/go-mutation-diagnostic/**/report.json
             artifacts/go-mutation-diagnostic/**/run.log
             artifacts/go-mutation-diagnostic/**/status.txt

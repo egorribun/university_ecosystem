@@ -32,3 +32,4 @@ This directory contains architectural decision records (ADRs) for the University
 35. [ADR-035: Python Dependency Compatibility Policy](ADR-035-python-dependency-compatibility-policy.md)
 36. [ADR-036: SQLAlchemy Dual-Defaults Migration Policy](ADR-036-sqlalchemy-dual-default-migration-policy.md)
 37. [ADR-037: CDC Outbox Transport Ownership and Lifecycle Boundary](ADR-037-cdc-outbox-transport-ownership.md)
+38. [ADR-038: Go Mutation Diagnostic Boundary](ADR-038-go-mutation-diagnostic-boundary.md)

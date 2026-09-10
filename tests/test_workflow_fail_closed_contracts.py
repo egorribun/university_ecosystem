@@ -1106,7 +1106,6 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
     assert observed_steps == expected_steps
     assert observed_jobs == {
         ("reusable-e2e-tests.yml", "e2e", "${{ inputs.advisory }}"),
-        ("reusable-go-tests.yml", "mutation-diagnostic", "True"),
     }
 
 

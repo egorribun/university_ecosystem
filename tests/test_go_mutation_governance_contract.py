@@ -47,7 +47,7 @@ def test_go_coverage_producer_is_independent_of_advisory_mutation() -> None:
         diagnostic["if"]
         == "${{ inputs.run-mutation-diagnostic && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}"
     )
-    assert diagnostic["continue-on-error"] is True
+    assert "continue-on-error" not in diagnostic
     assert 1 <= diagnostic["timeout-minutes"] <= 70
 
     initialize = _step(diagnostic, "Initialize mutation diagnostic evidence")
@@ -114,6 +114,46 @@ def test_go_coverage_producer_is_independent_of_advisory_mutation() -> None:
     assert "mutation-diagnostic-summary.json" in diagnostic_upload["with"]["path"]
     assert "target.txt" in diagnostic_upload["with"]["path"]
     assert "source.sha256" in diagnostic_upload["with"]["path"]
+
+
+def test_go_mutation_diagnostic_failure_is_visible_and_target_ledger_is_complete() -> (
+    None
+):
+    """A diagnostic failure must remain observable and its report must be complete."""
+
+    workflow = _load_workflow()
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    diagnostic = jobs["mutation-diagnostic"]
+    assert isinstance(diagnostic, dict)
+
+    # This workflow is advisory only because it is schedule/manual-only; it
+    # must nevertheless expose tool/runtime failures instead of converting
+    # them into a successful job conclusion.
+    assert "continue-on-error" not in diagnostic
+
+    diagnostic_run = _step(diagnostic, "Run bounded Go mutation diagnostic")["run"]
+    finalize = _step(diagnostic, "Finalize diagnostic failure evidence")["run"]
+    reassert = _step(diagnostic, "Re-assert diagnostic outcome")["run"]
+    upload = _step(diagnostic, "Upload mutation diagnostic evidence")
+
+    # A target manifest makes a timeout/cancelled shard auditable: absent
+    # targets are represented as unreported rather than silently disappearing.
+    for marker in (
+        "expected-targets.txt",
+        "expected_target_count",
+        "unreported_targets",
+        'status": "unreported"',
+        "incomplete mutation diagnostic evidence",
+    ):
+        assert marker in diagnostic_run or marker in finalize or marker in reassert
+    assert "expected-targets.txt" in upload["with"]["path"]
+
+    # The final status assertion must inspect the materialized summary, not
+    # only the shell step outcome, so a partial report cannot pass silently.
+    assert "mutation-diagnostic-summary.json" in reassert
+    assert "DIAGNOSTIC_OUTCOME" in reassert
+    assert "FINALIZER_OUTCOME" in reassert
 
 
 def test_go_mutation_diagnostic_is_explicitly_scheduled_or_manual() -> None:
