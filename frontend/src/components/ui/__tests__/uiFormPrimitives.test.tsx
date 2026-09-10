@@ -97,6 +97,10 @@ describe("Button", () => {
     rerender(<Button haptics={false}>c</Button>)
     expect(screen.getByRole("button")).not.toHaveAttribute("data-haptic")
   })
+
+  it("preserves the diagnostic display name", () => {
+    expect((Button as { displayName?: string }).displayName).toBe("Button")
+  })
 })
 
 // --------------------------------------------------------------------------- #

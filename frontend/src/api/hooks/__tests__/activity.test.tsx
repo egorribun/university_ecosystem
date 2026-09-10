@@ -333,6 +333,29 @@ describe("useActivitySummaryQuery", () => {
     expect(apiMock.get).toHaveBeenCalledTimes(4)
   })
 
+  it("treats an undefined primary rejection as an outage and uses healthy fallback feeds", async () => {
+    apiMock.get
+      .mockRejectedValueOnce(undefined)
+      .mockResolvedValueOnce({ data: ATTENDANCE_STUB })
+      .mockResolvedValueOnce({ data: GRADES_STUB })
+      .mockResolvedValueOnce({ data: PARTICIPATION_STUB })
+    const options = activitySummaryOptions({ period: "30d", language: "en" })
+
+    await expect(
+      options.queryFn?.({
+        queryKey: options.queryKey,
+        signal: new AbortController().signal,
+        meta: undefined,
+        client: queryClient,
+      })
+    ).resolves.toEqual({
+      attendance: ATTENDANCE_STUB,
+      grades: GRADES_STUB,
+      participation: PARTICIPATION_STUB,
+    })
+    expect(apiMock.get).toHaveBeenCalledTimes(4)
+  })
+
   it("does not fail the whole summary when only attendance and grades fail", async () => {
     apiMock.get
       .mockRejectedValueOnce(new Error("summary endpoint down"))

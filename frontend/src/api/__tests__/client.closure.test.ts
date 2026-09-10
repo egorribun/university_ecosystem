@@ -581,6 +581,19 @@ describe("api/client — SSR request branches", () => {
     expect(cookieGetter).toHaveBeenCalledOnce()
     expect(AxiosHeaders.from(seen[0]!.headers).get("Cookie")).toBeUndefined()
   })
+
+  it.each([
+    [undefined, undefined, false],
+    ["", undefined, false],
+    ["access_token_v2=token", undefined, true],
+    [undefined, { userAgent: "Browser/1" }, true],
+  ] as const)("detects SSR forwarding metadata (%j, %j)", (cookie, fingerprint, expected) => {
+    // The predicate is intentionally exported as a pure contract so its
+    // allocation guard cannot regress into an unconditional headers clone.
+    return import("@/api/client").then(({ hasSsrForwardingHeaders }) => {
+      expect(hasSsrForwardingHeaders(cookie, fingerprint)).toBe(expected)
+    })
+  })
 })
 
 describe("api/client — defensive request/response interceptor inputs", () => {
@@ -737,5 +750,60 @@ describe("api/client — defensive request/response interceptor inputs", () => {
     }
 
     await expect(responseHandler(error)).rejects.toBe(error)
+  })
+
+  it("normalizes an API-prefixed URL even when the request base URL is absent", async () => {
+    const { default: client } = await import("@/api/client")
+    const requestHandler = (client.interceptors.request as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+    const config = {
+      method: "post",
+      url: "/api/v1/users",
+      baseURL: undefined,
+      headers: new AxiosHeaders(),
+      data: {},
+    } as InternalAxiosRequestConfig
+
+    await expect(requestHandler(config)).resolves.toBe(config)
+    expect(config.url).toBe("/api/v1/users")
+  })
+
+  it("preserves JSON content type for non-FormData payloads", async () => {
+    const { default: client } = await import("@/api/client")
+    const requestHandler = (client.interceptors.request as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+    const config = {
+      method: "post",
+      url: "/events",
+      headers: AxiosHeaders.from({ "Content-Type": "application/json" }),
+      data: { title: "event" },
+    } as InternalAxiosRequestConfig
+
+    await requestHandler(config)
+    expect(AxiosHeaders.from(config.headers).get("Content-Type")).toBe("application/json")
+  })
+
+  it("uses an empty URL in the non-allowlisted bypass warning", async () => {
+    const { default: client } = await import("@/api/client")
+    const requestHandler = (client.interceptors.request as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    const config = {
+      method: "post",
+      url: undefined,
+      headers: new AxiosHeaders(),
+      skipRateLimitQueue: true,
+    } as InternalAxiosRequestConfig & { skipRateLimitQueue: boolean }
+
+    await requestHandler(config)
+
+    expect(config.skipRateLimitQueue).toBe(false)
+    expect(warning).toHaveBeenCalledWith(
+      "[rateLimit] skipRateLimitQueue=true for non-allowlisted URL: "
+    )
+    warning.mockRestore()
   })
 })

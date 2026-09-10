@@ -82,6 +82,17 @@ export const resolveRequestPath = (config: AxiosRequestConfig): string => {
   return new URL(combinedUrl, baseOrigin).pathname
 }
 
+type SsrFingerprintHeaders = {
+  userAgent?: string
+  acceptLanguage?: string
+}
+
+/** Return whether SSR forwarding has any incoming identity metadata to copy. */
+export const hasSsrForwardingHeaders = (
+  cookie: string | undefined,
+  fingerprintHeaders: SsrFingerprintHeaders | undefined
+): boolean => Boolean(cookie || fingerprintHeaders)
+
 if (import.meta.env.VITE_LHCI === "true") {
   const networkAdapter = axios.getAdapter(api.defaults.adapter)
   const shouldUseE2ENetworkMocks = (config: AxiosRequestConfig) => {
@@ -240,9 +251,10 @@ api.interceptors.request.use(async (config) => {
   // The @hey-api/client-axios `buildUrl()` reads our axios instance's baseURL ("/api/v1")
   // and prepends it to the SDK URL (also "/api/v1/..."), producing "/api/v1/api/v1/...".
   // It then passes `baseURL: ""` to axios, so we detect the doubled prefix in the URL itself.
-  const _url = config.url ?? ""
-  const isAbsolute = _url.startsWith("http://") || _url.startsWith("https://")
-  let urlPath = _url
+  const _url = config.url
+  const isAbsolute =
+    typeof _url === "string" && (_url.startsWith("http://") || _url.startsWith("https://"))
+  let urlPath: string | undefined = _url
   let urlOrigin = ""
   if (isAbsolute) {
     try {
@@ -254,10 +266,10 @@ api.interceptors.request.use(async (config) => {
     }
   }
 
-  if (urlPath.startsWith("/api/v1/api/v1/")) {
+  if (urlPath?.startsWith("/api/v1/api/v1/")) {
     urlPath = urlPath.slice("/api/v1".length)
     config.url = urlOrigin + urlPath
-  } else if (urlPath.startsWith("/api/v1/") && config.baseURL?.includes("/api/v1")) {
+  } else if (urlPath?.startsWith("/api/v1/") && config.baseURL?.includes("/api/v1")) {
     urlPath = urlPath.slice("/api/v1".length)
     config.url = urlOrigin + urlPath
   }
@@ -277,8 +289,8 @@ api.interceptors.request.use(async (config) => {
     // Wave 174 SW2 — ensure CSRF cookie BEFORE unsafe-method request goes
     // out. Skip the /auth/csrf-cookie endpoint itself to avoid recursion
     // (it's a GET anyway, so this branch wouldn't fire — guard is defensive).
-    const urlForCsrf = config.url ?? ""
-    if (!urlForCsrf.includes("/auth/csrf-cookie")) {
+    const urlForCsrf = config.url
+    if (!urlForCsrf?.includes("/auth/csrf-cookie")) {
       await ensureCsrfCookie()
     }
   }
@@ -324,9 +336,9 @@ api.interceptors.request.use(async (config) => {
   if (typeof window === "undefined") {
     const cookie = globalThis.__ssrCookieGetter__?.()
     const fingerprintHeaders = globalThis.__ssrFingerprintHeadersGetter__?.()
-    if (cookie || fingerprintHeaders) {
+    if (hasSsrForwardingHeaders(cookie, fingerprintHeaders)) {
       const headers = AxiosHeaders.from(config.headers)
-      if (cookie && cookie.length > 0) {
+      if (cookie) {
         headers.set("Cookie", cookie)
       }
       if (fingerprintHeaders?.userAgent) {
