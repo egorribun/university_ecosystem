@@ -20,7 +20,7 @@ export function ConfirmDialog({
   message,
   confirmText,
   cancelText,
-  variant = "default",
+  variant,
   onConfirm,
   onCancel,
   isLoading = false,

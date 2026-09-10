@@ -294,6 +294,16 @@ describe("ContentCard and RadioGroup survivor contracts", () => {
     expect(onChange).toHaveBeenCalledTimes(1)
   })
 
+  it("uses the documented grid layout when the radio group is not in row mode", () => {
+    render(
+      <RadioGroup aria-label="Stacked choices">
+        <RadioGroupItem value="one" aria-label="One" />
+      </RadioGroup>
+    )
+
+    expect(screen.getByRole("radiogroup", { name: "Stacked choices" })).toHaveClass("grid", "gap-2")
+  })
+
   it("keeps optional changes, visual states, and selected motion observable", () => {
     render(
       <RadioGroup value="one" name="visual-choice" row aria-label="Visual choices">
@@ -421,6 +431,10 @@ describe("EmptyState and ProgressBar survivor contracts", () => {
     expect(bar).toHaveStyle({ width: "25%" })
 
     rerender(<ProgressBar value={Number.NaN} />)
+    expect(screen.getByRole("progressbar")).not.toHaveAttribute("aria-valuenow")
+    expect(screen.getByRole("progressbar").firstElementChild).toHaveStyle({ width: "0%" })
+
+    rerender(<ProgressBar value={Number.POSITIVE_INFINITY} />)
     expect(screen.getByRole("progressbar")).not.toHaveAttribute("aria-valuenow")
     expect(screen.getByRole("progressbar").firstElementChild).toHaveStyle({ width: "0%" })
 
