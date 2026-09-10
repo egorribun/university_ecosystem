@@ -2496,7 +2496,7 @@ finding был проверяемым.
 | Finding | Current disposition | Evidence / follow-up |
 |---|---|---|
 | BE-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Migration 148642dd1207 больше не импортирует runtime encryption/config и использует native SQLAlchemy types; проверить `alembic upgrade/downgrade`, offline SQL и PostgreSQL в fresh CI. |
-| BE-02 | `BACKLOG / P2-P1 ARCHITECTURE` | Независимый аудит насчитал 92 columns без dual defaults. Не делать рискованный массовый rewrite: сначала детерминированный inventory с owners, затем phased migrations и regression tests; до этого finding остаётся открытым. |
+| BE-02 | `DECISION-RECORDED / MIGRATION-EVIDENCE-PENDING` | ADR-036 заменяет устаревшие 92 на текущий inventory (54 explicit Python-only candidates, 19 server-only, 37 UUIDv7 exceptions) и задаёт PostgreSQL catalog preflight plus phased migrations; no blanket rewrite. Live schema/upgrade/downgrade evidence remains required. |
 | BE-03 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `User.chats` и `Chat.participants` получили явные `back_populates`/`lazy="noload"`; прогнать async serialization/MissingGreenlet suite. |
 | BE-04 | `BACKLOG / ARCHITECTURE` | Dishka и legacy `Depends` coexistence требует отдельного ADR и постепенной миграции, не меняется в quality-closure commit. |
 | BE-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Backend call sites используют central logger/ProcessorFormatter; совместимый stdlib bridge оставлен для AuditService. Проверить full log redaction и отсутствие PII в aggregate. |
@@ -2737,11 +2737,13 @@ rebalancing threshold is not met.
 3. **Fresh mutmut validation is required.** The isolated copy contract now
    includes `k8s/ingress.yaml` and `k8s/secrets-example.yaml`; all stats and
    execution artifacts must prove the exact copy inventory on the new SHA.
-4. **External-audit architecture debt remains explicit and scoped.** BE-02
-   (dual Python/DDL defaults), BE-04 (Dishka/Depends coexistence) and BE-08
-   (CDC worker lifecycle) need separate ADRs or measured phased work. SEC-06
-   is now contract-verified and code-fixed, while SEC-09 is recorded in ADR-035
-   and code-fixed, but
+4. **External-audit architecture debt remains explicit and scoped.** BE-04
+   (Dishka/Depends coexistence) and BE-08 (CDC worker lifecycle) need separate
+   ADRs or measured phased work. BE-02 is now recorded in ADR-036 with a
+   measured inventory and safe migration policy, but live PostgreSQL
+   migration/upgrade evidence is still required. SEC-06 is now
+   contract-verified and code-fixed, while SEC-09 is recorded in ADR-035 and
+   code-fixed, but
    its fresh current-SHA compatibility evidence is still required. INFRA-02's
    scope decision is now recorded in ADR-034; current-SHA Helm/staging
    evidence is still required and it is not silently treated as runtime proof.
