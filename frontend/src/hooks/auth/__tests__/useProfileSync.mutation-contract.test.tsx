@@ -501,6 +501,18 @@ describe("useProfileSync mutation contracts", () => {
     expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
   })
 
+  it("rejects a truncated signature in the synchronous cache resolver", () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("truncated-signature-synchronous-user"),
+    }
+    const validSignature = signEnvelope(payload)
+    writeSignedEnvelope(payload, validSignature.slice(0, -1))
+
+    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
+  })
+
   it.each([
     ["LHCI", { lhci: true, isServer: false, userState: null }, false],
     [
@@ -593,6 +605,12 @@ describe("useProfileSync mutation contracts", () => {
     ],
     ["a missing key", { id: "u", name: "Alice" }, { id: "u", email: "a@example.test" }, false],
     ["an undefined-valued key missing from the other record", { optional: undefined }, {}, false],
+    [
+      "different keys with equal counts and undefined values",
+      { left: undefined },
+      { right: undefined },
+      false,
+    ],
     [
       "equal nested records",
       { profile: { id: "u", tags: ["one", "two"] } },
@@ -898,6 +916,19 @@ describe("useProfileSync mutation contracts", () => {
 
     try {
       expect(getCachedEnvelopeHeader()).toBeNull()
+    } finally {
+      vi.stubGlobal("localStorage", originalStorage)
+    }
+  })
+
+  it("returns safely and reports unavailable storage during migration", () => {
+    const originalStorage = globalThis.localStorage
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+    vi.stubGlobal("localStorage", undefined)
+
+    try {
+      expect(() => migrateProfileCache()).not.toThrow()
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.storage_unavailable")
     } finally {
       vi.stubGlobal("localStorage", originalStorage)
     }
@@ -1615,10 +1646,15 @@ describe("useProfileSync mutation contracts", () => {
 
   it("does not emit an encryption error when Web Crypto is unavailable", async () => {
     const errorSpy = vi.spyOn(logger, "logError").mockImplementation(() => undefined)
-    vi.spyOn(window.crypto, "subtle", "get").mockReturnValue(undefined as unknown as SubtleCrypto)
+    let subtleReads = 0
+    vi.spyOn(window.crypto, "subtle", "get").mockImplementation(() => {
+      subtleReads += 1
+      return undefined as unknown as SubtleCrypto
+    })
 
     await expect(encryptData(snapshot("no-encryption-crypto-user"), signingKey)).resolves.toBeNull()
 
+    expect(subtleReads).toBe(1)
     expect(errorSpy).not.toHaveBeenCalled()
   })
 

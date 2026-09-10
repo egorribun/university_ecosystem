@@ -319,24 +319,29 @@ export const verifyHmacAsync = async (
   signingKey: string
 ): Promise<boolean> => {
   const subtle = getCrypto()
-  if (subtle) {
-    try {
-      const enc = new TextEncoder()
-      const key = await subtle.importKey(
-        "raw",
-        enc.encode(signingKey),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["verify"]
-      )
-      const sigBytes = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0))
-      const result = await subtle.verify("HMAC", key, sigBytes, enc.encode(JSON.stringify(payload)))
-      return result
-    } catch (_e) {
-      return false
-    }
+  if (!subtle) return false
+
+  // Bind the capability before entering the operation catch.  The explicit
+  // guard above is the unsupported-runtime contract; once a SubtleCrypto
+  // capability is present, any primitive failure is normalized to `false`.
+  // Keeping this access outside the catch also prevents a future guard
+  // regression from silently re-entering the crypto path with `null`.
+  const importKey = subtle.importKey.bind(subtle)
+  try {
+    const enc = new TextEncoder()
+    const key = await importKey(
+      "raw",
+      enc.encode(signingKey),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"]
+    )
+    const sigBytes = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0))
+    const result = await subtle.verify("HMAC", key, sigBytes, enc.encode(JSON.stringify(payload)))
+    return result
+  } catch (_e) {
+    return false
   }
-  return false
 }
 
 export const encryptData = async (
@@ -487,14 +492,12 @@ export const readCachedUserAsync = async (signingKey: string | null): Promise<Us
     return undefined
   }
 
-  let snapshotData: CachedUserSnapshot | null
+  let snapshotData: CachedUserSnapshot | null = null
   if (typeof candidate.data === "string") {
     snapshotData = await decryptData(candidate.data, signingKey)
   } else if (isCachedSnapshotObject(candidate.data)) {
     // Legacy V3 support for unencrypted object data
     snapshotData = candidate.data
-  } else {
-    snapshotData = null
   }
 
   if (!snapshotData || typeof snapshotData.id !== "string") {
@@ -562,15 +565,23 @@ export const persistUserToCacheAsync = async (
 /** @internal — exported for cache migration mutation contracts. */
 export const migrateProfileCache = () => {
   clearLegacyAccessToken()
+  const storage = getLocalStorage()
+  if (!storage) {
+    try {
+      logWarning("profile_cache.storage_unavailable")
+    } catch {
+      // Diagnostics are best-effort and must not abort cache migration.
+    }
+    return
+  }
+
   try {
-    const storage = getLocalStorage()
-    if (!storage) return
     const storedVersion = storage.getItem(PROFILE_CACHE_VERSION_KEY)
     if (storedVersion !== String(PROFILE_CACHE_SCHEMA_VERSION)) {
       for (const legacyKey of getLegacyProfileCacheKeys()) {
         storage.removeItem(legacyKey)
       }
-      if (storedVersion && storedVersion !== String(PROFILE_CACHE_SCHEMA_VERSION)) {
+      if (storedVersion !== null && storedVersion !== "") {
         storage.removeItem(`${PROFILE_CACHE_BASE_KEY}.v${storedVersion}`)
       }
       storage.removeItem(PROFILE_CACHE_STORAGE_KEY)
