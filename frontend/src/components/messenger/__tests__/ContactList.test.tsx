@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react"
+import { createEvent, render, screen, fireEvent } from "@testing-library/react"
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 import { createElement, forwardRef, type ReactNode } from "react"
 
@@ -525,6 +525,24 @@ describe("ContactList — keyboard navigation (W183 SW4)", () => {
 
     fireEvent.keyDown(aliceRow, { key: "PageDown" })
 
+    expect(document.activeElement).toBe(aliceRow)
+  })
+
+  it("does not consume unrelated key events", () => {
+    render(<ContactList contacts={mockContacts} selectedId={null} onSelect={() => {}} />, {
+      wrapper,
+    })
+    const aliceRow = document.getElementById("messenger-contact-1")!
+    aliceRow.focus()
+    const event = createEvent.keyDown(aliceRow, {
+      key: "PageDown",
+      bubbles: true,
+      cancelable: true,
+    })
+
+    fireEvent(aliceRow, event)
+
+    expect(event.defaultPrevented).toBe(false)
     expect(document.activeElement).toBe(aliceRow)
   })
 

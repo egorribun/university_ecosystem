@@ -386,6 +386,46 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
     expect(screen.queryByRole("textbox", { name: "messenger:groupName" })).toBeNull()
   })
 
+  it("handles Enter on an untouched empty draft without dereferencing undefined", () => {
+    const onRename = vi.fn()
+    const chat = { ...groupChat(OWNER), name: null } as Chat
+    render(<GroupInfoPanel {...baseProps} onRename={onRename} chat={chat} />, { wrapper })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    const input = screen.getByRole("textbox", { name: "messenger:groupName" })
+    expect(input).toHaveValue("")
+    expect(() => fireEvent.keyDown(input, { key: "Enter" })).not.toThrow()
+    expect(onRename).not.toHaveBeenCalled()
+    expect(screen.queryByRole("textbox", { name: "messenger:groupName" })).toBeNull()
+  })
+
+  it("applies close cleanup before a subsequent open even after multiple transient edits", async () => {
+    const { rerender } = render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} />, {
+      wrapper,
+    })
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+      target: { value: "stale name" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+      target: { value: "stale search" },
+    })
+
+    rerender(<GroupInfoPanel {...baseProps} open={false} chat={groupChat(OWNER)} />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    rerender(<GroupInfoPanel {...baseProps} open chat={groupChat(OWNER)} />)
+
+    expect(screen.queryByRole("textbox", { name: "messenger:groupName" })).toBeNull()
+    expect(screen.queryByRole("textbox", { name: "messenger:searchUsers" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    expect(screen.getByRole("textbox", { name: "messenger:groupName" })).toHaveValue(
+      "Project Alpha"
+    )
+  })
+
   it("falls back to the untitled label when the group has no name (151 cold branch)", () => {
     const chat = { ...groupChat(OWNER), name: "   " } as Chat
     render(<GroupInfoPanel {...baseProps} chat={chat} />, { wrapper })
