@@ -3096,6 +3096,64 @@ User-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
 `.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
 excluded from all source commits.
 
+## 44. Current bounded closure checkpoint (2026-09-10; local HEAD `6679aa3b`)
+
+This checkpoint records new evidence and bounded fixes without promoting the
+still-running historical PR matrix to current-SHA release evidence.
+
+### 44.1 Identity and preservation boundary
+
+| Field | Value |
+|---|---|
+| Branch | `egorribun` |
+| Local source head | `6679aa3b9` (`fix: align injected routes with Dishka sessions`) |
+| Remote source head | `78d03e1379a0c428ae509039d4942677ed89a7d9` |
+| Local delta | 15 commits ahead; no uncommitted tracked changes |
+| Stash | Empty; no stash mutation performed |
+| User-owned untracked paths | `.tmp_preflight/`, `.tmp_stryker_18/`, `.tmp_stryker_22/`, `docs/audits/AUDIT_PLATFORM_FULL.md` — untouched and unstaged |
+
+### 44.2 Bounded fixes and focused evidence
+
+- `44ef05a60` hardens `CdcOutboxWorker` lifecycle ownership: active
+  replication connections and fallback workers are tracked and closed on
+  shutdown, including connect/stop races. Three lifecycle regressions are
+  green; CDC unit/closure is **39/39** and CDC+outbox closure is **48/48**.
+  ADR-037 explicitly defers production CDC wiring until DI/lifespan,
+  PostgreSQL/NATS, ordering/idempotency and staging evidence exist.
+- `6679aa3b` migrates the affected injected MFA, schedule and search routes to
+  canonical Dishka request-session adapters and adds an ownership contract.
+  The collection-order RED caused by the schedule import-isolation suite is
+  fixed; the combined focused set is **73/73**, Ruff and mypy pass.
+- Old run `34486140554` exposed one exact mutmut survivor in execution group
+  91: `app.cli.migrate_passwords.x__report_bcrypt_users__mutmut_6`. The
+  mutant only changed the negative-limit error text; the former regex asserted
+  a substring and let it survive. `5b5473320` asserts the exact error string;
+  focused CLI tests are green (**20/20**). This fix still requires a fresh
+  current-SHA mutmut run.
+- `python verify_harness.py --repo-only` remains **29/29**. Frontend
+  client+SSR/PWA production build completed successfully; generated WASM
+  provenance/binaries were restored after inspection and are not part of the
+  source delta. `git diff --check` passes.
+
+### 44.3 Remote-run boundary and next actions
+
+- Run `34486140554` is still based on remote SHA `78d03e137`; its run-level API
+  remains stale while Jobs/PR checks show mutation execution in progress. The
+  current historical failure is the single group-91 survivor above; all other
+  observed terminal checks are success or intentional skip so far. This run
+  contributes no current-SHA release evidence.
+- Continue polling until the run is terminal and inventory every failure,
+  cancellation, timeout, artifact and annotation exactly once. Do not push
+  while it is active because `ci.yml` uses `cancel-in-progress: true`.
+- After terminal state, run final local inventory/pre-commit checks and push
+  the current `egorribun` head non-force. Require a fresh matrix to prove the
+  exact mutmut survivor fix, BE-04 session ownership, BE-08 lifecycle tests,
+  hidden JUnit artifacts, complete Stryker/mutmut ledgers and current-SHA
+  provenance before any release claim.
+- BE-04 legacy domains, BE-08 production integration, live BE-02 PostgreSQL
+  migration evidence, current INFRA/SEC reports and all merge/staging/release
+  gates remain open.
+
 ## 43. Current local audit-policy checkpoint (2026-09-10; snapshot HEAD `a9be722e5`)
 
 This checkpoint is a pre-push source snapshot. It records local changes and
