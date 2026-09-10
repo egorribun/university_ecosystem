@@ -94,9 +94,31 @@ type ProfileBroadcastMessage =
   | { type: "mfa-pending"; payload: PendingMfaState }
   | { type: "mfa-cleared" }
 
+type UpdatePendingMfa = (value: PendingMfaState | null, options?: { broadcast?: boolean }) => void
+
 type HandleUnauthorizedOptions = {
   broadcast?: boolean
   persist?: boolean
+}
+
+/**
+ * Broadcast a profile/auth event without capturing component state. Keeping
+ * this at module scope gives callers a stable event primitive and avoids a
+ * meaningless empty React dependency list that mutation testing cannot
+ * distinguish from equivalent dependency values.
+ */
+const broadcastProfileEvent = (message: ProfileBroadcastMessage): void => {
+  if (!isProfileSyncBrowserRuntime()) return
+  if (!("BroadcastChannel" in window)) return
+  try {
+    const channel = new BroadcastChannel(PROFILE_BROADCAST_CHANNEL)
+    channel.postMessage(message)
+    channel.close()
+  } catch (_error) {
+    if (import.meta.env.DEV) {
+      logWarning("Failed to broadcast profile event", { error: _error })
+    }
+  }
 }
 
 /**
@@ -952,35 +974,26 @@ export const useProfileSync = (
     init()
   }, [sessionSigningKeyRef])
 
-  const broadcastProfileEvent = useCallback((message: ProfileBroadcastMessage) => {
-    if (!isProfileSyncBrowserRuntime()) return
-    if (!("BroadcastChannel" in window)) return
-    try {
-      const channel = new BroadcastChannel(PROFILE_BROADCAST_CHANNEL)
-      channel.postMessage(message)
-      channel.close()
-    } catch (_error) {
-      if (import.meta.env.DEV) {
-        logWarning("Failed to broadcast profile event", { error: _error })
-      }
-    }
-  }, [])
-
-  const updatePendingMfa = useCallback(
-    (value: PendingMfaState | null, { broadcast = true }: { broadcast?: boolean } = {}) => {
+  // A ref-backed event function keeps the public callback identity stable
+  // while reading the latest pending-MFA ref and React setter. Unlike a
+  // useCallback dependency list, this has no semantically inert array that
+  // can be mutated without changing observable behavior.
+  const updatePendingMfaRef = useRef<UpdatePendingMfa | null>(null)
+  if (updatePendingMfaRef.current === null) {
+    updatePendingMfaRef.current = (value, { broadcast = true } = {}) => {
       const previous = pendingMfaRef.current
       pendingMfaRef.current = value
       setPendingMfaState(value)
-      if (!broadcast) return
+      if (broadcast === false) return
       if (!previous && !value) return
       if (value) {
         broadcastProfileEvent({ type: "mfa-pending", payload: value })
       } else {
         broadcastProfileEvent({ type: "mfa-cleared" })
       }
-    },
-    [broadcastProfileEvent]
-  )
+    }
+  }
+  const updatePendingMfa = updatePendingMfaRef.current!
 
   const applyUserState = useCallback(
     (value: SetUserArg, { persist }: { persist: boolean }) => {
@@ -1048,13 +1061,7 @@ export const useProfileSync = (
         broadcastProfileEvent({ type: "unauthorized" })
       }
     },
-    [
-      broadcastProfileEvent,
-      clearProfile,
-      updatePendingMfa,
-      updateSessionSigningKey,
-      sessionSigningKeyPromiseRef,
-    ]
+    [clearProfile, updatePendingMfa, updateSessionSigningKey, sessionSigningKeyPromiseRef]
   )
 
   useEffect(() => {
