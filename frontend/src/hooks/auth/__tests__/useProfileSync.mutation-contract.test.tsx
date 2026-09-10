@@ -733,6 +733,21 @@ describe("useProfileSync mutation contracts", () => {
     expect(setItemSpy).not.toHaveBeenCalledWith(PROFILE_CACHE_VERSION_KEY, expect.any(String))
   })
 
+  it("does not write a signed snapshot when unmount happens during signing", async () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
+    const isMounted = vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(false)
+    vi.spyOn(window.crypto.subtle, "importKey").mockResolvedValue({} as CryptoKey)
+    vi.spyOn(window.crypto.subtle, "deriveKey").mockResolvedValue({} as CryptoKey)
+    vi.spyOn(window.crypto.subtle, "encrypt").mockResolvedValue(Uint8Array.from([1]).buffer)
+    vi.spyOn(window.crypto.subtle, "sign").mockResolvedValue(Uint8Array.from([2]).buffer)
+
+    await persistUserToCacheAsync(testUser, signingKey, isMounted)
+
+    expect(isMounted).toHaveBeenCalledTimes(2)
+    expect(setItemSpy).not.toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY, expect.any(String))
+    expect(setItemSpy).not.toHaveBeenCalledWith(PROFILE_CACHE_VERSION_KEY, expect.any(String))
+  })
+
   it("does not start cache encryption when localStorage is unavailable", async () => {
     const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
     const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
