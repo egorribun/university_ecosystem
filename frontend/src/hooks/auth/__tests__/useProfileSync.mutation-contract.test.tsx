@@ -825,6 +825,15 @@ describe("useProfileSync mutation contracts", () => {
     }
   })
 
+  it("keeps the PII-bearing v7 key in the legacy eviction contract", () => {
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, "7")
+    const removeItemSpy = vi.spyOn(Storage.prototype, "removeItem")
+
+    migrateProfileCache()
+
+    expect(removeItemSpy).toHaveBeenCalledWith("ecosystem.profile.cache.v7")
+  })
+
   it("evicts an unknown dynamic cache key for an older schema version", () => {
     const dynamicLegacyKey = "ecosystem.profile.cache.v6"
     localStorage.setItem(PROFILE_CACHE_VERSION_KEY, "6")
@@ -1510,6 +1519,7 @@ describe("useProfileSync mutation contracts", () => {
   it("does not invoke key derivation after Web Crypto disappears", async () => {
     const originalWindow = globalThis.window
     let subtleReads = 0
+    const errorSpy = vi.spyOn(logger, "logError").mockImplementation(() => undefined)
     const fakeSubtle = {
       importKey: vi.fn(async () => ({}) as CryptoKey),
       deriveKey: vi.fn(async () => ({}) as CryptoKey),
@@ -1529,6 +1539,7 @@ describe("useProfileSync mutation contracts", () => {
       await expect(encryptData(snapshot("derive-guard-user"), signingKey)).resolves.toBeNull()
       expect(subtleReads).toBeGreaterThanOrEqual(3)
       expect(fakeSubtle.deriveKey).not.toHaveBeenCalled()
+      expect(errorSpy).not.toHaveBeenCalledWith("Encryption failed", expect.anything())
     } finally {
       vi.stubGlobal("window", originalWindow)
     }
