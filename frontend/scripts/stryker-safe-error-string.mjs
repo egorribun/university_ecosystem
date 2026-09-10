@@ -49,7 +49,14 @@ function safeStringValue(value) {
   try {
     return nativeString(value)
   } catch (error) {
-    if (error instanceof TypeError && hasNullPrototype(value)) {
+    // Vitest may materialize the native TypeError in a worker/VM realm, so
+    // `instanceof TypeError` is not reliable across the transport boundary.
+    // Restrict the fallback to the exact null-prototype record shape that
+    // causes the Stryker serializer crash; ordinary conversion errors must
+    // retain their native behavior.
+    const errorName =
+      error !== null && typeof error === "object" ? readStringProperty(error, "name") : ""
+    if ((error instanceof TypeError || errorName === "TypeError") && hasNullPrototype(value)) {
       return formatSerializedError(value)
     }
     throw error
