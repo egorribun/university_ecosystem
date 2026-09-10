@@ -156,6 +156,29 @@ async def test_report_bcrypt_users_is_count_only_by_default() -> None:
     session_factory.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_report_bcrypt_users_default_sample_limit_is_fifty() -> None:
+    """The operator-facing default must stay bounded at the documented limit."""
+
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    session.__aexit__.return_value = None
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = []
+    session.execute.return_value = result
+
+    with patch.object(migrate_passwords, "async_session", return_value=session):
+        assert await migrate_passwords._report_bcrypt_users(show_ids=True) == []
+
+    statement = session.execute.await_args.args[0]
+    compiled = str(
+        statement.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+    assert "LIMIT 50" in compiled
+
+
 def test_report_is_count_only_without_explicit_id_opt_in():
     with (
         patch.object(
