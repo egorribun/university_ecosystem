@@ -311,6 +311,25 @@ describe("useProfileSync mutation contracts", () => {
     expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
   })
 
+  it("does not retry cache reads when localStorage is unavailable", () => {
+    const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      get: () => {
+        throw new Error("private browsing")
+      },
+    })
+
+    try {
+      expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
+      expect(warningSpy).toHaveBeenCalledTimes(1)
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.storage_unavailable")
+    } finally {
+      if (storageDescriptor) Object.defineProperty(globalThis, "localStorage", storageDescriptor)
+    }
+  })
+
   it.each([
     ["an array", Object.assign([], { id: "array-cache-user" })],
     ["a function", Object.assign(() => undefined, { id: "function-cache-user" })],
@@ -466,6 +485,18 @@ describe("useProfileSync mutation contracts", () => {
       data: snapshot("tampered-synchronous-cache-user"),
     }
     writeSignedEnvelope(payload, "tampered-signature")
+
+    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
+  })
+
+  it("rejects a different-length signature in the synchronous cache resolver", () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("length-mismatch-synchronous-user"),
+    }
+    const validSignature = signEnvelope(payload)
+    writeSignedEnvelope(payload, `${validSignature}A`)
 
     expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
   })
@@ -650,6 +681,25 @@ describe("useProfileSync mutation contracts", () => {
     )
   })
 
+  it("uses an empty enrollment list when the profile has no TOTP enrollments", async () => {
+    let encryptedSnapshot: unknown
+    vi.spyOn(window.crypto.subtle, "importKey").mockResolvedValue({} as CryptoKey)
+    vi.spyOn(window.crypto.subtle, "deriveKey").mockResolvedValue({} as CryptoKey)
+    vi.spyOn(window.crypto.subtle, "encrypt").mockImplementation(async (_algorithm, _key, data) => {
+      encryptedSnapshot = JSON.parse(new TextDecoder().decode(data as ArrayBuffer))
+      return Uint8Array.from([1, 2, 3]).buffer
+    })
+    vi.spyOn(window.crypto.subtle, "sign").mockResolvedValue(Uint8Array.from([4, 5, 6]).buffer)
+
+    const userWithoutEnrollments = {
+      ...testUser,
+      totp_enrollments: undefined,
+    } as unknown as typeof testUser
+    await persistUserToCacheAsync(userWithoutEnrollments, signingKey)
+
+    expect(encryptedSnapshot).toMatchObject({ totp_enrollments: [] })
+  })
+
   it.each([
     ["null value", null, signingKey],
     ["missing signing key", testUser, null],
@@ -670,15 +720,37 @@ describe("useProfileSync mutation contracts", () => {
 
   it("does not write an encrypted snapshot after the component unmounts", async () => {
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
+    const isMounted = vi.fn(() => false)
     vi.spyOn(window.crypto.subtle, "importKey").mockResolvedValue({} as CryptoKey)
     vi.spyOn(window.crypto.subtle, "deriveKey").mockResolvedValue({} as CryptoKey)
     vi.spyOn(window.crypto.subtle, "encrypt").mockResolvedValue(Uint8Array.from([1]).buffer)
     vi.spyOn(window.crypto.subtle, "sign").mockResolvedValue(Uint8Array.from([2]).buffer)
 
-    await persistUserToCacheAsync(testUser, signingKey, () => false)
+    await persistUserToCacheAsync(testUser, signingKey, isMounted)
 
+    expect(isMounted).toHaveBeenCalledTimes(1)
     expect(setItemSpy).not.toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY, expect.any(String))
     expect(setItemSpy).not.toHaveBeenCalledWith(PROFILE_CACHE_VERSION_KEY, expect.any(String))
+  })
+
+  it("does not start cache encryption when localStorage is unavailable", async () => {
+    const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+    const importKeySpy = vi.spyOn(window.crypto.subtle, "importKey")
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      get: () => {
+        throw new Error("private browsing")
+      },
+    })
+
+    try {
+      await expect(persistUserToCacheAsync(testUser, signingKey)).resolves.toBeUndefined()
+      expect(importKeySpy).not.toHaveBeenCalled()
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.storage_unavailable")
+    } finally {
+      if (storageDescriptor) Object.defineProperty(globalThis, "localStorage", storageDescriptor)
+    }
   })
 
   it("swallows storage failures while persisting an encrypted snapshot", async () => {
@@ -718,6 +790,32 @@ describe("useProfileSync mutation contracts", () => {
     ]) {
       expect(localStorage.getItem(key)).toBeNull()
     }
+  })
+
+  it("evicts an unknown dynamic cache key for an older schema version", () => {
+    const dynamicLegacyKey = "ecosystem.profile.cache.v6"
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, "6")
+    localStorage.setItem(dynamicLegacyKey, "legacy")
+
+    migrateProfileCache()
+
+    expect(localStorage.getItem(dynamicLegacyKey)).toBeNull()
+    expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY)).toBe(
+      String(PROFILE_CACHE_SCHEMA_VERSION)
+    )
+  })
+
+  it("does not evict a dynamic cache key when the stored schema marker is empty", () => {
+    const emptyVersionKey = "ecosystem.profile.cache.v"
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, "")
+    localStorage.setItem(emptyVersionKey, "sentinel")
+
+    migrateProfileCache()
+
+    expect(localStorage.getItem(emptyVersionKey)).toBe("sentinel")
+    expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY)).toBe(
+      String(PROFILE_CACHE_SCHEMA_VERSION)
+    )
   })
 
   it("fails closed and emits only a generic diagnostic when the storage accessor throws", () => {
@@ -1334,6 +1432,60 @@ describe("useProfileSync mutation contracts", () => {
     vi.spyOn(window.crypto.subtle, "importKey").mockRejectedValueOnce(new Error("HMAC unavailable"))
 
     await expect(verifyHmacAsync(payload, signEnvelope(payload), signingKey)).resolves.toBe(false)
+  })
+
+  it("returns true for a valid async HMAC signature while Web Crypto is available", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("direct-hmac-valid-user"),
+    }
+
+    await expect(verifyHmacAsync(payload, signEnvelope(payload), signingKey)).resolves.toBe(true)
+  })
+
+  it("returns false immediately when async HMAC verification has no Web Crypto", async () => {
+    const originalWindow = globalThis.window
+    vi.stubGlobal("window", undefined)
+
+    try {
+      const payload: CacheSignaturePayload = {
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + 60_000,
+        data: snapshot("direct-hmac-no-crypto-user"),
+      }
+
+      await expect(verifyHmacAsync(payload, signEnvelope(payload), signingKey)).resolves.toBe(false)
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
+  it("does not invoke key derivation after Web Crypto disappears", async () => {
+    const originalWindow = globalThis.window
+    let subtleReads = 0
+    const fakeSubtle = {
+      importKey: vi.fn(async () => ({}) as CryptoKey),
+      deriveKey: vi.fn(async () => ({}) as CryptoKey),
+    } as unknown as SubtleCrypto
+    const fakeWindow = {
+      crypto: {
+        get subtle() {
+          subtleReads += 1
+          return (subtleReads <= 2 ? fakeSubtle : undefined) as SubtleCrypto
+        },
+        getRandomValues: (bytes: Uint8Array) => bytes,
+      },
+    } as unknown as Window
+    vi.stubGlobal("window", fakeWindow)
+
+    try {
+      await expect(encryptData(snapshot("derive-guard-user"), signingKey)).resolves.toBeNull()
+      expect(subtleReads).toBeGreaterThanOrEqual(3)
+      expect(fakeSubtle.deriveKey).not.toHaveBeenCalled()
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
   })
 
   it("preserves encrypted key material when parsing odd-length hex segments", async () => {

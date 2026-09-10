@@ -319,22 +319,24 @@ export const verifyHmacAsync = async (
   signingKey: string
 ): Promise<boolean> => {
   const subtle = getCrypto()
-  if (!subtle) return false
-  try {
-    const enc = new TextEncoder()
-    const key = await subtle.importKey(
-      "raw",
-      enc.encode(signingKey),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"]
-    )
-    const sigBytes = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0))
-    const result = await subtle.verify("HMAC", key, sigBytes, enc.encode(JSON.stringify(payload)))
-    return result
-  } catch (_e) {
-    return false
+  if (subtle) {
+    try {
+      const enc = new TextEncoder()
+      const key = await subtle.importKey(
+        "raw",
+        enc.encode(signingKey),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["verify"]
+      )
+      const sigBytes = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0))
+      const result = await subtle.verify("HMAC", key, sigBytes, enc.encode(JSON.stringify(payload)))
+      return result
+    } catch (_e) {
+      return false
+    }
   }
+  return false
 }
 
 export const encryptData = async (
