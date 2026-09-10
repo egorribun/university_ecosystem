@@ -851,26 +851,95 @@ export const useProfileSync = (
   ssrAuthHint?: SsrAuthHint | undefined
 ) => {
   const queryClient = useQueryClient()
-  const [userState, setUserState] = useState<UserState>(() =>
-    resolveInitialUserState({
-      lhci: import.meta.env.VITE_LHCI === "true",
-      isServer: typeof window === "undefined",
-      signingKey: sessionSigningKeyRef.current,
-      ssrAuthHint,
-    })
-  )
+  const [userState, setUserState] = useState<UserState>(() => {
+    // Keep this guard directly in the React initializer. Vite/Rolldown can
+    // then substitute the compile-time flag and remove the LHCI-only mock
+    // identity from ordinary E2E/production bundles.
+    if (import.meta.env.VITE_LHCI === "true") {
+      return buildLhciMockUser()
+    }
+    if (typeof window === "undefined") {
+      // Wave 128 SW1 Strategy A — see resolveSsrInitialUserState helper.
+      // Returns role-only stub when ssrAuthHint indicates authenticated
+      // server-side render (JWT cookie validated by server.ts W126 SW3).
+      // Full user hydrates from /users/me cache or client-side useEffect.
+      return resolveSsrInitialUserState(ssrAuthHint)
+    }
+    // RootShell carries a non-sensitive role marker from the SSR request.
+    // Prefer the same role-only stub during hydration so an authenticated
+    // server tree is not reconciled against a cold anonymous skeleton. The
+    // normal /users/me fetch below replaces it with the full profile.
+    const ssrUser = resolveSsrInitialUserState(ssrAuthHint)
+    if (ssrUser !== null) return ssrUser
+    const signingKey = sessionSigningKeyRef.current
+    if (!signingKey) return null
+    const candidate = readCachedEnvelope()
+    if (!candidate) return null
+    if (candidate.version !== PROFILE_CACHE_SCHEMA_VERSION) return null
+    if (candidate.expiresAt <= Date.now()) return null
+
+    const payload: CacheSignaturePayload = {
+      version: candidate.version,
+      expiresAt: candidate.expiresAt,
+      data: candidate.data,
+    }
+
+    if (verifySignatureSync(payload, candidate.signature, signingKey)) {
+      if (typeof candidate.data !== "string") {
+        if (!isCachedSnapshotObject(candidate.data) || typeof candidate.data.id !== "string") {
+          clearProfileCacheStorage("invalid_data")
+          return null
+        }
+        // Legacy v3 format with unencrypted object data
+        return createOptimisticUser(candidate.data)
+      }
+      // v4 format: data is encrypted string, cannot decrypt synchronously
+      // Return a minimal placeholder user to prevent null state during async decryption
+      // The async init useEffect will replace this with the fully decrypted user
+      // We set a marker ID of -1 to indicate this is a placeholder pending async restore
+      return {
+        id: "-1",
+        email: "",
+        full_name: "",
+        role: "student",
+        group_id: null,
+        avatar_url: null,
+        cover_url: null,
+        spotify_connected: false,
+        profile_detail: undefined,
+        education_path: undefined,
+        preferences: undefined,
+        is_active: false,
+        mfa_required: false,
+        mfa_default_method: null,
+        mfa_last_verified_at: null,
+        totp_enrollments: [],
+        recovery_codes_left: 0,
+        avatar_url_optimized: null,
+        cover_url_optimized: null,
+      } as User
+    }
+    return null
+  })
   const [pendingMfaState, setPendingMfaState] = useState<PendingMfaState | null>(null)
   const cachedUserRef = useRef<UserState>(userState)
   const userStateRef = useRef<UserState>(userState)
   const pendingMfaRef = useRef<PendingMfaState | null>(pendingMfaState)
-  const [initializing, setInitializing] = useState<boolean>(() =>
-    resolveInitialInitializingState({
-      lhci: import.meta.env.VITE_LHCI === "true",
-      isServer: typeof window === "undefined",
-      ssrAuthHint,
-      userState,
-    })
-  )
+  const [initializing, setInitializing] = useState<boolean>(() => {
+    if (import.meta.env.VITE_LHCI === "true") return false
+    if (typeof window === "undefined") {
+      // Wave 128 SW1 — see resolveSsrInitialInitializing helper.
+      return resolveSsrInitialInitializing(ssrAuthHint)
+    }
+    if (userState !== null) return false
+    // A browser render with no synchronous profile is not authenticated yet,
+    // but it still needs one asynchronous /users/me decision. Keep the
+    // provider in its loading state for that first render so route guards do
+    // not redirect before the fetch effect can resolve a cookie-backed session.
+    // The initialization effect and the fetch `finally` below always settle
+    // this flag, including a fast 401 for a genuinely anonymous visitor.
+    return true
+  })
   const [authOperation, setAuthOperation] = useState(false)
   // Wave 135 SW1 — `activeRequestRef` (AbortController for the /users/me
   // fetch) was removed alongside the controller pattern in the auto-fetch

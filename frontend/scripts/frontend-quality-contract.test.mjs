@@ -121,6 +121,30 @@ test("canonical test:ci executes the frontend quality contract tests", async () 
   assert.match(command, /scripts\/lhci-route-policy\.test\.mjs/u)
 })
 
+test("profile bootstrap keeps the LHCI branch compile-time tree-shakeable", async () => {
+  const profileSyncSource = await readFile(
+    new URL("src/hooks/auth/useProfileSync.ts", frontendRoot),
+    "utf8"
+  )
+  const hookStart = profileSyncSource.indexOf("export const useProfileSync")
+  assert.ok(hookStart >= 0, "useProfileSync export must remain discoverable")
+  const initializerStart = profileSyncSource.indexOf("useState<UserState>", hookStart)
+  const initializerEnd = profileSyncSource.indexOf("const [pendingMfaState", initializerStart)
+  assert.ok(initializerStart >= 0 && initializerEnd > initializerStart)
+  const initializer = profileSyncSource.slice(initializerStart, initializerEnd)
+
+  assert.match(
+    initializer,
+    /if \(import\.meta\.env\.VITE_LHCI === "true"\)/u,
+    "the production initializer must expose a static VITE_LHCI guard"
+  )
+  assert.doesNotMatch(
+    initializer,
+    /resolveInitialUserState\(/u,
+    "a runtime boolean helper would retain the LHCI mock in non-LHCI bundles"
+  )
+})
+
 test("Lighthouse configuration keeps SEO route-aware and invokes the privacy policy", async () => {
   const rootConfig = await readFile(new URL("../.lighthouserc.js", frontendRoot), "utf8")
   const runner = await readFile(new URL("./scripts/run-lhci.mjs", frontendRoot), "utf8")
