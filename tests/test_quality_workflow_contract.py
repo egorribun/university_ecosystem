@@ -3164,6 +3164,12 @@ def test_frontend_unit_aggregate_publishes_hidden_junit_reports() -> None:
     )
     assert upload["with"]["include-hidden-files"] is True
     assert upload["with"]["if-no-files-found"] == "error"
+    shard_upload = next(
+        step
+        for step in frontend["jobs"]["unit-tests-shard"]["steps"]
+        if step.get("name") == "Upload Vitest shard report"
+    )
+    assert shard_upload["with"]["if-no-files-found"] == "error"
 
 
 def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
