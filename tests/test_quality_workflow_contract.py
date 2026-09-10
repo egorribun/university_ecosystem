@@ -3422,9 +3422,9 @@ def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
     ]
     assert len(fuzz_commands) == 4
     # Go 1.26.6 has golang/go#75804: an exact fuzztime deadline can escape
-    # as a false context-deadline failure. Keep a five-second shutdown margin
-    # in this bounded smoke workflow until the patched toolchain is adopted.
-    assert all("-fuzztime=25s" in command for command in fuzz_commands)
+    # as a false context-deadline failure. Reserve five seconds from the
+    # previous 25-second smoke budget until the patched toolchain is adopted.
+    assert all("-fuzztime=20s" in command for command in fuzz_commands)
     assert all("-parallel=1" in command for command in fuzz_commands)
 
 
@@ -3441,7 +3441,7 @@ def test_ci_ws_hub_fuzz_uses_deadline_margin() -> None:
         if line.strip().startswith("go test") and "-fuzz=" in line
     ]
     assert len(fuzz_commands) == 2
-    assert all("-fuzztime=25s" in command for command in fuzz_commands)
+    assert all("-fuzztime=20s" in command for command in fuzz_commands)
     assert all("-parallel=1" in command for command in fuzz_commands)
     assert all("-timeout=3m" in command for command in fuzz_commands)
 

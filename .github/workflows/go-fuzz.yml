@@ -32,20 +32,22 @@ jobs:
         run: |
           cd services/file-processor
           # Keep one fuzz worker: the default GOMAXPROCS-sized pool can OOM
-          # the runner. Keep a five-second shutdown margin: Go 1.26.6 still
-          # has golang/go#75804, where the exact fuzztime deadline can escape
-          # as a false `context deadline exceeded` failure. A five-second
-          # shutdown margin keeps the smoke bounded without treating the
-          # toolchain race as a product failure.
-          go test -v -fuzz=FuzzEstimateQueryDepth -fuzztime=25s -parallel=1 ./internal/middleware
+          # the runner. Reserve five seconds from the previous 25-second smoke
+          # budget:
+          # Go 1.26.6 still has golang/go#75804, where an exact fuzztime
+          # deadline can escape as a false `context deadline exceeded` failure.
+          # A 20-second fuzz budget plus the five-second shutdown margin keeps
+          # the smoke bounded without treating the toolchain race as a product
+          # failure.
+          go test -v -fuzz=FuzzEstimateQueryDepth -fuzztime=20s -parallel=1 ./internal/middleware
 
       - name: Run gateway JWT fuzz test
         run: |
           cd services/gateway
-          go test -v -fuzz=FuzzJWTValidation -fuzztime=25s -parallel=1 ./middleware
+          go test -v -fuzz=FuzzJWTValidation -fuzztime=20s -parallel=1 ./middleware
 
       - name: Run ws-hub parser fuzz tests
         run: |
           cd services/ws-hub
-          go test -v -fuzz=FuzzParseMessage -fuzztime=25s -parallel=1 ./pkg/hub
-          go test -v -fuzz=FuzzExtractAlgFromHeader -fuzztime=25s -parallel=1 ./pkg/hub
+          go test -v -fuzz=FuzzParseMessage -fuzztime=20s -parallel=1 ./pkg/hub
+          go test -v -fuzz=FuzzExtractAlgFromHeader -fuzztime=20s -parallel=1 ./pkg/hub
