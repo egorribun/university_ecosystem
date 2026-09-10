@@ -3090,6 +3090,75 @@ User-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
 `.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
 excluded from all source commits.
 
+## 41. Current local and remote continuation checkpoint (2026-09-10; local HEAD `1a22082de`)
+
+This checkpoint records the latest bounded progress without promoting the
+older remote matrix to current-SHA evidence. It supersedes neither the
+release boundary in §40.3 nor the requirement to obtain a terminal fresh
+matrix after the next push.
+
+### 41.1 Identity and preservation boundary
+
+| Field | Value |
+|---|---|
+| Branch | `egorribun` (tracking `origin/egorribun`) |
+| Local source head | `1a22082de1f573612c7271189af2aaa8c96e8c51` |
+| Remote source head | `78d03e1379a0c428ae509039d4942677ed89a7d9` |
+| Local delta | 4 commits ahead; no uncommitted tracked changes |
+| Stash | Empty; no stash mutation performed |
+| User-owned untracked paths | `.tmp_preflight/`, `.tmp_stryker_18/`, `.tmp_stryker_22/`, `docs/audits/AUDIT_PLATFORM_FULL.md` — untouched and unstaged |
+
+### 41.2 New bounded implementation and local evidence
+
+- `d95a2ed25` opts the frontend aggregate JUnit upload into hidden files;
+  `d3a03a982` makes aggregate and shard JUnit uploads fail closed when a file
+  is missing. The focused workflow regression is green, and the full workflow
+  contract suite remains green.
+- `1a22082de` adds a mutation-runner-only guard for the upstream OTel finite
+  metric-reader dead-`WeakMethod` at-fork callback. Live callbacks and
+  unrelated callback failures retain their original behavior; no test,
+  source or mutant inventory is skipped or reclassified.
+- Focused post-change evidence: `tests/test_run_mutmut_with_stats.py` **10/10**;
+  combined mutation/workflow contract selection **175/175**;
+  `python verify_harness.py --repo-only` **29/29**; isolated pre-commit hook
+  run (Ruff, detect-secrets, strong-env-secrets, no-Python2-except, Semgrep
+  and Renovate validation) passed; pre-push typecheck dry-run passed.
+- The guard's real `PeriodicExportingMetricReader` callback shape is covered
+  by a regression test on this Windows host through a deterministic fork-hook
+  capture. Linux mutmut and the complete current-SHA mutation inventory still
+  require remote confirmation.
+
+### 41.3 Superseded remote run boundary
+
+- Run `34486140554` belongs to remote source `78d03e137`, not local source
+  `1a22082de`. At the latest observation it contained 310 jobs: 189 success,
+  12 intentional skips, 16 in progress and 93 queued; no failure, cancellation
+  or timeout was observed. The run is non-terminal and therefore contributes
+  no release evidence.
+- Its sole annotation remains the old missing aggregate
+  `frontend-vitest-report`, caused by uploading hidden `.vitest-reports`
+  without `include-hidden-files`. That root cause is addressed by `d95a2ed25`
+  and `d3a03a982`; the new SHA must prove the artifact exists and that no
+  annotation remains.
+- The old run is intentionally not cancelled or reused. Because the workflow
+  uses `cancel-in-progress: true`, pushing the local delta before its terminal
+  state would discard an expensive in-flight mutation attempt.
+
+### 41.4 Required next actions
+
+1. Poll `34486140554` until terminal and inventory every final status, artifact
+   and annotation exactly once; never mix its evidence with local SHA.
+2. Run the final local diff/pre-commit inventory check, then push `1a22082de`
+   (and this checkpoint if committed) without force-push or main mutation.
+3. Await a fresh PR matrix and companion workflows. Require the aggregate
+   hidden JUnit artifact, full Stryker/mutmut ledgers, coverage/provenance
+   hashes, Go race/security evidence, and zero at-fork exceptions before
+   accepting the quality gate.
+4. Only after current-SHA terminal green evidence proceed to merge/main,
+   exact-six immutable images, SBOM/provenance/attestations, digest Docker
+   smoke, Kubernetes/TLS/observability, real-device CWV, chaos/rollback,
+   production release and the final SHA-bound audit.
+
 ## 39. Current local closure state and corrected remote boundary (2026-09-09)
 
 This correction supersedes the time-sensitive statements in §38. The source
