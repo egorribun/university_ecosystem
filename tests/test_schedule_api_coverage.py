@@ -8,7 +8,10 @@ from dishka import Provider, Scope, make_async_container, provide
 from httpx import ASGITransport, AsyncClient
 
 import app.models as models
-from app.api.deps import get_current_user
+from app.api.deps import (
+    get_current_user_from_dishka,
+    get_current_user_optional_from_dishka,
+)
 from app.core.container import get_read_schedule_handler
 from app.core.csrf import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
 from app.core.database import get_db
@@ -115,7 +118,8 @@ async def test_schedule_api_coverage(
     # We override get_schedule_service dependency
     from app.api.deps import get_schedule_service
 
-    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_current_user_from_dishka] = lambda: mock_user
+    app.dependency_overrides[get_current_user_optional_from_dishka] = lambda: None
     app.dependency_overrides[get_schedule_service] = lambda: mock_schedule_service
     app.dependency_overrides[get_read_schedule_handler] = lambda: mock_schedule_handler
     # We also keep get_db override if needed by other deps,

@@ -15,7 +15,10 @@ from fastapi import (
 )
 
 import app.models as models
-from app.api.deps import get_current_user, get_current_user_optional
+from app.api.deps import (
+    get_current_user_from_dishka,
+    get_current_user_optional_from_dishka,
+)
 from app.api.validation import ensure_exists, raise_forbidden, require_teacher_or_admin
 from app.core.localization import resolve_locale
 from app.cqrs.bus import CommandBus, QueryBus
@@ -59,7 +62,7 @@ async def add_schedule(
     data: schemas.ScheduleCreate,
     request: Request,
     command_bus: FromDishka[CommandBus],
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.ScheduleOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
@@ -84,7 +87,7 @@ async def get_schedule(
     request: Request,
     response: Response,
     query_bus: FromDishka[QueryBus],
-    user: models.User | None = Depends(get_current_user_optional),
+    user: models.User | None = Depends(get_current_user_optional_from_dishka),
     if_none_match: str | None = Header(default=None),
 ) -> list[schemas.ScheduleOut] | Response:
     locale = resolve_locale(request=request)
@@ -121,7 +124,7 @@ async def update_schedule(
     data: schemas.ScheduleUpdate,
     request: Request,
     command_bus: FromDishka[CommandBus],
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.ScheduleOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
@@ -149,7 +152,7 @@ async def delete_schedule(
     id: uuid.UUID,
     request: Request,
     command_bus: FromDishka[CommandBus],
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)

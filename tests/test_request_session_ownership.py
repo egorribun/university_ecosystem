@@ -16,6 +16,8 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
+from app.api import schedule as schedule_api
+from app.api import search as search_api
 from app.api.auth import mfa as mfa_api
 from app.api.deps import auth as auth_deps
 from tests.helpers.request_session_probe import RequestSessionProbe
@@ -27,6 +29,76 @@ def test_step_up_auth_dependency_is_dishka_adapter() -> None:
     adapter = getattr(auth_deps, "get_current_user_from_dishka", None)
     assert adapter is not None
     assert dependency.dependency is adapter
+
+
+def test_injected_auth_routes_use_the_canonical_dishka_session() -> None:
+    """Injected endpoints must not reintroduce FastAPI-owned DB sessions.
+
+    A ``FromDishka`` service/handler and a legacy ``Depends(get_db)`` user
+    dependency otherwise execute against two independent request sessions.
+    Keep this contract at the route boundary while the remaining domains are
+    migrated in bounded slices.
+    """
+
+    migrated = (
+        mfa_api.start_email_verification,
+        mfa_api.start_email_mfa_enablement,
+        mfa_api.disable_email_mfa_endpoint,
+        mfa_api.start_totp_enrollment_endpoint,
+        mfa_api.confirm_totp_enrollment,
+        mfa_api.list_totp_enrollments,
+        mfa_api.delete_pending_totp_enrollment,
+        mfa_api.delete_totp_enrollment,
+        mfa_api.generate_recovery_codes_endpoint,
+        schedule_api.add_schedule,
+        schedule_api.get_schedule,
+        schedule_api.update_schedule,
+        schedule_api.delete_schedule,
+        search_api.unified_search,
+    )
+
+    for endpoint in migrated:
+        # Some import-isolation suites temporarily restore the original
+        # callable on a shared module object.  Inspect that callable when the
+        # Dishka wrapper is present, otherwise inspect the endpoint itself;
+        # both forms expose the same dependency defaults.
+        implementation = getattr(endpoint, "__dishka_orig_func__", endpoint)
+        signature = inspect.signature(implementation)
+        db = signature.parameters.get("db")
+        if db is not None:
+            assert "FromDishka" in repr(db.annotation), endpoint.__name__
+
+        user_parameter = next(
+            parameter
+            for parameter in signature.parameters.values()
+            if parameter.name in {"user", "_user"}
+        )
+        expected = (
+            auth_deps.get_current_user_optional_from_dishka
+            if endpoint is schedule_api.get_schedule
+            else auth_deps.get_current_user_from_dishka
+        )
+        assert user_parameter.default.dependency is expected, endpoint.__name__
+
+    for endpoint in (
+        mfa_api.start_email_mfa_enablement,
+        mfa_api.disable_email_mfa_endpoint,
+        mfa_api.start_totp_enrollment_endpoint,
+        mfa_api.confirm_totp_enrollment,
+        mfa_api.delete_totp_enrollment,
+        mfa_api.generate_recovery_codes_endpoint,
+    ):
+        route = next(
+            item for item in mfa_api.router.routes if item.endpoint is endpoint
+        )
+        implementation = endpoint.__dishka_orig_func__
+        parameter_guard = inspect.signature(implementation).parameters.get("_")
+        route_guards = [dependency.dependency for dependency in route.dependencies]
+        assert auth_deps.require_fresh_mfa_from_dishka in route_guards or (
+            parameter_guard is not None
+            and parameter_guard.default.dependency
+            is auth_deps.require_fresh_mfa_from_dishka
+        ), endpoint.__name__
 
 
 @pytest.mark.asyncio

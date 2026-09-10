@@ -12,7 +12,7 @@ from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Depends
 from fastapi import Query as QueryParam
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user_from_dishka
 from app.core.logging import get_logger
 from app.services.search import SearchService
 
@@ -34,7 +34,7 @@ async def unified_search(
     limit: int = QueryParam(
         _MAX_RESULTS, ge=1, le=50, description="Max results per type"
     ),
-    _user: Any = Depends(get_current_user),
+    _user: Any = Depends(get_current_user_from_dishka),
 ) -> dict[str, Any]:
     """Unified search across news and events.
 
