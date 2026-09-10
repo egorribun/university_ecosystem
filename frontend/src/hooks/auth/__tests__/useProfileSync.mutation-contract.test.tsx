@@ -171,6 +171,9 @@ describe("useProfileSync mutation contracts", () => {
     expect(() => createOptimisticUser(42 as unknown as CachedUserSnapshot)).toThrow(
       "Profile cache snapshot must be an object"
     )
+    expect(() => createOptimisticUser([] as unknown as CachedUserSnapshot)).toThrow(
+      "Profile cache snapshot must be an object"
+    )
   })
 
   it.each([
@@ -743,6 +746,53 @@ describe("useProfileSync mutation contracts", () => {
     expect(warningSpy).not.toHaveBeenCalledWith("profile_cache.cleared", {
       reason: "parse_error",
     })
+    unmount()
+  })
+
+  it("keeps cache recovery alive when the decryption diagnostic logger throws", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "00:00:%%%",
+    }
+    writeSignedEnvelope(payload)
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation((...args: unknown[]) => {
+      if (args[0] === "profile_cache.decryption_failed") {
+        throw new Error("diagnostic sink unavailable")
+      }
+    })
+
+    const { result, unmount } = renderProfile(signingKey)
+
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+    // The synchronous bootstrap intentionally keeps the encrypted-cache
+    // placeholder while async decryption invalidates and clears the payload.
+    expect(result.current.user?.id).toBe("-1")
+    expect(warningSpy).toHaveBeenCalledWith("profile_cache.decryption_failed")
+    unmount()
+  })
+
+  it("keeps auth bootstrap alive when the signature diagnostic logger throws", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("sync-verifier-logger-error-user"),
+    }
+    writeSignedEnvelope(payload)
+    vi.spyOn(TextEncoder.prototype, "encode").mockImplementation(() => {
+      throw new Error("encoder unavailable")
+    })
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation((...args: unknown[]) => {
+      if (args[0] === "profile_cache.signature_verification_failed") {
+        throw new Error("diagnostic sink unavailable")
+      }
+    })
+
+    const { result, unmount } = renderProfile(signingKey)
+
+    expect(result.current.user).toBeNull()
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+    expect(warningSpy).toHaveBeenCalledWith("profile_cache.signature_verification_failed")
     unmount()
   })
 })

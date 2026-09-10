@@ -128,7 +128,7 @@ export const createOptimisticUser = (snapshot: CachedUserSnapshot): User => {
   // Cache data crosses a runtime trust boundary. Keep this helper defensive
   // so a future parser call cannot construct an optimistic user from a
   // primitive or null value.
-  if (snapshot === null || typeof snapshot !== "object") {
+  if (snapshot === null || typeof snapshot !== "object" || Array.isArray(snapshot)) {
     throw new TypeError("Profile cache snapshot must be an object")
   }
 
@@ -357,9 +357,14 @@ const decryptData = async (
     const decoded = new TextDecoder().decode(decrypted)
     return JSON.parse(decoded) as CachedUserSnapshot
   } catch (_e) {
-    // Decryption failed (wrong key or tampering).  Keep diagnostics generic so
-    // encrypted cache material never reaches logs or telemetry.
-    logWarning("profile_cache.decryption_failed")
+    // Decryption failed (wrong key or tampering). Keep diagnostics generic so
+    // encrypted cache material never reaches logs or telemetry. Diagnostics
+    // are best-effort and must never prevent the caller from clearing cache.
+    try {
+      logWarning("profile_cache.decryption_failed")
+    } catch {
+      // Ignore logger/console failures at this security boundary.
+    }
     return null
   }
 }
@@ -389,8 +394,13 @@ const verifySignatureSync = (
     const expected = uint8ToBase64(signatureBytes)
     return timingSafeEqual(signature, expected)
   } catch {
-    // Do not expose the verifier exception or any cache material.
-    logWarning("profile_cache.signature_verification_failed")
+    // Do not expose the verifier exception or any cache material. Diagnostics
+    // are best-effort and must not abort synchronous auth bootstrap.
+    try {
+      logWarning("profile_cache.signature_verification_failed")
+    } catch {
+      // Ignore logger/console failures at this security boundary.
+    }
     return false
   }
 }
@@ -439,7 +449,7 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
           (candidate.data as CachedUserSnapshot)
         : null
 
-  if (snapshotData === null || typeof snapshotData.id !== "string") {
+  if (!snapshotData || typeof snapshotData.id !== "string") {
     clearProfileCacheStorage("invalid_data")
     return undefined
   }
