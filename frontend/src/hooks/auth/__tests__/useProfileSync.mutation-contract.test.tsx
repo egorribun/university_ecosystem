@@ -1692,6 +1692,19 @@ describe("useProfileSync mutation contracts", () => {
     expect(encrypted?.split(":")).toHaveLength(3)
   })
 
+  it("keeps encrypted salt and IV hex segments fixed-width for low random bytes", async () => {
+    vi.spyOn(window.crypto, "getRandomValues").mockImplementation((array) => {
+      if (array instanceof Uint8Array) array.fill(0)
+      return array
+    })
+
+    const encrypted = await encryptData(snapshot("fixed-width-encryption-user"), signingKey)
+    const [saltHex, ivHex] = encrypted?.split(":") ?? []
+
+    expect(saltHex).toBe("00".repeat(16))
+    expect(ivHex).toBe("00".repeat(12))
+  })
+
   it("performs decryption when Web Crypto is available", async () => {
     const encrypted = await encryptData(snapshot("direct-decryption-user"), signingKey)
     expect(encrypted).toEqual(expect.any(String))
