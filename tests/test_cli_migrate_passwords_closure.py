@@ -132,8 +132,10 @@ async def test_count_resets_rls_bypass_when_query_fails():
 
 @pytest.mark.asyncio
 async def test_report_bcrypt_users_rejects_negative_limit() -> None:
-    with pytest.raises(ValueError, match="limit must be zero or positive"):
+    with pytest.raises(ValueError) as exc_info:
         await migrate_passwords._report_bcrypt_users(limit=-1, show_ids=True)
+
+    assert str(exc_info.value) == "limit must be zero or positive"
 
 
 @pytest.mark.asyncio
