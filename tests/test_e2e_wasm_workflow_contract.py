@@ -222,6 +222,19 @@ def test_ci_e2e_matrix_depends_on_shared_producer_not_frontend_suite() -> None:
 
     assert "frontend-tests" not in producer.get("needs", [])
 
+    frontend = jobs["frontend-tests"]
+    assert frontend["needs"] == ["e2e-wasm-build"]
+    assert frontend["permissions"] == {"contents": "read", "actions": "read"}
+    assert frontend["with"]["wasm-artifact-id"] == (
+        "${{ needs.e2e-wasm-build.outputs.artifact_id }}"
+    )
+    assert frontend["with"]["wasm-artifact-name"] == (
+        "${{ needs.e2e-wasm-build.outputs.artifact_name }}"
+    )
+    assert frontend["with"]["wasm-artifact-digest"] == (
+        "${{ needs.e2e-wasm-build.outputs.artifact_digest }}"
+    )
+
 
 def test_nightly_browser_matrix_uses_shared_producer() -> None:
     jobs = _load(NIGHTLY_PATH)["jobs"]

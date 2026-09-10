@@ -27,7 +27,19 @@ def test_frontend_suite_is_not_serialized_behind_pre_commit() -> None:
     jobs = _load(CI_WORKFLOW_PATH)["jobs"]  # type: ignore[index]
     frontend = jobs["frontend-tests"]
 
-    assert "needs" not in frontend
+    # Frontend tests reuse the single top-level WASM producer. They remain
+    # independent of the slower pre-commit gate so unrelated static work can
+    # still start as soon as the immutable artifact is ready.
+    assert frontend["needs"] == ["e2e-wasm-build"]
+    assert "pre-commit-check" not in frontend["needs"]
+    assert frontend["permissions"] == {"contents": "read", "actions": "read"}
+    assert frontend["with"] == {
+        "node-version": "24",
+        "run-lighthouse": True,
+        "wasm-artifact-id": "${{ needs.e2e-wasm-build.outputs.artifact_id }}",
+        "wasm-artifact-name": "${{ needs.e2e-wasm-build.outputs.artifact_name }}",
+        "wasm-artifact-digest": "${{ needs.e2e-wasm-build.outputs.artifact_digest }}",
+    }
     assert "frontend-tests" in jobs["ci-success"]["needs"]
 
 
@@ -38,6 +50,55 @@ def test_frontend_wasm_is_built_once_and_reused_by_all_consumers() -> None:
 
     assert producer["name"] == "Build WASM modules"
     assert producer["timeout-minutes"] == 15
+    assert producer["permissions"] == {"contents": "read", "actions": "read"}
+    workflow_on = workflow.get("on", workflow.get(True))
+    inputs = workflow_on["workflow_call"]["inputs"]  # type: ignore[index]
+    expected_input_descriptions = {
+        "wasm-artifact-id": "Optional same-run server-issued WASM artifact id",
+        "wasm-artifact-name": "Optional same-run WASM artifact name",
+        "wasm-artifact-digest": "Optional same-run WASM artifact archive digest",
+    }
+    for input_name, description in expected_input_descriptions.items():
+        assert inputs[input_name] == {
+            "description": description,
+            "required": False,
+            "type": "string",
+            "default": "",
+        }
+    external_mode = (
+        "${{ inputs.wasm-artifact-id != '' && inputs.wasm-artifact-name != '' "
+        "&& inputs.wasm-artifact-digest != '' }}"
+    )
+    standalone_mode = (
+        "${{ inputs.wasm-artifact-id == '' && inputs.wasm-artifact-name == '' "
+        "&& inputs.wasm-artifact-digest == '' }}"
+    )
+    external_contract = _step(producer, "Validate shared WASM artifact input contract")
+    assert "inputs.wasm-artifact-id != ''" in external_contract["if"]
+    assert "all three inputs" in external_contract["run"]
+    assert "WASM_ARTIFACT_ID" in external_contract["env"]
+    external_download = _step(producer, "Download shared immutable WASM modules")
+    assert external_download["if"] == external_mode
+    assert external_download["with"] == {
+        "artifact-ids": "${{ inputs.wasm-artifact-id }}",
+        "path": "${{ inputs.working-directory }}",
+    }
+    external_verify = _step(
+        producer, "Verify shared WASM artifact digest and provenance"
+    )
+    assert external_verify["if"] == external_mode
+    assert "actions/artifacts/${ARTIFACT_ID}" in external_verify["run"]
+    assert "WASM_PROVENANCE.json" in external_verify["run"]
+    assert "WASM_INVENTORY.json" in external_verify["run"]
+    assert "verify-wasm-artifacts.mjs" in external_verify["run"]
+    for producer_step_name in (
+        "Setup Rust toolchain",
+        "Install wasm-pack",
+        "Install pinned wasm-opt",
+        "Build immutable WASM modules",
+        "Upload immutable WASM modules",
+    ):
+        assert _step(producer, producer_step_name)["if"] == standalone_mode
     wasm_opt = _step(producer, "Install pinned wasm-opt")
     assert "binaryen-$binaryen_version-x86_64-linux.tar.gz" in wasm_opt["run"]
     assert (
@@ -79,6 +140,11 @@ def test_frontend_wasm_is_built_once_and_reused_by_all_consumers() -> None:
         download = _step(consumer, "Download immutable WASM modules")
         assert download["with"] == {
             "name": artifact_name,
+            "path": "${{ inputs.working-directory }}",
+        }
+        shared_download = _step(consumer, "Download shared immutable WASM modules")
+        assert shared_download["with"] == {
+            "artifact-ids": "${{ inputs.wasm-artifact-id }}",
             "path": "${{ inputs.working-directory }}",
         }
         install = _step(consumer, "Install dependencies")

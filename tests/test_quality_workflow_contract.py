@@ -2073,7 +2073,8 @@ def test_mutation_lanes_are_readiness_gated_and_use_the_runner_budget() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
 
-    assert "needs" not in jobs["frontend-tests"]
+    assert jobs["frontend-tests"]["needs"] == ["e2e-wasm-build"]
+    assert "pre-commit-check" not in jobs["frontend-tests"]["needs"]
     assert jobs["stryker-preflight"]["needs"] == ["pre-commit-check"]
     assert jobs["stryker-shards"]["needs"] == [
         "stryker-preflight",

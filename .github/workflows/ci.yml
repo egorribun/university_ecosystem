@@ -737,17 +737,21 @@ jobs:
 
   frontend-tests:
     name: Frontend Tests
+    needs:
+      - e2e-wasm-build
     permissions:
       contents: read
+      actions: read
     uses: ./.github/workflows/reusable-frontend-tests.yml
     with:
       node-version: "24"
       run-lighthouse: true
+      wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
+      wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
+      wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
-  # Build the generated WASM packages once for all Playwright jobs.  This lane
-  # intentionally has no dependency on frontend-tests: it starts at fan-out and
-  # therefore cannot serialize browser coverage behind the larger frontend
-  # matrix.  Consumers bind the server-issued artifact outputs to this run.
+  # Build the generated WASM packages once for all frontend and Playwright
+  # jobs. Consumers bind the server-issued artifact outputs to this run.
   e2e-wasm-build:
     name: E2E WASM Build
     permissions:
