@@ -2555,7 +2555,7 @@ finding был проверяемым.
 | Finding | Current disposition | Evidence / follow-up |
 |---|---|---|
 | INFRA-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Standalone ExternalSecret/deployment now carries revocation/cache/HMAC/RSA material with explicit mounts/env refs; K8s contract tests pass. |
-| INFRA-02 | `BACKLOG / ARCHITECTURE` | Helm is canonical producer for Go workloads; standalone raw manifests require an intentional deployment-scope decision, not silent duplication. |
+| INFRA-02 | `DECISION-RECORDED / FRESH-EVIDENCE-PENDING` | ADR-034 and `k8s/README.md` make Helm the sole canonical producer for all six application workloads; raw manifests intentionally do not duplicate Go services. Fresh Helm render, policy validation and one-release staging smoke remain required. |
 | INFRA-03 | `FRESH-EVIDENCE-PENDING` | Deploy workflows validate SHA/digest image identity; current Kyverno/Helm render must prove no mutable `IMAGE_TAG`. |
 | INFRA-04 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Frontend HPA template, values/schema and staging validation added; Helm lint/template required. |
 | INFRA-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Frontend SSR memory request/limit raised to 128Mi/512Mi; verify rendered resources and budget rationale. |
@@ -2737,11 +2737,12 @@ rebalancing threshold is not met.
 3. **Fresh mutmut validation is required.** The isolated copy contract now
    includes `k8s/ingress.yaml` and `k8s/secrets-example.yaml`; all stats and
    execution artifacts must prove the exact copy inventory on the new SHA.
-4. **External-audit architecture backlog is retained explicitly.** BE-02
+4. **External-audit architecture debt remains explicit and scoped.** BE-02
    (dual Python/DDL defaults), BE-04 (Dishka/Depends coexistence), BE-08
-   (CDC worker lifecycle), INFRA-02 (raw-manifest scope), SEC-06 (allowlist
-   review) and SEC-09 (dependency upper-bound policy) need separate ADRs or
-   measured phased work. They are not silently marked fixed by this checkpoint.
+   (CDC worker lifecycle), SEC-06 (allowlist review) and SEC-09 (dependency
+   upper-bound policy) need separate ADRs or measured phased work. INFRA-02's
+   scope decision is now recorded in ADR-034; current-SHA Helm/staging
+   evidence is still required and it is not silently treated as runtime proof.
 5. **Release evidence is still external.** Merge-to-main recertification,
    exact-six immutable images, registry SBOM/provenance/attestations,
    digest-pinned Docker smoke, Kubernetes/TLS/ExternalSecrets/observability,
@@ -2762,8 +2763,9 @@ rebalancing threshold is not met.
 8. **External audit P0/P1 triage is complete for current ancestry.** The
    independent audit's listed GraphQL HMAC, ExternalSecret/revocation, migration,
    SSR boundary, Go path/JWKS/health/origin, Rust memory/sanitization, Helm and
-   service-log findings are already fixed and test-backed. BE-02/BE-04 and
-   INFRA-02 remain explicit architecture/scope debt and are not silently closed.
+   service-log findings are already fixed and test-backed. BE-02/BE-04 remain
+   explicit architecture debt; INFRA-02 has an accepted scope decision in
+   ADR-034 but remains evidence-pending until a complete Helm/staging run.
 
 ### 34.4 Required next cycle
 

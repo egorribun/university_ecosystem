@@ -118,3 +118,26 @@ def test_raw_k8s_scope_declares_helm_as_canonical_application_producer() -> None
 
     for component in ("gateway", "ws-hub", "file-processor"):
         assert not list((ROOT / "k8s").rglob(f"{component}*deployment*.yaml"))
+
+
+def test_helm_canonical_scope_is_recorded_in_adr_index() -> None:
+    """The INFRA-02 scope decision must be durable and discoverable."""
+
+    adr_path = ROOT / "docs/adr/ADR-034-helm-canonical-application-deployment.md"
+    index_path = ROOT / "docs/adr/README.md"
+    assert adr_path.is_file()
+    adr = adr_path.read_text(encoding="utf-8")
+    normalized = adr.lower()
+    assert "status" in normalized and "accepted" in normalized
+    for heading in (
+        "## context",
+        "## considered options",
+        "## decision",
+        "## consequences",
+    ):
+        assert heading in normalized
+    assert "sole canonical producer" in normalized
+    assert "raw k8s" in normalized
+    index = index_path.read_text(encoding="utf-8")
+    assert "ADR-034" in index
+    assert "Helm" in index
