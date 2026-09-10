@@ -268,15 +268,43 @@ describe("useProfileSync mutation contracts", () => {
     expect(resolved?.id ?? null).toBe(expectedId)
   })
 
-  it("refuses to hydrate even a validly signed cache when the signing key is empty", () => {
+  it("does not consult a signed cache during an anonymous server render", () => {
     const payload: CacheSignaturePayload = {
       version: PROFILE_CACHE_SCHEMA_VERSION,
       expiresAt: Date.now() + 60_000,
-      data: snapshot("empty-signing-key-cache-user"),
+      data: snapshot("server-cache-user"),
     }
-    writeSignedEnvelope(payload, signEnvelopeForKey(payload, ""))
+    writeSignedEnvelope(payload)
+    const serialized = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
 
-    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey: "" })).toBeNull()
+    expect(
+      resolveInitialUserState({
+        lhci: false,
+        isServer: true,
+        signingKey,
+        ssrAuthHint: { isAuth: false, user: null },
+      })
+    ).toBeNull()
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBe(serialized)
+  })
+
+  it.each([
+    ["empty", ""],
+    ["null", null],
+  ] as const)("refuses to hydrate a valid signed cache with a %s signing key", (_label, key) => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("missing-signing-key-cache-user"),
+    }
+    // The empty-key case is signed with the empty key; the null-key case is
+    // signed with the normal key and must still fail closed before verifying.
+    writeSignedEnvelope(payload, signEnvelopeForKey(payload, key ?? signingKey))
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+
+    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey: key })).toBeNull()
+    expect(warningSpy).not.toHaveBeenCalled()
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).not.toBeNull()
   })
 
   it("returns no user for a cold client cache", () => {
@@ -332,6 +360,27 @@ describe("useProfileSync mutation contracts", () => {
       is_active: false,
     })
   })
+
+  it.each([
+    ["exactly at", 0, null],
+    ["one millisecond after", 1, "synchronous-expiry-boundary-user"],
+  ] as const)(
+    "applies the synchronous cache expiry boundary (%s)",
+    (_label, offset, expectedId) => {
+      const now = 1_800_000_000_000
+      vi.spyOn(Date, "now").mockReturnValue(now)
+      const payload: CacheSignaturePayload = {
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: now + offset,
+        data: snapshot("synchronous-expiry-boundary-user"),
+      }
+      writeSignedEnvelope(payload)
+
+      expect(
+        resolveInitialUserState({ lhci: false, isServer: false, signingKey })?.id ?? null
+      ).toBe(expectedId)
+    }
+  )
 
   it("returns a minimal placeholder for a valid encrypted envelope", () => {
     const payload: CacheSignaturePayload = {
@@ -391,6 +440,23 @@ describe("useProfileSync mutation contracts", () => {
 
     expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
     expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+  })
+
+  it("clears invalid non-string legacy data from the synchronous cache resolver", () => {
+    const payload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: 42,
+    } as unknown as CacheSignaturePayload
+    writeSignedEnvelope(payload)
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+
+    expect(resolveInitialUserState({ lhci: false, isServer: false, signingKey })).toBeNull()
+    expect(warningSpy).toHaveBeenCalledWith("profile_cache.cleared", {
+      reason: "invalid_data",
+    })
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY)).toBeNull()
   })
 
   it("rejects a tampered synchronous cache signature", () => {
