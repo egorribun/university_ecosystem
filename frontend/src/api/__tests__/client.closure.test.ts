@@ -356,6 +356,26 @@ describe("api/client — BroadcastChannel idempotency coordination", () => {
     expect(channel?.messages).toEqual([])
   })
 
+  it("does not track unsafe requests that omit an idempotency key", async () => {
+    const { default: channelApi } = await import("@/api/client")
+    const channel = RecordingBroadcastChannel.instances[0]
+    const adapter = vi.fn(async (config): Promise<AxiosResponse> => ({
+      config,
+      data: { ok: true },
+      status: 200,
+      statusText: "OK",
+      headers: new AxiosHeaders(),
+      request: {},
+    }))
+    channelApi.defaults.adapter = adapter
+
+    await channelApi.post("/events", { ok: true })
+    await channelApi.post("/events", { ok: true })
+
+    expect(adapter).toHaveBeenCalledTimes(2)
+    expect(channel?.messages).toEqual([])
+  })
+
   it("continues without cross-tab coordination when BroadcastChannel construction fails", async () => {
     class ThrowingBroadcastChannel {
       constructor() {
@@ -580,6 +600,39 @@ describe("api/client — SSR request branches", () => {
 
     expect(cookieGetter).toHaveBeenCalledOnce()
     expect(AxiosHeaders.from(seen[0]!.headers).get("Cookie")).toBeUndefined()
+  })
+
+  it("preserves the request headers object when SSR metadata is absent", async () => {
+    vi.doMock("@/api/interceptors/language", () => ({
+      applyLanguageHeader: (config: InternalAxiosRequestConfig) => config,
+    }))
+    vi.stubGlobal(
+      "__ssrCookieGetter__",
+      vi.fn(() => undefined)
+    )
+    vi.stubGlobal(
+      "__ssrFingerprintHeadersGetter__",
+      vi.fn(() => undefined)
+    )
+
+    try {
+      const { default: ssrApi } = await import("@/api/client")
+      const requestHandler = (ssrApi.interceptors.request as any).handlers.find(
+        (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+      )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+      const originalHeaders = { "X-Test-Header": "preserve" }
+      const config = {
+        method: "get",
+        url: "/news",
+        headers: originalHeaders,
+      } as unknown as InternalAxiosRequestConfig
+
+      const normalized = await requestHandler(config)
+
+      expect(normalized.headers).toBe(originalHeaders)
+    } finally {
+      vi.doUnmock("@/api/interceptors/language")
+    }
   })
 
   it.each([
