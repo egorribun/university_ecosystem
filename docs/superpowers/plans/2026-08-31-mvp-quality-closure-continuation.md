@@ -3096,6 +3096,71 @@ User-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
 `.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
 excluded from all source commits.
 
+## 46. Frontend interceptor survivor closure and fresh-SHA boundary (2026-09-10; source `f5f23a026`)
+
+### 46.1 Terminal stale-run evidence
+
+- PR #1266 run `34486140554` is terminal and remains historical evidence only:
+  it tested remote SHA `78d03e1379a0c428ae509039d4942677ed89a7d9`, not the current
+  `egorribun` source. Its aggregate mutation failure was fail-closed fallout
+  from isolated survivors; the `digest-mismatch` lines in the aggregate log
+  were validation fallout, not an additional source defect.
+- The downloaded frontend shard-018 artifact (`10162914088`) contained two
+  exact survivors in `src/api/client.ts`:
+  - mutant 55 replaced the idempotency-key guard with `true` at the unsafe
+    mutation tracking branch (line 284); no prior test exercised a POST without
+    an `Idempotency-Key`.
+  - mutant 102 replaced the SSR forwarding metadata guard with `true` at line
+    339; the existing suite tested the pure predicate and positive forwarding
+    path but not the allocation-preserving negative path.
+- Both findings were reproduced from the artifact's `mutation.json`; no
+  production behavior was changed to conceal a mutant.
+
+### 46.2 RED → GREEN regression coverage
+
+- Added `does not track unsafe requests that omit an idempotency key` to
+  `frontend/src/api/__tests__/client.closure.test.ts`. It sends two POSTs
+  without a key, asserts both reach the adapter and verifies that the
+  `BroadcastChannel` ledger remains empty. This kills the unconditional
+  tracking mutant and protects duplicate suppression boundaries.
+- Added `preserves the request headers object when SSR metadata is absent`.
+  The test isolates the language interceptor, invokes the real Axios request
+  interceptor with no cookie/fingerprint metadata and asserts that the
+  original headers object is preserved. This directly protects the
+  `hasSsrForwardingHeaders` allocation guard against an unconditional branch.
+  The temporary module mock is removed in `finally`, preventing cross-test
+  pollution.
+- Focused Vitest result: **43/43 passed**. Frontend typecheck and ESLint for
+  the changed file pass. Isolated pre-commit passes detect-secrets,
+  hardcoded-secrets, no-Python2-except, actionlint, Semgrep and all applicable
+  hooks. The default Windows pre-commit cache ACL failure is avoided by the
+  previously documented isolated cache; no hook is bypassed.
+- Source commit: `f5f23a026` (`test: cover api client interceptor branches`).
+  Only the intentional tracked test file was staged; all user-owned
+  untracked paths remain untouched and unstaged.
+
+### 46.3 Fresh-CI acceptance and remaining boundary
+
+1. Run `git diff --check`, the harness, frontend typecheck/lint/build and the
+   focused API client suite after this documentation checkpoint. Push the
+   resulting `egorribun` SHA non-force only after confirming the worktree
+   contains no accidental staged artifacts.
+2. Treat only the new current-SHA PR matrix as evidence. Require shard-018
+   (and every other Stryker shard) to report `Killed`/`NoCoverage` according to
+   the contract, aggregate/evidence roundtrip success, and a complete
+   denominator; do not infer a 100% score from the stale artifact.
+3. Re-run the full mutmut matrix after the two earlier CLI survivors and
+   download all terminal artifacts. Any new survivor, timeout, cancellation,
+   digest mismatch or missing report is a blocker and receives the same
+   exact-artifact TDD treatment.
+4. Keep all remaining gates open until current-SHA Python/frontend/Go/Rust,
+   API/Schemathesis, security/supply-chain, Lighthouse/E2E, infrastructure,
+   performance and harness evidence is complete. Merge-to-main
+   recertification, exact-six immutable image/SBOM/provenance, digest Docker
+   smoke, Kubernetes/TLS/ExternalSecrets/observability staging, real-device
+   CWV, chaos/rollback, production release and the final SHA-bound audit are
+   external release gates and are not implied by this local test commit.
+
 ## 41. Current stale-PR mutation evidence and bounded remediation (2026-09-10; local HEAD `5a04b3e34`)
 
 ### 41.1 Exact stale-run findings
