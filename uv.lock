@@ -5004,7 +5004,7 @@ dev = [
     { name = "bandit", extras = ["toml"], specifier = ">=1.9.4" },
     { name = "diff-cover", specifier = ">=9.2.0" },
     { name = "fakeredis", specifier = ">=2.35.1" },
-    { name = "httpx2", specifier = ">=2.10.0,<3" },
+    { name = "httpx2", specifier = ">=2.12.0,<3" },
     { name = "hypothesis", specifier = ">=6.151.12" },
     { name = "jsonschema", specifier = ">=4.25.1,<5" },
     { name = "maturin", specifier = ">=1.13.1,<2" },

@@ -107,6 +107,24 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
     }
 
 
+def test_httpx2_requirement_stays_on_the_patched_security_floor() -> None:
+    """The declared floor must not permit versions with known HTTPX2 CVEs."""
+    pyproject = _read_toml("pyproject.toml")
+    dependency_groups = pyproject["dependency-groups"]
+    assert isinstance(dependency_groups, dict)
+    dev_dependencies = dependency_groups["dev"]
+    assert isinstance(dev_dependencies, list)
+    httpx_requirement = next(
+        (
+            entry
+            for entry in dev_dependencies
+            if isinstance(entry, str) and entry.startswith("httpx2")
+        ),
+        None,
+    )
+    assert httpx_requirement == "httpx2>=2.12.0,<3"
+
+
 def test_renovate_validator_contract_is_pinned_and_blocking() -> None:
     pre_commit_config = _read_text(".pre-commit-config.yaml")
     assert RENOVATE_PRE_COMMIT_HOOK in pre_commit_config

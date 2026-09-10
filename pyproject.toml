@@ -383,7 +383,7 @@ dev = [
   "fakeredis>=2.35.1",
   # Starlette 1.x moved TestClient to the httpx2 API.  Keeping this explicit
   # prevents its deprecated httpx compatibility shim from hiding API drift.
-  "httpx2>=2.10.0,<3",
+  "httpx2>=2.12.0,<3",
   "hypothesis>=6.151.12",
   # Quality evidence manifests are validated against the closed v2 schema
   # before any semantic or filesystem evidence is trusted.
