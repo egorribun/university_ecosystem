@@ -25,6 +25,7 @@ import {
   encryptData,
   getCachedEnvelopeHeader,
   areDeepEqual,
+  buildPendingMfaBroadcast,
   broadcastProfileEvent,
   fetchCurrentUser,
   isAscii,
@@ -143,6 +144,43 @@ describe("useProfileSync mutation contracts", () => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
+  })
+
+  it("builds only meaningful pending-MFA broadcasts", () => {
+    const pending = { ticket: "pending-ticket", methods: ["totp"] } as never
+
+    expect(buildPendingMfaBroadcast(null, pending, false)).toBeNull()
+    expect(buildPendingMfaBroadcast(null, null)).toBeNull()
+    expect(buildPendingMfaBroadcast(null, pending)).toEqual({
+      type: "mfa-pending",
+      payload: pending,
+    })
+    expect(buildPendingMfaBroadcast(pending, null)).toEqual({ type: "mfa-cleared" })
+  })
+
+  it("does not mark a cached profile as loading during its background refresh", async () => {
+    const payload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot("cached-loading-user"),
+    } as CacheSignaturePayload
+    writeSignedEnvelope(payload)
+
+    let resolveFetch!: (value: unknown) => void
+    const pendingFetch = new Promise<unknown>((resolve) => {
+      resolveFetch = resolve
+    })
+    const view = renderProfile(signingKey, { promise: pendingFetch })
+
+    await waitFor(() => expect(view.fetchQuery).toHaveBeenCalledTimes(1))
+    expect(view.result.current.user?.id).toBe("cached-loading-user")
+    expect(view.result.current.loading).toBe(false)
+
+    await act(async () => {
+      resolveFetch(snapshot("cached-loading-user"))
+      await pendingFetch
+    })
+    view.unmount()
   })
 
   it("refreshes the user ref after an asynchronous cache restore", async () => {

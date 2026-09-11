@@ -152,6 +152,21 @@ type ProfileBroadcastOptions = {
   enabled?: boolean
 }
 
+/**
+ * Build the only pending-MFA messages that may cross the tab boundary.
+ * Keeping the transition policy pure makes disabled/duplicate transitions
+ * deterministic and prevents the hook's ref-backed callback from growing a
+ * mutation-test-sensitive branch with observable side effects.
+ */
+export const buildPendingMfaBroadcast = (
+  previous: PendingMfaState | null,
+  value: PendingMfaState | null,
+  broadcast = true
+): ProfileBroadcastMessage | null => {
+  if (!broadcast || (!previous && !value)) return null
+  return value ? { type: "mfa-pending", payload: value } : { type: "mfa-cleared" }
+}
+
 const noBroadcastOptions = { broadcast: false } as const
 const noPersistenceOptions = { persist: false } as const
 const remoteUnauthorizedOptions = { broadcast: false, persist: false } as const
@@ -1025,7 +1040,12 @@ export const useProfileSync = (
   // the stateful `initializing` flag alone cannot make an in-flight request
   // idempotent.
   const autoFetchAttemptedRef = useRef(false)
+  // Keep the latest loading state available to the effect without adding the
+  // state setter to its dependency cycle. A render-time ref assignment is
+  // intentional here: the auto-fetch guard must observe the value before any
+  // effect from the same render can be re-entered.
   const initializingRef = useRef(initializing)
+  initializingRef.current = initializing
   const mountedRef = useRef<boolean | undefined>(undefined)
 
   useEffect(() => {
@@ -1070,13 +1090,8 @@ export const useProfileSync = (
       const previous = pendingMfaRef.current
       pendingMfaRef.current = value
       setPendingMfaState(value)
-      if (broadcast === false) return
-      if (!previous && !value) return
-      if (value) {
-        broadcastProfileEvent({ type: "mfa-pending", payload: value })
-      } else {
-        broadcastProfileEvent({ type: "mfa-cleared" })
-      }
+      const message = buildPendingMfaBroadcast(previous, value, broadcast)
+      if (message) broadcastProfileEvent(message)
     }
   }
   const updatePendingMfa = updatePendingMfaRef.current!
@@ -1143,10 +1158,9 @@ export const useProfileSync = (
       updatePendingMfa(null, { broadcast })
       setAuthOperation(false)
       setInitializing(false)
-      broadcastProfileEvent(
-        { type: "unauthorized" },
-        { enabled: shouldBroadcastProfileUnauthorized(broadcast) }
-      )
+      if (shouldBroadcastProfileUnauthorized(broadcast)) {
+        broadcastProfileEvent({ type: "unauthorized" })
+      }
     },
     [clearProfile, updatePendingMfa, updateSessionSigningKey, sessionSigningKeyPromiseRef]
   )
@@ -1207,8 +1221,6 @@ export const useProfileSync = (
         case PROFILE_CACHE_STORAGE_KEY:
         case PROFILE_CACHE_VERSION_KEY:
           syncFromCache()
-          break
-        default:
           break
       }
     }
@@ -1278,8 +1290,9 @@ export const useProfileSync = (
     const hasCache = readProfileCachePresence()
     // The attempted marker is deliberately checked before the cold-start
     // predicate. It is synchronous and therefore remains authoritative while
-    // `initializingRef` catches up in a later React effect. This prevents a
-    // dependency-only rerender from cancelling/restarting an in-flight query.
+    // the render-synchronized `initializingRef` reflects the current state.
+    // This prevents a dependency-only rerender from cancelling/restarting an
+    // in-flight query.
     if (autoFetchAttemptedRef.current) {
       return
     }
@@ -1374,10 +1387,6 @@ export const useProfileSync = (
     // The reference is stable via useQueryClient (Provider-level memoised),
     // so adding it does not re-fire the effect on every render.
   }, [ensureSessionSigningKey, handleUnauthorized, setUser, queryClient])
-
-  useEffect(() => {
-    initializingRef.current = initializing
-  }, [initializing])
 
   useEffect(() => {
     useAuthStore.setState({
