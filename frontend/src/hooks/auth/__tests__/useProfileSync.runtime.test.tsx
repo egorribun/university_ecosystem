@@ -237,6 +237,27 @@ describe("useProfileSync runtime defensive paths", () => {
     expect(replacementEnsure).not.toHaveBeenCalled()
   })
 
+  it("does not restart an in-flight fetch when an effect dependency changes", async () => {
+    const queryClient = createQueryClient()
+    const fetchQuery = vi
+      .spyOn(queryClient, "fetchQuery")
+      .mockReturnValue(new Promise<never>(() => undefined) as never)
+    const firstEnsure = vi.fn(async () => null)
+    const view = renderRuntime(firstEnsure, null, queryClient)
+
+    await waitFor(() => expect(fetchQuery).toHaveBeenCalledOnce())
+
+    const replacementEnsure = vi.fn(async () => null)
+    view.rerender({ ensureSessionSigningKey: replacementEnsure })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(fetchQuery).toHaveBeenCalledOnce()
+    expect(replacementEnsure).not.toHaveBeenCalled()
+    view.unmount()
+  })
+
   it("runs the SSR initial-user and initializing branches", () => {
     const originalWindow = globalThis.window
     vi.stubGlobal("window", undefined)

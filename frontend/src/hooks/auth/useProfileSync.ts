@@ -1019,6 +1019,11 @@ export const useProfileSync = (
   // `queryClient.cancelQueries({ queryKey: currentUserQueryKey })` —
   // introduced in W134 SW1 alongside the controller, now the sole path.
   // Closes W134 §Honesty #3.
+  // Keep a synchronous attempted marker as the first duplicate guard. React
+  // effects may be re-entered before their loading-state ref is committed
+  // (for example when a callback dependency changes during cache restore), so
+  // the stateful `initializing` flag alone cannot make an in-flight request
+  // idempotent.
   const autoFetchAttemptedRef = useRef(false)
   const initializingRef = useRef(initializing)
   const mountedRef = useRef<boolean | undefined>(undefined)
@@ -1268,30 +1273,14 @@ export const useProfileSync = (
       return
     }
 
-    // Wave 135 SW1 — AbortController removed (was `const controller = new
-    // AbortController(); activeRequestRef.current?.abort();
-    // activeRequestRef.current = controller`). queryClient.cancelQueries
-    // is the sole cancellation mechanism: it fires the internal AbortSignal
-    // attached to the queryFn, which the factory's queryFn → fetchCurrentUser
-    // → axios respects via the standard `signal` config. Concurrent
-    // auto-fetch effect runs (e.g. handleUnauthorized → setUser → effect
-    // re-fires) call cancelQueries here, cancelling the prior in-flight
-    // fetch before initiating the new one. Closes W134 §Honesty #3.
-    queryClient.cancelQueries({ queryKey: currentUserQueryKey }).catch(() => undefined)
     // RZ-31-03: Safari private browsing throws SecurityError on localStorage access.
     // Every other localStorage call in this file is wrapped — this was a missed spot.
     const hasCache = readProfileCachePresence()
-    // Check the terminal state before evaluating the cold-start predicate.
-    // Besides making the state machine explicit, this keeps a future
-    // predicate mutation from bypassing the settled-fetch guard and starting
-    // an unbounded query in every mounted consumer.
-    if (
-      shouldSkipAutoFetch({
-        attempted: autoFetchAttemptedRef.current,
-        initializing: initializingRef.current,
-      })
-    ) {
-      // Already tried or have data, nothing to do
+    // The attempted marker is deliberately checked before the cold-start
+    // predicate. It is synchronous and therefore remains authoritative while
+    // `initializingRef` catches up in a later React effect. This prevents a
+    // dependency-only rerender from cancelling/restarting an in-flight query.
+    if (autoFetchAttemptedRef.current) {
       return
     }
     if (
@@ -1309,6 +1298,14 @@ export const useProfileSync = (
     // path remains indistinguishable from an unattempted fetch and a later
     // dependency-only rerender can issue a second `/users/me` request.
     autoFetchAttemptedRef.current = true
+    // Wave 135 SW1 — queryClient.cancelQueries is the sole cancellation
+    // mechanism: it fires the internal AbortSignal attached to the queryFn,
+    // which the factory's queryFn → fetchCurrentUser → axios respects via the
+    // standard `signal` config. Keep it after the duplicate guard so an
+    // effect re-entry cannot cancel the request it is intentionally skipping;
+    // explicit logout still cancels through clearProfile(). Closes W134
+    // §Honesty #3.
+    queryClient.cancelQueries({ queryKey: currentUserQueryKey }).catch(() => undefined)
     ;(async () => {
       try {
         // Wave 134 SW1 — Bridge: route through queryClient.fetchQuery so the
