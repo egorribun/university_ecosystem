@@ -1269,7 +1269,6 @@ export const useProfileSync = (
         attempted: autoFetchAttemptedRef.current,
       })
     ) {
-      autoFetchAttemptedRef.current = true
       setInitializing(true)
     } else if (
       shouldSkipAutoFetch({

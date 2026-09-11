@@ -1329,6 +1329,43 @@ describe("useProfileSync — cross-tab sync effect", () => {
     view.unmount()
   })
 
+  it("does not construct a channel when the browser lacks BroadcastChannel", async () => {
+    const originalWindow = globalThis.window
+    const construct = vi.fn()
+    class MissingBroadcastChannel {
+      constructor() {
+        construct()
+      }
+      addEventListener() {}
+      removeEventListener() {}
+      postMessage() {}
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", MissingBroadcastChannel)
+    const windowWithoutBroadcastChannel = new Proxy(originalWindow, {
+      has: (target, property) =>
+        property === "BroadcastChannel" ? false : Reflect.has(target, property),
+      get: (target, property) => {
+        const value = Reflect.get(target, property, target)
+        return typeof value === "function" ? value.bind(target) : value
+      },
+    })
+    vi.stubGlobal("window", windowWithoutBroadcastChannel)
+
+    try {
+      const queryClient = createQueryClient()
+      vi.spyOn(queryClient, "fetchQuery").mockReturnValue(
+        new Promise<never>(() => undefined) as never
+      )
+      const view = renderProfileSync({ queryClient, signingKey: mockSigningKey })
+      await waitFor(() => expect(view.result.current.loading).toBe(true))
+      expect(construct).not.toHaveBeenCalled()
+      view.unmount()
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
   it("a storage event for a deleted cache clears the user state", async () => {
     vi.spyOn(api, "get").mockImplementation((url) => {
       if (url === "/users/me") return Promise.resolve({ data: testUser } as any)
@@ -2023,6 +2060,8 @@ describe("useProfileSync — dependency freshness contracts", () => {
     const pendingSecond = new Promise<never>(() => undefined)
     vi.spyOn(firstQueryClient, "fetchQuery").mockReturnValue(pendingFirst as never)
     vi.spyOn(secondQueryClient, "fetchQuery").mockReturnValue(pendingSecond as never)
+    const firstCancelQueries = vi.spyOn(firstQueryClient, "cancelQueries")
+    const secondCancelQueries = vi.spyOn(secondQueryClient, "cancelQueries")
 
     const firstUpdate = vi.fn()
     const secondUpdate = vi.fn()
@@ -2039,6 +2078,8 @@ describe("useProfileSync — dependency freshness contracts", () => {
     )
 
     await waitFor(() => expect(firstQueryClient.fetchQuery).toHaveBeenCalled())
+    firstCancelQueries.mockClear()
+    secondCancelQueries.mockClear()
     activeQueryClient = secondQueryClient
     view.rerender({ update: secondUpdate })
     await act(async () => {
@@ -2053,6 +2094,8 @@ describe("useProfileSync — dependency freshness contracts", () => {
     await act(async () => {
       view.result.current.handleUnauthorized({ broadcast: false, persist: false })
     })
+    expect(secondCancelQueries).toHaveBeenCalledWith({ queryKey: currentUserQueryKey })
+    expect(firstCancelQueries).not.toHaveBeenCalled()
     expect(secondUpdate).toHaveBeenCalledWith(null)
     expect(firstUpdate).not.toHaveBeenCalledWith(null)
     view.unmount()
