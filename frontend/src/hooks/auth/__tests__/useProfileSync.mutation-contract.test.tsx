@@ -25,16 +25,21 @@ import {
   encryptData,
   getCachedEnvelopeHeader,
   areDeepEqual,
+  broadcastProfileEvent,
   fetchCurrentUser,
   isAscii,
   isProfileSyncBrowserRuntime,
   isCachedSnapshotObject,
   migrateProfileCache,
   persistUserToCacheAsync,
+  readProfileCachePresence,
   readCachedUserAsync,
+  resolveAuthLoading,
   resolveInitialInitializingState,
   resolveInitialUserState,
+  shouldBeginAutoFetch,
   shouldEvictDynamicProfileCacheKey,
+  shouldSkipAutoFetch,
   resolveSsrInitialInitializing,
   resolveSsrInitialUserState,
   verifyHmacAsync,
@@ -135,6 +140,139 @@ describe("useProfileSync mutation contracts", () => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
+  })
+
+  it.each([
+    [
+      "cold browser",
+      { userState: null, hasCache: false, initializing: false, attempted: false },
+      true,
+    ],
+    [
+      "cached browser",
+      { userState: null, hasCache: true, initializing: false, attempted: false },
+      false,
+    ],
+    [
+      "hydrated user",
+      { userState: testUser, hasCache: false, initializing: false, attempted: false },
+      false,
+    ],
+    [
+      "initializing",
+      { userState: null, hasCache: false, initializing: true, attempted: false },
+      false,
+    ],
+    [
+      "already attempted",
+      { userState: null, hasCache: false, initializing: false, attempted: true },
+      false,
+    ],
+  ] as const)(
+    "resolves whether a cold fetch should expose loading for %s",
+    (_label, state, expected) => {
+      expect(shouldBeginAutoFetch(state)).toBe(expected)
+    }
+  )
+
+  it.each([
+    ["attempted and settled", { attempted: true, initializing: false }, true],
+    ["attempted and loading", { attempted: true, initializing: true }, false],
+    ["not attempted", { attempted: false, initializing: false }, false],
+  ] as const)(
+    "resolves whether an attempted fetch should be skipped for %s",
+    (_label, state, expected) => {
+      expect(shouldSkipAutoFetch(state)).toBe(expected)
+    }
+  )
+
+  it.each([
+    [false, false, false],
+    [false, true, true],
+    [true, false, true],
+    [true, true, true],
+  ] as const)(
+    "combines bootstrap and auth-operation loading (%s, %s)",
+    (initializing, authOperation, expected) => {
+      expect(resolveAuthLoading(initializing, authOperation)).toBe(expected)
+    }
+  )
+
+  it("reads cache presence as a strict boolean and fails closed on storage errors", () => {
+    expect(readProfileCachePresence()).toBe(false)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "present")
+    expect(readProfileCachePresence()).toBe(true)
+
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "")
+    expect(readProfileCachePresence()).toBe(false)
+
+    localStorage.clear()
+    expect(readProfileCachePresence()).toBe(false)
+
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("private browsing")
+    })
+    try {
+      expect(readProfileCachePresence()).toBe(false)
+    } finally {
+      getItemSpy.mockRestore()
+    }
+
+    vi.stubGlobal("localStorage", undefined)
+    expect(readProfileCachePresence()).toBe(false)
+  })
+
+  it("does not broadcast profile events when the browser runtime is incomplete", () => {
+    const originalWindow = globalThis.window
+    const posts: unknown[] = []
+    class FakeBroadcastChannel {
+      postMessage(value: unknown) {
+        posts.push(value)
+      }
+      close() {}
+    }
+
+    try {
+      vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+      vi.stubGlobal("window", {
+        document: undefined,
+        location: undefined,
+        BroadcastChannel: FakeBroadcastChannel,
+      })
+      broadcastProfileEvent({ type: "mfa-cleared" })
+      expect(posts).toEqual([])
+
+      vi.stubGlobal("window", {
+        document: {},
+        location: {},
+        BroadcastChannel: FakeBroadcastChannel,
+      })
+      broadcastProfileEvent({ type: "mfa-cleared" })
+      expect(posts).toEqual([{ type: "mfa-cleared" }])
+
+      let constructed = 0
+      class MissingBroadcastChannel {
+        constructor() {
+          constructed += 1
+        }
+        postMessage() {}
+        close() {}
+      }
+      vi.stubGlobal("BroadcastChannel", MissingBroadcastChannel)
+      vi.stubGlobal(
+        "window",
+        new Proxy(
+          { document: {}, location: {} },
+          {
+            has: (_target, property) => property !== "BroadcastChannel",
+          }
+        )
+      )
+      broadcastProfileEvent({ type: "mfa-cleared" })
+      expect(constructed).toBe(0)
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
   })
 
   it.each([
@@ -563,7 +701,12 @@ describe("useProfileSync mutation contracts", () => {
       { lhci: false, isServer: true, ssrAuthHint: { isAuth: false, user: null }, userState: null },
       true,
     ],
-    ["hydrated user", { lhci: false, isServer: false, userState: buildLhciMockUser() }, false],
+    ["hydrated user", { lhci: false, isServer: false, userState: testUser }, false],
+    [
+      "synthetic LHCI user outside LHCI mode",
+      { lhci: false, isServer: false, userState: buildLhciMockUser() },
+      true,
+    ],
     ["cold browser", { lhci: false, isServer: false, userState: null }, true],
   ] as const)("resolves initial loading flag for %s", (_label, options, expected) => {
     expect(resolveInitialInitializingState(options)).toBe(expected)

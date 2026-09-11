@@ -64,6 +64,47 @@ export const isProfileSyncBrowserRuntime = (): boolean =>
   typeof window.document !== "undefined" &&
   typeof window.location !== "undefined"
 
+/**
+ * Read cache presence without allowing storage failures to escape the auth
+ * bootstrap.  The strict boolean return keeps the auto-fetch state machine
+ * deterministic in privacy-mode browsers where the storage accessor throws.
+ */
+export const readProfileCachePresence = (): boolean => {
+  try {
+    const storage = getLocalStorage()
+    return storage ? Boolean(storage.getItem(PROFILE_CACHE_STORAGE_KEY)) : false
+  } catch {
+    return false
+  }
+}
+
+export type AutoFetchState = {
+  userState: UserState
+  hasCache: boolean
+  initializing: boolean
+  attempted: boolean
+}
+
+/** Return whether the cold-start path should expose its loading state. */
+export const shouldBeginAutoFetch = ({
+  userState,
+  hasCache,
+  initializing,
+  attempted,
+}: AutoFetchState): boolean =>
+  userState === null && hasCache === false && initializing === false && attempted === false
+
+/** Return whether an already-attempted, settled fetch should be skipped. */
+export const shouldSkipAutoFetch = ({
+  attempted,
+  initializing,
+}: Pick<AutoFetchState, "attempted" | "initializing">): boolean =>
+  attempted === true && initializing === false
+
+/** Combine the initial bootstrap and explicit auth-operation loading flags. */
+export const resolveAuthLoading = (initializing: boolean, authOperation: boolean): boolean =>
+  initializing || authOperation
+
 // TD-14-07: Only non-PII fields may be stored here.
 // NEVER add: email, phone, role, permissions, address, pending_email.
 // Fields email and role were removed in TD-14-07 (2026-03-18).
@@ -101,13 +142,17 @@ type HandleUnauthorizedOptions = {
   persist?: boolean
 }
 
+const noBroadcastOptions = { broadcast: false } as const
+const noPersistenceOptions = { persist: false } as const
+const remoteUnauthorizedOptions = { broadcast: false, persist: false } as const
+
 /**
  * Broadcast a profile/auth event without capturing component state. Keeping
  * this at module scope gives callers a stable event primitive and avoids a
  * meaningless empty React dependency list that mutation testing cannot
  * distinguish from equivalent dependency values.
  */
-const broadcastProfileEvent = (message: ProfileBroadcastMessage): void => {
+export const broadcastProfileEvent = (message: ProfileBroadcastMessage): void => {
   if (!isProfileSyncBrowserRuntime()) return
   if (!("BroadcastChannel" in window)) return
   try {
@@ -893,6 +938,11 @@ const resolveInitialInitializingStateWithoutLhci = ({
   userState,
 }: InitializingStateWithoutLhciOptions): boolean => {
   if (isServer) return resolveSsrInitialInitializing(ssrAuthHint)
+  // A synthetic Lighthouse identity is intentionally not an authoritative
+  // profile snapshot. If the compile-time LHCI guard is removed or the runtime
+  // flag changes after the first render, bootstrap must expose loading rather
+  // than treating that audit-only user as settled application state.
+  if (userState?.id === "lhci-mock-user") return true
   if (userState !== null) return false
   return true
 }
@@ -939,8 +989,12 @@ export const useProfileSync = (
     // non-LHCI resolver remains the single SSR/hydration contract.
     if (import.meta.env.VITE_LHCI === "true") return false
     return resolveInitialInitializingStateWithoutLhci({
-      isServer: typeof window === "undefined",
-      ssrAuthHint,
+      // The user initializer above already resolved the SSR hint. Passing a
+      // stable non-server marker here makes the loading decision depend on the
+      // resolved user snapshot instead of evaluating the same environment
+      // boundary twice.
+      isServer: false,
+      ssrAuthHint: undefined,
       userState,
     })
   })
@@ -953,7 +1007,7 @@ export const useProfileSync = (
   // Closes W134 §Honesty #3.
   const autoFetchAttemptedRef = useRef(false)
   const initializingRef = useRef(initializing)
-  const mountedRef = useRef(true)
+  const mountedRef = useRef<boolean | undefined>(undefined)
 
   useEffect(() => {
     // React StrictMode replays effect setup after its development-only
@@ -963,7 +1017,7 @@ export const useProfileSync = (
     return () => {
       mountedRef.current = false
     }
-  }, [])
+  })
 
   useEffect(() => {
     const init = async () => {
@@ -1018,7 +1072,7 @@ export const useProfileSync = (
         userStateRef.current = normalized
         if (persist) {
           const key = sessionSigningKeyRef.current
-          persistUserToCacheAsync(normalized, key, () => mountedRef.current)
+          persistUserToCacheAsync(normalized, key, () => mountedRef.current === true)
         }
         queryClient.setQueryData<UserState>(currentUserQueryKey, normalized)
         return normalized
@@ -1089,7 +1143,7 @@ export const useProfileSync = (
       }
       cachedUserRef.current = null
     }
-  }, [queryClient])
+  })
 
   useEffect(() => {
     // The LHCI identity is synthetic and must not be cleared by the normal
@@ -1104,31 +1158,28 @@ export const useProfileSync = (
       const cached = await readCachedUserAsync(key)
       if (!cached) {
         // Cache was deleted or is invalid - clear user state
-        applyUserState(() => null, { persist: false })
+        applyUserState(null, noPersistenceOptions)
         queryClient.setQueryData<UserState>(currentUserQueryKey, null)
         return
       }
 
-      applyUserState(
-        (prev) => {
-          if (!prev) return cached
-          // If we have a full user object, don't overwrite it with a skeleton from cache
-          // Only update the fields that are actually in the cache snapshot.
-          return {
-            ...prev,
-            id: cached.id,
-            full_name: cached.full_name,
-            avatar_url: cached.avatar_url,
-            mfa_required: cached.mfa_required,
-            mfa_default_method: cached.mfa_default_method,
-            mfa_last_verified_at: cached.mfa_last_verified_at,
-            // `createOptimisticUser` normalizes this field to an array, so the
-            // fallback to the authoritative value was unreachable here.
-            totp_enrollments: cached.totp_enrollments,
-          }
-        },
-        { persist: false }
-      )
+      applyUserState((prev) => {
+        if (!prev) return cached
+        // If we have a full user object, don't overwrite it with a skeleton from cache
+        // Only update the fields that are actually in the cache snapshot.
+        return {
+          ...prev,
+          id: cached.id,
+          full_name: cached.full_name,
+          avatar_url: cached.avatar_url,
+          mfa_required: cached.mfa_required,
+          mfa_default_method: cached.mfa_default_method,
+          mfa_last_verified_at: cached.mfa_last_verified_at,
+          // `createOptimisticUser` normalizes this field to an array, so the
+          // fallback to the authoritative value was unreachable here.
+          totp_enrollments: cached.totp_enrollments,
+        }
+      }, noPersistenceOptions)
     }
 
     const onStorage = (event: StorageEvent) => {
@@ -1148,17 +1199,17 @@ export const useProfileSync = (
       }
 
       if (data.type === "unauthorized") {
-        handleUnauthorized({ broadcast: false, persist: false })
+        handleUnauthorized(remoteUnauthorizedOptions)
         return
       }
 
       if (data.type === "mfa-pending" && data.payload) {
-        updatePendingMfa(data.payload, { broadcast: false })
+        updatePendingMfa(data.payload, noBroadcastOptions)
         return
       }
 
       if (data.type === "mfa-cleared") {
-        updatePendingMfa(null, { broadcast: false })
+        updatePendingMfa(null, noBroadcastOptions)
       }
     }
 
@@ -1175,10 +1226,8 @@ export const useProfileSync = (
 
     return () => {
       window.removeEventListener("storage", onStorage)
-      if (channel) {
-        channel.removeEventListener("message", onBroadcastMessage as EventListener)
-        channel.close()
-      }
+      channel?.removeEventListener("message", onBroadcastMessage as EventListener)
+      channel?.close()
     }
   }, [applyUserState, handleUnauthorized, queryClient, sessionSigningKeyRef, updatePendingMfa])
 
@@ -1211,21 +1260,23 @@ export const useProfileSync = (
     queryClient.cancelQueries({ queryKey: currentUserQueryKey }).catch(() => undefined)
     // RZ-31-03: Safari private browsing throws SecurityError on localStorage access.
     // Every other localStorage call in this file is wrapped — this was a missed spot.
-    let hasCache = false
-    try {
-      hasCache = !!localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
-    } catch {
-      // Incognito/privacy mode — proceed without cache.
-    }
+    const hasCache = readProfileCachePresence()
     if (
-      userStateRef.current == null &&
-      !hasCache &&
-      !initializingRef.current &&
-      !autoFetchAttemptedRef.current
+      shouldBeginAutoFetch({
+        userState: userStateRef.current,
+        hasCache,
+        initializing: initializingRef.current,
+        attempted: autoFetchAttemptedRef.current,
+      })
     ) {
       autoFetchAttemptedRef.current = true
       setInitializing(true)
-    } else if (autoFetchAttemptedRef.current && !initializingRef.current) {
+    } else if (
+      shouldSkipAutoFetch({
+        attempted: autoFetchAttemptedRef.current,
+        initializing: initializingRef.current,
+      })
+    ) {
       // Already tried or have data, nothing to do
       return
     }
@@ -1310,7 +1361,7 @@ export const useProfileSync = (
   useEffect(() => {
     useAuthStore.setState({
       user: userState,
-      loading: initializing || authOperation,
+      loading: resolveAuthLoading(initializing, authOperation),
       pendingMfa: pendingMfaState,
       authOperation,
       setUser,
@@ -1332,7 +1383,7 @@ export const useProfileSync = (
   return {
     user: userState,
     setUser,
-    loading: initializing || authOperation,
+    loading: resolveAuthLoading(initializing, authOperation),
     pendingMfa: pendingMfaState,
     updatePendingMfa,
     handleUnauthorized,

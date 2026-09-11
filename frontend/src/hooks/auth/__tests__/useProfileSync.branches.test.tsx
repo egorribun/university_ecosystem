@@ -299,6 +299,38 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
   })
 
+  it("settles loading after an async encrypted-cache restore while the request is pending", async () => {
+    const encrypted = await encryptData(
+      {
+        id: "async-cache-user",
+        full_name: "Async Cache User",
+        group_id: null,
+        avatar_url: null,
+        cover_url: null,
+        is_active: true,
+        spotify_connected: false,
+      } as unknown as CachedUserSnapshot,
+      mockSigningKey
+    )
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: encrypted!,
+    }
+    const signature = signSync(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
+
+    const pendingQuery = new Promise<never>(() => undefined)
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(pendingQuery as never)
+    const view = renderProfileSync({ signingKey: mockSigningKey, queryClient })
+
+    await waitFor(() => expect(view.result.current.user?.id).toBe("async-cache-user"))
+    expect(view.result.current.loading).toBe(false)
+    view.unmount()
+  })
+
   it("starts with an optimistic user for a legacy v3 object envelope", async () => {
     const snapshot = {
       id: testUser.id,
@@ -381,6 +413,80 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
     expect(result.current.user).toBeNull()
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
     await waitFor(() => expect(result.current.loading).toBe(false))
+  })
+
+  it("does not clear a valid cache when async initialization has no signing key", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: { id: "no-key-cache-user" } as unknown as CachedUserSnapshot,
+    }
+    const signature = signSync(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
+
+    const pendingQuery = new Promise<never>(() => undefined)
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(pendingQuery as never)
+    const view = renderProfileSync({ signingKey: null, queryClient })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).not.toBeNull()
+    view.unmount()
+  })
+
+  it("reruns cache bootstrap when the session signing-key ref changes", async () => {
+    const firstKey = mockSigningKey
+    const secondKey = `${mockSigningKey.slice(0, -1)}e`
+    const makeEnvelope = (id: string, key: string) => {
+      const payload: CacheSignaturePayload = {
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: Date.now() + 60_000,
+        data: {
+          id,
+          full_name: id,
+          group_id: null,
+          avatar_url: null,
+          cover_url: null,
+          is_active: true,
+          spotify_connected: false,
+        } as unknown as CachedUserSnapshot,
+      }
+      return JSON.stringify({ ...payload, signature: signSync(payload, key) })
+    }
+
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, makeEnvelope("first-key-user", firstKey))
+    markCurrentCacheVersion()
+
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(
+      new Promise<never>(() => undefined) as never
+    )
+    const firstSigningKeyRef = { current: firstKey } as MutableRefObject<string | null>
+    const secondSigningKeyRef = { current: secondKey } as MutableRefObject<string | null>
+    const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+    const view = renderHook(
+      ({ signingKeyRef }: { signingKeyRef: MutableRefObject<string | null> }) =>
+        useProfileSync(
+          vi.fn(),
+          signingKeyRef,
+          promiseRef,
+          vi.fn(async () => signingKeyRef.current)
+        ),
+      { initialProps: { signingKeyRef: firstSigningKeyRef }, wrapper }
+    )
+
+    await waitFor(() => expect(view.result.current.user?.id).toBe("first-key-user"))
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, makeEnvelope("second-key-user", secondKey))
+    markCurrentCacheVersion()
+    view.rerender({ signingKeyRef: secondSigningKeyRef })
+    await waitFor(() => expect(view.result.current.user?.id).toBe("second-key-user"))
+    view.unmount()
   })
 
   it("starts with null user for a version-mismatched envelope", async () => {
@@ -942,6 +1048,16 @@ describe("useProfileSync — auto-fetch effect", () => {
       await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
       expect(ensure).toHaveBeenCalled()
     })
+    expect(
+      getStrictConsoleDiagnostics().some(
+        (entry) =>
+          entry.method === "warn" &&
+          entry.args[0] === "Failed to obtain session signing key" &&
+          entry.args[1] &&
+          typeof entry.args[1] === "object" &&
+          "error" in entry.args[1]
+      )
+    ).toBe(true)
   })
 
   it("suppresses signing-key diagnostics outside development", async () => {
@@ -1047,6 +1163,26 @@ describe("useProfileSync — handleUnauthorized / clearProfile / setUser", () =>
 
     expect(result.current.user?.full_name).toBe("Renamed")
     expect((queryClient.getQueryData(currentUserQueryKey) as any)?.full_name).toBe("Renamed")
+  })
+
+  it("persists an explicit setUser update when persistence is enabled", async () => {
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(
+      new Promise<never>(() => undefined) as never
+    )
+    const { result, unmount } = renderProfileSync({ queryClient, signingKey: mockSigningKey })
+    await waitFor(() => expect(result.current.loading).toBe(true))
+
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
+    await act(async () => {
+      result.current.setUser({ ...testUser, full_name: "Persisted update" } as any)
+    })
+
+    await waitFor(() =>
+      expect(setItemSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY, expect.any(String))
+    )
+    expect(result.current.user?.full_name).toBe("Persisted update")
+    unmount()
   })
 
   it("swallows localStorage failures while persisting a user snapshot", async () => {
@@ -1173,6 +1309,26 @@ describe("useProfileSync — handleUnauthorized / clearProfile / setUser", () =>
 // ===========================================================================
 
 describe("useProfileSync — cross-tab sync effect", () => {
+  it("does not subscribe to cross-tab sync for the synthetic LHCI identity", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    const construct = vi.fn()
+    class FakeBroadcastChannel {
+      constructor() {
+        construct()
+      }
+      addEventListener() {}
+      removeEventListener() {}
+      postMessage() {}
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+
+    const view = renderProfileSync({ ensureSessionSigningKey: vi.fn(async () => mockSigningKey) })
+    await waitFor(() => expect(view.result.current.user?.id).toBe("lhci-mock-user"))
+    expect(construct).not.toHaveBeenCalled()
+    view.unmount()
+  })
+
   it("a storage event for a deleted cache clears the user state", async () => {
     vi.spyOn(api, "get").mockImplementation((url) => {
       if (url === "/users/me") return Promise.resolve({ data: testUser } as any)
@@ -1197,6 +1353,31 @@ describe("useProfileSync — cross-tab sync effect", () => {
     })
 
     await waitFor(() => expect(result.current.user).toBeNull())
+  })
+
+  it("does not persist while processing a deleted-cache storage event", async () => {
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(
+      new Promise<never>(() => undefined) as never
+    )
+    const { result, unmount } = renderProfileSync({ queryClient, signingKey: mockSigningKey })
+    await waitFor(() => expect(result.current.loading).toBe(true))
+
+    const removeItemSpy = vi.spyOn(Storage.prototype, "removeItem")
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          newValue: null,
+          storageArea: localStorage,
+        })
+      )
+      await Promise.resolve()
+    })
+
+    expect(result.current.user).toBeNull()
+    expect(removeItemSpy).not.toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
+    unmount()
   })
 
   it("ignores storage events for unrelated keys", async () => {
@@ -1230,6 +1411,20 @@ describe("useProfileSync — cross-tab sync effect", () => {
 
   it("a BroadcastChannel 'unauthorized' message clears the user state", async () => {
     const updateKey = vi.fn((..._a: unknown[]) => {})
+    let inbound: { emit: (data: unknown) => void } | undefined
+    class DeterministicBroadcastChannel {
+      private listener?: (event: MessageEvent) => void
+      constructor() {
+        inbound = { emit: (data) => this.listener?.({ data } as MessageEvent) }
+      }
+      addEventListener(_type: string, listener: EventListener) {
+        this.listener = listener as (event: MessageEvent) => void
+      }
+      removeEventListener() {}
+      postMessage() {}
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", DeterministicBroadcastChannel)
     vi.spyOn(api, "get").mockImplementation((url) => {
       if (url === "/users/me") return Promise.resolve({ data: testUser } as any)
       throw new Error(`Unexpected url: ${url}`)
@@ -1242,20 +1437,31 @@ describe("useProfileSync — cross-tab sync effect", () => {
 
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
 
-    // Post an 'unauthorized' message from a sibling tab → onBroadcastMessage
-    // → handleUnauthorized({ broadcast:false, persist:false }).
+    // Deliver an 'unauthorized' message from a sibling tab without looping it
+    // through the same channel. The handler must stay non-broadcasting.
     await act(async () => {
-      const channel = new BroadcastChannel("ecosystem.profile.sync")
-      channel.postMessage({ type: "unauthorized" })
-      channel.close()
-      // Let the message dispatch microtask settle.
-      await new Promise((r) => setTimeout(r, 0))
+      inbound?.emit({ type: "unauthorized" })
+      await Promise.resolve()
     })
 
     await waitFor(() => expect(result.current.user).toBeNull())
   })
 
   it("a BroadcastChannel 'mfa-pending' message surfaces the pending challenge", async () => {
+    let inbound: { emit: (data: unknown) => void } | undefined
+    class DeterministicBroadcastChannel {
+      private listener?: (event: MessageEvent) => void
+      constructor() {
+        inbound = { emit: (data) => this.listener?.({ data } as MessageEvent) }
+      }
+      addEventListener(_type: string, listener: EventListener) {
+        this.listener = listener as (event: MessageEvent) => void
+      }
+      removeEventListener() {}
+      postMessage() {}
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", DeterministicBroadcastChannel)
     vi.spyOn(api, "get").mockImplementation((url) => {
       if (url === "/users/me") return Promise.resolve({ data: testUser } as any)
       throw new Error(`Unexpected url: ${url}`)
@@ -1267,16 +1473,28 @@ describe("useProfileSync — cross-tab sync effect", () => {
 
     const payload = { ticket: "broadcast-ticket", methods: ["totp"] } as any
     await act(async () => {
-      const channel = new BroadcastChannel("ecosystem.profile.sync")
-      channel.postMessage({ type: "mfa-pending", payload })
-      channel.close()
-      await new Promise((r) => setTimeout(r, 0))
+      inbound?.emit({ type: "mfa-pending", payload })
+      await Promise.resolve()
     })
 
     await waitFor(() => expect(result.current.pendingMfa).toEqual(payload))
   })
 
   it("a BroadcastChannel 'mfa-cleared' message clears the pending challenge", async () => {
+    let inbound: { emit: (data: unknown) => void } | undefined
+    class DeterministicBroadcastChannel {
+      private listener?: (event: MessageEvent) => void
+      constructor() {
+        inbound = { emit: (data) => this.listener?.({ data } as MessageEvent) }
+      }
+      addEventListener(_type: string, listener: EventListener) {
+        this.listener = listener as (event: MessageEvent) => void
+      }
+      removeEventListener() {}
+      postMessage() {}
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", DeterministicBroadcastChannel)
     vi.spyOn(api, "get").mockImplementation((url) => {
       if (url === "/users/me") return Promise.resolve({ data: testUser } as any)
       throw new Error(`Unexpected url: ${url}`)
@@ -1295,13 +1513,141 @@ describe("useProfileSync — cross-tab sync effect", () => {
 
     // Then a sibling tab clears it.
     await act(async () => {
-      const channel = new BroadcastChannel("ecosystem.profile.sync")
-      channel.postMessage({ type: "mfa-cleared" })
-      channel.close()
-      await new Promise((r) => setTimeout(r, 0))
+      inbound?.emit({ type: "mfa-cleared" })
+      await Promise.resolve()
     })
 
     await waitFor(() => expect(result.current.pendingMfa).toBeNull())
+  })
+
+  it("does not echo remote profile messages back to the sibling channel", async () => {
+    const channels: Array<{
+      posts: unknown[]
+      listener?: (event: MessageEvent) => void
+      emit: (data: unknown) => void
+    }> = []
+    class FakeBroadcastChannel {
+      readonly posts: unknown[] = []
+      private listener?: (event: MessageEvent) => void
+      constructor() {
+        channels.push({
+          posts: this.posts,
+          get listener() {
+            return undefined
+          },
+          emit: (data) => this.listener?.({ data } as MessageEvent),
+        })
+      }
+      addEventListener(_type: string, listener: EventListener) {
+        this.listener = listener as (event: MessageEvent) => void
+      }
+      removeEventListener() {}
+      postMessage(data: unknown) {
+        this.posts.push(data)
+      }
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+    vi.spyOn(api, "get").mockReturnValue(new Promise<never>(() => undefined) as never)
+
+    const view = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(channels).toHaveLength(1))
+    await act(async () => {
+      channels[0]!.emit({ type: "mfa-pending", payload: { ticket: "remote", methods: [] } })
+      await Promise.resolve()
+    })
+    expect(view.result.current.pendingMfa).toEqual({ ticket: "remote", methods: [] })
+    expect(channels[0]!.posts).toEqual([])
+    view.unmount()
+  })
+
+  it("does not broadcast local pending-MFA updates when broadcast is disabled", async () => {
+    const channels: Array<{ posts: unknown[] }> = []
+    class FakeBroadcastChannel {
+      readonly posts: unknown[] = []
+      constructor() {
+        channels.push(this)
+      }
+      addEventListener() {}
+      removeEventListener() {}
+      postMessage(data: unknown) {
+        this.posts.push(data)
+      }
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+    vi.spyOn(api, "get").mockReturnValue(new Promise<never>(() => undefined) as never)
+    const view = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(channels).toHaveLength(1))
+
+    await act(async () => {
+      view.result.current.updatePendingMfa({ ticket: "local", methods: [] } as any, {
+        broadcast: false,
+      })
+      await Promise.resolve()
+    })
+    expect(channels[0]!.posts).toEqual([])
+
+    await act(async () => {
+      view.result.current.updatePendingMfa({ ticket: "local", methods: [] } as any)
+      await Promise.resolve()
+    })
+    expect(channels.at(-1)?.posts).toEqual([
+      { type: "mfa-pending", payload: { ticket: "local", methods: [] } },
+    ])
+    view.unmount()
+  })
+
+  it("handles a remote unauthorized event without rebroadcasting or persisting", async () => {
+    const channels: Array<{
+      posts: unknown[]
+      listener?: (event: MessageEvent) => void
+      emit: (data: unknown) => void
+    }> = []
+    class FakeBroadcastChannel {
+      readonly posts: unknown[] = []
+      private listener?: (event: MessageEvent) => void
+      constructor() {
+        channels.push({
+          posts: this.posts,
+          emit: (data) => this.listener?.({ data } as MessageEvent),
+        })
+      }
+      addEventListener(_type: string, listener: EventListener) {
+        this.listener = listener as (event: MessageEvent) => void
+      }
+      removeEventListener() {}
+      postMessage(data: unknown) {
+        this.posts.push(data)
+      }
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+    vi.spyOn(api, "get").mockReturnValue(new Promise<never>(() => undefined) as never)
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem")
+    const view = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(channels).toHaveLength(1))
+    removeItem.mockClear()
+
+    await act(async () => {
+      channels[0]!.emit({ type: "unauthorized" })
+      await Promise.resolve()
+    })
+    expect(channels[0]!.posts).toEqual([])
+    expect(removeItem).not.toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
+    expect(view.result.current.user).toBeNull()
+    view.unmount()
+  })
+
+  it("removes the storage listener and closes the channel on unmount", async () => {
+    const removeListener = vi.spyOn(window, "removeEventListener")
+    const close = vi.spyOn(BroadcastChannel.prototype, "close")
+    vi.spyOn(api, "get").mockReturnValue(new Promise<never>(() => undefined) as never)
+    const view = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(view.result.current.loading).toBe(true))
+    view.unmount()
+    expect(removeListener).toHaveBeenCalledWith("storage", expect.any(Function))
+    expect(close).toHaveBeenCalled()
   })
 
   it("applies a valid versioned cache snapshot from a storage event", async () => {
@@ -1310,8 +1656,10 @@ describe("useProfileSync — cross-tab sync effect", () => {
       throw new Error(`Unexpected url: ${url}`)
     })
 
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
     const { result, unmount } = renderProfileSync({ signingKey: mockSigningKey })
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).not.toBeNull())
 
     const snapshot = {
       id: "storage-user",
@@ -1330,6 +1678,7 @@ describe("useProfileSync — cross-tab sync effect", () => {
     const signature = signSync(payload, mockSigningKey)
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
     markCurrentCacheVersion()
+    setItemSpy.mockClear()
 
     act(() => {
       window.dispatchEvent(
@@ -1343,6 +1692,10 @@ describe("useProfileSync — cross-tab sync effect", () => {
 
     await waitFor(() => expect(result.current.user?.id).toBe("storage-user"))
     expect(result.current.user?.full_name).toBe("Storage User")
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(setItemSpy).not.toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY, expect.any(String))
     unmount()
   })
 
@@ -1604,6 +1957,26 @@ describe("useProfileSync — cross-tab sync effect", () => {
     // Malformed messages are ignored → user untouched.
     expect(result.current.user?.id).toBe(testUser.id)
   })
+
+  it("does not clear a pending challenge for an unknown broadcast type", async () => {
+    vi.spyOn(api, "get").mockReturnValue(new Promise<never>(() => undefined) as never)
+    const { result, unmount } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(result.current.loading).toBe(true))
+    const pending = { ticket: "keep-me", methods: ["totp"] } as any
+    await act(async () => {
+      result.current.updatePendingMfa(pending, { broadcast: false })
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      const channel = new BroadcastChannel("ecosystem.profile.sync")
+      channel.postMessage({ type: "unknown" })
+      channel.close()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(result.current.pendingMfa).toEqual(pending)
+    unmount()
+  })
 })
 
 // ===========================================================================
@@ -1637,6 +2010,98 @@ describe("useProfileSync — invalid cross-tab cache data", () => {
     })
 
     await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+    view.unmount()
+  })
+})
+
+describe("useProfileSync — dependency freshness contracts", () => {
+  it("uses the latest query client and session-key callback after rerender", async () => {
+    let activeQueryClient = createQueryClient()
+    const firstQueryClient = activeQueryClient
+    const secondQueryClient = createQueryClient()
+    const pendingFirst = new Promise<never>(() => undefined)
+    const pendingSecond = new Promise<never>(() => undefined)
+    vi.spyOn(firstQueryClient, "fetchQuery").mockReturnValue(pendingFirst as never)
+    vi.spyOn(secondQueryClient, "fetchQuery").mockReturnValue(pendingSecond as never)
+
+    const firstUpdate = vi.fn()
+    const secondUpdate = vi.fn()
+    const signingKeyRef = { current: mockSigningKey } as MutableRefObject<string | null>
+    const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+    const ensure = vi.fn(async () => mockSigningKey)
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={activeQueryClient}>{children}</QueryClientProvider>
+    )
+    const view = renderHook(
+      ({ update }: { update: (key: string | null) => void }) =>
+        useProfileSync(update, signingKeyRef, promiseRef, ensure),
+      { initialProps: { update: firstUpdate }, wrapper }
+    )
+
+    await waitFor(() => expect(firstQueryClient.fetchQuery).toHaveBeenCalled())
+    activeQueryClient = secondQueryClient
+    view.rerender({ update: secondUpdate })
+    await act(async () => {
+      view.result.current.setUser({ ...testUser, full_name: "Latest client" } as any)
+      await Promise.resolve()
+    })
+    expect(secondQueryClient.getQueryData(currentUserQueryKey)).toMatchObject({
+      full_name: "Latest client",
+    })
+    expect(firstQueryClient.getQueryData(currentUserQueryKey)).toBeUndefined()
+
+    await act(async () => {
+      view.result.current.handleUnauthorized({ broadcast: false, persist: false })
+    })
+    expect(secondUpdate).toHaveBeenCalledWith(null)
+    expect(firstUpdate).not.toHaveBeenCalledWith(null)
+    view.unmount()
+  })
+
+  it("resubscribes cross-tab handlers when the session callback changes", async () => {
+    const channels: Array<{
+      listener?: (event: MessageEvent) => void
+      emit: (data: unknown) => void
+    }> = []
+    class FakeBroadcastChannel {
+      private listener?: (event: MessageEvent) => void
+      constructor() {
+        channels.push({ emit: (data) => this.listener?.({ data } as MessageEvent) })
+      }
+      addEventListener(_type: string, listener: EventListener) {
+        this.listener = listener as (event: MessageEvent) => void
+      }
+      removeEventListener() {}
+      postMessage() {}
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+    const firstUpdate = vi.fn()
+    const secondUpdate = vi.fn()
+    const signingKeyRef = { current: mockSigningKey } as MutableRefObject<string | null>
+    const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(
+      new Promise<never>(() => undefined) as never
+    )
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+    const view = renderHook(
+      ({ update }: { update: (key: string | null) => void }) =>
+        useProfileSync(update, signingKeyRef, promiseRef, async () => mockSigningKey),
+      { initialProps: { update: firstUpdate }, wrapper }
+    )
+    await waitFor(() => expect(channels.length).toBeGreaterThanOrEqual(1))
+    view.rerender({ update: secondUpdate })
+    await waitFor(() => expect(channels.length).toBeGreaterThanOrEqual(2))
+
+    await act(async () => {
+      channels.at(-1)?.emit({ type: "unauthorized" })
+      await Promise.resolve()
+    })
+    expect(secondUpdate).toHaveBeenCalledWith(null)
+    expect(firstUpdate).not.toHaveBeenCalledWith(null)
     view.unmount()
   })
 })
