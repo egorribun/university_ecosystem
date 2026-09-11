@@ -1,6 +1,7 @@
 import uuid
 from typing import Any
 
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
     Body,
@@ -15,8 +16,8 @@ from fastapi import (
 import app.models as models
 from app.api.deps import (
     get_current_user,
+    get_current_user_from_dishka,
     get_read_story_service,
-    get_story_service,
 )
 from app.api.deps.etag import cached_endpoint
 from app.api.utils import save_upload
@@ -81,11 +82,12 @@ async def list_stories(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_stories))
     ],
 )
+@inject
 async def create_story(
     data: schemas.StoryCreate,
     request: Request,
-    service: StoryService = Depends(get_story_service),
-    user: models.User = Depends(get_current_user),
+    service: FromDishka[StoryService],
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.StoryOut:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
@@ -103,12 +105,13 @@ async def create_story(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_stories))
     ],
 )
+@inject
 async def update_story(
     story_id: uuid.UUID,
     request: Request,
+    service: FromDishka[StoryService],
     data: schemas.StoryUpdate | None = Body(default=None),
-    service: StoryService = Depends(get_story_service),
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.StoryOut:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
@@ -130,11 +133,12 @@ async def update_story(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_stories))
     ],
 )
+@inject
 async def delete_story(
     story_id: uuid.UUID,
     request: Request,
-    service: StoryService = Depends(get_story_service),
-    user: models.User = Depends(get_current_user),
+    service: FromDishka[StoryService],
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
