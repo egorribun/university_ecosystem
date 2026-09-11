@@ -100,11 +100,14 @@ const writeEncryptedEnvelope = async (
 
 const renderProfile = (
   key: string | null = signingKey,
-  queryOutcome: { value?: unknown; error?: unknown } = {}
+  queryOutcome: { value?: unknown; error?: unknown; promise?: Promise<unknown> } = {},
+  providedQueryClient?: ReturnType<typeof createQueryClient>
 ) => {
-  const queryClient = createQueryClient()
+  const queryClient = providedQueryClient ?? createQueryClient()
   const fetchQuery = vi.spyOn(queryClient, "fetchQuery")
-  if ("error" in queryOutcome) {
+  if ("promise" in queryOutcome) {
+    fetchQuery.mockReturnValue(queryOutcome.promise as never)
+  } else if ("error" in queryOutcome) {
     fetchQuery.mockRejectedValue(queryOutcome.error)
   } else if ("value" in queryOutcome) {
     fetchQuery.mockResolvedValue(queryOutcome.value as never)
@@ -140,6 +143,35 @@ describe("useProfileSync mutation contracts", () => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
+  })
+
+  it("refreshes the user ref after an asynchronous cache restore", async () => {
+    await writeEncryptedEnvelope(snapshot("ref-restored-user"))
+
+    let resolveFetch!: (value: unknown) => void
+    const pendingFetch = new Promise<unknown>((resolve) => {
+      resolveFetch = resolve
+    })
+    const queryClient = createQueryClient()
+    const view = renderProfile(signingKey, { promise: pendingFetch }, queryClient)
+    await waitFor(() => expect(view.result.current.user?.id).toBe("ref-restored-user"))
+    const restoredUser = view.result.current.user
+    expect(restoredUser).not.toBeNull()
+
+    const setQueryData = vi.spyOn(queryClient, "setQueryData")
+    setQueryData.mockClear()
+    await act(async () => {
+      resolveFetch(restoredUser)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(view.result.current.loading).toBe(false))
+
+    // A stale userStateRef would call setUser again for this equal result and
+    // therefore write the query cache. The ref-sync effect must prevent that
+    // redundant update after the asynchronous cache restore.
+    expect(setQueryData).not.toHaveBeenCalled()
+    view.unmount()
   })
 
   it.each([

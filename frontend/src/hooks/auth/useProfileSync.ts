@@ -58,6 +58,12 @@ const PROFILE_CACHE_HEADER = "X-Profile-Cache-Envelope"
 
 export const currentUserQueryKey = ["users", "me"] as const
 
+/** Return whether a storage event can invalidate the profile cache. */
+/** Keep the local unauthorized broadcast policy explicit and directly testable. */
+export function shouldBroadcastProfileUnauthorized(broadcast: boolean): boolean {
+  return broadcast
+}
+
 /** Return whether profile-cache effects are running in a browser runtime. */
 export const isProfileSyncBrowserRuntime = (): boolean =>
   typeof window !== "undefined" &&
@@ -142,6 +148,10 @@ type HandleUnauthorizedOptions = {
   persist?: boolean
 }
 
+type ProfileBroadcastOptions = {
+  enabled?: boolean
+}
+
 const noBroadcastOptions = { broadcast: false } as const
 const noPersistenceOptions = { persist: false } as const
 const remoteUnauthorizedOptions = { broadcast: false, persist: false } as const
@@ -152,7 +162,11 @@ const remoteUnauthorizedOptions = { broadcast: false, persist: false } as const
  * meaningless empty React dependency list that mutation testing cannot
  * distinguish from equivalent dependency values.
  */
-export const broadcastProfileEvent = (message: ProfileBroadcastMessage): void => {
+export const broadcastProfileEvent = (
+  message: ProfileBroadcastMessage,
+  options: ProfileBroadcastOptions = {}
+): void => {
+  if (options.enabled === false) return
   if (!isProfileSyncBrowserRuntime()) return
   if (!("BroadcastChannel" in window)) return
   try {
@@ -1124,9 +1138,10 @@ export const useProfileSync = (
       updatePendingMfa(null, { broadcast })
       setAuthOperation(false)
       setInitializing(false)
-      if (broadcast) {
-        broadcastProfileEvent({ type: "unauthorized" })
-      }
+      broadcastProfileEvent(
+        { type: "unauthorized" },
+        { enabled: shouldBroadcastProfileUnauthorized(broadcast) }
+      )
     },
     [clearProfile, updatePendingMfa, updateSessionSigningKey, sessionSigningKeyPromiseRef]
   )
@@ -1183,8 +1198,13 @@ export const useProfileSync = (
     }
 
     const onStorage = (event: StorageEvent) => {
-      if (event.key === PROFILE_CACHE_STORAGE_KEY || event.key === PROFILE_CACHE_VERSION_KEY) {
-        syncFromCache()
+      switch (event.key) {
+        case PROFILE_CACHE_STORAGE_KEY:
+        case PROFILE_CACHE_VERSION_KEY:
+          syncFromCache()
+          break
+        default:
+          break
       }
     }
 

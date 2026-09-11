@@ -18,10 +18,13 @@ import {
 import {
   PROFILE_CACHE_SCHEMA_VERSION,
   PROFILE_CACHE_STORAGE_KEY,
+  broadcastProfileEvent,
   currentUserQueryKey,
   encryptData,
   fetchCurrentUser,
+  resolveInitialInitializingState,
   signPayload,
+  shouldBroadcastProfileUnauthorized,
   useProfileSync,
   type CacheSignaturePayload,
   type CachedUserSnapshot,
@@ -143,6 +146,269 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
+})
+
+// ---------------------------------------------------------------------------
+// Early, focused mutation contracts.  These deliberately sit before the
+// broad hook matrix so a focused mutation cannot spend the whole related-test
+// budget before reaching the exact behavioral assertion that distinguishes it.
+// ---------------------------------------------------------------------------
+
+describe("useProfileSync focused mutation survivor contracts", () => {
+  it("treats a user object with an absent id as a non-LHCI snapshot", () => {
+    expect(
+      resolveInitialInitializingState({
+        lhci: false,
+        isServer: false,
+        userState: { id: undefined } as never,
+      })
+    ).toBe(false)
+  })
+
+  it("recognizes an LHCI-prefixed user id as an initializing snapshot", () => {
+    expect(
+      resolveInitialInitializingState({
+        lhci: false,
+        isServer: false,
+        userState: { id: "lhci-synthetic-user" } as never,
+      })
+    ).toBe(true)
+  })
+
+  it("rejects ordinary ids when evaluating the LHCI prefix", () => {
+    expect(
+      resolveInitialInitializingState({
+        lhci: false,
+        isServer: false,
+        userState: { id: "ordinary-user" } as never,
+      })
+    ).toBe(false)
+  })
+
+  it.each([
+    [true, true],
+    [false, false],
+  ] as const)("preserves the unauthorized broadcast policy for broadcast=%s", (value, expected) => {
+    expect(shouldBroadcastProfileUnauthorized(value)).toBe(expected)
+  })
+
+  it("honors an explicitly disabled profile broadcast before opening a channel", () => {
+    const channels: unknown[] = []
+    class FakeBroadcastChannel {
+      constructor() {
+        channels.push(this)
+      }
+      postMessage() {}
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+
+    broadcastProfileEvent({ type: "unauthorized" }, { enabled: false })
+
+    expect(channels).toEqual([])
+  })
+
+  it("does not run cache migration when the browser runtime is incomplete", async () => {
+    const originalWindow = globalThis.window
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    localStorage.setItem("ecosystem.profile.cache.v1", "legacy-cache")
+    vi.stubGlobal("window", { document: globalThis.document, location: undefined })
+
+    try {
+      const view = renderProfileSync({ signingKey: null, queryClient })
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(localStorage.getItem("ecosystem.profile.cache.v1")).toBe("legacy-cache")
+      view.unmount()
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
+  it("passes the current-user query key when clearing a profile", async () => {
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const view = renderProfileSync({ queryClient, signingKey: mockSigningKey })
+    await waitFor(() => expect(view.result.current.loading).toBe(true))
+
+    const cancelQueries = vi.spyOn(queryClient, "cancelQueries")
+    cancelQueries.mockClear()
+    await act(async () => {
+      view.result.current.handleUnauthorized({ broadcast: false, persist: false })
+      await Promise.resolve()
+    })
+
+    expect(cancelQueries).toHaveBeenCalledTimes(1)
+    expect(cancelQueries.mock.calls[0]?.[0]).toEqual({ queryKey: currentUserQueryKey })
+    view.unmount()
+  })
+
+  it("does not broadcast a pending-MFA update when broadcasting is disabled", async () => {
+    const channels: Array<{ posts: unknown[] }> = []
+    class FakeBroadcastChannel {
+      readonly posts: unknown[] = []
+      constructor() {
+        channels.push(this)
+      }
+      addEventListener() {}
+      removeEventListener() {}
+      postMessage(data: unknown) {
+        this.posts.push(data)
+      }
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const view = renderProfileSync({ queryClient, signingKey: mockSigningKey })
+    await waitFor(() => expect(channels).toHaveLength(1))
+
+    await act(async () => {
+      view.result.current.updatePendingMfa({ ticket: "no-broadcast", methods: [] } as never, {
+        broadcast: false,
+      })
+      await Promise.resolve()
+    })
+
+    expect(channels).toHaveLength(1)
+    expect(channels[0]?.posts).toEqual([])
+    view.unmount()
+  })
+
+  it("does not broadcast an explicit local unauthorized transition", async () => {
+    const channels: Array<{ posts: unknown[] }> = []
+    class FakeBroadcastChannel {
+      readonly posts: unknown[] = []
+      constructor() {
+        channels.push(this)
+      }
+      addEventListener() {}
+      removeEventListener() {}
+      postMessage(data: unknown) {
+        this.posts.push(data)
+      }
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const view = renderProfileSync({ queryClient, signingKey: mockSigningKey })
+    await waitFor(() => expect(channels).toHaveLength(1))
+
+    await act(async () => {
+      view.result.current.handleUnauthorized({ broadcast: false, persist: false })
+      await Promise.resolve()
+    })
+
+    expect(channels).toHaveLength(1)
+    expect(channels[0]?.posts).toEqual([])
+    view.unmount()
+  })
+
+  it("broadcasts the unauthorized event for the default local transition", async () => {
+    const channels: Array<{ posts: unknown[] }> = []
+    class FakeBroadcastChannel {
+      readonly posts: unknown[] = []
+      constructor() {
+        channels.push(this)
+      }
+      addEventListener() {}
+      removeEventListener() {}
+      postMessage(data: unknown) {
+        this.posts.push(data)
+      }
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const view = renderProfileSync({ queryClient, signingKey: mockSigningKey })
+    await waitFor(() => expect(channels).toHaveLength(1))
+
+    await act(async () => {
+      view.result.current.handleUnauthorized({ persist: false })
+      await Promise.resolve()
+    })
+
+    expect(channels.flatMap((channel) => channel.posts)).toEqual([{ type: "unauthorized" }])
+    view.unmount()
+  })
+
+  it("subscribes and unsubscribes the profile channel with the message event", async () => {
+    const addEventListener = vi.fn()
+    const removeEventListener = vi.fn()
+    class FakeBroadcastChannel {
+      constructor() {}
+      addEventListener = addEventListener
+      removeEventListener = removeEventListener
+      postMessage() {}
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const view = renderProfileSync({ queryClient, signingKey: mockSigningKey })
+    await waitFor(() => expect(addEventListener).toHaveBeenCalled())
+    const listener = addEventListener.mock.calls[0]?.[1]
+    expect(addEventListener).toHaveBeenCalledWith("message", expect.any(Function))
+
+    view.unmount()
+    expect(removeEventListener).toHaveBeenCalledWith("message", listener)
+  })
+
+  it("reacts to a cache-version storage event as well as a cache payload event", async () => {
+    const firstPayload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: {
+        id: "version-event-first",
+        full_name: "First version snapshot",
+        group_id: null,
+        avatar_url: null,
+        cover_url: null,
+        is_active: true,
+        spotify_connected: false,
+      } as unknown as CachedUserSnapshot,
+    }
+    const secondPayload: CacheSignaturePayload = {
+      ...firstPayload,
+      data: {
+        ...(firstPayload.data as CachedUserSnapshot),
+        id: "version-event-second",
+        full_name: "Second version snapshot",
+      },
+    }
+    localStorage.setItem(
+      PROFILE_CACHE_STORAGE_KEY,
+      JSON.stringify({ ...firstPayload, signature: signSync(firstPayload, mockSigningKey) })
+    )
+    markCurrentCacheVersion()
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const view = renderProfileSync({ queryClient, signingKey: mockSigningKey })
+    await waitFor(() => expect(view.result.current.user?.id).toBe("version-event-first"))
+
+    localStorage.setItem(
+      PROFILE_CACHE_STORAGE_KEY,
+      JSON.stringify({ ...secondPayload, signature: signSync(secondPayload, mockSigningKey) })
+    )
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_VERSION_KEY,
+          newValue: String(PROFILE_CACHE_SCHEMA_VERSION),
+          storageArea: localStorage,
+        })
+      )
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(view.result.current.user?.id).toBe("version-event-second"))
+    view.unmount()
+  })
 })
 
 // ===========================================================================
