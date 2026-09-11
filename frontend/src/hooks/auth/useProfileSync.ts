@@ -1281,6 +1281,19 @@ export const useProfileSync = (
     // RZ-31-03: Safari private browsing throws SecurityError on localStorage access.
     // Every other localStorage call in this file is wrapped — this was a missed spot.
     const hasCache = readProfileCachePresence()
+    // Check the terminal state before evaluating the cold-start predicate.
+    // Besides making the state machine explicit, this keeps a future
+    // predicate mutation from bypassing the settled-fetch guard and starting
+    // an unbounded query in every mounted consumer.
+    if (
+      shouldSkipAutoFetch({
+        attempted: autoFetchAttemptedRef.current,
+        initializing: initializingRef.current,
+      })
+    ) {
+      // Already tried or have data, nothing to do
+      return
+    }
     if (
       shouldBeginAutoFetch({
         userState: userStateRef.current,
@@ -1290,14 +1303,6 @@ export const useProfileSync = (
       })
     ) {
       setInitializing(true)
-    } else if (
-      shouldSkipAutoFetch({
-        attempted: autoFetchAttemptedRef.current,
-        initializing: initializingRef.current,
-      })
-    ) {
-      // Already tried or have data, nothing to do
-      return
     }
     // Mark every fetch invocation, including the cold-start path that enters
     // while `initializing` is already true.  Without this assignment that
