@@ -182,7 +182,13 @@ def test_hook_removes_every_custom_root_option_before_runner(
 
 def test_custom_root_wrapper_succeeds_with_actual_detect_secrets_runner(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Keep the integration hook hermetic.  Reusing a developer's global
+    # pre-commit cache can make this contract fail for unrelated filesystem
+    # permissions (for example, a stale read-only cloned repository on
+    # Windows) and hides whether the wrapper itself works.
+    monkeypatch.setenv("PRE_COMMIT_HOME", str(tmp_path / "pre-commit-home"))
     repository_root = Path(__file__).resolve().parents[1]
     config = tmp_path / "detect-secrets-integration.yaml"
     config.write_text(
