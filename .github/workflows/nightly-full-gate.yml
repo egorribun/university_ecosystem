@@ -202,9 +202,11 @@ jobs:
     needs: mutation-tests-full-plan
     strategy:
       fail-fast: false
-      # Request the complete measured hosted-runner allocation. GitHub remains
-      # the account-wide arbiter when Python and frontend producers overlap.
-      max-parallel: 20
+      # Keep the complete 128-shard inventory while reserving hosted-runner
+      # capacity for pull-request quality gates and the frontend lane. The
+      # account-wide ceiling is shared with every workflow, so requesting all
+      # twenty runners here can starve a fresh PR run indefinitely.
+      max-parallel: 8
       # Each leg creates the same pristine universe, executes only its exact
       # duration-balanced IDs, and uploads terminal proof. The aggregate job
       # below rejects overlap, mixed universes, and incomplete coverage.
@@ -649,9 +651,10 @@ jobs:
     needs: frontend-mutation-preflight
     strategy:
       fail-fast: false
-      # Use the complete measured hosted-runner allocation; GitHub's scheduler
-      # enforces the account-wide ceiling when producer families overlap.
-      max-parallel: 20
+      # Keep all 64 logical shards and their exact evidence, but do not let the
+      # scheduled lane consume the entire account-wide runner pool while a PR
+      # quality run is active.
+      max-parallel: 8
       matrix:
         shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
     permissions:

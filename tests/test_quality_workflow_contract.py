@@ -3739,8 +3739,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         "shard"
     ] == list(range(1, 129))
     assert (
-        nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["max-parallel"]
-        == 20
+        nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["max-parallel"] == 8
     )
     assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     stats_steps = stats_job["steps"]
@@ -4489,7 +4488,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     nightly_shards = nightly_jobs["frontend-mutation-shards"]
     assert nightly_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
     assert nightly_shards["name"].endswith("/64")
-    assert nightly_shards["strategy"]["max-parallel"] == 20
+    assert nightly_shards["strategy"]["max-parallel"] == 8
     assert nightly_shards["timeout-minutes"] == 120
     assert nightly_shards["needs"] == "frontend-mutation-preflight"
     assert nightly_shards["env"] == manual_shards["env"]
