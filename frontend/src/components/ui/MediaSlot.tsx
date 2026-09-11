@@ -72,7 +72,9 @@ export const MediaSlot = forwardRef<HTMLDivElement, MediaSlotProps>(
     }
 
     const handleError = () => {
-      setIsLoading(false)
+      // The error branch replaces the image and loading placeholder in the
+      // same render, so a second loading-state update is redundant. The next
+      // source change resets the loading state in the effect above.
       setHasError(true)
       onError?.()
     }
