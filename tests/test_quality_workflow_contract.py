@@ -1916,6 +1916,14 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         assert "for attempt in 1 2 3; do" in helm_step["run"]
         assert "sleep $((attempt * 15))" in helm_step["run"]
         assert "Helm dependency build failed after 3 attempts." in helm_step["run"]
+        assert (
+            "test -s charts/university-ecosystem/charts/redis-20.13.4.tgz"
+            in helm_step["run"]
+        )
+        assert (
+            "test -s charts/university-ecosystem/charts/nats-8.5.4.tgz"
+            in helm_step["run"]
+        )
     universe_selector = next(
         step
         for step in mutation_job["steps"]
@@ -3788,6 +3796,14 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         "helm dependency build charts/university-ecosystem/"
         in stats_dependencies["run"]
     )
+    assert (
+        "test -s charts/university-ecosystem/charts/redis-20.13.4.tgz"
+        in stats_dependencies["run"]
+    )
+    assert (
+        "test -s charts/university-ecosystem/charts/nats-8.5.4.tgz"
+        in stats_dependencies["run"]
+    )
     assert stats_steps.index(stats_dependencies) < stats_steps.index(stats_step)
 
     mutation_helm = next(
@@ -3802,6 +3818,14 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert mutation_helm["with"] == {"version": "v3.17.0"}
     assert (
         "helm dependency build charts/university-ecosystem/"
+        in mutation_dependencies["run"]
+    )
+    assert (
+        "test -s charts/university-ecosystem/charts/redis-20.13.4.tgz"
+        in mutation_dependencies["run"]
+    )
+    assert (
+        "test -s charts/university-ecosystem/charts/nats-8.5.4.tgz"
         in mutation_dependencies["run"]
     )
     assert mutation_steps.index(mutation_dependencies) < run_step_index

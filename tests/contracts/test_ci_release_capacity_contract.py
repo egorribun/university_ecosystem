@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 CI = WORKFLOWS / "ci.yml"
 SBOM = WORKFLOWS / "sbom.yml"
+FRONTEND = WORKFLOWS / "reusable-frontend-tests.yml"
+NIGHTLY = WORKFLOWS / "nightly-full-gate.yml"
 POLICY = ROOT / "quality" / "release-required-checks.json"
 
 
@@ -99,6 +101,62 @@ def test_mutation_budget_preserves_complete_logical_inventories() -> None:
         for step in jobs["mutation-tests-universe"]["steps"]
         if isinstance(step, dict)
     )
+
+
+def test_high_fanout_lanes_are_bounded_without_reducing_matrix_cardinality() -> None:
+    """Bound runner contention while keeping every required matrix entry."""
+
+    ci_jobs = _workflow(CI)["jobs"]
+    expected_pr_caps = {
+        "backend-tests": 2,
+        "go-tests": 2,
+        "e2e-tests": 2,
+        "e2e-tests-cross-browser": 2,
+        "schemathesis-api-tests-shard": 4,
+    }
+    expected_cardinality = {
+        "backend-tests": 4,
+        "go-tests": 7,
+        "e2e-tests": 4,
+        "e2e-tests-cross-browser": 3,
+        "schemathesis-api-tests-shard": 8,
+    }
+    for job_name, cap in expected_pr_caps.items():
+        strategy = ci_jobs[job_name]["strategy"]
+        assert strategy["fail-fast"] is False
+        assert strategy["max-parallel"] == cap
+        matrix = strategy["matrix"]
+        entries = (
+            matrix["include"]
+            if "include" in matrix
+            else next(value for value in matrix.values() if isinstance(value, list))
+        )
+        assert len(entries) == expected_cardinality[job_name]
+
+    frontend_jobs = _workflow(FRONTEND)["jobs"]
+    assert frontend_jobs["unit-tests-shard"]["strategy"]["max-parallel"] == 2
+    assert frontend_jobs["unit-tests-shard"]["strategy"]["matrix"]["shard"] == [
+        1,
+        2,
+        3,
+        4,
+    ]
+    assert frontend_jobs["lighthouse-shards"]["strategy"]["max-parallel"] == 2
+    assert len(frontend_jobs["lighthouse-shards"]["strategy"]["matrix"]["include"]) == 4
+
+    nightly_jobs = _workflow(NIGHTLY)["jobs"]
+    for job_name, cap in {
+        "mutation-tests-full-stats": 4,
+        "mutation-tests-full": 8,
+        "frontend-mutation-shards": 8,
+        "backend-full": 2,
+        "backend-integration": 2,
+        "go-integration": 2,
+        "browser-matrix": 2,
+    }.items():
+        strategy = nightly_jobs[job_name]["strategy"]
+        assert strategy["fail-fast"] is False
+        assert strategy["max-parallel"] == cap
 
 
 def test_mutmut_artifact_producers_use_explicit_read_only_permissions() -> None:

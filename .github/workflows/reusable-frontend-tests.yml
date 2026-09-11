@@ -265,6 +265,9 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
+      # Keep all four shards in the logical matrix, but cap concurrent callers
+      # so frontend unit tests do not monopolize the shared PR runner pool.
+      max-parallel: 2
       matrix:
         shard: [1, 2, 3, 4]
     defaults:
@@ -772,6 +775,9 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
+      # Route coverage remains complete; two concurrent audits avoid starving
+      # E2E and mutation producers on the shared runner pool.
+      max-parallel: 2
       matrix:
         include:
           - shard: core

@@ -29,6 +29,9 @@ jobs:
       # parallel keeps the heaviest test populations bounded without
       # dropping any test: merge_mutmut_stats.py rejects overlap and requires
       # every shard to contain a non-empty, valid stats payload.
+      # Four concurrent stats legs leave capacity for the nightly dependency
+      # and browser lanes while PR workflows are sharing the same pool.
+      max-parallel: 4
       matrix:
         stats_shard: [0, 1, 2, 3, 4, 5, 6, 7]
     runs-on: ubuntu-24.04
@@ -69,6 +72,8 @@ jobs:
           set -euo pipefail
           for attempt in 1 2 3; do
             if helm dependency build charts/university-ecosystem/; then
+              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
+              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
               exit 0
             fi
             if [[ "$attempt" -eq 3 ]]; then
@@ -259,6 +264,8 @@ jobs:
           set -euo pipefail
           for attempt in 1 2 3; do
             if helm dependency build charts/university-ecosystem/; then
+              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
+              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
               exit 0
             fi
             if [[ "$attempt" -eq 3 ]]; then
@@ -956,6 +963,7 @@ jobs:
     name: Full backend unit (shard ${{ matrix.unit-shard }})
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         unit-shard: [0, 1, 2, 3]
     uses: ./.github/workflows/reusable-backend-tests.yml
@@ -978,6 +986,7 @@ jobs:
     name: Full backend integration (shard ${{ matrix.integration-shard }})
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         integration-shard: [0, 1, 2, 3]
     uses: ./.github/workflows/reusable-backend-tests.yml
@@ -1002,6 +1011,7 @@ jobs:
     name: Go integration (${{ matrix.service-directory }})
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         service-directory:
           - services/gateway
@@ -1069,6 +1079,7 @@ jobs:
     needs: e2e-wasm-build
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         browser:
           - chromium

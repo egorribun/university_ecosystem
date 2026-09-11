@@ -549,6 +549,10 @@ jobs:
     name: "Backend Tests (${{ matrix.name }})"
     strategy:
       fail-fast: false
+      # Reusable backend calls expand into unit and (for selected legs)
+      # integration jobs.  Keep two callers active so the PR matrix cannot
+      # consume the entire hosted-runner pool while preserving all four legs.
+      max-parallel: 2
       matrix:
         include:
           - python-version: "3.14"
@@ -630,6 +634,10 @@ jobs:
       # Keep every service leg running so one failure cannot mask diagnostics
       # from the remaining modules.
       fail-fast: false
+      # Each reusable call expands into test, lint, and an optional mutation
+      # diagnostic job.  Two callers preserve diagnostics while leaving runner
+      # capacity for required API, browser, and mutation aggregation jobs.
+      max-parallel: 2
       matrix:
         # Every supported Go module has exact statement coverage. Integration
         # semantics remain a separate required gate below.
@@ -1290,6 +1298,7 @@ jobs:
       actions: read
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         shard-index: [1, 2, 3, 4]
     uses: ./.github/workflows/reusable-e2e-tests.yml
@@ -1317,6 +1326,7 @@ jobs:
       actions: read
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         browser: [firefox, webkit, mobile-webkit]
     uses: ./.github/workflows/reusable-e2e-tests.yml
@@ -2030,6 +2040,8 @@ jobs:
           set -euo pipefail
           for attempt in 1 2 3; do
             if helm dependency build charts/university-ecosystem/; then
+              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
+              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
               exit 0
             fi
             if [[ "$attempt" -eq 3 ]]; then
@@ -2212,6 +2224,10 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
+      # Eight operation shards remain mandatory; four concurrent runners keep
+      # the property-based lane bounded under the repository-wide 20-runner
+      # limit and prevent mutation fan-out starvation.
+      max-parallel: 4
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
     # 25 examples per operation across the complete OpenAPI surface are
@@ -2856,6 +2872,8 @@ jobs:
           set -euo pipefail
           for attempt in 1 2 3; do
             if helm dependency build charts/university-ecosystem/; then
+              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
+              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
               exit 0
             fi
             if [[ "$attempt" -eq 3 ]]; then
@@ -3118,6 +3136,8 @@ jobs:
           set -euo pipefail
           for attempt in 1 2 3; do
             if helm dependency build charts/university-ecosystem/; then
+              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
+              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
               exit 0
             fi
             if [[ "$attempt" -eq 3 ]]; then
@@ -3299,6 +3319,8 @@ jobs:
           set -euo pipefail
           for attempt in 1 2 3; do
             if helm dependency build charts/university-ecosystem/; then
+              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
+              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
               exit 0
             fi
             if [[ "$attempt" -eq 3 ]]; then
@@ -3889,6 +3911,8 @@ jobs:
           set -euo pipefail
           for attempt in 1 2 3; do
             if helm dependency build charts/university-ecosystem/; then
+              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
+              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
               exit 0
             fi
             if [[ "$attempt" -eq 3 ]]; then
