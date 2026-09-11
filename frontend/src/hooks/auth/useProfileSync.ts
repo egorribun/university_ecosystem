@@ -942,7 +942,7 @@ const resolveInitialInitializingStateWithoutLhci = ({
   // profile snapshot. If the compile-time LHCI guard is removed or the runtime
   // flag changes after the first render, bootstrap must expose loading rather
   // than treating that audit-only user as settled application state.
-  if (userState?.id === "lhci-mock-user") return true
+  if (userState?.id?.startsWith("lhci-")) return true
   if (userState !== null) return false
   return true
 }
