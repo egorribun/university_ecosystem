@@ -22,10 +22,10 @@ metadata:
 spec:
   ingressClassName: nginx
   tls:
-    # TD-31-02 (supersedes TD-28-03): Parameterized via envsubst in the deploy
-    # pipeline. Set CERT_MANAGER_ISSUER_NAME, FRONTEND_HOST, API_HOST,
-    # TLS_SECRET_NAME env vars before
-    # running: envsubst < ingress.yaml | kubectl apply -f -
+    # TD-31-02 (supersedes TD-28-03): Parameterized through the repository
+    # wrapper. Set CERT_MANAGER_ISSUER_NAME, FRONTEND_HOST, API_HOST and
+    # TLS_SECRET_NAME before running:
+    # bash scripts/apply_raw_k8s.sh k8s/ingress.yaml
     - hosts:
         - ${FRONTEND_HOST}
         - ${API_HOST}

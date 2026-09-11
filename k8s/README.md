@@ -67,6 +67,28 @@ a release shortcut:
 kubectl apply -f namespace.yaml
 ```
 
+The parameterized ingress, Vault store and development Deployments must be rendered through
+the repository wrapper. It allowlists the manifest path, requires every
+placeholder, rejects unresolved variables and empty/`:latest` image tags,
+requires `IMAGE_REGISTRY` and accepts `IMAGE_TAG` only as a 40-character commit
+SHA or semver (semantic version):
+
+```bash
+IMAGE_REGISTRY=registry.example.com IMAGE_TAG="$GIT_COMMIT_SHA" \
+bash scripts/apply_raw_k8s.sh k8s/backend/deployment.yaml
+IMAGE_REGISTRY=registry.example.com IMAGE_TAG="$GIT_COMMIT_SHA" \
+bash scripts/apply_raw_k8s.sh k8s/frontend/deployment.yaml
+CERT_MANAGER_ISSUER_NAME=letsencrypt-prod \
+FRONTEND_HOST=university.example.com API_HOST=api.university.example.com \
+TLS_SECRET_NAME=university-tls \
+bash scripts/apply_raw_k8s.sh k8s/ingress.yaml
+VAULT_URL=https://vault.example.com \
+bash scripts/apply_raw_k8s.sh k8s/backend/secret-store.yaml
+```
+
+Do not call `envsubst | kubectl apply` directly and do not use this wrapper for
+staging or production releases; those environments must use the Helm chart.
+
 Create real secrets from `secrets-example.yaml` through the configured secret
 manager; never commit or apply the example file as production credentials.
 

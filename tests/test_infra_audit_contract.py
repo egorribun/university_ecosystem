@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,6 +86,122 @@ def test_standalone_ingress_requires_explicit_certificate_issuer() -> None:
     assert 'cert-manager.io/cluster-issuer: "${CERT_MANAGER_ISSUER_NAME}"' in source
     assert 'cert-manager.io/cluster-issuer: "letsencrypt-prod"' not in source
     assert "CERT_MANAGER_ISSUER_NAME" in source
+
+
+def test_raw_manifest_wrapper_is_allowlisted_and_fail_closed() -> None:
+    """Raw parameterized manifests must have one reviewed, safe entrypoint.
+
+    The Helm chart is the release artifact.  This contract protects the small
+    set of supporting manifests that still use ``envsubst`` from being applied
+    with an empty or mutable image value, or from turning an arbitrary path
+    supplied by a shell caller into a deployment primitive.
+    """
+
+    wrapper = (ROOT / "scripts/apply_raw_k8s.sh").read_text(encoding="utf-8")
+    assert "set -euo pipefail" in wrapper
+    assert 'manifest="${1:-}"' in wrapper
+    assert '[[ "$#" -eq 1 ]]' in wrapper
+    assert 'envsubst "$substitution_set"' in wrapper
+    assert "kubectl apply -f -" in wrapper
+    assert "k8s/ingress.yaml" in wrapper
+    assert "k8s/backend/secret-store.yaml" in wrapper
+    assert "k8s/backend/deployment.yaml" in wrapper
+    assert "k8s/frontend/deployment.yaml" in wrapper
+    assert "IMAGE_TAG" in wrapper
+    assert "IMAGE_REGISTRY" in wrapper
+    assert "^[0-9a-fA-F]{40}$" in wrapper
+    assert (
+        "^[[:space:]-]*image:[[:space:]]*[^[:space:]]+:(latest)?([[:space:]]|#|$)"
+        in wrapper
+    )
+    assert "unresolved template variable" in wrapper
+    assert "unsupported raw manifest" in wrapper
+    assert "registry.example.com" not in wrapper
+
+    readme = (ROOT / "k8s/README.md").read_text(encoding="utf-8")
+    normalized = " ".join(readme.split()).lower()
+    assert "apply_raw_k8s.sh" in normalized
+    assert "image_tag" in normalized
+    assert "commit sha or semver" in normalized
+
+
+def test_raw_manifest_wrapper_renders_and_rejects_mutable_images(
+    tmp_path: Path,
+) -> None:
+    """Exercise the wrapper with hermetic envsubst/kubectl stand-ins on Linux."""
+
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash is unavailable on this host")
+    try:
+        probe = subprocess.run(  # noqa: S603 - fixed interpreter probe
+            [bash, "-c", "exit 0"],
+            check=False,
+            capture_output=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pytest.skip("bash is not executable on this host")
+    if probe.returncode != 0:
+        pytest.skip("bash is not executable on this host")
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    capture = tmp_path / "kubectl-input.yaml"
+    (bin_dir / "envsubst").write_text(
+        "#!/usr/bin/env python3\n"
+        "import os, sys\n"
+        "value = sys.stdin.read()\n"
+        "for name in ('IMAGE_REGISTRY', 'IMAGE_TAG', 'CERT_MANAGER_ISSUER_NAME', 'FRONTEND_HOST', 'API_HOST', 'TLS_SECRET_NAME', 'VAULT_URL'):\n"
+        "    value = value.replace('${' + name + '}', os.environ.get(name, ''))\n"
+        "    value = value.replace('$' + name, os.environ.get(name, ''))\n"
+        "sys.stdout.write(value)\n",
+        encoding="utf-8",
+    )
+    (bin_dir / "kubectl").write_text(
+        "#!/usr/bin/env python3\n"
+        "import os, pathlib, sys\n"
+        "if sys.argv[1:] != ['apply', '-f', '-']:\n"
+        "    raise SystemExit(2)\n"
+        "pathlib.Path(os.environ['KUBECTL_CAPTURE']).write_text(sys.stdin.read(), encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    for executable in (bin_dir / "envsubst", bin_dir / "kubectl"):
+        executable.chmod(0o755)
+
+    environment = os.environ.copy()
+    environment["PATH"] = os.pathsep.join((str(bin_dir), environment["PATH"]))
+    environment["KUBECTL_CAPTURE"] = str(capture)
+    environment["IMAGE_REGISTRY"] = "registry.example.com"
+    environment["IMAGE_TAG"] = "0" * 40
+    valid = subprocess.run(  # noqa: S603 - fixed local wrapper invocation
+        [bash, str(ROOT / "scripts/apply_raw_k8s.sh"), "k8s/backend/deployment.yaml"],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert valid.returncode == 0, valid.stderr
+    rendered = capture.read_text(encoding="utf-8")
+    assert "${IMAGE_TAG}" not in rendered
+    assert f"registry.example.com/backend:{'0' * 40}" in rendered
+
+    capture.unlink()
+    environment["IMAGE_TAG"] = "latest"
+    rejected = subprocess.run(  # noqa: S603 - fixed local wrapper invocation
+        [bash, str(ROOT / "scripts/apply_raw_k8s.sh"), "k8s/backend/deployment.yaml"],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert rejected.returncode != 0
+    assert "semantic version" in rejected.stderr
+    assert not capture.exists()
 
 
 def test_raw_k8s_scope_declares_helm_as_canonical_application_producer() -> None:
