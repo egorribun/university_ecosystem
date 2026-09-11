@@ -1582,7 +1582,13 @@ def test_e2e_playwright_install_retries_and_ignores_stale_chrome_apt_source() ->
     assert "google-chrome.sources" in helper
     assert "for attempt in 1 2 3" in helper
     assert 'npx playwright install --with-deps "${browsers[@]}"' in helper
+    assert 'npx playwright install-deps --dry-run "${browsers[@]}"' in helper
+    assert 'npx playwright install "${browsers[@]}"' in helper
+    assert "PLAYWRIGHT_SKIP_SYSTEM_DEPS must be 0/false or 1/true" in helper
+    assert "system dependency probe failed" in helper
     assert "Playwright installation failed after 3 attempts" in helper
+
+    assert install_step["env"]["PLAYWRIGHT_SKIP_SYSTEM_DEPS"] == "1"
 
 
 def test_all_linux_playwright_bootstraps_use_the_resilient_helper() -> None:
@@ -1616,6 +1622,27 @@ def test_all_linux_playwright_bootstraps_use_the_resilient_helper() -> None:
     assert "set -euo pipefail" in helper_text
     assert "Acquire::Retries" not in helper_text
     assert "exit 1" in helper_text
+
+    # The hosted reusable E2E lane is the only caller opting out of the apt
+    # bootstrap. Local and standalone smoke/audit workflows must retain the
+    # helper's default full dependency installation.
+    e2e_workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    e2e_install = next(
+        step
+        for step in e2e_workflow["jobs"]["e2e"]["steps"]
+        if step.get("name") == "Install Playwright"
+    )
+    assert e2e_install["env"]["PLAYWRIGHT_SKIP_SYSTEM_DEPS"] == "1"
+    for workflow_path in (
+        REPOSITORY_ROOT / ".github" / "workflows" / "unauthenticated-routes-smoke.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "admin-smoke-monitoring.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "visual-audit.yml",
+    ):
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        for job in workflow.get("jobs", {}).values():
+            for step in job.get("steps", []):
+                if "install-playwright-with-deps.sh" in str(step.get("run", "")):
+                    assert "PLAYWRIGHT_SKIP_SYSTEM_DEPS" not in step.get("env", {})
 
 
 def test_cross_browser_navigation_retries_only_transient_abort_errors() -> None:

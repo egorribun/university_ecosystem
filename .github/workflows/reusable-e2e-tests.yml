@@ -361,6 +361,11 @@ jobs:
         working-directory: frontend
         env:
           BROWSER: ${{ inputs.browser }}
+          # ubuntu-24.04 hosted runners are pre-provisioned with Playwright's
+          # shared browser libraries. Keep the helper's full --with-deps path
+          # as the default for local/self-hosted callers; this opt-in only
+          # removes the repeated apt bootstrap from this hosted E2E workflow.
+          PLAYWRIGHT_SKIP_SYSTEM_DEPS: "1"
         run: bash ../scripts/ci/install-playwright-with-deps.sh "$BROWSER"
 
       - name: Run database migrations
