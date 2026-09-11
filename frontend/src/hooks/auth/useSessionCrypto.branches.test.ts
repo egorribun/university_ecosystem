@@ -429,6 +429,11 @@ describe("sendServiceWorkerMessage", () => {
       }
     )
 
+    // The first circuit opening has no previous timer to cancel.  The guard
+    // must distinguish null from a live timer instead of calling
+    // clearTimeout(null) on every first opening.
+    expect(clearSpy).not.toHaveBeenCalled()
+
     // The first circuit opening owns one live timer.  A fourth failure must
     // cancel exactly that timer before replacing it; checking the count makes
     // the null/non-null guard observable to mutation testing.

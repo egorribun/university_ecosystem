@@ -7,6 +7,7 @@ import {
   clearLegacySessionSigningKey,
   hashSessionIdentifier,
   isSessionCryptoBrowserRuntime,
+  readStoredSessionSigningKey,
   signSnapshot,
   useSessionCrypto,
 } from "@/hooks/auth/useSessionCrypto"
@@ -68,6 +69,22 @@ describe("useSessionCrypto mutation contracts", () => {
 
     expect(() => clearLegacySessionSigningKey()).not.toThrow()
     expect(removeItem).toHaveBeenCalledWith("ecosystem.profile.cache.sessionKey")
+  })
+
+  it("swallows an unavailable sessionStorage getter", () => {
+    const storageGetter = vi.spyOn(globalThis, "sessionStorage", "get").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+
+    try {
+      expect(() => clearLegacySessionSigningKey()).not.toThrow()
+    } finally {
+      storageGetter.mockRestore()
+    }
+  })
+
+  it("never recovers a signing key from Web Storage", () => {
+    expect(readStoredSessionSigningKey()).toBeNull()
   })
 
   it("passes the complete fixed PBKDF2 namespace contract to the worker", async () => {
@@ -203,6 +220,50 @@ describe("useSessionCrypto mutation contracts", () => {
     expect(postMessage.mock.calls).toEqual([
       [{ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE }],
       [{ type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY, sessionHash: undefined }],
+    ])
+  })
+
+  it("synchronizes the empty session cache key on browser mount", async () => {
+    const postMessage = vi.fn()
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: { postMessage }, ready: undefined },
+    })
+
+    renderHook(() => useSessionCrypto())
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(postMessage).toHaveBeenCalledTimes(1)
+    expect(postMessage).toHaveBeenCalledWith({
+      type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+      sessionHash: undefined,
+    })
+  })
+
+  it("purges the previous cache before publishing a key from an explicit update", async () => {
+    const postMessage = vi.fn()
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: { postMessage }, ready: undefined },
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+    await act(async () => {
+      await Promise.resolve()
+    })
+    postMessage.mockClear()
+
+    await act(async () => {
+      await result.current.updateSessionSigningKey("updated-session-key")
+    })
+
+    expect(postMessage.mock.calls).toEqual([
+      [{ type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE }],
+      [
+        {
+          type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+          sessionHash: "mock_pbkdf2",
+        },
+      ],
     ])
   })
 

@@ -43,9 +43,18 @@ const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
  * cleanup behind an explicit function makes the security boundary directly
  * testable and avoids a slow module re-import for every mutation case. */
 export const clearLegacySessionSigningKey = (): void => {
-  if (typeof sessionStorage === "undefined") return
+  let storage: Storage | undefined
   try {
-    sessionStorage.removeItem(SESSION_SIGNING_KEY_STORAGE_KEY)
+    // Read through globalThis so an unavailable or privacy-blocked storage
+    // getter cannot break module initialization in a browser or SSR-like
+    // runtime.  The signing key itself remains memory-only.
+    storage = globalThis.sessionStorage
+  } catch {
+    return
+  }
+  if (!storage) return
+  try {
+    storage.removeItem(SESSION_SIGNING_KEY_STORAGE_KEY)
   } catch {
     /* ignore */
   }
@@ -93,15 +102,12 @@ async function hashSensitiveFields(obj: unknown, userSalt: string): Promise<unkn
     return Promise.all(obj.map((item) => hashSensitiveFields(item, userSalt)))
   }
   const result: Record<string, unknown> = {}
+  const record = obj as Record<string, unknown>
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      if (
-        sensitiveFields.includes(key) &&
-        typeof (obj as Record<string, unknown>)[key] === "string"
-      ) {
-        const passwordBytes = new TextEncoder().encode(
-          (obj as Record<string, unknown>)[key] as string
-        )
+      const value = record[key]
+      if (sensitiveFields.includes(key) && typeof value === "string") {
+        const passwordBytes = new TextEncoder().encode(value)
         // Offload scrypt effort to worker
         const hashed = await cryptoWorker.scrypt({
           password: passwordBytes,
@@ -114,8 +120,10 @@ async function hashSensitiveFields(obj: unknown, userSalt: string): Promise<unkn
         result[key] = Array.from(hashed)
           .map((b) => b.toString(16).padStart(2, "0"))
           .join("")
+      } else if (typeof value === "object" && value !== null) {
+        result[key] = await hashSensitiveFields(value, userSalt)
       } else {
-        result[key] = await hashSensitiveFields((obj as Record<string, unknown>)[key], userSalt)
+        result[key] = value
       }
     }
   }
@@ -157,7 +165,9 @@ export const signSnapshot = async (
  * On page reload the key is re-fetched from /auth/session/signing-key (auth'd endpoint).
  * Security: key exposure requires full JS execution context control, not just storage read.
  */
-export const readStoredSessionSigningKey = (): string | null => null
+export function readStoredSessionSigningKey(): string | null {
+  return null
+}
 
 const persistSessionSigningKey = (_value: string | null) => {
   // Intentionally empty — signing key must not be written to any Web Storage.
