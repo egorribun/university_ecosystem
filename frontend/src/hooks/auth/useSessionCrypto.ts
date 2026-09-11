@@ -38,20 +38,25 @@ const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 // Kept for one-time migration: clear any key previously persisted in sessionStorage.
 const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
 
+type LegacySessionStorageRead = {
+  storage: Storage | null
+}
+
+/** Read the legacy storage location through a total, shape-stable contract. */
+const readLegacySessionStorage = (): LegacySessionStorageRead => {
+  try {
+    return { storage: globalThis.sessionStorage ?? null }
+  } catch {
+    return { storage: null }
+  }
+}
+
 /** Remove the legacy session signing key without allowing storage failures to
  * interrupt module initialization or authentication state.  Keeping the
  * cleanup behind an explicit function makes the security boundary directly
  * testable and avoids a slow module re-import for every mutation case. */
 export const clearLegacySessionSigningKey = (): void => {
-  let storage: Storage | undefined
-  try {
-    // Read through globalThis so an unavailable or privacy-blocked storage
-    // getter cannot break module initialization in a browser or SSR-like
-    // runtime.  The signing key itself remains memory-only.
-    storage = globalThis.sessionStorage
-  } catch {
-    return
-  }
+  const { storage } = readLegacySessionStorage()
   if (!storage) return
   try {
     storage.removeItem(SESSION_SIGNING_KEY_STORAGE_KEY)
@@ -121,7 +126,14 @@ async function hashSensitiveFields(obj: unknown, userSalt: string): Promise<unkn
           .map((b) => b.toString(16).padStart(2, "0"))
           .join("")
       } else if (typeof value === "object" && value !== null) {
-        result[key] = await hashSensitiveFields(value, userSalt)
+        const nestedValue = await hashSensitiveFields(value, userSalt)
+        // Keep arrays as arrays while materialising object descendants as a
+        // fresh record.  Apart from preserving the payload contract, this
+        // makes the object-only branch meaningful: accidentally recursing on
+        // a scalar cannot silently become an identity operation.
+        result[key] = Array.isArray(value)
+          ? nestedValue
+          : { ...(nestedValue as Record<string, unknown>) }
       } else {
         result[key] = value
       }
@@ -240,10 +252,7 @@ export const useSessionCrypto = () => {
   const sessionCacheHashRef = useRef<string | null>(null)
 
   const sendServiceWorkerMessage = useCallback((message: ApiCacheControlMessage) => {
-    if (typeof navigator === "undefined") {
-      return
-    }
-    const container: ServiceWorkerContainer | undefined = navigator.serviceWorker
+    const container: ServiceWorkerContainer | undefined = globalThis.navigator?.serviceWorker
     if (!container) {
       return
     }

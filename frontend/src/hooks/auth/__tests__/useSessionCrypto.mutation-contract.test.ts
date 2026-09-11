@@ -143,6 +143,25 @@ describe("useSessionCrypto mutation contracts", () => {
     })
   })
 
+  it("preserves nested arrays while hashing their sensitive descendants", async () => {
+    const hmac = vi.mocked(cryptoWorker.hmacSha256)
+
+    await signSnapshot(
+      {
+        nested: [{ mfa_required: "true", plain: "kept" }, null],
+      },
+      "session-key",
+      "user-salt"
+    )
+
+    expect(hmac).toHaveBeenCalledWith({
+      json: JSON.stringify({
+        nested: [{ mfa_required: "010203", plain: "kept" }, null],
+      }),
+      key: "session-key",
+    })
+  })
+
   it("does not hash non-string sensitive values and preserves scalar/array shape", async () => {
     const scrypt = vi.mocked(cryptoWorker.scrypt)
     const hmac = vi.mocked(cryptoWorker.hmacSha256)
