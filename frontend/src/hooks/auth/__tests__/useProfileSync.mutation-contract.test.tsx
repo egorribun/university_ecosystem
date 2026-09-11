@@ -1507,6 +1507,7 @@ describe("useProfileSync mutation contracts", () => {
   it("does not echo remote profile events back to sibling tabs", async () => {
     type MessageListener = (event: MessageEvent<unknown>) => void
     const listeners: MessageListener[] = []
+    const channelNames: string[] = []
     const channels: Array<{
       postMessage: ReturnType<typeof vi.fn>
       addEventListener: ReturnType<typeof vi.fn>
@@ -1522,7 +1523,8 @@ describe("useProfileSync mutation contracts", () => {
       removeEventListener = vi.fn()
       close = vi.fn()
 
-      constructor(_name: string) {
+      constructor(name: string) {
+        channelNames.push(name)
         channels.push(this)
       }
 
@@ -1537,6 +1539,7 @@ describe("useProfileSync mutation contracts", () => {
       await Promise.resolve()
     })
     expect(channels).toHaveLength(1)
+    expect(channelNames).toEqual(["ecosystem.profile.sync"])
     const inbound = channels[0]!
 
     const pending = { ticket: "remote-ticket", methods: ["totp"] } as never
