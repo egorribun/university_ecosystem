@@ -3,16 +3,23 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
+from dishka import FromDishka
+from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Depends, Request, status
 
-from app.api.deps import get_current_user, get_session_service, require_fresh_mfa
+from app.api.deps import (
+    get_current_user,
+    get_current_user_from_dishka,
+    get_session_service,
+    require_fresh_mfa_from_dishka,
+)
 from app.api.validation import (
     raise_http_error,
     require_admin,
     require_owner_or_admin,
 )
 from app.auth.security import decode_token
-from app.core.database import get_db, get_read_db
+from app.core.database import get_read_db
 from app.core.localization import resolve_locale
 from app.core.protocols import AsyncDatabaseSession
 from app.models import User
@@ -97,13 +104,14 @@ async def list_sessions(
 
 
 @router.delete("/{session_id}", response_model=schemas.ActiveSessionOut)
+@inject
 async def revoke_session(
     session_id: uuid.UUID,
     request: Request,
-    mfa_check: Annotated[None, Depends(require_fresh_mfa)],
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
-    session_service: Annotated[SessionService, Depends(get_session_service)],
+    db: FromDishka[AsyncDatabaseSession],
+    session_service: FromDishka[SessionService],
+    mfa_check: None = Depends(require_fresh_mfa_from_dishka),
+    current_user: User = Depends(get_current_user_from_dishka),
 ) -> schemas.ActiveSessionOut:
     locale = resolve_locale(request=request, user=current_user)
     session = await session_service.get_session_by_id(session_id)
@@ -130,12 +138,13 @@ async def revoke_session(
 
 
 @router.post("/revoke-others", response_model=schemas.SessionBulkRevokeOut)
+@inject
 async def revoke_other_sessions(
     request: Request,
-    mfa_check: Annotated[None, Depends(require_fresh_mfa)],
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
-    session_service: Annotated[SessionService, Depends(get_session_service)],
+    db: FromDishka[AsyncDatabaseSession],
+    session_service: FromDishka[SessionService],
+    mfa_check: None = Depends(require_fresh_mfa_from_dishka),
+    current_user: User = Depends(get_current_user_from_dishka),
     user_id: uuid.UUID | None = None,
 ) -> schemas.SessionBulkRevokeOut:
     locale = resolve_locale(request=request, user=current_user)

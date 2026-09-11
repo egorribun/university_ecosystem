@@ -132,6 +132,7 @@ def test_raw_manifest_wrapper_renders_and_rejects_mutable_images(
 
     bash = shutil.which("bash")
     if not bash:
+        # INFRA-03 @egorribun: Linux shell contract is exercised in CI.
         pytest.skip("bash is unavailable on this host")
     try:
         probe = subprocess.run(  # noqa: S603 - fixed interpreter probe
@@ -141,8 +142,10 @@ def test_raw_manifest_wrapper_renders_and_rejects_mutable_images(
             timeout=3,
         )
     except (OSError, subprocess.SubprocessError):
+        # INFRA-03 @egorribun: Linux shell contract is exercised in CI.
         pytest.skip("bash is not executable on this host")
     if probe.returncode != 0:
+        # INFRA-03 @egorribun: Linux shell contract is exercised in CI.
         pytest.skip("bash is not executable on this host")
 
     bin_dir = tmp_path / "bin"

@@ -18,15 +18,15 @@ manifest="${1:-}"
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 case "$manifest" in
   k8s/ingress.yaml)
-    substitution_set='$CERT_MANAGER_ISSUER_NAME $FRONTEND_HOST $API_HOST $TLS_SECRET_NAME'
+    substitution_set="\$CERT_MANAGER_ISSUER_NAME \$FRONTEND_HOST \$API_HOST \$TLS_SECRET_NAME"
     required_variables=(CERT_MANAGER_ISSUER_NAME FRONTEND_HOST API_HOST TLS_SECRET_NAME)
     ;;
   k8s/backend/secret-store.yaml)
-    substitution_set='$VAULT_URL'
+    substitution_set="\$VAULT_URL"
     required_variables=(VAULT_URL)
     ;;
   k8s/backend/deployment.yaml|k8s/frontend/deployment.yaml)
-    substitution_set='$IMAGE_REGISTRY $IMAGE_TAG'
+    substitution_set="\$IMAGE_REGISTRY \$IMAGE_TAG"
     required_variables=(IMAGE_REGISTRY IMAGE_TAG)
     ;;
   *)

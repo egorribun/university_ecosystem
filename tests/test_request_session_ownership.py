@@ -18,6 +18,7 @@ from fastapi import HTTPException
 
 from app.api import schedule as schedule_api
 from app.api import search as search_api
+from app.api import sessions as sessions_api
 from app.api.auth import mfa as mfa_api
 from app.api.deps import auth as auth_deps
 from tests.helpers.request_session_probe import RequestSessionProbe
@@ -99,6 +100,28 @@ def test_injected_auth_routes_use_the_canonical_dishka_session() -> None:
             and parameter_guard.default.dependency
             is auth_deps.require_fresh_mfa_from_dishka
         ), endpoint.__name__
+
+
+def test_session_mutation_routes_use_the_canonical_dishka_session() -> None:
+    """Session revocation must not create a second FastAPI-owned session."""
+
+    for endpoint in (sessions_api.revoke_session, sessions_api.revoke_other_sessions):
+        implementation = getattr(endpoint, "__dishka_orig_func__", endpoint)
+        signature = inspect.signature(implementation)
+        db = signature.parameters.get("db")
+        assert db is not None and "FromDishka" in repr(db.annotation)
+        user = signature.parameters["current_user"]
+        assert user.default.dependency is auth_deps.get_current_user_from_dishka
+
+    for route in sessions_api.router.routes:
+        if route.endpoint not in {
+            sessions_api.revoke_session,
+            sessions_api.revoke_other_sessions,
+        }:
+            continue
+        implementation = getattr(route.endpoint, "__dishka_orig_func__", route.endpoint)
+        guard = inspect.signature(implementation).parameters["mfa_check"]
+        assert guard.default.dependency is auth_deps.require_fresh_mfa_from_dishka
 
 
 @pytest.mark.asyncio
