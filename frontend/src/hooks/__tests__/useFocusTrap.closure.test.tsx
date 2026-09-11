@@ -59,6 +59,20 @@ function TrapHarness({
 }
 
 describe("useFocusTrap deterministic lifecycle", () => {
+  it("does not create or activate a trap when mounted inactive", () => {
+    mocks.options = undefined
+
+    const { rerender } = render(<TrapHarness active={false} />)
+
+    expect(mocks.options).toBeUndefined()
+    expect(mocks.activate).not.toHaveBeenCalled()
+    expect(mocks.deactivate).not.toHaveBeenCalled()
+
+    rerender(<TrapHarness active />)
+
+    expect(mocks.activate).toHaveBeenCalledOnce()
+  })
+
   it("activates with default fallback focus and cleans up on an active-state change", () => {
     const onDeactivate = vi.fn()
     const { container, rerender } = render(

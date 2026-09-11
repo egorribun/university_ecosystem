@@ -61,6 +61,18 @@ vi.mock("@/hooks/useNowPlaying", async () => {
   }
 })
 
+// Dashboard's clock aligns its first timeout to the next wall-clock minute.
+// Keep this axe suite independent of the minute boundary so a tick cannot
+// schedule a React update outside the test's act scope.
+vi.mock("@/hooks/useClock", () => ({
+  useClock: vi.fn(() => ({
+    hh: "12",
+    mm: "34",
+    dateStr: "Thursday, January 1",
+    time: new Date("2026-01-01T12:34:00.000Z"),
+  })),
+}))
+
 const baseUser: User = {
   id: "uuid-1",
   email: "user@example.com",

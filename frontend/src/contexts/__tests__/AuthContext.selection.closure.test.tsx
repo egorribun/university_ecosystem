@@ -96,6 +96,20 @@ describe("useAuth context/store selection", () => {
     expect(result.current.isAuth).toBe(true)
   })
 
+  it("falls back to the store loading state when context loading is undefined", () => {
+    act(() => {
+      useAuthStore.setState({ user: null, pendingMfa: null, loading: true, authOperation: false })
+    })
+    const contextValue = actionSet()
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
+    )
+
+    const { result } = renderHook(() => useAuth(), { wrapper })
+
+    expect(result.current.loading).toBe(true)
+  })
+
   it("includes an active context operation in the loading state", () => {
     act(() => {
       useAuthStore.setState({ user: null, pendingMfa: null, loading: false, authOperation: false })
