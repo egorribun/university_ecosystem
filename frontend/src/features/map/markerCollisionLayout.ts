@@ -135,7 +135,7 @@ function cellRange(bounds: MarkerBounds): readonly [number, number, number, numb
  */
 function boundedIntegerRange(start: number, end: number, step = 1): number[] {
   const increment = Math.max(1, Math.abs(step))
-  const length = end >= start ? Math.floor((end - start) / increment) + 1 : 0
+  const length = Math.max(0, Math.floor((end - start) / increment) + 1)
   return Array.from({ length }, (_, index) => start + index * increment)
 }
 

@@ -355,6 +355,7 @@ async function persistSubscriptionWithBackoff(
   // the production retry contract explicit: at most PERSIST_MAX_ATTEMPTS
   // server writes are ever attempted.
   const attempts = Array.from({ length: PERSIST_MAX_ATTEMPTS }, (_, index) => index + 1)
+  let persisted: Awaited<ReturnType<typeof saveSubscription>> | null = null
 
   try {
     for (const attempt of attempts) {
@@ -364,7 +365,8 @@ async function persistSubscriptionWithBackoff(
         pushSubStorage.set(payload)
         pushLastSyncStorage.set(Date.now().toString())
         setPersistedTopics(normalizedTopics)
-        return response
+        persisted = response
+        break
       } catch (error) {
         const isConflict =
           (isAxiosError(error) && error.response?.status === 409) ||
@@ -406,9 +408,10 @@ async function persistSubscriptionWithBackoff(
         await sleep(delay)
       }
     }
-    // The configured attempt list is non-empty in production, but keep the
-    // helper fail-closed if a future configuration supplies zero attempts.
-    return null
+    // The configured attempt list is non-empty in production. Returning the
+    // accumulated result also keeps the helper fail-closed if a future
+    // configuration supplies zero attempts.
+    return persisted
   } finally {
     syncInProgress = false
   }

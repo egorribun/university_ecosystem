@@ -195,6 +195,35 @@ describe("layoutMapMarkerOffsets", () => {
     expect(layoutProjectedMapMarkerOffsets(markers, projected).get("center-anchor")).toEqual([0, 0])
   })
 
+  it("rechecks broad spatial cells without treating separated markers as collisions", () => {
+    const markers: MapMarkerCollisionItem[] = [
+      {
+        id: "small-marker",
+        latitude: CAMPUS_COORDINATES.lat,
+        longitude: CAMPUS_COORDINATES.lon,
+        width: 10,
+        height: 10,
+        anchor: "center",
+      },
+      {
+        id: "large-separated-marker",
+        latitude: CAMPUS_COORDINATES.lat,
+        longitude: CAMPUS_COORDINATES.lon,
+        width: 1_000,
+        height: 1_000,
+        anchor: "center",
+      },
+    ]
+    const projected = new Map([
+      ["small-marker", { x: 0, y: 0 }],
+      ["large-separated-marker", { x: 600, y: 0 }],
+    ])
+
+    expect(layoutProjectedMapMarkerOffsets(markers, projected).get("large-separated-marker")).toEqual(
+      [0, 0]
+    )
+  })
+
   it("fails closed when a live projection omits a marker", () => {
     const marker = campusMarkerFixtures()[0]!
     expect(() => layoutProjectedMapMarkerOffsets([marker], new Map())).toThrow(
