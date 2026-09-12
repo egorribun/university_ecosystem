@@ -4201,7 +4201,7 @@ jobs:
         image: nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228
         ports: ["4222:4222"]
       minio:
-        image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+        image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
         # The MinIO image defaults to printing its CLI help and exiting.  The
         # chaos job needs a long-lived object-storage server for the health
         # probe and the ToxiProxy upstream.

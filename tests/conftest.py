@@ -380,7 +380,7 @@ def minio_container() -> dict[str, str]:
 
     container = (
         DockerContainer(
-            "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+            "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
         )
         .with_env("MINIO_ROOT_USER", "minioadmin")
         .with_env("MINIO_ROOT_PASSWORD", "minioadminsecret")

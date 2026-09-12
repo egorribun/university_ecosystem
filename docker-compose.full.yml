@@ -574,8 +574,10 @@ services:
 
   # ── S3-compatible object storage (MinIO) ──────────────────────────────────
   minio:
-    # NOTE: minio/minio repo archived Feb 2026. This is the last published tag.
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    # NOTE: the upstream Docker Hub repository was archived in Feb 2026. The
+    # immutable manifest is consumed from the Quay mirror to keep pulls
+    # reproducible after Docker Hub retired anonymous access to the archive.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}

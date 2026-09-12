@@ -34,8 +34,8 @@ EXPECTED_EXTERNAL_IMAGES = {
         "nats:2.10.25-alpine@sha256:"
         "3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228"  # pragma: allowlist secret
     ),
-    "minio/minio:RELEASE.2025-09-07T16-13-09Z": (
-        "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:"
+    "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z": (
+        "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:"
         "14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"  # pragma: allowlist secret
     ),
     "ghcr.io/shopify/toxiproxy:2.9.0": (
