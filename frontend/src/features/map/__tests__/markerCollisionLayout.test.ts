@@ -219,9 +219,9 @@ describe("layoutMapMarkerOffsets", () => {
       ["large-separated-marker", { x: 600, y: 0 }],
     ])
 
-    expect(layoutProjectedMapMarkerOffsets(markers, projected).get("large-separated-marker")).toEqual(
-      [0, 0]
-    )
+    expect(
+      layoutProjectedMapMarkerOffsets(markers, projected).get("large-separated-marker")
+    ).toEqual([0, 0])
   })
 
   it("fails closed when a live projection omits a marker", () => {
