@@ -42,6 +42,44 @@ def test_redact_pii_masks_common_phone_numbers_in_free_text_without_false_positi
     )
 
 
+def test_redact_pii_masks_hyphenated_russian_phone_numbers_completely():
+    event = {"message": "Call +7 999 123-45-67 or 8 (999) 123-45-67."}
+
+    redacted = logging_mod._redact_pii(None, None, event)
+
+    assert redacted["message"] == "Call [REDACTED] or [REDACTED]."
+
+
+def test_redact_pii_masks_grouped_phone_with_extension_completely():
+    event = {"message": "Call 202-555-0199-12"}
+
+    redacted = logging_mod._redact_pii(None, None, event)
+
+    assert redacted["message"] == "Call [REDACTED]"
+
+
+def test_redact_pii_masks_local_phone_with_long_extension_completely():
+    event = {"message": "Call 555-0199-12345"}
+
+    redacted = logging_mod._redact_pii(None, None, event)
+
+    assert redacted["message"] == "Call [REDACTED]"
+
+
+def test_redact_pii_preserves_explicit_version_and_numeric_identifier_tokens():
+    messages = (
+        "build version v12.345.67",
+        "record ID 12.345.67",
+        "ticket ID 123-4567-89",
+    )
+
+    for message in messages:
+        event = {"message": message}
+        redacted = logging_mod._redact_pii(None, None, event)
+
+        assert redacted["message"] == message
+
+
 def test_redact_pii_walks_nested_mappings_and_lists_without_recursing_cycles():
     nested: dict[str, object] = {
         "user": {

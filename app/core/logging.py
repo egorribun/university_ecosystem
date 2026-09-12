@@ -49,14 +49,28 @@ _EMAIL_RE = re.compile(
 # for the general international-number shape.  Their trailing guard avoids
 # redacting only a prefix of a longer number with an extension/group.
 _PHONE_RE = re.compile(
-    r"(?<![.\d])"  # no preceding dot/digit
+    r"(?<![.\d])(?<!\d[\s.-])"  # no embedded numeric group
     r"(?:"
-    r"\+\d{1,3}[\s-]?\d{3}[\s-]\d{4}(?![\s-]\d)"  # country + local
+    r"\+\d{1,3}[\s-]?\(?\d{3}\)?[\s-]\d{3}[\s-]\d{2}[\s-]\d{2}"
+    r"|8[\s-]?\(?\d{3}\)?[\s-]\d{3}[\s-]\d{2}[\s-]\d{2}"
+    r"|(?:\+\d{1,3}[\s-]?)?\(?\d{3}\)?[\s.-]"
+    r"\d{3}[\s.-]\d{4}(?:[\s-]\d{1,5})?"  # 10-digit + extension
+    r"|\+\d{1,3}[\s-]?\d{3}[\s-]\d{4}(?![\s-]\d)"  # country + local
     r"|(?:\+\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s.-]?"  # optional country/area
     r"\d{3,4}[\s.-]?\d{2,4}"  # first + second groups
-    r"|\(?\d{3}\)?[\s-]\d{4}(?![\s-]\d)"  # local seven-digit
+    r"|\(?\d{3}\)?[\s-]\d{4}(?:[\s-]\d{1,5})?"  # local + extension
     r")"
-    r"(?![.\d])"  # no trailing dot/digit
+    r"(?!\d|[.-]\d|[\s-]\d)"  # no numeric or numeric-separator suffix
+)
+_NON_PHONE_CONTEXT_RE = re.compile(
+    r"(?:\b(?:version|ver|build|release|id|identifier|ticket|record)\b|"
+    r"(?<![A-Za-z0-9])v)\s*[:=#-]?\s*$",
+    re.IGNORECASE,
+)
+_PHONE_CONTEXT_RE = re.compile(
+    r"\b(?:call|phone|telephone|tel|mobile|cell|contact|dial)\b"
+    r"\s*[:=#-]?\s*$",
+    re.IGNORECASE,
 )
 _PII_FIELD_NAMES = frozenset(
     {
@@ -118,6 +132,25 @@ def _is_pii_field_name(value: object) -> bool:
     return isinstance(value, str) and _normalize_field_name(value) in _PII_FIELD_NAMES
 
 
+def _redact_free_text(value: str) -> str:
+    """Redact emails and phone numbers while preserving explicit numeric tokens."""
+
+    redacted = _EMAIL_RE.sub(_PII_REPLACEMENT, value)
+
+    def replace_phone(match: re.Match[str]) -> str:
+        prefix = redacted[: match.start()]
+        explicit_non_phone_context = _NON_PHONE_CONTEXT_RE.search(prefix) is not None
+        dotted_without_phone_context = "." in match.group() and not (
+            match.group().startswith("+")
+            or _PHONE_CONTEXT_RE.search(prefix) is not None
+        )
+        if explicit_non_phone_context or dotted_without_phone_context:
+            return match.group()
+        return _PII_REPLACEMENT
+
+    return _PHONE_RE.sub(replace_phone, redacted)
+
+
 def _redact_nested(value: Any, *, seen: set[int]) -> Any:
     """Recursively redact strings and sensitive fields in structured values.
 
@@ -131,7 +164,7 @@ def _redact_nested(value: Any, *, seen: set[int]) -> Any:
     if isinstance(value, str):
         if len(value) <= 5:
             return value
-        return _PHONE_RE.sub(_PII_REPLACEMENT, _EMAIL_RE.sub(_PII_REPLACEMENT, value))
+        return _redact_free_text(value)
 
     if isinstance(value, dict):
         marker = id(value)
