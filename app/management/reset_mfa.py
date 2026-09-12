@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import logging
 from typing import Any
 
 from sqlalchemy import func, select
@@ -15,7 +14,7 @@ import app.models as models
 from app.auth import mfa
 from app.core.database import async_session
 from app.core.localization import resolve_locale, translate
-from app.core.logging import get_stdlib_logger
+from app.core.logging import configure_logging, get_stdlib_logger
 from app.services.notifications import create_notifications_for_users
 
 audit_logger = get_stdlib_logger("app.users.audit")
@@ -132,7 +131,9 @@ async def _async_main(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    # Management commands bypass the ASGI bootstrap.  Use the central bridge
+    # so audit payloads receive the same PII redaction and structured renderer.
+    configure_logging()
     parser = _build_arg_parser()
     args = parser.parse_args()
     try:

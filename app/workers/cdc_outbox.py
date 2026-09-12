@@ -541,7 +541,16 @@ class CdcOutboxWorker:
         stored_event_id = str(data.get("id") or uuid.uuid4())
 
         if not event_type:
-            logger.warning("CDC record missing event_type: %s", data)
+            # Never interpolate the full CDC row: payload/metadata can carry
+            # emails, phone numbers, tokens, or arbitrary user content.  The
+            # central redacting processor remains defense-in-depth, while the
+            # worker itself logs only non-sensitive routing metadata.
+            logger.warning(
+                "CDC record missing event_type (relation=%s, lsn=%s, fields=%d)",
+                record.relation_name,
+                record.lsn,
+                len(data),
+            )
             return None
 
         event_cls = _EVENT_REGISTRY.get(event_type)

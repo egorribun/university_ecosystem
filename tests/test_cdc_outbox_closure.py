@@ -264,6 +264,32 @@ async def test_dispatch_handles_missing_and_serialized_payload_variants() -> Non
 
 
 @pytest.mark.asyncio
+async def test_missing_event_type_log_does_not_include_raw_cdc_payload() -> None:
+    worker = cdc.CdcOutboxWorker(nats_broker=AsyncMock())
+    record = cdc.CDCInsertRecord(
+        relation_id=7,
+        relation_name="stored_events",
+        data={
+            "email": "alice@example.edu",
+            "phone": "+7 999 123-45-67",
+            "payload": {"token": "secret-token"},
+        },
+        lsn=42,
+    )
+
+    with patch.object(cdc.logger, "warning") as warning:
+        assert await worker.dispatch_insert_record(record) is None
+
+    warning.assert_called_once()
+    template, *arguments = warning.call_args.args
+    rendered = " ".join(str(value) for value in arguments)
+    assert "missing event_type" in template
+    assert "alice@example.edu" not in rendered
+    assert "+7 999 123-45-67" not in rendered
+    assert "secret-token" not in rendered
+
+
+@pytest.mark.asyncio
 async def test_dispatch_publish_failure_is_contained_and_counted() -> None:
     broker = AsyncMock()
     broker.publish.side_effect = OSError("nats unavailable")

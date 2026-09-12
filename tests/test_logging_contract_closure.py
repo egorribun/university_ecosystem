@@ -1,13 +1,53 @@
 from __future__ import annotations
 
+import asyncio
+import importlib
+import inspect
 import logging
 import sys
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import structlog
 
 import app.core.logging as logging_mod
+
+
+def test_standalone_entrypoints_use_the_central_logging_bridge():
+    """Direct commands must not fall back to an unredacted stdlib setup."""
+
+    for module_name in (
+        "app.worker",
+        "app.management.reset_mfa",
+        "app.scripts.backfill_uuids",
+    ):
+        source = inspect.getsource(importlib.import_module(module_name))
+        assert "configure_logging()" in source
+        assert "logging.basicConfig" not in source
+
+
+def test_worker_entrypoint_configures_logging_before_starting_broker():
+    worker = importlib.import_module("app.worker")
+    with (
+        patch.object(worker, "configure_logging") as configure,
+        patch.object(worker.broker, "run_worker", new=AsyncMock()),
+    ):
+        asyncio.run(worker.main())
+
+    configure.assert_called_once_with()
+
+
+def test_reset_mfa_entrypoint_configures_logging_before_argument_parsing():
+    module = importlib.import_module("app.management.reset_mfa")
+    parser = MagicMock()
+    parser.parse_args.return_value = SimpleNamespace()
+    with (
+        patch.object(module, "configure_logging") as configure,
+        patch.object(module, "_build_arg_parser", return_value=parser),
+    ):
+        module.main()
+
+    configure.assert_called_once_with()
 
 
 def test_redact_pii_masks_embedded_values_but_preserves_non_strings_and_safe_values():
