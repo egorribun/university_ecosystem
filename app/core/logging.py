@@ -44,12 +44,18 @@ _EMAIL_RE = re.compile(
 )
 # RZ-30-04: Anchored phone regex — negative lookbehind/lookahead reject
 # timestamps (2026-03-25), IPs (192.168.1.1), and version-like sequences.
+# The explicit seven-digit alternatives cover common local numbers such as
+# ``555-0199`` (with or without a country code) that are otherwise too short
+# for the general international-number shape.  Their trailing guard avoids
+# redacting only a prefix of a longer number with an extension/group.
 _PHONE_RE = re.compile(
     r"(?<![.\d])"  # no preceding dot/digit
-    r"(?:\+\d{1,3}[\s-]?)?"  # optional country code
-    r"\(?\d{2,4}\)?[\s.-]?"  # area code
-    r"\d{3,4}[\s.-]?"  # first group
-    r"\d{2,4}"  # second group
+    r"(?:"
+    r"\+\d{1,3}[\s-]?\d{3}[\s-]\d{4}(?![\s-]\d)"  # country + local
+    r"|(?:\+\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s.-]?"  # optional country/area
+    r"\d{3,4}[\s.-]?\d{2,4}"  # first + second groups
+    r"|\(?\d{3}\)?[\s-]\d{4}(?![\s-]\d)"  # local seven-digit
+    r")"
     r"(?![.\d])"  # no trailing dot/digit
 )
 _PII_FIELD_NAMES = frozenset(

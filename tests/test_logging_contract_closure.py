@@ -26,6 +26,22 @@ def test_redact_pii_masks_embedded_values_but_preserves_non_strings_and_safe_val
     assert redacted["count"] == 7
 
 
+def test_redact_pii_masks_common_phone_numbers_in_free_text_without_false_positives():
+    event = {
+        "message": (
+            "Call +1-555-0199 or 555-0199; recorded at 2026-03-25 14:30:00 "
+            "from 192.168.1.1 running v1.2.3456."
+        )
+    }
+
+    redacted = logging_mod._redact_pii(None, None, event)
+
+    assert redacted["message"] == (
+        "Call [REDACTED] or [REDACTED]; recorded at 2026-03-25 14:30:00 "
+        "from 192.168.1.1 running v1.2.3456."
+    )
+
+
 def test_redact_pii_walks_nested_mappings_and_lists_without_recursing_cycles():
     nested: dict[str, object] = {
         "user": {
