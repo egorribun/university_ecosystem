@@ -2926,6 +2926,27 @@ test("isolates every source from the observed UI and auth timeout shards", async
     "src/components/ui/motion/FadeIn.tsx",
     "src/components/ui/motion/ScaleIn.tsx",
     "src/components/ui/motion/StaggerChildren.tsx",
+    // Run 34634679511 shard 41/64: these files formed the unweighted UI
+    // graph that reached the 120-minute producer limit. They must remain in
+    // the first-attempt cost-aware prefix as the planner evolves.
+    "src/components/stories/StoryViewer.tsx",
+    "src/components/ui/ActionMenu.tsx",
+    "src/components/ui/Badge.tsx",
+    "src/components/ui/SEO.tsx",
+    "src/components/ui/SafeHtml.tsx",
+    "src/components/ui/ScheduleCardSkeleton.tsx",
+    "src/components/ui/Select.tsx",
+    "src/components/ui/Skeleton.tsx",
+    "src/components/ui/SkeletonMorph.tsx",
+    "src/components/ui/Snackbar.tsx",
+    "src/components/ui/Spinner.tsx",
+    "src/components/ui/SpotifyConnect.tsx",
+    "src/components/ui/Spotlight.tsx",
+    "src/components/ui/StoryCircle.tsx",
+    "src/components/ui/Switch.tsx",
+    "src/components/ui/TextField.tsx",
+    "src/components/ui/Textarea.tsx",
+    "src/components/ui/table.tsx",
   ]
   const authHotspots = ["src/hooks/auth/useProfileSync.ts", "src/hooks/auth/useSessionCrypto.ts"]
   const regularFiles = Array.from({ length: 12 }, (_, index) => {
@@ -3038,6 +3059,11 @@ test("keeps static reload hotspots within bounded first-attempt assignments", as
     expectedMutants
   )
 
+  // The bounded first-attempt lane may have fewer logical shards than source
+  // ranges in a hotspot. In that case ranges from the same source can share a
+  // shard, but must stay within the planner's conservative per-range budget.
+  const staticUnitBudget = Math.max(1, Math.ceil(Math.ceil(expectedMutants / 64) / 16))
+
   for (const [file] of staticHotspots) {
     const assignedShards = plan.filter((shard) =>
       shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
@@ -3054,9 +3080,9 @@ test("keeps static reload hotspots within bounded first-attempt assignments", as
               .length,
           0
         )
-        return assignedHotspotMutants <= 6
+        return assignedHotspotMutants <= staticUnitBudget
       }),
-      `${file} exceeds the conservative six-mutant static reload budget`
+      `${file} exceeds the conservative static reload budget`
     )
   }
   const hotspotShardSets = staticHotspots.map(

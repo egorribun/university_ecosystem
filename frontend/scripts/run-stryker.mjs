@@ -599,6 +599,28 @@ const firstAttemptSourceCostWeights = new Map([
   ["src/components/ui/motion/FadeIn.tsx", 8],
   ["src/components/ui/motion/ScaleIn.tsx", 8],
   ["src/components/ui/motion/StaggerChildren.tsx", 8],
+  // Run 34634679511 shard 41/64 instrumented these UI primitives and
+  // reported a 1,395-test related graph with 145 static mutants. Keep the
+  // sources in the first-attempt cost-aware lane so a fresh planner cannot
+  // place the entire graph in a regular locality shard.
+  ["src/components/stories/StoryViewer.tsx", 8],
+  ["src/components/ui/ActionMenu.tsx", 8],
+  ["src/components/ui/Badge.tsx", 8],
+  ["src/components/ui/SEO.tsx", 8],
+  ["src/components/ui/SafeHtml.tsx", 8],
+  ["src/components/ui/ScheduleCardSkeleton.tsx", 8],
+  ["src/components/ui/Select.tsx", 8],
+  ["src/components/ui/Skeleton.tsx", 8],
+  ["src/components/ui/SkeletonMorph.tsx", 8],
+  ["src/components/ui/Snackbar.tsx", 8],
+  ["src/components/ui/Spinner.tsx", 8],
+  ["src/components/ui/SpotifyConnect.tsx", 8],
+  ["src/components/ui/Spotlight.tsx", 8],
+  ["src/components/ui/StoryCircle.tsx", 8],
+  ["src/components/ui/Switch.tsx", 8],
+  ["src/components/ui/TextField.tsx", 8],
+  ["src/components/ui/Textarea.tsx", 8],
+  ["src/components/ui/table.tsx", 8],
   // The same run timed out with the unsplittable useProfileSync enclosing
   // range and useSessionCrypto mixed into a regular shard. Keep every emitted
   // range from both auth graphs isolated on its own first-attempt shard. A
@@ -636,6 +658,24 @@ const firstAttemptDedicatedFiles = [
 const firstAttemptStaticHotspotFiles = new Set([
   "src/contexts/LanguageContext.tsx",
   "src/db/index.ts",
+  "src/components/stories/StoryViewer.tsx",
+  "src/components/ui/ActionMenu.tsx",
+  "src/components/ui/Badge.tsx",
+  "src/components/ui/SEO.tsx",
+  "src/components/ui/SafeHtml.tsx",
+  "src/components/ui/ScheduleCardSkeleton.tsx",
+  "src/components/ui/Select.tsx",
+  "src/components/ui/Skeleton.tsx",
+  "src/components/ui/SkeletonMorph.tsx",
+  "src/components/ui/Snackbar.tsx",
+  "src/components/ui/Spinner.tsx",
+  "src/components/ui/SpotifyConnect.tsx",
+  "src/components/ui/Spotlight.tsx",
+  "src/components/ui/StoryCircle.tsx",
+  "src/components/ui/Switch.tsx",
+  "src/components/ui/TextField.tsx",
+  "src/components/ui/Textarea.tsx",
+  "src/components/ui/table.tsx",
 ])
 
 function firstAttemptUnitBudget(file, budget) {
@@ -663,45 +703,57 @@ function assignWeightedMutationUnits(weightedUnits, shards) {
   )
   let cursor = 0
 
-  // Seed each shard before choosing the lightest target.  This preserves the
-  // planner's invariant that every requested logical shard has an assignment
-  // whenever there are at least as many units as shards.
-  for (const target of shards) {
-    const entry = orderedUnits[cursor]
-    target.files.push(entry.pattern)
-    target.mutantCount += entry.mutantCount
-    target.estimatedCost += entry.estimatedCost
-    cursor += 1
-  }
-
-  for (; cursor < orderedUnits.length; cursor += 1) {
-    const entry = orderedUnits[cursor]
+  const candidateShardsFor = (entry) => {
     const source = mutationPatternSource(entry.pattern)
-    const sourceFreeShards = firstAttemptStaticHotspotFiles.has(source)
-      ? shards.filter(
-          (shard) => !shard.files.some((pattern) => mutationPatternSource(pattern) === source)
+    if (!firstAttemptStaticHotspotFiles.has(source)) return shards
+    const sourceFreeShards = shards.filter(
+      (shard) => !shard.files.some((pattern) => mutationPatternSource(pattern) === source)
+    )
+    const staticHotspotFreeShards = sourceFreeShards.filter(
+      (shard) =>
+        !shard.files.some((pattern) =>
+          firstAttemptStaticHotspotFiles.has(mutationPatternSource(pattern))
         )
-      : shards
-    const staticHotspotFreeShards = firstAttemptStaticHotspotFiles.has(source)
-      ? sourceFreeShards.filter(
-          (shard) =>
-            !shard.files.some((pattern) =>
-              firstAttemptStaticHotspotFiles.has(mutationPatternSource(pattern))
-            )
-        )
-      : sourceFreeShards
-    const candidateShards =
-      staticHotspotFreeShards.length > 0
-        ? staticHotspotFreeShards
+    )
+    const sourceOwnedShards = shards.filter((shard) =>
+      shard.files.some((pattern) => mutationPatternSource(pattern) === source)
+    )
+    return staticHotspotFreeShards.length > 0
+      ? staticHotspotFreeShards
+      : sourceOwnedShards.length > 0
+        ? sourceOwnedShards
         : sourceFreeShards.length > 0
           ? sourceFreeShards
           : shards
-    const target = candidateShards.reduce((lightest, shard) => {
+  }
+
+  const chooseLightest = (entry) => {
+    const candidates = candidateShardsFor(entry)
+    return candidates.reduce((lightest, shard) => {
       return shard.estimatedCost < lightest.estimatedCost ||
         (shard.estimatedCost === lightest.estimatedCost && shard.id < lightest.id)
         ? shard
         : lightest
     })
+  }
+
+  // Seed each shard before choosing the lightest target.  This preserves the
+  // planner's invariant that every requested logical shard has an assignment
+  // whenever there are at least as many units as shards.
+  for (const target of shards) {
+    const entry = orderedUnits[cursor]
+    const selected = firstAttemptStaticHotspotFiles.has(mutationPatternSource(entry.pattern))
+      ? chooseLightest(entry)
+      : target
+    selected.files.push(entry.pattern)
+    selected.mutantCount += entry.mutantCount
+    selected.estimatedCost += entry.estimatedCost
+    cursor += 1
+  }
+
+  for (; cursor < orderedUnits.length; cursor += 1) {
+    const entry = orderedUnits[cursor]
+    const target = chooseLightest(entry)
     target.files.push(entry.pattern)
     target.mutantCount += entry.mutantCount
     target.estimatedCost += entry.estimatedCost
@@ -794,7 +846,12 @@ function assignFirstAttemptMutationUnits(weightedUnits, shards) {
     Math.max(
       minimumExpensiveShards,
       Math.min(firstAttemptCostAwareShardCount, remainingShards.length),
-      staticHotspotUnitCount
+      // Do not reserve one logical shard for every range of a hotspot. A
+      // large inventory can emit dozens of ranges; reserving all of them
+      // would strand the regular source universe on only a handful of
+      // runners. The bounded cost-aware lane still spreads each hotspot over
+      // every available shard before sharing a shard with another range.
+      Math.min(staticHotspotUnitCount, firstAttemptCostAwareShardCount)
     )
   )
   const expensiveShards = remainingShards.slice(0, expensiveShardCount)
