@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -177,6 +178,32 @@ async def test_report_bcrypt_users_default_sample_limit_is_fifty() -> None:
         )
     )
     assert "LIMIT 50" in compiled
+
+
+@pytest.mark.asyncio
+async def test_report_bcrypt_users_projects_ids_and_applies_bcrypt_predicate() -> None:
+    sample_id = uuid.uuid4()
+    session = AsyncMock()
+    session.__aenter__.return_value = session
+    session.__aexit__.return_value = None
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [sample_id]
+    session.execute.return_value = result
+
+    with patch.object(migrate_passwords, "async_session", return_value=session):
+        assert await migrate_passwords._report_bcrypt_users(limit=1, show_ids=True) == [
+            {"id": str(sample_id)}
+        ]
+
+    statement = session.execute.await_args.args[0]
+    compiled = str(
+        statement.compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    ).lower()
+    assert "users.id" in compiled
+    assert "users.hashed_password" in compiled
+    assert "users.is_active is true" in compiled
 
 
 def test_report_is_count_only_without_explicit_id_opt_in():

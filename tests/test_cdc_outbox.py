@@ -482,10 +482,15 @@ async def test_cdc_outbox_worker_closes_connection_when_stopped_during_connect()
         return conn
 
     with patch.object(cdc.asyncpg, "connect", new=connect_after_stop):
-        await worker.run_forever()
+        with patch.object(cdc.logger, "info") as log_info:
+            await worker.run_forever()
 
     conn._copy_out.assert_not_awaited()
     conn.close.assert_awaited_once_with()
+    assert any(
+        call.args == ("CdcOutboxWorker replication loop exited",)
+        for call in log_info.call_args_list
+    )
 
 
 @pytest.mark.asyncio

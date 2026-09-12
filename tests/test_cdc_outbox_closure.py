@@ -185,6 +185,31 @@ async def test_provision_resources_owns_and_closes_its_connection() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "close_error",
+    [
+        OSError("socket closed"),
+        ConnectionError("connection reset"),
+        cdc.asyncpg.PostgresError("postgres closed"),
+        cdc.asyncpg.InterfaceError("interface closed"),
+    ],
+)
+async def test_close_replication_connection_suppresses_expected_teardown_errors(
+    close_error: Exception,
+) -> None:
+    """Teardown must be best-effort for every supported asyncpg close error."""
+    conn = AsyncMock()
+    conn.close.side_effect = close_error
+    worker = cdc.CdcOutboxWorker(nats_broker=AsyncMock())
+    worker._replication_connection = conn
+
+    await worker._close_replication_connection()
+
+    assert worker._replication_connection is None
+    conn.close.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
 async def test_dispatch_handles_missing_and_serialized_payload_variants() -> None:
     broker = AsyncMock()
     worker = cdc.CdcOutboxWorker(nats_broker=broker)
@@ -337,3 +362,18 @@ async def test_replication_writer_ignores_data_after_stop() -> None:
 
     worker.process_wal_message.assert_not_awaited()
     conn.close.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_stop_clears_fallback_reference_after_stopping_it() -> None:
+    fallback = AsyncMock()
+    worker = cdc.CdcOutboxWorker(nats_broker=AsyncMock())
+    worker._fallback_worker = fallback
+    worker._close_replication_connection = AsyncMock()
+
+    await worker.stop()
+
+    assert worker._is_running is False
+    fallback.stop.assert_awaited_once_with()
+    assert worker._fallback_worker is None
+    worker._close_replication_connection.assert_awaited_once_with()

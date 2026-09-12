@@ -784,6 +784,8 @@ class CdcOutboxWorker:
                 )
                 await asyncio.sleep(5)
 
+        logger.info("CdcOutboxWorker replication loop exited")
+
     async def _run_fallback_worker(self) -> None:
         from app.workers.outbox import OutboxWorker
 
