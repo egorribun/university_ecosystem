@@ -117,7 +117,7 @@ backup:
   failedJobsHistoryLimit: 3
   ttlSecondsAfterFinished: 86400
   postgresImage: "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
-  minioClientImage: "minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
+  minioClientImage: "quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
   minioEndpoint: "http://minio:9000"
   minioBucket: "backups"
 
