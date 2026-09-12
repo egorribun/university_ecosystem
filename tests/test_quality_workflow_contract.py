@@ -4181,7 +4181,10 @@ def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     chaos_job = ci_workflow["jobs"]["chaos-tests"]
     minio_service = chaos_job["services"]["minio"]
-    assert minio_service["image"].startswith("minio/minio:")
+    # Docker Hub archived the upstream repository; CI consumes the same
+    # immutable manifest through the public Quay mirror instead.
+    assert minio_service["image"].startswith("quay.io/minio/minio:")
+    assert "@sha256:" in minio_service["image"]
     assert minio_service["command"] == 'server /data --console-address ":9001"'
     assert "9003:9003" in chaos_job["services"]["toxiproxy"]["ports"]
 
