@@ -346,12 +346,18 @@ async function persistSubscriptionWithBackoff(
   }
 
   syncInProgress = true
-  let attempt = 0
   // Add jitter to reduce the probability of thundering herd
   const jitter = () => Math.random() * PERSIST_BASE_DELAY_MS
+  // Keep retry cardinality finite even if a mutation removes a branch body.
+  // The previous `for (;;)` depended on every success/error branch returning
+  // or advancing `attempt`; an empty-block mutant could therefore spin until
+  // Stryker's timeout.  Materialising the bounded attempt numbers also makes
+  // the production retry contract explicit: at most PERSIST_MAX_ATTEMPTS
+  // server writes are ever attempted.
+  const attempts = Array.from({ length: PERSIST_MAX_ATTEMPTS }, (_, index) => index + 1)
 
   try {
-    for (;;) {
+    for (const attempt of attempts) {
       try {
         const response = await saveSubscription(payload, topics)
         const normalizedTopics = response?.topics ?? (topics ? [...topics].sort() : [])
@@ -392,7 +398,6 @@ async function persistSubscriptionWithBackoff(
           return null
         }
 
-        attempt += 1
         if (attempt >= PERSIST_MAX_ATTEMPTS) {
           logError("Failed to persist push subscription", error)
           throw error
@@ -401,6 +406,9 @@ async function persistSubscriptionWithBackoff(
         await sleep(delay)
       }
     }
+    // The configured attempt list is non-empty in production, but keep the
+    // helper fail-closed if a future configuration supplies zero attempts.
+    return null
   } finally {
     syncInProgress = false
   }
@@ -489,6 +497,7 @@ export async function resolveServiceWorkerRegistration(
     logWarning("Failed to get existing service worker registration", error)
   }
 
+  let readinessTimeoutId: ReturnType<typeof setTimeout> | undefined
   try {
     const readyPromise = navigator.serviceWorker.ready
       .then((reg) => reg)
@@ -498,13 +507,17 @@ export async function resolveServiceWorkerRegistration(
       })
 
     const timeout = new Promise<ServiceWorkerRegistration | null>((resolve) => {
-      setTimeout(() => resolve(null), SERVICE_WORKER_READY_TIMEOUT_MS)
+      readinessTimeoutId = setTimeout(() => resolve(null), SERVICE_WORKER_READY_TIMEOUT_MS)
     })
 
     const resolved = await Promise.race([readyPromise, timeout])
     if (resolved) return resolved
   } catch (error) {
     logWarning("Failed to await service worker readiness", error)
+  } finally {
+    if (readinessTimeoutId !== undefined) {
+      clearTimeout(readinessTimeoutId)
+    }
   }
 
   try {
@@ -555,9 +568,7 @@ export function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/")
   const rawData = atob(base64)
-  const outputArray = new Uint8Array(rawData.length)
-  for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i)
-  return outputArray
+  return Uint8Array.from([...rawData], (character) => character.charCodeAt(0))
 }
 
 type EnsurePushSubscriptionOptions = {
@@ -571,6 +582,8 @@ export async function ensurePushSubscription(
   options?: EnsurePushSubscriptionOptions
 ): Promise<PushSubscription | null> {
   if (
+    typeof window === "undefined" ||
+    typeof navigator === "undefined" ||
     !("serviceWorker" in navigator) ||
     !("PushManager" in window) ||
     typeof Notification === "undefined"

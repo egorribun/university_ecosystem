@@ -212,6 +212,46 @@ describe("StoriesAdmin", () => {
     expect(mocks.getStories).toHaveBeenCalledTimes(2)
   })
 
+  it("trims required text and omits whitespace-only optional fields", async () => {
+    render(<StoriesAdmin />)
+    await screen.findByText("stories:list.empty")
+
+    fireEvent.change(screen.getByLabelText("stories:form.titleRu"), {
+      target: { value: "  New story  " },
+    })
+    fireEvent.change(screen.getByLabelText("stories:form.shortTextRu"), {
+      target: { value: "  New story text  " },
+    })
+    fireEvent.change(screen.getByLabelText("stories:form.titleEn"), {
+      target: { value: "   " },
+    })
+    fireEvent.change(screen.getByLabelText("stories:form.shortTextEn"), {
+      target: { value: "\t" },
+    })
+    fireEvent.change(screen.getByLabelText("stories:form.ctaUrl"), {
+      target: { value: "  " },
+    })
+    fireEvent.change(screen.getByLabelText("stories:form.publishedAt"), {
+      target: { value: "2026-08-01T10:00" },
+    })
+    fireEvent.change(screen.getByLabelText("stories:form.expiresAt"), {
+      target: { value: "2026-08-02T10:00" },
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.submit" }))
+
+    await waitFor(() => expect(mocks.createStory).toHaveBeenCalledOnce())
+    expect(mocks.createStory.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        title: "New story",
+        short_text: "New story text",
+      })
+    )
+    expect(mocks.createStory.mock.calls[0]?.[0]).not.toHaveProperty("title_en")
+    expect(mocks.createStory.mock.calls[0]?.[0]).not.toHaveProperty("short_text_en")
+    expect(mocks.createStory.mock.calls[0]?.[0]).not.toHaveProperty("cta_url")
+  })
+
   it("shows the API error when loading stories fails", async () => {
     mocks.getStories.mockRejectedValueOnce(new Error("story service unavailable"))
 

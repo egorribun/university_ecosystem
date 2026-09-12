@@ -570,6 +570,7 @@ describe("subscribe", () => {
 
       const res = await mod.resolveServiceWorkerRegistration()
       expect(res).toBe(dummyReg)
+      expect(vi.getTimerCount()).toBe(0)
     })
 
     it("does not auto-register a worker in Lighthouse audit builds", async () => {
@@ -1118,6 +1119,60 @@ describe("subscribe", () => {
       expect(saveSubscription).toHaveBeenCalledOnce()
     })
 
+    it("persists a changed topic set when the subscription payload is unchanged", async () => {
+      const mockSub = {
+        endpoint: "https://push.example.com/topic-change",
+        options: { applicationServerKey: mod.urlBase64ToUint8Array("dG9waWM").buffer },
+        expirationTime: null,
+        toJSON: () => ({ endpoint: "https://push.example.com/topic-change" }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(mockSub),
+          subscribe: vi.fn(),
+        },
+      }
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      await mod.ensurePushSubscription({
+        registration: mockReg,
+        vapidPublicKey: "dG9waWM",
+        topics: ["news"],
+        requestPermission: false,
+      })
+      vi.mocked(saveSubscription).mockClear()
+
+      await mod.ensurePushSubscription({
+        registration: mockReg,
+        vapidPublicKey: "dG9waWM",
+        topics: ["events"],
+        requestPermission: false,
+      })
+
+      expect(saveSubscription).toHaveBeenCalledOnce()
+      expect(saveSubscription).toHaveBeenCalledWith(expect.anything(), ["events"])
+    })
+
+    it("accepts omitted options when browser permission is already granted", async () => {
+      const mockSub = {
+        endpoint: "https://push.example.com/omitted-options",
+        options: { applicationServerKey: mod.urlBase64ToUint8Array("omitted-key").buffer },
+        toJSON: () => ({ endpoint: "https://push.example.com/omitted-options" }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(null),
+          subscribe: vi.fn().mockResolvedValue(mockSub),
+        },
+      }
+      mockSWContainer.getRegistration.mockResolvedValue(mockReg)
+      vi.stubGlobal("Notification", { permission: "granted" })
+      vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "omitted-key")
+
+      await expect(mod.ensurePushSubscription()).resolves.toBe(mockSub)
+      expect(mockReg.pushManager.subscribe).toHaveBeenCalledOnce()
+    })
+
     it("swallows a permanent persistence failure after bounded retries", async () => {
       vi.mocked(saveSubscription).mockRejectedValue(new Error("permanent failure"))
       const mockSub = {
@@ -1147,6 +1202,52 @@ describe("subscribe", () => {
         2
       )
       expect(saveSubscription).toHaveBeenCalledTimes(3)
+    })
+
+    it("uses the bounded exponential retry schedule including jitter", async () => {
+      vi.mocked(saveSubscription).mockRejectedValue(new Error("retryable failure"))
+      const mockSub = {
+        endpoint: "https://push.example.com/retry-schedule",
+        options: { applicationServerKey: mod.urlBase64ToUint8Array("cmV0cnk").buffer },
+        toJSON: () => ({ endpoint: "https://push.example.com/retry-schedule" }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(null),
+          subscribe: vi.fn().mockResolvedValue(mockSub),
+        },
+      }
+      const randomSpy = vi.spyOn(Math, "random").mockReturnValue(1)
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      try {
+        await withExpectedConsole(
+          "error",
+          "Failed to persist push subscription",
+          async () => {
+            const promise = mod.ensurePushSubscription({
+              registration: mockReg,
+              vapidPublicKey: "cmV0cnk",
+              requestPermission: false,
+            })
+
+            await vi.advanceTimersByTimeAsync(750)
+            expect(saveSubscription).toHaveBeenCalledOnce()
+
+            await vi.advanceTimersByTimeAsync(250)
+            expect(saveSubscription).toHaveBeenCalledTimes(2)
+
+            await vi.advanceTimersByTimeAsync(1_250)
+            expect(saveSubscription).toHaveBeenCalledTimes(2)
+
+            await vi.advanceTimersByTimeAsync(250)
+            await expect(promise).resolves.toBe(mockSub)
+          },
+          2
+        )
+      } finally {
+        randomSpy.mockRestore()
+      }
     })
   })
 
@@ -1262,6 +1363,16 @@ describe("subscribe", () => {
     it("returns status of browser push manager", () => {
       vi.stubGlobal("PushManager", {})
       expect(mod.isPushSupported()).toBe(true)
+    })
+
+    it.each([
+      ["window", () => vi.stubGlobal("window", undefined)],
+      ["service worker", () => vi.stubGlobal("navigator", {})],
+      ["PushManager", () => vi.stubGlobal("window", {})],
+      ["Notification", () => vi.stubGlobal("Notification", undefined)],
+    ])("fails closed when %s is unavailable", (_name, removeCapability) => {
+      removeCapability()
+      expect(mod.isPushSupported()).toBe(false)
     })
   })
 
@@ -1529,6 +1640,14 @@ describe("subscribe", () => {
 
       const result = await mod.ensurePushSubscription()
       expect(result).toBeNull()
+    })
+
+    it("returns null when evaluated without browser globals", async () => {
+      vi.stubGlobal("window", undefined)
+      vi.stubGlobal("navigator", undefined)
+      vi.stubGlobal("Notification", undefined)
+
+      await expect(mod.ensurePushSubscription()).resolves.toBeNull()
     })
 
     it("returns null from softSyncPushSubscription when PushManager is absent", async () => {
