@@ -134,6 +134,67 @@ describe("layoutMapMarkerOffsets", () => {
     }
   })
 
+  it("keeps the nearest-first lattice order stable for a dense cluster", () => {
+    const markers = Array.from({ length: 9 }, (_, index) => ({
+      id: `cluster-${index}`,
+      latitude: CAMPUS_COORDINATES.lat,
+      longitude: CAMPUS_COORDINATES.lon,
+      width: 44,
+      height: 44,
+      anchor: "center" as const,
+    }))
+    const projected = new Map(markers.map(({ id }) => [id, { x: 0, y: 0 }]))
+
+    expect([...layoutProjectedMapMarkerOffsets(markers, projected)]).toEqual([
+      ["cluster-0", [0, 0]],
+      ["cluster-1", [-80, -80]],
+      ["cluster-2", [0, -80]],
+      ["cluster-3", [80, -80]],
+      ["cluster-4", [80, 0]],
+      ["cluster-5", [80, 80]],
+      ["cluster-6", [0, 80]],
+      ["cluster-7", [-80, 80]],
+      ["cluster-8", [-80, 0]],
+    ])
+  })
+
+  it("uses the documented canonical cameras when the camera argument is omitted", () => {
+    const markers = campusMarkerFixtures().slice(0, 4)
+    const expected = layoutMapMarkerOffsets(markers, [
+      { zoom: CAMPUS_DETAIL_ZOOM, bearing: -20, pitch: 0 },
+      { zoom: CAMPUS_DETAIL_ZOOM, bearing: 0, pitch: 45 },
+    ])
+
+    expect([...layoutMapMarkerOffsets(markers)]).toEqual([...expected])
+  })
+
+  it("applies the anchor offset at the exact projected collision boundary", () => {
+    const markers: MapMarkerCollisionItem[] = [
+      {
+        id: "bottom-anchor",
+        latitude: CAMPUS_COORDINATES.lat,
+        longitude: CAMPUS_COORDINATES.lon,
+        width: 10,
+        height: 10,
+        anchor: "bottom",
+      },
+      {
+        id: "center-anchor",
+        latitude: CAMPUS_COORDINATES.lat,
+        longitude: CAMPUS_COORDINATES.lon,
+        width: 10,
+        height: 10,
+        anchor: "center",
+      },
+    ]
+    const projected = new Map([
+      ["bottom-anchor", { x: 0, y: 0 }],
+      ["center-anchor", { x: 0, y: 33 }],
+    ])
+
+    expect(layoutProjectedMapMarkerOffsets(markers, projected).get("center-anchor")).toEqual([0, 0])
+  })
+
   it("fails closed when a live projection omits a marker", () => {
     const marker = campusMarkerFixtures()[0]!
     expect(() => layoutProjectedMapMarkerOffsets([marker], new Map())).toThrow(
@@ -159,6 +220,7 @@ describe("layoutMapMarkerOffsets", () => {
     expect(Math.abs(secondOffset[0] - firstOffset[0])).toBeGreaterThanOrEqual(
       fixtures[0]!.width + MAP_MARKER_SAFE_GAP_PX
     )
+    expect(secondOffset).toEqual([1_040, 0])
   })
 
   it("packs a dense production-scale projection within the main-thread budget", () => {

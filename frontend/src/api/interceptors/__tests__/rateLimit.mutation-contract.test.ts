@@ -566,4 +566,70 @@ describe("rateLimit mutation contracts", () => {
 
     await expect(Promise.all([firstWaiter, secondWaiter])).resolves.toEqual([undefined, undefined])
   })
+
+  it("does not release a queued GET when a manually marked POST is released", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "1")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const active = makeConfig()
+    const queued = makeConfig()
+    const post = makeConfig("post")
+
+    await waitForClientQueueSlot(active)
+    const queuedWait = waitForClientQueueSlot(queued)
+    await flushMicrotasks()
+    post.__clientRateLimitAcquired = true
+    releaseClientQueueSlot(post)
+    expect(queued.__clientRateLimitAcquired).toBeUndefined()
+
+    releaseClientQueueSlot(active)
+    const granted = await Promise.race([
+      queuedWait.then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 25)),
+    ])
+    expect(granted).toBe(true)
+    expect(queued.__clientRateLimitAcquired).toBe(true)
+    releaseClientQueueSlot(queued)
+  })
+
+  it("resolves exactly one waiter per released concurrency slot", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "90")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "2")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const active = makeConfig()
+    const activePeer = makeConfig()
+    const queued = Array.from({ length: 3 }, () => makeConfig())
+
+    await waitForClientQueueSlot(active)
+    await waitForClientQueueSlot(activePeer)
+    const waits = queued.map((request) => waitForClientQueueSlot(request))
+    await flushMicrotasks()
+
+    releaseClientQueueSlot(active)
+    await waits[0]
+    await flushMicrotasks()
+    expect(queued[0]!.__clientRateLimitAcquired).toBe(true)
+    expect(queued[1]!.__clientRateLimitAcquired).toBeUndefined()
+    expect(queued[2]!.__clientRateLimitAcquired).toBeUndefined()
+
+    releaseClientQueueSlot(queued[0])
+    await waits[1]
+    await flushMicrotasks()
+    expect(queued[1]!.__clientRateLimitAcquired).toBe(true)
+    expect(queued[2]!.__clientRateLimitAcquired).toBeUndefined()
+
+    releaseClientQueueSlot(activePeer)
+    releaseClientQueueSlot(queued[1])
+    await waits[2]
+    expect(queued[2]!.__clientRateLimitAcquired).toBe(true)
+    releaseClientQueueSlot(queued[2])
+  })
+
+  it("drains an empty server-window waiter list without invoking a non-function", async () => {
+    const { isRateLimited, scheduleRateLimitWindow } = await import("../rateLimit")
+
+    scheduleRateLimitWindow(10)
+    await vi.advanceTimersByTimeAsync(10)
+
+    expect(isRateLimited()).toBe(false)
+  })
 })

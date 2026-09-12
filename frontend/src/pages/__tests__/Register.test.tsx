@@ -83,6 +83,18 @@ describe("Register page", () => {
     }
   })
 
+  it("renders the complete bilingual registration hero contract", async () => {
+    await renderRegister()
+
+    expect(screen.getByText(tAuth("register.hero.badge"))).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: tAuth("register.title") })).toBeInTheDocument()
+    expect(screen.getByText(tAuth("register.hero.description"))).toBeInTheDocument()
+    for (const perk of ["community", "secure", "experience"]) {
+      expect(screen.getByText(tAuth(`register.hero.perks.${perk}.title`))).toBeInTheDocument()
+      expect(screen.getByText(tAuth(`register.hero.perks.${perk}.description`))).toBeInTheDocument()
+    }
+  })
+
   it("provides a stable fallback key for missing email validation messages", () => {
     expect(resolveRegistrationEmailErrorKey(undefined)).toBe("auth:messages.invalidFormat")
     expect(resolveRegistrationEmailErrorKey("")).toBe("auth:messages.invalidFormat")
@@ -198,6 +210,43 @@ describe("Register page", () => {
     )
     await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
     expect(inviteInput).toBeInTheDocument()
+  })
+
+  it("requires an invite code for administrator accounts and removes it for students", async () => {
+    const user = userEvent.setup()
+    await renderRegister()
+
+    const selector = screen.getByRole("combobox")
+    await user.click(selector)
+    await user.click(screen.getByRole("option", { name: tAuth("register.role.admin") }))
+    expect(screen.getByLabelText(matchText(tAuth("fields.inviteCode")))).toBeInTheDocument()
+    expect(screen.getByText(tAuth("register.inviteRequired"))).toBeInTheDocument()
+
+    await user.click(selector)
+    await user.click(screen.getByRole("option", { name: tAuth("register.role.student") }))
+    expect(screen.queryByLabelText(matchText(tAuth("fields.inviteCode")))).toBeNull()
+    expect(screen.getByText(tAuth("register.inviteOptional"))).toBeInTheDocument()
+  })
+
+  it("uses strict password chip boundaries and exposes the selected strength", async () => {
+    const user = userEvent.setup()
+    await renderRegister()
+    const password = screen.getByLabelText(matchText(tAuth("fields.password")))
+    const confirm = screen.getByLabelText(matchText(tAuth("fields.confirmPassword")))
+    const minLengthChip = screen.getByText(tAuth("register.passwordChip.minLength"))
+    const matchChip = screen.getByText(tAuth("register.passwordChip.match"))
+
+    await user.type(password, "1234567")
+    expect(minLengthChip).toHaveClass("text-text-muted-subtle")
+    await user.type(password, "8")
+    expect(minLengthChip).toHaveClass("text-brand")
+    expect(document.querySelector('[style="width: 75%;"]')).toBeInTheDocument()
+    expect(screen.getByText(tAuth("register.passwordStrengthLevel.good"))).toBeInTheDocument()
+
+    await user.type(confirm, "12345678")
+    expect(matchChip).toHaveClass("text-brand")
+    await user.clear(confirm)
+    expect(matchChip).toHaveClass("text-text-muted-subtle")
   })
 
   it("suggests and accepts a corrected email domain", async () => {
@@ -395,6 +444,22 @@ describe("Register page", () => {
     await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
 
     expect(await screen.findByText("Name is invalid; Email is invalid")).toBeInTheDocument()
+  })
+
+  it("uses the generic translated error when an object has no response detail", async () => {
+    const post = vi.spyOn(api, "post").mockRejectedValueOnce({ response: {} })
+    const user = userEvent.setup()
+    await renderRegister()
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.name"))), "Test User")
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.email"))), "user@example.com")
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.password"))), "password123")
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.confirmPassword"))),
+      "password123"
+    )
+    await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
+    expect(await screen.findByText(tAuth("register.error"))).toBeInTheDocument()
+    post.mockRestore()
   })
 
   it("falls back to the translated error for an unstructured API failure", async () => {

@@ -125,13 +125,63 @@ function cellRange(bounds: MarkerBounds): readonly [number, number, number, numb
   ]
 }
 
+/**
+ * Return a bounded inclusive integer range.
+ *
+ * Spatial cells and candidate rings are both finite for a single layout
+ * operation. Materialising the ranges keeps those bounds explicit and makes
+ * malformed mutation variants terminate instead of turning a decrementing
+ * loop into a process-wide hang.
+ */
+function boundedIntegerRange(start: number, end: number, step = 1): number[] {
+  const increment = Math.max(1, Math.abs(step))
+  const length = end >= start ? Math.floor((end - start) / increment) + 1 : 0
+  return Array.from({ length }, (_, index) => start + index * increment)
+}
+
 class MarkerSpatialIndex {
   private readonly cells = new Map<string, number[]>()
 
   insert(markerIndex: number, bounds: MarkerBounds): void {
     const [minX, minY, maxX, maxY] = cellRange(bounds)
-    for (let x = minX; x <= maxX; x += 1) {
-      for (let y = minY; y <= maxY; y += 1) {
+    if (minX === maxX && minY === maxY) {
+      const key = `${minX}:${minY}`
+      const cell = this.cells.get(key)
+      if (cell) cell.push(markerIndex)
+      else this.cells.set(key, [markerIndex])
+      return
+    }
+    if (minX === maxX && maxY === minY + 1) {
+      for (const y of [minY, maxY]) {
+        const key = `${minX}:${y}`
+        const cell = this.cells.get(key)
+        if (cell) cell.push(markerIndex)
+        else this.cells.set(key, [markerIndex])
+      }
+      return
+    }
+    if (maxX === minX + 1 && minY === maxY) {
+      for (const x of [minX, maxX]) {
+        const key = `${x}:${minY}`
+        const cell = this.cells.get(key)
+        if (cell) cell.push(markerIndex)
+        else this.cells.set(key, [markerIndex])
+      }
+      return
+    }
+    if (maxX === minX + 1 && maxY === minY + 1) {
+      for (const x of [minX, maxX]) {
+        for (const y of [minY, maxY]) {
+          const key = `${x}:${y}`
+          const cell = this.cells.get(key)
+          if (cell) cell.push(markerIndex)
+          else this.cells.set(key, [markerIndex])
+        }
+      }
+      return
+    }
+    for (const x of boundedIntegerRange(minX, maxX)) {
+      for (const y of boundedIntegerRange(minY, maxY)) {
         const key = `${x}:${y}`
         const cell = this.cells.get(key)
         if (cell) cell.push(markerIndex)
@@ -142,8 +192,40 @@ class MarkerSpatialIndex {
 
   hasCollision(bounds: MarkerBounds, test: (markerIndex: number) => boolean): boolean {
     const [minX, minY, maxX, maxY] = cellRange(bounds)
-    for (let x = minX; x <= maxX; x += 1) {
-      for (let y = minY; y <= maxY; y += 1) {
+    if (minX === maxX && minY === maxY) {
+      for (const markerIndex of this.cells.get(`${minX}:${minY}`) ?? []) {
+        if (test(markerIndex)) return true
+      }
+      return false
+    }
+    if (minX === maxX && maxY === minY + 1) {
+      for (const y of [minY, maxY]) {
+        for (const markerIndex of this.cells.get(`${minX}:${y}`) ?? []) {
+          if (test(markerIndex)) return true
+        }
+      }
+      return false
+    }
+    if (maxX === minX + 1 && minY === maxY) {
+      for (const x of [minX, maxX]) {
+        for (const markerIndex of this.cells.get(`${x}:${minY}`) ?? []) {
+          if (test(markerIndex)) return true
+        }
+      }
+      return false
+    }
+    if (maxX === minX + 1 && maxY === minY + 1) {
+      for (const x of [minX, maxX]) {
+        for (const y of [minY, maxY]) {
+          for (const markerIndex of this.cells.get(`${x}:${y}`) ?? []) {
+            if (test(markerIndex)) return true
+          }
+        }
+      }
+      return false
+    }
+    for (const x of boundedIntegerRange(minX, maxX)) {
+      for (const y of boundedIntegerRange(minY, maxY)) {
         for (const markerIndex of this.cells.get(`${x}:${y}`) ?? []) {
           // A marker can occupy more than one cell. Rechecking it is cheaper
           // than allocating a Set for every candidate probe, and preserves
@@ -177,21 +259,29 @@ function isAvailable(
   return true
 }
 
-function* candidateOffsets(): Generator<MapMarkerOffset> {
-  yield ZERO_OFFSET
-  for (let ring = 1; ; ring += 1) {
-    const radius = ring * OFFSET_STEP_PX
-    for (let x = -radius; x <= radius; x += OFFSET_STEP_PX) yield [x, -radius]
-    for (let y = -radius + OFFSET_STEP_PX; y <= radius; y += OFFSET_STEP_PX) {
-      yield [radius, y]
-    }
-    for (let x = radius - OFFSET_STEP_PX; x >= -radius; x -= OFFSET_STEP_PX) {
-      yield [x, radius]
-    }
-    for (let y = radius - OFFSET_STEP_PX; y > -radius; y -= OFFSET_STEP_PX) {
-      yield [-radius, y]
-    }
-  }
+function candidateRingOffsets(ring: number): MapMarkerOffset[] {
+  const radius = ring * OFFSET_STEP_PX
+  return [
+    ...boundedIntegerRange(-radius, radius, OFFSET_STEP_PX).map(
+      (x) => [x, -radius] as MapMarkerOffset
+    ),
+    ...boundedIntegerRange(-radius + OFFSET_STEP_PX, radius, OFFSET_STEP_PX).map(
+      (y) => [radius, y] as MapMarkerOffset
+    ),
+    ...boundedIntegerRange(-radius, radius - OFFSET_STEP_PX, OFFSET_STEP_PX)
+      .reverse()
+      .map((x) => [x, radius] as MapMarkerOffset),
+    ...boundedIntegerRange(-radius + OFFSET_STEP_PX, radius - OFFSET_STEP_PX, OFFSET_STEP_PX)
+      .reverse()
+      .map((y) => [-radius, y] as MapMarkerOffset),
+  ]
+}
+
+function candidateOffsets(maxAttempts: number): readonly MapMarkerOffset[] {
+  const requestedRingOffsets = Math.max(0, maxAttempts - 1)
+  const ringCount = Math.ceil((Math.sqrt(1 + requestedRingOffsets) - 1) / 2)
+  const rings = boundedIntegerRange(1, ringCount).flatMap(candidateRingOffsets)
+  return [ZERO_OFFSET, ...rings].slice(0, maxAttempts)
 }
 
 function fallbackOffset(
@@ -225,12 +315,13 @@ function layoutOffsets(
     MAX_CANDIDATE_ATTEMPTS,
     Math.max(MIN_CANDIDATE_ATTEMPTS, markers.length * 16)
   )
+  const candidates = candidateOffsets(candidateAttemptLimit)
 
   for (const marker of markers) {
     const cameraPoints = getCameraPoints(marker)
     let offset: MapMarkerOffset | undefined
     let attempts = 0
-    for (const candidate of candidateOffsets()) {
+    for (const candidate of candidates) {
       attempts += 1
       if (isAvailable(marker, cameraPoints, candidate, placedMarkers, spatialIndexes)) {
         offset = candidate

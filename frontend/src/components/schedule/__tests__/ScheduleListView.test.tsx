@@ -104,6 +104,15 @@ describe("ScheduleListView", () => {
     expect(screen.queryByText("schedule:list.noLessons")).not.toBeInTheDocument()
   })
 
+  it("wires the offline retry action to the schedule refresh callback", async () => {
+    const user = userEvent.setup()
+    const refresh = vi.fn()
+    renderView({ ...baseProps, schedule: [], rawSchedule: [], isOnline: false, refresh })
+
+    await user.click(screen.getByRole("button", { name: "offlineFallback.retry" }))
+    expect(refresh).toHaveBeenCalledOnce()
+  })
+
   it("keeps the regular empty state online even when there is no cached payload", () => {
     renderView({ ...baseProps, schedule: [], rawSchedule: [], isOnline: true })
     expect(screen.getByText("schedule:list.noLessons")).toBeInTheDocument()

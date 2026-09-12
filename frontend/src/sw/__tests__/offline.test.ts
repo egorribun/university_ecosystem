@@ -8,6 +8,9 @@ import {
   readPendingReports,
   sanitizeReportPayload,
   processPendingReports,
+  addRecord,
+  processOfflineQueues,
+  STORES,
 } from "../offline"
 
 vi.mock("../logger", () => ({
@@ -140,6 +143,27 @@ describe("Service Worker - Offline Storage & Sync", () => {
       const [pending] = await readPendingReports()
       expect(pending).toMatchObject({ method: "POST", idempotencyKey: "mocked-uuid-1234" })
     })
+
+    it("creates the complete queue schema and mutation indexes", async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("notification-interactions", 4)
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+
+      expect([...db.objectStoreNames]).toEqual(expect.arrayContaining(Object.values(STORES)))
+      const reports = db.transaction(STORES.REPORT, "readonly").objectStore(STORES.REPORT)
+      expect([...reports.indexNames]).toContain("dedupeKey")
+
+      const mutations = db.transaction(STORES.MUTATION, "readonly").objectStore(STORES.MUTATION)
+      expect([...mutations.indexNames]).toEqual(
+        expect.arrayContaining(["mutationId", "category", "dedupeKey"])
+      )
+      expect(mutations.index("mutationId").unique).toBe(true)
+      expect(mutations.index("category").unique).toBe(false)
+      expect(mutations.index("dedupeKey").unique).toBe(false)
+      db.close()
+    })
   })
 
   describe("Sanitize Report Payload", () => {
@@ -254,6 +278,81 @@ describe("Service Worker - Offline Storage & Sync", () => {
       const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit
       expect(requestInit.method).toBe(method)
       expect(requestInit).not.toHaveProperty("body")
+    })
+
+    it("forwards idempotency keys, keepalive, and JSON payloads", async () => {
+      await storePendingReport({
+        url: "http://localhost/page",
+        reportUrl: "http://localhost/api/report-with-headers",
+        timestamp: 1000,
+        payload: { event: "click" },
+        method: "POST",
+      })
+      const [stored] = await readPendingReports()
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+      vi.stubGlobal("fetch", fetchMock)
+
+      await processPendingReports()
+
+      const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit
+      expect(requestInit).toMatchObject({
+        method: "POST",
+        keepalive: true,
+        body: JSON.stringify({ event: "click" }),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": stored?.idempotencyKey,
+        },
+      })
+    })
+  })
+
+  describe("Background Sync - News interactions", () => {
+    it("defaults missing interaction methods to POST and sends a JSON body", async () => {
+      await addRecord(STORES.NEWS_INTERACTION, {
+        url: "http://localhost/api/news/default-method",
+        payload: { id: "default-method" },
+      })
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+      vi.stubGlobal("fetch", fetchMock)
+
+      await processOfflineQueues()
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost/api/news/default-method",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ id: "default-method" }),
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+    })
+
+    it.each([400, 404])("deletes a news interaction that returns %s", async (status) => {
+      await addRecord(STORES.NEWS_INTERACTION, {
+        url: `http://localhost/api/news/drop-${status}`,
+        method: "POST",
+        payload: { status },
+      })
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status }))
+
+      await processOfflineQueues()
+
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("notification-interactions", 4)
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+      const remaining = await new Promise<unknown[]>((resolve, reject) => {
+        const request = db
+          .transaction(STORES.NEWS_INTERACTION, "readonly")
+          .objectStore(STORES.NEWS_INTERACTION)
+          .getAll()
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+      db.close()
+      expect(remaining).toHaveLength(0)
     })
   })
 })

@@ -1868,4 +1868,70 @@ describe("useMessengerController — branch top-up", () => {
 
     expect(result.current.messages[0]).toMatchObject({ seenByTotal: 2, seenByCount: 1 })
   })
+
+  it("exposes the documented closed/empty initial state for every transient panel", () => {
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+
+    expect(result.current).toMatchObject({
+      selectedChatId: null,
+      activeChat: null,
+      activeChatDisplay: null,
+      isNewChatModalOpen: false,
+      showSearchInChat: false,
+      searchQuery: "",
+      showChatMenu: false,
+      editingMessageId: null,
+      editingMessageContent: "",
+      replyingTo: null,
+      forwardSourceMessageId: null,
+      profileUser: null,
+      isProfileLoading: false,
+      profileError: null,
+      confirmDialog: null,
+      showGroupInfo: false,
+      isLoadingOlderMessages: false,
+      olderMessagesError: false,
+    })
+  })
+
+  it("does not duplicate a server message already present in the live cache", async () => {
+    const serverMessage = {
+      id: "server-msg-id",
+      chat_id: "chat-1",
+      sender_id: "current-user-id",
+      content: "hello",
+      created_at: "2026-08-25T12:00:00Z",
+      read_status: false,
+      attachments: [],
+    }
+    seedChat("chat-1")
+    mocks.chatApi.getMessages.mockResolvedValue({
+      items: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.chatApi.sendMessage.mockResolvedValue(serverMessage)
+    const { queryClient, HookWrapper } = createQueryHarness()
+    queryClient.setQueryData(["messages", "chat-1"], {
+      items: [serverMessage],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+    await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+    await act(async () => {
+      result.current.handleSendMessage("hello", [])
+    })
+
+    await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledOnce())
+    await waitFor(() => {
+      const cached = queryClient.getQueryData<{ items: Array<{ id: string }> }>([
+        "messages",
+        "chat-1",
+      ])
+      expect(cached?.items.filter((message) => message.id === serverMessage.id)).toHaveLength(1)
+    })
+  })
 })
