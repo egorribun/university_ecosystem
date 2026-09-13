@@ -11,7 +11,22 @@ FRONTEND_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml"
 )
 WORKFLOW_DIRECTORY = REPOSITORY_ROOT / ".github" / "workflows"
-NPM_CI_COMMAND = re.compile(r"^\s*(?:run:\s*)?npm ci(?:\s|$)")
+NPM_CI_COMMAND = re.compile(r"(?<![\w-])npm\s+ci(?:\s|$)")
+
+
+def _run_scripts(node: object) -> list[str]:
+    """Collect YAML ``run`` scripts, including multiline shell blocks."""
+    scripts: list[str] = []
+    if isinstance(node, dict):
+        run = node.get("run")
+        if isinstance(run, str):
+            scripts.append(run)
+        for value in node.values():
+            scripts.extend(_run_scripts(value))
+    elif isinstance(node, list):
+        for value in node:
+            scripts.extend(_run_scripts(value))
+    return scripts
 
 
 def _load(path: Path) -> dict[str, object]:
@@ -33,12 +48,16 @@ def test_npm_ci_skips_duplicate_audit_and_funding_network_work() -> None:
     Keeping it out of every ``npm ci`` invocation avoids repeating network work
     on each matrix leg without disabling lifecycle scripts or the dedicated audit.
     """
-    for workflow_path in sorted(WORKFLOW_DIRECTORY.glob("*.yml")):
-        text = workflow_path.read_text(encoding="utf-8")
+    workflow_paths = sorted(
+        [*WORKFLOW_DIRECTORY.glob("*.yml"), *WORKFLOW_DIRECTORY.glob("*.yaml")]
+    )
+    for workflow_path in workflow_paths:
+        document = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
         install_lines = [
             line.strip()
-            for line in text.splitlines()
-            if NPM_CI_COMMAND.match(line) and not line.lstrip().startswith("#")
+            for script in _run_scripts(document)
+            for line in script.splitlines()
+            if NPM_CI_COMMAND.search(line) and not line.lstrip().startswith("#")
         ]
         if not install_lines:
             continue

@@ -796,6 +796,33 @@ def test_semantic_release_waits_for_every_signed_image() -> None:
     assert workflow_text.count("secrets.RELEASE_TOKEN") == 1
 
 
+def test_release_audits_root_toolchain_after_install() -> None:
+    """The privileged release toolchain must keep an explicit npm audit gate."""
+    workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["publish"]["steps"]
+    install_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Install dependencies"
+    )
+    audit_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Audit release toolchain dependencies"
+    )
+    assert install_index < audit_index
+    audit_step = steps[audit_index]
+    assert audit_step["run"] == "npm audit --audit-level=high --json"
+    assert "if" not in audit_step
+    assert audit_step.get("continue-on-error") is not True
+    verify_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Verify release toolchain"
+    )
+    assert audit_index < verify_index
+
+
 def test_release_jobs_check_out_event_sha_before_trusting_dispatch_inputs() -> None:
     """Privileged release jobs must execute only the workflow event's source.
 
