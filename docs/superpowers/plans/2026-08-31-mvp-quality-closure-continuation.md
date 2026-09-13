@@ -4070,6 +4070,42 @@ does not fail the configured command, and `lint:depcheck` reported no unused
 dependencies. Token synchronization was deterministic and left the tracked
 generated token file unchanged.
 
+## 54. Bandit scope characterization and infrastructure contract refresh (2026-09-13)
+
+The SEC-08 tooling item was characterized without changing the security gate.
+The production-targeted command used by the pre-commit/CI path remains:
+
+```text
+$env:PYTHONUTF8='1'; uv run bandit -c pyproject.toml -r app -q
+exit code 0 (Bandit emitted only existing nosec/comment diagnostics)
+```
+
+For comparison, an explicit all-code diagnostic invocation was run once:
+
+```text
+uv run bandit -c pyproject.toml -r app tests
+exit code 1: 0 high, 13 medium and 863 low findings, concentrated in
+test-only fixture credentials and subprocess/chaos helpers
+```
+
+Those test fixtures are not deployed production code and use the repository's
+existing secret-fixture conventions. They are intentionally not converted into
+blanket `# nosec` suppressions, and no findings are used as release evidence.
+SEC-08 therefore remains `EXTERNAL-ONLY / TOOLING`: the authoritative Linux
+workflow must keep the production scope explicit and publish its fresh scan;
+expanding the required scope requires a separately reviewed fixture policy.
+
+The infrastructure contract characterization also completed locally:
+
+```text
+uv run pytest -q -p no:cacheprovider \
+  tests/test_infra_audit_contract.py tests/test_docker_startup_contracts.py
+96 passed, 1 skipped in 37.53s
+```
+
+The sole skip is the documented Windows limitation that `bash` is not an
+executable on this host; the wrapper's Linux execution remains release-gated.
+
 ## 53. CDC lifecycle and service-documentation refresh (2026-09-13)
 
 The external audit's BE-08 item was rechecked against the current source. The
