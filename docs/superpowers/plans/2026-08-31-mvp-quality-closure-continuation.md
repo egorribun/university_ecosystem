@@ -3758,3 +3758,13 @@ The run remains non-terminal and contributes no release evidence.
    security/API/infra/browser evidence and only then evaluate the external
    merge, immutable-image, Docker, Kubernetes/TLS/observability, device-CWV,
    chaos/rollback, production and SHA-bound audit gates.
+
+### 49.4 Checkpoint identity reconciliation (2026-09-13)
+
+The checkpoint identity update itself is commit `427662022bc3cfcbbb6fe411e6da28b8784d3ec0`
+(`docs: track inventory checkpoint identity`). The current local branch is
+therefore twelve commits ahead of `origin/egorribun`, with no tracked
+changes; the four user-owned untracked paths listed in §49.1 remain untouched.
+This documentation-only commit does not alter source, test, mutation
+inventory, runner caps, thresholds or the requirement to wait for the old run
+to become terminal before the non-force push.
