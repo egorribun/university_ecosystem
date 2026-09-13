@@ -98,7 +98,9 @@ def default_checks(repo_root: Path) -> tuple[CheckSpec, ...]:
         ),
         CheckSpec(
             "focused-contract-tests",
-            _python_command("-m", "pytest", "-q", *focused_tests),
+            _python_command(
+                "-m", "pytest", "-q", "-p", "no:cacheprovider", *focused_tests
+            ),
         ),
     )
 

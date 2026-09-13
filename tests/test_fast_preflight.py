@@ -41,6 +41,8 @@ def test_default_checks_cover_frontend_backend_harness_and_focused_contracts() -
     assert checks[3].command[:3] == (sys.executable, "-m", "ruff")
     assert checks[4].command[:2] == (sys.executable, "verify_harness.py")
     assert checks[5].command[:3] == (sys.executable, "-m", "pytest")
+    assert checks[5].command[3:5] == ("-q", "-p")
+    assert checks[5].command[5] == "no:cacheprovider"
     normalized_command = [item.replace("\\", "/") for item in checks[5].command]
     assert any(
         item.endswith("/tests/contracts/test_ci_release_capacity_contract.py")
