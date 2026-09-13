@@ -153,10 +153,11 @@ Both survivors are stale-test-snapshot failures: the local RED-to-GREEN fixes
 now assert the deterministic query ordering and the exact warning template and
 arguments in `tests/test_cli_migrate_passwords_closure.py` and
 `tests/test_cdc_outbox_closure.py`. The current run cannot see those
-uncommitted assertions, so it must not be re-used as a mutation or release
-result. After the run reaches a terminal state, commit the focused test fixes,
-run the two affected shards on the resulting SHA, and only then start the
-three-green-run capacity measurement cycle above.
+post-source assertions, so it must not be re-used as a mutation or release
+result. The focused fixes are now committed locally in `8f3c699c4`; after this
+run reaches a terminal state, push the commits, run the two affected shards on
+the resulting SHA, and only then start the three-green-run capacity measurement
+cycle above.
 
 No workflow caps, inventory, exclusions, retry policy, or quality thresholds
 were changed by this addendum. The `OPEN-PERF/EVIDENCE-BLOCKED` status remains
