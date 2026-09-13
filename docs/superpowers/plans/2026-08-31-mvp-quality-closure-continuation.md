@@ -4018,3 +4018,23 @@ the branch to `FRESH-GREEN`: current-SHA GitHub matrix completion, strict
 mutation/coverage artifacts, live ruleset comparison, and all external
 Docker/Kubernetes/staging/release evidence remain mandatory. The generated
 JSON report is ignored by Git and is not a release artifact.
+
+The Compose matrix was validated using the repository's supported composition
+patterns (base file plus the required overlays), with environment variables
+provided only in the process environment:
+
+```text
+docker compose --env-file .env.docker -f docker-compose.full.yml config --quiet
+docker compose --env-file .env.docker -f docker-compose.yml config --quiet
+docker compose --env-file .env.docker \
+  -f docker-compose.yml -f docker-compose.infra.yml \
+  -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml config --quiet
+docker compose --env-file .env.docker --profile prod \
+  -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml config --quiet
+```
+
+All four supported compositions returned exit code 0. Overlay files such as
+`docker-compose.go.yml`, `docker-compose.infra.yml` and
+`docker-compose.observability.yml` are fragments by design and are not valid
+standalone projects; testing them without their documented base produces an
+expected undefined-network/image error and is not a release failure.
