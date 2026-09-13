@@ -515,6 +515,15 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
             "Steps in quality-inventory-check must not have continue-on-error enabled"
         )
 
+    inventory_commands = "\n".join(
+        str(step.get("run", ""))
+        for step in inventory_job.get("steps", [])
+        if isinstance(step, dict)
+    )
+    assert (
+        "python scripts/quality/validate_ci_check_catalog.py" in inventory_commands
+    ), "quality-inventory-check must validate the machine-readable CI check catalog"
+
     # Assert in needs of ci-success
     assert "quality-inventory-check" in needs, (
         "quality-inventory-check must be in the needs list of ci-success"
