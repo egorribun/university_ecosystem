@@ -4340,3 +4340,60 @@ failure/cancellation/timeout. The two commits are deliberately not pushed
 until that run reaches terminal state, so its late mutation evidence is not
 discarded. After terminal inventory, push non-force and require a fresh
 current-SHA matrix before treating these changes as CI evidence.
+
+## 60. Release dependency-audit closure and current diff security evidence (2026-09-14)
+
+The targeted security review of the install-network optimization found a
+conditional coverage gap: the reusable allowlist audit is intentionally scoped
+to `frontend`, while the privileged release job installs a separate root
+semantic-release toolchain. Commit `8986541c82aa6da652ed1d01618f0aa759cebe0d`
+closes that gap with a non-conditional, non-continue-on-error
+`npm audit --audit-level=high --json` step after root `npm ci` and before release
+toolchain verification. The allowlist was not broadened: root dependencies use
+the direct high-severity audit, while frontend continues to use the owner/expiry
+controlled `scripts/audit_dependencies.py` policy.
+
+The same commit hardens the npm-install regression contract. It parses both
+`.github/workflows/*.yml` and `*.yaml`, walks YAML `run` values (including
+multiline shell blocks), requires `--no-audit --no-fund` on every `npm ci`, and
+asserts that the explicit frontend audit remains present. The release contract
+also rejects an audit step guarded by `if` or `continue-on-error`.
+
+Focused evidence:
+
+    uv run pytest -q --no-cov --disable-warnings --tb=short \
+      tests/test_frontend_ci_performance_contracts.py \
+      tests/test_release_certification_contract.py \
+      tests/test_ci_health_report.py \
+      tests/test_ci_critical_path_analysis.py
+    125 passed in 42.13s
+    uv run pytest -q --no-cov --disable-warnings --tb=short \
+      tests/test_release_certification_contract.py
+    58 passed
+    uv run python verify_harness.py
+    29 passed, 0 failures, 0 errors
+    uv run python scripts/quality/validate_ci_check_catalog.py
+    CI check catalog: OK (55 workflows, 180 jobs)
+    all 55 workflow YAML files parsed successfully
+    npm audit --audit-level=high --json (root): 0 high/critical vulnerabilities
+    npm ci --dry-run --no-audit --no-fund (root): exit 0
+    git diff --check: exit 0
+
+An independent Codex Security diff scan (`367e5c0a-761e-432d-8b2d-6df482190445`)
+sealed successfully for the range `ecfe0dba6668cb0a9b8f68186aa1a003f597d285` →
+`8986541c82aa6da652ed1d01618f0aa759cebe0d`: zero reportable findings and
+complete coverage. The generated report is retained outside the repository at
+`C:\Temp\codex-security-scans-nJCX21\university_ecosystem\8986541c82aa6da652ed1d01618f0aa759cebe0d_20260913T230029Z_8r5cjy32\report.md`;
+its manifest binds findings/coverage hashes
+`f6c2ba9556f49f0b57d809d35a704ef67cffb7e4e3c756b3f91fa3029460ef63` and
+`1ff8f57e39f6779c4dce1c80a3688c10ddb66fd5717e82bc00701c8291d02934`.
+The scan explicitly records the plugin's `.github`, `docs`, and `tests`
+inventory exclusions and the remaining hosted-runner timing questions; this is
+security-diff evidence, not a full release or staging certificate.
+
+The live matrix `34780640933` remains bound to the pre-optimization SHA
+`ecfe0dba6668cb0a9b8f68186aa1a003f597d285`. It must reach terminal state before
+the four local commits are pushed, so that its mutation evidence is not
+cancelled. After terminal inventory, push non-force and require a fresh
+current-SHA matrix; only then compare setup/queue/billed-minute distributions
+and decide whether a duration-aware mutation experiment is justified.
