@@ -133,9 +133,9 @@ an `OPEN-PERF/EVIDENCE-BLOCKED` condition rather than claiming a speedup.
 
 The next source SHA, `d8518043898cc6a39c295a37dadca230e06baf57`, is running as
 workflow `CI - Matrix Expansion` run `34743194178` (attempt 1). This is a live
-diagnostic observation, not release evidence. The Jobs API currently reports
-310 jobs: 219 completed, 16 in progress, and 75 queued, with one completed
-cancellation. The active mutation
+diagnostic observation, not release evidence. At the Jobs API snapshot taken
+2026-09-13T10:37:37Z, the run reported 310 jobs: 228 completed, 16 in
+progress, and 66 queued, with one completed cancellation. The active mutation
 fan-out is 10 Python execution groups plus 6 frontend Stryker shards, which
 matches the documented 16-job mutation budget and leaves four hosted slots for
 other required work.
