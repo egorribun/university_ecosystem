@@ -300,7 +300,7 @@ jobs:
           cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Clean frontend shard coverage outputs
         run: rm -rf -- coverage
@@ -412,7 +412,7 @@ jobs:
           cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Run production-only client contracts
         run: npm run test:client-production
@@ -597,7 +597,7 @@ jobs:
           cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       # MOD-43-01 (audit 2026-03-29 Wave 43): Token sync drift gate.
       # Ensures CSS → TS token mirror stays in sync. Fails if sync produces a diff.
@@ -693,7 +693,7 @@ jobs:
           cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Build app
         run: npm run build
@@ -830,7 +830,7 @@ jobs:
           path: ${{ inputs.working-directory }}/dist
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Run Lighthouse CI shard
         run: npm run lhci

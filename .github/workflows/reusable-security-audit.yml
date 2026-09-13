@@ -114,7 +114,7 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: |
-          npm ci
+          npm ci --no-audit --no-fund
           Set-Location ..
           uv sync --frozen
 

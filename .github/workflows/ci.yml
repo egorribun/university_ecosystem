@@ -812,7 +812,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       # A timing model is only an optimization; the first attempt has no
       # prior aggregate in this run. Later retries may consume exactly one
@@ -946,7 +946,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Select immutable same-run Stryker preflight candidate
         id: select_stryker_preflight
@@ -1083,7 +1083,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Select immutable same-run Stryker preflight candidate
         id: select_stryker_preflight
@@ -1208,7 +1208,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Set up Python for artifact provenance selection
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -1652,7 +1652,7 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         shell: pwsh
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Generate OpenAPI schema
         env:
@@ -1787,7 +1787,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Select immutable same-run Lighthouse evidence candidate
         id: select_lighthouse_results
@@ -2363,7 +2363,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Generate OpenAPI spec from live FastAPI app
         env:

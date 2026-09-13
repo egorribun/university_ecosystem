@@ -9,6 +9,12 @@ CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 FRONTEND_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml"
 )
+INSTALL_WORKFLOW_PATHS = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml",
+    FRONTEND_WORKFLOW_PATH,
+    REPOSITORY_ROOT / ".github" / "workflows" / "reusable-e2e-tests.yml",
+    REPOSITORY_ROOT / ".github" / "workflows" / "reusable-security-audit.yml",
+)
 
 
 def _load(path: Path) -> dict[str, object]:
@@ -21,6 +27,32 @@ def _step(job: dict[str, object], name: str) -> dict[str, object]:
         for step in job["steps"]  # type: ignore[index]
         if isinstance(step, dict) and step.get("name") == name
     )
+
+
+def test_npm_ci_skips_duplicate_audit_and_funding_network_work() -> None:
+    """Dependency installation must stay deterministic while audit remains explicit.
+
+    ``npm audit`` is a separate security gate in the reusable security workflow.
+    Keeping it out of every ``npm ci`` invocation avoids repeating network work
+    on each matrix leg without disabling lifecycle scripts or the dedicated audit.
+    """
+    for workflow_path in INSTALL_WORKFLOW_PATHS:
+        text = workflow_path.read_text(encoding="utf-8")
+        install_lines = [
+            line.strip()
+            for line in text.splitlines()
+            if "npm ci" in line and not line.lstrip().startswith("#")
+        ]
+        assert install_lines, f"{workflow_path} has no npm ci installation"
+        assert all(
+            line.endswith("npm ci --no-audit --no-fund") for line in install_lines
+        ), f"{workflow_path} contains an unoptimized npm ci invocation"
+
+    security_workflow = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-security-audit.yml"
+    ).read_text(encoding="utf-8")
+    assert "Run npm audit with allowlist" in security_workflow
+    assert "scripts/audit_dependencies.py" in security_workflow
 
 
 def test_frontend_suite_is_not_serialized_behind_pre_commit() -> None:
