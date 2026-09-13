@@ -118,6 +118,20 @@ def test_analyzer_reports_dependency_wait_utilization_and_duplicates() -> None:
         "initial_workflow_attempt"
     )
     assert rows["frontend-tests"]["timeout_classification"] == "not_timed_out"
+    provenance = report["provenance"]
+    assert provenance == {
+        "evidence_scope": "strict",
+        "repository": "egorribun/university_ecosystem",
+        "run_id": 33349026009,
+        "run_attempt": 1,
+        "source_head_sha": "a" * 40,
+        "tested_commit_sha": "b" * 40,
+        "workflow_path": ".github/workflows/ci.yml",
+        "workflow_ref": "egorribun/university_ecosystem/.github/workflows/ci.yml@refs/pull/1/merge",
+        "workflow_sha": "c" * 40,
+        "workflow_files_sha256": {".github/workflows/ci.yml": "d" * 64},
+        "dag_sha256": _dag_payload(payload)["dag_sha256"],
+    }
 
     timing = summary["timing_seconds"]
     assert isinstance(timing, dict)
@@ -190,6 +204,106 @@ def test_diagnostic_timing_classifies_workflow_rerun_and_timeout() -> None:
     rows = {row["id"]: row for row in report_jobs}
     assert rows[101]["retry_classification"] == "workflow_rerun"
     assert rows[101]["timeout_classification"] == "timed_out"
+    provenance = report["provenance"]
+    assert isinstance(provenance, dict)
+    assert provenance["evidence_scope"] == "diagnostic-only"
+    assert provenance["run_id"] == 1
+    assert provenance["run_attempt"] == 2
+    assert provenance["source_head_sha"] == "a" * 40
+    assert provenance["tested_commit_sha"] is None
+    assert provenance["identity_complete"] is True
+
+
+def test_unknown_timeout_conclusion_and_incomplete_timed_out_step_fail_closed() -> None:
+    payload = _payload()
+    assert isinstance(payload, dict)
+    records = payload["jobs"]
+    assert isinstance(records, list)
+    first = records[0]
+    assert isinstance(first, dict)
+    first["conclusion"] = "brand_new_api_state"
+    first_steps = first["steps"]
+    assert isinstance(first_steps, list)
+    first_steps.append(
+        {
+            "name": "Run timed-out command",
+            "started_at": None,
+            "completed_at": None,
+            "conclusion": "timed_out",
+        }
+    )
+
+    report = analyze_jobs(
+        parse_jobs(payload),
+        repository="egorribun/university_ecosystem",
+        run_id=1,
+        concurrency_cap=20,
+        diagnostic_lower_bound=True,
+    )
+    report_jobs = cast(list[dict[str, object]], report["jobs"])
+    first_row = next(row for row in report_jobs if row["id"] == 101)
+    assert first_row["timeout_classification"] == "timed_out"
+    timeout_summary = cast(dict[str, object], report["summary"])[
+        "timeout_classification"
+    ]
+    assert isinstance(timeout_summary, dict)
+    assert timeout_summary["counts"]["timed_out"] == 1
+
+    first["steps"] = [
+        {
+            "name": "Run command",
+            "started_at": "2026-08-31T10:00:30Z",
+            "completed_at": "2026-08-31T10:01:30Z",
+        }
+    ]
+    report = analyze_jobs(
+        parse_jobs(payload),
+        repository="egorribun/university_ecosystem",
+        run_id=1,
+        concurrency_cap=20,
+        diagnostic_lower_bound=True,
+    )
+    first_row = next(
+        row for row in cast(list[dict[str, object]], report["jobs"]) if row["id"] == 101
+    )
+    assert first_row["timeout_classification"] == "unknown"
+
+
+def test_parser_rejects_queue_timestamp_after_job_start() -> None:
+    with pytest.raises(AnalysisError, match="created_at is after it starts"):
+        parse_jobs(
+            {
+                "jobs": [
+                    {
+                        "id": 1,
+                        "name": "queue-inversion",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "created_at": "2026-08-31T10:02:00Z",
+                        "started_at": "2026-08-31T10:01:00Z",
+                        "completed_at": "2026-08-31T10:02:00Z",
+                    }
+                ]
+            }
+        )
+
+
+def test_diagnostic_analysis_rejects_job_from_a_different_run() -> None:
+    payload = _payload()
+    assert isinstance(payload, dict)
+    records = payload["jobs"]
+    assert isinstance(records, list)
+    first = records[0]
+    assert isinstance(first, dict)
+    first["run_id"] = 2
+    with pytest.raises(AnalysisError, match="job 101 run_id"):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=1,
+            concurrency_cap=20,
+            diagnostic_lower_bound=True,
+        )
 
 
 @pytest.mark.parametrize(

@@ -28,6 +28,18 @@ REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 ISO_RE = re.compile(r"Z$", re.ASCII)
 SHA_RE = re.compile(r"^[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?$")
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+_NON_TIMEOUT_CONCLUSIONS = frozenset(
+    {
+        "success",
+        "failure",
+        "neutral",
+        "cancelled",
+        "skipped",
+        "action_required",
+        "stale",
+        "startup_failure",
+    }
+)
 
 
 class AnalysisError(ValueError):
@@ -66,12 +78,14 @@ def _text(value: object, field: str, *, allow_empty: bool = False) -> str:
 @dataclass(frozen=True)
 class StepTiming:
     name: str
-    started_at: datetime
-    completed_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
     conclusion: str | None = None
 
     @property
     def seconds(self) -> float:
+        if self.started_at is None or self.completed_at is None:
+            return 0.0
         return max(0.0, (self.completed_at - self.started_at).total_seconds())
 
 
@@ -111,6 +125,14 @@ class DAGEvidence:
     dependency_ids: dict[int, tuple[int, ...]]
     logical_ids: dict[int, str]
     core_failures: dict[int, bool]
+    run_attempt: int
+    source_head_sha: str
+    tested_commit_sha: str
+    workflow_path: str
+    workflow_ref: str
+    workflow_sha: str
+    workflow_files_sha256: dict[str, str]
+    dag_sha256: str
 
 
 def _canonical_json(value: Mapping[str, object]) -> str:
@@ -184,16 +206,6 @@ def _parse_steps(raw: object, job_name: str) -> tuple[StepTiming, ...]:
         if not isinstance(value, Mapping):
             raise AnalysisError(f"job {job_name!r} step {index} must be an object")
         name = _text(value.get("name"), f"job {job_name!r} step {index}.name")
-        started = _parse_timestamp(
-            value.get("started_at"), f"job {job_name!r} step {index}.started_at"
-        )
-        completed = _parse_timestamp(
-            value.get("completed_at"), f"job {job_name!r} step {index}.completed_at"
-        )
-        if started is None or completed is None:
-            continue
-        if completed < started:
-            raise AnalysisError(f"job {job_name!r} step {index} ends before it starts")
         step_conclusion_value = value.get("conclusion")
         step_conclusion = (
             None
@@ -203,6 +215,19 @@ def _parse_steps(raw: object, job_name: str) -> tuple[StepTiming, ...]:
                 f"job {job_name!r} step {index}.conclusion",
             )
         )
+        started = _parse_timestamp(
+            value.get("started_at"), f"job {job_name!r} step {index}.started_at"
+        )
+        completed = _parse_timestamp(
+            value.get("completed_at"), f"job {job_name!r} step {index}.completed_at"
+        )
+        if started is None or completed is None:
+            if step_conclusion is None:
+                continue
+            result.append(StepTiming(name, started, completed, step_conclusion))
+            continue
+        if completed < started:
+            raise AnalysisError(f"job {job_name!r} step {index} ends before it starts")
         result.append(StepTiming(name, started, completed, step_conclusion))
     return tuple(result)
 
@@ -261,6 +286,8 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
         completed = _parse_timestamp(
             record.get("completed_at"), f"job {name!r}.completed_at"
         )
+        if queued is not None and started is not None and queued > started:
+            raise AnalysisError(f"job {name!r} {queued_field} is after it starts")
         if started is not None and completed is not None and completed < started:
             # GitHub occasionally emits a one-second inverted pair for a
             # skipped or cancelled job that never received a runner (there
@@ -336,20 +363,25 @@ def _validate_dag_sidecar(
     sidecar_source_sha = _validate_sha(
         dag.get("source_head_sha"), "DAG sidecar source_head_sha"
     )
-    _validate_sha(dag.get("tested_commit_sha"), "DAG sidecar tested_commit_sha")
-    _text(dag.get("workflow_path"), "DAG sidecar workflow_path")
-    _text(dag.get("workflow_ref"), "DAG sidecar workflow_ref")
-    _validate_sha(dag.get("workflow_sha"), "DAG sidecar workflow_sha")
+    sidecar_tested_sha = _validate_sha(
+        dag.get("tested_commit_sha"), "DAG sidecar tested_commit_sha"
+    )
+    workflow_path = _text(dag.get("workflow_path"), "DAG sidecar workflow_path")
+    workflow_ref = _text(dag.get("workflow_ref"), "DAG sidecar workflow_ref")
+    workflow_sha = _validate_sha(dag.get("workflow_sha"), "DAG sidecar workflow_sha")
 
     workflow_hashes = dag.get("workflow_files_sha256")
     if not isinstance(workflow_hashes, Mapping) or not workflow_hashes:
         raise AnalysisError(
             "DAG sidecar workflow_files_sha256 must be a non-empty object"
         )
+    normalized_workflow_hashes: dict[str, str] = {}
     for path, digest in workflow_hashes.items():
-        _text(path, "DAG sidecar workflow file path")
-        _validate_sha(
-            digest, f"DAG sidecar workflow_files_sha256[{path!r}]", sha256_only=True
+        path_text = _text(path, "DAG sidecar workflow file path")
+        normalized_workflow_hashes[path_text] = _validate_sha(
+            digest,
+            f"DAG sidecar workflow_files_sha256[{path!r}]",
+            sha256_only=True,
         )
 
     supplied_digest = _validate_sha(
@@ -443,7 +475,19 @@ def _validate_dag_sidecar(
                 raise AnalysisError(
                     f"DAG sidecar job {job_id} references unknown dependency id {dependency_id}"
                 )
-    return DAGEvidence(dependency_ids, logical_ids, core_failures)
+    return DAGEvidence(
+        dependency_ids=dependency_ids,
+        logical_ids=logical_ids,
+        core_failures=core_failures,
+        run_attempt=sidecar_run_attempt,
+        source_head_sha=sidecar_source_sha,
+        tested_commit_sha=sidecar_tested_sha,
+        workflow_path=workflow_path,
+        workflow_ref=workflow_ref,
+        workflow_sha=workflow_sha,
+        workflow_files_sha256=normalized_workflow_hashes,
+        dag_sha256=supplied_digest,
+    )
 
 
 def _interval_union_seconds(intervals: Iterable[tuple[datetime, datetime]]) -> float:
@@ -492,12 +536,20 @@ def _duration_buckets(job: JobTiming) -> tuple[float, float, float]:
     setup = [
         (step.started_at, step.completed_at)
         for step in job.steps
-        if _step_bucket(step.name) == "setup"
+        if (
+            _step_bucket(step.name) == "setup"
+            and step.started_at is not None
+            and step.completed_at is not None
+        )
     ]
     artifact = [
         (step.started_at, step.completed_at)
         for step in job.steps
-        if _step_bucket(step.name) == "artifact"
+        if (
+            _step_bucket(step.name) == "artifact"
+            and step.started_at is not None
+            and step.completed_at is not None
+        )
     ]
     setup_seconds = _interval_union_seconds(setup)
     artifact_seconds = _interval_union_seconds(artifact)
@@ -711,7 +763,9 @@ def _timeout_classification(job: JobTiming) -> str:
         return "cancelled"
     if job.status != "completed" or job.conclusion is None:
         return "unknown"
-    return "not_timed_out"
+    if job.conclusion in _NON_TIMEOUT_CONCLUSIONS:
+        return "not_timed_out"
+    return "unknown"
 
 
 def _timeout_summary(jobs: Sequence[JobTiming]) -> dict[str, object]:
@@ -742,6 +796,72 @@ def _step_rows(job: JobTiming) -> list[dict[str, object]]:
             row["conclusion"] = step.conclusion
         rows.append(row)
     return rows
+
+
+def _validate_job_run_ids(jobs: Sequence[JobTiming], run_id: int) -> None:
+    mismatched = sorted(
+        job.job_id
+        for job in jobs
+        if job.api_run_id is not None and job.api_run_id != run_id
+    )
+    if mismatched:
+        raise AnalysisError(
+            f"job {mismatched[0]} run_id does not match requested run_id"
+            + (" (and additional jobs)" if len(mismatched) > 1 else "")
+        )
+
+
+def _diagnostic_provenance(
+    jobs: Sequence[JobTiming], *, repository: str, run_id: int
+) -> dict[str, object]:
+    attempts = sorted(
+        {job.api_run_attempt for job in jobs if job.api_run_attempt is not None}
+    )
+    source_heads = sorted(
+        {job.api_head_sha for job in jobs if job.api_head_sha is not None}
+    )
+    return {
+        "evidence_scope": "diagnostic-only",
+        "repository": repository,
+        "run_id": run_id,
+        "run_attempt": attempts[0] if len(attempts) == 1 else None,
+        "run_attempts": attempts,
+        "source_head_sha": source_heads[0] if len(source_heads) == 1 else None,
+        "source_head_shas": source_heads,
+        "tested_commit_sha": None,
+        "workflow_path": None,
+        "workflow_ref": None,
+        "workflow_sha": None,
+        "workflow_files_sha256": None,
+        "dag_sha256": None,
+        "identity_complete": bool(
+            jobs
+            and all(
+                job.api_run_id is not None
+                and job.api_run_attempt is not None
+                and job.api_head_sha is not None
+                for job in jobs
+            )
+        ),
+    }
+
+
+def _strict_provenance(
+    dag: DAGEvidence, *, repository: str, run_id: int
+) -> dict[str, object]:
+    return {
+        "evidence_scope": "strict",
+        "repository": repository,
+        "run_id": run_id,
+        "run_attempt": dag.run_attempt,
+        "source_head_sha": dag.source_head_sha,
+        "tested_commit_sha": dag.tested_commit_sha,
+        "workflow_path": dag.workflow_path,
+        "workflow_ref": dag.workflow_ref,
+        "workflow_sha": dag.workflow_sha,
+        "workflow_files_sha256": dag.workflow_files_sha256,
+        "dag_sha256": dag.dag_sha256,
+    }
 
 
 def _diagnostic_lower_bound_report(
@@ -789,6 +909,9 @@ def _diagnostic_lower_bound_report(
         "schema_version": 1,
         "repository": repository,
         "run_id": run_id,
+        "provenance": _diagnostic_provenance(
+            jobs, repository=repository, run_id=run_id
+        ),
         "concurrency_cap": concurrency_cap,
         "analysis_mode": "diagnostic-lower-bound",
         "summary": {
@@ -826,6 +949,7 @@ def analyze_jobs(
     _positive_integer(concurrency_cap, "concurrency_cap")
     if not jobs:
         raise AnalysisError("run contains no jobs")
+    _validate_job_run_ids(jobs, run_id)
     if diagnostic_lower_bound and dag is not None:
         raise AnalysisError("DAG sidecar cannot be combined with diagnostic mode")
     if dag is None:
@@ -901,6 +1025,9 @@ def analyze_jobs(
         "schema_version": 1,
         "repository": repository,
         "run_id": run_id,
+        "provenance": _strict_provenance(
+            dag_evidence, repository=repository, run_id=run_id
+        ),
         "concurrency_cap": concurrency_cap,
         "analysis_mode": "strict",
         "summary": {

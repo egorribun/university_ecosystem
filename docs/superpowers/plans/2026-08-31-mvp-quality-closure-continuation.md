@@ -3708,9 +3708,9 @@ does not change the mutation inventory, runner caps or release thresholds.
 | Field | Value |
 |---|---|
 | Branch | `egorribun` |
-| Local source head | `6a40a305a` (`test: enforce dual default inventory snapshot`) |
-| Remote source head | `d85180438` |
-| Local delta | 11 commits ahead; no tracked uncommitted changes |
+| Local source head | derive with `git rev-parse HEAD` at verification time (the historical pre-push snapshot was `6a40a305a`) |
+| Remote source head | derive with `git rev-parse origin/egorribun` at verification time (historical snapshot `d85180438`) |
+| Local delta | derive with `git rev-list --count origin/egorribun..HEAD` at verification time; tracked worktree must be clean |
 | User-owned untracked paths | `.tmp_preflight/`, `.tmp_stryker_18/`, `.tmp_stryker_22/`, `docs/audits/AUDIT_PLATFORM_FULL.md` — untouched and unstaged |
 | Previous PR matrix | run `34743194178`, source `d8518043898cc6a39c295a37dadca230e06baf57`, non-terminal |
 
@@ -3751,8 +3751,8 @@ The run remains non-terminal and contributes no release evidence.
 
 1. Continue bounded polling until this old run is terminal; inventory every
    late failure, cancellation, timeout, annotation and artifact exactly once.
-2. Re-run the final local inventory, then push `6a40a305a` (and this checkpoint)
-   non-force to `origin/egorribun`. The resulting current-SHA matrix is the
+2. Re-run the final local inventory, then push the verified current `HEAD` (and
+   this checkpoint) non-force to `origin/egorribun`. The resulting current-SHA matrix is the
    only accepted CI evidence; stale run results must not be reused.
 3. After a terminal fresh matrix, obtain complete coverage/mutation manifests,
    security/API/infra/browser evidence and only then evaluate the external
@@ -3786,18 +3786,18 @@ the old run is bound to an obsolete SHA and remains non-terminal.
 
 | Checklist item | Disposition | Evidence / remaining boundary |
 |---|---|---|
-| Machine timing ledger (queue/setup/test/upload, concurrency, RSS/CPU, retries/timeouts) | `PARTIAL` | `scripts/quality/analyze_ci_critical_path.py` emits per-job queue/setup/test/artifact timing, aggregate p50/p95 distributions, observed peak concurrency and conservative retry/timeout classification from the API's workflow-attempt and job/step-conclusion fields. It remains an on-demand diagnostic and does not yet collect runner RSS/CPU, billed minutes or a mandatory current-run artifact. |
+| Machine timing ledger (queue/setup/test/upload, concurrency, RSS/CPU, retries/timeouts) | `PARTIAL` | `scripts/quality/analyze_ci_critical_path.py` emits per-job queue/setup/test/artifact timing, aggregate p50/p95 distributions, observed peak concurrency and fail-closed retry/timeout classification from the API's workflow-attempt and job/step-conclusion fields. Reports now carry explicit diagnostic/strict provenance (run attempt, source/tested SHA and DAG digest); the tool remains on-demand and does not yet collect runner RSS/CPU, billed minutes or a mandatory current-run artifact. |
 | Duration-aware Stryker/mutmut sharding | `PARTIAL` | `mutmut_shard_matrix.py` and the stats-derived budget use durations; Stryker accepts a verified same-run historical-cost candidate. A current-SHA timeout (shard 24) and three comparable green runs are still required before tuning. |
 | Immutable dependency/artifact caches | `PARTIAL` | npm/uv/Cargo/pre-commit/Stryker caches and SHA/run-bound artifact selectors are present. Repeated shard setup remains, and Go image builds have no scoped BuildKit module/build-cache mounts; benchmark before changing. |
 | Required PR gates vs advisory/nightly jobs | `PARTIAL` | `quality/release-required-checks.json`, advisory flags and nightly/manual workflows exist. Actual branch-protection contexts and duplicate check topology still need a live ruleset inventory; path filters cannot be changed blindly. |
 | Transient-only automatic retry | `PARTIAL` | Targeted retries exist for known network/tool failures (for example WASM, Trivy and OSV). There is no repository-wide classifier that preserves the first failure and all artifacts for every retryable job. |
 | Unified check/artifact/owner/duration/runbook catalog | `PARTIAL` | CODEOWNERS, artifact validators and focused runbooks exist. A machine-validated catalog covering every workflow/check and expected duration is not yet present. |
 | Compact CI health report (p50/p95/queue/skips) | `OPEN` | Historical snapshots and the analyzer provide point-in-time queue/utilization data, but no continuously published current-run p50/p95 health artifact exists. |
-| Local parallel fast-preflight | `IMPLEMENTED-LOCAL / EVIDENCE-PENDING` | `uv run python scripts/fast_preflight.py` now fans out frontend typecheck/lint, backend mypy/Ruff, `verify_harness.py --repo-only` and focused CI-contract tests with shell-free process ownership, bounded timeouts and one fail-closed JSON report. The helper has focused unit contracts; a full local invocation is still a developer aid and never substitutes for the required current-SHA CI matrix. |
+| Local parallel fast-preflight | `IMPLEMENTED-LOCAL / EVIDENCE-PENDING` | `uv run python scripts/fast_preflight.py` now fans out frontend typecheck/lint, backend mypy/Ruff, `verify_harness.py --repo-only` and focused CI-contract tests with shell-free process ownership, bounded timeouts, isolated pytest cache behavior and one fail-closed JSON report. The helper has focused unit contracts; a full local invocation is still a developer aid and never substitutes for the required current-SHA CI matrix. |
 | Heartbeat diagnostics for long jobs | `PARTIAL` | Mutmut has a deadline-aware watchdog and fail-closed evidence finalization. A generic heartbeat/diagnostic monitor for all genuinely stalled jobs is not implemented. |
 
-The analyzer applied to live run `34743194178` at this checkpoint reported
-310 jobs, a 19-job observed peak under the diagnostic cap of 20 and 0.704366
+The analyzer applied to live run `34743194178` at the historical snapshot
+recorded for this section reported 310 jobs, a 19-job observed peak under the diagnostic cap of 20 and 0.704366
 average slot utilization; the data also exposed repeated checkout/setup and
 artifact steps. This is useful for choosing work, not evidence to relax caps.
 The safe order remains: wait for the old run to terminate, push one coherent
