@@ -2496,7 +2496,7 @@ finding был проверяемым.
 | Finding | Current disposition | Evidence / follow-up |
 |---|---|---|
 | BE-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Migration 148642dd1207 больше не импортирует runtime encryption/config и использует native SQLAlchemy types; проверить `alembic upgrade/downgrade`, offline SQL и PostgreSQL в fresh CI. |
-| BE-02 | `DECISION-RECORDED / MIGRATION-EVIDENCE-PENDING` | ADR-036 заменяет устаревшие 92 на текущий inventory (54 explicit Python-only candidates, 19 server-only, 37 UUIDv7 exceptions) и задаёт PostgreSQL catalog preflight plus phased migrations; no blanket rewrite. Live schema/upgrade/downgrade evidence remains required. |
+| BE-02 | `DECISION-RECORDED / MIGRATION-EVIDENCE-PENDING` | ADR-036 заменяет устаревшие 92 на текущий measured inventory (45 tables; 26 dual, 91 Python-only and 18 server-only effective defaults; source AST 65 Python-only and 17 server-only). Candidate selection still requires PostgreSQL catalog preflight plus phased migrations; no blanket rewrite. Live schema/upgrade/downgrade evidence remains required. |
 | BE-03 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `User.chats` и `Chat.participants` получили явные `back_populates`/`lazy="noload"`; прогнать async serialization/MissingGreenlet suite. |
 | BE-04 | `BACKLOG / ARCHITECTURE` | Dishka и legacy `Depends` coexistence требует отдельного ADR и постепенной миграции, не меняется в quality-closure commit. |
 | BE-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Backend call sites используют central logger/ProcessorFormatter; совместимый stdlib bridge оставлен для AuditService. Проверить full log redaction и отсутствие PII в aggregate. |
@@ -3349,10 +3349,10 @@ this snapshot.
   previously unbounded external production requirements; dependency-policy
   and gitleaks contracts are green (**16/16 combined**), and `uv lock --check`
   passes.
-- ADR-036 records the measured BE-02 defaults inventory (54 explicit
-  Python-only candidates, 19 server-only, 37 UUIDv7 exceptions) and a
-  PostgreSQL catalog/preflight migration policy; no unsafe blanket DDL rewrite
-  was attempted.
+- ADR-036 records the measured BE-02 defaults inventory (45 tables; 26 dual,
+  91 Python-only and 18 server-only effective defaults, with source AST
+  cross-checks) and a PostgreSQL catalog/preflight migration policy; no unsafe
+  blanket DDL rewrite was attempted.
 - Isolated pre-commit hooks pass (Ruff, detect-secrets, hardcoded-secrets,
   Bandit, mypy, strong-env-secrets, no-Python2-except, actionlint, Semgrep and
   Renovate); harness is **29/29** and frontend typecheck pre-push dry-run is
