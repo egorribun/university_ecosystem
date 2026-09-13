@@ -3696,3 +3696,63 @@ excluded from all source commits.
    changing code. Keep merge-to-main, exact-six immutable images, digest Docker
    smoke, Kubernetes/TLS/observability, real-device CWV, chaos/rollback,
    production release and final SHA-bound audit explicitly external.
+
+## 49. Current local hardening checkpoint (2026-09-13; pre-push)
+
+This checkpoint records bounded work completed while the previous PR matrix is
+still running. It does not promote that matrix to current-SHA evidence and it
+does not change the mutation inventory, runner caps or release thresholds.
+
+### 49.1 Source identity and preservation boundary
+
+| Field | Value |
+|---|---|
+| Branch | `egorribun` |
+| Local source head | `ed486ce53` (`fix: await event handler cancellation cleanup`) |
+| Remote source head | `d85180438` |
+| Local delta | 7 commits ahead; no tracked uncommitted changes |
+| User-owned untracked paths | `.tmp_preflight/`, `.tmp_stryker_18/`, `.tmp_stryker_22/`, `docs/audits/AUDIT_PLATFORM_FULL.md` — untouched and unstaged |
+| Previous PR matrix | run `34743194178`, source `d8518043898cc6a39c295a37dadca230e06baf57`, non-terminal |
+
+The seven local commits are intentionally small and independently reviewable:
+the two exact mutmut survivor contracts (`8f3c699c4`), quality/CI reference
+alignment (`a76d3a275`), Stryker timeout/provenance notes (`88009228e`,
+`fb434d3a2`, `25f4813f9`), service/NATS contract alignment (`757543d2c`) and
+event-handler cancellation cleanup (`ed486ce53`). No commit contains a
+`Co-Authored-By` trailer.
+
+### 49.2 Current local evidence
+
+- NATS CORE publish disconnect behavior is explicitly covered by warning and
+  counter assertions; the focused module suite is **4/4**.
+- EventBus external cancellation and timeout paths now await the cancelled
+  chain, allowing `asyncio.gather` to finish owned handler cleanup. The focused
+  event suite is **12/12**, including asynchronous cleanup barriers.
+- `python verify_harness.py --repo-only` is **29/29**; frontend typecheck and
+  lint are green; `git diff --check` is clean. The event change passed the
+  isolated pre-commit stack (Ruff, detect-secrets, Bandit, mypy, actionlint,
+  Semgrep and Renovate validation).
+- The external platform audit has no remaining P0/P1 in frontend, Go or Rust
+  by source inspection. Backend BE-02 (phased dual-default migration) and
+  BE-04 (legacy Depends/Dishka coexistence) remain explicitly architectural
+  follow-ups; they are not silently reclassified as complete. Rust P3
+  workspace/fuzz/dependency hygiene remains non-release debt.
+
+### 49.3 Remote-run boundary and next action
+
+At the latest paginated Jobs API snapshot (`2026-09-13T10:53:30Z`), run
+`34743194178` contains 310 jobs: 238 completed, 16 in progress and 56 queued.
+The only terminal non-success jobs are the cancelled Stryker shard 24/64 (the
+configured 120-minute hard cap) and stale mutmut execution groups 29 and 41;
+their survivors correspond to contracts fixed in local commit `8f3c699c4`.
+The run remains non-terminal and contributes no release evidence.
+
+1. Continue bounded polling until this old run is terminal; inventory every
+   late failure, cancellation, timeout, annotation and artifact exactly once.
+2. Re-run the final local inventory, then push `ed486ce53` (and this checkpoint)
+   non-force to `origin/egorribun`. The resulting current-SHA matrix is the
+   only accepted CI evidence; stale run results must not be reused.
+3. After a terminal fresh matrix, obtain complete coverage/mutation manifests,
+   security/API/infra/browser evidence and only then evaluate the external
+   merge, immutable-image, Docker, Kubernetes/TLS/observability, device-CWV,
+   chaos/rollback, production and SHA-bound audit gates.
