@@ -177,7 +177,7 @@ except Exception as err:  # RZ-22-01-JUSTIFIED: fail-closed auth fallback with a
 - Cookies: `access_token_v2` must be issued as an `HttpOnly` cookie with `cookie_samesite="lax"`.
 
 ### 6.3. Storage Path Traversal Prevention
-- `StaticFSStorage._validate_resolved_path()` resolves symlinks and verifies `is_relative_to(base_dir)`.
+- `StaticFSStorage._resolve_validated_path()` resolves symlinks and verifies `is_relative_to(base_dir)`.
 
 ---
 
