@@ -100,8 +100,12 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_CANDIDATE_SHA: ${{ github.sha }}
+          PR_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PUSH_BASE_SHA: ${{ github.event.before }}
           PUSH_CANDIDATE_SHA: ${{ github.sha }}
+          PUSH_SOURCE_HEAD_SHA: ${{ github.sha }}
+          PUSH_BASE_REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
@@ -109,10 +113,14 @@ jobs:
             pull_request)
               BASE_SHA="$PR_BASE_SHA"
               CANDIDATE_SHA="$PR_CANDIDATE_SHA"
+              SOURCE_HEAD_SHA="$PR_SOURCE_HEAD_SHA"
+              BASE_REF="$PR_BASE_REF"
               ;;
             push)
               BASE_SHA="$PUSH_BASE_SHA"
               CANDIDATE_SHA="$PUSH_CANDIDATE_SHA"
+              SOURCE_HEAD_SHA="$PUSH_SOURCE_HEAD_SHA"
+              BASE_REF="$PUSH_BASE_REF"
               ;;
             *)
               echo "Unsupported performance event: $EVENT_NAME" >&2
@@ -131,10 +139,21 @@ jobs:
           }
           validate_sha "$BASE_SHA" "base SHA"
           validate_sha "$CANDIDATE_SHA" "candidate SHA"
+          validate_sha "$SOURCE_HEAD_SHA" "source head SHA"
+          if [[ -z "$BASE_REF" ]]; then
+            echo "Base ref must be non-empty" >&2
+            exit 2
+          fi
           if [[ "$BASE_SHA" == "$ZERO_SHA" || "$CANDIDATE_SHA" == "$ZERO_SHA" ]]; then
             echo "Initial-push all-zero SHAs cannot be benchmarked" >&2
             exit 2
           fi
+          if [[ "$SOURCE_HEAD_SHA" == "$ZERO_SHA" ]]; then
+            echo "All-zero source head SHA cannot be benchmarked" >&2
+            exit 2
+          fi
+          echo "source_head_sha=$SOURCE_HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_ref=$BASE_REF" >> "$GITHUB_OUTPUT"
           ARTIFACT_ROOT="${RUNNER_TEMP}/quality-performance-ws-hub-${BASE_SHA}-${CANDIDATE_SHA}"
           if [[ -e "$ARTIFACT_ROOT" ]]; then
             echo "Performance artifact root must be fresh: $ARTIFACT_ROOT" >&2
@@ -143,8 +162,12 @@ jobs:
           echo "artifact_root=$ARTIFACT_ROOT" >> "$GITHUB_OUTPUT"
 
           git fetch --no-tags origin "$BASE_SHA" "$CANDIDATE_SHA"
+          if ! git cat-file -e "$SOURCE_HEAD_SHA^{commit}"; then
+            git fetch --no-tags origin "$SOURCE_HEAD_SHA"
+          fi
           git cat-file -e "$BASE_SHA^{commit}"
           git cat-file -e "$CANDIDATE_SHA^{commit}"
+          git cat-file -e "$SOURCE_HEAD_SHA^{commit}"
           if [[ "$BASE_SHA" == "$CANDIDATE_SHA" ]]; then
             echo "Base and candidate revisions must differ" >&2
             exit 2
@@ -156,6 +179,31 @@ jobs:
           if [[ "$(git rev-parse HEAD)" != "$CANDIDATE_SHA" ]]; then
             echo "Checkout is not the immutable candidate SHA" >&2
             exit 2
+          fi
+          PARENT_LINE="$(git rev-list --parents -n1 "$CANDIDATE_SHA")"
+          read -r COMMIT_ID PARENT_ONE PARENT_TWO EXTRA_PARENTS <<< "$PARENT_LINE"
+          if [[ "$COMMIT_ID" != "$CANDIDATE_SHA" ]]; then
+            echo "Candidate parent record does not identify the candidate" >&2
+            exit 2
+          fi
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            if [[ "$PARENT_ONE" != "$BASE_SHA" ]]; then
+              echo "PR merge parent does not match the immutable base SHA" >&2
+              exit 2
+            fi
+            if [[ "$PARENT_TWO" != "$SOURCE_HEAD_SHA" ]]; then
+              echo "PR merge parent does not match the source head SHA" >&2
+              exit 2
+            fi
+            if [[ -n "$EXTRA_PARENTS" ]]; then
+              echo "PR candidate must have exactly two parents" >&2
+              exit 2
+            fi
+          else
+            if [[ "$SOURCE_HEAD_SHA" != "$CANDIDATE_SHA" ]]; then
+              echo "Non-PR source head must equal the tested candidate SHA" >&2
+              exit 2
+            fi
           fi
 
           BASE_WORKTREE="${RUNNER_TEMP}/performance-base-ws-hub"
@@ -204,14 +252,155 @@ jobs:
             --base-revision "$BASE_SHA" \
             --candidate-revision "$CANDIDATE_SHA"
 
-      - name: Compare paired benchmark evidence
+      - name: Record immutable benchmark provenance
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ steps.capture_ws_hub.outputs.base_sha }}
+          TESTED_COMMIT_SHA: ${{ steps.capture_ws_hub.outputs.candidate_sha }}
+          SOURCE_HEAD_SHA: ${{ steps.capture_ws_hub.outputs.source_head_sha }}
+          BASE_REF: ${{ steps.capture_ws_hub.outputs.base_ref }}
+          ARTIFACT_ROOT: ${{ steps.capture_ws_hub.outputs.artifact_root }}
         run: |
           set -euo pipefail
+          validate_sha() {
+            local value="$1"
+            local label="$2"
+            if [[ ! "$value" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "$label must be a full 40-hex commit SHA" >&2
+              exit 2
+            fi
+          }
+          validate_sha "$BASE_SHA" "base SHA"
+          validate_sha "$TESTED_COMMIT_SHA" "tested commit SHA"
+          validate_sha "$SOURCE_HEAD_SHA" "source head SHA"
+          if [[ -z "$BASE_REF" ]]; then
+            echo "Benchmark provenance base ref is missing" >&2
+            exit 2
+          fi
+          if [[ ! "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "Benchmark provenance run id is invalid" >&2
+            exit 2
+          fi
+          if [[ ! "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
+            echo "Benchmark provenance identity is incomplete" >&2
+            exit 2
+          fi
+          if [[ ! -d "$ARTIFACT_ROOT" ]]; then
+            echo "Benchmark provenance artifact root is missing" >&2
+            exit 2
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$TESTED_COMMIT_SHA" ]]; then
+            echo "Benchmark provenance target is not the captured immutable artifact" >&2
+            exit 2
+          fi
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "jq is required to record benchmark provenance" >&2
+            exit 2
+          fi
+          PARENT_LINE="$(git rev-list --parents -n1 "$TESTED_COMMIT_SHA")"
+          COMMIT_ID="${PARENT_LINE%% *}"
+          if [[ "$COMMIT_ID" != "$TESTED_COMMIT_SHA" ]]; then
+            echo "Tested commit parent record is invalid" >&2
+            exit 2
+          fi
+          PARENTS_JSON="$(printf '%s\n' "$PARENT_LINE" | jq -R 'split(" ")[1:]')"
+          PROVENANCE_TMP="$ARTIFACT_ROOT/provenance.json.tmp"
+          jq -n \
+            --arg schema_version "1" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$GITHUB_WORKFLOW" \
+            --arg workflow_ref "$GITHUB_WORKFLOW_REF" \
+            --arg event "$EVENT_NAME" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg ref "$GITHUB_REF" \
+            --arg base_ref "$BASE_REF" \
+            --arg base_sha "$BASE_SHA" \
+            --arg source_head_sha "$SOURCE_HEAD_SHA" \
+            --arg tested_commit_sha "$TESTED_COMMIT_SHA" \
+            --argjson tested_commit_parents "$PARENTS_JSON" \
+            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{schema_version: ($schema_version|tonumber), repository: $repository, workflow: $workflow, workflow_ref: $workflow_ref, event: $event, run_id: ($run_id|tonumber), run_attempt: ($run_attempt|tonumber), ref: $ref, base_ref: $base_ref, base_sha: $base_sha, source_head_sha: $source_head_sha, tested_commit_sha: $tested_commit_sha, tested_commit_parents: $tested_commit_parents, timestamp: $timestamp}' \
+            > "$PROVENANCE_TMP"
+          mv -- "$PROVENANCE_TMP" "$ARTIFACT_ROOT/provenance.json"
+
+      - name: Compare paired benchmark evidence
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PUSH_SOURCE_HEAD_SHA: ${{ github.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+          PUSH_BASE_REF: ${{ github.ref_name }}
+          EXPECTED_RUN_ID: ${{ github.run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
+          EXPECTED_TESTED_COMMIT_SHA: ${{ github.sha }}
+          ARTIFACT_ROOT: ${{ steps.capture_ws_hub.outputs.artifact_root }}
+        run: |
+          set -euo pipefail
+          ARTIFACT_ROOT="${{ steps.capture_ws_hub.outputs.artifact_root }}"
+          case "$EVENT_NAME" in
+            pull_request)
+              EXPECTED_SOURCE_HEAD_SHA="$PR_SOURCE_HEAD_SHA"
+              EXPECTED_BASE_SHA="$PR_BASE_SHA"
+              EXPECTED_BASE_REF="$PR_BASE_REF"
+              ;;
+            push)
+              EXPECTED_SOURCE_HEAD_SHA="$PUSH_SOURCE_HEAD_SHA"
+              EXPECTED_BASE_SHA="$PUSH_BASE_SHA"
+              EXPECTED_BASE_REF="$PUSH_BASE_REF"
+              ;;
+            *)
+              echo "Unsupported performance event: $EVENT_NAME" >&2
+              exit 2
+              ;;
+          esac
+          if [[ ! -f "$ARTIFACT_ROOT/provenance.json" ]]; then
+            echo "Benchmark provenance is missing" >&2
+            exit 2
+          fi
+          if [[ ! "$EXPECTED_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "Expected workflow run id is invalid" >&2
+            exit 2
+          fi
+          if [[ ! "$EXPECTED_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
+            echo "Expected workflow run identity is invalid" >&2
+            exit 2
+          fi
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "jq is required to verify benchmark provenance" >&2
+            exit 2
+          fi
+          PARENT_LINE="$(git rev-list --parents -n1 "$EXPECTED_TESTED_COMMIT_SHA")"
+          COMMIT_ID="${PARENT_LINE%% *}"
+          if [[ "$COMMIT_ID" != "$EXPECTED_TESTED_COMMIT_SHA" ]]; then
+            echo "Expected tested commit parent record is invalid" >&2
+            exit 2
+          fi
+          ACTUAL_PARENTS_JSON="$(printf '%s\n' "$PARENT_LINE" | jq -R 'split(" ")[1:]')"
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            EXPECTED_PARENTS_JSON="$(jq -n --arg base "$EXPECTED_BASE_SHA" --arg source "$EXPECTED_SOURCE_HEAD_SHA" '[$base, $source]')"
+          else
+            EXPECTED_PARENTS_JSON="$ACTUAL_PARENTS_JSON"
+          fi
+          jq -e \
+            --arg event "$EVENT_NAME" \
+            --arg run_id "$EXPECTED_RUN_ID" \
+            --arg run_attempt "$EXPECTED_RUN_ATTEMPT" \
+            --arg ref "$GITHUB_REF" \
+            --arg base_ref "$EXPECTED_BASE_REF" \
+            --arg base_sha "$EXPECTED_BASE_SHA" \
+            --arg source_head_sha "$EXPECTED_SOURCE_HEAD_SHA" \
+            --arg tested_commit_sha "$EXPECTED_TESTED_COMMIT_SHA" \
+            --argjson expected_parents "$EXPECTED_PARENTS_JSON" \
+            '(.schema_version == 1 and .event == $event and (.run_id|tostring) == $run_id and (.run_attempt|tostring) == $run_attempt and .ref == $ref and .base_ref == $base_ref and .base_sha == $base_sha and .source_head_sha == $source_head_sha and .tested_commit_sha == $tested_commit_sha and .tested_commit_parents == $expected_parents and (if $event == "pull_request" then .tested_commit_parents == [$base_sha, $source_head_sha] else .source_head_sha == .tested_commit_sha end))' \
+            "$ARTIFACT_ROOT/provenance.json" >/dev/null
           BASE_COMPARATOR="${{ steps.capture_ws_hub.outputs.base_comparator }}"
           PYTHON_BIN="${{ steps.capture_ws_hub.outputs.python_bin }}"
           EXPECTED_COMPARATOR_SHA256="${{ steps.capture_ws_hub.outputs.base_comparator_sha256 }}"
-          ARTIFACT_ROOT="${{ steps.capture_ws_hub.outputs.artifact_root }}"
           if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then
             echo "Python interpreter must remain an absolute executable" >&2
             exit 2
@@ -325,8 +514,12 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_CANDIDATE_SHA: ${{ github.sha }}
+          PR_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PUSH_BASE_SHA: ${{ github.event.before }}
           PUSH_CANDIDATE_SHA: ${{ github.sha }}
+          PUSH_SOURCE_HEAD_SHA: ${{ github.sha }}
+          PUSH_BASE_REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
@@ -334,10 +527,14 @@ jobs:
             pull_request)
               BASE_SHA="$PR_BASE_SHA"
               CANDIDATE_SHA="$PR_CANDIDATE_SHA"
+              SOURCE_HEAD_SHA="$PR_SOURCE_HEAD_SHA"
+              BASE_REF="$PR_BASE_REF"
               ;;
             push)
               BASE_SHA="$PUSH_BASE_SHA"
               CANDIDATE_SHA="$PUSH_CANDIDATE_SHA"
+              SOURCE_HEAD_SHA="$PUSH_SOURCE_HEAD_SHA"
+              BASE_REF="$PUSH_BASE_REF"
               ;;
             *)
               echo "Unsupported performance event: $EVENT_NAME" >&2
@@ -356,10 +553,21 @@ jobs:
           }
           validate_sha "$BASE_SHA" "base SHA"
           validate_sha "$CANDIDATE_SHA" "candidate SHA"
+          validate_sha "$SOURCE_HEAD_SHA" "source head SHA"
+          if [[ -z "$BASE_REF" ]]; then
+            echo "Base ref must be non-empty" >&2
+            exit 2
+          fi
           if [[ "$BASE_SHA" == "$ZERO_SHA" || "$CANDIDATE_SHA" == "$ZERO_SHA" ]]; then
             echo "Initial-push all-zero SHAs cannot be benchmarked" >&2
             exit 2
           fi
+          if [[ "$SOURCE_HEAD_SHA" == "$ZERO_SHA" ]]; then
+            echo "All-zero source head SHA cannot be benchmarked" >&2
+            exit 2
+          fi
+          echo "source_head_sha=$SOURCE_HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_ref=$BASE_REF" >> "$GITHUB_OUTPUT"
           ARTIFACT_ROOT="${RUNNER_TEMP}/quality-performance-rust-native-${BASE_SHA}-${CANDIDATE_SHA}"
           if [[ -e "$ARTIFACT_ROOT" ]]; then
             echo "Performance artifact root must be fresh: $ARTIFACT_ROOT" >&2
@@ -368,8 +576,12 @@ jobs:
           echo "artifact_root=$ARTIFACT_ROOT" >> "$GITHUB_OUTPUT"
 
           git fetch --no-tags origin "$BASE_SHA" "$CANDIDATE_SHA"
+          if ! git cat-file -e "$SOURCE_HEAD_SHA^{commit}"; then
+            git fetch --no-tags origin "$SOURCE_HEAD_SHA"
+          fi
           git cat-file -e "$BASE_SHA^{commit}"
           git cat-file -e "$CANDIDATE_SHA^{commit}"
+          git cat-file -e "$SOURCE_HEAD_SHA^{commit}"
           if [[ "$BASE_SHA" == "$CANDIDATE_SHA" ]]; then
             echo "Base and candidate revisions must differ" >&2
             exit 2
@@ -381,6 +593,31 @@ jobs:
           if [[ "$(git rev-parse HEAD)" != "$CANDIDATE_SHA" ]]; then
             echo "Checkout is not the immutable candidate SHA" >&2
             exit 2
+          fi
+          PARENT_LINE="$(git rev-list --parents -n1 "$CANDIDATE_SHA")"
+          read -r COMMIT_ID PARENT_ONE PARENT_TWO EXTRA_PARENTS <<< "$PARENT_LINE"
+          if [[ "$COMMIT_ID" != "$CANDIDATE_SHA" ]]; then
+            echo "Candidate parent record does not identify the candidate" >&2
+            exit 2
+          fi
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            if [[ "$PARENT_ONE" != "$BASE_SHA" ]]; then
+              echo "PR merge parent does not match the immutable base SHA" >&2
+              exit 2
+            fi
+            if [[ "$PARENT_TWO" != "$SOURCE_HEAD_SHA" ]]; then
+              echo "PR merge parent does not match the source head SHA" >&2
+              exit 2
+            fi
+            if [[ -n "$EXTRA_PARENTS" ]]; then
+              echo "PR candidate must have exactly two parents" >&2
+              exit 2
+            fi
+          else
+            if [[ "$SOURCE_HEAD_SHA" != "$CANDIDATE_SHA" ]]; then
+              echo "Non-PR source head must equal the tested candidate SHA" >&2
+              exit 2
+            fi
           fi
 
           BASE_WORKTREE="${RUNNER_TEMP}/performance-base-rust-native"
@@ -435,10 +672,152 @@ jobs:
             --candidate-revision "$CANDIDATE_SHA" \
             --rust-dockerfile "$BASE_RUST_DOCKERFILE"
 
-      - name: Compare paired benchmark evidence
+      - name: Record immutable benchmark provenance
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ steps.capture_rust_native.outputs.base_sha }}
+          TESTED_COMMIT_SHA: ${{ steps.capture_rust_native.outputs.candidate_sha }}
+          SOURCE_HEAD_SHA: ${{ steps.capture_rust_native.outputs.source_head_sha }}
+          BASE_REF: ${{ steps.capture_rust_native.outputs.base_ref }}
+          ARTIFACT_ROOT: ${{ steps.capture_rust_native.outputs.artifact_root }}
         run: |
           set -euo pipefail
+          validate_sha() {
+            local value="$1"
+            local label="$2"
+            if [[ ! "$value" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "$label must be a full 40-hex commit SHA" >&2
+              exit 2
+            fi
+          }
+          validate_sha "$BASE_SHA" "base SHA"
+          validate_sha "$TESTED_COMMIT_SHA" "tested commit SHA"
+          validate_sha "$SOURCE_HEAD_SHA" "source head SHA"
+          if [[ -z "$BASE_REF" ]]; then
+            echo "Benchmark provenance base ref is missing" >&2
+            exit 2
+          fi
+          if [[ ! "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "Benchmark provenance run id is invalid" >&2
+            exit 2
+          fi
+          if [[ ! "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
+            echo "Benchmark provenance identity is incomplete" >&2
+            exit 2
+          fi
+          if [[ ! -d "$ARTIFACT_ROOT" ]]; then
+            echo "Benchmark provenance artifact root is missing" >&2
+            exit 2
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$TESTED_COMMIT_SHA" ]]; then
+            echo "Benchmark provenance target is not the captured immutable artifact" >&2
+            exit 2
+          fi
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "jq is required to record benchmark provenance" >&2
+            exit 2
+          fi
+          PARENT_LINE="$(git rev-list --parents -n1 "$TESTED_COMMIT_SHA")"
+          COMMIT_ID="${PARENT_LINE%% *}"
+          if [[ "$COMMIT_ID" != "$TESTED_COMMIT_SHA" ]]; then
+            echo "Tested commit parent record is invalid" >&2
+            exit 2
+          fi
+          PARENTS_JSON="$(printf '%s\n' "$PARENT_LINE" | jq -R 'split(" ")[1:]')"
+          PROVENANCE_TMP="$ARTIFACT_ROOT/provenance.json.tmp"
+          jq -n \
+            --arg schema_version "1" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$GITHUB_WORKFLOW" \
+            --arg workflow_ref "$GITHUB_WORKFLOW_REF" \
+            --arg event "$EVENT_NAME" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg ref "$GITHUB_REF" \
+            --arg base_ref "$BASE_REF" \
+            --arg base_sha "$BASE_SHA" \
+            --arg source_head_sha "$SOURCE_HEAD_SHA" \
+            --arg tested_commit_sha "$TESTED_COMMIT_SHA" \
+            --argjson tested_commit_parents "$PARENTS_JSON" \
+            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{schema_version: ($schema_version|tonumber), repository: $repository, workflow: $workflow, workflow_ref: $workflow_ref, event: $event, run_id: ($run_id|tonumber), run_attempt: ($run_attempt|tonumber), ref: $ref, base_ref: $base_ref, base_sha: $base_sha, source_head_sha: $source_head_sha, tested_commit_sha: $tested_commit_sha, tested_commit_parents: $tested_commit_parents, timestamp: $timestamp}' \
+            > "$PROVENANCE_TMP"
+          mv -- "$PROVENANCE_TMP" "$ARTIFACT_ROOT/provenance.json"
+
+      - name: Compare paired benchmark evidence
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PUSH_SOURCE_HEAD_SHA: ${{ github.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+          PUSH_BASE_REF: ${{ github.ref_name }}
+          EXPECTED_RUN_ID: ${{ github.run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
+          EXPECTED_TESTED_COMMIT_SHA: ${{ github.sha }}
+          ARTIFACT_ROOT: ${{ steps.capture_rust_native.outputs.artifact_root }}
+        run: |
+          set -euo pipefail
+          ARTIFACT_ROOT="${{ steps.capture_rust_native.outputs.artifact_root }}"
+          case "$EVENT_NAME" in
+            pull_request)
+              EXPECTED_SOURCE_HEAD_SHA="$PR_SOURCE_HEAD_SHA"
+              EXPECTED_BASE_SHA="$PR_BASE_SHA"
+              EXPECTED_BASE_REF="$PR_BASE_REF"
+              ;;
+            push)
+              EXPECTED_SOURCE_HEAD_SHA="$PUSH_SOURCE_HEAD_SHA"
+              EXPECTED_BASE_SHA="$PUSH_BASE_SHA"
+              EXPECTED_BASE_REF="$PUSH_BASE_REF"
+              ;;
+            *)
+              echo "Unsupported performance event: $EVENT_NAME" >&2
+              exit 2
+              ;;
+          esac
+          if [[ ! -f "$ARTIFACT_ROOT/provenance.json" ]]; then
+            echo "Benchmark provenance is missing" >&2
+            exit 2
+          fi
+          if [[ ! "$EXPECTED_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "Expected workflow run id is invalid" >&2
+            exit 2
+          fi
+          if [[ ! "$EXPECTED_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
+            echo "Expected workflow run identity is invalid" >&2
+            exit 2
+          fi
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "jq is required to verify benchmark provenance" >&2
+            exit 2
+          fi
+          PARENT_LINE="$(git rev-list --parents -n1 "$EXPECTED_TESTED_COMMIT_SHA")"
+          COMMIT_ID="${PARENT_LINE%% *}"
+          if [[ "$COMMIT_ID" != "$EXPECTED_TESTED_COMMIT_SHA" ]]; then
+            echo "Expected tested commit parent record is invalid" >&2
+            exit 2
+          fi
+          ACTUAL_PARENTS_JSON="$(printf '%s\n' "$PARENT_LINE" | jq -R 'split(" ")[1:]')"
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            EXPECTED_PARENTS_JSON="$(jq -n --arg base "$EXPECTED_BASE_SHA" --arg source "$EXPECTED_SOURCE_HEAD_SHA" '[$base, $source]')"
+          else
+            EXPECTED_PARENTS_JSON="$ACTUAL_PARENTS_JSON"
+          fi
+          jq -e \
+            --arg event "$EVENT_NAME" \
+            --arg run_id "$EXPECTED_RUN_ID" \
+            --arg run_attempt "$EXPECTED_RUN_ATTEMPT" \
+            --arg ref "$GITHUB_REF" \
+            --arg base_ref "$EXPECTED_BASE_REF" \
+            --arg base_sha "$EXPECTED_BASE_SHA" \
+            --arg source_head_sha "$EXPECTED_SOURCE_HEAD_SHA" \
+            --arg tested_commit_sha "$EXPECTED_TESTED_COMMIT_SHA" \
+            --argjson expected_parents "$EXPECTED_PARENTS_JSON" \
+            '(.schema_version == 1 and .event == $event and (.run_id|tostring) == $run_id and (.run_attempt|tostring) == $run_attempt and .ref == $ref and .base_ref == $base_ref and .base_sha == $base_sha and .source_head_sha == $source_head_sha and .tested_commit_sha == $tested_commit_sha and .tested_commit_parents == $expected_parents and (if $event == "pull_request" then .tested_commit_parents == [$base_sha, $source_head_sha] else .source_head_sha == .tested_commit_sha end))' \
+            "$ARTIFACT_ROOT/provenance.json" >/dev/null
           BASE_COMPARATOR="${{ steps.capture_rust_native.outputs.base_comparator }}"
           PYTHON_BIN="${{ steps.capture_rust_native.outputs.python_bin }}"
           EXPECTED_COMPARATOR_SHA256="${{ steps.capture_rust_native.outputs.base_comparator_sha256 }}"

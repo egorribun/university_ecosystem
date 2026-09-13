@@ -101,6 +101,24 @@ describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 60000 },
     expect(r1.options.context.queryClient).not.toBe(r2.options.context.queryClient)
   })
 
+  it("uses the shared offline-first QueryClient policy during SSR", () => {
+    globalThis.__ssrAuthGetter__ = undefined
+    const queryClient = getRouter().options.context.queryClient
+    const defaults = queryClient.getDefaultOptions()
+
+    expect(defaults.queries).toMatchObject({
+      staleTime: 5 * 60_000,
+      gcTime: 30 * 60_000,
+      retry: 1,
+      networkMode: "offlineFirst",
+    })
+    expect(defaults.mutations).toMatchObject({
+      retry: 0,
+      gcTime: 0,
+      networkMode: "offlineFirst",
+    })
+  })
+
   it("provides an accessible visible pending component for suspended routes", () => {
     globalThis.__ssrAuthGetter__ = undefined
     const pending = getRouter().options.defaultPendingComponent?.({})

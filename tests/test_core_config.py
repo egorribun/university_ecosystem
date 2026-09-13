@@ -228,6 +228,8 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
     mock_key.write_text("-----BEGIN PUBLIC KEY-----\nmock\n-----END PUBLIC KEY-----")
 
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
+    monkeypatch.setenv("CACHE_REDIS_URL", "redis://cache.example.test:6379/0")
+    monkeypatch.setenv("REVOCATION_REDIS_URL", "redis://revocation.example.test:6379/0")
     monkeypatch.setenv("SECRET_KEY", "production-secret-must-be-at-least-32-chars-long")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("ALGORITHM", "RS256")
@@ -239,6 +241,9 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
     monkeypatch.setenv("ELASTICSEARCH_PASSWORD", "dummy_elastic_pass")
     monkeypatch.setenv("SPICEDB_PRESHARED_KEY", "prod-preshared-key-for-test")
     monkeypatch.setenv("INTERNAL_HMAC_SECRET", "a" * 32)
+    monkeypatch.setenv(
+        "TOKEN_HMAC_SECRET", "token-hmac-core-random-material-0123456789"
+    )  # pragma: allowlist secret
     monkeypatch.setenv("WS_HUB_INTERNAL_SECRET", "dummy_ws_hub_secret_for_test")
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
@@ -258,6 +263,8 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, tmp_pa
     mock_key.write_text("-----BEGIN PUBLIC KEY-----\nmock\n-----END PUBLIC KEY-----")
 
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
+    monkeypatch.setenv("CACHE_REDIS_URL", "redis://cache.example.test:6379/0")
+    monkeypatch.setenv("REVOCATION_REDIS_URL", "redis://revocation.example.test:6379/0")
     monkeypatch.setenv("SECRET_KEY", "production-secret-must-be-at-least-32-chars-long")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("ALGORITHM", "RS256")
@@ -269,6 +276,9 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, tmp_pa
     monkeypatch.setenv("ELASTICSEARCH_PASSWORD", "dummy_elastic_pass")
     monkeypatch.setenv("SPICEDB_PRESHARED_KEY", "prod-preshared-key-for-test")
     monkeypatch.setenv("INTERNAL_HMAC_SECRET", "a" * 32)
+    monkeypatch.setenv(
+        "TOKEN_HMAC_SECRET", "token-hmac-core-random-material-0123456789"
+    )  # pragma: allowlist secret
     monkeypatch.setenv("WS_HUB_INTERNAL_SECRET", "dummy_ws_hub_secret_for_test")
     monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
 

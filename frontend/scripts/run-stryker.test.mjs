@@ -1,13 +1,185 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
+import { EventEmitter, once } from "node:events"
+import { execFile, spawn } from "node:child_process"
 import { link, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
+import { promisify } from "node:util"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 const runnerUrl = new URL("./run-stryker.mjs", import.meta.url)
 const expectedPatterns = ["src/**/*.{ts,tsx}", "!src/**/__tests__/**/*"]
 const location = { start: { line: 1, column: 21 }, end: { line: 1, column: 25 } }
+const processTreeFixtureSetupTimeoutMs = 5_000
+const execFileAsync = promisify(execFile)
+
+test("formats Vitest null-prototype errors without weakening native String", async () => {
+  const safeStringModuleUrl = new URL("./stryker-safe-error-string.mjs", import.meta.url)
+  const { formatSerializedError, safeString } = await import(safeStringModuleUrl)
+  const serialized = Object.create(null)
+  serialized.name = "TypeError"
+  serialized.message = "mutant callback failed"
+  serialized.stack = "TypeError: mutant callback failed\n    at mutant-test"
+
+  assert.equal(
+    formatSerializedError(serialized),
+    "TypeError: mutant callback failed\n    at mutant-test"
+  )
+  assert.equal(safeString(serialized), "TypeError: mutant callback failed\n    at mutant-test")
+  assert.equal(String(42), "42")
+  assert.equal(String(Symbol("native")), "Symbol(native)")
+  assert.equal(new safeString(42).valueOf(), "42")
+  assert.equal(new safeString(42) instanceof String, true)
+  assert.equal(safeString.raw({ raw: ["left", "right"] }, "-"), "left-right")
+
+  const throwingPrimitive = {
+    [Symbol.toPrimitive]() {
+      throw new Error("native conversion failure")
+    },
+  }
+  assert.throws(() => String(throwingPrimitive), /native conversion failure/u)
+
+  const throwingTypeErrorPrimitive = {
+    [Symbol.toPrimitive]() {
+      throw new TypeError("ordinary conversion failure")
+    },
+  }
+  assert.throws(() => safeString(throwingTypeErrorPrimitive), /ordinary conversion failure/u)
+})
+
+test("Stryker preload safely formats the child error object through NODE_OPTIONS", async () => {
+  const safeStringModulePath = fileURLToPath(
+    new URL("./stryker-safe-error-string.mjs", import.meta.url)
+  )
+  const preloadOption = `--import=${pathToFileURL(safeStringModulePath).href}`
+  const childScript = String.raw`
+    const serialized = Object.create(null)
+    serialized.name = "TypeError"
+    serialized.message = "mutant callback failed"
+    serialized.stack = "TypeError: mutant callback failed\n    at mutant-test"
+    process.stdout.write(JSON.stringify({
+      formatted: String(serialized),
+      ordinary: String(42),
+      symbol: String(Symbol("native")),
+    }))
+  `
+
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    ["--input-type=module", "-e", childScript],
+    {
+      cwd: path.dirname(safeStringModulePath),
+      env: {
+        ...process.env,
+        NODE_OPTIONS: preloadOption,
+        STRYKER_SHARD_RUN: "1",
+      },
+      encoding: "utf8",
+    }
+  )
+
+  assert.deepEqual(JSON.parse(stdout), {
+    formatted: "TypeError: mutant callback failed\n    at mutant-test",
+    ordinary: "42",
+    symbol: "Symbol(native)",
+  })
+})
+
+test("Stryker child environment preserves NODE_OPTIONS and appends the trusted preload", async () => {
+  const { buildStrykerChildEnvironment, strykerSafeErrorStringPreloadOption } = await import(
+    runnerUrl
+  )
+  const parentEnv = { NODE_OPTIONS: "--trace-warnings", STRYKER_SHARD_RUN: "1" }
+
+  const childEnv = buildStrykerChildEnvironment(parentEnv)
+
+  assert.equal(parentEnv.NODE_OPTIONS, "--trace-warnings")
+  assert.equal(childEnv.STRYKER_SHARD_RUN, "1")
+  assert.match(childEnv.NODE_OPTIONS, /^--trace-warnings\s/u)
+  assert.match(childEnv.NODE_OPTIONS, /--import=/u)
+  assert.equal(childEnv.NODE_OPTIONS.endsWith(strykerSafeErrorStringPreloadOption), true)
+})
+
+function processIsAlive(pid) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    if (error?.code === "ESRCH") return false
+    throw error
+  }
+}
+
+async function waitForProcessTreeFixtureMessage(child) {
+  const listenerController = new AbortController()
+  let setupTimer
+  const setupTimeout = new Promise((_, reject) => {
+    setupTimer = setTimeout(
+      () => reject(new Error("Process-tree fixture did not report readiness within 5000ms")),
+      processTreeFixtureSetupTimeoutMs
+    )
+  })
+  try {
+    return await Promise.race([
+      once(child, "message", { signal: listenerController.signal }).then(([message]) => message),
+      once(child, "close", { signal: listenerController.signal }).then(([code, signal]) => {
+        throw new Error(
+          `Process-tree fixture closed before readiness (code=${String(code)}, signal=${String(signal)})`
+        )
+      }),
+      setupTimeout,
+    ])
+  } finally {
+    clearTimeout(setupTimer)
+    listenerController.abort()
+  }
+}
+
+async function spawnProcessTreeFixture({
+  createProcessTreeOwnership,
+  processTreeSpawnOptions,
+  registerFixture,
+}) {
+  const fixtureScript = String.raw`
+    const { spawn } = require("node:child_process");
+    const descendant = spawn(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1000)", "university-ecosystem-stryker-descendant"],
+      { stdio: "ignore", windowsHide: true }
+    );
+    const abortFixture = () => {
+      try {
+        descendant.kill("SIGKILL");
+      } finally {
+        process.exit(1);
+      }
+    };
+    process.once("disconnect", abortFixture);
+    process.send({ descendantPid: descendant.pid }, (error) => {
+      if (error) abortFixture();
+    });
+    setInterval(() => {}, 1000);
+  `
+  const child = spawn(
+    process.execPath,
+    ["-e", fixtureScript, "university-ecosystem-stryker-parent"],
+    {
+      ...processTreeSpawnOptions(process.platform),
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+    }
+  )
+  const fixture = { child, descendantPid: undefined, ownership: undefined }
+  registerFixture(fixture)
+  fixture.ownership = createProcessTreeOwnership(child, { platform: process.platform })
+  const message = await waitForProcessTreeFixtureMessage(child)
+  assert.equal(Number.isSafeInteger(message.descendantPid), true)
+  assert.equal(message.descendantPid > 0, true)
+  fixture.descendantPid = message.descendantPid
+  return fixture
+}
 
 test("evidence identity makes dirty worktrees explicit and detects TOCTOU drift", async () => {
   const { buildEvidenceIdentity, assertEvidenceUnchanged } = await import(runnerUrl)
@@ -107,6 +279,25 @@ test("workflow provenance maps PR source and base identities without trusting th
   )
 })
 
+test("focused source snapshots bind the complete frontend evidence graph", async () => {
+  const { captureEvidence } = await import(runnerUrl)
+  const selectedSource = "src/components/ui/Button.tsx"
+
+  const snapshot = await captureEvidence([selectedSource])
+
+  assert.deepEqual([...snapshot.sourceByFile.keys()], [selectedSource])
+  assert.equal(typeof snapshot.identity.inputHashes[`frontend/${selectedSource}`], "string")
+  assert.equal(
+    typeof snapshot.identity.inputHashes["frontend/src/components/ui/Select.tsx"],
+    "string"
+  )
+  assert.equal(typeof snapshot.identity.inputHashes["frontend/scripts/run-stryker.mjs"], "string")
+  assert.equal(
+    typeof snapshot.identity.inputHashes["quality/coverage-source-policy.json"],
+    "string"
+  )
+})
+
 test("canonical cleanup removes only stale mutation evidence", async (t) => {
   const { cleanupCanonicalArtifacts } = await import(runnerUrl)
   const root = await mkdtemp(path.join(os.tmpdir(), "stryker-cleanup-"))
@@ -133,6 +324,1735 @@ test("canonical cleanup removes only stale mutation evidence", async (t) => {
     () => readFile(path.join(root, "historical-costs", "HISTORICAL_COSTS.json")),
     /ENOENT/u
   )
+})
+
+test("fresh run directories are recreated after cleanup and remain exclusive", async (t) => {
+  const { cleanupCanonicalArtifacts, createExclusiveRunDirectory } = await import(runnerUrl)
+  const root = await mkdtemp(path.join(os.tmpdir(), "stryker-run-directory-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await mkdir(path.join(root, "runs", "stale"), { recursive: true })
+
+  await cleanupCanonicalArtifacts(root)
+
+  const freshRunRoot = path.join(root, "runs", "fresh-run")
+  await createExclusiveRunDirectory(freshRunRoot)
+  await writeFile(path.join(freshRunRoot, "evidence.json"), "fresh")
+  assert.equal(await readFile(path.join(freshRunRoot, "evidence.json"), "utf8"), "fresh")
+  await assert.rejects(
+    () => createExclusiveRunDirectory(freshRunRoot),
+    /EEXIST/u,
+    "A colliding run ID must fail closed instead of reusing existing evidence"
+  )
+
+  const concurrentRunRoot = path.join(root, "runs", "concurrent-run")
+  const attempts = await Promise.allSettled([
+    createExclusiveRunDirectory(concurrentRunRoot),
+    createExclusiveRunDirectory(concurrentRunRoot),
+  ])
+  assert.equal(attempts.filter(({ status }) => status === "fulfilled").length, 1)
+  const rejected = attempts.find(({ status }) => status === "rejected")
+  assert.equal(rejected?.status, "rejected")
+  assert.match(String(rejected.reason), /EEXIST/u)
+})
+
+test("process-tree ownership is explicit and POSIX children start in a dedicated group", async () => {
+  const { createProcessTreeOwnership, processTreeSpawnOptions } = await import(runnerUrl)
+  const child = { pid: 4321 }
+
+  assert.deepEqual(processTreeSpawnOptions("linux"), {
+    detached: true,
+    windowsHide: true,
+  })
+  assert.deepEqual(processTreeSpawnOptions("win32"), {
+    detached: false,
+    windowsHide: true,
+  })
+  assert.deepEqual(createProcessTreeOwnership(child, { platform: "linux" }), {
+    kind: "posix-process-group",
+    rootPid: 4321,
+    groupId: 4321,
+  })
+  assert.deepEqual(createProcessTreeOwnership(child, { platform: "win32" }), {
+    kind: "windows-process-tree",
+    rootPid: 4321,
+  })
+  assert.throws(
+    () => createProcessTreeOwnership({ pid: 0 }, { platform: "linux" }),
+    /positive safe integer/u
+  )
+})
+
+test("process-tree termination rejects mismatched PID and PGID ownership", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const child = { pid: 2222, exitCode: null, signalCode: null }
+
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(child, {
+        kind: "windows-process-tree",
+        rootPid: 3333,
+      }),
+    /does not match the child PID/u
+  )
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(child, {
+        kind: "posix-process-group",
+        rootPid: 2222,
+        groupId: 3333,
+      }),
+    /must be led by the owned child/u
+  )
+})
+
+test("Windows tree-kill failure stays authoritative after a successful direct-child fallback", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const treeFailure = Object.assign(new Error("taskkill access denied"), { code: "EACCES" })
+  const calls = []
+  const child = {
+    pid: 5432,
+    exitCode: null,
+    signalCode: null,
+    kill(signal) {
+      calls.push(["direct", signal])
+      return true
+    },
+  }
+  const ownership = { kind: "windows-process-tree", rootPid: 5432 }
+
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(child, ownership, {
+        execFileCommand: async (command, args, options) => {
+          calls.push([command, args, options])
+          throw treeFailure
+        },
+      }),
+    (error) => error === treeFailure
+  )
+  assert.deepEqual(calls, [
+    ["taskkill", ["/pid", "5432", "/t", "/f"], { timeout: 10_000, windowsHide: true }],
+    ["direct", "SIGKILL"],
+  ])
+})
+
+test("Windows tree-kill retains direct fallback errors without replacing the tree failure", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const treeFailure = new Error("taskkill timed out")
+  const directFailure = new Error("direct kill failed")
+  const child = {
+    pid: 6543,
+    exitCode: null,
+    signalCode: null,
+    kill() {
+      throw directFailure
+    },
+  }
+
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(
+        child,
+        { kind: "windows-process-tree", rootPid: 6543 },
+        {
+          execFileCommand: async () => {
+            throw treeFailure
+          },
+        }
+      ),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true)
+      assert.equal(error.cause, treeFailure)
+      assert.deepEqual(error.errors, [treeFailure, directFailure])
+      return true
+    }
+  )
+
+  let postExitActions = 0
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(
+        {
+          pid: 6543,
+          exitCode: 0,
+          signalCode: null,
+          kill() {
+            postExitActions += 1
+            return true
+          },
+        },
+        { kind: "windows-process-tree", rootPid: 6543 },
+        {
+          execFileCommand: async () => {
+            postExitActions += 1
+          },
+        }
+      ),
+    /root exited before tree termination could be proven/u
+  )
+  assert.equal(postExitActions, 0)
+
+  const falseChild = {
+    pid: 6543,
+    exitCode: null,
+    signalCode: null,
+    kill: () => false,
+  }
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(
+        falseChild,
+        { kind: "windows-process-tree", rootPid: 6543 },
+        {
+          execFileCommand: async () => {
+            throw treeFailure
+          },
+        }
+      ),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true)
+      assert.equal(error.cause, treeFailure)
+      assert.equal(error.errors[0], treeFailure)
+      assert.match(error.errors[1].message, /direct child kill returned false/u)
+      return true
+    }
+  )
+})
+
+test("POSIX termination only probes the owned group after its leader exits", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const calls = []
+  let probes = 0
+  const child = {
+    pid: 7654,
+    exitCode: 0,
+    signalCode: null,
+    kill() {
+      assert.fail("a direct-child kill cannot prove POSIX process-group quiescence")
+    },
+  }
+
+  const result = await terminateOwnedProcessTree(
+    child,
+    { kind: "posix-process-group", rootPid: 7654, groupId: 7654 },
+    {
+      signalProcess(pid, signal) {
+        calls.push([pid, signal])
+        if (signal === 0) {
+          probes += 1
+          if (probes === 2) throw Object.assign(new Error("group absent"), { code: "ESRCH" })
+        }
+        return true
+      },
+      delay: async (milliseconds) => calls.push(["delay", milliseconds]),
+    }
+  )
+
+  assert.equal(result, true)
+  assert.deepEqual(calls, [
+    [-7654, 0],
+    ["delay", 25],
+    [-7654, 0],
+  ])
+})
+
+test("POSIX group kill and liveness uncertainty fail closed", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const child = {
+    pid: 8765,
+    exitCode: null,
+    signalCode: null,
+    kill() {
+      return true
+    },
+  }
+  const ownership = { kind: "posix-process-group", rootPid: 8765, groupId: 8765 }
+  const permissionFailure = Object.assign(new Error("operation not permitted"), { code: "EPERM" })
+
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(child, ownership, {
+        signalProcess() {
+          throw permissionFailure
+        },
+      }),
+    (error) => error === permissionFailure
+  )
+
+  let signals = 0
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(child, ownership, {
+        signalProcess() {
+          signals += 1
+          if (signals === 1) return true
+          throw permissionFailure
+        },
+      }),
+    (error) => error === permissionFailure
+  )
+
+  let nowCalls = 0
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(child, ownership, {
+        signalProcess: () => true,
+        now: () => {
+          nowCalls += 1
+          return nowCalls === 1 ? 1_000 : 1_011
+        },
+        groupVerificationTimeoutMs: 10,
+        delay: async () => assert.fail("an exhausted liveness bound must not sleep again"),
+      }),
+    /process group 8765 remained live after 10ms/u
+  )
+})
+
+test(
+  "real owned process trees terminate descendants before timeout or signal completion",
+  { timeout: 20_000 },
+  async (t) => {
+    const {
+      createProcessTreeOwnership,
+      processTreeSpawnOptions,
+      terminateOwnedProcessTree,
+      waitForChildClose,
+    } = await import(runnerUrl)
+    const fixtures = []
+    t.after(async () => {
+      for (const fixture of fixtures) {
+        if (processIsAlive(fixture.descendantPid)) {
+          try {
+            process.kill(fixture.descendantPid, "SIGKILL")
+          } catch (error) {
+            if (error?.code !== "ESRCH") throw error
+          }
+        }
+        if (processIsAlive(fixture.child.pid)) {
+          if (fixture.ownership) {
+            try {
+              await terminateOwnedProcessTree(fixture.child, fixture.ownership)
+            } catch {
+              fixture.child.kill("SIGKILL")
+            }
+          } else {
+            fixture.child.kill("SIGKILL")
+          }
+        }
+      }
+    })
+
+    for (const mode of ["signal", "timeout"]) {
+      const fixture = await spawnProcessTreeFixture({
+        createProcessTreeOwnership,
+        processTreeSpawnOptions,
+        registerFixture: (spawnedFixture) => fixtures.push(spawnedFixture),
+      })
+      assert.equal(processIsAlive(fixture.descendantPid), true)
+      const controller = new AbortController()
+      let fireTimeout
+      const timeoutToken = Symbol("timeout")
+      const result = waitForChildClose(fixture.child, {
+        description: `real ${mode} tree`,
+        timeoutMs: 60_000,
+        abortSignal: controller.signal,
+        processTreeOwnership: fixture.ownership,
+        // The production runner never creates legacy PID ownership on
+        // Windows.  This explicit test seam keeps the real descendant
+        // lifecycle check meaningful on hosts without a prebuilt Job Object
+        // helper, while proving taskkill's result by observing the fixture's
+        // descendant rather than treating the command exit as proof.
+        terminate:
+          process.platform === "win32"
+            ? async (child) => {
+                await execFileAsync("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+                  windowsHide: true,
+                })
+                const startedAt = Date.now()
+                while (processIsAlive(fixture.descendantPid)) {
+                  if (Date.now() - startedAt >= 5_000) return false
+                  await new Promise((resolve) => setTimeout(resolve, 25))
+                }
+                return true
+              }
+            : undefined,
+        scheduleTimeout(callback, milliseconds) {
+          if (fireTimeout === undefined) {
+            fireTimeout = callback
+            return timeoutToken
+          }
+          return setTimeout(callback, milliseconds)
+        },
+        cancelTimeout(timer) {
+          if (timer !== timeoutToken) clearTimeout(timer)
+        },
+      })
+
+      if (mode === "signal") {
+        controller.abort(
+          Object.assign(new Error("Stryker execution interrupted by SIGTERM"), {
+            code: "STRYKER_INTERRUPTED",
+            signalName: "SIGTERM",
+          })
+        )
+      } else {
+        fireTimeout()
+      }
+
+      await assert.rejects(result, (error) => {
+        assert.equal(error.processQuiesced, true)
+        assert.match(error.message, mode === "signal" ? /SIGTERM/u : /exceeded 60000ms/u)
+        return true
+      })
+      assert.equal(processIsAlive(fixture.descendantPid), false)
+      assert.equal(processIsAlive(fixture.child.pid), false)
+    }
+  }
+)
+
+test("child execution settles only after close and awaits timeout termination", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.exitCode = null
+  child.signalCode = null
+  let timeoutCallback
+  let cancelledTimer
+  let finishTermination
+  const termination = new Promise((resolve) => {
+    finishTermination = resolve
+  })
+  const result = waitForChildClose(child, {
+    description: "focused shard",
+    timeoutMs: 123,
+    terminate: async () => termination,
+    scheduleTimeout: (callback) => {
+      timeoutCallback = callback
+      return "timer"
+    },
+    cancelTimeout: (timer) => {
+      cancelledTimer = timer
+    },
+  })
+  let settled = false
+  void result.then(
+    () => {
+      settled = true
+    },
+    () => {
+      settled = true
+    }
+  )
+
+  timeoutCallback()
+  child.emit("exit", null, "SIGKILL")
+  await Promise.resolve()
+  assert.equal(settled, false)
+  child.emit("close", null, "SIGKILL")
+  await Promise.resolve()
+  assert.equal(settled, false)
+
+  finishTermination(true)
+  await assert.rejects(result, /focused shard exceeded 123ms/u)
+  assert.equal(cancelledTimer, "timer")
+  assert.equal(child.listenerCount("error"), 0)
+  assert.equal(child.listenerCount("exit"), 0)
+  assert.equal(child.listenerCount("close"), 0)
+})
+
+test("direct-child close cannot replace explicit process-tree quiescence proof", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.exitCode = null
+  child.signalCode = null
+  let timeoutCallback
+  const result = waitForChildClose(child, {
+    description: "unproved tree",
+    timeoutMs: 321,
+    terminate: async () => undefined,
+    scheduleTimeout(callback) {
+      timeoutCallback = callback
+      return "timer"
+    },
+    cancelTimeout: () => undefined,
+  })
+
+  timeoutCallback()
+  child.emit("exit", null, "SIGKILL")
+  child.emit("close", null, "SIGKILL")
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.match(error.errors[0].message, /unproved tree exceeded 321ms/u)
+    assert.match(error.errors[1].message, /did not confirm process-tree quiescence/u)
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+})
+
+test("normal POSIX completion proves the owned group is absent before resolving", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 9876
+  child.exitCode = null
+  child.signalCode = null
+  let confirmGroupAbsent
+  const verification = new Promise((resolve) => {
+    confirmGroupAbsent = resolve
+  })
+  let verificationCalls = 0
+  const result = waitForChildClose(child, {
+    description: "normal POSIX shard",
+    timeoutMs: 10_000,
+    processTreeOwnership: {
+      kind: "posix-process-group",
+      rootPid: 9876,
+      groupId: 9876,
+    },
+    verifyProcessTree: async () => {
+      verificationCalls += 1
+      await verification
+      return true
+    },
+  })
+  let settled = false
+  void result.then(() => {
+    settled = true
+  })
+
+  child.emit("exit", 0, null)
+  child.exitCode = 0
+  child.emit("close", 0, null)
+  await Promise.resolve()
+  assert.equal(settled, false)
+  assert.equal(verificationCalls, 1)
+
+  confirmGroupAbsent()
+  await result
+  assert.equal(settled, true)
+})
+
+test("spontaneous POSIX failure proves the exited group absent before artifact finalization", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 9877
+  child.exitCode = null
+  child.signalCode = null
+  let confirmTreeQuiescence
+  const treeVerification = new Promise((resolve) => {
+    confirmTreeQuiescence = resolve
+  })
+  let verificationCalls = 0
+  const result = waitForChildClose(child, {
+    description: "spontaneously failed POSIX shard",
+    timeoutMs: 10_000,
+    processTreeOwnership: {
+      kind: "posix-process-group",
+      rootPid: 9877,
+      groupId: 9877,
+    },
+    terminate: async () => assert.fail("an exited process-group identity must not be signalled"),
+    verifyProcessTree: async () => {
+      verificationCalls += 1
+      return treeVerification
+    },
+  })
+  let settled = false
+  void result.catch(() => {
+    settled = true
+  })
+
+  child.emit("exit", 7, null)
+  child.exitCode = 7
+  child.emit("close", 7, null)
+  await Promise.resolve()
+  assert.equal(verificationCalls, 1)
+  assert.equal(settled, false)
+
+  confirmTreeQuiescence(true)
+  await assert.rejects(result, (error) => {
+    assert.match(error.message, /exited with code 7/u)
+    assert.equal(error.processQuiesced, true)
+    return true
+  })
+})
+
+test("spontaneous Windows failure stays fail-closed when the dead-root tree cannot be proven", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 9878
+  child.exitCode = null
+  child.signalCode = null
+  let terminationCalls = 0
+  const result = waitForChildClose(child, {
+    description: "spontaneously failed Windows shard",
+    timeoutMs: 10_000,
+    processTreeOwnership: { kind: "windows-process-tree", rootPid: 9878 },
+    terminate: async () => {
+      terminationCalls += 1
+      assert.fail("taskkill must not target a Windows PID after its root exited")
+    },
+  })
+
+  child.emit("exit", null, "SIGABRT")
+  child.signalCode = "SIGABRT"
+  child.emit("close", null, "SIGABRT")
+
+  await assert.rejects(result, (error) => {
+    assert.match(error.message, /exited due to signal SIGABRT/u)
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+  assert.equal(terminationCalls, 0)
+})
+
+test("Windows job ownership is durable and status identity is strict", async () => {
+  const { createWindowsJobOwnership, parseWindowsProcessHostStatus } = await import(runnerUrl)
+  const child = { pid: 43210 }
+  const control = { write() {} }
+  const ownership = createWindowsJobOwnership(child, {
+    statusPath: "C:/runs/stryker/proof.json",
+    jobToken: "11111111-1111-4111-8111-111111111111",
+    control,
+  })
+
+  assert.deepEqual(
+    {
+      kind: ownership.kind,
+      rootPid: ownership.rootPid,
+      hostPid: ownership.hostPid,
+      statusPath: ownership.statusPath,
+      jobToken: ownership.jobToken,
+      protocolVersion: ownership.protocolVersion,
+    },
+    {
+      kind: "windows-job-object",
+      rootPid: 43210,
+      hostPid: 43210,
+      statusPath: "C:/runs/stryker/proof.json",
+      jobToken: "11111111-1111-4111-8111-111111111111",
+      protocolVersion: 1,
+    }
+  )
+  assert.throws(
+    () =>
+      parseWindowsProcessHostStatus(
+        JSON.stringify({
+          schemaVersion: 1,
+          protocolVersion: 1,
+          state: "job_empty",
+          hostPid: 43210,
+          targetPid: 43211,
+          jobToken: "not a token!",
+          exitCode: 0,
+          quiesced: true,
+          readyAcknowledged: true,
+          reason: null,
+        })
+      ),
+    /job token has an unsafe shape/u
+  )
+  assert.throws(
+    () =>
+      createWindowsJobOwnership(child, {
+        statusPath: "relative/proof.json",
+        jobToken: "11111111-1111-4111-8111-111111111111",
+        control,
+      }),
+    /status path is required/u
+  )
+})
+
+test("Windows normal success waits for an authoritative empty-job proof", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 43220
+  child.exitCode = null
+  child.signalCode = null
+  let proveEmpty
+  const proof = new Promise((resolve) => {
+    proveEmpty = resolve
+  })
+  let verified = 0
+  const result = waitForChildClose(child, {
+    description: "Windows job shard",
+    timeoutMs: 10_000,
+    processTreeOwnership: {
+      kind: "windows-job-object",
+      rootPid: 43220,
+      hostPid: 43220,
+      statusPath: "C:/runs/stryker/proof.json",
+      jobToken: "22222222-2222-4222-8222-222222222222",
+      protocolVersion: 1,
+    },
+    verifyWindowsJob: async () => {
+      verified += 1
+      await proof
+      return true
+    },
+  })
+  let settled = false
+  void result.then(() => {
+    settled = true
+  })
+
+  child.emit("exit", 0, null)
+  child.exitCode = 0
+  child.emit("close", 0, null)
+  await Promise.resolve()
+  assert.equal(verified, 1)
+  assert.equal(settled, false)
+
+  proveEmpty()
+  await result
+  assert.equal(settled, true)
+})
+
+test("Windows legacy PID ownership cannot claim normal close success", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 43221
+  child.exitCode = null
+  child.signalCode = null
+  const result = waitForChildClose(child, {
+    description: "unowned Windows shard",
+    timeoutMs: 10_000,
+    processTreeOwnership: { kind: "windows-process-tree", rootPid: 43221 },
+  })
+
+  child.emit("exit", 0, null)
+  child.exitCode = 0
+  child.emit("close", 0, null)
+  await assert.rejects(result, (error) => {
+    assert.equal(error.processQuiesced, false)
+    assert.match(error.message, /durable Windows job proof/u)
+    return true
+  })
+})
+
+test("Windows job termination uses its control pipe and accepts only final proof", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const writes = []
+  const child = {
+    pid: 43222,
+    exitCode: null,
+    signalCode: null,
+    stdin: {
+      write(value, callback) {
+        writes.push(value)
+        callback?.()
+      },
+    },
+  }
+  const ownership = {
+    kind: "windows-job-object",
+    rootPid: 43222,
+    hostPid: 43222,
+    statusPath: "C:/runs/stryker/proof.json",
+    jobToken: "33333333-3333-4333-8333-333333333333",
+    protocolVersion: 1,
+    control: child.stdin,
+  }
+  let reads = 0
+  const result = await terminateOwnedProcessTree(child, ownership, {
+    readStatus: async () => {
+      reads += 1
+      return reads < 2
+        ? undefined
+        : {
+            schemaVersion: 1,
+            protocolVersion: 1,
+            state: "job_terminated",
+            hostPid: 43222,
+            targetPid: 43223,
+            jobToken: ownership.jobToken,
+            exitCode: 143,
+            quiesced: true,
+            readyAcknowledged: true,
+            reason: null,
+          }
+    },
+    delay: async () => undefined,
+  })
+
+  assert.equal(result, true)
+  assert.deepEqual(writes, ["TERMINATE\n"])
+})
+
+test("Windows job termination never targets a reused host PID after close", async () => {
+  const { terminateOwnedProcessTree } = await import(runnerUrl)
+  const calls = []
+  const child = {
+    pid: 43224,
+    exitCode: 0,
+    signalCode: null,
+    stdin: {
+      write() {
+        calls.push("write")
+      },
+    },
+  }
+  await assert.rejects(
+    () =>
+      terminateOwnedProcessTree(
+        child,
+        {
+          kind: "windows-job-object",
+          rootPid: 43224,
+          hostPid: 43224,
+          statusPath: "C:/runs/stryker/proof.json",
+          jobToken: "44444444-4444-4444-8444-444444444444",
+          protocolVersion: 1,
+          control: { write() {} },
+        },
+        {
+          execFileCommand: async (...args) => calls.push(args),
+        }
+      ),
+    /host exited before durable job termination could be proven/u
+  )
+  assert.deepEqual(calls, [])
+})
+
+test("Windows terminal proof is token-bound and records READY durably", async (t) => {
+  const { verifyWindowsJobQuiescence } = await import(runnerUrl)
+  const root = await mkdtemp(path.join(os.tmpdir(), "stryker-windows-proof-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const statusPath = path.join(root, "proof.json")
+  const ownership = {
+    kind: "windows-job-object",
+    rootPid: 43225,
+    hostPid: 43225,
+    statusPath,
+    jobToken: "55555555-5555-4555-8555-555555555555",
+    protocolVersion: 1,
+    control: { write() {} },
+  }
+  await writeFile(
+    statusPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      protocolVersion: 1,
+      state: "job_empty",
+      hostPid: 43225,
+      targetPid: 43226,
+      jobToken: ownership.jobToken,
+      exitCode: 0,
+      quiesced: true,
+      readyAcknowledged: true,
+      reason: null,
+    }),
+    "utf8"
+  )
+  assert.equal(await verifyWindowsJobQuiescence(ownership), true)
+
+  await writeFile(
+    statusPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      protocolVersion: 1,
+      state: "job_empty",
+      hostPid: 43225,
+      targetPid: 43226,
+      jobToken: ownership.jobToken,
+      exitCode: 0,
+      quiesced: true,
+      readyAcknowledged: false,
+      reason: null,
+    }),
+    "utf8"
+  )
+  await assert.rejects(
+    () => verifyWindowsJobQuiescence(ownership, { timeoutMs: 0 }),
+    /READY acknowledgement/u
+  )
+})
+
+test("the checked-in Windows host contains the atomic Job Object lifecycle", async () => {
+  const source = await readFile(
+    new URL("../tools/stryker-process-host/src/main.rs", runnerUrl),
+    "utf8"
+  )
+  assert.match(source, /CREATE_SUSPENDED/u)
+  assert.match(source, /AssignProcessToJobObject/u)
+  assert.match(source, /JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE/u)
+  assert.match(source, /TerminateJobObject/u)
+  assert.match(source, /PROC_THREAD_ATTRIBUTE_HANDLE_LIST/u)
+  assert.doesNotMatch(source, /taskkill/u)
+})
+
+test("Windows process-host termination failures fail closed without waiting for an empty proof", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 43227
+  child.exitCode = null
+  child.signalCode = null
+  let statusReads = 0
+  let timeoutCallback
+  const terminationFailure = new Error(
+    "Windows process-host reported TerminateJobObject failed with Win32 error 5"
+  )
+  const result = waitForChildClose(child, {
+    description: "Windows termination-failure shard",
+    timeoutMs: 1_000,
+    terminationGraceMs: 1_000,
+    processTreeOwnership: {
+      kind: "windows-job-object",
+      rootPid: 43227,
+      hostPid: 43227,
+      statusPath: "C:/runs/stryker/proof.json",
+      jobToken: "66666666-6666-4666-8666-666666666666",
+      protocolVersion: 1,
+      control: { write() {} },
+    },
+    terminate: async () => {
+      throw terminationFailure
+    },
+    verifyWindowsJob: async () => {
+      statusReads += 1
+      throw new Error("the runner must not claim quiescence after a failed native termination")
+    },
+    scheduleTimeout: (callback) => {
+      timeoutCallback = callback
+      return "timer"
+    },
+    cancelTimeout: () => undefined,
+  })
+
+  timeoutCallback()
+  child.emit("exit", null, "SIGTERM")
+  child.signalCode = "SIGTERM"
+  child.emit("close", null, "SIGTERM")
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error.processQuiesced, false)
+    assert.equal(error.errors?.[1], terminationFailure)
+    return true
+  })
+  assert.equal(statusReads, 0)
+})
+
+test("native host source returns immediately on failed termination and retains a false quiescence proof", async () => {
+  const source = await readFile(
+    new URL("../tools/stryker-process-host/src/main.rs", runnerUrl),
+    "utf8"
+  )
+  assert.match(source, /termination_error/u)
+  assert.match(source, /termination_error\.as_ref\(\)/u)
+  assert.match(source, /return Err\(clone_io_error\(error\)\)/u)
+  assert.match(source, /terminate_then_wait/u)
+  assert.match(source, /state: if quiesced \{\s*"job_terminated"\s*\} else \{\s*"error"/su)
+  assert.match(source, /quiesced: false/u)
+  assert.doesNotMatch(source, /let _ = terminate_job/u)
+})
+
+test("native host bounds successful cancellation while the empty proof is stuck", async () => {
+  const source = await readFile(
+    new URL("../tools/stryker-process-host/src/main.rs", runnerUrl),
+    "utf8"
+  )
+  const start = source.indexOf("fn wait_for_empty_with_control")
+  const end = source.indexOf("fn run()", start)
+  assert.ok(start >= 0 && end > start, "controlled empty-proof loop is present")
+  const controlledProof = source.slice(start, end)
+  assert.match(controlledProof, /cancellation_started/u)
+  assert.match(controlledProof, /cancellation_started[\s\S]*FAILURE_CLEANUP_WAIT/u)
+  assert.match(controlledProof, /MAX_STATUS_WAIT/u)
+  assert.match(controlledProof, /job active-process count did not reach zero after cancellation/u)
+  assert.match(source, /quiesced = result\.is_none\(\)/u)
+})
+
+test("child close reports normal exits and retains timeout termination failures", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const successfulChild = new EventEmitter()
+  const success = waitForChildClose(successfulChild, {
+    description: "successful shard",
+    timeoutMs: 1_000,
+  })
+  successfulChild.emit("exit", 0, null)
+  successfulChild.emit("close", 0, null)
+  await success
+  assert.equal(successfulChild.listenerCount("error"), 0)
+  assert.equal(successfulChild.listenerCount("exit"), 0)
+  assert.equal(successfulChild.listenerCount("close"), 0)
+
+  const failedChild = new EventEmitter()
+  const failure = waitForChildClose(failedChild, {
+    description: "failed shard",
+    timeoutMs: 1_000,
+  })
+  failedChild.emit("exit", 7, null)
+  failedChild.emit("close", 7, null)
+  await assert.rejects(failure, /failed shard exited with code 7/u)
+  assert.equal(failedChild.listenerCount("error"), 0)
+  assert.equal(failedChild.listenerCount("exit"), 0)
+  assert.equal(failedChild.listenerCount("close"), 0)
+
+  const timedOutChild = new EventEmitter()
+  const terminationError = new Error("taskkill failed")
+  let timeoutCallback
+  let rejectionCount = 0
+  const timedOut = waitForChildClose(timedOutChild, {
+    description: "timed-out shard",
+    timeoutMs: 456,
+    terminate: async () => {
+      throw terminationError
+    },
+    scheduleTimeout: (callback) => {
+      timeoutCallback = callback
+      return "timer"
+    },
+    cancelTimeout: () => undefined,
+  })
+  void timedOut.catch(() => {
+    rejectionCount += 1
+  })
+  timeoutCallback()
+  timedOutChild.emit("exit", null, "SIGKILL")
+  timedOutChild.emit("close", null, "SIGKILL")
+  await assert.rejects(timedOut, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.match(error.errors[0].message, /timed-out shard exceeded 456ms/u)
+    assert.equal(error.errors[1], terminationError)
+    assert.equal(error.cause, error.errors[0])
+    assert.equal(
+      error.processQuiesced,
+      false,
+      "a failed tree terminator cannot prove descendant quiescence even when the parent closed"
+    )
+    return true
+  })
+  timedOutChild.emit("close", null, "SIGKILL")
+  await Promise.resolve()
+  assert.equal(rejectionCount, 1)
+  assert.equal(timedOutChild.listenerCount("error"), 0)
+  assert.equal(timedOutChild.listenerCount("exit"), 0)
+  assert.equal(timedOutChild.listenerCount("close"), 0)
+})
+
+test("child timeout has a bounded grace when termination or close hangs", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  const timers = []
+  const result = waitForChildClose(child, {
+    description: "hung shard",
+    timeoutMs: 500,
+    terminationGraceMs: 75,
+    terminate: async () => new Promise(() => undefined),
+    scheduleTimeout: (callback, milliseconds) => {
+      const timer = { callback, milliseconds }
+      timers.push(timer)
+      return timer
+    },
+    cancelTimeout: () => undefined,
+  })
+
+  assert.equal(timers[0].milliseconds, 500)
+  timers[0].callback()
+  assert.equal(timers[1].milliseconds, 75)
+  timers[1].callback()
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.match(error.errors[0].message, /hung shard exceeded 500ms/u)
+    assert.match(error.errors[1].message, /did not terminate and close within 75ms/u)
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+  assert.equal(child.listenerCount("error"), 0)
+  assert.equal(child.listenerCount("exit"), 0)
+  assert.equal(child.listenerCount("close"), 0)
+})
+
+test("process signals abort before lock acquisition and a second signal cannot bypass cleanup", async () => {
+  const { installProcessSignalCancellation, throwIfCancellationRequested } = await import(runnerUrl)
+  const processEvents = new EventEmitter()
+  const cancellation = installProcessSignalCancellation({ processEvents })
+  let abortEvents = 0
+  cancellation.signal.addEventListener("abort", () => {
+    abortEvents += 1
+  })
+
+  processEvents.emit("SIGINT")
+  assert.throws(() => throwIfCancellationRequested(cancellation.signal), /interrupted by SIGINT/u)
+  processEvents.emit("SIGTERM")
+
+  assert.equal(abortEvents, 1)
+  assert.match(cancellation.signal.reason.message, /interrupted by SIGINT/u)
+  assert.equal(processEvents.listenerCount("SIGINT"), 1)
+  assert.equal(processEvents.listenerCount("SIGTERM"), 1)
+  cancellation.dispose()
+  assert.equal(processEvents.listenerCount("SIGINT"), 0)
+  assert.equal(processEvents.listenerCount("SIGTERM"), 0)
+})
+
+test("a process signal terminates every active child, awaits close, and stops shard scheduling", async () => {
+  const { installProcessSignalCancellation, runPool, waitForChildClose } = await import(runnerUrl)
+  const processEvents = new EventEmitter()
+  const cancellation = installProcessSignalCancellation({ processEvents })
+  const children = [new EventEmitter(), new EventEmitter()]
+  for (const child of children) {
+    child.exitCode = null
+    child.signalCode = null
+  }
+  const terminations = []
+  const started = []
+  const execution = runPool(
+    [0, 1, 2, 3],
+    2,
+    async (index) => {
+      started.push(index)
+      return waitForChildClose(children[index], {
+        description: `signal shard ${index}`,
+        timeoutMs: 10_000,
+        abortSignal: cancellation.signal,
+        terminate: async () =>
+          new Promise((resolve) => {
+            terminations[index] = resolve
+          }),
+      })
+    },
+    { abortSignal: cancellation.signal }
+  )
+  let settled = false
+  void execution.catch(() => {
+    settled = true
+  })
+
+  await new Promise((resolve) => setImmediate(resolve))
+  processEvents.emit("SIGTERM")
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(started, [0, 1])
+  assert.equal(terminations.length, 2)
+
+  processEvents.emit("SIGINT")
+  children[0].emit("exit", null, "SIGTERM")
+  children[0].emit("close", null, "SIGTERM")
+  children[1].emit("exit", null, "SIGTERM")
+  children[1].emit("close", null, "SIGTERM")
+  await Promise.resolve()
+  assert.equal(settled, false, "close alone must not bypass awaited tree termination")
+
+  terminations[0](true)
+  terminations[1](true)
+  await assert.rejects(execution, (error) => {
+    assert.match(error.message, /SIGTERM/u)
+    assert.notEqual(error.processQuiesced, false)
+    return true
+  })
+  assert.deepEqual(started, [0, 1])
+  for (const child of children) {
+    assert.equal(child.listenerCount("error"), 0)
+    assert.equal(child.listenerCount("exit"), 0)
+    assert.equal(child.listenerCount("close"), 0)
+  }
+  cancellation.dispose()
+})
+
+test("a child error that precedes cancellation remains the primary execution failure", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.exitCode = null
+  child.signalCode = null
+  const controller = new AbortController()
+  const childError = new Error("spawn pipe failed")
+  const cancellationError = Object.assign(new Error("Stryker execution interrupted by SIGINT"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGINT",
+  })
+  let finishTermination
+  const result = waitForChildClose(child, {
+    description: "errored shard",
+    timeoutMs: 10_000,
+    abortSignal: controller.signal,
+    terminate: async () =>
+      new Promise((resolve) => {
+        finishTermination = resolve
+      }),
+  })
+
+  child.emit("error", childError)
+  controller.abort(cancellationError)
+  child.emit("exit", null, "SIGKILL")
+  child.emit("close", null, "SIGKILL")
+  await new Promise((resolve) => setImmediate(resolve))
+  finishTermination(true)
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.equal(error.cause, childError)
+    assert.deepEqual(error.errors, [childError, cancellationError])
+    assert.equal(error.processQuiesced, true)
+    return true
+  })
+})
+
+test("a child error after cancellation is retained as a fail-closed secondary failure", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.exitCode = null
+  child.signalCode = null
+  const controller = new AbortController()
+  const cancellationError = Object.assign(new Error("Stryker execution interrupted by SIGTERM"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGTERM",
+  })
+  const lateChildError = new Error("late child process failure")
+  let finishTermination
+  const result = waitForChildClose(child, {
+    description: "late-error shard",
+    timeoutMs: 10_000,
+    abortSignal: controller.signal,
+    terminate: async () =>
+      new Promise((resolve) => {
+        finishTermination = resolve
+      }),
+  })
+
+  controller.abort(cancellationError)
+  await Promise.resolve()
+  child.emit("error", lateChildError)
+  child.emit("exit", null, "SIGKILL")
+  child.emit("close", null, "SIGKILL")
+  finishTermination(true)
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.equal(error.cause, cancellationError)
+    assert.deepEqual(error.errors, [cancellationError, lateChildError])
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+})
+
+test("late child failures precede termination failures in cancellation diagnostics", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.exitCode = null
+  child.signalCode = null
+  const controller = new AbortController()
+  const cancellationError = Object.assign(new Error("Stryker execution interrupted by SIGINT"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGINT",
+  })
+  const lateChildError = new Error("child failed while stopping")
+  const terminationError = new Error("tree termination failed")
+  const result = waitForChildClose(child, {
+    description: "late-error termination shard",
+    timeoutMs: 10_000,
+    abortSignal: controller.signal,
+    terminate: async () => {
+      throw terminationError
+    },
+  })
+
+  controller.abort(cancellationError)
+  await Promise.resolve()
+  await Promise.resolve()
+  child.emit("error", lateChildError)
+  child.emit("exit", null, "SIGKILL")
+  child.emit("close", null, "SIGKILL")
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.equal(error.cause, cancellationError)
+    assert.deepEqual(error.errors, [cancellationError, lateChildError, terminationError])
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+})
+
+test("a signal after exit never targets the dead root and fails closed on Windows", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 12_345
+  child.exitCode = null
+  child.signalCode = null
+  const controller = new AbortController()
+  const cancellationError = Object.assign(new Error("Stryker execution interrupted by SIGTERM"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGTERM",
+  })
+  let terminationCalls = 0
+  const result = waitForChildClose(child, {
+    description: "exited shard",
+    timeoutMs: 10_000,
+    abortSignal: controller.signal,
+    processTreeOwnership: { kind: "windows-process-tree", rootPid: 12_345 },
+    terminate: async () => {
+      terminationCalls += 1
+      assert.fail("a post-exit cancellation must not taskkill a reusable PID")
+    },
+  })
+  let settled = false
+  void result.catch(() => {
+    settled = true
+  })
+
+  child.emit("exit", 0, null)
+  child.exitCode = 0
+  controller.abort(cancellationError)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(settled, false)
+  child.emit("close", 0, null)
+
+  await assert.rejects(result, (error) => {
+    assert.equal(error, cancellationError)
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+  assert.equal(terminationCalls, 0)
+})
+
+test("signal cancellation preserves termination failures and fails closed without close", async () => {
+  const { waitForChildClose } = await import(runnerUrl)
+  const cancellationError = Object.assign(new Error("Stryker execution interrupted by SIGTERM"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGTERM",
+  })
+
+  const failedChild = new EventEmitter()
+  failedChild.exitCode = null
+  failedChild.signalCode = null
+  const failedController = new AbortController()
+  const terminationError = new Error("taskkill denied")
+  const failed = waitForChildClose(failedChild, {
+    description: "termination failure shard",
+    timeoutMs: 10_000,
+    abortSignal: failedController.signal,
+    terminate: async () => {
+      throw terminationError
+    },
+  })
+  failedController.abort(cancellationError)
+  failedChild.emit("exit", null, "SIGKILL")
+  failedChild.emit("close", null, "SIGKILL")
+  await assert.rejects(failed, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.equal(error.cause, cancellationError)
+    assert.equal(error.errors[0], cancellationError)
+    assert.equal(error.errors[1], terminationError)
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+
+  const missingCloseChild = new EventEmitter()
+  missingCloseChild.exitCode = null
+  missingCloseChild.signalCode = null
+  const missingCloseController = new AbortController()
+  const timers = []
+  const missingClose = waitForChildClose(missingCloseChild, {
+    description: "missing-close shard",
+    timeoutMs: 10_000,
+    terminationGraceMs: 75,
+    abortSignal: missingCloseController.signal,
+    terminate: async () => true,
+    scheduleTimeout: (callback, milliseconds) => {
+      const timer = { callback, milliseconds }
+      timers.push(timer)
+      return timer
+    },
+    cancelTimeout: () => undefined,
+  })
+  missingCloseController.abort(cancellationError)
+  await Promise.resolve()
+  assert.equal(timers[1].milliseconds, 75)
+  timers[1].callback()
+  await assert.rejects(missingClose, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.equal(error.cause, cancellationError)
+    assert.equal(error.errors[0], cancellationError)
+    assert.match(error.errors[1].message, /did not terminate and close within 75ms/u)
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+})
+
+test("executable exit codes preserve conventional SIGINT and SIGTERM semantics", async () => {
+  const { runnerExitCode } = await import(runnerUrl)
+  const sigint = Object.assign(new Error("interrupted"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGINT",
+  })
+  const sigterm = Object.assign(new Error("interrupted"), {
+    code: "STRYKER_INTERRUPTED",
+    signalName: "SIGTERM",
+  })
+
+  assert.equal(runnerExitCode(sigint), 130)
+  assert.equal(
+    runnerExitCode(new AggregateError([sigterm], "finalization", { cause: sigterm })),
+    143
+  )
+  const ordinaryPrimary = new Error("spawn failed before cancellation")
+  assert.equal(
+    runnerExitCode(
+      new AggregateError([ordinaryPrimary, sigterm], "spawn failed before cancellation", {
+        cause: ordinaryPrimary,
+      })
+    ),
+    1
+  )
+  assert.equal(runnerExitCode(new Error("ordinary failure")), 1)
+})
+
+test("temporary cleanup retries only bounded transient Windows failures", async () => {
+  const { removeOwnedTemporaryDirectory } = await import(runnerUrl)
+  const runId = "run-id"
+  const root = path.join(
+    os.tmpdir(),
+    "university-ecosystem-stryker-runs",
+    "repository",
+    "a".repeat(40),
+    runId
+  )
+  const codes = ["EPERM", "EBUSY", "ENOTEMPTY"]
+  const delays = []
+  let attempts = 0
+
+  await removeOwnedTemporaryDirectory(root, runId, {
+    platform: "win32",
+    retryDelaysMs: [10, 20, 40],
+    remove: async () => {
+      const code = codes[attempts]
+      attempts += 1
+      if (code) throw Object.assign(new Error(code), { code })
+    },
+    delay: async (milliseconds) => {
+      delays.push(milliseconds)
+    },
+  })
+  assert.equal(attempts, 4)
+  assert.deepEqual(delays, [10, 20, 40])
+
+  attempts = 0
+  await assert.rejects(
+    () =>
+      removeOwnedTemporaryDirectory(root, runId, {
+        platform: "win32",
+        retryDelaysMs: [10, 20],
+        remove: async () => {
+          attempts += 1
+          throw Object.assign(new Error("denied"), { code: "EACCES" })
+        },
+        delay: async () => assert.fail("non-transient cleanup must not retry"),
+      }),
+    /denied/u
+  )
+  assert.equal(attempts, 1)
+})
+
+test("temporary cleanup retries a resolved removal until ENOENT proves the owned path is absent", async () => {
+  const { removeOwnedTemporaryDirectory } = await import(runnerUrl)
+  const runId = "verified-removal"
+  const root = path.join(
+    os.tmpdir(),
+    "university-ecosystem-stryker-runs",
+    "repository",
+    "b".repeat(40),
+    runId
+  )
+  const removedPaths = []
+  const inspectedPaths = []
+  const delays = []
+  let inspections = 0
+
+  await removeOwnedTemporaryDirectory(root, runId, {
+    platform: "win32",
+    retryDelaysMs: [10, 20],
+    remove: async (target) => removedPaths.push(target),
+    inspect: async (target) => {
+      inspectedPaths.push(target)
+      inspections += 1
+      if (inspections < 3) return { isDirectory: () => true }
+      throw Object.assign(new Error("absent"), { code: "ENOENT" })
+    },
+    delay: async (milliseconds) => delays.push(milliseconds),
+  })
+
+  assert.deepEqual(removedPaths, [root, root, root])
+  assert.deepEqual(inspectedPaths, [root, root, root])
+  assert.deepEqual(delays, [10, 20])
+
+  await assert.rejects(
+    () =>
+      removeOwnedTemporaryDirectory(root, runId, {
+        platform: "win32",
+        retryDelaysMs: [10],
+        remove: async () => undefined,
+        inspect: async () => ({ isDirectory: () => true }),
+        delay: async () => undefined,
+      }),
+    /still exists after removal/u
+  )
+})
+
+test("exhausted temporary cleanup reports bounded diagnostic provenance", async () => {
+  const { removeOwnedTemporaryDirectory } = await import(runnerUrl)
+  const runId = "cleanup-diagnostic"
+  const root = path.join(
+    os.tmpdir(),
+    "university-ecosystem-stryker-runs",
+    "repository",
+    "c".repeat(40),
+    runId
+  )
+  const terminalError = Object.assign(new Error("directory remains busy"), { code: "EBUSY" })
+  let nowCalls = 0
+
+  await assert.rejects(
+    () =>
+      removeOwnedTemporaryDirectory(root, runId, {
+        platform: "win32",
+        retryDelaysMs: [10, 20],
+        remove: async () => {
+          throw terminalError
+        },
+        delay: async () => undefined,
+        now: () => {
+          nowCalls += 1
+          return nowCalls === 1 ? 1_000 : 1_375
+        },
+      }),
+    (error) => {
+      assert.equal(error.cause, terminalError)
+      assert.equal(error.code, "EBUSY")
+      assert.equal(error.path, root)
+      assert.equal(error.attempts, 3)
+      assert.equal(error.elapsedMs, 375)
+      assert.match(error.message, /3 attempts/u)
+      assert.match(error.message, /375ms/u)
+      assert.match(error.message, /terminal code EBUSY/u)
+      assert.equal(error.message.includes(root), true)
+      return true
+    }
+  )
+})
+
+test("post-lock cancellation revokes markers and finalizes the owned temp and lock", async () => {
+  const { finalizeMutationRun, installProcessSignalCancellation } = await import(runnerUrl)
+  const processEvents = new EventEmitter()
+  const cancellation = installProcessSignalCancellation({ processEvents })
+  const calls = []
+
+  processEvents.emit("SIGTERM")
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        cancellationSignal: cancellation.signal,
+        cleanupTemporary: async () => calls.push("cleanup"),
+        revokeMarker: async () => calls.push("marker"),
+        releaseLock: async (prepareRelease) => {
+          const commitRelease = await prepareRelease()
+          commitRelease()
+          calls.push("release")
+        },
+      }),
+    /interrupted by SIGTERM/u
+  )
+
+  assert.deepEqual(calls, ["cleanup", "marker", "release"])
+  cancellation.dispose()
+})
+
+test("a signal during lock release revokes markers before the release commit", async () => {
+  const { finalizeMutationRun, installProcessSignalCancellation } = await import(runnerUrl)
+  const processEvents = new EventEmitter()
+  const cancellation = installProcessSignalCancellation({ processEvents })
+  const calls = []
+
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        cancellationSignal: cancellation.signal,
+        cleanupTemporary: async () => calls.push("cleanup"),
+        revokeMarker: async () => calls.push("marker"),
+        releaseLock: async (beforeRelease) => {
+          calls.push("release-start")
+          processEvents.emit("SIGTERM")
+          const commitRelease = await beforeRelease()
+          commitRelease()
+          calls.push("release-commit")
+        },
+      }),
+    /interrupted by SIGTERM/u
+  )
+
+  assert.deepEqual(calls, ["cleanup", "release-start", "marker", "release-commit"])
+  cancellation.dispose()
+})
+
+test("a signal after release preparation retains the lock until marker revocation", async () => {
+  const { finalizeMutationRun, installProcessSignalCancellation } = await import(runnerUrl)
+  const processEvents = new EventEmitter()
+  const cancellation = installProcessSignalCancellation({ processEvents })
+  const calls = []
+
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        cancellationSignal: cancellation.signal,
+        cleanupTemporary: async () => calls.push("cleanup"),
+        revokeMarker: async () => calls.push("marker"),
+        releaseLock: async (prepareRelease) => {
+          calls.push("release-start")
+          const commitRelease = await prepareRelease()
+          processEvents.emit("SIGINT")
+          commitRelease()
+          calls.push("release-commit")
+        },
+      }),
+    /interrupted by SIGINT/u
+  )
+
+  assert.deepEqual(calls, ["cleanup", "release-start", "marker"])
+  cancellation.dispose()
+})
+
+test("required marker revocation without a callback retains the run lock", async () => {
+  const { finalizeMutationRun } = await import(runnerUrl)
+  const primary = new Error("mutation failed")
+  const calls = []
+
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        primaryError: primary,
+        cleanupTemporary: async () => calls.push("cleanup"),
+        releaseLock: async () => calls.push("release"),
+      }),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true)
+      assert.equal(error.cause, primary)
+      assert.equal(error.errors[0], primary)
+      assert.match(error.errors[1].message, /marker revocation is required but unavailable/u)
+      return true
+    }
+  )
+  assert.deepEqual(calls, ["cleanup"])
+})
+
+test("a failure before lock acquisition is surfaced without fictitious marker cleanup", async () => {
+  const { finalizeMutationRun } = await import(runnerUrl)
+  const primary = new Error("invalid runner arguments")
+
+  await assert.rejects(
+    () => finalizeMutationRun({ primaryError: primary }),
+    (error) => error === primary
+  )
+})
+
+test("finalization preserves the primary failure and always releases the lock", async () => {
+  const { finalizeMutationRun } = await import(runnerUrl)
+  const primary = new Error("test timeout")
+  const cleanup = new Error("cleanup failed")
+  const release = new Error("release failed")
+  const calls = []
+
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        primaryError: primary,
+        cleanupTemporary: async () => {
+          calls.push("cleanup")
+          throw cleanup
+        },
+        releaseLock: async (prepareRelease) => {
+          const commitRelease = await prepareRelease()
+          commitRelease()
+          calls.push("release")
+          throw release
+        },
+        revokeMarker: async () => calls.push("marker"),
+      }),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true)
+      assert.equal(error.cause, primary)
+      assert.deepEqual(error.errors, [primary, cleanup, release])
+      return true
+    }
+  )
+  assert.deepEqual(calls, ["cleanup", "marker", "release"])
+})
+
+test("finalization retains lock and temp when child close is unconfirmed", async () => {
+  const { finalizeMutationRun } = await import(runnerUrl)
+  const primary = Object.assign(new Error("timeout"), { processQuiesced: false })
+  const calls = []
+
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        primaryError: primary,
+        cleanupTemporary: async () => calls.push("cleanup"),
+        releaseLock: async () => calls.push("release"),
+        revokeMarker: async () => calls.push("marker"),
+      }),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true)
+      assert.equal(error.cause, primary)
+      assert.equal(error.errors[0], primary)
+      assert.match(error.errors[1].message, /run lock were retained/u)
+      return true
+    }
+  )
+  assert.deepEqual(calls, ["marker"])
+})
+
+test("parallel shard pool waits for every worker before surfacing a failure", async () => {
+  const { runPool } = await import(runnerUrl)
+  let releaseSecond
+  const second = new Promise((resolve) => {
+    releaseSecond = resolve
+  })
+  const firstError = new Error("first shard failed")
+  const started = []
+  const execution = runPool(["first", "second", "third", "fourth"], 2, async (item) => {
+    started.push(item)
+    if (item === "first") throw firstError
+    await second
+    return "completed"
+  })
+  let settled = false
+  void execution.then(
+    () => {
+      settled = true
+    },
+    () => {
+      settled = true
+    }
+  )
+
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(settled, false)
+  releaseSecond()
+  await assert.rejects(execution, (error) => error === firstError)
+  assert.deepEqual(started, ["first", "second"])
+})
+
+test("failed marker revocation retains the owned run lock", async () => {
+  const { finalizeMutationRun } = await import(runnerUrl)
+  const primary = new Error("test failure")
+  const markerError = new Error("marker cleanup failed")
+  const calls = []
+
+  await assert.rejects(
+    () =>
+      finalizeMutationRun({
+        primaryError: primary,
+        cleanupTemporary: async () => calls.push("cleanup"),
+        revokeMarker: async () => {
+          calls.push("marker")
+          throw markerError
+        },
+        releaseLock: async () => calls.push("release"),
+      }),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true)
+      assert.deepEqual(error.errors, [primary, markerError])
+      return true
+    }
+  )
+  assert.deepEqual(calls, ["cleanup", "marker"])
 })
 
 test("stages the canonical coverage policy beside every Stryker sandbox", async (t) => {
@@ -164,9 +2084,9 @@ test("exclusive run locks fail closed and release only their owner", async (t) =
   const lockPath = path.join(root, ".run.lock")
   const first = await acquireRunLock(lockPath, "run-a")
   await assert.rejects(() => acquireRunLock(lockPath, "run-b"), /already active/u)
-  await first.release()
+  await first.release(async () => () => undefined)
   const second = await acquireRunLock(lockPath, "run-b")
-  await second.release()
+  await second.release(async () => () => undefined)
 })
 
 test("local evidence never creates a release VALIDATED marker", async (t) => {
@@ -192,6 +2112,81 @@ test("local evidence never creates a release VALIDATED marker", async (t) => {
   assert.equal(typeof JSON.parse(markerText).preflightSha256, "string")
   assert.match(inventoryText, /"schemaVersion": "2\.0"/u)
   await assert.rejects(() => readFile(path.join(root, "VALIDATED.json")), /ENOENT/u)
+})
+
+test("focused evidence stays isolated from every canonical artifact", async (t) => {
+  const {
+    cleanupCanonicalArtifacts,
+    mutationRunPaths,
+    persistMutationEvidence,
+    resolveMutationSourceSelection,
+  } = await import(runnerUrl)
+  const root = await mkdtemp(path.join(os.tmpdir(), "stryker-focused-evidence-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const canonicalRoot = path.join(root, "mutation")
+  const canonicalArtifacts = [
+    "mutation.json",
+    "inventory.json",
+    "preflight.json",
+    "LOCAL_VALIDATION.json",
+    "VALIDATED.json",
+  ]
+  await mkdir(path.join(canonicalRoot, "historical-costs"), { recursive: true })
+  await Promise.all([
+    ...canonicalArtifacts.map((name) => writeFile(path.join(canonicalRoot, name), "canonical")),
+    writeFile(path.join(canonicalRoot, "historical-costs", "HISTORICAL_COSTS.json"), "canonical"),
+  ])
+  const selection = resolveMutationSourceSelection(["src/a.ts", "src/b.ts"], {
+    STRYKER_LOCAL_MUTATE_JSON: '["src/a.ts"]',
+  })
+  const paths = mutationRunPaths(selection, canonicalRoot)
+  await mkdir(path.join(paths.outputRoot, "runs", "stale"), { recursive: true })
+  await writeFile(path.join(paths.outputRoot, "mutation.json"), "stale-focused")
+
+  await cleanupCanonicalArtifacts(paths.outputRoot)
+
+  for (const name of canonicalArtifacts) {
+    assert.equal(await readFile(path.join(canonicalRoot, name), "utf8"), "canonical")
+  }
+  assert.equal(
+    await readFile(path.join(canonicalRoot, "historical-costs", "HISTORICAL_COSTS.json"), "utf8"),
+    "canonical"
+  )
+
+  const inventory = {
+    schemaVersion: "2.0",
+    runId: "focused-run",
+    revision: "sha-dirty.digest",
+    releaseEligible: false,
+    summary: { viableMutantScore: 100 },
+  }
+  const preflight = { schemaVersion: "1.0", runId: "focused-run", files: {} }
+  const persisted = await persistMutationEvidence({ paths, inventory, preflight })
+
+  assert.equal(persisted.markerWritten, false)
+  assert.match(persisted.inventorySha256, /^[a-f0-9]{64}$/u)
+  assert.equal(
+    JSON.parse(await readFile(path.join(paths.outputRoot, "inventory.json"))).runId,
+    "focused-run"
+  )
+  assert.equal(
+    JSON.parse(await readFile(path.join(paths.outputRoot, "preflight.json"))).runId,
+    "focused-run"
+  )
+  await assert.rejects(
+    () => readFile(path.join(paths.outputRoot, "LOCAL_VALIDATION.json")),
+    /ENOENT/u
+  )
+  await assert.rejects(() => readFile(path.join(paths.outputRoot, "VALIDATED.json")), /ENOENT/u)
+  await assert.rejects(
+    () =>
+      persistMutationEvidence({
+        paths,
+        inventory: { ...inventory, releaseEligible: true },
+        preflight,
+      }),
+    /cannot be release eligible/u
+  )
 })
 
 test("release marker eligibility is derived from the complete inventory", async (t) => {
@@ -296,6 +2291,62 @@ test("indexes every shard producer evidence document by content hash", async () 
   )
 })
 
+test("indexes and validates Windows process-host provenance when present", async () => {
+  const { indexShardProducerEvidence } = await import(runnerUrl)
+  const root = path.join(os.tmpdir(), "stryker-producer-index-windows")
+  const windowsProcessHost = {
+    sourceSha256: "d".repeat(64),
+    binarySha256: "e".repeat(64),
+  }
+  const evidence = {
+    schemaVersion: "1.0",
+    shardId: "shard-000",
+    revision: "a".repeat(40),
+    sourceHeadSha: "b".repeat(40),
+    baseSha: "c".repeat(40),
+    baseRef: "main",
+    evidenceDigest: "b".repeat(64),
+    workflowRunId: "42",
+    workflowRunAttempt: "2",
+    reportSha256: "c".repeat(64),
+    windowsProcessHost,
+  }
+  const evidenceText = `${JSON.stringify(evidence)}\n`
+  const indexed = indexShardProducerEvidence(
+    [
+      {
+        id: "shard-000",
+        shardEvidencePath: path.join(root, "SHARD_EVIDENCE.json"),
+        shardEvidenceText: evidenceText,
+        shardEvidence: evidence,
+      },
+    ],
+    root
+  )
+  assert.deepEqual(indexed[0].windowsProcessHost, windowsProcessHost)
+  assert.throws(
+    () =>
+      indexShardProducerEvidence(
+        [
+          {
+            id: "shard-000",
+            shardEvidencePath: path.join(root, "SHARD_EVIDENCE.json"),
+            shardEvidenceText: `${JSON.stringify({
+              ...evidence,
+              windowsProcessHost: { sourceSha256: "d".repeat(64) },
+            })}\n`,
+            shardEvidence: {
+              ...evidence,
+              windowsProcessHost: { sourceSha256: "d".repeat(64) },
+            },
+          },
+        ],
+        root
+      ),
+    /Windows process-host evidence has an unexpected shape/u
+  )
+})
+
 test("runner rejects all raw Stryker CLI overrides", async () => {
   const { assertRunnerArguments } = await import(runnerUrl)
   assert.doesNotThrow(() => assertRunnerArguments([]))
@@ -307,6 +2358,99 @@ test("runner rejects all raw Stryker CLI overrides", async () => {
   ]) {
     assert.throws(() => assertRunnerArguments(args), /does not accept Stryker CLI overrides/u)
   }
+})
+
+test("local focused mutation scope selects only canonical policy sources", async () => {
+  const { mutationRunPaths, resolveMutationSourceSelection } = await import(runnerUrl)
+  const canonicalSources = ["src/a.ts", "src/b.ts", "src/c.ts"]
+  const canonicalOutputRoot = path.join("reports", "mutation")
+
+  const canonical = resolveMutationSourceSelection(canonicalSources, {})
+  assert.deepEqual(canonical, {
+    focused: false,
+    sourceFiles: canonicalSources,
+  })
+  assert.deepEqual(mutationRunPaths(canonical, canonicalOutputRoot), {
+    allowReleaseMarkers: true,
+    historicalCostOutputPath: path.join(
+      canonicalOutputRoot,
+      "historical-costs",
+      "HISTORICAL_COSTS.json"
+    ),
+    lockPath: path.join(canonicalOutputRoot, ".run.lock"),
+    outputRoot: canonicalOutputRoot,
+  })
+
+  const focused = resolveMutationSourceSelection(canonicalSources, {
+    STRYKER_LOCAL_MUTATE_JSON: '["src/c.ts","src/a.ts"]',
+  })
+  assert.deepEqual(focused, {
+    focused: true,
+    sourceFiles: ["src/a.ts", "src/c.ts"],
+  })
+  const focusedPaths = mutationRunPaths(focused, canonicalOutputRoot)
+  assert.equal(path.dirname(focusedPaths.outputRoot), path.join(canonicalOutputRoot, "focused"))
+  assert.equal(focusedPaths.lockPath, path.join(focusedPaths.outputRoot, ".run.lock"))
+  assert.equal(focusedPaths.historicalCostOutputPath, null)
+  assert.equal(focusedPaths.allowReleaseMarkers, false)
+  assert.notEqual(focusedPaths.outputRoot, canonicalOutputRoot)
+  assert.deepEqual(mutationRunPaths(focused, canonicalOutputRoot), focusedPaths)
+
+  assert.throws(
+    () =>
+      resolveMutationSourceSelection(canonicalSources, {
+        STRYKER_MUTATE_JSON: '["src/a.ts"]',
+      }),
+    /reserved for child shards/u
+  )
+
+  for (const raw of [
+    "not-json",
+    "[]",
+    '["src/a.ts","src/a.ts"]',
+    '["src/missing.ts"]',
+    '["../src/a.ts"]',
+  ]) {
+    assert.throws(
+      () =>
+        resolveMutationSourceSelection(canonicalSources, {
+          STRYKER_LOCAL_MUTATE_JSON: raw,
+        }),
+      /focused mutation scope/u
+    )
+  }
+})
+
+test("workflow and producer evidence reject ad-hoc focused mutation scope", async () => {
+  const { resolveMutationSourceSelection } = await import(runnerUrl)
+  const canonicalSources = ["src/a.ts", "src/b.ts"]
+  const scope = '["src/a.ts"]'
+  const privilegedModes = [
+    { GITHUB_ACTIONS: "true" },
+    { GITHUB_RUN_ID: "42" },
+    { STRYKER_SHARD_COUNT: "2" },
+    { STRYKER_SHARD_INDEX: "0" },
+    { STRYKER_AGGREGATE_ROOT: "reports/mutation/external" },
+    { STRYKER_PREFLIGHT_MODE: "generate" },
+    { STRYKER_PREFLIGHT_ARTIFACT: "required" },
+    { STRYKER_SHARD_RUN: "1" },
+  ]
+
+  for (const env of privilegedModes) {
+    assert.throws(
+      () =>
+        resolveMutationSourceSelection(canonicalSources, {
+          ...env,
+          STRYKER_LOCAL_MUTATE_JSON: scope,
+        }),
+      /local-only/u
+    )
+  }
+
+  assert.deepEqual(resolveMutationSourceSelection(canonicalSources, { GITHUB_ACTIONS: "true" }), {
+    focused: false,
+    sourceFiles: canonicalSources,
+  })
 })
 
 test("weighted shard plan is deterministic, complete, and bounded by the largest file", async () => {
@@ -600,7 +2744,7 @@ test("isolates measured API test-graph hotspots in dedicated first-attempt shard
     )
     assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
     assert.ok(
-      assignedShardIndexes.every((shardIndex) => shardIndex < 8),
+      assignedShardIndexes.every((shardIndex) => shardIndex < 12),
       `${file} leaked into a regular first-attempt shard`
     )
     if (count > 8) {
@@ -612,7 +2756,7 @@ test("isolates measured API test-graph hotspots in dedicated first-attempt shard
   }
   assert.ok(
     plan
-      .slice(0, 8)
+      .slice(0, 12)
       .every((shard) =>
         shard.files.some((pattern) => hotspotFiles.some(([file]) => pattern.startsWith(file)))
       ),
@@ -620,13 +2764,436 @@ test("isolates measured API test-graph hotspots in dedicated first-attempt shard
   )
   assert.ok(
     plan
-      .slice(8)
+      .slice(12)
       .every((shard) =>
         shard.files.every((pattern) =>
           regularFiles.some(([file]) => pattern === file || pattern.startsWith(`${file}:`))
         )
       ),
     "regular shards must not inherit an expensive API graph"
+  )
+})
+
+test("isolates the recurrent unmeasured API/core timeout graph in dedicated first-attempt shards", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+  const recurrentHotspots = [
+    ["src/api/backendOrigin.ts", 20],
+    ["src/api/chat.ts", 200],
+    ["src/api/client.ts", 500],
+    ["src/api/events.ts", 40],
+    ["src/api/hooks/activity.ts", 200],
+    ["src/api/hooks/adminAudit.ts", 50],
+    ["src/api/hooks/adminFeatureFlags.ts", 50],
+    ["src/api/hooks/adminNotifications.ts", 50],
+    ["src/api/hooks/adminUsers.ts", 100],
+    ["src/api/hooks/sessions.ts", 50],
+    ["src/api/hooks/weather.ts", 100],
+    ["src/api/interceptors/language.ts", 100],
+    ["src/api/interceptors/rateLimit.ts", 144],
+    ["src/api/mfa.ts", 37],
+    ["src/api/news.ts", 65],
+    ["src/api/notifications.ts", 110],
+    ["src/api/offlineMutationQueue.ts", 24],
+    ["src/api/schemas/wsMessage.ts", 151],
+    ["src/api/stories.ts", 16],
+    ["src/App.tsx", 9],
+    ["src/app/globalErrorHandlers.ts", 53],
+    ["src/app/hydration.ts", 40],
+  ]
+  const measuredHotspots = [
+    ["src/api/interceptors/etagCache.ts", 239],
+    ["src/api/hooks/events.ts", 301],
+  ]
+  const regularFiles = Array.from({ length: 12 }, (_, index) => {
+    const file = `src/regular-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    ...recurrentHotspots.map(([file, count]) => [file, { mutants: makeMutants(file, count) }]),
+    ...measuredHotspots.map(([file, count]) => [file, { mutants: makeMutants(file, count) }]),
+    ...regularFiles,
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  const reversePlan = planMutationShards(new Map([...preflight].reverse()), 750, 64)
+  const expectedMutants = [...preflight.values()].reduce(
+    (total, entry) => total + entry.mutants.length,
+    0
+  )
+  const assignments = plan.flatMap(({ files }) => files)
+
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    expectedMutants
+  )
+  assert.equal(new Set(assignments).size, assignments.length)
+  assert.deepEqual(plan, reversePlan)
+
+  const isRegularPattern = (pattern) =>
+    regularFiles.some(([file]) => pattern === file || pattern.startsWith(`${file}:`))
+  const regularStart = plan.findIndex(
+    (shard) => shard.files.length > 0 && shard.files.every(isRegularPattern)
+  )
+  assert.ok(regularStart > 0, "the first-attempt prefix must precede regular work")
+
+  for (const [file] of [...recurrentHotspots, ...measuredHotspots]) {
+    const assignedShardIndexes = plan.flatMap((shard, shardIndex) =>
+      shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+        ? [shardIndex]
+        : []
+    )
+    assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
+    assert.ok(
+      assignedShardIndexes.every((shardIndex) => shardIndex < regularStart),
+      `${file} leaked into a regular first-attempt shard`
+    )
+  }
+
+  const backendOriginShard = plan.find((shard) =>
+    shard.files.some((pattern) => pattern.startsWith("src/api/backendOrigin.ts"))
+  )
+  assert.ok(backendOriginShard)
+  assert.ok(
+    backendOriginShard.files.every((pattern) => pattern.startsWith("src/api/backendOrigin.ts"))
+  )
+  assert.ok(
+    plan.slice(regularStart).every((shard) => shard.files.every(isRegularPattern)),
+    "regular shards must not inherit the recurrent timeout graph"
+  )
+})
+
+test("isolates every source from the observed UI and auth timeout shards", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count, startLine = 0) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: startLine + index * 2, column: 0 },
+        end: { line: startLine + index * 2, column: 4 },
+      },
+    }))
+  const makeProfileSyncMutants = (file) => [
+    ...Array.from({ length: 353 }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BlockStatement",
+      replacement: "{}",
+      location: {
+        start: { line: 675, column: 88 },
+        end: { line: 1200, column: 1 },
+      },
+      index,
+    })),
+    ...makeMutants(file, 385, 2_000),
+  ]
+  const uiHotspots = [
+    "src/components/ui/Button.tsx",
+    "src/components/ui/Card.tsx",
+    "src/components/ui/CardActionArea.tsx",
+    "src/components/ui/Checkbox.tsx",
+    "src/components/ui/ConfirmDialog.tsx",
+    "src/components/ui/ContentCard.tsx",
+    "src/components/ui/ContentSummary.tsx",
+    "src/components/ui/Dialog.tsx",
+    "src/components/ui/EmptyState.tsx",
+    "src/components/ui/GlassCard.tsx",
+    "src/components/ui/GlobalHapticsListener.tsx",
+    "src/components/ui/Input.tsx",
+    "src/components/ui/LiveRegionProvider.tsx",
+    "src/components/ui/MediaSlot.tsx",
+    "src/components/ui/NewsCardSkeleton.tsx",
+    "src/components/ui/NotificationRelevanceScore.tsx",
+    "src/components/ui/ParticleAuthBackground.tsx",
+    "src/components/ui/ProfileCardSkeleton.tsx",
+    "src/components/ui/ProgressBar.tsx",
+    "src/components/ui/RadioGroup.tsx",
+    "src/components/ui/data-table/DataTable.tsx",
+    "src/components/ui/data-table/DataTableColumnHeader.tsx",
+    "src/components/ui/data-table/DataTablePagination.tsx",
+    "src/components/ui/data-table/dataTableFeatures.ts",
+    "src/components/ui/motion/FadeIn.tsx",
+    "src/components/ui/motion/ScaleIn.tsx",
+    "src/components/ui/motion/StaggerChildren.tsx",
+    // Run 34634679511 shard 41/64: these files formed the unweighted UI
+    // graph that reached the 120-minute producer limit. They must remain in
+    // the first-attempt cost-aware prefix as the planner evolves.
+    "src/components/stories/StoryViewer.tsx",
+    "src/components/ui/ActionMenu.tsx",
+    "src/components/ui/Badge.tsx",
+    "src/components/ui/SEO.tsx",
+    "src/components/ui/SafeHtml.tsx",
+    "src/components/ui/ScheduleCardSkeleton.tsx",
+    "src/components/ui/Select.tsx",
+    "src/components/ui/Skeleton.tsx",
+    "src/components/ui/SkeletonMorph.tsx",
+    "src/components/ui/Snackbar.tsx",
+    "src/components/ui/Spinner.tsx",
+    "src/components/ui/SpotifyConnect.tsx",
+    "src/components/ui/Spotlight.tsx",
+    "src/components/ui/StoryCircle.tsx",
+    "src/components/ui/Switch.tsx",
+    "src/components/ui/TextField.tsx",
+    "src/components/ui/Textarea.tsx",
+    "src/components/ui/table.tsx",
+  ]
+  const authHotspots = ["src/hooks/auth/useProfileSync.ts", "src/hooks/auth/useSessionCrypto.ts"]
+  const regularFiles = Array.from({ length: 12 }, (_, index) => {
+    const file = `src/aaa-regular-timeout-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    ["src/api/backendOrigin.ts", { mutants: makeMutants("src/api/backendOrigin.ts", 20) }],
+    ...uiHotspots.map((file) => [file, { mutants: makeMutants(file, 32) }]),
+    [authHotspots[0], { mutants: makeProfileSyncMutants(authHotspots[0]) }],
+    [authHotspots[1], { mutants: makeMutants(authHotspots[1], 177) }],
+    ...regularFiles,
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  const expectedMutants = [...preflight.values()].reduce(
+    (total, entry) => total + entry.mutants.length,
+    0
+  )
+
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    expectedMutants
+  )
+
+  const hotspotFiles = [...uiHotspots, ...authHotspots]
+  const isRegularPattern = (pattern) =>
+    regularFiles.some(([file]) => pattern === file || pattern.startsWith(`${file}:`))
+  const regularStart = plan.findIndex(
+    (shard) => shard.files.length > 0 && shard.files.every(isRegularPattern)
+  )
+  assert.ok(regularStart > 0, "the first-attempt prefix must precede regular work")
+  for (const file of hotspotFiles) {
+    const assignedShardIndexes = plan.flatMap((shard, shardIndex) =>
+      shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+        ? [shardIndex]
+        : []
+    )
+    assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
+    assert.ok(
+      assignedShardIndexes.every((shardIndex) => shardIndex < regularStart),
+      `${file} leaked into a regular first-attempt shard`
+    )
+  }
+  for (const file of authHotspots) {
+    const authShardIndexes = plan.flatMap((shard, shardIndex) =>
+      shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+        ? [shardIndex]
+        : []
+    )
+    assert.ok(
+      authShardIndexes.every((shardIndex) =>
+        plan[shardIndex].files.every(
+          (pattern) => pattern === file || pattern.startsWith(`${file}:`)
+        )
+      ),
+      `${file} must not share an isolated auth range shard`
+    )
+  }
+
+  const uiShardIndexes = plan.flatMap((shard, shardIndex) =>
+    shard.files.some((pattern) => uiHotspots.some((file) => pattern.startsWith(file)))
+      ? [shardIndex]
+      : []
+  )
+  assert.ok(
+    new Set(uiShardIndexes).size > 1,
+    "the UI timeout graph must be distributed across multiple cost-aware shards"
+  )
+  assert.ok(
+    plan.slice(regularStart).every((shard) => shard.files.every(isRegularPattern)),
+    "regular shards must not inherit either observed timeout graph"
+  )
+})
+
+test("keeps static reload hotspots within bounded first-attempt assignments", async () => {
+  const { mutationPatternCoversMutant, planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 5, column: 0 },
+        end: { line: index * 5, column: 4 },
+      },
+    }))
+  const staticHotspots = [
+    ["src/contexts/LanguageContext.tsx", 64],
+    ["src/db/index.ts", 36],
+  ]
+  const regularFiles = Array.from({ length: 12 }, (_, index) => {
+    const file = `src/static-cost-regular-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    ...staticHotspots.map(([file, count]) => [file, { mutants: makeMutants(file, count) }]),
+    ...regularFiles,
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  const expectedMutants = [...preflight.values()].reduce(
+    (total, entry) => total + entry.mutants.length,
+    0
+  )
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    expectedMutants
+  )
+
+  // The bounded first-attempt lane may have fewer logical shards than source
+  // ranges in a hotspot. In that case ranges from the same source can share a
+  // shard, but must stay within the planner's conservative per-range budget.
+  const staticUnitBudget = Math.max(1, Math.ceil(Math.ceil(expectedMutants / 64) / 16))
+
+  for (const [file] of staticHotspots) {
+    const assignedShards = plan.filter((shard) =>
+      shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+    )
+    assert.ok(assignedShards.length > 0, `${file} is missing from the shard plan`)
+    assert.ok(
+      assignedShards.every((shard) => {
+        const assignedHotspotMutants = shard.files.reduce(
+          (total, pattern) =>
+            total +
+            preflight
+              .get(file)
+              .mutants.filter((mutant) => mutationPatternCoversMutant(pattern, mutant, file))
+              .length,
+          0
+        )
+        return assignedHotspotMutants <= staticUnitBudget
+      }),
+      `${file} exceeds the conservative static reload budget`
+    )
+  }
+  const hotspotShardSets = staticHotspots.map(
+    ([file]) =>
+      new Set(
+        plan.flatMap((shard, index) =>
+          shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+            ? [index]
+            : []
+        )
+      )
+  )
+  const sharedHotspotShards = [...hotspotShardSets[0]].filter((index) =>
+    hotspotShardSets[1].has(index)
+  )
+  assert.equal(
+    sharedHotspotShards.length,
+    0,
+    "static reload hotspots must not share a first-attempt shard"
+  )
+})
+
+test("keeps the dedicated first-attempt planner total with two requested shards", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+
+  const preflight = new Map([
+    ["src/api/backendOrigin.ts", { mutants: makeMutants("src/api/backendOrigin.ts", 100) }],
+    ["src/api/client.ts", { mutants: makeMutants("src/api/client.ts", 10_000) }],
+    ["src/regular.ts", { mutants: makeMutants("src/regular.ts", 100) }],
+  ])
+
+  const plan = planMutationShards(preflight, 750, 2)
+  assert.equal(plan.length, 2)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    10_200
+  )
+  const assignments = plan.flatMap(({ files }) => files)
+  assert.equal(new Set(assignments).size, assignments.length)
+  assert.ok(assignments.length >= 3)
+  assert.ok(plan[0]?.files.every((pattern) => pattern.startsWith("src/api/backendOrigin.ts")))
+  assert.ok(plan[1]?.files.some((pattern) => pattern.startsWith("src/api/client.ts")))
+  assert.ok(plan[1]?.files.some((pattern) => pattern === "src/regular.ts"))
+})
+
+test("isolates proven non-API test-graph hotspots without dropping regular work", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+  const hotspotFiles = [
+    "src/app/logger.ts",
+    "src/components/media/SmartImage.tsx",
+    "src/components/schedule/scheduleUtils.ts",
+    "src/contexts/LanguageContext.tsx",
+    "src/db/index.ts",
+  ]
+  const preflight = new Map([
+    ...hotspotFiles.map((file) => [file, { mutants: makeMutants(file, 500) }]),
+    ...Array.from({ length: 10 }, (_, index) => {
+      const file = `src/regular-${index}.ts`
+      return [file, { mutants: makeMutants(file, 1_000) }]
+    }),
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    12_500
+  )
+  const isRegularPattern = (pattern) => pattern.startsWith("src/regular-")
+  const regularStart = plan.findIndex(
+    (shard) => shard.files.length > 0 && shard.files.every(isRegularPattern)
+  )
+  assert.ok(regularStart > 0, "the first-attempt prefix must precede regular work")
+
+  for (const file of hotspotFiles) {
+    const assignedShardIndexes = plan.flatMap((shard, shardIndex) =>
+      shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+        ? [shardIndex]
+        : []
+    )
+    assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
+    assert.ok(
+      assignedShardIndexes.every((shardIndex) => shardIndex < regularStart),
+      `${file} leaked into a regular first-attempt shard`
+    )
+  }
+  assert.ok(
+    plan
+      .slice(regularStart)
+      .every((shard) => shard.files.every((pattern) => pattern.startsWith("src/regular-"))),
+    "regular shards must not inherit a proven expensive graph"
   )
 })
 
@@ -1915,7 +4482,7 @@ test("rejects ambiguous, foreign-run, and future external shard candidates", asy
 })
 
 test("release eligibility requires a clean exact-SHA workflow run and attempt", async () => {
-  const { isReleaseEligible } = await import(runnerUrl)
+  const { isMutationRunReleaseEligible, isReleaseEligible } = await import(runnerUrl)
   const headSha = "a".repeat(40)
   const identity = { headSha, repositoryDirty: false }
   const complete = {
@@ -1929,4 +4496,6 @@ test("release eligibility requires a clean exact-SHA workflow run and attempt", 
   assert.equal(isReleaseEligible(identity, { ...complete, GITHUB_RUN_ATTEMPT: "" }), false)
   assert.equal(isReleaseEligible(identity, { ...complete, GITHUB_RUN_ATTEMPT: undefined }), false)
   assert.equal(isReleaseEligible(identity, { ...complete, GITHUB_SHA: "b".repeat(40) }), false)
+  assert.equal(isMutationRunReleaseEligible(identity, false, complete), true)
+  assert.equal(isMutationRunReleaseEligible(identity, true, complete), false)
 })

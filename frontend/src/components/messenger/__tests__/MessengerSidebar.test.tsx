@@ -46,8 +46,12 @@ vi.mock("framer-motion", () => ({
   },
 }))
 
-const { mediaQueryMock } = vi.hoisted(() => ({ mediaQueryMock: vi.fn(() => false) }))
-vi.mock("@/hooks/useMediaQuery", () => ({ default: mediaQueryMock }))
+const { mediaQueryMock } = vi.hoisted(() => ({
+  mediaQueryMock: vi.fn((_query?: string) => false),
+}))
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: (query: string) => mediaQueryMock(query),
+}))
 
 const navigateMock = vi.fn()
 vi.mock("@tanstack/react-router", () => ({
@@ -129,6 +133,7 @@ describe("MessengerSidebar", () => {
   it("renders the messenger title", () => {
     render(<MessengerSidebar {...baseProps} />, { wrapper })
     expect(screen.getByText("messenger:title")).toBeTruthy()
+    expect(mediaQueryMock).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
   })
 
   it("opens the new-chat modal when the new-chat button is clicked", () => {
@@ -145,6 +150,15 @@ describe("MessengerSidebar", () => {
     const list = screen.getByTestId("mock-contact-list")
     expect(list.getAttribute("data-count")).toBe("2")
     expect(list.getAttribute("data-search-active")).toBe("false")
+  })
+
+  it("preserves the contacts fast path when the search is empty", () => {
+    const contacts = makeContacts()
+    const filterSpy = vi.spyOn(contacts, "filter")
+
+    render(<MessengerSidebar {...baseProps} contacts={contacts} />, { wrapper })
+
+    expect(filterSpy).not.toHaveBeenCalled()
   })
 
   it("filters contacts by name as the user types a search query", () => {
@@ -186,6 +200,46 @@ describe("MessengerSidebar", () => {
     mediaQueryMock.mockReturnValue(true)
     render(<MessengerSidebar {...baseProps} isMobile />, { wrapper })
     expect(screen.getByRole("button", { name: "messenger:newChat" })).toBeInTheDocument()
+  })
+
+  it("removes mobile slide and button transforms when reduced motion is preferred", () => {
+    mediaQueryMock.mockReturnValue(true)
+    render(<MessengerSidebar {...baseProps} isMobile />)
+
+    const sidebar = mocks.motion.mock.calls.find(
+      ([tag, props]) => tag === "div" && props.className?.includes("panel-glass")
+    )
+    expect(sidebar?.[1]).toMatchObject({
+      initial: undefined,
+      animate: { x: 0, opacity: 1 },
+      exit: undefined,
+      transition: { duration: 0 },
+    })
+    const newChat = mocks.motion.mock.calls.find(
+      ([tag, props]) => tag === "button" && props.id === "messenger-new-chat-btn"
+    )
+    expect(newChat?.[1]).toMatchObject({ whileHover: undefined, whileTap: undefined })
+  })
+
+  it("keeps the sidebar stationary on desktop and searches message previews", () => {
+    render(<MessengerSidebar {...baseProps} isMobile={false} />)
+
+    const sidebar = mocks.motion.mock.calls.find(
+      ([tag, props]) => tag === "div" && props.className?.includes("panel-glass")
+    )
+    expect(sidebar?.[1]).toMatchObject({
+      initial: undefined,
+      animate: { x: 0, opacity: 1 },
+      exit: undefined,
+    })
+
+    fireEvent.change(screen.getByPlaceholderText("messenger:search"), {
+      target: { value: "  SOON  " },
+    })
+    const list = screen.getByTestId("mock-contact-list")
+    expect(list).toHaveAttribute("data-count", "1")
+    expect(list).toHaveAttribute("data-search-active", "true")
+    expect(list).toHaveAttribute("data-search-query", "SOON")
   })
 
   it("uses the exact sidebar motion contracts when reduced motion is disabled", () => {

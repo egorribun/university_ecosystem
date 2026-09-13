@@ -12,13 +12,93 @@
     "functions": 100,
     "tier0": 100
   },
+  "metric_statuses": {
+    "python": {
+      "lines": ["native", "derived"],
+      "statements": ["native", "derived"],
+      "branches": ["native", "derived"],
+      "functions": ["derived", "unsupported"]
+    },
+    "frontend": {
+      "lines": ["native", "derived"],
+      "statements": ["native", "derived"],
+      "branches": ["native", "derived"],
+      "functions": ["native", "derived"]
+    },
+    "go-gateway": {
+      "lines": ["derived"],
+      "statements": ["native"],
+      "branches": ["unsupported"],
+      "functions": ["unsupported"]
+    },
+    "go-ws-hub": {
+      "lines": ["derived"],
+      "statements": ["native"],
+      "branches": ["unsupported"],
+      "functions": ["unsupported"]
+    },
+    "go-file-processor": {
+      "lines": ["derived"],
+      "statements": ["native"],
+      "branches": ["unsupported"],
+      "functions": ["unsupported"]
+    },
+    "go-shared": {
+      "lines": ["derived"],
+      "statements": ["native"],
+      "branches": ["unsupported"],
+      "functions": ["unsupported"]
+    },
+    "rust-native": {
+      "lines": ["native", "derived"],
+      "statements": ["unsupported"],
+      "branches": ["native", "derived"],
+      "functions": ["native", "derived"]
+    },
+    "rust-pyo3-sanitizer": {
+      "lines": ["native", "derived"],
+      "statements": ["unsupported"],
+      "branches": ["native", "derived"],
+      "functions": ["native", "derived"]
+    },
+    "rust-wasm-sanitizer": {
+      "lines": ["native", "derived"],
+      "statements": ["unsupported"],
+      "branches": ["native", "derived"],
+      "functions": ["native", "derived"]
+    },
+    "rust-crypto": {
+      "lines": ["native", "derived"],
+      "statements": ["unsupported"],
+      "branches": ["native", "derived"],
+      "functions": ["native", "derived"]
+    },
+    "infrastructure": {
+      "lines": ["unsupported"],
+      "statements": ["unsupported"],
+      "branches": ["unsupported"],
+      "functions": ["unsupported"]
+    },
+    "workflows": {
+      "lines": ["unsupported"],
+      "statements": ["unsupported"],
+      "branches": ["unsupported"],
+      "functions": ["unsupported"]
+    },
+    "scripts": {
+      "lines": ["unsupported"],
+      "statements": ["unsupported"],
+      "branches": ["unsupported"],
+      "functions": ["unsupported"]
+    }
+  },
   "source_roots": {
     "python": ["app", "alembic/versions"],
     "frontend": ["frontend/src"],
     "go-gateway": ["services/gateway"],
     "go-ws-hub": ["services/ws-hub"],
     "go-file-processor": ["services/file-processor"],
-    "go-shared": ["services/cmd/uni-cli", "services/pkg/spiffe", "services/pkg/spicedb"],
+    "go-shared": ["services/cmd/uni-cli", "services/pkg/logging", "services/pkg/spiffe", "services/pkg/spicedb"],
     "rust-native": ["native/rust_ext"],
     "rust-pyo3-sanitizer": ["crates/pyo3-sanitizer"],
     "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
@@ -35,6 +115,7 @@
     "go-file-processor": ["services/file-processor"],
     "go-shared": [
       "services/cmd/uni-cli",
+      "services/pkg/logging",
       "services/pkg/spiffe",
       "services/pkg/spicedb"
     ],
@@ -46,10 +127,10 @@
   "components": {
     "python": {"coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 0}},
     "frontend": {"coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 100}},
-    "go-gateway": {"coverage": {"lines": 0, "statements": 100, "branches": 0, "functions": 0}},
-    "go-ws-hub": {"coverage": {"lines": 0, "statements": 100, "branches": 0, "functions": 0}},
-    "go-file-processor": {"coverage": {"lines": 0, "statements": 100, "branches": 0, "functions": 0}},
-    "go-shared": {"coverage": {"lines": 0, "statements": 100, "branches": 0, "functions": 0}},
+    "go-gateway": {"coverage": {"lines": 100, "statements": 100, "branches": 0, "functions": 0}},
+    "go-ws-hub": {"coverage": {"lines": 100, "statements": 100, "branches": 0, "functions": 0}},
+    "go-file-processor": {"coverage": {"lines": 100, "statements": 100, "branches": 0, "functions": 0}},
+    "go-shared": {"coverage": {"lines": 100, "statements": 100, "branches": 0, "functions": 0}},
     "rust-native": {"coverage": {"lines": 100, "statements": 0, "branches": 100, "functions": 100}},
     "rust-pyo3-sanitizer": {"coverage": {"lines": 100, "statements": 0, "branches": 100, "functions": 100}},
     "rust-wasm-sanitizer": {"coverage": {"lines": 100, "statements": 0, "branches": 100, "functions": 100}},

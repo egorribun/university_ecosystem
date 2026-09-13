@@ -376,7 +376,8 @@
             "wsHubInternalSecret": {"type": "string"}, "csrfHMACSecret": {"type": "string"},
             "spotifyTokenSecret": {"type": "string"}, "elasticsearchPassword": {"type": "string"},
             "spicedbPresharedKey": {"type": "string"}, "auditLogSecret": {"type": "string"},
-            "idempotencyHMACSecret": {"type": "string"}, "mfaEmailOtpHMACKeys": {"type": "string"},
+            "tokenHMACSecret": {"type": "string"}, "idempotencyHMACSecret": {"type": "string"},
+            "mfaEmailOtpHMACKeys": {"type": "string"},
             "mfaEmailOtpActiveHMACKeyId": {"type": "string"}, "mfaEmailDeliveryKEKs": {"type": "string"},
             "mfaEmailDeliveryActiveKEKId": {"type": "string"}, "mfaTrustedDeviceHMACKeys": {"type": "string"},
             "mfaTrustedDeviceActiveHMACKeyId": {"type": "string"}, "elasticsearchURL": {"type": "string"},
@@ -392,7 +393,8 @@
         "replicaCount": {"type": "integer", "minimum": 1},
         "image": {"$ref": "#/definitions/image"},
         "service": {"$ref": "#/definitions/service"},
-        "resources": {"$ref": "#/definitions/resources"}
+        "resources": {"$ref": "#/definitions/resources"},
+        "autoscaling": {"$ref": "#/definitions/autoscaling"}
       }
     },
     "gateway": {
@@ -400,6 +402,7 @@
       "properties": {
         "replicaCount": {"type": "integer", "minimum": 1}, "image": {"$ref": "#/definitions/image"},
         "service": {"$ref": "#/definitions/service"}, "resources": {"$ref": "#/definitions/resources"},
+        "autoscaling": {"$ref": "#/definitions/autoscaling"},
         "config": {
           "type": "object", "additionalProperties": false,
           "properties": {

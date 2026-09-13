@@ -13,6 +13,9 @@ from app.core.config.base import (
     _coerce_str_list,
     _load_file_secret,
 )
+from app.core.logging import get_logger
+
+_logger = get_logger(__name__)
 
 
 class JwtSettingsMixin:
@@ -162,9 +165,7 @@ class JwtSettingsMixin:
             {"api", "app", "service", "my-api", "example"}
         )
         if v.lower() in _AUDIENCE_PLACEHOLDERS and env not in _DEVELOPMENT_ENVIRONMENTS:
-            import logging
-
-            logging.getLogger(__name__).warning(
+            _logger.warning(
                 "JWT_AUDIENCE='%s' looks like a generic placeholder. "
                 "Set JWT_AUDIENCE to a service-specific string to prevent "
                 "cross-service token reuse.",
@@ -217,9 +218,7 @@ class JwtSettingsMixin:
                         raise RuntimeError(
                             f"Failed to load JWT_PRIVATE_KEY_PATH: {exc}"
                         ) from exc
-                    import logging
-
-                    logging.getLogger(__name__).warning(
+                    _logger.warning(
                         "Failed to load RS256 private key from %s: %s. "
                         "Falling back to HMAC signing with SECRET_KEY for local development.",
                         self.jwt_private_key_path,

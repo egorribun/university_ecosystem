@@ -103,8 +103,11 @@ USER app
 EXPOSE 8000
 
 # Use Python stdlib urllib — no external binaries required.
+# Keep the image-level probe aligned with the Kubernetes readiness contract.
+# `/health/ready` checks database connectivity and honors graceful shutdown;
+# the more expensive `/healthz` endpoint is reserved for diagnostics.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 

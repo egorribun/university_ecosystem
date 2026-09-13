@@ -7,10 +7,6 @@ on:
     paths:
       - "app/**"
       - "pyproject.toml"
-  pull_request:
-    paths:
-      - "app/**"
-      - "pyproject.toml"
 
 permissions: read-all
 

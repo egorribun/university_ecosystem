@@ -21,28 +21,27 @@ export async function enqueueOfflineMutation(mutation: {
 
   await storePendingMutation(record)
 
-  if (
-    typeof navigator !== "undefined" &&
-    "serviceWorker" in navigator &&
-    navigator.serviceWorker.controller
-  ) {
-    try {
-      const reg = await navigator.serviceWorker.ready
-      if ("sync" in reg) {
-        await (
-          reg as unknown as {
-            sync: { register: (tag: string) => Promise<void> }
-          }
-        ).sync.register("sync-offline-mutations")
-      } else {
-        navigator.serviceWorker.controller.postMessage({
-          type: SERVICE_WORKER_MESSAGE_TYPES.PROCESS_OFFLINE_QUEUES,
-        })
-      }
-    } catch {
-      navigator.serviceWorker.controller.postMessage({
+  if (typeof navigator === "undefined") return
+  if (!("serviceWorker" in navigator)) return
+  const controller = navigator.serviceWorker.controller
+  if (!controller) return
+
+  try {
+    const reg = await navigator.serviceWorker.ready
+    if ("sync" in reg) {
+      await (
+        reg as unknown as {
+          sync: { register: (tag: string) => Promise<void> }
+        }
+      ).sync.register("sync-offline-mutations")
+    } else {
+      controller.postMessage({
         type: SERVICE_WORKER_MESSAGE_TYPES.PROCESS_OFFLINE_QUEUES,
       })
     }
+  } catch {
+    controller.postMessage({
+      type: SERVICE_WORKER_MESSAGE_TYPES.PROCESS_OFFLINE_QUEUES,
+    })
   }
 }

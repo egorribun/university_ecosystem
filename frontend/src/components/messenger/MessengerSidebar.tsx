@@ -1,5 +1,5 @@
 import { ContactList } from "@/components/messenger"
-import { TextField } from "@/components/ui"
+import { TextField } from "@/components/ui/TextField"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { m } from "framer-motion"

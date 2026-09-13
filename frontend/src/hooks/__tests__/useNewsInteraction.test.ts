@@ -18,14 +18,17 @@
  * `serviceWorker`/`SyncManager`), so the IDB queue write succeeds silently.
  */
 import { act, renderHook, waitFor } from "@testing-library/react"
+import { notifyManager } from "@tanstack/query-core"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { IDBFactory } from "fake-indexeddb"
 import { http, HttpResponse } from "msw"
 import { createElement, type PropsWithChildren } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { server } from "@/tests/mocks/server"
+import { withExpectedConsole } from "@/tests/strictConsole"
 import type { User } from "@/types/User"
+import api from "@/api/client"
 import { useNewsInteraction, type NewsComment, type NewsInteractions } from "../useNewsInteraction"
 
 const authMock = vi.hoisted(() => ({ user: null as User | null }))
@@ -191,14 +194,24 @@ function precreateQueueDatabase(): Promise<void> {
   })
 }
 
+beforeAll(() => {
+  // React Query schedules observer notifications after the mutation's async
+  // work. Keep those real hook state transitions inside React's act scope so
+  // strictConsole reports only application diagnostics.
+  notifyManager.setNotifyFunction((callback) => {
+    act(callback)
+  })
+})
+
+afterAll(() => {
+  notifyManager.setNotifyFunction((callback) => callback())
+})
+
 beforeEach(() => {
-  // Fresh fake-indexeddb factory per test. The hook's openDatabase()
-  // (useNewsInteraction.ts) opens a connection it never closes, so
-  // indexedDB.deleteDatabase blocks on it and the NEXT offline test's open()
-  // deadlocks behind the pending (blocked) delete — every test passes alone but
-  // the suite hangs (12 timeouts). A new IDBFactory drops all connections + DBs
-  // atomically; same root cause sw.test.ts:237 documents ("deleteDatabase removed
-  // to prevent hook timeouts with fake-indexeddb").
+  // Fresh fake-indexeddb factory per test. The queue helper closes its own
+  // connection, but readQueue() intentionally leaves a read-only handle open
+  // for assertions; replacing the factory drops all test-only handles + DBs
+  // atomically and prevents a later deleteDatabase/open pair from blocking.
   globalThis.indexedDB = new IDBFactory() as unknown as typeof globalThis.indexedDB
   setOnline(true)
   authMock.user = { id: "u-1", full_name: "Test User" } as User
@@ -299,6 +312,48 @@ describe("useNewsInteraction — toggleLike", () => {
     expect(await readQueue()).toEqual([])
   })
 
+  it.each([
+    ["message", { message: "Network Error" }],
+    ["code", { code: "ERR_NETWORK" }],
+  ])("queues an online network failure identified by the %s field", async (_field, error) => {
+    const postSpy = vi.spyOn(api, "post").mockRejectedValueOnce(error)
+    try {
+      const { wrapper } = makeWrapper()
+      setupServer({ initial: baseInteractions, like: "ok" })
+      const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+      // Keep the browser online so the queue decision is driven by the
+      // structured transport error rather than navigator.onLine.
+      setOnline(true)
+      act(() => result.current.toggleLike())
+      await waitFor(() => expect(result.current.isLiking).toBe(false))
+
+      expect(await readQueue()).toHaveLength(1)
+      expect(postSpy).toHaveBeenCalledWith(`/news/${NEWS_ID}/like`)
+    } finally {
+      postSpy.mockRestore()
+    }
+  })
+
+  it("rethrows an online non-network error without queuing it", async () => {
+    const postSpy = vi.spyOn(api, "post").mockRejectedValueOnce(new Error("server exploded"))
+    try {
+      const { qc, wrapper } = makeWrapper()
+      setupServer({ initial: baseInteractions, like: "ok" })
+      const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+      act(() => result.current.toggleLike())
+      await waitFor(() => expect(result.current.isLiking).toBe(false))
+
+      expect(await readQueue()).toEqual([])
+      expect(qc.getQueryData(["news", NEWS_ID, "interactions"])).toEqual(baseInteractions)
+    } finally {
+      postSpy.mockRestore()
+    }
+  })
+
   it("offline queues to IndexedDB (mutation treated as success)", async () => {
     const { qc, wrapper } = makeWrapper()
     setupServer({
@@ -395,9 +450,11 @@ describe("useNewsInteraction — toggleLike", () => {
       await waitFor(() => expect(result.current.isLoading).toBe(false))
       setOnline(false)
 
-      act(() => result.current.toggleLike())
-      await waitFor(() => expect(register).toHaveBeenCalledWith("news-interaction:sync"))
-      await waitFor(() => expect(result.current.isLiking).toBe(false))
+      await withExpectedConsole("warn", "Failed to register background sync", async () => {
+        act(() => result.current.toggleLike())
+        await waitFor(() => expect(register).toHaveBeenCalledWith("news-interaction:sync"))
+        await waitFor(() => expect(result.current.isLiking).toBe(false))
+      })
       expect(await readQueue()).toHaveLength(1)
     } finally {
       Object.defineProperty(navigator, "serviceWorker", {

@@ -31,6 +31,9 @@ const API_TIMEOUT_MS = 8000
  * Any other endpoint with skipRateLimitQueue=true will be demoted to the queue.
  */
 const RATE_LIMIT_SKIP_ALLOWLIST = new Set([
+  "/auth/login",
+  "/auth/mfa/step-up",
+  "/auth/mfa/verify",
   "/auth/session/signing-key",
   "/users/me",
   "/auth/refresh",
@@ -68,18 +71,30 @@ const api = axios.create({
   },
 })
 
+export const resolveRequestPath = (config: AxiosRequestConfig): string => {
+  const rawUrl = config.url ?? ""
+  const rawBaseUrl = config.baseURL ?? ""
+  const isAbsoluteUrl = rawUrl.includes("://") || (rawUrl.startsWith("//") && rawUrl[2] !== "/")
+  const combinedUrl = isAbsoluteUrl
+    ? rawUrl
+    : `${rawBaseUrl.replace(/\/+$/u, "")}/${rawUrl.replace(/^\/+/u, "")}`
+  const baseOrigin = window.location.origin
+  return new URL(combinedUrl, baseOrigin).pathname
+}
+
+type SsrFingerprintHeaders = {
+  userAgent?: string
+  acceptLanguage?: string
+}
+
+/** Return whether SSR forwarding has any incoming identity metadata to copy. */
+export const hasSsrForwardingHeaders = (
+  cookie: string | undefined,
+  fingerprintHeaders: SsrFingerprintHeaders | undefined
+): boolean => Boolean(cookie || fingerprintHeaders)
+
 if (import.meta.env.VITE_LHCI === "true") {
   const networkAdapter = axios.getAdapter(api.defaults.adapter)
-  const resolveRequestPath = (config: AxiosRequestConfig): string => {
-    const rawUrl = config.url ?? ""
-    const rawBaseUrl = config.baseURL ?? ""
-    const isAbsoluteUrl = rawUrl.includes("://") || rawUrl.startsWith("//")
-    const combinedUrl = isAbsoluteUrl
-      ? rawUrl
-      : `${rawBaseUrl.replace(/\/+$/u, "")}/${rawUrl.replace(/^\/+/u, "")}`
-    const baseOrigin = window.location.origin
-    return new URL(combinedUrl, baseOrigin).pathname
-  }
   const shouldUseE2ENetworkMocks = (config: AxiosRequestConfig) => {
     if (typeof window === "undefined") return false
     const e2eWindow = window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }
@@ -120,7 +135,7 @@ export const resetEtagCache = () => {
   responseCache.clear()
 }
 
-const isAbortError = (error: unknown) => {
+export const isAbortError = (error: unknown): boolean => {
   if (error instanceof DOMException) return error.name === "AbortError"
   if (error !== null && typeof error === "object" && "name" in error) {
     const { name } = error
@@ -132,7 +147,7 @@ const isAbortError = (error: unknown) => {
 // TD-14-04 (audit Wave 14): Extracted — was hardcoded as 2000 in three places.
 const DEFAULT_RETRY_AFTER_MS = 2000
 
-const getRetryDelay = (headers: Record<string, unknown> | undefined) => {
+export const getRetryDelay = (headers: Record<string, unknown> | undefined): number => {
   if (!headers) return DEFAULT_RETRY_AFTER_MS
   const header = headers["retry-after"] ?? headers["Retry-After"]
   if (typeof header !== "string") return DEFAULT_RETRY_AFTER_MS
@@ -151,20 +166,30 @@ const _inflightIdempotencyKeys = new Set<string>()
 // Prevents duplicate mutations when two tabs submit the same form simultaneously.
 // Server-side idempotency key is the authoritative check — this is defense-in-depth.
 let _dedupeChannel: BroadcastChannel | null = null
-try {
-  if (typeof BroadcastChannel !== "undefined") {
-    _dedupeChannel = new BroadcastChannel("ecosystem.idempotency.dedup")
-    _dedupeChannel.addEventListener(
+const createDedupeChannel = (): BroadcastChannel | null => {
+  // Read the constructor from the browser window rather than the Node global.
+  // Vitest/jsdom exposes Node's BroadcastChannel globally, and constructing it
+  // during module evaluation leaves an open handle that can stall SSR/mutation
+  // runners.  A missing browser constructor is a supported no-op fallback.
+  try {
+    const browserWindow = Object(globalThis.window)
+    const Channel = Reflect.get(browserWindow, "BroadcastChannel") as typeof BroadcastChannel
+    const channel = new Channel("ecosystem.idempotency.dedup")
+    channel.addEventListener(
       "message",
       (e: MessageEvent<{ key: string; action: "add" | "delete" }>) => {
         if (e.data.action === "add") _inflightIdempotencyKeys.add(e.data.key)
         else _inflightIdempotencyKeys.delete(e.data.key)
       }
     )
+    return channel
+  } catch {
+    // BroadcastChannel not available (SSR, old browsers, Web Workers).
+    return null
   }
-} catch {
-  // BroadcastChannel not available (SSR, old browsers, Web Workers).
 }
+
+_dedupeChannel = createDedupeChannel()
 
 // Wave 174 SW2 — CSRF cookie auto-acquisition.
 //
@@ -226,9 +251,10 @@ api.interceptors.request.use(async (config) => {
   // The @hey-api/client-axios `buildUrl()` reads our axios instance's baseURL ("/api/v1")
   // and prepends it to the SDK URL (also "/api/v1/..."), producing "/api/v1/api/v1/...".
   // It then passes `baseURL: ""` to axios, so we detect the doubled prefix in the URL itself.
-  const _url = config.url ?? ""
-  const isAbsolute = _url.startsWith("http://") || _url.startsWith("https://")
-  let urlPath = _url
+  const _url = config.url
+  const isAbsolute =
+    typeof _url === "string" && (_url.startsWith("http://") || _url.startsWith("https://"))
+  let urlPath: string | undefined = _url
   let urlOrigin = ""
   if (isAbsolute) {
     try {
@@ -240,10 +266,10 @@ api.interceptors.request.use(async (config) => {
     }
   }
 
-  if (urlPath.startsWith("/api/v1/api/v1/")) {
+  if (urlPath?.startsWith("/api/v1/api/v1/")) {
     urlPath = urlPath.slice("/api/v1".length)
     config.url = urlOrigin + urlPath
-  } else if (urlPath.startsWith("/api/v1/") && config.baseURL?.includes("/api/v1")) {
+  } else if (urlPath?.startsWith("/api/v1/") && config.baseURL?.includes("/api/v1")) {
     urlPath = urlPath.slice("/api/v1".length)
     config.url = urlOrigin + urlPath
   }
@@ -263,8 +289,8 @@ api.interceptors.request.use(async (config) => {
     // Wave 174 SW2 — ensure CSRF cookie BEFORE unsafe-method request goes
     // out. Skip the /auth/csrf-cookie endpoint itself to avoid recursion
     // (it's a GET anyway, so this branch wouldn't fire — guard is defensive).
-    const urlForCsrf = config.url ?? ""
-    if (!urlForCsrf.includes("/auth/csrf-cookie")) {
+    const urlForCsrf = config.url
+    if (!urlForCsrf?.includes("/auth/csrf-cookie")) {
       await ensureCsrfCookie()
     }
   }
@@ -310,9 +336,9 @@ api.interceptors.request.use(async (config) => {
   if (typeof window === "undefined") {
     const cookie = globalThis.__ssrCookieGetter__?.()
     const fingerprintHeaders = globalThis.__ssrFingerprintHeadersGetter__?.()
-    if (cookie || fingerprintHeaders) {
+    if (hasSsrForwardingHeaders(cookie, fingerprintHeaders)) {
       const headers = AxiosHeaders.from(config.headers)
-      if (cookie && cookie.length > 0) {
+      if (cookie) {
         headers.set("Cookie", cookie)
       }
       if (fingerprintHeaders?.userAgent) {
@@ -336,10 +362,10 @@ api.interceptors.request.use(async (config) => {
 
 // PERF-14-05: Helper to clean up in-flight idempotency key tracking.
 const _cleanupIdempotencyKey = (config: ApiRequestConfig | undefined) => {
-  if (!config?.headers) return
+  const headers = config?.headers
   const key =
-    config.headers instanceof AxiosHeaders
-      ? (config.headers.get("Idempotency-Key") as string | undefined)
+    headers instanceof AxiosHeaders
+      ? (headers.get("Idempotency-Key") as string | undefined)
       : undefined
   if (key) {
     _inflightIdempotencyKeys.delete(key)

@@ -91,6 +91,13 @@ async function runAxeRules(page: Page, rules: string[]): Promise<AxeResult> {
 }
 
 test.describe("@a11y enhanced WCAG 2.2 AA + tab-order + reduced-motion", () => {
+  // This suite audits the rendered document, not the PWA lifecycle.  A first
+  // install can activate the service worker while axe is evaluating the DOM;
+  // the production controllerchange reload would then replace the document
+  // and invalidate the evaluation context.  Dedicated PWA tests cover that
+  // lifecycle separately, so keep this accessibility document stable.
+  test.use({ serviceWorkers: "block" })
+
   // Pre-inject axe-core once per page (before page.goto triggers it).
   test.beforeEach(async ({ page }) => {
     await page.addInitScript({ content: AXE_SOURCE })
@@ -105,12 +112,15 @@ test.describe("@a11y enhanced WCAG 2.2 AA + tab-order + reduced-motion", () => {
 
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/login", { waitUntil: "commit", timeout: 30_000 })
+    await page.waitForFunction(() => window.__APP_HYDRATED === true, null, {
+      timeout: 15_000,
+    })
     await expect(page.locator('input[name="email"]')).toBeVisible({ timeout: 15_000 })
     await expect(page.locator('input[name="password"]')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: 15_000 })
     // Quiesce background API/realtime traffic without cancelling lazy
     // application chunks that may still be loading on a busy CI runner.
     await blockBackgroundNetwork(page)
-    await page.waitForTimeout(1500)
 
     const results = await runAxeRules(page, WCAG_22_AA_STRUCTURAL_RULES)
 

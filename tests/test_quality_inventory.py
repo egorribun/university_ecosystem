@@ -93,6 +93,20 @@ def test_classify_file() -> None:
     assert classify_file("scripts/setup.sh", generated_patterns) == "utility"
 
 
+def test_rust_fuzz_tsan_contract_is_backed_by_repository_references() -> None:
+    contract = Path(__file__).with_name("test_rust_fuzz_tsan_contract.py")
+
+    references = find_python_repository_references(contract)
+
+    assert {
+        ".github/workflows/rust-fuzz.yml",
+        "infra/oss-fuzz/build.sh",
+        "infra/oss-fuzz/project.yaml",
+        "scripts/run_tsan_tests.sh",
+        "tests/tsan_suppressions.txt",
+    }.issubset(references)
+
+
 def test_inventory_prunes_dependency_and_hidden_directories(
     tmp_path: Path, monkeypatch
 ) -> None:

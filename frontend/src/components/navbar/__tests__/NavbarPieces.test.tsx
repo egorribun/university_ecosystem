@@ -169,6 +169,80 @@ describe("NavbarLogo", () => {
 
     expect(document.getElementById("navbar-logo-link")).toHaveClass("gap-fluid-gap")
   })
+
+  it("keeps compact, phone and reduced-motion variants aligned with the image contract", async () => {
+    let view = await renderWithRouter({
+      ui: () => (
+        <NavbarLogo
+          t={t}
+          isMobile={false}
+          isCompact
+          isPhone={false}
+          prefersReducedMotion={false}
+          onLogoClick={vi.fn()}
+          markScrollFromBottom={vi.fn()}
+        />
+      ),
+      authProvider: false,
+    })
+
+    const link = () => document.getElementById("navbar-logo-link")!
+    const circle = () => link().firstElementChild!
+    const image = () => screen.getByRole("img")
+    expect(link()).toHaveClass(
+      "gap-0",
+      "px-1",
+      "py-1",
+      "duration-500",
+      "ease-[var(--ease-premium)]"
+    )
+    expect(circle()).toHaveClass("w-8", "h-8", "hover:scale-105", "active:scale-95")
+    expect(link().querySelector(".navbar-brand-name")).toHaveClass("max-w-0", "opacity-0")
+    expect(image()).toHaveAttribute("alt", "navigation:brandAlt")
+    expect(image()).toHaveAttribute("loading", "eager")
+    expect(image()).toHaveAttribute("fetchpriority", "high")
+    expect(image()).toHaveAttribute("sizes", expect.stringContaining("min-width"))
+    expect(image()).toHaveAttribute("srcset")
+
+    view.unmount()
+    view = await renderWithRouter({
+      ui: () => (
+        <NavbarLogo
+          t={t}
+          isMobile={false}
+          isCompact={false}
+          isPhone
+          prefersReducedMotion={false}
+          onLogoClick={vi.fn()}
+          markScrollFromBottom={vi.fn()}
+        />
+      ),
+      authProvider: false,
+    })
+    expect(link()).toHaveClass("gap-0", "px-1", "py-1")
+    expect(circle()).toHaveClass("w-(--nav-action-size)", "h-(--nav-action-size)")
+    expect(link().querySelector(".navbar-brand-name")).toHaveClass("max-w-0", "opacity-0")
+
+    view.unmount()
+    view = await renderWithRouter({
+      ui: () => (
+        <NavbarLogo
+          t={t}
+          isMobile
+          isCompact={false}
+          isPhone={false}
+          prefersReducedMotion
+          onLogoClick={vi.fn()}
+          markScrollFromBottom={vi.fn()}
+        />
+      ),
+      authProvider: false,
+    })
+    expect(link()).toHaveClass("gap-fluid-gap", "px-3", "py-1.5", "duration-0")
+    expect(circle()).toHaveClass("w-11", "h-11")
+    expect(circle()).not.toHaveClass("hover:scale-105", "active:scale-95")
+    expect(link().querySelector(".navbar-brand-name")).toHaveClass("max-w-40", "opacity-100")
+  })
 })
 
 describe("MobileDrawerProfile", () => {

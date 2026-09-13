@@ -58,6 +58,9 @@ func TestFetchJWKSPublicKey_Success(t *testing.T) {
 
 	pub, err := fetchJWKSPublicKey(context.Background(), srv.Client(), srv.URL)
 	require.NoError(t, err)
+	if pub == nil {
+		t.Fatal("JWKS public key must not be nil")
+	}
 	assert.Equal(t, key.N, pub.N)
 }
 
@@ -79,6 +82,9 @@ func TestFetchJWKSPublicKey_PEMFallback(t *testing.T) {
 	srv := jwksServer(t, http.StatusOK, pemBytes)
 	pub, err := fetchJWKSPublicKey(context.Background(), srv.Client(), srv.URL)
 	require.NoError(t, err)
+	if pub == nil {
+		t.Fatal("PEM fallback public key must not be nil")
+	}
 	assert.Equal(t, key.N, pub.N)
 }
 

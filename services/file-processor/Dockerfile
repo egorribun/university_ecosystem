@@ -10,6 +10,7 @@ RUN apk add --no-cache git ca-certificates
 # Copy required dependencies for the replace directive
 COPY go.mod go.sum ./
 COPY gen/go ./gen/go
+COPY services/pkg/logging ./services/pkg/logging
 COPY services/pkg/spiffe ./services/pkg/spiffe
 COPY services/file-processor/go.mod services/file-processor/go.sum* ./services/file-processor/
 
@@ -52,7 +53,7 @@ RUN probe_module="github.com/grpc-ecosystem/grpc-health-probe@${GRPC_HEALTH_PROB
     chmod -R u+w . && \
     go get \
       github.com/spiffe/go-spiffe/v2@v2.7.0 \
-      google.golang.org/grpc@v1.83.1 \
+      google.golang.org/grpc@v1.83.2 \
       golang.org/x/net@v0.57.0 \
       golang.org/x/text@v0.40.0 && \
     go mod tidy && \

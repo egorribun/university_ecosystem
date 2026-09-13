@@ -221,6 +221,15 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         passive_deletes=True,
         lazy="noload",
     )
+    # Chat membership is an explicit bidirectional relation.  Do not use a
+    # dynamically generated backref here: its implicit ``lazy="select"``
+    # strategy performs synchronous IO when accessed from an async request.
+    chats = relationship(
+        "Chat",
+        secondary="chat_participants",
+        back_populates="participants",
+        lazy="noload",
+    )
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.pop("_allow_system_managed_assignment", False)

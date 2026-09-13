@@ -1,11 +1,14 @@
 import type { ReactNode } from "react"
-import { screen } from "@testing-library/react"
+import { cleanup, screen } from "@testing-library/react"
 import { QueryClient } from "@tanstack/react-query"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
-vi.mock("../../components/NewsCard", () => {
+// NewsList imports the production card through this alias. Mocking the exact
+// module identity keeps this perf fixture focused on list rendering and avoids
+// launching one asynchronous sanitizer effect per card.
+vi.mock("@/components/news/NewsCard", () => {
   const MockNewsCard = ({ id }: { id: string }) => (
     <div data-testid="news-card" data-news-id={id}>
       News {id}
@@ -165,6 +168,7 @@ describe("News page feed rendering", () => {
   })
 
   afterEach(() => {
+    cleanup()
     localStorage.clear()
     matchMediaMock.mockClear()
     useNewsListQueryMock.mockClear()

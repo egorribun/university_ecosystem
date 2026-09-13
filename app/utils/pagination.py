@@ -86,6 +86,8 @@ def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         return None
     try:
         timestamp_str, secondary_id = cursor.split(":", 1)
+        if not secondary_id:
+            return None
         timestamp_us = int(timestamp_str)
         # Use integer math to reconstruct datetime perfectly
         dt = datetime(1970, 1, 1, tzinfo=UTC) + timedelta(microseconds=timestamp_us)

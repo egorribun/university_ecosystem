@@ -1,5 +1,6 @@
 import { memo, useState, useEffect, type MouseEvent } from "react"
-import { Button, Tooltip } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
+import { Tooltip } from "@/components/ui/Tooltip"
 import { Users as PeopleAltIcon, QrCode as QrCodeIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { EventQrDialog } from "@/components/events/EventQrDialog"

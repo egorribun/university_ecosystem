@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import { Tooltip } from "@/components/ui"
+import { Tooltip } from "@/components/ui/Tooltip"
 import { cn } from "@/utils/cn"
 import { pad } from "@/utils/scheduleUtils"
 

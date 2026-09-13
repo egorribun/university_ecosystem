@@ -1,11 +1,34 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
-import { Button, fadeDelayStyle, FormControlLabel } from "@/components/settings/ui/Form"
+import {
+  Button,
+  fadeDelayStyle,
+  FormControlLabel,
+  securityStatusChipClassName,
+} from "@/components/settings/ui/Form"
 
 describe("settings Form compatibility wrappers", () => {
   it("builds the typed fade-delay custom property", () => {
     expect(fadeDelayStyle("120ms")).toEqual({ "--fade-delay": "120ms" })
+  })
+
+  it("keeps the security status chip classes complete", () => {
+    expect(securityStatusChipClassName).toContain("font-bold")
+    expect(securityStatusChipClassName).toContain("tracking-tight")
+    expect(securityStatusChipClassName).toContain("px-3")
+    expect(securityStatusChipClassName).toContain("py-1")
+    expect(securityStatusChipClassName).toContain("rounded-full")
+    expect(securityStatusChipClassName).toContain("text-xs")
+    expect(securityStatusChipClassName).toContain("text-text-primary")
+    expect(securityStatusChipClassName).toContain("border-glass-border")
+    expect(securityStatusChipClassName).toContain("bg-glass-bg")
+    expect(securityStatusChipClassName).toContain("shadow-glass")
+    expect(securityStatusChipClassName).toContain("backdrop-blur-glass")
+    expect(securityStatusChipClassName).toContain("transition-all")
+    expect(securityStatusChipClassName).toContain("duration-base")
+    expect(securityStatusChipClassName).toContain("dark:bg-glass-tint1")
+    expect(securityStatusChipClassName).toContain("dark:border-white/(--opacity-subtle)")
   })
 
   it("maps all legacy variants and sizes", () => {
@@ -72,5 +95,24 @@ describe("settings Form compatibility wrappers", () => {
 
     expect(screen.getByRole("radio")).toHaveAttribute("value", "choice-a")
     expect(screen.getByText("raw control")).toBeInTheDocument()
+
+    const firstLabel = screen.getByText("Choice A").closest("label")
+    expect(firstLabel).toBeInTheDocument()
+    expect(firstLabel).toHaveClass(
+      "group",
+      "inline-flex",
+      "items-center",
+      "gap-3",
+      "rounded-sm",
+      "px-2",
+      "py-1.5",
+      "cursor-pointer",
+      "transition-all",
+      "duration-base",
+      "hover:bg-(--primary-main)/(--opacity-faint)",
+      "border",
+      "border-transparent"
+    )
+    expect(firstLabel?.className).not.toContain("Stryker")
   })
 })

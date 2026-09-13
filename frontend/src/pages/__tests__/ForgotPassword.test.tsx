@@ -13,12 +13,23 @@ const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:$
 
 const startsWithText = (text: string) => (content: string) => content.startsWith(text)
 
-const renderForgot = () =>
-  renderWithRouter({
+const renderForgot = async () => {
+  const result = await renderWithRouter({
     ui: ForgotPassword,
     path: "/forgot-password",
     initialPath: "/forgot-password",
+    // This is a public form; mounting the real AuthProvider only starts an
+    // unrelated `/users/me` request and can race form assertions in jsdom.
+    authProvider: false,
   })
+  // React Hook Form performs an asynchronous initial validation pass. Flush
+  // it before callers begin assertions so the update is inside act().
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+  return result
+}
 
 const toPlainText = (markup: string) => {
   const template = document.createElement("template")
@@ -197,14 +208,14 @@ describe("ForgotPassword page", () => {
       await renderForgot()
 
       const emailInput = screen.getByLabelText(startsWithText(tAuth("fields.email")))
-      fireEvent.change(emailInput, { target: { value: "user@example.com" } })
-      fireEvent.blur(emailInput)
       await act(async () => {
+        fireEvent.change(emailInput, { target: { value: "user@example.com" } })
+        fireEvent.blur(emailInput)
         await Promise.resolve()
         await Promise.resolve()
       })
-      fireEvent.click(screen.getByRole("button", { name: tAuth("forgot.sendLink") }))
       await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: tAuth("forgot.sendLink") }))
         await Promise.resolve()
         await Promise.resolve()
       })
@@ -220,7 +231,9 @@ describe("ForgotPassword page", () => {
 
       expect(retryButton).toBeEnabled()
       expect(retryButton).not.toHaveTextContent("(0s)")
-      fireEvent.click(retryButton)
+      await act(async () => {
+        fireEvent.click(retryButton)
+      })
 
       expect(screen.getByLabelText(startsWithText(tAuth("fields.email")))).toHaveValue("")
       expect(screen.getByRole("button", { name: tAuth("forgot.sendLink") })).toBeInTheDocument()

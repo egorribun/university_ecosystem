@@ -474,9 +474,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         configure_event_handlers()
         _LISTENERS_REGISTERED = True
     else:
-        import logging as _llog
-
-        _llog.getLogger(__name__).debug(
+        _logger.debug(
             "TD-NEW-003: Skipping event listener registration (already registered in this process)."
         )
 

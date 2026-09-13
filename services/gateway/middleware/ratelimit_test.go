@@ -226,6 +226,9 @@ func TestRateLimiter_InMemoryAllow_ResetsAfterWindow(t *testing.T) {
 
 func TestRateLimiter_IsHealthPath(t *testing.T) {
 	assert.True(t, isHealthPath("/health"))
+	assert.True(t, isHealthPath("/health/ready"))
+	assert.True(t, isHealthPath("/health/live"))
+	assert.True(t, isHealthPath("/health/dependencies"))
 	assert.True(t, isHealthPath("/readiness"))
 	assert.True(t, isHealthPath("/metrics"))
 	assert.False(t, isHealthPath("/api/v1/some-resource"))

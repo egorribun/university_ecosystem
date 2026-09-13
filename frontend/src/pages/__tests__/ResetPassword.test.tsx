@@ -1,7 +1,7 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import ResetPassword from "../ResetPassword"
 import api from "@/api/client"
@@ -54,9 +54,16 @@ const renderWithToken = () =>
     // TanStack Router path param syntax is `$token` (vs react-router-dom `:token`).
     path: "/reset/$token",
     initialPath: "/reset/token123",
+    // Reset-password is a public form; no auth profile synchronization is
+    // needed for its behavior and would outlive the test's mounted tree.
+    authProvider: false,
   })
 
 describe("ResetPassword page", () => {
+  afterEach(() => {
+    cleanup()
+  })
+
   beforeEach(() => {
     localStorage.clear()
     passwordAnalysis.shouldThrow = false

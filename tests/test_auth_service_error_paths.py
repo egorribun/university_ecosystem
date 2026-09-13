@@ -128,6 +128,71 @@ async def test_perform_password_reset_naive_expired_token(auth_service, request_
     )
 
 
+async def test_perform_password_reset_locked_token_disappears(
+    auth_service, request_mock
+):
+    """A token consumed during the user-lock handoff must be rejected (L269-278)."""
+
+    user_id = uuid.uuid4()
+    discovered = MagicMock()
+    discovered.user_id = user_id
+    discovered.expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    auth_service.auth_repo.get_valid_password_reset_token = AsyncMock(
+        side_effect=[discovered, None]
+    )
+    user = MagicMock(spec=models.User)
+    user.id = user_id
+    user.is_active = True
+    auth_service.user_repo.get = AsyncMock(return_value=user)
+
+    with pytest.raises(HTTPException) as exc:
+        await auth_service.perform_password_reset(
+            "consumed-in-flight", "new-password-888", request_mock
+        )
+
+    assert exc.value.status_code == 400
+    auth_service.audit.log.assert_called_with(
+        "password.reset.failed",
+        request_mock,
+        level=logging.WARNING,
+        reason="token_invalid",
+    )
+
+
+async def test_perform_password_reset_locked_token_belongs_to_other_user(
+    auth_service, request_mock
+):
+    """A token re-read for another account must fail closed (the RHS of L268)."""
+
+    user_id = uuid.uuid4()
+    discovered = MagicMock()
+    discovered.user_id = user_id
+    discovered.expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    locked = MagicMock()
+    locked.user_id = uuid.uuid4()
+    locked.expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    auth_service.auth_repo.get_valid_password_reset_token = AsyncMock(
+        side_effect=[discovered, locked]
+    )
+    user = MagicMock(spec=models.User)
+    user.id = user_id
+    user.is_active = True
+    auth_service.user_repo.get = AsyncMock(return_value=user)
+
+    with pytest.raises(HTTPException) as exc:
+        await auth_service.perform_password_reset(
+            "cross-account-token", "new-password-888", request_mock
+        )
+
+    assert exc.value.status_code == 400
+    auth_service.audit.log.assert_called_with(
+        "password.reset.failed",
+        request_mock,
+        level=logging.WARNING,
+        reason="token_invalid",
+    )
+
+
 async def test_perform_password_reset_hibp_rejection(
     auth_service, request_mock, monkeypatch
 ):
@@ -140,6 +205,7 @@ async def test_perform_password_reset_hibp_rejection(
 
     user = MagicMock()
     user.is_active = True
+    user.id = rec.user_id
     auth_service.user_repo.get = AsyncMock(return_value=user)
     auth_service.user_repo.update = AsyncMock()
 
@@ -156,6 +222,126 @@ async def test_perform_password_reset_hibp_rejection(
 
     assert exc.value.status_code == 400
     auth_service.user_repo.update.assert_not_called()
+
+
+async def test_perform_password_reset_rechecks_expiry_after_user_lock(
+    auth_service, request_mock
+):
+    """The locked second read must reject a token that expired in-flight."""
+
+    user_id = uuid.uuid4()
+    discovered = MagicMock()
+    discovered.user_id = user_id
+    discovered.expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    locked = MagicMock()
+    locked.user_id = user_id
+    locked.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    auth_service.auth_repo.get_valid_password_reset_token = AsyncMock(
+        side_effect=[discovered, locked]
+    )
+    user = MagicMock(spec=models.User)
+    user.id = user_id
+    user.is_active = True
+    auth_service.user_repo.get = AsyncMock(return_value=user)
+
+    with pytest.raises(HTTPException) as exc:
+        await auth_service.perform_password_reset(
+            "rotated-token", "new-password-888", request_mock
+        )
+
+    assert exc.value.status_code == 400
+    auth_service.audit.log.assert_called_with(
+        "password.reset.failed",
+        request_mock,
+        level=logging.WARNING,
+        user_id=user_id,
+        reason="token_expired",
+    )
+
+
+async def test_perform_password_reset_awaits_fallback_session_revoke(
+    auth_service, request_mock, monkeypatch
+):
+    """Lightweight repository doubles still exercise the awaitable fallback."""
+
+    user_id = uuid.uuid4()
+    record = MagicMock()
+    record.id = 7
+    record.user_id = user_id
+    record.expires_at = datetime.now(UTC) + timedelta(minutes=10)
+    auth_service.auth_repo.get_valid_password_reset_token = AsyncMock(
+        side_effect=[record, record]
+    )
+    auth_service.auth_repo.db = MagicMock()
+    auth_service.auth_repo.mark_password_reset_token_used = AsyncMock()
+    auth_service.auth_repo.invalidate_all_user_password_reset_tokens = AsyncMock()
+    user = MagicMock(spec=models.User)
+    user.id = user_id
+    user.is_active = True
+    user.mfa_epoch = 0
+    auth_service.user_repo.get = AsyncMock(return_value=user)
+    auth_service.user_repo.update = AsyncMock()
+    auth_service.session_repo.revoke_all_for_user = AsyncMock(return_value=4)
+    monkeypatch.setattr(
+        security_module, "validate_password_hibp", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        auth_module, "get_password_hash", AsyncMock(return_value="new-hash")
+    )
+
+    await auth_service.perform_password_reset(
+        "fallback-token", "new-password-888", request_mock
+    )
+
+    auth_service.session_repo.revoke_all_for_user.assert_awaited_once_with(
+        user_id=user_id
+    )
+    auth_service.audit.log.assert_called_with(
+        "password.reset.completed",
+        request_mock,
+        user_id=user_id,
+        reason="completed",
+        extra={"revoked_sessions": 4, "mfa_epoch": 1},
+    )
+
+
+async def test_perform_password_reset_awaits_rollback_after_fallback_failure(
+    auth_service, request_mock, monkeypatch
+):
+    """Any fallback revoke failure must trigger the async unit-of-work rollback."""
+
+    user_id = uuid.uuid4()
+    record = MagicMock()
+    record.id = 8
+    record.user_id = user_id
+    record.expires_at = datetime.now(UTC) + timedelta(minutes=10)
+    auth_service.auth_repo.get_valid_password_reset_token = AsyncMock(
+        side_effect=[record, record]
+    )
+    auth_service.auth_repo.db = MagicMock()
+    auth_service.user_repo.get = AsyncMock(
+        return_value=MagicMock(
+            spec=models.User, id=user_id, is_active=True, mfa_epoch=0
+        )
+    )
+    auth_service.user_repo.update = AsyncMock()
+    auth_service.session_repo.revoke_all_for_user = AsyncMock(
+        side_effect=RuntimeError("revoke failed")
+    )
+    auth_service.uow.rollback = AsyncMock()
+    monkeypatch.setattr(
+        security_module, "validate_password_hibp", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        auth_module, "get_password_hash", AsyncMock(return_value="new-hash")
+    )
+
+    with pytest.raises(RuntimeError, match="revoke failed"):
+        await auth_service.perform_password_reset(
+            "rollback-token", "new-password-888", request_mock
+        )
+
+    auth_service.uow.rollback.assert_awaited_once_with()
 
 
 # ---------------------------------------------------------------------------

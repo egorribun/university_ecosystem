@@ -45,7 +45,11 @@ class DummyDomainEvent(DomainEvent):
 @pytest.mark.asyncio
 async def test_circuit_breaker_add_listener_and_transitions() -> None:
     """Test listener registration and execution on state transitions."""
-    cb = RedisCircuitBreaker(failure_threshold=2, recovery_timeout=0.1)
+    # Keep the initial OPEN assertion independent of scheduler load.  A
+    # sub-second recovery window can elapse while listener callbacks and
+    # pytest/mutmut instrumentation are running, causing ``state`` to perform
+    # the expected recovery transition before the assertion is evaluated.
+    cb = RedisCircuitBreaker(failure_threshold=2, recovery_timeout=10.0)
 
     sync_calls: list[tuple[CircuitState, CircuitState]] = []
     async_calls: list[tuple[CircuitState, CircuitState]] = []
@@ -68,17 +72,18 @@ async def test_circuit_breaker_add_listener_and_transitions() -> None:
     cb.record_failure()
     assert cb.state == CircuitState.OPEN
 
-    await asyncio.sleep(0.01)  # Allow async tasks to run
+    await asyncio.sleep(0)  # Yield until the scheduled async listener runs.
 
     assert len(sync_calls) == 1
     assert sync_calls[0] == (CircuitState.CLOSED, CircuitState.OPEN)
     assert len(async_calls) == 1
     assert async_calls[0] == (CircuitState.CLOSED, CircuitState.OPEN)
 
-    # Wait for recovery timeout -> HALF_OPEN
-    await asyncio.sleep(0.15)
+    # Advance the monotonic checkpoint explicitly before observing recovery;
+    # this preserves the state-machine assertion without a timing race.
+    cb._last_failure_time -= 11.0
     assert cb.state == CircuitState.HALF_OPEN
-    await asyncio.sleep(0.01)
+    await asyncio.sleep(0)
 
     assert len(sync_calls) == 2
     assert sync_calls[1] == (CircuitState.OPEN, CircuitState.HALF_OPEN)
@@ -86,7 +91,7 @@ async def test_circuit_breaker_add_listener_and_transitions() -> None:
     # Probe success -> CLOSED
     cb.record_success()
     assert cb.state == CircuitState.CLOSED
-    await asyncio.sleep(0.01)
+    await asyncio.sleep(0)
 
     assert len(sync_calls) == 3
     assert sync_calls[2] == (CircuitState.HALF_OPEN, CircuitState.CLOSED)

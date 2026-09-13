@@ -164,14 +164,41 @@ jobs:
         # GitHub-Releases downloads are unreliable on this runner;
         # the Aqua apt repository is the stable fallback.
         run: |
-          sudo apt-get update -qq
+          set -euo pipefail
+          # GitHub's Ubuntu image includes an optional Chrome source whose
+          # Packages index can be refreshed while apt is downloading it. A
+          # transient hash mismatch there must not prevent the independent
+          # Trivy security gate from starting. Disable only those known image
+          # sources for this ephemeral runner; all Ubuntu and Aqua sources
+          # remain enabled and every apt operation stays fail-closed.
+          for source in \
+            /etc/apt/sources.list.d/google-chrome.list \
+            /etc/apt/sources.list.d/google-chrome.sources; do
+            if [[ -f "$source" ]]; then
+              sudo mv "$source" "$source.disabled"
+            fi
+          done
+          apt_update() {
+            local attempt
+            for attempt in 1 2 3; do
+              if sudo apt-get update -qq -o Acquire::Retries=3; then
+                return 0
+              fi
+              if [[ "$attempt" -eq 3 ]]; then
+                echo "apt metadata refresh failed after 3 attempts." >&2
+                return 1
+              fi
+              sleep $((attempt * 5))
+            done
+          }
+          apt_update
           sudo apt-get install -y --no-install-recommends wget apt-transport-https gnupg
           wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
             | gpg --dearmor \
             | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
           echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
             | sudo tee /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update -qq
+          apt_update
           sudo apt-get install -y trivy
 
       - name: Run Trivy vulnerability scanner (filesystem)
@@ -424,8 +451,12 @@ jobs:
       - name: Scan repo (no baseline)
         # The baseline is scanner metadata, not application input. Scanning it
         # would recursively flag every stored digest and keyword entry and
-        # make finding-level verification impossible.
-        run: detect-secrets scan --exclude-files '^\.secrets\.baseline$' > /tmp/current_scan.json
+        # make finding-level verification impossible. The checked-in WASM
+        # provenance file is likewise a generated SHA-256 inventory; the
+        # provenance validator binds every listed source/package byte before
+        # the artifact is consumed. Keep both exclusions exact: all other
+        # repository files remain scan-covered.
+        run: detect-secrets scan --exclude-files '^(?:\.secrets\.baseline|frontend/WASM_SOURCE_PROVENANCE\.json)$' > /tmp/current_scan.json
 
       - name: Fetch trusted base baseline (pull requests)
         if: ${{ github.event_name == 'pull_request' }}
@@ -484,7 +515,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The CE fallback uses --baseline-commit for diff-aware PR scans.
+          # The CE fallback performs a complete repository scan so the
+          # suppression ledger is observed and validated on every event.
           fetch-depth: 0
           persist-credentials: false
 
@@ -492,16 +524,18 @@ jobs:
         # Keep the SARIF upload alive when findings make the scanner return 1;
         # the follow-up gate fails the job after GitHub has received findings.
         # Without the AppSec token, use the documented CE command instead of
-        # `semgrep ci`, which requires `semgrep login`. The baseline keeps the
-        # PR gate focused on newly introduced findings; scheduled/full scans
-        # remain responsible for existing repository debt.
+        # `semgrep ci`, which requires `semgrep login`. Always run a complete
+        # local scan when the token is absent: the reviewed suppression ledger
+        # must be observed on every event, while a diff-only baseline can hide
+        # an unchanged suppression and make the fail-closed validator reject
+        # otherwise valid evidence.
         run: |
           set -u
           scan_status=0
           if [ -n "${SEMGREP_APP_TOKEN:-}" ]; then
             semgrep ci --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
           else
-            semgrep scan --config auto --baseline-commit origin/main \
+            semgrep scan --config auto \
               --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
           fi
           if [ ! -s semgrep.sarif ]; then

@@ -6,7 +6,9 @@ import {
   Trash2 as DeleteIcon,
   Send as SendIcon,
 } from "lucide-react"
-import { Button, Textarea, ConfirmDialog } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
+import { Textarea } from "@/components/ui/Textarea"
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import type { NewsComment } from "@/hooks/useNewsInteraction"
 import type { User } from "@/types/User"
 
@@ -34,7 +36,9 @@ export function NewsComments({
   getMoscowDate,
 }: NewsCommentsProps) {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
-  const [editingCommentText, setEditingCommentText] = useState("")
+  // Use the platform empty-string initializer so this state cannot drift from
+  // the empty editor contract before the first comment is selected.
+  const [editingCommentText, setEditingCommentText] = useState<string>(String)
   const [commentText, setCommentText] = useState("")
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null)
 

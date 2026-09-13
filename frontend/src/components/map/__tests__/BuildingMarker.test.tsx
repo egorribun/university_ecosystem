@@ -171,6 +171,8 @@ describe("BuildingMarker", () => {
     })
     expect(markerMocks.useTranslation).toHaveBeenCalledWith("map")
 
+    expect(document.querySelector(".map-pin-icon")).toHaveStyle({ top: "10px" })
+
     expect(
       markerMocks.translationCalls.find(({ key }) => key === "a11y.buildingSelected")?.options
     ).toEqual({ name: BUILDING.name, floors: BUILDING.floorCount, rooms: 2 })
@@ -181,6 +183,28 @@ describe("BuildingMarker", () => {
     expect(
       markerMocks.translationCalls.find(({ key }) => key === "events.badgeLabel")?.options
     ).toEqual({ count: 2 })
+  })
+
+  it("moves the icon and translates popup floor and room counts for an active marker", () => {
+    const building = {
+      ...BUILDING,
+      floors: [
+        BUILDING.floors[0]!,
+        { floor: 2, rooms: [{ id: "ГУК-201", number: "201", type: "seminar" as const }] },
+      ],
+    }
+
+    const { unmount } = render(
+      <BuildingMarker {...baseProps} building={building} isSelected isPopupOpen />
+    )
+    expect(document.querySelector(".map-pin-icon")).toHaveStyle({ top: "12px" })
+    expect(
+      markerMocks.translationCalls.find(({ key }) => key === "tooltip.floors")?.options
+    ).toEqual({ count: building.floorCount })
+    expect(
+      markerMocks.translationCalls.find(({ key }) => key === "sidebar.roomCount")?.options
+    ).toEqual({ count: 2 })
+    unmount()
   })
 
   it("renders popup metadata, status styles, and at most four amenity chips", () => {
@@ -204,6 +228,9 @@ describe("BuildingMarker", () => {
       background: `linear-gradient(135deg, ${BUILDING.colorHex}, color-mix(in srgb, ${BUILDING.colorHex} 60%, black))`,
     })
     expect(screen.getByText("Open building")).toHaveClass("map-popup-desc")
+    expect(document.querySelector(".map-popup-badge")).toHaveStyle({
+      backgroundColor: BUILDING.colorHex,
+    })
     expect(screen.getByText("tooltip.floors")).toBeInTheDocument()
     expect(screen.getByText("sidebar.roomCount")).toBeInTheDocument()
 

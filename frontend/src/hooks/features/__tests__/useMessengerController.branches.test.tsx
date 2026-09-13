@@ -990,6 +990,80 @@ describe("useMessengerController — branch top-up", () => {
         expect(result.current.messages.find((m) => m.id === "msg-1")?.text).toBe("to clear")
       })
     })
+
+    it("writes only the target chat metadata in the clear mutation cache update", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            unread_count: 3,
+            last_message: { content: "last", created_at: "2026-08-25T12:00:00Z" },
+          },
+          {
+            id: "chat-2",
+            participants: [{ id: "current-user-id" }, { id: "peer-2" }],
+            unread_count: 1,
+            last_message: { content: "keep", created_at: "2026-08-25T12:01:00Z" },
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: [
+          {
+            id: "msg-1",
+            chat_id: "chat-1",
+            sender_id: "peer",
+            content: "to clear",
+            created_at: "2026-08-25T12:00:00Z",
+            read_status: false,
+          },
+        ],
+        has_more: true,
+        next_cursor: "older-cursor",
+      })
+      mocks.chatApi.clearChat.mockResolvedValue({ status: "ok" })
+
+      const { queryClient, HookWrapper } = createQueryHarness()
+      const setQueryData = vi.spyOn(queryClient, "setQueryData")
+      const { result: hookResult } = renderHook(() => useMessengerController(), {
+        wrapper: HookWrapper,
+      })
+      await waitFor(() => expect(hookResult.current.contacts).toHaveLength(2))
+      await waitFor(() => expect(hookResult.current.messages).toHaveLength(1))
+
+      act(() => hookResult.current.handleClearChat())
+      act(() => hookResult.current.confirmDialog?.onConfirm())
+
+      // Let the awaited `cancelQueries` in onMutate and the resolved mutation
+      // settle without waiting on a mutant-dependent UI predicate. The cache
+      // update itself is the contract under test and fails fast if removed.
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+
+      const chatsUpdate = setQueryData.mock.calls.find(
+        ([key]) => JSON.stringify(key) === JSON.stringify(["chats"])
+      )
+      expect(chatsUpdate).toBeDefined()
+      const updatedChats = chatsUpdate?.[1] as {
+        items: Array<{ id: string; unread_count: number; last_message?: unknown }>
+      }
+      expect(updatedChats.items.find((chat) => chat.id === "chat-1")).toMatchObject({
+        last_message: undefined,
+        unread_count: 0,
+      })
+      expect(updatedChats.items.find((chat) => chat.id === "chat-2")).toMatchObject({
+        last_message: { content: "keep", created_at: "2026-08-25T12:01:00Z" },
+        unread_count: 1,
+      })
+      expect(mocks.chatApi.clearChat).toHaveBeenCalledWith("chat-1")
+    })
   })
 
   describe("delete chat optimistic mutation (514-545)", () => {
@@ -1637,5 +1711,227 @@ describe("useMessengerController — branch top-up", () => {
     } finally {
       Object.assign(mocks.testUser, { full_name: previousName, avatar_url: previousAvatar })
     }
+  })
+
+  it("treats same-day numbers in different months and years as separate days", async () => {
+    seedChat("chat-1")
+    mocks.chatApi.getMessages.mockResolvedValue({
+      items: [
+        {
+          id: "month-before",
+          chat_id: "chat-1",
+          sender_id: "peer",
+          content: "January",
+          created_at: "2026-01-05T10:00:00Z",
+          read_status: false,
+        },
+        {
+          id: "month-after",
+          chat_id: "chat-1",
+          sender_id: "peer",
+          content: "February",
+          created_at: "2026-02-05T10:01:00Z",
+          read_status: false,
+        },
+        {
+          id: "year-after",
+          chat_id: "chat-1",
+          sender_id: "peer",
+          content: "Next year",
+          created_at: "2027-02-05T10:02:00Z",
+          read_status: false,
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.messages).toHaveLength(3))
+
+    expect(result.current.messages.map((message) => message.showDateDivider)).toEqual([
+      true,
+      true,
+      true,
+    ])
+    expect(result.current.messages.map((message) => message.isGroupStart)).toEqual([
+      true,
+      true,
+      true,
+    ])
+  })
+
+  it("keeps live overlap data while preserving the older-page cursor metadata", async () => {
+    seedChat("chat-1")
+    mocks.chatApi.getMessages.mockImplementation((_chatId: string, cursor?: string) =>
+      cursor
+        ? Promise.resolve({
+            items: [
+              {
+                id: "overlap",
+                chat_id: "chat-1",
+                sender_id: "peer",
+                content: "stale REST copy",
+                created_at: "2026-08-25T09:00:00Z",
+                read_status: false,
+              },
+              {
+                id: "older-only",
+                chat_id: "chat-1",
+                sender_id: "peer",
+                content: "older page",
+                created_at: "2026-08-25T08:00:00Z",
+                read_status: false,
+              },
+            ],
+            has_more: true,
+            next_cursor: "cursor-next",
+          })
+        : Promise.resolve({
+            items: [
+              {
+                id: "overlap",
+                chat_id: "chat-1",
+                sender_id: "peer",
+                content: "live WebSocket copy",
+                created_at: "2026-08-25T09:00:00Z",
+                read_status: false,
+              },
+            ],
+            has_more: true,
+            next_cursor: "cursor-older",
+          })
+    )
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.hasMoreMessages).toBe(true))
+
+    await act(async () => {
+      await result.current.handleLoadOlderMessages()
+    })
+
+    expect(result.current.messages.find((message) => message.id === "overlap")?.text).toBe(
+      "live WebSocket copy"
+    )
+    expect(result.current.messages.find((message) => message.id === "older-only")?.text).toBe(
+      "older page"
+    )
+    expect(result.current.hasMoreMessages).toBe(true)
+  })
+
+  it("does not fetch chat or messages when no route chat is selected", async () => {
+    mocks.paramsRef.current = {}
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.selectedChatId).toBeNull())
+    await waitFor(() => expect(mocks.chatApi.getChats).toHaveBeenCalled())
+
+    expect(mocks.chatApi.getChat).not.toHaveBeenCalled()
+    expect(mocks.chatApi.getMessages).not.toHaveBeenCalled()
+  })
+
+  it("counts a group read receipt at the exact message timestamp", async () => {
+    const messageTimestamp = "2026-08-25T10:00:00Z"
+    seedGroup("group-1")
+    mocks.chatApi.getChats.mockResolvedValue({
+      items: [
+        {
+          id: "group-1",
+          chat_type: "group",
+          name: "Project Alpha",
+          created_by: "current-user-id",
+          participants: [{ id: "current-user-id" }, { id: "peer-a" }, { id: "peer-b" }],
+          read_receipts: [{ user_id: "peer-a", last_read_at: messageTimestamp }],
+          unread_count: 0,
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.chatApi.getMessages.mockResolvedValue({
+      items: [
+        {
+          id: "group-message",
+          chat_id: "group-1",
+          sender_id: "current-user-id",
+          content: "exact boundary",
+          created_at: messageTimestamp,
+          read_status: true,
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.messages[0]?.id).toBe("group-message"))
+
+    expect(result.current.messages[0]).toMatchObject({ seenByTotal: 2, seenByCount: 1 })
+  })
+
+  it("exposes the documented closed/empty initial state for every transient panel", () => {
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+
+    expect(result.current).toMatchObject({
+      selectedChatId: null,
+      activeChat: null,
+      activeChatDisplay: null,
+      isNewChatModalOpen: false,
+      showSearchInChat: false,
+      searchQuery: "",
+      showChatMenu: false,
+      editingMessageId: null,
+      editingMessageContent: "",
+      replyingTo: null,
+      forwardSourceMessageId: null,
+      profileUser: null,
+      isProfileLoading: false,
+      profileError: null,
+      confirmDialog: null,
+      showGroupInfo: false,
+      isLoadingOlderMessages: false,
+      olderMessagesError: false,
+    })
+  })
+
+  it("does not duplicate a server message already present in the live cache", async () => {
+    const serverMessage = {
+      id: "server-msg-id",
+      chat_id: "chat-1",
+      sender_id: "current-user-id",
+      content: "hello",
+      created_at: "2026-08-25T12:00:00Z",
+      read_status: false,
+      attachments: [],
+    }
+    seedChat("chat-1")
+    mocks.chatApi.getMessages.mockResolvedValue({
+      items: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.chatApi.sendMessage.mockResolvedValue(serverMessage)
+    const { queryClient, HookWrapper } = createQueryHarness()
+    queryClient.setQueryData(["messages", "chat-1"], {
+      items: [serverMessage],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+    await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+    await act(async () => {
+      result.current.handleSendMessage("hello", [])
+    })
+
+    await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledOnce())
+    await waitFor(() => {
+      const cached = queryClient.getQueryData<{ items: Array<{ id: string }> }>([
+        "messages",
+        "chat-1",
+      ])
+      expect(cached?.items.filter((message) => message.id === serverMessage.id)).toHaveLength(1)
+    })
   })
 })

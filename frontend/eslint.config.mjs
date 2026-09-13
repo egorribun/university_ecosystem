@@ -239,6 +239,16 @@ export default tseslint.config(
         "error",
         {
           paths: [
+            {
+              name: "@/components/ui",
+              message:
+                "Import the exact UI leaf module (for example @/components/ui/Button); the UI barrel is deleted because it widens runtime and mutation-test dependency graphs.",
+            },
+            {
+              name: "@/components/ui/index",
+              message:
+                "Import the exact UI leaf module (for example @/components/ui/Button); the UI barrel is deleted because it widens runtime and mutation-test dependency graphs.",
+            },
             // Wave 191 SW3 — close W189 polish-v1 Tier 4 deferral (hook migration
             // regression test). framer-motion's `useReducedMotion()` is jsdom-
             // incompatible (W184 SW6 lesson — touches window.matchMedia(...)

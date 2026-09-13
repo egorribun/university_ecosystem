@@ -1224,8 +1224,17 @@ async def test_websocket_chat_rate_limit():
 @pytest.mark.asyncio
 async def test_websocket_chat_payload_too_large():
     websocket = AsyncMock()
-    large_payload = "a" * 33000
-    websocket.receive_text = AsyncMock(return_value=large_payload)
+    # Content is over the 32,768-code-point contract but the JSON frame remains
+    # below ws-hub's independent 60 KiB transport limit.
+    large_payload = json.dumps(
+        {"type": "message", "content": "a" * 32_769}, separators=(",", ":")
+    )
+    # A content-validation mutant can bypass the first-frame rejection and
+    # otherwise leave the route awaiting forever.  A deterministic disconnect
+    # makes that contract observable without a timeout-based test.
+    websocket.receive_text = AsyncMock(
+        side_effect=[large_payload, WebSocketDisconnect(code=1000)]
+    )
     websocket.close = AsyncMock()
 
     mock_user = MagicMock()

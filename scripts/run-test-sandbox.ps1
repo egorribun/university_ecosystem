@@ -139,7 +139,7 @@ try {
     if (-not $hasGcc) {
       Write-Warning "gcc not found - running Go tests WITHOUT -race (ADR-022; CI Linux runs -race)."
     }
-    foreach ($svc in @("services/gateway", "services/file-processor", "services/ws-hub", "services/cmd/uni-cli")) {
+    foreach ($svc in @("services/gateway", "services/file-processor", "services/ws-hub", "services/cmd/uni-cli", "services/pkg/logging", "services/pkg/spiffe", "services/pkg/spicedb")) {
       Invoke-Step "Go test ($svc)" {
         Push-Location $svc
         try {

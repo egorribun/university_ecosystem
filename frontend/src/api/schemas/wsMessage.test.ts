@@ -406,6 +406,15 @@ describe("parseWsMessage — Wave 204 SW3 ws-hub envelope unwrap + control frame
     expect(parseWsMessage("null")).toBeNull()
   })
 
+  it("does not treat primitive payloads as envelopes and preserves flat controls", () => {
+    expect(parseWsMessage(JSON.stringify({ type: "pong", payload: 0 }))).toStrictEqual({
+      type: "pong",
+    })
+    expect(parseWsMessage(JSON.stringify({ type: "pong", payload: false }))).toStrictEqual({
+      type: "pong",
+    })
+  })
+
   it.each(["legacy-extra", null])(
     "keeps flat control frames valid when an unrelated payload key is %s",
     (payload) => {

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { act, render, screen } from "@testing-library/react"
+import { renderToString } from "react-dom/server"
 import { ClockWidget } from "../ClockWidget"
 
 describe("ClockWidget", () => {
@@ -26,6 +27,14 @@ describe("ClockWidget", () => {
     })
 
     expect(time).toHaveBeenCalledTimes(2)
+  })
+
+  it("renders a deterministic placeholder before browser hydration", () => {
+    const html = renderToString(<ClockWidget />)
+
+    expect(html).toContain('aria-busy="true"')
+    expect(html).toContain("--:--")
+    expect(html).not.toContain("10:05")
   })
 
   it("passes the deliberate locale options and cleans up its timer", () => {

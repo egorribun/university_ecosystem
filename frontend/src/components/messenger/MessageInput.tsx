@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+} from "react"
 import { m, AnimatePresence } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { CHAT_MESSAGE_MAX_LENGTH } from "@/api/schemas/messageLimits"
@@ -66,6 +73,21 @@ const ATTACH_MENU_ITEMS = [
 
 const NOOP_TYPING_HANDLER = () => undefined
 
+/**
+ * Normalise the browser's nullable FileList boundary once.  The input can
+ * legally report null when a picker is cancelled, so the rest of the handler
+ * should only operate on a total array value.
+ */
+export const normalizeFileSelection = (files: FileList | null): File[] => Array.from(files ?? [])
+
+/** Keep the empty-selection branch observable and independently testable. */
+export const hasSelectedFiles = (files: readonly File[]): boolean => files.length > 0
+
+/** Reset a file picker to its browser-provided empty default value. */
+export const resetFileInput = (input: HTMLInputElement): void => {
+  input.value = input.defaultValue
+}
+
 export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: MessageInputProps) {
   const { t } = useTranslation(["messenger", "common"])
   const [text, setText] = useState("")
@@ -89,11 +111,18 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
     selectedFilesRef.current = selectedFiles
   }, [selectedFiles])
 
-  useEffect(() => {
-    return () => {
-      selectedFilesRef.current.forEach((entry) => URL.revokeObjectURL(entry.previewUrl))
-    }
-  }, [])
+  // A stable callback ref receives `null` when the hidden picker leaves the
+  // tree, providing the same unmount-only cleanup without a dependency array
+  // that mutation testing could replace with an equivalent static value.
+  const setFileInputRef = useCallback(
+    (node: HTMLInputElement | null) => {
+      if (node === null) {
+        selectedFilesRef.current.forEach((entry) => URL.revokeObjectURL(entry.previewUrl))
+      }
+      fileInputRef.current = node
+    },
+    [fileInputRef, selectedFilesRef]
+  )
   // Wave 181 SW3 — useReducedMotion guard for attach + send button micro-interactions.
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const attachHoverAnim = prefersReducedMotion ? undefined : { scale: 1.1 }
@@ -154,44 +183,47 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
 
   const handleFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget
-    const files = input.files
-    if (files && files.length > 0) {
-      const filteredFiles = await Promise.all(
-        Array.from(files).map(async (file) => {
-          if (file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg")) {
-            return null
-          }
-          if (file.type.startsWith("image/")) {
-            try {
-              const fileText = await file.slice(0, 512).text()
-              // eslint-disable-next-line security/detect-unsafe-regex -- bounded 512-byte input, no ReDoS risk
-              if (/^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(fileText)) return null
-            } catch {
-              // ignore
-            }
-          }
-          return file
-        })
-      )
-      const validFiles = filteredFiles.filter((file): file is File => !!file)
-      const rejectedCount = filteredFiles.length - validFiles.length
-      if (rejectedCount > 0) {
-        setSvgRejected(true)
-        setTimeout(() => setSvgRejected(false), 3000)
-      }
-      setSelectedFiles((previousFiles) => [
-        ...previousFiles,
-        // Wave 183 SW7 — create Blob URL ONCE per file at add time.
-        // Pre-W183 the JSX created a new URL on every parent re-render
-        // (memory leak).
-        ...validFiles.map((file) => ({
-          id: crypto.randomUUID(),
-          file,
-          previewUrl: URL.createObjectURL(file),
-        })),
-      ])
+    const files = normalizeFileSelection(input.files)
+    if (!hasSelectedFiles(files)) {
+      resetFileInput(input)
+      return
     }
-    input.value = ""
+
+    const filteredFiles = await Promise.all(
+      Array.from(files).map(async (file) => {
+        if (file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg")) {
+          return null
+        }
+        if (file.type.startsWith("image/")) {
+          try {
+            const fileText = await file.slice(0, 512).text()
+            // eslint-disable-next-line security/detect-unsafe-regex -- bounded 512-byte input, no ReDoS risk
+            if (/^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(fileText)) return null
+          } catch {
+            // ignore
+          }
+        }
+        return file
+      })
+    )
+    const validFiles = filteredFiles.filter((file): file is File => !!file)
+    const rejectedCount = filteredFiles.length - validFiles.length
+    if (rejectedCount > 0) {
+      setSvgRejected(true)
+      setTimeout(() => setSvgRejected(false), 3000)
+    }
+    setSelectedFiles((previousFiles) => [
+      ...previousFiles,
+      // Wave 183 SW7 — create Blob URL ONCE per file at add time.
+      // Pre-W183 the JSX created a new URL on every parent re-render
+      // (memory leak).
+      ...validFiles.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        previewUrl: URL.createObjectURL(file),
+      })),
+    ])
+    resetFileInput(input)
   }
 
   const removeFile = (id: string) => {
@@ -334,7 +366,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
             )}
           </AnimatePresence>
 
-          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
+          <input ref={setFileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
         </div>
         {/* Wave 183 SW4 — added explicit aria-label. Placeholder alone is
             insufficient for screen-reader announcement (A11Y-114-04 pattern;

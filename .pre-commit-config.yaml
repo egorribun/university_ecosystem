@@ -28,7 +28,11 @@ repos:
         entry: python scripts/run_detect_secrets.py
         args: ["--baseline", ".secrets.baseline"]
         require_serial: true
-        exclude: ".env.docker.example|.env.example|uv.lock"
+        # Generated WASM provenance contains SHA-256 digests rather than
+        # credentials. Its complete source/package inventory is validated by
+        # frontend/scripts/wasm-source-provenance.mjs; keep this exclusion
+        # exact so other generated or JSON files remain scan-covered.
+        exclude: "^(?:\\.secrets\\.baseline|\\.env\\.docker\\.example|\\.env\\.example|uv\\.lock|frontend/WASM_SOURCE_PROVENANCE\\.json)$"
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.0

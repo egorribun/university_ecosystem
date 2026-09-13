@@ -31,7 +31,7 @@ from hypothesis import strategies as st
 # ---------------------------------------------------------------------------
 
 _FIXED_DATETIME = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
-_VALID_SECRET = "f3d9a1c2e4b5a6d7c8e9f0a1b2c3d4e5"  # pragma: allowlist secret
+_VALID_SECRET = "test-audit-log-secret-" + "a" * 32  # pragma: allowlist secret
 
 
 def _compute_expected_signature(
@@ -85,7 +85,12 @@ def _call_sut(**overrides: Any) -> str:
         "created_at": _FIXED_DATETIME,
     }
     defaults.update(overrides)
-    return calculate_log_signature(**defaults)  # type: ignore[arg-type]
+    # Configure an explicit test-only key instead of relying on the production
+    # settings default.  The application now rejects repository-known fallback
+    # secrets in production.
+    with patch("app.utils.audit.settings") as mock_settings:
+        mock_settings.audit_log_secret = _VALID_SECRET
+        return calculate_log_signature(**defaults)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

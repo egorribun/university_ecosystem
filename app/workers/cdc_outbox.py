@@ -457,6 +457,26 @@ class CdcOutboxWorker:
         self._decoder = PgOutputDecoder()
         self._is_running = False
         self._last_acknowledged_lsn = 0
+        # Lifecycle ownership: keep references to resources opened by this
+        # worker so an application shutdown can interrupt an in-flight WAL
+        # stream and a fallback worker without leaving detached tasks behind.
+        self._replication_connection: asyncpg.Connection | None = None
+        self._fallback_worker: Any | None = None
+
+    async def _close_replication_connection(self) -> None:
+        """Close the active replication connection exactly once, if present."""
+        conn = self._replication_connection
+        self._replication_connection = None
+        if conn is None:
+            return
+        with contextlib.suppress(
+            OSError, ConnectionError, asyncpg.PostgresError, asyncpg.InterfaceError
+        ):  # RZ-20-04: replication connection teardown is best effort
+            await conn.close()
+
+    def _stop_requested(self) -> bool:
+        """Return whether shutdown was requested while connecting to PostgreSQL."""
+        return not self._is_running
 
     def _normalize_dsn(self) -> str:
         parsed = urlparse(self.dsn)
@@ -521,7 +541,16 @@ class CdcOutboxWorker:
         stored_event_id = str(data.get("id") or uuid.uuid4())
 
         if not event_type:
-            logger.warning("CDC record missing event_type: %s", data)
+            # Never interpolate the full CDC row: payload/metadata can carry
+            # emails, phone numbers, tokens, or arbitrary user content.  The
+            # central redacting processor remains defense-in-depth, while the
+            # worker itself logs only non-sensitive routing metadata.
+            logger.warning(
+                "CDC record missing event_type (relation=%s, lsn=%s, fields=%d)",
+                record.relation_name,
+                record.lsn,
+                len(data),
+            )
             return None
 
         event_cls = _EVENT_REGISTRY.get(event_type)
@@ -724,6 +753,10 @@ class CdcOutboxWorker:
         while self._is_running:
             try:
                 conn = await asyncpg.connect(normalised_dsn, replication="database")
+                self._replication_connection = conn
+                if self._stop_requested():
+                    await self._close_replication_connection()
+                    break
                 try:
                     logger.info(
                         "CdcOutboxWorker connected to WAL logical replication slot '%s'",
@@ -744,7 +777,7 @@ class CdcOutboxWorker:
 
                     await conn._copy_out(start_stmt, _wal_stream_writer, timeout=None)
                 finally:
-                    await conn.close()
+                    await self._close_replication_connection()
             except (
                 asyncpg.PostgresError,
                 asyncpg.InterfaceError,
@@ -760,13 +793,26 @@ class CdcOutboxWorker:
                 )
                 await asyncio.sleep(5)
 
+        logger.info("CdcOutboxWorker replication loop exited")
+
     async def _run_fallback_worker(self) -> None:
         from app.workers.outbox import OutboxWorker
 
         logger.info("CdcOutboxWorker: launching fallback OutboxWorker")
         fallback = OutboxWorker()
-        await fallback.run_forever()
+        self._fallback_worker = fallback
+        try:
+            await fallback.run_forever()
+        finally:
+            self._fallback_worker = None
 
     async def stop(self) -> None:
         self._is_running = False
+        fallback = self._fallback_worker
+        if fallback is not None:
+            try:
+                await fallback.stop()
+            finally:
+                self._fallback_worker = None
+        await self._close_replication_connection()
         logger.info("CdcOutboxWorker stopped")

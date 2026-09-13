@@ -41,19 +41,29 @@ export async function getDatabase(): Promise<AppDatabase> {
 }
 
 export async function resetDatabaseForTesting(): Promise<void> {
-  if (dbPromise) {
-    try {
-      const db = await dbPromise
-      dbPromise = null
-      const dbObj = db as unknown as Record<string, unknown>
-      if (typeof dbObj["remove"] === "function") {
-        await (dbObj["remove"] as () => Promise<void>)()
-      } else if (typeof dbObj["close"] === "function") {
-        await (dbObj["close"] as () => Promise<void>)()
-      }
-    } catch (_e) {
-      dbPromise = null
-    }
+  // Keep the reset operation total even when initialization has not started or
+  // the previous attempt rejected.  Resolving a null sentinel avoids a second
+  // branch that could accidentally touch a rejected promise.
+  const pending = dbPromise ?? Promise.resolve(null)
+  const db = await pending.catch(() => null)
+  if (db === null) {
+    dbPromise = null
+    return
+  }
+
+  // Await initialization before cleanup, then clear the cache regardless of
+  // whether the underlying remove/close operation succeeds so a later test
+  // can create a fresh database instead of reusing a half-cleaned instance.
+  const dbObj = db as unknown as Record<string, unknown>
+  const cleanup = [
+    ...(["remove", "close"] as const).map((method) => dbObj[method]),
+    async () => undefined,
+  ].find((candidate): candidate is () => Promise<void> => typeof candidate === "function")!
+  try {
+    await cleanup()
+    dbPromise = null
+  } catch (_e) {
+    dbPromise = null
   }
 }
 

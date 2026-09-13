@@ -9,7 +9,7 @@
 {{- if ne (len $mfaSecretKeys) (len (uniq $mfaSecretKeys)) -}}
   {{- fail "MFA Secret key names must be pairwise unique" -}}
 {{- end -}}
-{{- $fixedApplicationSecretKeys := list "jwt-secret" "jwt-rsa-private-key" "jwt-rsa-public-key" "internal-hmac-secret" "ws-hub-internal-secret" "csrf-hmac-secret" "spotify-token-secret" "elasticsearch-password" "spicedb-preshared-key" "audit-log-secret" "idempotency-hmac-secret" "minio-access-key" "minio-secret-key" "temporal-api-key" -}}
+{{- $fixedApplicationSecretKeys := list "jwt-secret" "jwt-rsa-private-key" "jwt-rsa-public-key" "internal-hmac-secret" "ws-hub-internal-secret" "csrf-hmac-secret" "spotify-token-secret" "elasticsearch-password" "spicedb-preshared-key" "audit-log-secret" "token-hmac-secret" "idempotency-hmac-secret" "minio-access-key" "minio-secret-key" "temporal-api-key" -}}
 {{- range $mfaSecretKey := $mfaSecretKeys -}}
   {{- if has $mfaSecretKey $fixedApplicationSecretKeys -}}
     {{- fail "MFA Secret key names must not collide with fixed application Secret keys" -}}
@@ -19,7 +19,7 @@
   {{- if or .Values.backend.config.mfaEmailOtpHMACKeys .Values.backend.config.mfaEmailOtpActiveHMACKeyId .Values.backend.config.mfaEmailDeliveryKEKs .Values.backend.config.mfaEmailDeliveryActiveKEKId .Values.backend.config.mfaTrustedDeviceHMACKeys .Values.backend.config.mfaTrustedDeviceActiveHMACKeyId -}}
     {{- fail "MFA key material must not be stored in Helm values when applicationSecrets.existingSecret is configured; inline secret material must not be stored in Helm values" -}}
   {{- end -}}
-  {{- if or .Values.gateway.config.jwtSecret .Values.backend.config.jwtPrivateKeyPEM .Values.backend.config.internalHMACSecret .Values.backend.config.wsHubInternalSecret .Values.backend.config.csrfHMACSecret .Values.backend.config.spotifyTokenSecret .Values.backend.config.elasticsearchPassword .Values.backend.config.spicedbPresharedKey .Values.backend.config.auditLogSecret .Values.backend.config.idempotencyHMACSecret .Values.fileProcessor.config.rsaPublicKeyPEM .Values.fileProcessor.config.minioAccessKey .Values.fileProcessor.config.minioSecretKey .Values.fileProcessor.config.temporalAPIKey -}}
+  {{- if or .Values.gateway.config.jwtSecret .Values.backend.config.jwtPrivateKeyPEM .Values.backend.config.internalHMACSecret .Values.backend.config.wsHubInternalSecret .Values.backend.config.csrfHMACSecret .Values.backend.config.spotifyTokenSecret .Values.backend.config.elasticsearchPassword .Values.backend.config.spicedbPresharedKey .Values.backend.config.auditLogSecret .Values.backend.config.tokenHMACSecret .Values.backend.config.idempotencyHMACSecret .Values.fileProcessor.config.rsaPublicKeyPEM .Values.fileProcessor.config.minioAccessKey .Values.fileProcessor.config.minioSecretKey .Values.fileProcessor.config.temporalAPIKey -}}
     {{- fail "Application secret material must not be stored in Helm values when applicationSecrets.existingSecret is configured" -}}
   {{- end -}}
 {{- end -}}
@@ -177,6 +177,15 @@
   {{- end -}}
   {{- if and .Values.backend.autoscaling.enabled (lt (int .Values.backend.autoscaling.maxReplicas) (int .Values.backend.autoscaling.minReplicas)) -}}
     {{- fail "backend.autoscaling.maxReplicas must be greater than or equal to minReplicas" -}}
+  {{- end -}}
+  {{- range $component := list "frontend" "gateway" -}}
+    {{- $autoscaling := index $.Values $component "autoscaling" -}}
+    {{- if not $autoscaling.enabled -}}
+      {{- fail (printf "%s.autoscaling.enabled=true is required in staging/production" $component) -}}
+    {{- end -}}
+    {{- if or (lt (int $autoscaling.minReplicas) 2) (lt (int $autoscaling.maxReplicas) (int $autoscaling.minReplicas)) -}}
+      {{- fail (printf "%s.autoscaling requires minReplicas>=2 and maxReplicas>=minReplicas in staging/production" $component) -}}
+    {{- end -}}
   {{- end -}}
   {{- if or (not .Values.ingress.enabled) (not .Values.ingress.className) (not .Values.ingress.tls) -}}
     {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}

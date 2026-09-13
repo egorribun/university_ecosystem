@@ -15,6 +15,10 @@ name: "SBOM — Supply Chain Provenance"
 on:
   push:
     branches: ["main"]
+  # Pull requests use a separate read-only vulnerability evaluator below.
+  # The attestation/SARIF producers remain trusted-main-only because they
+  # request write-capable GitHub permissions.
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -36,6 +40,7 @@ env:
     crates/pyo3-sanitizer/fuzz/Cargo.lock
     frontend/rust-crypto/Cargo.lock
     frontend/rust-crypto/fuzz/Cargo.lock
+    frontend/tools/stryker-process-host/Cargo.lock
     frontend/wasm-sanitizer/Cargo.lock
     frontend/wasm-sanitizer/fuzz/Cargo.lock
     native/rust_ext/Cargo.lock
@@ -44,6 +49,7 @@ env:
 jobs:
   sbom-python:
     name: Python SBOM (anchore/sbom-action)
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -53,6 +59,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Never leave even the read-only workflow token in an untrusted PR
+          # checkout where scanner code could read and exfiltrate it.
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -81,6 +91,7 @@ jobs:
 
   sbom-go:
     name: Go SBOM (osv-scanner)
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -93,7 +104,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: services/gateway/go.mod
+          # Pin the complete patched toolchain. A go.mod minimum such as
+          # 1.26.4 can resolve to a runner image that still carries vulnerable
+          # standard-library symbols; govulncheck must analyze the same fixed
+          # toolchain used by the build jobs.
+          go-version: "1.26.6"
           cache: true
 
       - name: Install osv-scanner
@@ -169,6 +184,7 @@ jobs:
 
   sbom-rust:
     name: Rust SBOM (cargo-audit)
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -253,6 +269,7 @@ jobs:
   vuln-gate:
     # Keep the externally visible main-CI check context stable for run history.
     name: Vulnerability gate (CRITICAL/HIGH)
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     # Cold runs compile cargo-audit and execute three ecosystems sequentially.
     timeout-minutes: 30
@@ -297,7 +314,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: services/gateway/go.mod
+          go-version: "1.26.6"
           cache: true
 
       - name: Install govulncheck
@@ -315,6 +332,118 @@ jobs:
             ./services/ws-hub/... \
             ./services/file-processor/... \
             ./services/cmd/uni-cli/... \
+            ./services/pkg/logging/... \
+            ./services/pkg/spiffe/... \
+            ./services/pkg/spicedb/...
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+
+      - name: Rust — high/critical/unknown vulnerability gate
+        working-directory: native/rust_ext
+        run: |
+          mkdir -p /tmp/rust-audit-reports
+          audit_count=0
+          audit_failed=0
+          cargo_audit_fetch_args=()
+          while IFS= read -r lockfile; do
+            [[ -z "$lockfile" ]] && continue
+            audit_count=$((audit_count + 1))
+            if [[ ! -f "../../$lockfile" ]]; then
+              echo "::error::Configured Rust lockfile is missing: $lockfile"
+              audit_failed=1
+              continue
+            fi
+
+            report_name="${lockfile//\//__}.json"
+            set +e
+            cargo audit "${cargo_audit_fetch_args[@]}" \
+              --file "../../$lockfile" \
+              --json > "/tmp/rust-audit-reports/$report_name"
+            cargo_audit_status=$?
+            set -e
+            cargo_audit_fetch_args=(--no-fetch)
+            if python3 ../../scripts/check_dependency_audit_report.py cargo \
+              --report "/tmp/rust-audit-reports/$report_name" \
+              --scanner-status "$cargo_audit_status"; then
+              echo "Passed RustSec gate for $lockfile"
+            else
+              audit_failed=1
+            fi
+          done <<< "$RUST_AUDIT_LOCKFILES"
+
+          if (( audit_count == 0 )); then
+            echo "::error::Rust lockfile audit inventory is empty"
+            exit 1
+          fi
+          exit "$audit_failed"
+
+  # Pull-request vulnerability gate.  This job intentionally performs the
+  # same three ecosystem scans as the trusted-main gate, but has read-only
+  # permissions and never uploads SARIF, artifacts, or attestations.  Keeping
+  # this as a distinct job preserves the required check name while preventing
+  # untrusted PR code from reaching any privileged report producer.
+  vuln-gate-pr:
+    name: Vulnerability gate (CRITICAL/HIGH)
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The PR gate executes repository-local audit scripts. Do not leave
+          # the read-only workflow token in .git/config where untrusted code
+          # could read and exfiltrate it.
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Install pinned Python audit tools
+        run: uv sync --frozen --group security --no-install-project
+
+      - name: Export Python requirements
+        run: |
+          uv export --frozen --no-hashes --no-dev --no-emit-workspace > /tmp/requirements.txt
+          echo "Exported $(wc -l < /tmp/requirements.txt) requirements"
+
+      - name: Python — known-vulnerability allowlist gate
+        run: |
+          set +e
+          rm -f /tmp/pip-audit.json
+          uv run --frozen --no-sync python scripts/osv_batch_audit.py \
+            --requirement /tmp/requirements.txt \
+            --output /tmp/pip-audit.json \
+            --timeout 30 \
+            --attempts 4 \
+            --batch-size 100
+          pip_audit_status=$?
+          set -e
+          uv run --frozen --no-sync python scripts/check_dependency_audit_report.py pip \
+            --report /tmp/pip-audit.json \
+            --scanner-status "$pip_audit_status" \
+            --allowlist security/audit-allowlist.yaml
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.6"
+          cache: true
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+
+      - name: Go — govulncheck reachable vulnerability gate
+        run: |
+          govulncheck \
+            ./services/gateway/... \
+            ./services/ws-hub/... \
+            ./services/file-processor/... \
+            ./services/cmd/uni-cli/... \
+            ./services/pkg/logging/... \
             ./services/pkg/spiffe/... \
             ./services/pkg/spicedb/...
 

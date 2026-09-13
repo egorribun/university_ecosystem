@@ -111,6 +111,16 @@ async def get_revocation_redis_client() -> Redis[Any]:
             f"REVOCATION_REDIS access is disabled for this process role ({role!r})"
         )
     redis_url = str(settings.revocation_redis_url).strip()
-    if not redis_url or redis_url == DEFAULT_REVOCATION_REDIS_URL:
+    environment = str(
+        getattr(settings, "environment", "production") or "production"
+    ).lower()
+    # The loopback URL is an intentional development/testing default (the local
+    # compose revocation Redis listens on 6380).  Production still fails closed
+    # when the default is left in place; only an explicitly configured URL may
+    # be used by authentication-capable deployments.
+    if not redis_url or (
+        redis_url == DEFAULT_REVOCATION_REDIS_URL
+        and environment not in {"development", "local", "testing"}
+    ):
         raise RuntimeError("REVOCATION_REDIS_URL is not configured")
     return await get_shared_client(redis_url)

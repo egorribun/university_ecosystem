@@ -3,9 +3,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const { mockUseSchedulePage } = vi.hoisted(() => ({ mockUseSchedulePage: vi.fn() }))
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+const translationMocks = vi.hoisted(() => ({
+  useTranslation: vi.fn(() => ({
     t: (key: string) =>
       ({
         "schedule:dialog.detailsFallback": "Details",
@@ -17,7 +16,11 @@ vi.mock("react-i18next", () => ({
         "common:buttons.close": "Close",
       })[key] ?? key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  })),
+}))
+
+vi.mock("react-i18next", () => ({
+  useTranslation: translationMocks.useTranslation,
 }))
 
 vi.mock("@/contexts/SchedulePageContext", () => ({ useSchedulePage: mockUseSchedulePage }))
@@ -28,13 +31,16 @@ vi.mock("@/components/settings", () => ({
   DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }))
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Badge", () => ({
   Badge: ({ children, leadingIcon }: { children: ReactNode; leadingIcon?: ReactNode }) => (
     <span>
       {leadingIcon}
       {children}
     </span>
   ),
+}))
+
+vi.mock("@/components/ui/Button", () => ({
   Button: ({
     children,
     id,
@@ -86,6 +92,7 @@ const renderDialog = (context: ReturnType<typeof createContext>, userRole?: stri
 
 beforeEach(() => {
   mockUseSchedulePage.mockReset()
+  translationMocks.useTranslation.mockClear()
 })
 
 describe("LessonDetailsDialog closure", () => {
@@ -115,6 +122,8 @@ describe("LessonDetailsDialog closure", () => {
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument()
     expect(getLessonTypeColor).toHaveBeenCalledWith(null)
     expect(getLessonTypeLabel).toHaveBeenCalledWith(null)
+    expect(translationMocks.useTranslation).toHaveBeenCalledWith(["schedule", "common"])
+    expect(screen.getByText("09:00–10:30")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }))
     expect(context.closeDialog).toHaveBeenCalledOnce()

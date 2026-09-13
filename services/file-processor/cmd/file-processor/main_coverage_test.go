@@ -329,7 +329,8 @@ func TestStartNatsSubscriber_FailGracefully(t *testing.T) {
 			Environment: "testing",
 		}
 		assert.NotPanics(t, func() {
-			startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+			err := startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+			assert.Error(t, err)
 		})
 	})
 
@@ -339,7 +340,8 @@ func TestStartNatsSubscriber_FailGracefully(t *testing.T) {
 			Environment: "testing",
 		}
 		assert.NotPanics(t, func() {
-			startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+			err := startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+			assert.Error(t, err)
 		})
 	})
 }
@@ -389,8 +391,11 @@ func TestSetupGraphQLServer_BundledSchemaFromWorkingDirectory(t *testing.T) {
 	content, err := os.ReadFile("../../schema.graphql")
 	require.NoError(t, err)
 	tempDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "schema.graphql"), content, 0600)) // #nosec G306 -- test-only schema.
 	t.Chdir(tempDir)
+	// #nosec G703 -- the filename is a constant and the working directory is
+	// the unique t.TempDir() selected immediately above, so no external path
+	// can influence this test fixture.
+	require.NoError(t, os.WriteFile("schema.graphql", content, 0600))
 	t.Setenv("FP_SCHEMA_PATH", "")
 
 	srv, err := setupGraphQLServer(context.Background(), &config.Config{
@@ -1001,7 +1006,7 @@ func configureRunMainStubs(t *testing.T) {
 		}
 		return c, &mockWorker{}, nil
 	}
-	startNatsSubscriberFunc = func(context.Context, *config.Config, client.Client, *slog.Logger) {}
+	startNatsSubscriberFunc = func(context.Context, *config.Config, client.Client, *slog.Logger) error { return nil }
 }
 
 func TestRunMain_PropagatesSpiffeInitFailure(t *testing.T) {

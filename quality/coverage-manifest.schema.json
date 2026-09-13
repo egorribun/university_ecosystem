@@ -208,6 +208,7 @@
       }
     },
     "metric": {
+      "description": "A native or trusted derived metric is applicable evidence and must carry counters; unsupported is an explicit N/A with null counters and a machine-readable reason_code.",
       "type": "object",
       "additionalProperties": false,
       "required": ["status", "covered", "total", "percent"],
@@ -217,7 +218,11 @@
         "total": {"type": ["integer", "null"], "minimum": 0},
         "percent": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
         "derivation": {"type": "string", "minLength": 1},
-        "reason_code": {"type": "string", "minLength": 1}
+        "reason_code": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_]*(?:-[a-z0-9_]+)*$"
+        }
       },
       "oneOf": [
         {

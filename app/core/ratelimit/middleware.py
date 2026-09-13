@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import time
 import uuid
 from typing import TYPE_CHECKING
@@ -12,6 +11,7 @@ from starlette.responses import JSONResponse, Response
 
 from app.core.exceptions.handlers import asgi_json_problem
 from app.core.localization import resolve_locale
+from app.core.logging import get_logger
 from app.core.ratelimit.contract import RateLimitStrategy
 from app.core.ratelimit.models import EndpointRateLimit, RateLimitInfo
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
@@ -21,7 +21,7 @@ from app.core.ratelimit.utils import resolve_client_ip
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-logger = logging.getLogger("app.security.ratelimit")
+logger = get_logger("app.security.ratelimit")
 
 _rate_limit_fallback_total = Counter(
     "rate_limit_fallback_total",

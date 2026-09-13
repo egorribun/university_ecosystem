@@ -32,7 +32,7 @@ vi.mock("@/api/client", async (importOriginal) => {
   return { ...actual, default: { get: mocks.apiGet } }
 })
 
-import { GroupInfoPanel } from "@/components/messenger/GroupInfoPanel"
+import { GroupInfoPanel, shouldSearchGroupUsers } from "@/components/messenger/GroupInfoPanel"
 
 const wrapper = ({ children }: { children: ReactNode }) => {
   const queryClient = new QueryClient({
@@ -185,6 +185,42 @@ describe("GroupInfoPanel (W211 G4)", () => {
     expect(onRename).toHaveBeenCalledWith("Renamed Group")
   })
 
+  it("prefills the rename draft with the current group name", () => {
+    render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+      wrapper,
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    expect(screen.getByRole("textbox", { name: "messenger:groupName" })).toHaveValue(
+      "Project Alpha"
+    )
+  })
+
+  it("does not throw when submitting a group whose name is absent", () => {
+    const onRename = vi.fn()
+    render(
+      <GroupInfoPanel
+        {...baseProps}
+        onRename={onRename}
+        chat={{ ...groupChat(OWNER), name: null }}
+        currentUserId={OWNER}
+      />,
+      { wrapper }
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    const input = screen.getByRole("textbox", { name: "messenger:groupName" })
+    expect(() => fireEvent.keyDown(input, { key: "Enter" })).not.toThrow()
+    expect(onRename).not.toHaveBeenCalled()
+  })
+
+  it("enables add-member search only for an open panel, active search and a long query", () => {
+    expect(shouldSearchGroupUsers(true, true, "Ni")).toBe(true)
+    expect(shouldSearchGroupUsers(true, true, "N")).toBe(false)
+    expect(shouldSearchGroupUsers(false, true, "Nina")).toBe(false)
+    expect(shouldSearchGroupUsers(true, false, "Nina")).toBe(false)
+  })
+
   it("does not submit a blank rename and supports Escape cancellation", () => {
     const onRename = vi.fn()
     render(
@@ -236,6 +272,23 @@ describe("GroupInfoPanel (W211 G4)", () => {
     expect(screen.queryByRole("button", { name: /Mike Member/ })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: /Nina New/ }))
     expect(onAddMember).toHaveBeenCalledWith("new-user")
+  })
+
+  it("does not issue a user search until the minimum query length is exceeded", async () => {
+    render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+      wrapper,
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+    const search = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+    fireEvent.change(search, { target: { value: "N" } })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    })
+    expect(mocks.apiGet).not.toHaveBeenCalled()
+
+    fireEvent.change(search, { target: { value: "Ni" } })
+    await waitFor(() => expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=Ni"))
   })
 
   it("resets transient rename and add-search state when closed", () => {

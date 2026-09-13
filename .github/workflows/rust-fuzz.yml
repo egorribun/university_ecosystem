@@ -28,7 +28,11 @@ on:
     - cron: '0 0 * * 0'
   workflow_dispatch:
 
-permissions: read-all
+# Fuzz targets execute repository-controlled native code, including code from
+# pull requests. Grant only the read scope needed for checkout and dependency
+# metadata; never leave a token in the checkout for the fuzzers to inspect.
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -44,6 +48,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Rust nightly
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # nightly
@@ -63,9 +69,11 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             native/rust_ext/target/
+            native/rust_ext/fuzz/target/
+            crates/pyo3-sanitizer/fuzz/target/
             frontend/wasm-sanitizer/fuzz/target/
             frontend/rust-crypto/fuzz/target/
-          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('native/rust_ext/Cargo.toml', 'native/rust_ext/Cargo.lock', 'frontend/wasm-sanitizer/fuzz/Cargo.toml', 'frontend/wasm-sanitizer/fuzz/Cargo.lock', 'frontend/rust-crypto/fuzz/Cargo.toml', 'frontend/rust-crypto/fuzz/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('native/rust_ext/Cargo.toml', 'native/rust_ext/Cargo.lock', 'native/rust_ext/fuzz/Cargo.toml', 'native/rust_ext/fuzz/Cargo.lock', 'crates/pyo3-sanitizer/Cargo.toml', 'crates/pyo3-sanitizer/fuzz/Cargo.toml', 'crates/pyo3-sanitizer/fuzz/Cargo.lock', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/wasm-sanitizer/fuzz/Cargo.toml', 'frontend/wasm-sanitizer/fuzz/Cargo.lock', 'frontend/rust-crypto/Cargo.toml', 'frontend/rust-crypto/fuzz/Cargo.toml', 'frontend/rust-crypto/fuzz/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-fuzz-
 
@@ -86,10 +94,24 @@ jobs:
           else
             DURATION=60
           fi
-          echo "Running fuzz_target_1 for $DURATION seconds..."
-          cargo +nightly fuzz run fuzz_target_1 -- -max_total_time=$DURATION
-          echo "Running fuzz_sanitizer for $DURATION seconds..."
-          cargo +nightly fuzz run fuzz_sanitizer -- -max_total_time=$DURATION
+          targets=(
+            fuzz_conflict_detection
+            fuzz_hmac
+            fuzz_sanitizer
+            fuzz_schedule_item
+            fuzz_target_1
+            fuzz_uuid
+          )
+          mapfile -t discovered < <(cargo +nightly fuzz list | awk 'NF { print $1 }' | sort)
+          mapfile -t expected < <(printf '%s\n' "${targets[@]}" | sort)
+          if [[ "${discovered[*]}" != "${expected[*]}" ]]; then
+            echo "::error::cargo-fuzz target inventory drifted (expected: ${expected[*]}; discovered: ${discovered[*]})"
+            exit 1
+          fi
+          for target in "${targets[@]}"; do
+            echo "Running $target for $DURATION seconds..."
+            cargo +nightly fuzz run "$target" -- -max_total_time="$DURATION"
+          done
 
       - name: Archive crashes
         if: failure()
@@ -117,6 +139,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - directory: crates/pyo3-sanitizer/fuzz
+            name: pyo3-sanitizer-fuzz
+            parent_manifest: crates/pyo3-sanitizer/Cargo.toml
+            targets: "fuzz_sanitize_rich_text fuzz_sanitize_html_basic fuzz_strip_html"
           - directory: frontend/wasm-sanitizer/fuzz
             name: frontend-wasm-sanitizer-fuzz
             parent_manifest: frontend/wasm-sanitizer/Cargo.toml
@@ -128,6 +154,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Rust nightly
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # nightly

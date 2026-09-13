@@ -4,6 +4,7 @@ import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
 import { http, HttpResponse } from "msw"
 
 import { server } from "@/tests/mocks/server"
+import { withExpectedConsole } from "@/tests/strictConsole"
 
 type DedupeMessage = { key: string; action: "add" | "delete" }
 type DedupeListener = (event: MessageEvent<DedupeMessage>) => void
@@ -11,13 +12,15 @@ type DedupeListener = (event: MessageEvent<DedupeMessage>) => void
 class RecordingBroadcastChannel {
   static instances: RecordingBroadcastChannel[] = []
   readonly messages: unknown[] = []
+  readonly eventTypes: string[] = []
   listener: DedupeListener | undefined
 
   constructor(readonly name: string) {
     RecordingBroadcastChannel.instances.push(this)
   }
 
-  addEventListener(_type: string, listener: DedupeListener) {
+  addEventListener(type: string, listener: DedupeListener) {
+    this.eventTypes.push(type)
     this.listener = listener
   }
 
@@ -104,6 +107,75 @@ describe("api/client — LHCI safe adapter", () => {
     })
   })
 
+  it("normalizes protocol-relative and slash-heavy mock URLs before matching", async () => {
+    server.use(http.get("*/api/v1/users", () => HttpResponse.json([])))
+    const { default: lhciApi } = await import("@/api/client")
+
+    ;(window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }).__E2E_NETWORK_API_MOCKS__ = true
+
+    // A protocol-relative URL exercises both absolute-url guards.  The mock
+    // adapter must still resolve the pathname without contacting the network.
+    await expect(lhciApi.get("//example.test/api/v1/users")).resolves.toMatchObject({
+      status: 200,
+      data: [],
+    })
+
+    // The relative path branch strips all duplicate leading/trailing slashes
+    // before URL resolution.  It must remain a non-chat route.
+    await expect(lhciApi.get("///other")).resolves.toMatchObject({
+      status: 200,
+      data: { items: [] },
+    })
+  })
+
+  it("normalizes relative adapter URLs with duplicate base and path slashes", async () => {
+    server.use(http.get("*/api/v1/users", () => HttpResponse.json([])))
+    const { default: lhciApi } = await import("@/api/client")
+    ;(window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }).__E2E_NETWORK_API_MOCKS__ = true
+    const adapter = lhciApi.defaults.adapter as (
+      config: InternalAxiosRequestConfig
+    ) => Promise<AxiosResponse>
+
+    const response = await adapter({
+      method: "get",
+      url: "users",
+      baseURL: "/api/v1///",
+      headers: new AxiosHeaders(),
+    } as InternalAxiosRequestConfig)
+
+    expect(response.status).toBe(200)
+    expect(response.data).toBe("[]")
+  })
+
+  it("keeps the E2E allowlist exact at chat and users boundaries", async () => {
+    server.use(
+      http.get("*/api/v1/chats/123", () =>
+        HttpResponse.json({
+          id: "chat-123",
+          participants: [],
+          created_at: "2026-07-30T00:00:00Z",
+          updated_at: "2026-07-30T00:00:00Z",
+        })
+      ),
+      http.get("*/api/v1/users", () => HttpResponse.json([]))
+    )
+    const { default: lhciApi } = await import("@/api/client")
+    ;(window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }).__E2E_NETWORK_API_MOCKS__ = true
+
+    await expect(lhciApi.get("/api/v1/chats/123")).resolves.toMatchObject({
+      data: { id: "chat-123" },
+    })
+    await expect(lhciApi.get("/api/v1/chat")).resolves.toMatchObject({
+      data: { items: [] },
+    })
+    await expect(lhciApi.get("/api/v1/users-extra")).resolves.toMatchObject({
+      data: { items: [] },
+    })
+    await expect(lhciApi.get("/api/v1/users")).resolves.toMatchObject({
+      data: [],
+    })
+  })
+
   it("handles an adapter config without url or baseURL", async () => {
     const { default: lhciApi } = await import("@/api/client")
 
@@ -122,15 +194,18 @@ describe("api/client — LHCI safe adapter", () => {
 
     expect(response.status).toBe(200)
     expect(response.data).toEqual({ items: [] })
+    expect(response.statusText).toBe("OK")
   })
 
   it("tolerates a request without url or method and skips the CSRF endpoint guard", async () => {
     const { default: lhciApi } = await import("@/api/client")
 
-    await expect(lhciApi.request({ skipRateLimitQueue: true } as never)).resolves.toMatchObject({
-      status: 200,
-      data: { items: [] },
-    })
+    await withExpectedConsole("warn", "[rateLimit] skipRateLimitQueue=true", () =>
+      expect(lhciApi.request({ skipRateLimitQueue: true } as never)).resolves.toMatchObject({
+        status: 200,
+        data: { items: [] },
+      })
+    )
     await expect(lhciApi.post("/auth/csrf-cookie", {})).resolves.toMatchObject({ status: 200 })
   })
 
@@ -157,6 +232,33 @@ describe("api/client — production browser configuration", () => {
     expect(productionApi.defaults.baseURL).toBe("/api/v1")
   })
 
+  it("keeps the client defaults and generated SDK base override stable", async () => {
+    const { default: productionApi } = await import("@/api/client")
+
+    expect(productionApi.defaults.timeout).toBe(8_000)
+    expect(productionApi.defaults.xsrfCookieName).toBe("csrf_token")
+    expect(productionApi.defaults.xsrfHeaderName).toBe("X-CSRF-Token")
+    expect(productionApi.defaults.headers.Accept).toBe("application/json")
+    expect(productionApi.defaults.headers["Content-Type"]).toBe("application/json")
+    expect(productionApi.defaults.headers["X-Requested-With"]).toBe("XMLHttpRequest")
+
+    const seen: InternalAxiosRequestConfig[] = []
+    productionApi.defaults.adapter = async (config): Promise<AxiosResponse> => {
+      seen.push(config)
+      return {
+        config,
+        data: { items: [] },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        request: {},
+      }
+    }
+    const { allEventsApiV1EventsGet } = await import("@/api/generated/sdk.gen")
+    await allEventsApiV1EventsGet({ query: { limit: 1 } })
+    expect(seen[0]!.url).toBe("/api/v1/events?limit=1")
+  })
+
   it("silently revokes a non-allowlisted queue bypass outside development", async () => {
     const { default: productionApi } = await import("@/api/client")
     const requestHandler = (productionApi.interceptors.request as any).handlers.find(
@@ -173,6 +275,25 @@ describe("api/client — production browser configuration", () => {
 
     expect(config.skipRateLimitQueue).toBe(false)
   })
+
+  it("preserves the bypass flag for every documented allowlisted endpoint", async () => {
+    const { default: productionApi } = await import("@/api/client")
+    const requestHandler = (productionApi.interceptors.request as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+
+    for (const url of ["/auth/session/signing-key", "/users/me", "/auth/refresh", "/auth/token"]) {
+      const config = {
+        method: "get",
+        url,
+        headers: new AxiosHeaders(),
+        skipRateLimitQueue: true,
+      } as InternalAxiosRequestConfig & { skipRateLimitQueue: boolean }
+
+      await requestHandler(config)
+      expect(config.skipRateLimitQueue).toBe(true)
+    }
+  })
 })
 
 describe("api/client — BroadcastChannel idempotency coordination", () => {
@@ -186,6 +307,7 @@ describe("api/client — BroadcastChannel idempotency coordination", () => {
     const { default: channelApi } = await import("@/api/client")
     const channel = RecordingBroadcastChannel.instances[0]
     expect(channel?.name).toBe("ecosystem.idempotency.dedup")
+    expect(channel?.eventTypes).toEqual(["message"])
 
     channel?.listener?.({
       data: { key: "remote-key", action: "add" },
@@ -234,6 +356,26 @@ describe("api/client — BroadcastChannel idempotency coordination", () => {
     expect(channel?.messages).toEqual([])
   })
 
+  it("does not track unsafe requests that omit an idempotency key", async () => {
+    const { default: channelApi } = await import("@/api/client")
+    const channel = RecordingBroadcastChannel.instances[0]
+    const adapter = vi.fn(async (config): Promise<AxiosResponse> => ({
+      config,
+      data: { ok: true },
+      status: 200,
+      statusText: "OK",
+      headers: new AxiosHeaders(),
+      request: {},
+    }))
+    channelApi.defaults.adapter = adapter
+
+    await channelApi.post("/events", { ok: true })
+    await channelApi.post("/events", { ok: true })
+
+    expect(adapter).toHaveBeenCalledTimes(2)
+    expect(channel?.messages).toEqual([])
+  })
+
   it("continues without cross-tab coordination when BroadcastChannel construction fails", async () => {
     class ThrowingBroadcastChannel {
       constructor() {
@@ -275,6 +417,39 @@ describe("api/client — BroadcastChannel idempotency coordination", () => {
     await expect(safeApi.post("/events", { ok: true }, requestConfig)).resolves.toMatchObject({
       status: 200,
     })
+  })
+
+  it("releases an idempotency key after success so a later retry is not suppressed", async () => {
+    vi.stubGlobal("BroadcastChannel", undefined)
+    const { default: safeApi } = await import("@/api/client")
+    const adapter = vi.fn(async (config): Promise<AxiosResponse> => ({
+      config,
+      data: { ok: true },
+      status: 200,
+      statusText: "OK",
+      headers: new AxiosHeaders(),
+      request: {},
+    }))
+    safeApi.defaults.adapter = adapter
+
+    const requestConfig = { headers: { "Idempotency-Key": "retry-after-success" } } as never
+    await expect(safeApi.post("/events", { ok: true }, requestConfig)).resolves.toMatchObject({
+      status: 200,
+    })
+    await expect(safeApi.post("/events", { ok: true }, requestConfig)).resolves.toMatchObject({
+      status: 200,
+    })
+
+    expect(adapter).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not construct a cross-tab channel during SSR", async () => {
+    vi.stubGlobal("window", undefined)
+    RecordingBroadcastChannel.instances = []
+
+    await import("@/api/client")
+
+    expect(RecordingBroadcastChannel.instances).toHaveLength(0)
   })
 })
 
@@ -321,6 +496,7 @@ describe("api/client — abort-aware 429 handling", () => {
 describe("api/client — SSR request branches", () => {
   beforeEach(() => {
     vi.resetModules()
+    vi.stubEnv("DEV", false)
     vi.stubGlobal("window", undefined)
     vi.stubGlobal(
       "__ssrCookieGetter__",
@@ -336,6 +512,7 @@ describe("api/client — SSR request branches", () => {
 
   it("forwards the incoming cookie and uses the SSR fallback base configuration", async () => {
     const { default: ssrApi, ensureCsrfCookie } = await import("@/api/client")
+    expect(ssrApi.defaults.baseURL).toBe("http://localhost:8000/api/v1")
     const seen: InternalAxiosRequestConfig[] = []
     ssrApi.defaults.adapter = async (config): Promise<AxiosResponse> => {
       seen.push(config)
@@ -357,6 +534,40 @@ describe("api/client — SSR request branches", () => {
     expect(AxiosHeaders.from(seen[0]!.headers).get("Accept-Language")).toBe("en-GB,en;q=0.9")
     const { resolveSsrBackendOrigin } = await import("@/api/backendOrigin")
     expect(resolveSsrBackendOrigin()).toBe("http://localhost:8000")
+  })
+
+  it("does not rate-limit concurrent SSR requests", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "1")
+    const { default: ssrApi } = await import("@/api/client")
+    const requestHandler = (ssrApi.interceptors.request as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+    const { releaseClientQueueSlot } = await import("@/api/interceptors/rateLimit")
+    type ClientQueueConfig = NonNullable<Parameters<typeof releaseClientQueueSlot>[0]>
+    const firstConfig = {
+      method: "get",
+      url: "/first",
+      headers: new AxiosHeaders(),
+    } as ClientQueueConfig
+    const secondConfig = {
+      method: "get",
+      url: "/second",
+      headers: new AxiosHeaders(),
+    } as ClientQueueConfig
+
+    let secondSettled = false
+    const first = requestHandler(firstConfig)
+    const second = requestHandler(secondConfig).then(() => {
+      secondSettled = true
+    })
+    for (let index = 0; index < 10 && !secondSettled; index += 1) {
+      await Promise.resolve()
+    }
+    expect(secondSettled).toBe(true)
+
+    releaseClientQueueSlot(firstConfig)
+    releaseClientQueueSlot(secondConfig)
+    await Promise.all([first, second])
   })
 
   it("prefers the runtime backend origin in the Node SSR container", async () => {
@@ -389,6 +600,52 @@ describe("api/client — SSR request branches", () => {
 
     expect(cookieGetter).toHaveBeenCalledOnce()
     expect(AxiosHeaders.from(seen[0]!.headers).get("Cookie")).toBeUndefined()
+  })
+
+  it("preserves the request headers object when SSR metadata is absent", async () => {
+    vi.doMock("@/api/interceptors/language", () => ({
+      applyLanguageHeader: (config: InternalAxiosRequestConfig) => config,
+    }))
+    vi.stubGlobal(
+      "__ssrCookieGetter__",
+      vi.fn(() => undefined)
+    )
+    vi.stubGlobal(
+      "__ssrFingerprintHeadersGetter__",
+      vi.fn(() => undefined)
+    )
+
+    try {
+      const { default: ssrApi } = await import("@/api/client")
+      const requestHandler = (ssrApi.interceptors.request as any).handlers.find(
+        (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+      )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+      const originalHeaders = { "X-Test-Header": "preserve" }
+      const config = {
+        method: "get",
+        url: "/news",
+        headers: originalHeaders,
+      } as unknown as InternalAxiosRequestConfig
+
+      const normalized = await requestHandler(config)
+
+      expect(normalized.headers).toBe(originalHeaders)
+    } finally {
+      vi.doUnmock("@/api/interceptors/language")
+    }
+  })
+
+  it.each([
+    [undefined, undefined, false],
+    ["", undefined, false],
+    ["access_token_v2=token", undefined, true],
+    [undefined, { userAgent: "Browser/1" }, true],
+  ] as const)("detects SSR forwarding metadata (%j, %j)", (cookie, fingerprint, expected) => {
+    // The predicate is intentionally exported as a pure contract so its
+    // allocation guard cannot regress into an unconditional headers clone.
+    return import("@/api/client").then(({ hasSsrForwardingHeaders }) => {
+      expect(hasSsrForwardingHeaders(cookie, fingerprint)).toBe(expected)
+    })
   })
 })
 
@@ -546,5 +803,60 @@ describe("api/client — defensive request/response interceptor inputs", () => {
     }
 
     await expect(responseHandler(error)).rejects.toBe(error)
+  })
+
+  it("normalizes an API-prefixed URL even when the request base URL is absent", async () => {
+    const { default: client } = await import("@/api/client")
+    const requestHandler = (client.interceptors.request as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+    const config = {
+      method: "post",
+      url: "/api/v1/users",
+      baseURL: undefined,
+      headers: new AxiosHeaders(),
+      data: {},
+    } as InternalAxiosRequestConfig
+
+    await expect(requestHandler(config)).resolves.toBe(config)
+    expect(config.url).toBe("/api/v1/users")
+  })
+
+  it("preserves JSON content type for non-FormData payloads", async () => {
+    const { default: client } = await import("@/api/client")
+    const requestHandler = (client.interceptors.request as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+    const config = {
+      method: "post",
+      url: "/events",
+      headers: AxiosHeaders.from({ "Content-Type": "application/json" }),
+      data: { title: "event" },
+    } as InternalAxiosRequestConfig
+
+    await requestHandler(config)
+    expect(AxiosHeaders.from(config.headers).get("Content-Type")).toBe("application/json")
+  })
+
+  it("uses an empty URL in the non-allowlisted bypass warning", async () => {
+    const { default: client } = await import("@/api/client")
+    const requestHandler = (client.interceptors.request as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    const config = {
+      method: "post",
+      url: undefined,
+      headers: new AxiosHeaders(),
+      skipRateLimitQueue: true,
+    } as InternalAxiosRequestConfig & { skipRateLimitQueue: boolean }
+
+    await requestHandler(config)
+
+    expect(config.skipRateLimitQueue).toBe(false)
+    expect(warning).toHaveBeenCalledWith(
+      "[rateLimit] skipRateLimitQueue=true for non-allowlisted URL: "
+    )
+    warning.mockRestore()
   })
 })

@@ -34,8 +34,8 @@ EXPECTED_EXTERNAL_IMAGES = {
         "nats:2.10.25-alpine@sha256:"
         "3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228"  # pragma: allowlist secret
     ),
-    "minio/minio:RELEASE.2025-09-07T16-13-09Z": (
-        "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:"
+    "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z": (
+        "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:"
         "14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"  # pragma: allowlist secret
     ),
     "ghcr.io/shopify/toxiproxy:2.9.0": (
@@ -373,13 +373,21 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     matrix_step = _step(universe, "Build validated mutmut execution matrix")
     assert "descriptor_count=" in matrix_step["run"]
     assert '"$descriptor_count" -gt 128' in matrix_step["run"]
+    assert "mutmut_shard_matrix.py groups" in matrix_step["run"]
+    assert "--target-groups 128" in matrix_step["run"]
+    assert "scripts/validate_mutmut_group_budgets.py" in matrix_step["run"]
+    assert "--output-manifest /tmp/mutmut-group-budgets.json" in matrix_step["run"]
+    assert "Preflight the exact execution budget" in matrix_step["run"]
+    assert "--metadata-startup-reserve-seconds 120" in matrix_step["run"]
+    assert "--max-timeout-seconds 20880" in matrix_step["run"]
+    assert "21,600 - 630 - 90" in matrix_step["run"]
     assert "Mutation matrix capacity" in matrix_step["run"]
     assert (
         'if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then'
         in matrix_step["run"]
     )
     assert (
-        'matrix_summary="Fully validated fixed plan assignments: 128"'
+        'matrix_summary="Fully validated 128 logical assignments; up to 128 budget-validated physical groups"'
         in matrix_step["run"]
     )
     assert (
@@ -393,13 +401,13 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     assert 'echo "- $matrix_summary"' in matrix_step["run"]
     assert 'echo "- $descriptor_summary"' in matrix_step["run"]
     assert "coverage phase barrier" in matrix_step["run"]
-    assert 'echo "- Mutmut producer max concurrency: 12"' in matrix_step["run"]
-    assert 'echo "- Stryker producer max concurrency: 8"' in matrix_step["run"]
+    assert 'echo "- Mutmut producer max concurrency: 10"' in matrix_step["run"]
+    assert 'echo "- Stryker producer max concurrency: 6"' in matrix_step["run"]
     assert "global hosted-runner cap: 20" in matrix_step["run"]
 
     # After the coverage phase barrier, the two producer lanes consume the
-    # complete repository-wide 20-runner budget (12 mutmut + 8 Stryker).
-    for family, expected in ((runners, 12), (stryker, 8)):
+    # Keep four hosted runners reserved for required diagnostics/aggregation.
+    for family, expected in ((runners, 10), (stryker, 6)):
         max_parallel = family["strategy"]["max-parallel"]
         assert isinstance(max_parallel, int)
         assert 1 <= max_parallel <= 20
@@ -651,7 +659,10 @@ def test_go_mutation_diagnostic_never_converts_tool_failure_to_success() -> None
     assert 'local isolated_root="$MUTATION_ROOT/$safe_target/repository"' in mutation
     assert 'local workdir="$isolated_root/$SERVICE_DIRECTORY"' in mutation
     assert 'cp -a "$GITHUB_WORKSPACE/$SERVICE_DIRECTORY/." "$workdir/"' in mutation
-    assert "for dependency in services/pkg/spiffe gen/go; do" in mutation
+    assert (
+        "for dependency in services/pkg/logging services/pkg/spiffe gen/go; do"
+        in mutation
+    )
     assert 'local dependency_source="$GITHUB_WORKSPACE/$dependency"' in mutation
     assert 'local dependency_destination="$isolated_root/$dependency"' in mutation
     assert (
@@ -787,8 +798,16 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     assert "stryker-preflight" in job["needs"]
     assert (
         'if [[ "$PRE_COMMIT_RESULT" == "success" && '
-        '"$FRONTEND_TESTS_RESULT" == "success" && '
+        '"$PRE_COMMIT_SECURITY_RESULT" == "success" && '
         '"$COVERAGE_RESULT" == "success" ]]; then' in gate
+    )
+    assert (
+        'elif [[ "$PRE_COMMIT_RESULT" == "success" && '
+        '"${{ needs.stryker-preflight.result }}" == "success" ]]; then' in gate
+    )
+    assert (
+        'assert_event_result "stryker-preflight" '
+        '"${{ needs.stryker-preflight.result }}" "success"' in gate
     )
     for mutation_job in (
         "stryker-preflight",
@@ -806,12 +825,12 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
         )
     assert 'assert_event_result "codecov-upload"' in gate
     assert '"sbom-generate|${{ needs.sbom-generate.result }}"' in gate
-    for advisory in (
+    for blocking in (
         "e2e-tests-cross-browser",
         "chaos-tests",
         "db-migration-integrity",
     ):
-        assert f'"{advisory}|${{{{ needs.{advisory}.result }}}}"' not in gate
+        assert f'"{blocking}|${{{{ needs.{blocking}.result }}}}"' in gate
 
 
 def test_ci_success_allows_coverage_skip_only_after_producer_failure() -> None:
@@ -981,11 +1000,11 @@ def test_critical_pattern_downloads_have_explicit_payload_guards() -> None:
         assert "-type d" in following_runs or "expected=" in following_runs
 
 
-def test_ci_success_does_not_enqueue_a_finalizer_after_run_cancellation() -> None:
-    """Superseded PR runs must release the workflow concurrency group promptly."""
+def test_ci_success_runs_while_dependencies_are_cancelled() -> None:
+    """The finalizer must classify cancelled dependencies instead of skipping."""
 
     job = _workflow(CI)["jobs"]["ci-success"]
-    assert job["if"] == "${{ always() && !cancelled() }}"
+    assert job["if"] == "${{ always() }}"
 
 
 def test_sonar_optionality_is_explicit_and_isolated() -> None:
@@ -1087,7 +1106,6 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
     assert observed_steps == expected_steps
     assert observed_jobs == {
         ("reusable-e2e-tests.yml", "e2e", "${{ inputs.advisory }}"),
-        ("reusable-go-tests.yml", "mutation-diagnostic", "True"),
     }
 
 

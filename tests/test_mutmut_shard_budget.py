@@ -14,7 +14,6 @@ from scripts.mutmut_shard_budget import (
     MUTMUT_TIMEOUT_KILL_GRACE_SECONDS,
     MUTMUT_WALL_TIMEOUT_GRACE_SECONDS,
     MUTMUT_WALL_TIMEOUT_MULTIPLIER,
-    SELECTED_TEST_PHASE_MULTIPLIER,
     TERMINATION_GRACE_SECONDS,
     calculate_shard_budget,
     main,
@@ -48,8 +47,9 @@ def test_calculate_shard_budget_models_mutmut_watchdog_and_parallel_workers() ->
     assert budget.control_cycle_reserve_seconds == 45
     assert budget.execution_cap_seconds == 285
     assert budget.selected_test_union_seconds == 4
+    assert budget.forced_fail_test_seconds == 3
     assert budget.pre_mutation_reserve_seconds == (
-        METADATA_AND_STARTUP_RESERVE_SECONDS + SELECTED_TEST_PHASE_MULTIPLIER * 4
+        METADATA_AND_STARTUP_RESERVE_SECONDS + 4 + 3
     )
     assert budget.outer_timeout_seconds == (
         budget.pre_mutation_reserve_seconds + budget.execution_cap_seconds
@@ -57,12 +57,15 @@ def test_calculate_shard_budget_models_mutmut_watchdog_and_parallel_workers() ->
     assert budget.total_wall_cap_seconds == (
         budget.outer_timeout_seconds + TERMINATION_GRACE_SECONDS
     )
+    serialized = budget.as_json(max_timeout_seconds=10_000)
+    assert serialized["schema_version"] == 2
+    assert serialized["forced_fail_test_seconds"] == 3
 
 
 def test_calculate_shard_budget_scopes_clean_and_forced_fail_to_selected_test_union() -> (
     None
 ):
-    """Unrelated tests cannot inflate a selected shard's pre-mutation budget."""
+    """Unrelated tests cannot inflate either selected pre-mutation phase."""
 
     budget = calculate_shard_budget(
         [
@@ -88,11 +91,14 @@ def test_calculate_shard_budget_scopes_clean_and_forced_fail_to_selected_test_un
         max_children=2,
     )
 
-    # The selected exact union is alpha + beta + shared (1 + 3 + 2), not the
-    # complete population and not the duplicate sum from two mutant mappings.
+    # The selected exact clean union is alpha + beta + shared (1 + 3 + 2), not
+    # the complete population and not the duplicate sum from two mappings. The
+    # forced-fail phase stops at the first ``pytest -x`` failure, so it is
+    # charged only the slowest mapped test (3), not another full union.
     assert budget.selected_test_union_seconds == 6
+    assert budget.forced_fail_test_seconds == 3
     assert budget.pre_mutation_reserve_seconds == (
-        METADATA_AND_STARTUP_RESERVE_SECONDS + 2 * 6
+        METADATA_AND_STARTUP_RESERVE_SECONDS + 6 + 3
     )
     # GNU timeout receives this value and adds its separate kill-after grace.
     assert budget.outer_timeout_seconds == (
@@ -153,6 +159,83 @@ def test_calculate_shard_budget_supports_an_explicit_fail_closed_control_reserve
     )
 
 
+def test_calculate_shard_budget_records_reused_universe_startup_reserve() -> None:
+    """Reusable-universe callers can prove a smaller setup envelope explicitly."""
+
+    budget = calculate_shard_budget(
+        ["app.module.x__mutmut_1"],
+        {"app.module.x": ["tests/test_x.py::test_x"]},
+        {"tests/test_x.py::test_x": 1.0},
+        max_children=1,
+        metadata_and_startup_reserve_seconds=240,
+    )
+
+    assert budget.metadata_and_startup_reserve_seconds == 240
+    assert budget.forced_fail_test_seconds == 1
+    assert budget.pre_mutation_reserve_seconds == 242
+    assert (
+        budget.as_json(max_timeout_seconds=20_970)[
+            "metadata_and_startup_reserve_seconds"
+        ]
+        == 240
+    )
+
+
+def test_calculate_shard_budget_rejects_negative_startup_reserve() -> None:
+    with pytest.raises(ValueError, match="metadata_and_startup_reserve_seconds"):
+        calculate_shard_budget(
+            ["app.module.x__mutmut_1"],
+            {"app.module.x": ["tests/test_x.py::test_x"]},
+            {"tests/test_x.py::test_x": 1.0},
+            max_children=1,
+            metadata_and_startup_reserve_seconds=-1,
+        )
+
+
+def test_budget_cli_rejects_negative_startup_reserve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selected_file = tmp_path / "selected-mutants.txt"
+    stats_file = tmp_path / "mutmut-stats.json"
+    output_file = tmp_path / "budget.json"
+    selected_file.write_text("app.module.x__mutmut_1\n", encoding="utf-8")
+    stats_file.write_text(
+        json.dumps(
+            {
+                "tests_by_mangled_function_name": {
+                    "app.module.x": ["tests/test_x.py::test_x"]
+                },
+                "duration_by_test": {"tests/test_x.py::test_x": 1.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mutmut_shard_budget.py",
+            "--selected-file",
+            str(selected_file),
+            "--stats",
+            str(stats_file),
+            "--max-children",
+            "1",
+            "--metadata-startup-reserve-seconds",
+            "-1",
+            "--max-timeout-seconds",
+            "20970",
+            "--output",
+            str(output_file),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as error:
+        main()
+    assert error.value.code == 2
+    assert not output_file.exists()
+
+
 def test_calculate_shard_budget_rounds_a_positive_sub_ulp_duration_up_in_both_paths() -> (
     None
 ):
@@ -174,10 +257,11 @@ def test_calculate_shard_budget_rounds_a_positive_sub_ulp_duration_up_in_both_pa
     # though its nearest binary float rounds to 1.0. Both the selected union
     # reserve and mutmut's 15x watchdog therefore need their next full second.
     assert budget.selected_test_union_seconds == 2
+    assert budget.forced_fail_test_seconds == 1
     assert budget.watchdog_execution_cap_seconds == 106
-    assert budget.pre_mutation_reserve_seconds == 904
-    assert budget.outer_timeout_seconds == 1025
-    assert budget.total_wall_cap_seconds == 1055
+    assert budget.pre_mutation_reserve_seconds == 903
+    assert budget.outer_timeout_seconds == 1024
+    assert budget.total_wall_cap_seconds == 1054
 
 
 def test_calculate_shard_budget_matches_the_observed_pr_lifecycle_shape() -> None:

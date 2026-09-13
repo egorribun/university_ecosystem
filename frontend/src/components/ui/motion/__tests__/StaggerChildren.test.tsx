@@ -61,6 +61,20 @@ describe("StaggerChildren", () => {
     expect(disconnect).toHaveBeenCalledOnce()
   })
 
+  it("uses the documented defaults for root margin and one-shot visibility", () => {
+    const { container } = render(
+      <StaggerChildren>
+        <div className="stagger-item">Default</div>
+      </StaggerChildren>
+    )
+
+    expect(options).toEqual({ rootMargin: "0px 0px -80px 0px" })
+    expect(window.matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
+    callback([{ isIntersecting: true } as IntersectionObserverEntry], observer)
+    expect(container.querySelector<HTMLElement>(".stagger-item")?.dataset.visible).toBe("true")
+    expect(disconnect).toHaveBeenCalledOnce()
+  })
+
   it("keeps observing non-intersecting entries when once is disabled", () => {
     const { container, unmount } = render(
       <StaggerChildren once={false}>
@@ -100,5 +114,27 @@ describe("StaggerChildren", () => {
     )
     const item = container.querySelector<HTMLElement>(".stagger-item")
     expect(item?.dataset.visible).toBe("true")
+  })
+
+  it("rebuilds the observer when its runtime options change", () => {
+    const { container, rerender } = render(
+      <StaggerChildren rootMargin="0px">
+        <div className="stagger-item">Options</div>
+      </StaggerChildren>
+    )
+    const firstCallback = callback
+    expect(options).toEqual({ rootMargin: "0px" })
+
+    rerender(
+      <StaggerChildren rootMargin="20px" once={false}>
+        <div className="stagger-item">Options</div>
+      </StaggerChildren>
+    )
+
+    expect(disconnect).toHaveBeenCalledOnce()
+    expect(options).toEqual({ rootMargin: "20px" })
+    expect(observe).toHaveBeenCalledTimes(2)
+    firstCallback([{ isIntersecting: true } as IntersectionObserverEntry], observer)
+    expect(container.querySelector<HTMLElement>(".stagger-item")?.dataset.visible).toBe("true")
   })
 })

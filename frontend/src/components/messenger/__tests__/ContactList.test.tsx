@@ -1,8 +1,8 @@
-import { render, screen, fireEvent } from "@testing-library/react"
+import { createEvent, render, screen, fireEvent } from "@testing-library/react"
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 import { createElement, forwardRef, type ReactNode } from "react"
 
-import { ContactList } from "@/components/messenger/ContactList"
+import { ContactList, getContactNavigationIndex } from "@/components/messenger/ContactList"
 import { GroupAvatar } from "@/components/messenger/GroupAvatar"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
@@ -168,6 +168,10 @@ describe("ContactList — empty state (W183 SW1)", () => {
     const iconContainer = container.querySelector(".messenger-card-matte")
     expect(iconContainer).toHaveStyle({ background: "var(--messenger-card-bg)" })
     expect(iconContainer?.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expect(entrance).toHaveAttribute(
+      "data-motion-animate",
+      JSON.stringify({ scale: 1, opacity: 1, y: 0 })
+    )
   })
 
   it("omits empty-state animation objects under reduced motion while keeping the state visible", () => {
@@ -397,6 +401,17 @@ describe("ContactList — empty state (W183 SW1)", () => {
     expect(retry).toHaveAttribute("data-motion-while-tap", JSON.stringify({ scale: 0.96 }))
   })
 
+  it("uses a zero-duration transition for the reduced-motion error state", () => {
+    mockReducedMotion.mockReturnValue(true)
+    const { container } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isError />,
+      { wrapper }
+    )
+
+    const panel = container.querySelector("[data-motion-animate]")
+    expect(panel).toHaveAttribute("data-motion-transition", JSON.stringify({ duration: 0 }))
+  })
+
   it("removes retry hover/tap animation objects under reduced motion", () => {
     mockReducedMotion.mockReturnValue(true)
     render(
@@ -417,6 +432,15 @@ describe("ContactList — empty state (W183 SW1)", () => {
 })
 
 describe("ContactList — keyboard navigation (W183 SW4)", () => {
+  it("clamps every navigation target to the contact list bounds", () => {
+    expect(getContactNavigationIndex(2, "ArrowDown", 3)).toBe(2)
+    expect(getContactNavigationIndex(0, "ArrowUp", 3)).toBe(0)
+    expect(getContactNavigationIndex(1, "ArrowDown", 3)).toBe(2)
+    expect(getContactNavigationIndex(1, "Home", 3)).toBe(0)
+    expect(getContactNavigationIndex(1, "End", 3)).toBe(2)
+    expect(getContactNavigationIndex(1, "PageDown", 3)).toBe(1)
+  })
+
   it("renders unread badges without entrance motion when reduced motion is enabled", () => {
     mockReducedMotion.mockReturnValue(true)
     render(<ContactList contacts={mockContacts} selectedId={null} onSelect={() => {}} />, {
@@ -501,6 +525,24 @@ describe("ContactList — keyboard navigation (W183 SW4)", () => {
 
     fireEvent.keyDown(aliceRow, { key: "PageDown" })
 
+    expect(document.activeElement).toBe(aliceRow)
+  })
+
+  it("does not consume unrelated key events", () => {
+    render(<ContactList contacts={mockContacts} selectedId={null} onSelect={() => {}} />, {
+      wrapper,
+    })
+    const aliceRow = document.getElementById("messenger-contact-1")!
+    aliceRow.focus()
+    const event = createEvent.keyDown(aliceRow, {
+      key: "PageDown",
+      bubbles: true,
+      cancelable: true,
+    })
+
+    fireEvent(aliceRow, event)
+
+    expect(event.defaultPrevented).toBe(false)
     expect(document.activeElement).toBe(aliceRow)
   })
 
@@ -747,7 +789,7 @@ describe("ContactList — populated contacts", () => {
 
     expect(bob.querySelector("img")).toHaveAttribute("src", "/fallbacks/default_avatar.png")
     expect(bob.querySelector(".messenger-online-indicator")).not.toBeInTheDocument()
-    expect(screen.getByLabelText('messenger:aria.unread|{"count":99}')).toHaveTextContent("99")
+    expect(screen.getByLabelText('messenger:aria.unread|{"count":99}')).toHaveTextContent(/^99$/)
     expect(screen.getByLabelText('messenger:aria.unread|{"count":100}')).toHaveTextContent("99+")
   })
 
@@ -822,6 +864,22 @@ describe("ContactList — populated contacts", () => {
     // transient input as well.
     ;(contacts as unknown as Array<unknown>)[1] = undefined
     fireEvent.keyDown(firstRow, { key: "ArrowDown" })
+    expect(document.activeElement).toBe(firstRow)
+  })
+
+  it("clamps keyboard navigation at both list boundaries", () => {
+    const contacts = [mockContacts[0]!, mockContacts[1]!]
+    render(<ContactList contacts={contacts} selectedId={null} onSelect={() => {}} />, { wrapper })
+
+    const firstRow = document.getElementById("messenger-contact-1")!
+    const lastRow = document.getElementById("messenger-contact-2")!
+
+    lastRow.focus()
+    fireEvent.keyDown(lastRow, { key: "ArrowDown" })
+    expect(document.activeElement).toBe(lastRow)
+
+    firstRow.focus()
+    fireEvent.keyDown(firstRow, { key: "ArrowUp" })
     expect(document.activeElement).toBe(firstRow)
   })
 })

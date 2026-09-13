@@ -225,6 +225,60 @@ def test_rejects_every_supported_component_floor_below_100(tmp_path: Path) -> No
         assert f"{field} must be at least 100" in result.stderr
 
 
+def test_zero_component_floor_requires_explicit_unsupported_status(
+    tmp_path: Path,
+) -> None:
+    contract = _load_contract()
+    # Go line coverage is a trusted derived metric and therefore has a 100%
+    # floor. A forged zero floor must not regain the historical implicit N/A
+    # bypass when the status matrix does not declare ``unsupported``.
+    contract["components"]["go-gateway"]["coverage"]["lines"] = 0
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert (
+        "go-gateway.coverage.lines must be at least 100; zero floor requires "
+        "metric_statuses.go-gateway.lines to allow unsupported"
+    ) in result.stderr
+
+
+def test_contract_declares_explicit_metric_status_semantics() -> None:
+    contract = _load_contract()
+    statuses = contract["metric_statuses"]
+    assert isinstance(statuses, dict)
+    assert statuses["python"]["functions"] == ["derived", "unsupported"]
+    assert statuses["go-gateway"]["lines"] == ["derived"]
+    assert statuses["go-gateway"]["statements"] == ["native"]
+    assert statuses["go-gateway"]["branches"] == ["unsupported"]
+    assert statuses["rust-crypto"]["statements"] == ["unsupported"]
+
+
+def test_rejects_contract_without_explicit_metric_status_semantics(
+    tmp_path: Path,
+) -> None:
+    contract = _load_contract()
+    del contract["metric_statuses"]
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert "contract is missing required key: metric_statuses" in result.stderr
+
+
+def test_rejects_incomplete_metric_status_semantics(tmp_path: Path) -> None:
+    contract = _load_contract()
+    contract["metric_statuses"]["frontend"]["branches"] = ["missing"]
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert (
+        "metric_statuses.frontend.branches contains unsupported status: missing"
+        in result.stderr
+    )
+
+
 def test_rejects_coverage_scope_outside_declared_source_roots(tmp_path: Path) -> None:
     contract = _load_contract()
     coverage_scope = contract["coverage_scope"]

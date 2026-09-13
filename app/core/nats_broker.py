@@ -16,6 +16,7 @@ from nats.js.api import RetentionPolicy, StorageType, StreamConfig
 from nats.js.errors import BadRequestError
 from opentelemetry import propagate, trace
 from opentelemetry.trace import SpanKind
+from prometheus_client import Counter
 from pydantic import BaseModel, ValidationError, field_validator
 
 from app.core.config import settings
@@ -39,6 +40,15 @@ class Task(Protocol[P, R_co]):
 
 _logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+
+# A CORE-NATS publish is intentionally best-effort, but a disconnected broker
+# must remain observable.  The event itself can self-heal through the next
+# refetch; this counter lets operators distinguish that bounded loss from a
+# healthy live fan-out.
+nats_publish_core_skipped_total = Counter(
+    "nats_publish_core_skipped_total",
+    "CORE-NATS publishes skipped because the broker is disconnected",
+)
 
 # HIGH-W19: Module-level reference to the FastAPI application instance.
 # Populated by set_app() during lifespan startup to avoid a circular import
@@ -333,6 +343,11 @@ class NatsTaskBroker:
         # self-heals via the next refetch; the broker's own background reconnect
         # (max_reconnect_attempts=-1) restores the connection independently.
         if self._nc is None or not self._nc.is_connected:
+            nats_publish_core_skipped_total.inc()
+            _logger.warning(
+                "nats_publish_skipped_not_connected",
+                subject=subject,
+            )
             return
 
         with tracer.start_as_current_span(

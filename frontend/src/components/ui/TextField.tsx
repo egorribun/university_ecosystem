@@ -1,6 +1,7 @@
 import React, { ChangeEvent, FocusEvent, useId } from "react"
 import { cn } from "@/utils/cn"
-import { Input, Textarea } from "@/components/ui"
+import { Input } from "@/components/ui/Input"
+import { Textarea } from "@/components/ui/Textarea"
 
 export const TextField = React.forwardRef<
   HTMLInputElement | HTMLTextAreaElement,

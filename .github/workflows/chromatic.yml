@@ -128,6 +128,13 @@ jobs:
         with:
           tool: wasm-pack@0.13.1
 
+      - name: Setup Rust toolchain
+        # Pin the compiler used for tracked WASM package generation.
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # pinned action
+        with:
+          toolchain: 1.97.1
+          targets: wasm32-unknown-unknown
+
       - name: Build WASM modules
         # Wave 146 polish-v5 — 3-attempt retry around `wasm-pack build` to
         # absorb transient GitHub Releases binaryen download flakes (W139

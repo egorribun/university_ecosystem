@@ -85,8 +85,15 @@ async def revoke_sessions_matching(
     db: AsyncSession,
     whereclause: ClauseElement[bool],  # type: ignore[type-arg]
     rotate_signing_key: bool = True,
+    lock_rows: bool = False,
 ) -> int:
-    """Mark matching sessions as revoked without deleting their rows."""
+    """Mark matching sessions as revoked without deleting their rows.
+
+    ``lock_rows`` is used by security-boundary mutations (for example a
+    password reset) that already hold the account row lock and must serialize
+    the session read/revoke transition with concurrent session creation or
+    refresh.  The default remains unlocked for the periodic cleanup callers.
+    """
 
     # MED-W20: db.stream() with yield_per triggers asyncpg's server-side cursor
     # protocol, which reuses prepared statements from the same connection and
@@ -94,6 +101,8 @@ async def revoke_sessions_matching(
     # prior query with a different parameter count.  Sessions per user are a
     # bounded set, so fetching them all at once with execute() is safe.
     stmt = select(ActiveSession).where(whereclause)  # type: ignore[arg-type]
+    if lock_rows:
+        stmt = stmt.with_for_update()
     exec_result = await db.execute(stmt)
 
     session_backend = await get_session_backend()

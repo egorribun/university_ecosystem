@@ -95,6 +95,13 @@ const mfaLogin = (resendAvailableAt = "2020-01-01T00:00:00Z"): PendingMfaState =
   ],
 })
 
+const pendingLoginWithMethods = (methods: PendingMfaState["methods"]): PendingMfaState => ({
+  status: "mfa_required",
+  user_id: "u-1",
+  reason: "login",
+  methods,
+})
+
 // ---------------------------------------------------------------------------
 // useLoginForm.onSubmit — lines 121-146
 // ---------------------------------------------------------------------------
@@ -218,6 +225,29 @@ describe("useLoginForm.onSubmit", () => {
 
     await waitFor(() => expect(result.current.submitError).toBe("auth:login.error"))
   })
+
+  it("does not dereference a missing Axios response while mapping login errors", async () => {
+    const error = new AxiosError("transport failure")
+    mocks.login.mockRejectedValue(error)
+    const { result } = renderHook(() => useLoginForm())
+    act(() => {
+      result.current.form.setValue("email", "a@b.dev")
+      result.current.form.setValue("password", "Password123!")
+    })
+
+    await act(async () => {
+      await result.current.onSubmit()
+    })
+
+    await waitFor(() => expect(result.current.submitError).toBe("transport failure"))
+  })
+
+  it("uses the persisted email when the current form value is empty", () => {
+    window.localStorage.setItem("auth:lastEmail", JSON.stringify("saved@example.com"))
+    const { result } = renderHook(() => useLoginForm())
+
+    expect(result.current.activeEmail).toBe("saved@example.com")
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -234,9 +264,16 @@ describe("useLoginForm suggestion", () => {
     await act(async () => {
       await result.current.handleEmailBlur()
     })
-    expect(result.current.emailSuggestion).toBe("user@gmail.com")
-    act(() => {
+    // React Hook Form publishes the resolver result through its subscription
+    // after `trigger` resolves.  Wait for that observable state transition so
+    // the subsequent suggestion assertions do not race a post-act update.
+    await waitFor(() => expect(result.current.emailSuggestion).toBe("user@gmail.com"))
+    await act(async () => {
       result.current.applySuggestion()
+      // `setValue(..., { shouldValidate: true })` starts RHF's resolver
+      // asynchronously.  Await an equivalent trigger in the same act scope
+      // so that both the value write and its subscription update are drained.
+      await result.current.form.trigger("email")
     })
     expect(result.current.emailSuggestion).toBeNull()
     expect(result.current.form.getValues("email")).toBe("user@gmail.com")
@@ -259,6 +296,9 @@ describe("useLoginForm suggestion", () => {
     await act(async () => {
       await result.current.handleEmailBlur()
     })
+    // The empty value is rejected by the resolver; waiting for the surfaced
+    // error also drains React Hook Form's asynchronous state notification.
+    await waitFor(() => expect(result.current.form.formState.errors.email).toBeDefined())
 
     expect(mocks.suggestEmailDomain).not.toHaveBeenCalled()
     expect(result.current.emailSuggestion).toBeNull()
@@ -374,6 +414,57 @@ describe("useMfaFlow.handleRecoveryVerify", () => {
 
     expect(result.current.mfaError).toBe("auth:mfa.errors.generic")
     expect(result.current.mfaErrorSource).toBe("general")
+  })
+})
+
+describe("useMfaFlow challenge guards", () => {
+  it("treats a login MFA challenge without a TOTP method as expired", async () => {
+    mocks.pendingMfa = pendingLoginWithMethods([
+      {
+        method: "email_otp",
+        challenge_token: "ct-email",
+      } as PendingMfaState["methods"][number],
+    ])
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleOtpVerify("123456")
+    })
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.expired")
+    expect(result.current.mfaErrorSource).toBe("general")
+    expect(mocks.submitMfaChallenge).not.toHaveBeenCalled()
+  })
+
+  it("treats a login MFA challenge without an email method as expired", async () => {
+    mocks.pendingMfa = pendingLoginWithMethods([
+      {
+        method: "totp",
+        challenge_token: "ct-totp",
+      } as PendingMfaState["methods"][number],
+    ])
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleEmailOtpVerify("123456")
+    })
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.expired")
+    expect(result.current.mfaErrorSource).toBe("general")
+    expect(mocks.submitMfaChallenge).not.toHaveBeenCalled()
+  })
+
+  it("treats a challenge with no methods as expired for recovery verification", async () => {
+    mocks.pendingMfa = pendingLoginWithMethods([])
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleRecoveryVerify("RECOVERY")
+    })
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.expired")
+    expect(result.current.mfaErrorSource).toBe("general")
+    expect(mocks.submitMfaChallenge).not.toHaveBeenCalled()
   })
 })
 

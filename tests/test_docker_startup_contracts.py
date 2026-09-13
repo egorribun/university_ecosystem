@@ -916,6 +916,7 @@ def test_launcher_manages_independent_application_secrets() -> None:
     launcher = _read("start-docker.ps1")
     example = _env_values(".env.docker.example")
     managed = {
+        "TOKEN_HMAC_SECRET",
         "CSRF_HMAC_SECRET",
         "INTERNAL_HMAC_SECRET",
         "IDEMPOTENCY_HMAC_SECRET",
@@ -1296,6 +1297,8 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "backend.config.spicedbPresharedKey=ci-placeholder",
         "--set",
         "backend.config.auditLogSecret=ci-placeholder",
+        "--set",
+        "backend.config.tokenHMACSecret=ci-placeholder",
         "--set",
         "backend.config.idempotencyHMACSecret=ci-placeholder",
         "--set",
@@ -1731,7 +1734,7 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     assert "--replace golang.org/x/net=golang.org/x/net@v0.56.0" in dockerfile
     assert "--replace golang.org/x/text=golang.org/x/text@v0.39.0" in dockerfile
     assert (
-        "--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.1" in dockerfile
+        "--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.2" in dockerfile
     )
     for package in (
         "libapk=3.0.7-r0",
@@ -2020,7 +2023,7 @@ def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
     assert "GRPC_HEALTH_PROBE_VERSION=v0.4.51" in health_probe
     for dependency in (
         "github.com/spiffe/go-spiffe/v2@v2.7.0",
-        "google.golang.org/grpc@v1.83.1",
+        "google.golang.org/grpc@v1.83.2",
         "golang.org/x/net@v0.57.0",
         "golang.org/x/text@v0.40.0",
     ):

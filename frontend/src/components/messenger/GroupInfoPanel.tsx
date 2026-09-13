@@ -33,6 +33,13 @@ interface GroupInfoPanelProps {
 const USERS_PAGE_LIMIT = 10
 const MIN_SEARCH_LENGTH = 1
 
+/** Keep the user-search gate explicit and independently contract-testable. */
+export const shouldSearchGroupUsers = (
+  open: boolean,
+  showAddSearch: boolean,
+  query: string
+): boolean => open && showAddSearch && query.length > MIN_SEARCH_LENGTH
+
 /**
  * Wave 211 G4 (SW10) — group info / member-management panel. Mirrors
  * ProfileModal's a11y shell (focus trap, role=dialog + aria-modal, Escape, matte
@@ -57,7 +64,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const [isEditingName, setIsEditingName] = useState(false)
-  const [nameDraft, setNameDraft] = useState("")
+  const [nameDraft, setNameDraft] = useState<string | undefined>()
   const [showAddSearch, setShowAddSearch] = useState(false)
   const [search, setSearch] = useState("")
   const debouncedSearch = useDebounced(search, "search")
@@ -83,11 +90,12 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
 
   // Reset transient sub-state when the panel closes.
   useEffect(() => {
-    if (open) return
-    setIsEditingName(false)
-    setNameDraft("")
-    setShowAddSearch(false)
-    setSearch("")
+    if (!open) {
+      setIsEditingName(false)
+      setNameDraft(undefined)
+      setShowAddSearch(false)
+      setSearch("")
+    }
   }, [open])
 
   const members = chat?.participants ?? []
@@ -107,16 +115,16 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
       // emitting a runtime warning and leaving the search state ambiguous.
       return response.data ?? []
     },
-    enabled: open && showAddSearch && debouncedSearch.length > MIN_SEARCH_LENGTH,
+    enabled: shouldSearchGroupUsers(open, showAddSearch, debouncedSearch),
   })
   const addableResults = searchResults.filter((u) => !memberIds.has(String(u.id)))
 
-  const startRename = () => {
-    setNameDraft(chat?.name ?? "")
+  const startRename = (currentChat: Chat) => {
+    setNameDraft(currentChat.name ?? undefined)
     setIsEditingName(true)
   }
   const saveRename = () => {
-    const trimmed = nameDraft.trim()
+    const trimmed = nameDraft === undefined ? "" : nameDraft.trim()
     if (trimmed) onRename(trimmed)
     setIsEditingName(false)
   }
@@ -174,7 +182,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
-                      value={nameDraft}
+                      value={nameDraft ?? ""}
                       onChange={(e) => setNameDraft(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") saveRename()
@@ -189,7 +197,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                     <button
                       type="button"
                       onClick={saveRename}
-                      disabled={isRenaming || !nameDraft.trim()}
+                      disabled={isRenaming || !nameDraft?.trim()}
                       aria-label={t("common:buttons.save")}
                       className="messenger-send-btn flex size-11 shrink-0 items-center justify-center rounded-full text-(--color-white) disabled:opacity-medium disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                     >
@@ -199,7 +207,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                 ) : (
                   <button
                     type="button"
-                    onClick={startRename}
+                    onClick={() => startRename(chat)}
                     className="inline-flex min-h-[40px] items-center gap-2 rounded-xl px-3 text-sm font-semibold text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                   >
                     <Pencil className="size-4" strokeWidth={2} aria-hidden="true" />

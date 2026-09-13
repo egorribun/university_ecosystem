@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.logging import get_stdlib_logger
 from app.core.observability import get_request_id
 from app.models.domain_events import StoredEvent
 from app.models.logs import DataAccessLog
@@ -35,7 +36,7 @@ if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
     from app.schemas.dtos import DataAccessLogDTO
 
-logger = logging.getLogger("app.audit")
+logger = get_stdlib_logger("app.audit")
 
 
 class SecurityEvent(StrEnum):
@@ -85,19 +86,26 @@ class AuditService:
     def __init__(self) -> None:
         self.logger = logger
 
-    def _select_logger(self, event: str) -> logging.Logger:
-        """Route audit events to component-specific loggers."""
+    def _select_logger(self, event: str) -> Any:
+        """Route audit events to component-specific bridged loggers.
+
+        Audit consumers historically parse the JSON audit payload from
+        ``LogRecord.message``.  Keep that lossless stdlib record contract while
+        obtaining loggers through the central helper; configured root handlers
+        route every record through ``ProcessorFormatter`` for redaction,
+        context and rendering.
+        """
         if event.startswith("auth."):
-            return logging.getLogger("app.auth")
+            return get_stdlib_logger("app.auth")
         if event.startswith(("password.", "users.")):
-            return logging.getLogger("app.users.audit")
+            return get_stdlib_logger("app.users.audit")
         if event.startswith("mfa."):
-            return logging.getLogger("app.mfa")
+            return get_stdlib_logger("app.mfa")
         if event.startswith("admin."):
-            return logging.getLogger("app.admin")
+            return get_stdlib_logger("app.admin")
         if event.startswith("access."):
-            return logging.getLogger("app.access")
-        return self.logger
+            return get_stdlib_logger("app.access")
+        return get_stdlib_logger("app.audit")
 
     def _redact_sensitive(self, data: dict[str, Any]) -> dict[str, Any]:
         """Return a copy of data with sensitive fields redacted."""

@@ -669,6 +669,7 @@ INLINE_SECRET_OVERRIDES = (
     "backend.config.elasticsearchPassword=inline",
     "backend.config.spicedbPresharedKey=inline",
     "backend.config.auditLogSecret=inline",
+    "backend.config.tokenHMACSecret=inline",
     "backend.config.idempotencyHMACSecret=inline",
     "backend.config.mfaEmailOtpHMACKeys=inline",
     "backend.config.mfaEmailOtpActiveHMACKeyId=inline",
@@ -955,6 +956,22 @@ def _component_resource(
         .get("app.kubernetes.io/component")
         == component
     )
+
+
+def test_auth_token_hmac_secret_is_wired_from_application_secret() -> None:
+    resources = _render_staging(release_name="university-ecosystem")
+    expected_ref = {
+        "name": "university-application",
+        "key": "token-hmac-secret",
+    }
+
+    for component in ("backend", "outbox-worker"):
+        deployment = _component_resource(resources, "Deployment", component)
+        env = {
+            item["name"]: item
+            for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+        }
+        assert env["TOKEN_HMAC_SECRET"]["valueFrom"]["secretKeyRef"] == expected_ref
 
 
 def test_ws_hub_is_a_restricted_helm_managed_atomic_workload() -> None:

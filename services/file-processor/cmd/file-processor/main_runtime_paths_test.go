@@ -94,6 +94,7 @@ func TestStartNatsSubscriber_JetStreamError(t *testing.T) {
 	}
 
 	assert.NotPanics(t, func() {
-		startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+		err := startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+		assert.Error(t, err)
 	})
 }

@@ -95,6 +95,44 @@ type heartbeatTimeoutPayload struct {
 	Signature string               `json:"signature"`
 }
 
+type directChatMessage struct {
+	ChatID    string `json:"chat_id"`
+	Content   string `json:"content"`
+	MessageID string `json:"message_id"`
+	SenderID  string `json:"sender_id"`
+}
+
+type chatMessageSent struct {
+	ChatID         string `json:"chat_id"`
+	ContentPreview string `json:"content_preview"`
+	MessageID      string `json:"message_id"`
+	SenderID       string `json:"sender_id"`
+}
+
+type chatDeleted struct {
+	ChatID        string `json:"chat_id"`
+	ParticipantID string `json:"participant_id"`
+}
+
+type userCreated struct {
+	Email  string `json:"email"`
+	UserID string `json:"user_id"`
+}
+
+type notificationSent struct {
+	NotificationID   string `json:"notification_id"`
+	NotificationType string `json:"notification_type"`
+	UserID           string `json:"user_id"`
+}
+
+type taskEnvelope struct {
+	Args         []string       `json:"args"`
+	ID           string         `json:"id"`
+	Kwargs       map[string]any `json:"kwargs"`
+	Name         string         `json:"name"`
+	TraceContext map[string]any `json:"trace_context"`
+}
+
 // ---------------------------------------------------------------------------
 // Helper — reproduces app/services/ws_hub_client.py signing logic exactly.
 // ---------------------------------------------------------------------------
@@ -222,6 +260,68 @@ func TestCacheInvalidationMessageProvider(t *testing.T) {
 				"contentType":  "application/json",
 				"nats_subject": "cache.invalidate",
 			}, nil
+		},
+		"a direct chat message event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
+			return directChatMessage{
+					ChatID:    "chat-uuid-123",
+					MessageID: "msg-uuid-456",
+					Content:   "Hello there!",
+					SenderID:  "user-uuid-789",
+				}, pactMessage.Metadata{
+					"contentType":  "application/json",
+					"nats_subject": "chat.direct",
+				}, nil
+		},
+		"a chat message_sent domain event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
+			return chatMessageSent{
+					ChatID:         "chat-uuid-001",
+					MessageID:      "msg-uuid-001",
+					SenderID:       "user-uuid-001",
+					ContentPreview: "Hello world",
+				}, pactMessage.Metadata{
+					"contentType":  "application/json",
+					"nats_subject": "chat.message_sent",
+				}, nil
+		},
+		"a chat deleted event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
+			return chatDeleted{
+					ChatID:        "chat-uuid-del",
+					ParticipantID: "user-uuid-del",
+				}, pactMessage.Metadata{
+					"contentType":  "application/json",
+					"nats_subject": "chat.deleted",
+				}, nil
+		},
+		"a user.created domain event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
+			return userCreated{
+					UserID: "user-uuid-new",
+					Email:  "newuser@university.test",
+				}, pactMessage.Metadata{
+					"contentType":  "application/json",
+					"nats_subject": "user.created",
+				}, nil
+		},
+		"a notification.sent event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
+			return notificationSent{
+					NotificationID:   "notif-uuid-001",
+					UserID:           "user-uuid-001",
+					NotificationType: "push",
+				}, pactMessage.Metadata{
+					"contentType":  "application/json",
+					"nats_subject": "notification.sent",
+				}, nil
+		},
+		"a generic NATS task envelope": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
+			return taskEnvelope{
+					ID:           "task-uuid-999",
+					Name:         "email.send_welcome",
+					Args:         []string{"user@university.test"},
+					Kwargs:       map[string]any{},
+					TraceContext: map[string]any{},
+				}, pactMessage.Metadata{
+					"contentType":  "application/json",
+					"nats_subject": "tasks.email.send_welcome",
+				}, nil
 		},
 		"a broadcast event to all clients": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			payload, err := buildBroadcastPayload(

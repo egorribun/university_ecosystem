@@ -54,11 +54,12 @@ spec:
       containers:
         - name: backend
           # RZ-W15-06 (audit 2026-03-23 Wave 15): Removed :latest fallback.
-          # IMAGE_TAG must be explicitly set (commit SHA or semver) in the CD pipeline.
-          # The deploy workflow validates IMAGE_TAG is non-empty before calling kubectl.
+          # IMAGE_REGISTRY and IMAGE_TAG must be explicitly set (registry path +
+          # commit SHA or semver) when this supporting manifest is applied.
+          # The repository wrapper validates both before calling kubectl.
           # Using :latest in production breaks reproducibility and risks pulling an
           # unstable image when the registry tag is force-pushed.
-          image: registry.example.com/backend:${IMAGE_TAG}  # RZ-33-25: match Kyverno restrict-image-registries; checkov:skip=CKV_K8S_43:IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
+          image: ${IMAGE_REGISTRY}/backend:${IMAGE_TAG}  # RZ-33-25: match Kyverno restrict-image-registries; checkov:skip=CKV_K8S_43:IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -68,6 +69,39 @@ spec:
                 name: backend-secrets
             - configMapRef:
                 name: backend-config
+          env:
+            # Keep the RSA private key out of the environment; it is mounted
+            # from the ESO-managed Secret below and loaded by this path.
+            - name: JWT_PRIVATE_KEY_PATH
+              value: /run/secrets/jwt-rsa-private-key.pem
+            # These secrets are listed explicitly so a malformed/missing ESO
+            # key fails the pod at startup rather than silently selecting an
+            # insecure development fallback.
+            - name: CACHE_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: CACHE_REDIS_URL
+            - name: REVOCATION_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: REVOCATION_REDIS_URL
+            - name: WS_HUB_INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: WS_HUB_INTERNAL_SECRET
+            - name: IDEMPOTENCY_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: IDEMPOTENCY_HMAC_SECRET
+            - name: TOKEN_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: TOKEN_HMAC_SECRET
           # MOD-06: preStop sleep ensures load balancer drains before pod dies.
           # K8s sends SIGTERM + starts preStop concurrently; the sleep lets the
           # readiness probe flip to 503 and LB endpoint lists propagate first.
@@ -115,6 +149,9 @@ spec:
               mountPath: /tmp
             - name: cache
               mountPath: /app/.cache
+            - name: jwt-rsa
+              mountPath: /run/secrets
+              readOnly: true
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -124,6 +161,12 @@ spec:
           emptyDir: {}
         - name: cache
           emptyDir: {}
+        - name: jwt-rsa
+          secret:
+            secretName: backend-secrets # pragma: allowlist secret; Kubernetes Secret resource name only
+            items:
+              - key: jwt-rsa-private-key
+                path: jwt-rsa-private-key.pem
 ---
 apiVersion: v1
 kind: Service

@@ -43,6 +43,7 @@ from app.auth.constants import (
     MFA_METHOD_TOTP,
 )
 from app.auth.mfa.challenge import (
+    _challenge_epoch_matches_user,
     _extract_attempt_limit,
     _register_failed_attempt,
     consume_challenge,
@@ -142,6 +143,15 @@ def test_extract_attempt_limit_swallows_uncoercible_fallback() -> None:
 def test_extract_attempt_limit_rejects_non_positive() -> None:
     assert _extract_attempt_limit(None, fallback=0) is None
     assert _extract_attempt_limit(None, fallback=-3) is None
+
+
+def test_challenge_epoch_rejects_malformed_marker() -> None:
+    """Malformed epoch metadata must fail closed instead of being coerced."""
+
+    challenge = _fake_challenge(payload={"mfa_epoch": "not-an-integer"})
+    user = SimpleNamespace(mfa_epoch=4)
+
+    assert _challenge_epoch_matches_user(challenge, user) is False
 
 
 # ---------------------------------------------------------------------------

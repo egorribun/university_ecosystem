@@ -1,8 +1,10 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
+import path from "node:path"
 import test from "node:test"
 
 import { warmSsrRuntime } from "./server-readiness.mjs"
+import { resolveStaticFile } from "./server-static.mjs"
 
 test("warmSsrRuntime consumes the complete SSR body before readiness", async () => {
   let bodyCompleted = false
@@ -86,4 +88,22 @@ test("a failed readiness warmup terminates instead of leaving a non-listening pr
 
   assert.match(catchBlock, /process\.exit\(1\)/u)
   assert.doesNotMatch(catchBlock, /process\.exitCode\s*=/u)
+})
+
+test("static asset resolution enforces a directory boundary", () => {
+  const root = "C:/app/dist/client"
+  const outside = path.resolve(root, "..", "client_secrets", "token")
+  const relativeOutside = path.relative(root, outside)
+  const encodedOutside = relativeOutside
+    .split(path.sep)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")
+
+  assert.equal(resolveStaticFile(root, "/assets/app.js"), path.resolve(root, "assets/app.js"))
+  assert.equal(resolveStaticFile(root, relativeOutside), null)
+  assert.equal(resolveStaticFile(root, encodedOutside), null)
+})
+
+test("static asset resolution fails closed on malformed URI encoding", () => {
+  assert.equal(resolveStaticFile("C:/app/dist/client", "/%ff"), null)
 })

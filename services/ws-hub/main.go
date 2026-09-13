@@ -24,6 +24,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/university-ecosystem/services/pkg/logging"
 	"github.com/university-ecosystem/services/pkg/spiffe"
 	"github.com/university-ecosystem/ws-hub/internal/telemetry"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
@@ -71,6 +72,10 @@ func main() {
 
 func run() error {
 	logger := initLogger()
+	// Install the redacting logger as the process default before any helper
+	// that may fall back to slog.Default is invoked. This keeps startup and
+	// third-party diagnostics on the same PII/credential-safe boundary.
+	slog.SetDefault(logger)
 
 	cfg := config.LoadConfig()
 	if cfg.InternalSecret == "" {
@@ -198,16 +203,7 @@ func initSpiffeClient(ctx context.Context, cfg *config.Config, logger *slog.Logg
 }
 
 func initLogger() *slog.Logger {
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey {
-				a.Value = slog.StringValue(a.Value.Time().UTC().Format(time.RFC3339Nano))
-			}
-			return a
-		},
-	})
-	return slog.New(handler)
+	return logging.NewJSONLogger(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
 }
 
 var (

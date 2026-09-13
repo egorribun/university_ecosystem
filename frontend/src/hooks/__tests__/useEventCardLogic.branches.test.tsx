@@ -87,6 +87,70 @@ describe("useEventCardLogic (branches)", () => {
     expect(result.current.cardImageUrl).toBe("blob:preview-url")
   })
 
+  it("normalizes every optional edit field and initial image state", () => {
+    const { result } = renderHook(() => useEventCardLogic({ id: "defaults" }))
+
+    expect(result.current.menuId).toBe("event-card-menu-defaults")
+    expect(result.current.editData).toEqual({
+      title: "",
+      title_en: "",
+      description: "",
+      description_en: "",
+      event_type: "",
+      event_type_en: "",
+      location: "",
+      location_en: "",
+      starts_at: "",
+      ends_at: "",
+      speaker: "",
+      image_url: "",
+    })
+    expect(result.current.cardImageReady).toBe(true)
+    expect(result.current.cardImageUrl).toBeUndefined()
+    expect(result.current.snackbar).toBe("")
+    expect(result.current.loading).toBe(false)
+    expect(result.current.imageLoading).toBe(false)
+    expect(result.current.menuAnchor).toBeNull()
+    expect(result.current.editOpen).toBe(false)
+    expect(result.current.confirmDeleteOpen).toBe(false)
+  })
+
+  it("retains all supplied edit fields and waits for an image before marking it ready", () => {
+    const props = {
+      id: "complete",
+      title: "Title",
+      title_en: "Title EN",
+      description: "Description",
+      description_en: "Description EN",
+      event_type: "Lecture",
+      event_type_en: "Lecture EN",
+      location: "Room 1",
+      location_en: "Room 1 EN",
+      starts_at: "2026-12-01 10:00:00",
+      ends_at: "2026-12-01 12:00:00",
+      speaker: "Speaker",
+      image_url: "cover.png",
+    }
+    const { result } = renderHook(() => useEventCardLogic(props))
+
+    expect(result.current.editData).toEqual({
+      title: "Title",
+      title_en: "Title EN",
+      description: "Description",
+      description_en: "Description EN",
+      event_type: "Lecture",
+      event_type_en: "Lecture EN",
+      location: "Room 1",
+      location_en: "Room 1 EN",
+      starts_at: "2026-12-01 10:00:00",
+      ends_at: "2026-12-01 12:00:00",
+      speaker: "Speaker",
+      image_url: "cover.png",
+    })
+    expect(result.current.cardImageReady).toBe(false)
+    expect(result.current.cardImageUrl).toBe("cover.png")
+  })
+
   it("clearing newImage revokes the object URL (cleanup 117) + resets previewUrl (119)", async () => {
     const { result } = renderHook(() => useEventCardLogic(eventProps))
 
@@ -168,6 +232,21 @@ describe("useEventCardLogic (branches)", () => {
     expect(result.current.editOpen).toBe(false)
   })
 
+  it("resets image loading when the upload fails", async () => {
+    mockPost.mockRejectedValue(new Error("upload boom"))
+    const { result } = renderHook(() => useEventCardLogic({ ...eventProps, image_url: "old.png" }))
+    act(() => result.current.setNewImage(new File(["img"], "new.png", { type: "image/png" })))
+
+    await act(async () => {
+      await result.current.handleEdit()
+    })
+
+    expect(result.current.imageLoading).toBe(false)
+    expect(result.current.loading).toBe(false)
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(result.current.snackbar).toBe("events:card.messages.saveFailure")
+  })
+
   // ---- handleDelete (lines 152-164) ----
 
   it("handleDelete: success → deletes, closes confirm, onChange, deleteSuccess (154-158)", async () => {
@@ -228,6 +307,53 @@ describe("useEventCardLogic (branches)", () => {
       )
       expect(soon.result.current.timeStatus.status).toBe("soon")
       soon.unmount()
+
+      const spaceDate = new Date("2026-12-01 10:00:00")
+      vi.setSystemTime(new Date(spaceDate.getTime() - 30 * 60 * 1000))
+      const spaceSeparated = renderHook(() =>
+        useEventCardLogic({
+          ...eventProps,
+          starts_at: "2026-12-01 10:00:00",
+          ends_at: "2026-12-01 12:00:00",
+        })
+      )
+      expect(spaceSeparated.result.current.timeStatus.status).toBe("soon")
+      spaceSeparated.unmount()
+
+      vi.setSystemTime(new Date("2026-12-01T10:00:00Z"))
+      const atStart = renderHook(() =>
+        useEventCardLogic({
+          ...eventProps,
+          starts_at: "2026-12-01T10:00:00Z",
+          ends_at: "2026-12-01T12:00:00Z",
+        })
+      )
+      expect(atStart.result.current.timeStatus.status).toBe("none")
+      expect(atStart.result.current.eventEnded).toBe(false)
+      atStart.unmount()
+
+      vi.setSystemTime(new Date("2026-12-01T12:00:00Z"))
+      const atEnd = renderHook(() =>
+        useEventCardLogic({
+          ...eventProps,
+          starts_at: "2026-12-01T10:00:00Z",
+          ends_at: "2026-12-01T12:00:00Z",
+        })
+      )
+      expect(atEnd.result.current.timeStatus.status).toBe("none")
+      expect(atEnd.result.current.eventEnded).toBe(false)
+      atEnd.unmount()
+
+      vi.setSystemTime(new Date("2026-12-01T09:00:00Z"))
+      const exactlyOneDay = renderHook(() =>
+        useEventCardLogic({
+          ...eventProps,
+          starts_at: "2026-12-02T09:00:00Z",
+          ends_at: "2026-12-02T10:00:00Z",
+        })
+      )
+      expect(exactlyOneDay.result.current.timeStatus.status).toBe("none")
+      exactlyOneDay.unmount()
 
       vi.setSystemTime(new Date("2026-12-02T00:00:00Z"))
       const ended = renderHook(() =>

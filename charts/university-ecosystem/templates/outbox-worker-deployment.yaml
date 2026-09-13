@@ -51,7 +51,7 @@ spec:
               drop: ["ALL"]
           env:
             {{- range $key, $value := .Values.outboxWorker.env }}
-            {{- if not (has $key (list "DATABASE_URL" "CACHE_REDIS_URL" "REVOCATION_REDIS_URL" "NATS_URL" "NATS_AUTH_TOKEN" "KEDA_POSTGRESQL_CONNECTION" "ENVIRONMENT" "SECRET_KEY" "ALGORITHM" "JWT_PRIVATE_KEY_PATH" "INTERNAL_HMAC_SECRET" "WS_HUB_INTERNAL_SECRET" "CSRF_HMAC_SECRET" "SPOTIFY_TOKEN_SECRET" "ELASTICSEARCH_PASSWORD" "SPICEDB_PRESHARED_KEY" "AUDIT_LOG_SECRET" "IDEMPOTENCY_HMAC_SECRET" "MFA_EMAIL_OTP_HMAC_KEYS" "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID" "MFA_EMAIL_DELIVERY_KEKS" "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" "MFA_TRUSTED_DEVICE_HMAC_KEYS" "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID" "MINIO_SECURE" "ELASTICSEARCH_URL")) }}
+            {{- if not (has $key (list "DATABASE_URL" "CACHE_REDIS_URL" "REVOCATION_REDIS_URL" "NATS_URL" "NATS_AUTH_TOKEN" "KEDA_POSTGRESQL_CONNECTION" "ENVIRONMENT" "SECRET_KEY" "ALGORITHM" "JWT_PRIVATE_KEY_PATH" "INTERNAL_HMAC_SECRET" "WS_HUB_INTERNAL_SECRET" "CSRF_HMAC_SECRET" "SPOTIFY_TOKEN_SECRET" "ELASTICSEARCH_PASSWORD" "SPICEDB_PRESHARED_KEY" "AUDIT_LOG_SECRET" "TOKEN_HMAC_SECRET" "IDEMPOTENCY_HMAC_SECRET" "MFA_EMAIL_OTP_HMAC_KEYS" "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID" "MFA_EMAIL_DELIVERY_KEKS" "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" "MFA_TRUSTED_DEVICE_HMAC_KEYS" "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID" "MINIO_SECURE" "ELASTICSEARCH_URL")) }}
             - name: {{ $key }}
               value: {{ tpl $value $ | quote }}
             {{- end }}
@@ -94,7 +94,7 @@ spec:
               value: "RS256"
             - name: JWT_PRIVATE_KEY_PATH
               value: /run/secrets/jwt-rsa-private-key.pem
-            {{- range $variable, $key := dict "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" "CSRF_HMAC_SECRET" "csrf-hmac-secret" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "AUDIT_LOG_SECRET" "audit-log-secret" "IDEMPOTENCY_HMAC_SECRET" "idempotency-hmac-secret" }}
+            {{- range $variable, $key := dict "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" "CSRF_HMAC_SECRET" "csrf-hmac-secret" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "AUDIT_LOG_SECRET" "audit-log-secret" "TOKEN_HMAC_SECRET" "token-hmac-secret" "IDEMPOTENCY_HMAC_SECRET" "idempotency-hmac-secret" }}
             - name: {{ $variable }}
               valueFrom:
                 secretKeyRef:

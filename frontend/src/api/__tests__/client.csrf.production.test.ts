@@ -63,4 +63,31 @@ describe("api/client — production CSRF bootstrap", () => {
     await expect(ensureCsrfCookie()).resolves.toBeUndefined()
     expect(fetchSpy).not.toHaveBeenCalled()
   })
+
+  it("bootstraps CSRF for unsafe requests but skips the bootstrap endpoint itself", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal("fetch", fetchSpy)
+    const { default: client } = await import("@/api/client")
+    const requestHandler = (client.interceptors.request as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (
+      config: import("axios").InternalAxiosRequestConfig
+    ) => Promise<import("axios").InternalAxiosRequestConfig>
+
+    await requestHandler({
+      method: "post",
+      url: "/events",
+      headers: {},
+      data: { title: "event" },
+    } as import("axios").InternalAxiosRequestConfig)
+    expect(fetchSpy).toHaveBeenCalledOnce()
+
+    await requestHandler({
+      method: "post",
+      url: "/auth/csrf-cookie",
+      headers: {},
+      data: {},
+    } as import("axios").InternalAxiosRequestConfig)
+    expect(fetchSpy).toHaveBeenCalledOnce()
+  })
 })

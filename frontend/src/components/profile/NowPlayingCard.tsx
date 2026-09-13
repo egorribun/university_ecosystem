@@ -8,6 +8,80 @@ import type { NowPlaying } from "@/types/spotify"
 
 const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
 
+export const clampNowPlayingProgress = (
+  value: number | null | undefined,
+  duration: number
+): number => {
+  if (value == null) return 0
+  if (!Number.isFinite(value)) return 0
+  if (!duration || duration <= 0) return Math.max(0, value)
+  return Math.min(Math.max(0, value), duration)
+}
+
+export const getNowPlayingTrackKey = (trackId: string | null | undefined): string | null =>
+  trackId ?? null
+
+export const isNowPlayingResumed = (isPlaying: boolean, wasPlaying: boolean): boolean =>
+  isPlaying && !wasPlaying
+
+export const shouldSyncNowPlayingState = (
+  trackChanged: boolean,
+  progressChanged: boolean,
+  resumed: boolean
+): boolean => trackChanged || progressChanged || resumed
+
+export const shouldAnimateNowPlaying = (
+  testEnvironment: boolean,
+  isPlaying: boolean,
+  prefersReduce: boolean,
+  reduced: boolean,
+  duration: number
+): boolean => !testEnvironment && isPlaying && !prefersReduce && !reduced && duration > 0
+
+export const getNowPlayingProgressTransition = (
+  shouldAnimate: boolean,
+  prefersReduce: boolean,
+  reduced: boolean
+): string =>
+  shouldAnimate && !prefersReduce && !reduced
+    ? `transform ${motionTokens.durationInstant}s linear`
+    : `transform ${motionTokens.durationFast}s ease-out`
+
+export const getNowPlayingInitial = (
+  testEnvironment: boolean,
+  prefersReduce: boolean,
+  reduced: boolean
+): false | { y: string; opacity: number; scale: number } =>
+  testEnvironment || prefersReduce || reduced
+    ? false
+    : { y: motionTokens.slideSm, opacity: 0.8, scale: 1 }
+
+export const getNowPlayingTransition = (
+  testEnvironment: boolean
+): { duration: number } | { type: "spring"; stiffness: number; damping: number; mass: number } =>
+  testEnvironment ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }
+
+export const shouldUseNowPlayingImage = (
+  imageUrl: string | null | undefined,
+  imageError: boolean
+): imageUrl is string => Boolean(imageUrl) && !imageError
+
+export const shouldUseNowPlayingImageHover = (prefersReduce: boolean, reduced: boolean): boolean =>
+  !prefersReduce && !reduced
+
+export const isNowPlayingImageVisible = (
+  imageLoaded: boolean,
+  imageUrl: string | null | undefined,
+  imageError: boolean
+): boolean => imageLoaded || !imageUrl || imageError
+
+export const getNowPlayingTrackTime = (ms: number): string => {
+  const seconds = Math.max(0, Math.floor(ms / 1000))
+  const minutes = Math.floor(seconds / 60)
+  const rest = String(seconds % 60).padStart(2, "0")
+  return `${minutes}:${rest}`
+}
+
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)")
   const reduced = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -17,12 +91,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   const [imageError, setImageError] = useState(false)
 
   const clampProgress = useCallback(
-    (value: number | null | undefined) => {
-      if (value == null) return 0
-      if (!Number.isFinite(value)) return 0
-      if (!duration || duration <= 0) return Math.max(0, value)
-      return Math.min(Math.max(0, value), duration)
-    },
+    (value: number | null | undefined) => clampNowPlayingProgress(value, duration),
     [duration]
   )
 
@@ -30,18 +99,18 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   const [progress, setProgress] = useState<number>(() => initialProgress)
   const startRef = useRef<number>(Date.now() - initialProgress)
   const rafRef = useRef<number | null>(null)
-  const prevTrackIdRef = useRef<string | null>(data.track_id ?? null)
+  const prevTrackIdRef = useRef<string | null>(getNowPlayingTrackKey(data.track_id))
   const prevProgressRef = useRef<number>(initialProgress)
   const prevIsPlayingRef = useRef<boolean>(data.is_playing)
 
   useEffect(() => {
     const next = clampProgress(data.progress_ms)
-    const trackChanged = (data.track_id ?? null) !== prevTrackIdRef.current
+    const trackChanged = getNowPlayingTrackKey(data.track_id) !== prevTrackIdRef.current
     const progressChanged = next !== prevProgressRef.current
-    const resumed = data.is_playing && !prevIsPlayingRef.current
+    const resumed = isNowPlayingResumed(data.is_playing, prevIsPlayingRef.current)
 
     if (trackChanged) {
-      prevTrackIdRef.current = data.track_id ?? null
+      prevTrackIdRef.current = getNowPlayingTrackKey(data.track_id)
       setImageLoaded(false)
       setImageError(false)
     }
@@ -50,7 +119,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
       prevProgressRef.current = next
     }
 
-    if (trackChanged || progressChanged || resumed) {
+    if (shouldSyncNowPlayingState(trackChanged, progressChanged, resumed)) {
       startRef.current = Date.now() - next
       setProgress(next)
     }
@@ -65,7 +134,13 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     setProgress(next)
   }, [clampProgress, data.is_playing, data.progress_ms])
 
-  const shouldAnimate = !isTest && data.is_playing && !prefersReduce && !reduced && duration > 0
+  const shouldAnimate = shouldAnimateNowPlaying(
+    isTest,
+    data.is_playing,
+    prefersReduce,
+    reduced,
+    duration
+  )
 
   useEffect(() => {
     if (!shouldAnimate) {
@@ -84,12 +159,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   }, [clampProgress, shouldAnimate])
 
   const pct = duration > 0 ? Math.max(0, Math.min(100, (progress / duration) * 100)) : 0
-  const fmt = (ms: number) => {
-    const seconds = Math.max(0, Math.floor(ms / 1000))
-    const minutes = Math.floor(seconds / 60)
-    const rest = String(seconds % 60).padStart(2, "0")
-    return `${minutes}:${rest}`
-  }
+  const fmt = getNowPlayingTrackTime
 
   const handleImageLoad = useCallback(() => {
     setImageLoaded(true)
@@ -104,13 +174,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   const href = data.track_url || "https://open.spotify.com"
 
   const maxTimeWidth = useMemo(() => {
-    const fmtTime = (ms: number) => {
-      const seconds = Math.max(0, Math.floor(ms / 1000))
-      const minutes = Math.floor(seconds / 60)
-      const rest = String(seconds % 60).padStart(2, "0")
-      return `${minutes}:${rest}`
-    }
-    const maxTimeStr = fmtTime(duration)
+    const maxTimeStr = getNowPlayingTrackTime(duration)
     const fullFormat = `${maxTimeStr} / ${maxTimeStr}`
     return `${fullFormat.length * 0.6}ch`
   }, [duration])
@@ -131,10 +195,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   }, [data.album_image_url])
 
   const progressBarTransition = useMemo(() => {
-    if (shouldAnimate && !prefersReduce && !reduced) {
-      return `transform ${motionTokens.durationInstant}s linear`
-    }
-    return `transform ${motionTokens.durationFast}s ease-out`
+    return getNowPlayingProgressTransition(shouldAnimate, prefersReduce, reduced)
   }, [shouldAnimate, prefersReduce, reduced])
 
   return (
@@ -154,21 +215,15 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           "nowplaying--spotify card-glass card-glass-interactive w-full grid items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden"
         )}
         style={{ gridTemplateColumns: "auto 1fr" }}
-        initial={
-          isTest || prefersReduce || reduced
-            ? false
-            : { y: motionTokens.slideSm, opacity: 0.8, scale: 1 }
-        }
+        initial={getNowPlayingInitial(isTest, prefersReduce, reduced)}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         whileHover={prefersReduce || reduced ? {} : { y: -1, scale: 1.002 }}
         whileTap={prefersReduce || reduced ? {} : { scale: 0.997 }}
-        transition={
-          isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }
-        }
+        transition={getNowPlayingTransition(isTest)}
       >
         <div className="absolute inset-0 z-base bg-linear-to-t from-black/(--opacity-hover) via-black/(--opacity-dim) to-transparent pointer-events-none" />
         <div className="relative w-14 h-14 rounded-lg overflow-hidden shadow-premium">
-          {data.album_image_url && !imageError ? (
+          {shouldUseNowPlayingImage(data.album_image_url, imageError) ? (
             <img
               src={data.album_image_url}
               alt={data.album_name || data.track_name || t("profile:nowPlaying.albumFallback")}
@@ -179,24 +234,26 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
               onError={handleImageError}
               className={cn(
                 "w-full h-full rounded-lg object-cover transition-opacity duration-base",
-                imageLoaded ? "opacity-100" : "opacity-0"
+                isNowPlayingImageVisible(imageLoaded, data.album_image_url, imageError)
+                  ? "opacity-100"
+                  : "opacity-0"
               )}
               style={
-                prefersReduce || reduced
-                  ? undefined
-                  : {
+                shouldUseNowPlayingImageHover(prefersReduce, reduced)
+                  ? {
                       transform: "scale(1.012)",
                       transition:
                         "transform var(--motion-duration-lazy) cubic-bezier(0.22, 0.61, 0.36, 1)",
                     }
+                  : undefined
               }
               onMouseEnter={(e) => {
-                if (!prefersReduce && !reduced) {
+                if (shouldUseNowPlayingImageHover(prefersReduce, reduced)) {
                   e.currentTarget.style.transform = "scale(1.02)"
                 }
               }}
               onMouseLeave={(e) => {
-                if (!prefersReduce && !reduced) {
+                if (shouldUseNowPlayingImageHover(prefersReduce, reduced)) {
                   e.currentTarget.style.transform = "scale(1.012)"
                 }
               }}
@@ -210,7 +267,9 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
         <div className="min-w-0 flex flex-col gap-1.5 relative z-deep" aria-live="polite">
           <h3
             className={`np-title font-bold leading-tight tracking-tight text-text-primary text-base transition-opacity duration-fast ${
-              imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
+              isNowPlayingImageVisible(imageLoaded, data.album_image_url, imageError)
+                ? "opacity-100"
+                : "opacity-0"
             }`}
           >
             {data.track_name || "—"}

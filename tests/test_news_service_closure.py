@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.repositories.news_repository import NewsRepository
 from app.schemas.dtos.news import NewsDTO, NewsListingDTO
 from app.services.news_service import NewsService
 from app.utils.pagination import encode_datetime_cursor
@@ -100,3 +101,38 @@ async def test_list_news_ignores_cursor_without_decoded_value():
 
     assert result.has_more is False
     assert repo.list_news.call_args.kwargs["cursor"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_news_ignores_empty_secondary_cursor_before_repository_cast():
+    """The public ``/news?cursor=0:`` path must not cast an empty UUID."""
+    db = AsyncMock()
+    db_result = MagicMock()
+    db_result.scalars.return_value.all.return_value = []
+    db.execute.return_value = db_result
+
+    uow = MagicMock()
+    uow.news = NewsRepository(db)
+    service = NewsService(uow, AsyncMock())
+
+    result = await service.list_news(limit=1, cursor="0:")
+
+    assert result.items == []
+    assert result.has_more is False
+    assert result.next_cursor is None
+
+
+@pytest.mark.asyncio
+async def test_list_news_preserves_valid_epoch_uuid_cursor():
+    service, repo = _service()
+    repo.list_news.return_value = []
+    cursor_id = str(uuid4())
+    cursor = encode_datetime_cursor(datetime(1970, 1, 1, tzinfo=UTC), cursor_id)
+
+    result = await service.list_news(limit=1, cursor=cursor)
+
+    assert result.has_more is False
+    assert repo.list_news.call_args.kwargs["cursor"] == (
+        datetime(1970, 1, 1, tzinfo=UTC),
+        cursor_id,
+    )

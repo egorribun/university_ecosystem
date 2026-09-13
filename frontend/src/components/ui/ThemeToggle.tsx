@@ -44,7 +44,7 @@ export function ThemeToggle({ isDark, onToggle, className, size = "md" }: ThemeT
     onToggle()
   }, [onToggle])
 
-  const sizeClasses = size === "sm" ? "h-8 w-8" : "h-10 w-10"
+  const sizeClasses = "h-11 w-11 min-h-11 min-w-11"
   const iconSize = size === "sm" ? "h-4 w-4" : "h-5 w-5"
 
   return (

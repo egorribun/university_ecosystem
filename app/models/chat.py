@@ -98,7 +98,10 @@ class Chat(Base, UUID7PrimaryKeyMixin):
     # explicit at the call site: query paths that need participants add
     # .options(selectinload(Chat.participants)) themselves.
     participants = relationship(
-        "User", secondary=chat_participants, backref="chats", lazy="noload"
+        "User",
+        secondary=chat_participants,
+        back_populates="chats",
+        lazy="noload",
     )
     # Wave 211 — foreign_keys="Message.chat_id" disambiguates the join: Message
     # now has TWO chats.id FKs (chat_id + the audit-only forwarded_from_chat_id),

@@ -150,6 +150,7 @@ export function useEventCardLogic({
     } catch {
       setSnackbar(t("events:card.messages.saveFailure"))
     } finally {
+      setImageLoading(false)
       setLoading(false)
     }
   }

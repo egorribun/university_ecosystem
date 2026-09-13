@@ -76,6 +76,7 @@ _DEFAULT_CONFIG_INPUTS = (
     "scripts/merge_mutmut_stats.py",
     "scripts/plan_mutmut_shards.py",
     "scripts/mutmut_shard_matrix.py",
+    "scripts/validate_mutmut_group_budgets.py",
     "scripts/mutmut_universe_artifact.py",
     "scripts/mutmut_retry_artifacts.py",
 )

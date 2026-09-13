@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import { ProgressBar } from "@/components/ui"
+import { ProgressBar } from "@/components/ui/ProgressBar"
 import { SkeletonMorph } from "@/components/ui/SkeletonMorph"
 import AnimatedRing, { useAnimatedNumber } from "./AnimatedRing"
 import CardShell from "./CardShell"

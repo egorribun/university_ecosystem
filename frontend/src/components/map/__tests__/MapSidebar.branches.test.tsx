@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, act } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, act } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 vi.mock("react-i18next", () => ({
@@ -73,8 +73,14 @@ describe("MapSidebar branches", () => {
     vi.useFakeTimers()
   })
   afterEach(() => {
+    // Unmount before draining the fake entrance timer.  Running that timer
+    // while the sheet is still mounted schedules a state update after the
+    // assertion and makes the next test inherit the previous dialog.
+    cleanup()
     vi.unstubAllGlobals()
-    vi.runOnlyPendingTimers()
+    act(() => {
+      vi.runOnlyPendingTimers()
+    })
     vi.useRealTimers()
     vi.clearAllMocks()
   })

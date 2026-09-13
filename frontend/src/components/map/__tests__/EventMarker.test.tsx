@@ -119,6 +119,17 @@ describe("EventMarker", () => {
     expect(onPopupOpen).toHaveBeenCalledOnce()
   })
 
+  it("keeps popup callbacks optional", async () => {
+    const user = userEvent.setup()
+    const view = render(<EventMarker {...baseProps} />)
+
+    await user.click(view.getByRole("button", { name: "events.markerLabel" }))
+
+    view.rerender(<EventMarker {...baseProps} isPopupOpen />)
+    expect(mocks.popupOnClose).toBeTypeOf("function")
+    mocks.popupOnClose?.()
+  })
+
   it.each(["Enter", " "])("opens the popup from the %j keyboard key", async (key) => {
     const user = userEvent.setup()
     const onPopupOpen = vi.fn()

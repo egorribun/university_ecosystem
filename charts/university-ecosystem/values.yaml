@@ -43,7 +43,7 @@ connections:
 # Required keys: jwt-secret, jwt-rsa-private-key, jwt-rsa-public-key,
 # internal-hmac-secret, ws-hub-internal-secret, csrf-hmac-secret,
 # spotify-token-secret, elasticsearch-password, spicedb-preshared-key,
-# audit-log-secret, idempotency-hmac-secret, all keys configured under
+# audit-log-secret, token-hmac-secret, idempotency-hmac-secret, all keys configured under
 # applicationSecrets.keys, minio-access-key, minio-secret-key, temporal-api-key.
 # An ExternalSecret may own this Secret; keep its refreshInterval at 1m so both
 # backend and outbox-worker receive overlapping key rings during rotation.
@@ -117,7 +117,7 @@ backup:
   failedJobsHistoryLimit: 3
   ttlSecondsAfterFinished: 86400
   postgresImage: "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
-  minioClientImage: "minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
+  minioClientImage: "quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
   minioEndpoint: "http://minio:9000"
   minioBucket: "backups"
 
@@ -177,6 +177,7 @@ backend:
     elasticsearchPassword: ""
     spicedbPresharedKey: ""
     auditLogSecret: ""
+    tokenHMACSecret: ""
     idempotencyHMACSecret: ""
     # Development-only key-ring material used when existingSecret is empty.
     # Format: "key-id:base64url-key[,previous-id:base64url-key]". Never set
@@ -210,10 +211,19 @@ frontend:
   resources:
     requests:
       cpu: 50m
-      memory: 64Mi
+      memory: 128Mi
     limits:
       cpu: 200m
-      memory: 256Mi
+      # Node SSR can briefly retain rendered route data and Vite assets during
+      # concurrent navigations. Keep the chart limit aligned with the
+      # standalone manifest (512Mi) so HPA memory utilization is meaningful.
+      memory: 512Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
 
 # Gateway Service (Go)
 gateway:
@@ -234,6 +244,12 @@ gateway:
     limits:
       cpu: 500m
       memory: 512Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
   config:
     jwtSecret: "" # MUST be provided as --set gateway.config.jwtSecret=...
     jwtAudience: "university-ecosystem-api"

@@ -98,6 +98,7 @@ test("the production frontend image copies every server runtime module", async (
     "frontend/scripts/server-response-stream.mjs",
     "frontend/scripts/server-readiness.mjs",
     "frontend/scripts/server-request-log.mjs",
+    "frontend/scripts/server-static.mjs",
   ]) {
     assert.match(dockerfile, new RegExp(`COPY[^\\n]+${runtimeModule}`, "u"))
   }

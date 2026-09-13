@@ -14,7 +14,7 @@ import {
   type Placement,
 } from "@floating-ui/react"
 
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import { TextField } from "@/components/ui/TextField"
 import { cn } from "@/utils/cn"
 import type { EventDateRange } from "@/features/events/types"

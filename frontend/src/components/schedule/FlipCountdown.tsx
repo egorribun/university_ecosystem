@@ -15,8 +15,42 @@ interface FlipCountdownProps {
   className?: string
 }
 
-function padTwo(n: number): string {
+export function padTwo(n: number): string {
   return n < 10 ? `0${n}` : `${n}`
+}
+
+export function shouldFlipDigit(value: string, current: string): boolean {
+  return value !== current
+}
+
+export function getSecondsUntilTarget(targetMinutes: number, now: Date): number {
+  const nowSecs = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+  return Math.max(0, targetMinutes * 60 - nowSecs)
+}
+
+export function shouldTickCountdown(visibilityState: DocumentVisibilityState): boolean {
+  return visibilityState !== "hidden"
+}
+
+export function isCountdownUrgent(secondsLeft: number): boolean {
+  return secondsLeft > 0 && secondsLeft <= 300
+}
+
+export function shouldRenderFlipFlaps(flipping: boolean): boolean {
+  return flipping
+}
+
+export function shouldCompleteCountdown(secondsLeft: number): boolean {
+  return secondsLeft === 0
+}
+
+export function invokeCountdownCompletion(onComplete: (() => void) | undefined): void {
+  onComplete?.()
+}
+
+export function createFlipResetCleanup(onReset: () => void, durationMs: number): () => void {
+  const timer = setTimeout(onReset, durationMs)
+  return () => clearTimeout(timer)
 }
 
 function FlipDigit({ value, label }: { value: string; label: string }) {
@@ -26,15 +60,14 @@ function FlipDigit({ value, label }: { value: string; label: string }) {
   const currentRef = useRef(value)
 
   useEffect(() => {
-    if (value !== currentRef.current) {
+    if (shouldFlipDigit(value, currentRef.current)) {
       setPrevious(currentRef.current)
       setCurrent(value)
       currentRef.current = value
       setFlipping(true)
       // Duration synced with CSS --sched-flip-duration (FIX-69-03)
       const FLIP_DURATION_MS = 500
-      const timer = setTimeout(() => setFlipping(false), FLIP_DURATION_MS)
-      return () => clearTimeout(timer)
+      return createFlipResetCleanup(() => setFlipping(false), FLIP_DURATION_MS)
     }
   }, [value])
 
@@ -50,13 +83,13 @@ function FlipDigit({ value, label }: { value: string; label: string }) {
           <span>{current}</span>
         </div>
         {/* Animated top flap — flips down from previous to current */}
-        {flipping && (
+        {shouldRenderFlipFlaps(flipping) && (
           <div className="sched-flip-top-flap">
             <span>{previous}</span>
           </div>
         )}
         {/* Animated bottom flap — reveals current value */}
-        {flipping && (
+        {shouldRenderFlipFlaps(flipping) && (
           <div className="sched-flip-bottom-flap">
             <span>{current}</span>
           </div>
@@ -68,11 +101,9 @@ function FlipDigit({ value, label }: { value: string; label: string }) {
 
 export function FlipCountdown({ targetMinutes, onComplete, className }: FlipCountdownProps) {
   const { t } = useTranslation(["schedule"])
-  const [secondsLeft, setSecondsLeft] = useState(() => {
-    const now = new Date()
-    const nowSecs = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
-    return Math.max(0, targetMinutes * 60 - nowSecs)
-  })
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    getSecondsUntilTarget(targetMinutes, new Date())
+  )
   const onCompleteRef = useRef(onComplete)
   useEffect(() => {
     onCompleteRef.current = onComplete
@@ -82,10 +113,10 @@ export function FlipCountdown({ targetMinutes, onComplete, className }: FlipCoun
      Pauses when tab hidden (Page Visibility API) to save battery. */
   useEffect(() => {
     const id = setInterval(() => {
-      if (document.visibilityState === "hidden") return
+      if (!shouldTickCountdown(document.visibilityState)) return
       setSecondsLeft((prev) => {
         const next = Math.max(0, prev - 1)
-        if (next === 0) onCompleteRef.current?.()
+        if (shouldCompleteCountdown(next)) invokeCountdownCompletion(onCompleteRef.current)
         return next
       })
     }, 1000)
@@ -96,7 +127,7 @@ export function FlipCountdown({ targetMinutes, onComplete, className }: FlipCoun
   const secs = secondsLeft % 60
   const minStr = padTwo(mins)
   const secStr = padTwo(secs)
-  const isUrgent = secondsLeft > 0 && secondsLeft <= 300 // Last 5 minutes (FIX-68-17)
+  const isUrgent = isCountdownUrgent(secondsLeft) // Last 5 minutes (FIX-68-17)
 
   return (
     <div

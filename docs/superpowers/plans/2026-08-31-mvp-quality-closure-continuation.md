@@ -546,7 +546,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 Интерфейс:
 
-    uv run python scripts/quality/analyze_ci_critical_path.py --repository egorribun/university_ecosystem --run-id 33543238962 --concurrency-cap 20 --output artifacts/quality/ci-critical-path.json
+    uv run python scripts/quality/analyze_ci_critical_path.py --repository egorribun/university_ecosystem --run-id 33543238962 --concurrency-cap 20 --diagnostic-lower-bound --output artifacts/quality/ci-critical-path.json
 
 Отчёт должен содержать:
 
@@ -2459,3 +2459,1240 @@ real-device Safari/iOS/Android, chaos/rollback and production release remain
 outside local repository authority. The five P2 hardening records in §31.5 are
 code-complete but remain `FRESH-EVIDENCE-PENDING`; they must not be promoted to
 security-aggregate green until current workflow reports are complete.
+
+---
+
+## 33. Independent full-platform audit overlay (2026-09-03; authoritative)
+
+`docs/audits/AUDIT_PLATFORM_FULL.md` — это отдельный пользовательский
+read-only synthesis-аудит, а не сертификат production readiness. Он был
+проанализирован после snapshot из §32 и поэтому не должен переиспользовать
+старые SHA, coverage reports или CI runs. Сам файл остаётся пользовательским
+untracked-артефактом и не добавляется массовым `git add`; в этот план перенесён
+его полный triage, чтобы ни один finding не потерялся и чтобы status каждого
+finding был проверяемым.
+
+### 33.1 Identity и правила доказательств
+
+| Поле | Значение/правило |
+|---|---|
+| Audit ID/date | `AUDIT-PLATFORM-FULL-2026-09-03`; synthesis завершён, production не сертифицирован |
+| Рабочая ветка | `egorribun` |
+| Audited source snapshot | `36ff58509` (`fix: close MVP quality and security blockers`); этот commit содержит все проверенные code/CI/test/infra изменения из overlay |
+| Audit-plan state | План обновляется отдельным docs-only commit после source commit; его SHA не является audited source SHA |
+| User audit artifact | `docs/audits/AUDIT_PLATFORM_FULL.md`, сохранён отдельно; секретоподобные примеры не становятся baseline/exclusion |
+| Evidence class | локальные тесты и diff — class C; только свежий exact-SHA CI/registry/staging — release evidence |
+| Reuse policy | run `33681502277` (OtpEntry coverage barrier) и старые §32 runs не переиспользуются; после commit обязателен новый SHA-bound matrix |
+
+Каждая запись `CODE-FIXED / FRESH-EVIDENCE-PENDING` означает, что исправление
+видно в текущем diff и есть focused test, но соответствующий aggregate ещё не
+доказан. `BACKLOG / NON-BLOCKING` означает воспроизводимый P2/P3 или широкую
+архитектурную эволюцию, не являющуюся блокером текущего MVP; она не скрывается
+из аудита и получает owner/следующую проверку. `EXTERNAL-ONLY` нельзя закрыть
+локальным тестом.
+
+### 33.2 Backend findings (BE)
+
+| Finding | Current disposition | Evidence / follow-up |
+|---|---|---|
+| BE-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Migration 148642dd1207 больше не импортирует runtime encryption/config и использует native SQLAlchemy types; проверить `alembic upgrade/downgrade`, offline SQL и PostgreSQL в fresh CI. |
+| BE-02 | `DECISION-RECORDED / MIGRATION-EVIDENCE-PENDING` | ADR-036 заменяет устаревшие 92 на текущий inventory (54 explicit Python-only candidates, 19 server-only, 37 UUIDv7 exceptions) и задаёт PostgreSQL catalog preflight plus phased migrations; no blanket rewrite. Live schema/upgrade/downgrade evidence remains required. |
+| BE-03 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `User.chats` и `Chat.participants` получили явные `back_populates`/`lazy="noload"`; прогнать async serialization/MissingGreenlet suite. |
+| BE-04 | `BACKLOG / ARCHITECTURE` | Dishka и legacy `Depends` coexistence требует отдельного ADR и постепенной миграции, не меняется в quality-closure commit. |
+| BE-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Backend call sites используют central logger/ProcessorFormatter; совместимый stdlib bridge оставлен для AuditService. Проверить full log redaction и отсутствие PII в aggregate. |
+| BE-06 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `_redact_nested` обходит dict/list/tuple/cycles и sensitive transport keys; focused logging tests green, повторить detect-secrets/logging aggregate. |
+| BE-07 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | NATS disconnect теперь warning + `nats_publish_core_skipped_total`; проверить reconnect/failure telemetry. |
+| BE-08 | `BACKLOG / ARCHITECTURE` | Orphan `CdcOutboxWorker` требует отдельного lifecycle/DI решения и integration test; не объявлять fixed по одному import. |
+| BE-09 | `FALSE POSITIVE / VERIFIED IN CODE` | Existing event gather/cancellation propagates task cancellation; сохранить regression test и не добавлять suppression. |
+| BE-10 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Loopback revocation URL разрешён только local/dev/testing, production fails closed; проверить settings matrix. |
+| BE-11 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Exception justification typo/comments исправлены; повторить AST gate. |
+| BE-12 | `BACKLOG / P3` | Monolithic schemas/config/docs — плановая декомпозиция, не блокирует текущие gates; завести reproducible backlog entries. |
+
+### 33.3 Frontend findings (FE)
+
+| Finding | Current disposition | Evidence / follow-up |
+|---|---|---|
+| FE-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `server-static.mjs` и production wrapper fail closed на malformed URI/path boundary; node server tests green. |
+| FE-02 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Router получает shared QueryClient; typecheck/unit/SSR build green. |
+| FE-03 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Redirect helper rejects backslash/open redirect и сохраняет query/hash; focused tests green. |
+| FE-04 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | ClockWidget SSR placeholder устраняет hydration drift; component tests green. |
+| FE-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | wasm-pack/build failure обрабатывается детерминированно; build-wasm tests и orchestrated build green. |
+| FE-06 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Call sites используют canonical `leadingIcon`; compatibility mock принимает/удаляет legacy `startIcon`; lint/React console checks обязательны. |
+| FE-07 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `useAuthStore` экспортирован из barrel и покрыт store tests. |
+| FE-08 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Duplicate Tailwind class удалён; lint/visual baseline обязателен. |
+| FE-09 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Sessions test mock больше не leaking DOM props; run full settings/E2E selectors. |
+
+### 33.4 Go findings (GO; duplicate aliases are intentionally retained)
+
+| Finding | Current disposition | Evidence / follow-up |
+|---|---|---|
+| GO-01 / FP-FP-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | File-processor rejects Unix/Windows absolute and traversal keys before workflow; normal Go tests pass, race/security tests required. |
+| GO-02 / GW-AUTH-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Gateway atomically indexes all RSA JWKS `kid`s, supports dual-key window and blocks HS confusion; dual-key tests pass. |
+| GO-03 / GW-RL-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `/health/*` bypasses Redis rate limiter while application routes remain protected; tests pass. |
+| GO-04 / WSH-CFG-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | WS defaults include localhost and port 80 with explicit origin tests. |
+| GO-05 / CLI-REDIS-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `uni-cli` uses cursor SCAN and bounded DEL batches; tests pass. |
+| GO-06 / DOC-AGENTS-01 | `BACKLOG / P3 DOCS` | `services/AGENTS.md` event claims need source-of-truth review; no runtime behavior change inferred. |
+| GO-07 / ENV-TOOL-01 | `EXTERNAL-ONLY / FRESH-EVIDENCE-PENDING` | Local Windows lacks CGO/GCC/golangci-lint; Linux runner must provide `go test -race`, vet/lint/SBOM evidence. |
+
+### 33.5 Rust findings
+
+| Finding | Current disposition | Evidence / follow-up |
+|---|---|---|
+| RUST-P1-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Native pointer paths fail closed; WASM uses checked arithmetic/bounds; all-target tests pass locally. |
+| RUST-P1-02 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | NUL/BOM sanitization is aligned across WASM/native paths; parity tests pass. |
+| RUST-P2-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Rayon conflict batch releases Python GIL through `py.detach`; native tests pass. |
+| RUST-P2-02 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | PBKDF2 iteration/key-size bounds and `Result` contract enforced; generated bindings regenerated and tested. |
+| RUST-P2-03 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Sensitive HMAC/scrypt/PBKDF2 buffers zeroized; dependency pinned and lock/pkg artifacts regenerated. |
+| RUST-P2-04 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Cargo-deny workflow now enumerates all four crates in a fail-closed matrix; no scan omission is hidden by an exclusion. Current Linux runner evidence remains required. |
+| RUST-P2-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Rust fuzz workflow now includes `crates/pyo3-sanitizer/fuzz` with bounded smoke; current runner artifact inventory remains required. |
+| RUST-P3-01 | `BACKLOG / P3` | Root workspace absence is tooling ergonomics, not a runtime defect; add workspace only with complete member inventory. |
+| RUST-P3-02 | `BACKLOG / P3` | Root fuzz target ownership needs ADR before move/delete. |
+| RUST-P3-03 | `BACKLOG / P3` | Hex→base64 worker allocation optimization is non-blocking; benchmark before changing. |
+| RUST-P3-04 | `BACKLOG / P3` | Unused deps/features require cargo-deny/clippy inventory and a dedicated cleanup commit. |
+
+### 33.6 Infrastructure findings (INFRA)
+
+| Finding | Current disposition | Evidence / follow-up |
+|---|---|---|
+| INFRA-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Standalone ExternalSecret/deployment now carries revocation/cache/HMAC/RSA material with explicit mounts/env refs; K8s contract tests pass. |
+| INFRA-02 | `DECISION-RECORDED / FRESH-EVIDENCE-PENDING` | ADR-034 and `k8s/README.md` make Helm the sole canonical producer for all six application workloads; raw manifests intentionally do not duplicate Go services. Fresh Helm render, policy validation and one-release staging smoke remain required. |
+| INFRA-03 | `FRESH-EVIDENCE-PENDING` | Deploy workflows validate SHA/digest image identity; current Kyverno/Helm render must prove no mutable `IMAGE_TAG`. |
+| INFRA-04 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Frontend HPA template, values/schema and staging validation added; Helm lint/template required. |
+| INFRA-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Frontend SSR memory request/limit raised to 128Mi/512Mi; verify rendered resources and budget rationale. |
+| INFRA-06 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Reusable backend workflow passes inputs through typed environment variables; actionlint/contract tests green. |
+| INFRA-07 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Backend Docker healthcheck uses `/health/ready`. |
+| INFRA-08 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | File-processor Compose probe uses `grpc_health_probe`. |
+| INFRA-09 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Observability override supplies pinned curl healthprobe sidecar; Compose merge must be validated. |
+| INFRA-10 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Gateway HPA template/values/schema added with KEDA ownership guard. |
+| INFRA-11 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Standalone issuer is envsubst-parameterized; render contract required. |
+| INFRA-12 | `BACKLOG / INTENTIONAL SCHEDULE GUARD` | Weekly cleanup intentionally fails closed without configured DB secret; document operator setup and test both guarded/valid paths. |
+
+### 33.7 Security and supply-chain findings (SEC)
+
+| Finding | Current disposition | Evidence / follow-up |
+|---|---|---|
+| SEC-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | GraphQL now verifies gateway `X-Internal-Signature` HMAC over bound identity/session/tenant and fails closed in production; focused tests pass. |
+| SEC-02 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Same dual-key JWKS implementation as GO-02; retain duplicate label for traceability. |
+| SEC-03 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Production rejects repository-known audit secret sentinel; scanner must verify no plaintext secret/PII enters logs or baseline. |
+| SEC-04 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Shared Go slog redacting handler is implemented and wired to gateway/ws-hub/file-processor with recursive key/value, URL and panic-safe redaction; package coverage is 100%. Require current service logging evidence. |
+| SEC-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Quality contract/normalizer/validator now use explicit metric applicability and machine-readable `N/A`; unsupported metrics cannot be silently converted to 100%. Require current aggregate manifest. |
+| SEC-06 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Current `.gitleaks.toml` allowlists only existing lockfiles and the workflow covers protected `main` pushes plus PRs into `main` without duplicate source-branch scans; fresh Linux scan and current-SHA artifact remain required. |
+| SEC-07 | `FRESH-EVIDENCE-PENDING` | Baseline finding identities/hashes must be revalidated by current detect-secrets; stale or unexplained entries fail closed. |
+| SEC-08 | `EXTERNAL-ONLY / TOOLING` | Bandit target/Windows encoding is runner/tooling hygiene; keep production scan scope explicit and reproduce on Linux. |
+| SEC-09 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | ADR-035 and the fail-closed dependency policy add upper bounds to all 32 previously unbounded external production requirements; current-SHA frozen install, vulnerability, SBOM and compatibility evidence remain required. |
+| SEC-10 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Same cursor-SCAN fix as GO-05. |
+| SEC-11 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Same readiness healthcheck fix as INFRA-07. |
+| SEC-12 | `BACKLOG / TOOLING REVIEW` | Expand mypy hook only after measuring generated/model scope and preserving strict config; current CI mypy remains required. |
+
+### 33.8 Current local evidence and next required gates
+
+После overlay зафиксированы следующие воспроизводимые class-C результаты
+(audited source SHA `36ff58509`; плановый docs-only commit и внешний audit
+artifact не смешиваются с source evidence):
+
+- `uv run python verify_harness.py --repo-only`: `29/29`;
+- backend `ruff`, `mypy`, `compileall` и focused suites — green;
+- frontend `npm run typecheck`, `npm run lint`, `npm run i18n:check`,
+  `npm run build` и `npm run test:wasm`: `190/190` WASM tests green, i18n
+  scanner `2096` static/`68` dynamic references and `18/18` parity; build
+  завершает client+SSR/prerender;
+- Go обычные `go test ./...` для gateway/ws-hub/file-processor/uni-cli и Rust
+  all-target suites — green; shared Go logging package has `100.0%` statement
+  coverage;
+- quality/manifest/normalizer/coverage suite: `267 passed, 1 skipped`; the one
+  skip is the documented Windows case-sensitive-checkout limitation, not a
+  relaxed gate;
+- focused detect-secrets `1.5.0` scans of changed security/config/logging and
+  Kubernetes/Compose files contain no new findings and pass the committed
+  baseline verifier; the full all-files scan is delegated to the Linux CI
+  runner because Windows multiprocessing did not terminate deterministically;
+- actionlint and focused workflow/security contracts pass, including the
+  Semgrep push/no-diff regression: PRs retain diff baseline mode while default
+  branch pushes run a full scan and must emit real SARIF;
+- all supported merged Docker Compose matrices parse successfully, Docker
+  currently has zero running containers, and Squawk `v2.44.0` reports zero
+  migration issues for the target revision;
+- `git diff --check` — green;
+- source commit `36ff58509` прошёл локальные pre-commit hooks (ruff,
+  detect-secrets, gitleaks, Bandit, mypy, no-python2-except, actionlint,
+  Semgrep и frontend lint-staged); audit-plan commit будет зафиксирован
+  отдельно после этой записи;
+- Windows `go test -race` блокируется отсутствием CGO/GCC и остаётся
+  `EXTERNAL-ONLY`, а Windows full Vitest run ранее превысил практический
+  timeout при worker churn; это не основание ослаблять gates или добавлять
+  retries/suppressions.
+
+Обязательная последовательность после завершения SEC-04/SEC-05:
+
+1. Удалить только tool-generated coverage/temp files из новых shared Go
+   packages; пользовательские untracked files, включая внешний audit, не
+   трогать.
+2. Повторить focused logging/quality-contract tests, полный `ruff`/`mypy`,
+   frontend typecheck/lint/build/WASM и Go/Rust tests; выполнить actionlint,
+   detect-secrets, gitleaks, Semgrep, Helm/Compose contracts.
+3. Создать небольшие coherent commits без wave IDs и `Co-Authored-By`, затем
+   безопасно перенести их на актуальный `origin/egorribun` fast-forward-путём
+   без force-push и без изменения stash.
+4. Дождаться нового exact-SHA CI matrix: coverage gate должен пройти прежде
+   mutation lanes; затем собрать все 8 Schemathesis shards, full frontend
+   mutation inventory, Go race/security/load, Lighthouse/CWV, dark smoke и
+   provenance-bound manifest. Каждый failure разбирается по логу, а не
+   маскируется таймаутом.
+5. Только после terminal green CI обновить audit ledger; затем отдельно
+   зафиксировать внешние блокеры §29: merge/resulting-main rerun, canonical
+   exact-six immutable images, registry SBOM/provenance/attestations,
+   digest Docker smoke, Kubernetes staging/TLS/observability, real-device CWV,
+   chaos/restart/rollback и production release.
+
+Эта секция закрывает информационный пробел независимого аудита, но не меняет
+Definition-of-Done: пока отсутствуют current-SHA CI и внешние staging/release
+доказательства, цель остаётся активной и нельзя заявлять полное завершение.
+
+## 34. Current continuation checkpoint (2026-09-04; source-of-truth refresh)
+
+Этот checkpoint добавлен после повторной сверки рабочей ветки с origin и не
+перезаписывает исторические evidence из §§32–33. Он является актуальным
+операционным входом для следующего автономного цикла.
+
+### 34.1 Identity and worktree
+
+| Поле | Текущее значение |
+|---|---|
+| Branch | `egorribun` (tracking `origin/egorribun`) |
+| Source SHA | `d909673d1402637f042c0bc78e9f2cbf784a50b1` |
+| Previous source SHA | `a579943eae065866b0d750178d66243f2c3f6fc8` |
+| Latest source commits | `3991dc72f` mutmut isolated-input closure; `5c37f955c` Spinner mutation contract; `f65dadef9` messenger/push edge-contract tests; `387966a48` cgroup quota-first sizing; `9773bed4e` stable logging-record assertions; `ab3ea68d1` cgroup edge coverage; `a579943ea` Semgrep ledger realignment; `1cc51419d` BuildKit WASM caches; `d909673d1` architecture-scoped cache IDs |
+| Open user artifact | `docs/audits/AUDIT_PLATFORM_FULL.md` remains deliberately untracked and untouched |
+| Stash | No stash entries were present during the checkpoint; no user files were removed or staged |
+| Last push | `d909673d1` pushed successfully; the frontend typecheck push hook passed |
+
+The Spinner change is a focused RED→GREEN mutation contract: the component
+test now asserts the semantic `animate-spin` class, and a seven-mutant local
+run produced `7/7 Killed`. It does not certify the full frontend mutation
+universe. The mutmut change adds the two root Kubernetes manifests required by
+the isolated copy inventory and its focused regression suite is green.
+The current source also adds deterministic branch contracts for messenger
+`clearChat` cache isolation and Web Push subscription edge cases (primitive and
+malformed user IDs, VAPID normalization, URL-safe key decoding, exact key
+comparison, permission options and expiry boundaries). The focused Vitest
+selection is `138/138`, and the same source passes frontend typecheck, lint and
+production client+SSR build locally. The cgroup fix makes finite cgroups v2/v1
+quotas authoritative before affinity (19 focused database/auth tests plus 18
+database settings tests pass), while the frontend Dockerfile now uses locked,
+architecture-scoped BuildKit caches; `docker buildx build --call=check` and the
+Docker resource contract pass. Semgrep's existing reviewed suppressions were
+realigned to the post-refactor source lines and the fresh Semgrep gate is green.
+
+### 34.2 Fresh CI and runner-cap evidence
+
+The fresh PR matrix for this source is
+[run 33854837526](https://github.com/egorribun/university_ecosystem/actions/runs/33854837526),
+created at `2026-09-04T08:43:48Z`, with `head_sha` exactly equal to the Source
+SHA above. At the time of this refresh it was still non-terminal; no result is
+promoted to release evidence until every required child job and aggregate is
+terminal. The superseded predecessor
+[33854426925](https://github.com/egorribun/university_ecosystem/actions/runs/33854426925)
+on `a579943e` was cancelled after the next push, preserving its history but not
+its partial evidence.
+
+The prior run `33846790732` on `3991dc72f` was superseded by the Spinner push.
+The old scheduled nightly run `33840031905` on `d654e3f6` held 16 hosted
+runners in a long Stryker tail and was cancelled only after verifying it was a
+stale main-SHA run unrelated to the current PR. Cancellation preserves its
+history and is not evidence for either source SHA. This was an operational
+queue action, not a gate bypass.
+
+The repository ruleset requires both the Matrix contexts and standalone
+security/contract contexts. Therefore deleting duplicate-looking workflows or
+adding broad path filters would leave required contexts pending. Any future
+capacity change must retain the complete 64-way Stryker, 8-way mutmut-stats,
+128-way mutmut execution, API shards, browser matrix and all security scans.
+The current measured safe budget remains 8 Stryker plus 12 mutmut execution
+workers (and 8 mutmut-stats fan-out); changing it requires three comparable
+green runs with queue, timeout and billed-minute evidence, as required by
+§11.13. The measured Stryker tail is a cost-balancing problem, not a reason to
+raise the 120-minute timeout or weaken viable-mutant semantics.
+The live run has not yet reached the mutation phase. Its first 90 observed
+jobs show `0` failures, `18` successes and `11` intentional skips; completed
+non-skipped jobs have a median duration near `0.9` minutes and a p90 near
+`4.0` minutes, while the current queue-start delay is a measured consequence of
+the 20-runner ceiling and concurrent standalone security/fuzzing workflows.
+Historical comparable runs are either failed or cancelled, so the three-green
+rebalancing threshold is not met.
+
+### 34.3 Open root causes after the checkpoint
+
+1. **Stryker quality and cost remain open.** Historical artifacts contained
+   `8,557 Survived`, `300 Timeout`, `36 RuntimeError` and `16 NoCoverage`
+   statuses among 35,316 completed mutants. The validator correctly rejects
+   every non-`Killed`/`CompileError` status. The next step is a complete,
+   source-bound survivor ledger and owning RED tests/refactors; no exclusions,
+   `ignoreStatic`, related-mode relaxation, threshold change or timeout
+   inflation is allowed.
+2. **Stryker tail balancing remains open.** The 64-way preflight contains
+   approximately 40,841 mutants and historical producer p90 was about 56
+   minutes with a 100-minute maximum. Rebalance only through deterministic,
+   tested cost-aware planning that preserves exact assignments, provenance and
+   all mutants; do not move hotspots based on intuition alone.
+3. **Fresh mutmut validation is required.** The isolated copy contract now
+   includes `k8s/ingress.yaml` and `k8s/secrets-example.yaml`; all stats and
+   execution artifacts must prove the exact copy inventory on the new SHA.
+4. **External-audit architecture debt remains explicit and scoped.** BE-04
+   (Dishka/Depends coexistence) and BE-08 (CDC worker lifecycle) need separate
+   ADRs or measured phased work. BE-02 is now recorded in ADR-036 with a
+   measured inventory and safe migration policy, but live PostgreSQL
+   migration/upgrade evidence is still required. SEC-06 is now
+   contract-verified and code-fixed, while SEC-09 is recorded in ADR-035 and
+   code-fixed, but
+   its fresh current-SHA compatibility evidence is still required. INFRA-02's
+   scope decision is now recorded in ADR-034; current-SHA Helm/staging
+   evidence is still required and it is not silently treated as runtime proof.
+5. **Release evidence is still external.** Merge-to-main recertification,
+   exact-six immutable images, registry SBOM/provenance/attestations,
+   digest-pinned Docker smoke, Kubernetes/TLS/ExternalSecrets/observability,
+   real-device CWV, chaos/rollback and production release remain blocked until
+   the authority and evidence described in §§29 and 33.8 exist.
+6. **Docker CPU quota sizing is fixed and must be recertified.** A measured
+   cgroup-v2 container with `--cpus=0.50` exposed host affinity `16` while
+   `/sys/fs/cgroup/cpu.max` reported the 0.5 quota; `387966a48` now makes finite
+   v2/v1 quotas authoritative, caps pathological values and falls back safely
+   for malformed/unlimited files. Focused database/auth tests are green. The
+   remaining work is fresh-run and immutable-image recertification, not another
+   unbounded pool rewrite.
+7. **Semgrep line-bound provenance was repaired.** The `ab3ea68d` run exposed a
+   stale SHA-1 suppression range after the security module's import cleanup.
+   `a579943ea` updates only that exact policy key (127–129), retains the
+   reviewed HIBP rationale and passes the validator/pre-commit; run
+   `33854837526` is the required fresh-SHA confirmation.
+8. **External audit P0/P1 triage is complete for current ancestry.** The
+   independent audit's listed GraphQL HMAC, ExternalSecret/revocation, migration,
+   SSR boundary, Go path/JWKS/health/origin, Rust memory/sanitization, Helm and
+   service-log findings are already fixed and test-backed. BE-02/BE-04 remain
+   explicit architecture debt; INFRA-02 has an accepted scope decision in
+   ADR-034 but remains evidence-pending until a complete Helm/staging run.
+
+### 34.4 Required next cycle
+
+1. Poll run `33854837526` to terminal state and inventory every non-success,
+   cancellation, skip and timeout exactly once; separate root failures from
+   aggregate cascades.
+2. Confirm the fresh mutmut stats shards no longer reproduce the missing-root
+   manifest error or the circuit-breaker timing race.
+3. Confirm frontend qualification, E2E/browser and dark smoke outcomes before
+   accepting any Stryker artifact. Re-run the narrow Spinner mutation contract
+   only as a regression, not as aggregate evidence.
+4. If Stryker producers fail, download the exact preflight and shard reports,
+   classify the complete inventory, then implement one owning-domain RED→GREEN
+   slice at a time. Keep a machine-readable ledger with report hashes and
+   tested/source/base identities.
+5. After a terminal-green source SHA, run the full local/harness/security/API/
+   infrastructure matrix, update this plan with immutable report hashes, and
+   only then perform the external release/staging sequence.
+
+Until those steps produce terminal current-SHA artifacts, this plan and goal
+remain active; `CODE-FIXED`, local green or historical success is never
+substituted for full quality closure.
+
+## 35. Current live checkpoint (2026-09-05; source `73203ac5d`)
+
+This section records the currently running recertification without promoting
+partial evidence to a release decision. It supersedes the operational values
+in §34 while preserving that section's historical evidence.
+
+### 35.1 Source identity and worktree
+
+| Field | Value |
+|---|---|
+| Branch | `egorribun` (tracking `origin/egorribun`) |
+| Source head SHA | `73203ac5d15b66fb536a814a6d07fbc6b985bb4f` |
+| PR | [#1266](https://github.com/egorribun/university_ecosystem/pull/1266), base `main` |
+| Current source fix | `test: include k8s contract docs in mutmut copy` (isolated mutmut input closure) |
+| User artifact | `docs/audits/AUDIT_PLATFORM_FULL.md` remains untracked and untouched |
+| Stash | no stash entries; no user files staged or removed |
+| Worktree | only this plan overlay is modified; external audit remains untracked |
+
+The preceding run `33978875062` was intentionally cancelled after its exact
+primary failure was captured: mutmut stats shard 5 could not read
+`mutants/k8s/README.md` while collecting
+`tests/test_infra_audit_contract.py`. Commit `73203ac5d` adds that file to the
+tested `also_copy` inventory and its regression tests; no skip, exclusion or
+mutation threshold change was used.
+
+### 35.2 Fresh current-SHA evidence (non-terminal)
+
+The active matrix is
+[run 33981030258](https://github.com/egorribun/university_ecosystem/actions/runs/33981030258),
+whose source head is exactly the SHA above. Its coverage-policy artifact
+`quality-evidence-63103b97a5036f50524b6c2042c5b5e000652b68` (artifact id
+`9974115481`) is internally valid and records the necessary two-identity
+pair:
+
+- `source_head_sha` = `73203ac5d15b66fb536a814a6d07fbc6b985bb4f`;
+- `tested_commit_sha` (the pull-request merge ref) =
+  `63103b97a5036f50524b6c2042c5b5e000652b68`;
+- `validation.valid` = `true`, with no missing reports;
+- frontend, Python, Go applicable/derived, Rust applicable/derived and Tier-0
+  coverage metrics are 100%; unsupported native counters are explicitly
+  represented as `N/A` with reason codes rather than fabricated percentages;
+- provenance binds repository, workflow path/ref, run id `33981030258`,
+  attempt `1`, source head and tested merge identity.
+
+At the latest observation (21:25 MSK) the matrix had 309 materialized jobs:
+114 success, 12 intentional skips, 20 running, 163 queued and zero failures.
+Stryker had 9 completed shards, 8 running and 47 queued; all eight mutmut
+stats shards and central universe generation were successful, while the
+mutmut execution groups were still running/queued. These counts are progress
+only; no mutation score or release status is accepted until every required
+job and aggregate is terminal.
+
+All standalone companion workflows for this source were already terminal:
+20 successes (security, contracts, fuzz, performance, OpenAPI, Docker/Helm
+and dark/light unauthenticated smoke) and two documented intentional skips
+(Dependabot auto-merge and Chromatic). The active matrix remains the only
+non-terminal workflow.
+
+### 35.3 Required continuation
+
+1. Keep polling `33981030258` without cancelling while it makes progress; on
+   any failure retrieve the exact job log, classify the primary root cause and
+   make one RED→GREEN fix on a new SHA.
+2. When terminal, download every mutation/coverage/evidence artifact, verify
+   source head + tested merge SHA, report hashes, complete inventories and
+   aggregate conclusions. A green coverage gate alone is insufficient.
+3. Re-run local harness, frontend typecheck/lint/build/WASM and focused
+   contract/security checks after any new fix; keep generated artifacts out of
+   the worktree and never stage the external audit implicitly.
+4. Only after a terminal-green current source SHA update this checkpoint with
+   final counts and hashes. Merge-to-main recertification, exact-six immutable
+   images, digest Docker smoke, Kubernetes/TLS/observability, real-device CWV,
+   chaos/rollback and production release remain external-only gates in §29.
+
+## 36. Read-only Stryker/CI bottleneck audit (2026-09-05; source `31ab24fcf`)
+
+Этот раздел фиксирует измеренный bottleneck без изменения workflow, threshold,
+mutation semantics или release gates. Он является диагностическим отчётом, а
+не current-SHA mutation evidence: матрица `33989628759` ещё не terminal и
+результаты Stryker для `31ab24fcf00789a0149b9bf0d833f8b5c49089c8` пока не
+принимаются в manifest.
+
+### 36.1 Что проверено
+
+- `frontend/stryker.config.mjs` строит полный `mutate` scope из
+  `quality/coverage-source-policy.json`; `coverageAnalysis` остаётся
+  `perTest`, `incremental` выключен, `excludedMutations` и `ignorers` пусты,
+  а concurrency ограничен контрактом диапазоном 1–4.
+- `frontend/scripts/run-stryker.mjs` fail-closed проверяет полный denominator,
+  попарно непересекающиеся shard assignments, source/policy/config hashes,
+  preflight identity и `SHARD_EVIDENCE.json`. Ни один из этих контрактов не
+  разрешает скрыть survivor, timeout, runtime error или no-coverage.
+- В текущем CI run `33989628759` (создан `2026-09-05T20:16:51Z`, `head_sha`
+  совпадает с `31ab24fcf`) API в момент аудита показывал `queued`, при этом
+  уже материализованные child jobs выполнялись. На наблюдении около 20:20 MSK
+  девять jobs завершились success, failures не было; frontend Lighthouse и
+  backend unit jobs ещё выполнялись, а Stryker preflight не стартовал. Эти
+  числа — progress snapshot, а не итоговый gate.
+
+Старые временные артефакты использованы только для оценки вариативности и
+явно не считаются evidence текущего SHA:
+
+| Артефакт | Source head | Наблюдение | Статус |
+|---|---|---|---|
+| `C:\\Temp\\stryker-shards-338637-current` | `3e54ca9b` | 42 отчёта; `10.1–96.1 min` на shard, среднее `26.5 min`, суммарно около `18.52 h`; длинный хвост — shard 009 (`96.1 min`) | stale, только performance baseline |
+| `C:\\Temp\\frontend-mutation-338084-artifacts` | `564bcd57` | 56 отчётов; `7.3–100.7 min`, среднее `30.1 min`; shard 040 — `100.7 min` | stale, только performance baseline |
+| `C:\\Temp\\stryker-audit-338637-bac5e61a4d914d4795733a785faf9954\\PREFLIGHT_ARTIFACT.json` | `3e54ca9b` | 589 файлов, 40 841 mutant, 64 shards | stale denominator |
+| `C:\\Temp\\stryker-preflight-338968\\PREFLIGHT_ARTIFACT.json` | `5c83aa46` | 589 файлов, 40 830 mutant, 64 shards; план `45–1037` mutant/shard | stale planning sample |
+
+### 36.2 Доказанный критический путь
+
+1. В `.github/workflows/ci.yml` `stryker-preflight` ждёт не только
+   `pre-commit-check`, но и весь reusable `frontend-tests` и
+   `coverage-policy-gate`. Последний, в свою очередь, ждёт backend, frontend,
+   Go и Rust coverage producers.
+2. Reusable frontend tests включают unit shards и aggregate, lint, production
+   build, bundle analysis и четыре Lighthouse shards с aggregate. Поэтому
+   дорогая mutation qualification не может начать подготовку, пока не
+   завершатся Lighthouse и остальные core producers; это подтверждено
+   текущим snapshot, где Lighthouse/backend ещё выполнялись, а Stryker был
+   заблокирован upstream barrier.
+3. После preflight запускается фиксированная матрица из 64 Stryker jobs с
+   `max-parallel: 8`; каждый job повторяет `npm ci`, валидирует preflight и
+   выполняет один свежий shard с `STRYKER_CONCURRENCY=4` (до 32 внутренних
+   worker-процессов при восьми hosted jobs). Это ограничивает throughput и
+   одновременно создаёт CPU/RSS contention на runner.
+4. Aggregate и independent round-trip verifier повторяют checkout/setup и
+   `npm ci`, затем заново проверяют shard evidence. Повторная установка —
+   намеренная defense-in-depth; удалять её без hash-equivalent manifest и
+   regression contracts нельзя.
+
+Отдельный Python mutation lane также вызывает до 128 логических assignments
+при `target-groups=128`; это даёт до 128 физических consumers с повторным
+setup. Общий лимит остаётся 20 hosted jobs (текущая безопасная раскладка —
+8 Stryker + 12 mutmut execution, а mutmut stats используют отдельный fan-out).
+Manual/nightly mutation workflows на PR не дублируют эту матрицу.
+
+### 36.3 Безопасный план оптимизации (не выполнен в этом аудите)
+
+1. Ввести подписанный `frontend-coverage-ready` context после unit shards,
+   merged frontend coverage и проверки exact source/policy/config hashes.
+   Разрешить Stryker preflight зависеть от этого контекста, а не от финального
+   Lighthouse/build aggregate; при этом оставить неизменными
+   `coverage-policy-gate`, final `CI Success`, полный browser/performance gate
+   и SHA-bound manifest. Добавить workflow-contract tests на DAG, hash
+   identity, fail-closed missing/partial artifacts и отсутствие fan-out при
+   красном qualification.
+2. После producer barrier сравнить только сопоставимые зелёные runs для
+   `STRYKER_CONCURRENCY=2/4` и `max-parallel=8/10/12`, измеряя wall-clock
+   critical path, queue delay, timeout/error rate, CPU/RSS и billed runner
+   minutes. До трёх comparable green runs нельзя менять текущий lane budget.
+3. Для mutmut отдельно рассмотреть physical groups `32` или `64`, сохранив
+   полный логический 128-way plan, exact assignment/group digests и
+   regression tests на inventory/completeness. Это эксперимент по setup cost,
+   а не разрешение уменьшить denominator.
+4. Aggregate и round-trip оставить до появления эквивалентного подписанного
+   evidence protocol; любые изменения должны пройти независимый security
+   review и текущий SHA full-matrix rerun.
+
+**Acceptance для будущей реализации:** каждый current-SHA mutant ровно один
+раз попадает в ожидаемый assignment; отсутствуют missing/duplicate/stale
+reports; сохраняются пустые exclusions/quarantines и `100% viable` semantics;
+aggregate принимает только полный manifest; а измеренное сокращение
+critical-path подтверждено тремя comparable green runs. До этих условий
+текущая стоимость Stryker и задержка preflight считаются открытым
+`OPEN-PERF/EVIDENCE-BLOCKED`, а не основанием для ослабления quality gates.
+
+## 37. Pre-push checkpoint (2026-09-06; parent source `0d16eee9e`)
+
+Этот checkpoint фиксирует изменения, подготовленные после §36, до запуска
+новой SHA-bound матрицы. Сам коммит этого раздела станет частью следующего
+source SHA и поэтому не является evidence для перечисленных проверок.
+
+### 37.1 Подготовленные изменения
+
+- `51c28739b` добавляет единый same-run producer WASM для всех E2E callers;
+  consumers используют server-issued artifact id, provenance, inventory и
+  per-file hashes без cross-run fallback.
+- `3b7c09757` разделяет WebSocket transport limit (полные UTF-8 bytes) и
+  message-content limit (Unicode code points), сохраняя legacy `read` только в
+  Python fallback. Focused route/contract tests закрывают ASCII, Unicode,
+  JSON-overhead, malformed/non-object и connection-limit paths.
+- `4601d6452` добавляет server-side artifact metadata digest verification;
+  `5ae7aabb7` передаёт `actions: read` только caller jobs, реально выполняющим
+  эту проверку; `cc6bee33a` закрепляет эти permissions contract tests.
+- `c5b046e98` нормализует bare `upload-artifact` digest в canonical
+  `sha256:<64 hex>` форму; `5cc0614b8` нормализует API response defensively.
+  Любая неожиданная форма digest завершается ошибкой, а не fallback.
+- `482cc3f88` добавляет WebSocket audit-context и connection-rejection
+  coverage. Все коммиты без `Co-Authored-By`; quality/testing commits не
+  используют фиктивные wave identifiers.
+- `0d16eee9e` обновляет workflow contract assertions для нового минимального
+  `actions: read` разрешения E2E consumers, не расширяя permissions других
+  reusable workflows.
+
+### 37.2 Локальная evidence до push
+
+- `python verify_harness.py --repo-only`: **29/29**, exit 0.
+- Frontend `npm run typecheck`, `npm run lint`: зелёные.
+- Backend Ruff (`app/`, `tests/`), strict mypy (349 files), custom AST и
+  no-python2-except: зелёные; actionlint и gitleaks: зелёные; Bandit targeted
+  WebSocket scan: без findings.
+- WebSocket focused regression: 79+ tests зелёные; расширенная выборка 111
+  tests даёт для `app/api/websocket.py` 100% lines/branches.
+- WASM workflow contract: 4/4; relevant pre-commit, semgrep, detect-secrets
+  и diff checks зелёные. `.secrets.baseline` обновлён и staged в последнем
+  workflow commit согласно repository policy.
+
+### 37.3 Что не является evidence этого source
+
+Старый PR matrix `33989628759` относится к SHA `31ab24fcf`, не к локальному
+parent `0d16eee9e`; на момент checkpoint он оставался non-terminal (135
+success, 12 intentional skips, 20 running, 142 queued, zero observed
+failures). Его mutation/coverage results не переносятся на новый SHA. После
+публикации следующего SHA требуется дождаться terminal matrix и companions,
+загрузить все artifacts, проверить source/tested merge identities, report
+hashes, full mutant inventory и aggregate conclusions.
+
+Пользовательский `docs/audits/AUDIT_PLATFORM_FULL.md` и каталоги
+`.tmp_preflight/`, `.tmp_stryker_18/`, `.tmp_stryker_22/` остаются untracked и
+не входят в source commits. Merge-to-main, exact-six immutable images,
+registry SBOM/provenance/attestations, digest Docker smoke, Kubernetes/TLS/
+ExternalSecrets/observability, real-device CWV, chaos/rollback и production
+release остаются внешними gates из §§29, 33 и 36 до получения их прямых
+доказательств.
+
+## 38. Current-SHA frontend and pre-push closure checkpoint (2026-09-09; source `752dabf9f`)
+
+This checkpoint supersedes the pending local frontend evidence note in §37. It
+records only reproducible local evidence and does not import results from the
+older PR runs or from the still-running remote matrix.
+
+### 38.1 Closed locally
+
+- The async React diagnostic owners identified by the previous full run are
+  closed by `d25707a46` (login/OTP), `3c5c0a3d8` (News interactions),
+  `694e0af83` (MapControls fullscreen/rejection), `25d72e30d`
+  (NewsCardEditDialog mounts), and `46619e2cb` (Dashboard skip-link). These
+  changes use scoped `act`/`waitFor` contracts and expected-console matchers;
+  they do not suppress unexpected diagnostics or change production behavior.
+- The exact canonical frontend command (`npm run test:ci`, whose runner
+  executes the WASM producer then Vitest with coverage/JUnit reporters) was
+  reproduced from the post-fix source. It completed **651/651 test files,
+  6656/6656 tests, zero unhandled errors**, JUnit output, and 100% for every
+  applicable metric: statements 18724/18724, branches 13241/13241, functions
+  4505/4505, lines 16874/16874. Duration was 881.71 seconds on the local
+  Windows host; the duration is a diagnostic baseline, not a release SLO.
+- `78f79d032` keeps the Python workflow contract fixture formatter-clean.
+  `ec7654283` makes Stryker execution and aggregate fail closed behind the
+  independent security/type qualification while preserving the complete
+  64-shard plan, empty exclusions/ignorers and viable-mutant denominator.
+  An independent review found 59 valid jobs, no missing dependencies/cycles,
+  unchanged mutation inventories and no permission broadening in that patch.
+- Full pre-commit was run with an isolated `PRE_COMMIT_HOME` after the
+  detect-secrets baseline was staged. Ruff check/import/format, detect-secrets,
+  strong-env-secrets, no-Python2-except, Bandit, mypy, actionlint, Docker
+  Semgrep and Renovate validation all passed. The only baseline delta is the
+  line number and timestamp metadata for an existing `Login.test.tsx` fixture;
+  it is committed separately as `752dabf9f` per repository policy.
+
+### 38.2 Fresh remote verification in progress
+
+- Source `752dabf9fd165084df0d897eef39fe93095e0ebb` is pushed to
+  `origin/egorribun`; PR 1266 currently points to this SHA. Fresh matrix run
+  `34287653082` and companion workflows were created at the same SHA. At the
+  time of writing they are non-terminal, so no remote test, mutation,
+  coverage, security or performance result is accepted as current evidence.
+- The matrix currently shows the repository-wide hosted-runner ceiling in
+  action: companion workflows occupy the active slots while the 59-job CI
+  matrix waits. This is an observed queue snapshot, not yet the required
+  three-comparable-green-run proof for changing fan-out. Continue collecting
+  start/end times, queue delay, timeout/error rate and billed minutes before
+  modifying the lane budgets.
+
+### 38.3 Remaining blockers and boundaries
+
+1. Wait for all fresh current-SHA workflows, download every artifact, and
+   verify manifest source/tested-merge SHA, report hashes, complete coverage
+   and mutation inventories. Investigate each final failure by exact log, not
+   by stale PR screenshots.
+2. Close the two currently reported high Dependabot alerts in Go only after
+   compatibility and test evidence: gRPC-Go `<=1.83.0` (CVE-2026-84304) and
+   transitive `moby/go-archive <0.3.0` (CVE-2026-17106). Do not suppress or
+   mark either alert as accepted without a documented, verified reason.
+3. Backend full-domain pytest remains incomplete on Windows because the prior
+   xdist run stalled near 99% without a final nodeid inventory. Use the bounded
+   agent/CI evidence to obtain a deterministic terminal result; do not infer
+   green status from the partial run.
+4. Stryker/mutmut 100% viable scores, fresh current-SHA coverage manifests,
+   Go race tests and Linux sanitizer/fuzz evidence remain CI-owned until
+   terminal artifacts are verified. The `frontend-coverage-ready` context and
+   measured three-run CI critical-path optimization are still open; current
+   fail-closed qualification is not a denominator reduction.
+5. External release gates remain open: merge-to-main recertification,
+   canonical exact-six immutable image producer, digest-pinned Docker smoke,
+   Kubernetes/TLS/ExternalSecrets/observability staging, real-device/browser
+   CWV, chaos/restart/rollback, production release and the final
+   SHA-bound `AUDIT_QUALITY_CLOSURE_<sha>.md`.
+
+User-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
+`.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
+excluded from all source commits.
+
+## 46. Frontend interceptor survivor closure and fresh-SHA boundary (2026-09-10; source `f5f23a026`)
+
+### 46.1 Terminal stale-run evidence
+
+- PR #1266 run `34486140554` is terminal and remains historical evidence only:
+  it tested remote SHA `78d03e1379a0c428ae509039d4942677ed89a7d9`, not the current
+  `egorribun` source. Its aggregate mutation failure was fail-closed fallout
+  from isolated survivors; the `digest-mismatch` lines in the aggregate log
+  were validation fallout, not an additional source defect.
+- The downloaded frontend shard-018 artifact (`10162914088`) contained two
+  exact survivors in `src/api/client.ts`:
+  - mutant 55 replaced the idempotency-key guard with `true` at the unsafe
+    mutation tracking branch (line 284); no prior test exercised a POST without
+    an `Idempotency-Key`.
+  - mutant 102 replaced the SSR forwarding metadata guard with `true` at line
+    339; the existing suite tested the pure predicate and positive forwarding
+    path but not the allocation-preserving negative path.
+- Both findings were reproduced from the artifact's `mutation.json`; no
+  production behavior was changed to conceal a mutant.
+
+### 46.2 RED → GREEN regression coverage
+
+- Added `does not track unsafe requests that omit an idempotency key` to
+  `frontend/src/api/__tests__/client.closure.test.ts`. It sends two POSTs
+  without a key, asserts both reach the adapter and verifies that the
+  `BroadcastChannel` ledger remains empty. This kills the unconditional
+  tracking mutant and protects duplicate suppression boundaries.
+- Added `preserves the request headers object when SSR metadata is absent`.
+  The test isolates the language interceptor, invokes the real Axios request
+  interceptor with no cookie/fingerprint metadata and asserts that the
+  original headers object is preserved. This directly protects the
+  `hasSsrForwardingHeaders` allocation guard against an unconditional branch.
+  The temporary module mock is removed in `finally`, preventing cross-test
+  pollution.
+- Focused Vitest result: **43/43 passed**. Frontend typecheck and ESLint for
+  the changed file pass. Isolated pre-commit passes detect-secrets,
+  hardcoded-secrets, no-Python2-except, actionlint, Semgrep and all applicable
+  hooks. The default Windows pre-commit cache ACL failure is avoided by the
+  previously documented isolated cache; no hook is bypassed.
+- Source commit: `f5f23a026` (`test: cover api client interceptor branches`).
+  Only the intentional tracked test file was staged; all user-owned
+  untracked paths remain untouched and unstaged.
+
+### 46.3 Fresh-CI acceptance and remaining boundary
+
+1. Run `git diff --check`, the harness, frontend typecheck/lint/build and the
+   focused API client suite after this documentation checkpoint. Push the
+   resulting `egorribun` SHA non-force only after confirming the worktree
+   contains no accidental staged artifacts.
+2. Treat only the new current-SHA PR matrix as evidence. Require shard-018
+   (and every other Stryker shard) to report `Killed`/`NoCoverage` according to
+   the contract, aggregate/evidence roundtrip success, and a complete
+   denominator; do not infer a 100% score from the stale artifact.
+3. Re-run the full mutmut matrix after the two earlier CLI survivors and
+   download all terminal artifacts. Any new survivor, timeout, cancellation,
+   digest mismatch or missing report is a blocker and receives the same
+   exact-artifact TDD treatment.
+4. Keep all remaining gates open until current-SHA Python/frontend/Go/Rust,
+   API/Schemathesis, security/supply-chain, Lighthouse/E2E, infrastructure,
+   performance and harness evidence is complete. Merge-to-main
+   recertification, exact-six immutable image/SBOM/provenance, digest Docker
+   smoke, Kubernetes/TLS/ExternalSecrets/observability staging, real-device
+   CWV, chaos/rollback, production release and the final SHA-bound audit are
+   external release gates and are not implied by this local test commit.
+
+## 41. Current stale-PR mutation evidence and bounded remediation (2026-09-10; local HEAD `5a04b3e34`)
+
+### 41.1 Exact stale-run findings
+
+- PR #1266 run `34486140554` is based on the old remote SHA
+  `78d03e1379a0c428ae509039d4942677ed89a7d9` and is not evidence for the
+  current branch. At the latest inspection it had 355 completed checks, 8
+  active mutation jobs and two failures: the previously fixed group-91
+  survivor and a newly terminal group-123 survivor.
+- Group 123 artifact `mutmut-exact-evidence-34486140554-1-group-123`
+  (`10168759110`) selected 19 mutants and recorded exactly one survivor:
+  `app.cli.migrate_passwords.x__report_bcrypt_users__mutmut_1`.
+  The isolated mutant changed only `_report_bcrypt_users`' default sample
+  limit from 50 to 51; no test asserted that documented safety bound.
+
+### 41.2 RED → GREEN remediation
+
+- Added `test_report_bcrypt_users_default_sample_limit_is_fifty` to
+  `tests/test_cli_migrate_passwords_closure.py`. It executes the real query
+  path with ID opt-in and asserts the compiled PostgreSQL statement contains
+  `LIMIT 50`, killing the exact default-value mutant without changing
+  production behavior.
+- Focused closure suite: **14 passed**; Ruff check/format pass for the changed
+  test. The fix is committed as `5a04b3e34` (`test: cover bcrypt sample limit
+  contract`). The prior exact error-message survivor remains covered by
+  commit `5b5473320`.
+- The full isolated pre-commit run completed successfully (Ruff, secrets,
+  Bandit, mypy, no-Python2-except, actionlint, Semgrep and Renovate checks).
+  The default Windows pre-commit cache ACL failure remains an environment
+  limitation; no hook was bypassed.
+
+### 41.3 Fresh-SHA boundary
+
+1. Do not push while stale run `34486140554` is still active because the CI
+   concurrency group would cancel expensive mutation evidence. After its
+   terminal state, re-query every failed/cancelled job and artifact; any new
+   survivor is handled with the same exact-evidence TDD loop.
+2. Re-run the full local inventory after the final source commit, then push
+   current SHA `5a04b3e34` (and any subsequent evidence-only commit) and treat
+   only the resulting current-SHA matrix as merge evidence.
+3. Keep all product/release/staging gates open until current-SHA CI and the
+   post-merge exact-six image, digest smoke, Kubernetes/TLS/observability,
+   device-CWV, chaos/rollback and SHA-bound audit evidence are captured.
+
+The user-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
+`.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
+excluded from source commits.
+
+## 42. Stryker runtime and CI fan-out audit (2026-09-10; read-only)
+
+### 42.1 Evidence and diagnosis
+
+- A bounded independent audit of stale run `34486140554` found no proven
+  deadlock. The six remaining jobs were executing `Run fresh Stryker shard`
+  and each was still within the configured `timeout-minutes: 120` envelope;
+  the apparent multi-hour delay was the age of the whole run plus matrix
+  queueing, not six jobs running for multiple hours.
+- `.github/workflows/ci.yml` keeps 64 frontend shards but caps the matrix at
+  `max-parallel: 6`. Shards 0–5 started near `14:26Z`; the final queue wave
+  (54, 59–63) started between `18:35Z` and `19:23Z`. This explains the
+  observed wall-clock latency without weakening any quality gate.
+- `frontend/stryker.config.mjs` intentionally retains `vitest.related: true`,
+  `coverageAnalysis: "perTest"` and `incremental: false`. Completed same-run
+  evidence shows test-graph size, not mutant count alone, controls duration:
+  shard 18 had 123 mutants and 238.80 tests/mutant (~101.8 min), shard 40 had
+  995 mutants and 34.70 tests/mutant (~90.8 min), while shard 52 had 1098
+  mutants and 9.03 tests/mutant (~51.4 min).
+
+### 42.2 Safe optimization boundary
+
+1. Preserve all 64 shards, full mutant/source/test inventory,
+   `vitest.related`, per-test coverage analysis, non-incremental release
+   evidence and the 20-runner account ceiling.
+2. Do not increase fan-out on this stale run. After **three comparable green
+   current-SHA runs**, use the recorded queue time, per-shard duration,
+   tests-per-mutant and reserved mutmut/aggregation capacity to trial
+   `max-parallel: 7`, then 8 only when the evidence proves the under-20-job
+   budget remains safe. Roll back on any queue starvation, resource pressure,
+   timeout or evidence-integrity regression.
+3. Optimize only proven test-graph/setup hotspots; do not disable `related`,
+   lower thresholds, reuse stale reports or hide timeout/cancelled targets.
+   Keep per-shard telemetry as a required diagnostic artifact so future runs
+   distinguish queue latency from a genuine execution stall.
+
+The Stryker audit was read-only; no source, workflow or user-owned file was
+changed by the audit.
+
+## 44. Current bounded closure checkpoint (2026-09-10; local HEAD `6679aa3b`)
+
+This checkpoint records new evidence and bounded fixes without promoting the
+still-running historical PR matrix to current-SHA release evidence.
+
+### 44.1 Identity and preservation boundary
+
+| Field | Value |
+|---|---|
+| Branch | `egorribun` |
+| Local source head | `6679aa3b9` (`fix: align injected routes with Dishka sessions`) |
+| Remote source head | `78d03e1379a0c428ae509039d4942677ed89a7d9` |
+| Local delta | 15 commits ahead; no uncommitted tracked changes |
+| Stash | Empty; no stash mutation performed |
+| User-owned untracked paths | `.tmp_preflight/`, `.tmp_stryker_18/`, `.tmp_stryker_22/`, `docs/audits/AUDIT_PLATFORM_FULL.md` — untouched and unstaged |
+
+### 44.2 Bounded fixes and focused evidence
+
+- `44ef05a60` hardens `CdcOutboxWorker` lifecycle ownership: active
+  replication connections and fallback workers are tracked and closed on
+  shutdown, including connect/stop races. Three lifecycle regressions are
+  green; CDC unit/closure is **39/39** and CDC+outbox closure is **48/48**.
+  ADR-037 explicitly defers production CDC wiring until DI/lifespan,
+  PostgreSQL/NATS, ordering/idempotency and staging evidence exist.
+- `6679aa3b` migrates the affected injected MFA, schedule and search routes to
+  canonical Dishka request-session adapters and adds an ownership contract.
+  The collection-order RED caused by the schedule import-isolation suite is
+  fixed; the combined focused set is **73/73**, Ruff and mypy pass.
+- Old run `34486140554` exposed one exact mutmut survivor in execution group
+  91: `app.cli.migrate_passwords.x__report_bcrypt_users__mutmut_6`. The
+  mutant only changed the negative-limit error text; the former regex asserted
+  a substring and let it survive. `5b5473320` asserts the exact error string;
+  focused CLI tests are green (**20/20**). This fix still requires a fresh
+  current-SHA mutmut run.
+- `python verify_harness.py --repo-only` remains **29/29**. Frontend
+  client+SSR/PWA production build completed successfully; generated WASM
+  provenance/binaries were restored after inspection and are not part of the
+  source delta. `git diff --check` passes.
+
+### 44.3 Remote-run boundary and next actions
+
+- Run `34486140554` is still based on remote SHA `78d03e137`; its run-level API
+  remains stale while Jobs/PR checks show mutation execution in progress. The
+  current historical failure is the single group-91 survivor above; all other
+  observed terminal checks are success or intentional skip so far. This run
+  contributes no current-SHA release evidence.
+- Continue polling until the run is terminal and inventory every failure,
+  cancellation, timeout, artifact and annotation exactly once. Do not push
+  while it is active because `ci.yml` uses `cancel-in-progress: true`.
+- After terminal state, run final local inventory/pre-commit checks and push
+  the current `egorribun` head non-force. Require a fresh matrix to prove the
+  exact mutmut survivor fix, BE-04 session ownership, BE-08 lifecycle tests,
+  hidden JUnit artifacts, complete Stryker/mutmut ledgers and current-SHA
+  provenance before any release claim.
+- BE-04 legacy domains, BE-08 production integration, live BE-02 PostgreSQL
+  migration evidence, current INFRA/SEC reports and all merge/staging/release
+  gates remain open.
+
+## 45. Go mutation diagnostic governance checkpoint (2026-09-10; `1104739ba`)
+
+- `1104739ba` implements ADR-038's fail-closed advisory boundary for Go
+  mutation diagnostics. The required PR Go coverage/race/security producer is
+  independent; diagnostic execution is schedule/manual-only and no longer
+  uses job-level `continue-on-error` to hide tool failures.
+- Every changed non-generated Go source target is written to an exact
+  `expected-targets.txt` ledger before workers start. Finalization materializes
+  an outcome for each target; missing or failed targets are explicitly
+  `unreported`/`failed`, report and source hashes are retained, and a
+  `complete` summary is rejected unless all expected targets succeeded.
+- Governance contracts and workflow fail-closed tests are green (**38/38**);
+  isolated hooks including actionlint, detect-secrets, Semgrep and mypy pass.
+  This is not a Go mutation score claim: the diagnostic remains non-contract
+  evidence and cannot replace required native coverage, race or security
+  checks.
+
+## 43. Current local audit-policy checkpoint (2026-09-10; snapshot HEAD `a9be722e5`)
+
+This checkpoint is a pre-push source snapshot. It records local changes and
+evidence only; the old remote matrix remains non-terminal and cannot certify
+this snapshot.
+
+### 43.1 Source and preservation boundary
+
+- Branch: `egorribun`; snapshot `HEAD`:
+  `a9be722e51f876a0030cdec65692b2a78f861e16`.
+- Remote `origin/egorribun` remains
+  `78d03e1379a0c428ae509039d4942677ed89a7d9`; local delta is 11 commits,
+  with no tracked worktree changes.
+- User-owned untracked files remain exactly the six inventoried paths under
+  `.tmp_preflight/`, `.tmp_stryker_18/shard-018/`,
+  `.tmp_stryker_22/shard-022/` and `docs/audits/AUDIT_PLATFORM_FULL.md`;
+  stash is empty and no cleanup was performed.
+
+### 43.2 Bounded audit closure work
+
+- ADR-034 formalizes Helm as the sole canonical application deployment
+  producer; infrastructure/Helm contracts are green (**211/211**).
+- ADR-035 plus `pyproject.toml`/`uv.lock` add upper bounds to all 32
+  previously unbounded external production requirements; dependency-policy
+  and gitleaks contracts are green (**16/16 combined**), and `uv lock --check`
+  passes.
+- ADR-036 records the measured BE-02 defaults inventory (54 explicit
+  Python-only candidates, 19 server-only, 37 UUIDv7 exceptions) and a
+  PostgreSQL catalog/preflight migration policy; no unsafe blanket DDL rewrite
+  was attempted.
+- Isolated pre-commit hooks pass (Ruff, detect-secrets, hardcoded-secrets,
+  Bandit, mypy, strong-env-secrets, no-Python2-except, actionlint, Semgrep and
+  Renovate); harness is **29/29** and frontend typecheck pre-push dry-run is
+  green.
+
+### 43.3 CI and remaining boundary
+
+- Old run `34486140554` is bound to remote SHA `78d03e137` and remains
+  non-terminal. Latest Jobs API snapshot: **230 success**, **12 skipped**,
+  **16 in progress**, **52 queued**, with no failure/cancellation/timeout.
+- Read-only scheduler analysis measured current PR mutation usage at
+  `6 + 10 = 16` runners (Stryker plus mutmut), leaving four of the 20-job
+  budget; manual/nightly workflows can overlap and must not be raised until
+  three comparable green runs justify a change.
+- Next safe action is to await terminal old-run classification, perform the
+  final diff/pre-push inventory, push this complete delta without force, and
+  require a fresh current-SHA matrix. BE-04/BE-08, live BE-02 PostgreSQL
+  migration evidence, and all merge/main, immutable-image, staging,
+  real-device and release gates remain open.
+
+## 42. Current local verification checkpoint (2026-09-10; local HEAD `f5bb93655`)
+
+This checkpoint records a fresh read-only verification pass while the old
+remote matrix is still running. It does not promote that remote run to
+current-SHA evidence and does not close the release boundary.
+
+### 42.1 Identity and preservation
+
+- Active branch is `egorribun`; local `HEAD` is `f5bb936559ca13196571ea5ee83008b23bce07be`.
+- `origin/egorribun` remains `78d03e1379a0c428ae509039d4942677ed89a7d9`; local
+  branch is five commits ahead and has no tracked worktree changes.
+- `git stash list` is empty and no stash operation was performed.
+- The six user-owned untracked files remain untouched and unstaged:
+  `.tmp_preflight/PREFLIGHT_ARTIFACT.json`, the two files under
+  `.tmp_stryker_18/shard-018/`, the two files under
+  `.tmp_stryker_22/shard-022/`, and `docs/audits/AUDIT_PLATFORM_FULL.md`.
+- `git diff --check` passes; `git fsck --full --no-progress` exits zero with
+  no missing, corrupt or error objects. No files, Docker resources or user
+  state were deleted or overwritten.
+
+### 42.2 Fresh local evidence
+
+- `python verify_harness.py --repo-only`: **29/29 passed**.
+- `frontend/npm run typecheck`: exit **0**.
+- Isolated `pre-commit run --all-files`: **Passed** for Ruff check/import/format,
+  detect-secrets, hardcoded-secrets, Bandit, mypy, strong-env-secrets,
+  no-Python2-except, actionlint, Semgrep and Renovate validation. The manual
+  Trivy hook is not part of the default stage and was not misclassified as a
+  pass.
+- The user-owned artifact SHA-256 prefixes remain stable (`47F859B3FEFE`,
+  `05102C77E54A`, `8D9DAE6BCA70`, `336349DB0D4B`, `40FA747094EC`,
+  `E3E5F87AA93C`), matching the prior preservation inventory.
+
+### 42.3 Remote-run boundary
+
+- Run `34486140554` is still tied to the old remote source SHA
+  `78d03e1379a0c428ae509039d4942677ed89a7d9`; it is not evidence for local
+  `f5bb93655` and remains non-terminal.
+- Latest Jobs API snapshot: **204 completed-success**, **12 completed-skipped**,
+  **16 in progress**, **78 queued**, with no failure, cancellation or timeout.
+- Because `.github/workflows/ci.yml` uses `cancel-in-progress: true`, the five
+  local commits remain intentionally unpushed until this old run reaches a
+  terminal state. The next action is a non-force push followed by a fresh
+  current-SHA matrix and complete artifact/annotation inventory.
+
+## 41. Current local and remote continuation checkpoint (2026-09-10; local HEAD `1a22082de`)
+
+This checkpoint records the latest bounded progress without promoting the
+older remote matrix to current-SHA evidence. It supersedes neither the
+release boundary in §40.3 nor the requirement to obtain a terminal fresh
+matrix after the next push.
+
+### 41.1 Identity and preservation boundary
+
+| Field | Value |
+|---|---|
+| Branch | `egorribun` (tracking `origin/egorribun`) |
+| Local source head | `1a22082de1f573612c7271189af2aaa8c96e8c51` |
+| Remote source head | `78d03e1379a0c428ae509039d4942677ed89a7d9` |
+| Local delta | 4 commits ahead; no uncommitted tracked changes |
+| Stash | Empty; no stash mutation performed |
+| User-owned untracked paths | `.tmp_preflight/`, `.tmp_stryker_18/`, `.tmp_stryker_22/`, `docs/audits/AUDIT_PLATFORM_FULL.md` — untouched and unstaged |
+
+### 41.2 New bounded implementation and local evidence
+
+- `d95a2ed25` opts the frontend aggregate JUnit upload into hidden files;
+  `d3a03a982` makes aggregate and shard JUnit uploads fail closed when a file
+  is missing. The focused workflow regression is green, and the full workflow
+  contract suite remains green.
+- `1a22082de` adds a mutation-runner-only guard for the upstream OTel finite
+  metric-reader dead-`WeakMethod` at-fork callback. Live callbacks and
+  unrelated callback failures retain their original behavior; no test,
+  source or mutant inventory is skipped or reclassified.
+- Focused post-change evidence: `tests/test_run_mutmut_with_stats.py` **10/10**;
+  combined mutation/workflow contract selection **175/175**;
+  `python verify_harness.py --repo-only` **29/29**; isolated pre-commit hook
+  run (Ruff, detect-secrets, strong-env-secrets, no-Python2-except, Semgrep
+  and Renovate validation) passed; pre-push typecheck dry-run passed.
+- The guard's real `PeriodicExportingMetricReader` callback shape is covered
+  by a regression test on this Windows host through a deterministic fork-hook
+  capture. Linux mutmut and the complete current-SHA mutation inventory still
+  require remote confirmation.
+
+### 41.3 Superseded remote run boundary
+
+- Run `34486140554` belongs to remote source `78d03e137`, not local source
+  `1a22082de`. At the latest observation it contained 310 jobs: 189 success,
+  12 intentional skips, 16 in progress and 93 queued; no failure, cancellation
+  or timeout was observed. The run is non-terminal and therefore contributes
+  no release evidence.
+- Its sole annotation remains the old missing aggregate
+  `frontend-vitest-report`, caused by uploading hidden `.vitest-reports`
+  without `include-hidden-files`. That root cause is addressed by `d95a2ed25`
+  and `d3a03a982`; the new SHA must prove the artifact exists and that no
+  annotation remains.
+- The old run is intentionally not cancelled or reused. Because the workflow
+  uses `cancel-in-progress: true`, pushing the local delta before its terminal
+  state would discard an expensive in-flight mutation attempt.
+
+### 41.4 Required next actions
+
+1. Poll `34486140554` until terminal and inventory every final status, artifact
+   and annotation exactly once; never mix its evidence with local SHA.
+2. Run the final local diff/pre-commit inventory check, then push `1a22082de`
+   (and this checkpoint if committed) without force-push or main mutation.
+3. Await a fresh PR matrix and companion workflows. Require the aggregate
+   hidden JUnit artifact, full Stryker/mutmut ledgers, coverage/provenance
+   hashes, Go race/security evidence, and zero at-fork exceptions before
+   accepting the quality gate.
+4. Only after current-SHA terminal green evidence proceed to merge/main,
+   exact-six immutable images, SBOM/provenance/attestations, digest Docker
+   smoke, Kubernetes/TLS/observability, real-device CWV, chaos/rollback,
+   production release and the final SHA-bound audit.
+
+## 39. Current local closure state and corrected remote boundary (2026-09-09)
+
+This correction supersedes the time-sensitive statements in §38. The source
+SHA named there (`752dabf9fd165084df0d897eef39fe93095e0ebb`) and run
+`34287653082` are historical evidence only: that run reached a terminal
+failure on the old source and is not evidence for the commits recorded below.
+
+### 39.1 Changes now committed locally
+
+- `cd2510691` scopes generated WASM provenance from secret scanning with exact
+  path/format contracts; `67c910e03` removes the stale CLI migration finding
+  and refreshes the generated baseline metadata.
+- `c5aa0b821` closes file-processor nil handling before Temporal side effects
+  and updates the corresponding tests; `2d4d025b4` closes Pact NATS message
+  provider handlers, pins the SBOM/vulnerability Go setup to 1.26.6, and
+  selects a stable PyO3 ABI for fuzz targets; `882c1c4` documents the exported
+  file-processor validation limit; `868692489` makes the Rust fuzz inventory
+  check shellcheck-safe; `fcd35e909` makes WASM provenance ordering locale
+  independent; `0e89c8a62` patches frontend dependency advisories; and
+  `5b3b102c9` raises the frozen `httpx2`/`httpcore2` line to 2.12.0.
+- The frontend dependency audit is currently clean for high/critical findings
+  (seven low findings remain in non-release tooling). The Python OSV batch
+  audit and allowlist validator are green for the frozen production set.
+
+### 39.2 Reproducible local evidence
+
+- `python verify_harness.py --repo-only`: 29/29 passed.
+- Frontend WASM provenance/validator tests: 11/11 passed; `ensure-wasm.mjs`
+  and Windows `cargo check` for the fuzz binary pass with the `abi3-py311`
+  configuration.
+- The last canonical frontend run before the dependency refresh recorded
+  651/651 files, 6656/6656 tests, zero unhandled errors and 100% statements,
+  branches, functions and lines. A fresh dependency-refresh `npm run test:ci`
+  is still running and must finish with a terminal result before this evidence
+  is renewed for the current SHA.
+- Isolated pre-commit runs for every code commit passed the applicable
+  detect-secrets, strong-env-secrets, no-Python2-except, actionlint, Semgrep
+  and Renovate checks. The shared default pre-commit cache had a Windows
+  permission error; no hook was bypassed, and the isolated cache is the
+  reproducible path used for commits.
+
+### 39.3 Remaining current-SHA work
+
+1. Finish the in-flight frontend regression, then run typecheck, lint, build,
+   WASM checks and the focused test matrix again after all commits.
+2. Append the final checkpoint only after `git diff --check`, an isolated full
+   pre-commit run, backend/go/rust focused gates and a clean inventory of the
+   four user-owned untracked paths.
+3. Push the resulting `egorribun` SHA and wait for a **new** PR 1266 matrix and
+   companion workflows. Download every terminal artifact and classify every
+   failure by exact log. Confirm current-SHA report hashes, coverage/mutation
+   denominators, Go race/sanitizer/fuzz evidence, Schemathesis, Lighthouse,
+   E2E and security gates; do not reuse run `34287653082`.
+4. Re-query Dependabot after the `httpx2` and Go toolchain fixes. Alerts
+   `#117/#107` were verified as stale unused root-manifest records and closed
+   as `not_used`; the newly surfaced `httpx2` alert remains open remotely until
+   GitHub rescans the pushed source.
+5. Keep the external release boundary explicit: merge-to-main
+   recertification, exact-six immutable image/SBOM/provenance producer,
+   digest Docker smoke, Kubernetes/TLS/ExternalSecrets/observability,
+   real-device CWV, chaos/restart/rollback, production release and the final
+   SHA-bound `AUDIT_QUALITY_CLOSURE_<sha>.md` still require direct evidence.
+
+The user-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
+`.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
+excluded from source commits.
+
+## 40. Security/dependency closure before fresh CI (2026-09-09; local HEAD `e2a0fce10`)
+
+### 40.1 Current source commits
+
+- `a7c59fb1e` binds every privileged SBOM/report writer and the main
+  vulnerability gate to `refs/heads/main` in addition to the non-PR guard;
+  the PR vulnerability gate remains read-only. This closes the
+  workflow-dispatch trust-boundary path without changing the PR check name.
+- `eb6cfe043` reduces Rust fuzz permissions to `contents: read` and sets
+  `persist-credentials: false` on both checkout steps before executing PR
+  code or using caches.
+- `727c9aed5` makes the checked-in WASM provenance validator reject unknown
+  top-level metadata fields and adds a regression test, preserving the exact
+  source/package byte inventory contract.
+- `43eaab7e6` requires the patched `urllib3>=2.7.0,<2.8` line;
+  `71ae71040` pins the root npm override to `js-yaml^4.3.2`; and
+  `e2a0fce10` upgrades all actual gRPC module requirements, sums and Docker
+  build overrides from 1.83.1 to 1.83.2. No artificial dependency was added
+  to the root, logging, SpiceDB or CLI modules that do not import gRPC.
+
+### 40.2 Verification completed on this SHA
+
+- Focused Python contract/security/Docker suite: **148 passed** using an
+  isolated pre-commit cache. The default Windows cache still has an ACL error
+  opening a cloned `.pre-commit-hooks.yaml`; this is an environment defect,
+  not a skipped hook or a code suppression.
+- WASM/provenance unit tests: **12 passed**; full `npm run test:wasm` suite:
+  **248 passed**; `verify-wasm-artifacts.mjs` and `ensure-wasm.mjs` pass.
+- Frontend typecheck, lint, production client+SSR/PWA build and post-security
+  WASM checks pass. The dependency-refresh canonical `npm run test:ci` run
+  completed **651/651 files, 6656/6656 tests, zero unhandled errors, 100%**
+  statements/branches/functions/lines; the new provenance test is additionally
+  covered by the 248-test WASM suite.
+- Python `uv lock --check` and the frozen OSV batch/audit allowlist pass;
+  root `npm ci --ignore-scripts --no-audit` and root `npm audit
+  --package-lock-only --audit-level=high` pass with zero high/critical/
+  moderate findings. Frontend audit likewise has zero high/critical findings;
+  only seven low AI-SDK/MSW transitive advisories remain and no breaking
+  downgrade was applied without compatibility evidence.
+- All five tracked Go modules pass `go test ./...`, `go mod tidy -diff` and
+  `go mod verify`; local tests used Go 1.26.5 while the security/build
+  workflows explicitly install patched Go 1.26.6. Docker contract tests pass
+  with the 1.83.2 overrides. Isolated full pre-commit passes Ruff,
+  detect-secrets, gitleaks/hardcoded-secrets, Bandit, mypy, no-Python2-except,
+  actionlint, Semgrep and Renovate validation.
+
+### 40.3 Fresh-CI boundary and remaining work
+
+1. Push exactly `e2a0fce10136f43e1fde59ad7605f18fa1876f04` (plus any subsequent
+   contract/documentation commits) to `origin/egorribun`; old run
+   `34287653082` at `752dabf9f` remains stale and is never reused.
+2. Re-query GitHub Dependabot after the rescan. Alerts #125/#139/#140–#143,
+   #128–#130/#134 and #131–#138 should close only from the patched manifests;
+   alerts #117/#107 remain historical `not_used` dismissals. Any still-open
+   high/critical alert requires another fixed-version investigation.
+3. Await every new matrix/companion workflow to terminal state and download
+   all artifacts. Validate current source/tested-merge SHA, report hashes,
+   full coverage/mutation denominators, Go race/sanitizer/fuzz, Pact,
+   Schemathesis, Lighthouse, E2E, CodeQL, SBOM and performance evidence.
+4. Keep CI fan-out unchanged until the required three comparable green runs
+   prove a safe under-20-job optimization; no inventory reduction, exclusion,
+   quarantine or unproven suppression is allowed.
+5. External release gates are still intentionally open: merge-to-main
+   recertification, exact-six immutable image/SBOM/provenance/attestation
+   producer, digest Docker smoke, Kubernetes/TLS/ExternalSecrets/
+   observability staging, real-device CWV, chaos/restart/rollback,
+   production release and final SHA-bound `AUDIT_QUALITY_CLOSURE_<sha>.md`.
+
+User-owned `docs/audits/AUDIT_PLATFORM_FULL.md`, `.tmp_preflight/`,
+`.tmp_stryker_18/` and `.tmp_stryker_22/` remain untracked, untouched and
+excluded from all source commits.
+
+## 47. Current-SHA Semgrep ledger correction and CI capacity audit (2026-09-10; source `3acb592d8`)
+
+### 47.1 Current-SHA failure and fail-closed response
+
+- Fresh run `34527417327` started from `5662a4750c16913171bbb557674e26fe94219eaf`
+  and produced one independent failure before mutation execution:
+  `Security Audit / Semgrep SAST` (job `103039590954`). The job's annotation
+  identified `app/workers/cdc_outbox.py:508` as an inline-suppressed finding
+  missing from the reviewed ledger.
+- Code Scanning analysis `1757721940` and the Semgrep alert instances confirmed
+  the exact pair of CDC findings:
+  `python.lang.security.audit.formatted-sql-query.formatted-sql-query` and
+  `python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query`,
+  each with region `508–510`. The policy still referenced the pre-refactor
+  region `488–490`; this was line-bound provenance drift, not a new suppression
+  or a scanner false positive.
+- The run had not entered Stryker or mutmut execution when the blocker was
+  captured. It was cancelled through the GitHub Actions API to avoid spending
+  the long mutation critical path on a known failing source. Cancellation is
+  not evidence and the run is excluded from every release claim.
+
+### 47.2 RED → GREEN policy correction
+
+- Updated both existing CDC entries in
+  `security/semgrep-suppression-policy.json` from `488–490` to the exact
+  current `508–510` region. The sanitization implementation, rule IDs, owners,
+  expiry and rationale are unchanged; no entry was added or broadened.
+- JSON parsing and the Semgrep validator/security workflow contract suite are
+  green (**39/39**); isolated pre-commit runs detect-secrets,
+  hardcoded-secrets, no-Python2-except, actionlint, Semgrep and Renovate checks
+  successfully. Source commit: `3acb592d8` (`fix: align semgrep suppression line ranges`).
+- The next fresh Semgrep SARIF must contain the same exact 15 reviewed
+  in-source results and no unledgered finding; a missing or extra result remains
+  fail-closed. Do not close Code Scanning alerts by hand in place of a valid
+  current-SHA SARIF/ledger pair.
+
+### 47.3 CI fan-out audit and bounded speed plan
+
+- Read-only workflow inventory found 59 top-level jobs, 64 Stryker shards
+  (`max-parallel: 6`, 120-minute timeout), 8 mutmut-stats shards
+  (`max-parallel: 8`), and 1–128 mutmut execution groups
+  (`max-parallel: 10`, 360-minute timeout). Backend, Go, frontend/Lighthouse,
+  E2E and Schemathesis matrices have no local cap, while companion workflows
+  add roughly 40 eligible leaf jobs. Matrix caps are workflow-local, so the
+  repository has no global semaphore enforcing the operational 20-runner
+  ceiling.
+- Historical run `34486140554` consumed the Stryker critical path for about
+  356 minutes (longest shard about 105.2 minutes) and completed in about 384.5
+  minutes; this proves queue/critical-path pressure but not a deadlock or a
+  timeout defect. Current run snapshots also showed hosted-runner saturation.
+- Preserve every source/test/mutant and all fail-closed validators. Keep
+  Stryker 6 and mutmut 10 unchanged until three comparable green current-SHA
+  runs provide queue, timeout, resource and billed-minute evidence. Only then
+  trial a cap or shared dependency artifact; any optimization must retain
+  checksum/provenance validation, exact shard ledgers and the under-20-runner
+  budget. Never solve latency by raising timeouts, disabling `vitest.related`,
+  changing coverage/mutation thresholds or adding exclusions.
+
+### 47.4 Acceptance boundary
+
+1. Push the policy correction plus this checkpoint as one new non-force
+   `egorribun` SHA and treat its PR matrix as the only valid CI evidence.
+2. Require Semgrep, CodeQL, dependency/security scans, coverage/preflight,
+   all 64 Stryker shards, all mutmut groups, E2E/browser, Lighthouse,
+   Schemathesis, Go/Rust and aggregate CI Success to reach terminal success
+   with current-SHA hashes and complete denominators.
+3. Record any subsequent failure from its exact job annotation/artifact before
+   changing code. Keep merge-to-main, exact-six immutable images, digest Docker
+   smoke, Kubernetes/TLS/observability, real-device CWV, chaos/rollback,
+   production release and final SHA-bound audit explicitly external.

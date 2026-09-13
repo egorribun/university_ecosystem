@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import logging
-from typing import TYPE_CHECKING, Annotated, Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 from uuid import UUID
 
 from dishka.integrations.fastapi import FromDishka, inject
@@ -15,8 +14,8 @@ from fastapi import (
 from sqlalchemy import select
 
 from app.api.deps import (
-    get_current_user,
-    require_fresh_mfa,
+    get_current_user_from_dishka,
+    require_fresh_mfa_from_dishka,
 )
 from app.api.validation import raise_http_error
 from app.auth import mfa
@@ -26,8 +25,8 @@ from app.auth.schemas import (
     TotpEnrollmentStartIn,
     TotpEnrollmentStartOut,
 )
-from app.core.database import get_db
 from app.core.fingerprint import extract_request_fingerprint
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import RateLimitExceeded
 from app.models import User
@@ -43,7 +42,7 @@ from app.services.auth.login_service import LoginService
 if TYPE_CHECKING:
     from app.models import ActiveSession
 
-logger = logging.getLogger("app.auth.mfa")
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["mfa"])
 
@@ -128,9 +127,9 @@ async def _issue_email_challenge_for_session(
 @inject
 async def start_email_verification(
     request: Request,
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    db: FromDishka[AsyncDatabaseSession],
     login_service: FromDishka[LoginService],
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> auth_schemas.MfaMethodChallengeOut:
     return await _issue_email_challenge_for_session(
         flow="email_verification",
@@ -144,14 +143,14 @@ async def start_email_verification(
 @router.post(
     "/mfa/email/enable",
     response_model=auth_schemas.MfaMethodChallengeOut,
-    dependencies=[Depends(require_fresh_mfa)],
+    dependencies=[Depends(require_fresh_mfa_from_dishka)],
 )
 @inject
 async def start_email_mfa_enablement(
     request: Request,
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    db: FromDishka[AsyncDatabaseSession],
     login_service: FromDishka[LoginService],
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> auth_schemas.MfaMethodChallengeOut:
     return await _issue_email_challenge_for_session(
         flow="email_mfa_enablement",
@@ -165,14 +164,14 @@ async def start_email_mfa_enablement(
 @router.delete(
     "/mfa/email",
     response_model=MfaFactorStatusOut,
-    dependencies=[Depends(require_fresh_mfa)],
+    dependencies=[Depends(require_fresh_mfa_from_dishka)],
 )
 @inject
 async def disable_email_mfa_endpoint(
     request: Request,
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    db: FromDishka[AsyncDatabaseSession],
     audit: FromDishka[AuditService],
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> MfaFactorStatusOut:
     pending = await mfa.disable_email_mfa(db, user=user)
     await _commit_and_publish_mfa_revocations(db, pending)
@@ -187,15 +186,15 @@ async def disable_email_mfa_endpoint(
 @router.post(
     "/mfa/totp/start",
     response_model=TotpEnrollmentStartOut,
-    dependencies=[Depends(require_fresh_mfa)],
+    dependencies=[Depends(require_fresh_mfa_from_dishka)],
 )
 @inject
 async def start_totp_enrollment_endpoint(
     request: Request,
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    db: FromDishka[AsyncDatabaseSession],
     audit: FromDishka[AuditService],
     payload: TotpEnrollmentStartIn | None = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> TotpEnrollmentStartOut:
     label = payload.label if payload else None
     reuse_existing = bool(payload.reuse_existing) if payload else False
@@ -232,15 +231,15 @@ async def start_totp_enrollment_endpoint(
 @router.post(
     "/mfa/totp/confirm",
     response_model=MfaTotpEnrollmentOut,
-    dependencies=[Depends(require_fresh_mfa)],
+    dependencies=[Depends(require_fresh_mfa_from_dishka)],
 )
 @inject
 async def confirm_totp_enrollment(
     payload: TotpEnrollmentConfirmIn,
     request: Request,
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    db: FromDishka[AsyncDatabaseSession],
     audit: FromDishka[AuditService],
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> MfaTotpEnrollmentOut:
     # complete_totp_enrollment owns the User -> enrollment lock order.
     enrollment = await db.get(MfaTotpEnrollment, payload.enrollment_id)
@@ -308,8 +307,8 @@ async def confirm_totp_enrollment(
 @router.get("/mfa/totp", response_model=list[MfaTotpEnrollmentOut])
 @inject
 async def list_totp_enrollments(
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
-    user: User = Depends(get_current_user),
+    db: FromDishka[AsyncDatabaseSession],
+    user: User = Depends(get_current_user_from_dishka),
 ) -> list[MfaTotpEnrollmentOut]:
     stmt = (
         select(MfaTotpEnrollment)
@@ -328,9 +327,9 @@ async def list_totp_enrollments(
 async def delete_pending_totp_enrollment(
     enrollment_id: UUID,
     request: Request,
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    db: FromDishka[AsyncDatabaseSession],
     audit: FromDishka[AuditService],
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> None:
     enrollment = await db.get(MfaTotpEnrollment, enrollment_id, with_for_update=True)
     if not enrollment or enrollment.user_id != user.id:
@@ -355,10 +354,10 @@ async def delete_pending_totp_enrollment(
 async def delete_totp_enrollment(
     enrollment_id: UUID,
     request: Request,
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    db: FromDishka[AsyncDatabaseSession],
     audit: FromDishka[AuditService],
-    _: None = Depends(require_fresh_mfa),
-    user: User = Depends(get_current_user),
+    _: None = Depends(require_fresh_mfa_from_dishka),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> MfaFactorStatusOut:
     disabled_count, pending = await mfa.disable_totp(
         db, user=user, enrollment_id=enrollment_id
@@ -390,10 +389,10 @@ async def delete_totp_enrollment(
 @inject
 async def generate_recovery_codes_endpoint(
     request: Request,
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    db: FromDishka[AsyncDatabaseSession],
     audit: FromDishka[AuditService],
-    _: None = Depends(require_fresh_mfa),
-    user: User = Depends(get_current_user),
+    _: None = Depends(require_fresh_mfa_from_dishka),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> RecoveryCodesGenerateOut:
     session: ActiveSession | None = getattr(request.state, "active_session", None)
     codes = await mfa.generate_recovery_codes(
@@ -429,7 +428,7 @@ async def request_step_up(
     db: FromDishka[AsyncDatabaseSession],
     audit: FromDishka[AuditService],
     login_service: FromDishka[LoginService],
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> auth_schemas.PendingMfaResponse:
     from app.core.localization import resolve_locale
 

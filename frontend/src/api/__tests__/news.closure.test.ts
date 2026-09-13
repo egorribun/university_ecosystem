@@ -135,6 +135,23 @@ describe("api/news closure", () => {
     expect(deleteNews).toHaveBeenCalledWith({ path: { id: news.id } })
   })
 
+  it("keeps endpoint context in invalid mutation response errors", async () => {
+    createNews.mockResolvedValue({ status: 201, data: { ...news, id: "not-a-uuid" } })
+    await expect(createNewsItem({ title: "News", content: "Content" } as never)).rejects.toThrow(
+      "Invalid API response for POST /api/v1/news"
+    )
+
+    updateNews.mockResolvedValue({ status: 200, data: { ...news, id: "not-a-uuid" } })
+    await expect(updateNewsItem(news.id, null)).rejects.toThrow(
+      "Invalid API response for PATCH /api/v1/news/{id}"
+    )
+
+    uploadNewsImage.mockResolvedValue({ data: { url: "   " } })
+    await expect(uploadNewsImageItem(new File(["image"], "empty.png"))).rejects.toThrow(
+      "Invalid API response for POST /api/v1/news/upload_image"
+    )
+  })
+
   it("trims valid upload URLs and rejects invalid upload payloads", async () => {
     uploadNewsImage.mockResolvedValueOnce({ data: { url: "  https://cdn.test/image.png  " } })
     await expect(uploadNewsImageItem(new File(["image"], "image.png"))).resolves.toBe(

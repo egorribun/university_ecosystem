@@ -63,6 +63,9 @@
       "matchManagers": ["docker-compose", "dockerfile"],
       "matchPackageNames": [
         "minio/minio",
+        "quay.io/minio/minio",
+        "minio/mc",
+        "quay.io/minio/mc",
         "authzed/spicedb",
         "temporalio/server",
         "temporalio/ui"

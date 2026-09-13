@@ -5,7 +5,11 @@ the measurements at file granularity makes the input deterministic and avoids
 splitting fixtures or stateful tests across runners.  Existing entries are
 preserved by default so a partial report cannot silently erase the historical
 fallback map; CI's full-suite updater passes ``--replace`` when it has a
-complete report.
+  complete report.  Replacement mode retains a positive historical value when
+  a file contains skipped test cases: a partial or zero-second sample is not
+  evidence that the file is cheap when some of its real tests were not run.
+  Newly observed files whose cases are all skipped are omitted until a real
+  duration is measured, so the planner falls back to its conservative default.
 """
 
 from __future__ import annotations
@@ -40,6 +44,18 @@ def _testcase_path(testcase: ElementTree.Element) -> str:
     if not classname:
         raise ValueError("JUnit testcase must provide either file or classname")
     module = classname.split("::", 1)[0]
+    # Pytest's JUnit writer uses the fully-qualified class name as the
+    # ``classname`` when a test class is present (for example,
+    # ``tests.test_auth.TestLogin``).  The historical map is keyed by whole
+    # test files, so retaining that final class component creates a path which
+    # can never be collected and silently forces the shard planner to use its
+    # default duration.  Python test modules are conventionally lowercase,
+    # while test classes are PascalCase; strip only the trailing PascalCase
+    # components and leave ordinary module-only classnames unchanged.
+    module_parts = module.split(".")
+    while len(module_parts) > 1 and module_parts[-1][:1].isupper():
+        module_parts.pop()
+    module = ".".join(module_parts)
     return _normalise_path(module.replace(".", "/") + ".py")
 
 
@@ -92,13 +108,46 @@ def build_duration_payload(
         ) from error
 
     measured: dict[str, float] = {}
+    executed_measured: dict[str, float] = {}
+    skipped: dict[str, bool] = {}
+    executed: dict[str, bool] = {}
     for testcase in root.iter("testcase"):
         path = _testcase_path(testcase)
-        measured[path] = measured.get(path, 0.0) + _duration(testcase)
+        duration = _duration(testcase)
+        measured[path] = measured.get(path, 0.0) + duration
+        # Pytest records a small positive bookkeeping time for skipped tests,
+        # so ``value == 0`` is not sufficient to identify an unmeasured file.
+        # Keep a separate skip bit and never replace a historical estimate with
+        # a report that did not execute every testcase in that file.
+        is_skipped = testcase.find("skipped") is not None
+        skipped[path] = skipped.get(path, False) or is_skipped
+        executed[path] = executed.get(path, False) or not is_skipped
+        if not is_skipped:
+            executed_measured[path] = executed_measured.get(path, 0.0) + duration
 
-    durations = {} if replace else _read_existing(existing)
-    durations.update(measured)
-    values = list(measured.values())
+    existing_durations = _read_existing(existing)
+    durations = {} if replace else dict(existing_durations)
+    for path, value in measured.items():
+        if skipped.get(path, False):
+            historical = existing_durations.get(path, 0.0)
+            if historical > 0:
+                durations[path] = historical
+            elif executed.get(path, False) and executed_measured.get(path, 0.0) > 0:
+                # A partial file still has an observed execution cost.  It is
+                # safer to retain that lower bound than to collapse a large
+                # file to the global default merely because one optional case
+                # was skipped in this environment.
+                durations[path] = executed_measured[path]
+            elif replace:
+                # An all-skipped replacement report provides no useful
+                # estimate.  Leave the path absent so collection uses the
+                # conservative default rather than a misleading 0.001 s.
+                durations.pop(path, None)
+            else:
+                durations[path] = value
+            continue
+        durations[path] = value
+    values = [value for path, value in measured.items() if not skipped.get(path, False)]
     default_duration = (
         round(statistics.median(values), 3)
         if values
@@ -136,7 +185,7 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     arguments = _parse_args()
     existing: dict[str, Any] | None = None
-    if arguments.output.exists() and not arguments.replace:
+    if arguments.output.exists():
         try:
             existing = json.loads(arguments.output.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:

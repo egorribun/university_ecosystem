@@ -600,6 +600,23 @@ jobs:
             exit 1
           fi
 
+      - name: Reverify trusted release source before OIDC
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_SHA" = "$RELEASE_SHA"
+          test "$GITHUB_WORKFLOW_SHA" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+
       - name: Configure AWS credentials (OIDC)
         # Uses an environment-scoped role and GitHub's short-lived OIDC token.
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3

@@ -62,6 +62,31 @@ interface ContactListProps {
 // sidebar viewport on most screens without being visually overwhelming.
 const SKELETON_ROW_COUNT = 6
 
+/**
+ * Resolve a keyboard navigation target without ever producing an out-of-range
+ * contact index. Keeping this as a pure contract makes the boundary behaviour
+ * explicit for both the row handler and mutation tests.
+ */
+export const getContactNavigationIndex = (
+  index: number,
+  key: string,
+  contactCount: number
+): number => {
+  const lastIndex = Math.max(contactCount - 1, 0)
+  switch (key) {
+    case "ArrowDown":
+      return Math.min(index + 1, lastIndex)
+    case "ArrowUp":
+      return Math.max(index - 1, 0)
+    case "Home":
+      return 0
+    case "End":
+      return lastIndex
+    default:
+      return index
+  }
+}
+
 // Wave 124 SW1 — Removed LayoutGroup + `layout` prop (require domMax). Items
 // snap-reorder when contacts list is re-sorted (e.g., new message moves
 // contact to top). Per plan: messenger contact reorder is rare and snap is
@@ -311,14 +336,7 @@ export const ContactList = memo(function ContactList({
                 event.key === "End"
               ) {
                 event.preventDefault()
-                const targetIndex =
-                  event.key === "ArrowDown"
-                    ? Math.min(index + 1, contacts.length - 1)
-                    : event.key === "ArrowUp"
-                      ? Math.max(index - 1, 0)
-                      : event.key === "Home"
-                        ? 0
-                        : contacts.length - 1
+                const targetIndex = getContactNavigationIndex(index, event.key, contacts.length)
                 const target = contacts[targetIndex] ?? contact
                 const targetElement =
                   document.getElementById(`messenger-contact-${target.id}`) ?? event.currentTarget

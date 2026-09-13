@@ -136,6 +136,7 @@ allow-dependencies-licenses:
   - "pkg:golang/github.com/quic-go/webtransport-go"
   - "pkg:golang/github.com/spiffe/go-spiffe/v2"
   - "pkg:golang/github.com/university-ecosystem/services/pkg/spiffe"
+  - "pkg:golang/github.com/university-ecosystem/services/pkg/logging"
   - "pkg:golang/golang.org/x/sync"
   - "pkg:pypi/portalocker"
   - "pkg:pypi/qdrant-client"

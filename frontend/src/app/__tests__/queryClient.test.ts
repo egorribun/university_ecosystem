@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { withExpectedConsole } from "@/tests/strictConsole"
 
 // Mock idb-keyval so the persister exercises set/get/del without a real IndexedDB.
 const idbSet = vi.fn<(...a: unknown[]) => Promise<void>>(() => Promise.resolve())
@@ -117,7 +118,9 @@ describe("queryClient — IDB persister", () => {
   it("clears the cache when IDB throws a QuotaExceededError", async () => {
     idbSet.mockRejectedValueOnce(new DOMException("over quota", "QuotaExceededError"))
     const persister = createIDBPersister("qeKey")
-    await persister.persistClient(makeClient())
+    await withExpectedConsole("warn", "IndexedDB quota exceeded", () =>
+      persister.persistClient(makeClient())
+    )
     expect(idbDel).toHaveBeenCalledWith("qeKey")
   })
 

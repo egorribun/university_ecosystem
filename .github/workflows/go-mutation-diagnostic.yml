@@ -40,6 +40,10 @@ jobs:
             coverage-threshold: 100
             coverage-component: go-shared-fragment
             coverage-canonical-path: artifacts/coverage/go/shared-inputs/uni-cli/coverage.out
+          - service-directory: services/pkg/logging
+            coverage-threshold: 100
+            coverage-component: go-shared-fragment
+            coverage-canonical-path: artifacts/coverage/go/shared-inputs/logging/coverage.out
           - service-directory: services/pkg/spiffe
             coverage-threshold: 100
             coverage-component: go-shared-fragment

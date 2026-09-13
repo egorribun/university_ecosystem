@@ -13,6 +13,9 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 CI = WORKFLOWS / "ci.yml"
 SECURITY_AUDIT = WORKFLOWS / "reusable-security-audit.yml"
 DETECT_SECRETS_REQUIREMENTS = ROOT / "security" / "detect-secrets-requirements.txt"
+DETECT_SECRETS_SCAN_EXCLUSION = (
+    r"^(?:\.secrets\.baseline|frontend/WASM_SOURCE_PROVENANCE\.json)$"
+)
 
 ACTIONLINT_SHA256 = "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"  # pragma: allowlist secret -- release checksum
 HADOLINT_SHA256 = "56de6d5e5ec427e17b74fa48d51271c7fc0d61244bf5c90e828aab8362d55010"  # pragma: allowlist secret -- release checksum
@@ -188,7 +191,13 @@ def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
 
     scan = _step(job, "Scan repo (no baseline)")["run"]
     assert "--exclude-files" in scan
-    assert "^\\.secrets\\.baseline$" in scan
+    assert f"--exclude-files '{DETECT_SECRETS_SCAN_EXCLUSION}'" in scan
+    exclusion = re.compile(DETECT_SECRETS_SCAN_EXCLUSION)
+    assert exclusion.fullmatch(".secrets.baseline")
+    assert exclusion.fullmatch("frontend/WASM_SOURCE_PROVENANCE.json")
+    assert not exclusion.search("frontend/WASM_SOURCE_PROVENANCE.json.bak")
+    assert not exclusion.search("frontend/WASM_INVENTORY.json")
+    assert not exclusion.search("frontend/src/generated.json")
 
     verify = _step(job, "Verify baseline has not regressed")
     assert verify["env"] == {
@@ -200,4 +209,24 @@ def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
     assert "current_scan.json" in verify_run
 
     scan = _step(job, "Scan repo (no baseline)")["run"]
-    assert "detect-secrets scan --exclude-files '^\\.secrets\\.baseline$'" in scan
+    assert (
+        f"detect-secrets scan --exclude-files '{DETECT_SECRETS_SCAN_EXCLUSION}'" in scan
+    )
+
+
+def test_semgrep_ce_scan_always_covers_the_suppression_ledger() -> None:
+    """The CE fallback must scan all sources on every event.
+
+    A diff-aware baseline can hide an unchanged in-source suppression. The
+    blocking validator intentionally requires every reviewed ledger entry to
+    be observed, so the unauthenticated CE path must use a complete scan.
+    """
+
+    job = _workflow(SECURITY_AUDIT)["jobs"]["semgrep"]
+    run = _step(job, "Run Semgrep SAST")["run"]
+    full_scan = (
+        "semgrep scan --config auto \\\n"
+        "    --error --sarif --sarif-output=semgrep.sarif"
+    )
+    assert full_scan in run
+    assert "--baseline-commit" not in run

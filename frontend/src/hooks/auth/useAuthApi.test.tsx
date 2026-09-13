@@ -310,6 +310,34 @@ describe("login", () => {
     })
   })
 
+  it.each([
+    ["60", /login\.duration\.minutes:1/],
+    ["3600", /login\.duration\.hours:1/],
+  ])("uses the next lockout unit at the %s second boundary", async (retryAfter, expected) => {
+    const w = makeWires()
+    mocks.apiPost.mockRejectedValue(lockedError(retryAfter))
+    const { result } = renderApi(w)
+
+    await expect(
+      act(async () => {
+        await result.current.login("a@b.dev", "pw")
+      })
+    ).rejects.toThrow(expected)
+  })
+
+  it("rethrows an Axios transport error when the response is absent", async () => {
+    const w = makeWires()
+    const error = new AxiosError("transport failure")
+    mocks.apiPost.mockRejectedValue(error)
+    const { result } = renderApi(w)
+
+    await expect(
+      act(async () => {
+        await result.current.login("a@b.dev", "pw")
+      })
+    ).rejects.toBe(error)
+  })
+
   it("re-throws non-423 errors unchanged (line 198)", async () => {
     const w = makeWires()
     const boom = new Error("network down")
@@ -574,6 +602,19 @@ describe("submitMfaChallenge", () => {
     expect((caught as Error).message).toContain("login.locked")
   })
 
+  it("rethrows an Axios MFA transport error without dereferencing response", async () => {
+    const w = makeWires()
+    const error = new AxiosError("MFA transport failure")
+    mocks.apiPost.mockRejectedValue(error)
+    const { result } = renderApi(w)
+
+    await expect(
+      act(async () => {
+        await result.current.submitMfaChallenge({ code: "1", challengeToken: "ct" })
+      })
+    ).rejects.toBe(error)
+  })
+
   it("re-throws non-423 errors unchanged (line 290)", async () => {
     const w = makeWires()
     mocks.apiPost.mockRejectedValue(new Error("server 500"))
@@ -660,6 +701,19 @@ describe("requireMfa", () => {
     expect(out).toBeNull()
   })
 
+  it("rethrows an Axios error without a response from step-up", async () => {
+    const w = makeWires()
+    const error = new AxiosError("step-up transport failure")
+    mocks.apiPost.mockRejectedValue(error)
+    const { result } = renderApi(w)
+
+    await expect(
+      act(async () => {
+        await result.current.requireMfa()
+      })
+    ).rejects.toBe(error)
+  })
+
   it("re-throws other errors (lines 328-329)", async () => {
     const w = makeWires()
     mocks.apiPost.mockRejectedValue(new Error("nope"))
@@ -741,6 +795,20 @@ describe("refresh", () => {
     await act(async () => {
       await result.current.refresh()
     })
+    expect(w.handleUnauthorized).not.toHaveBeenCalled()
+    expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
+  })
+
+  it("swallows an Axios refresh error when the response is absent", async () => {
+    const w = makeWires()
+    const error = new AxiosError("refresh transport failure")
+    mocks.fetchCurrentUser.mockRejectedValue(error)
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.refresh()
+    })
+
     expect(w.handleUnauthorized).not.toHaveBeenCalled()
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })

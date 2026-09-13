@@ -47,13 +47,20 @@ function openDatabase(): Promise<IDBDatabase> {
 
 async function queueInteraction(url: string, payload: unknown, method = "POST") {
   const db = await openDatabase()
-  const tx = db.transaction(NEWS_INTERACTION_STORE, "readwrite")
-  const store = tx.objectStore(NEWS_INTERACTION_STORE)
-  await new Promise<void>((resolve, reject) => {
-    const req = store.add({ url, payload, method, timestamp: Date.now() })
-    req.onsuccess = () => resolve()
-    req.onerror = () => reject(req.error)
-  })
+  try {
+    const tx = db.transaction(NEWS_INTERACTION_STORE, "readwrite")
+    const store = tx.objectStore(NEWS_INTERACTION_STORE)
+    await new Promise<void>((resolve, reject) => {
+      const req = store.add({ url, payload, method, timestamp: Date.now() })
+      req.onsuccess = () => resolve()
+      req.onerror = () => reject(req.error)
+    })
+  } finally {
+    // Queue writes are short-lived. Close the connection after the request
+    // settles so repeated offline interactions cannot accumulate handles and
+    // block IndexedDB upgrades/deletion in long-lived browser sessions.
+    db.close()
+  }
 
   // Trigger SW sync if possible
   if ("serviceWorker" in navigator && "SyncManager" in window) {

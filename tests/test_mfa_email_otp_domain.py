@@ -798,9 +798,13 @@ async def test_delivery_failure_preserves_retry_envelope_without_pii_logs(
     assert delivery.status == "pending"
     assert delivery.lease_token is None
     assert delivery.lease_expires_at is None
-    assert "message=mfa_email_delivery_failed" in caplog.text
-    assert issued.otp not in caplog.text
-    assert test_user.email not in caplog.text
+    # Assert the structured event contract from the raw LogRecords rather
+    # than renderer output.  Renderers are environment-specific (and may be
+    # replaced by tests), while getMessage() is the stable stdlib contract.
+    log_text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "mfa_email_delivery_failed" in log_text
+    assert issued.otp not in log_text
+    assert test_user.email not in log_text
 
 
 @pytest.mark.asyncio

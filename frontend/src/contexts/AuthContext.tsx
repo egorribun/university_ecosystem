@@ -68,12 +68,16 @@ export const useAuth = (): AuthContextType => {
   // TD-NEW-002 (audit 2026-03-19): Explicit structure without "as unknown as".
   // Type is structurally inferred to be strictly compatible with AuthContextType.
   const result: AuthContextType = {
+    ...storeActions,
+    ...contextActions,
+    // Context action objects may carry optional mirrored state for SSR, but
+    // the resolved values above are authoritative for consumers.  Keep them
+    // after the spreads so a stale provider field cannot override the derived
+    // loading/user/pending-MFA selection (notably during active operations).
     user,
     loading,
     pendingMfa,
     isAuth: user !== null,
-    ...storeActions,
-    ...contextActions,
   }
   return result
 }
@@ -83,7 +87,6 @@ export { PROFILE_CACHE_STORAGE_KEY } from "@/hooks/auth/useProfileSync"
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const {
-    sessionSigningKey,
     sessionSigningKeyRef,
     updateSessionSigningKey,
     sessionSigningKeyPromiseRef,
@@ -95,14 +98,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     registerSigningKeyAccessor(() => sessionSigningKeyRef.current)
   }, [sessionSigningKeyRef])
-
-  // When signing key is cleared (logout), purge unsigned cache entries.
-  useEffect(() => {
-    if (!sessionSigningKey) {
-      // ETag & response caches will be evicted on next 304 hit (no key → no verify → delete)
-      // resetEtagCache() is called explicitly on logout via useAuthApi
-    }
-  }, [sessionSigningKey])
 
   // Wave 128 SW1 Strategy A — read SSR auth hint from globalThis getter
   // (populated by src/server.ts via AsyncLocalStorage on server; undefined
@@ -141,10 +136,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     resetEtagCache
   )
 
-  // PERF-NEW-003 (audit 2026-03-19): Separate stable module-level references
-  // from useMemo deps array.
-  const STABLE_API_UTILS = useMemo(() => ({ resetEtagCache }), [])
-
   const actionsValue = useMemo(
     () => ({
       login,
@@ -160,13 +151,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const value = useMemo(
     () => ({
       ...actionsValue,
-      ...STABLE_API_UTILS,
+      resetEtagCache,
       authOperation,
       user,
       loading: profileLoading,
       pendingMfa,
     }),
-    [actionsValue, STABLE_API_UTILS, authOperation, user, profileLoading, pendingMfa]
+    [actionsValue, authOperation, user, profileLoading, pendingMfa]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

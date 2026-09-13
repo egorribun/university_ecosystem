@@ -4,24 +4,46 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { User } from "@/types/User"
 
-const { authState, apiState, mediaState, nowPlayingState, navigate, searchState } = vi.hoisted(
-  () => ({
-    authState: {
-      user: null as User | null,
-      loading: false,
-      setUser: vi.fn(),
-    },
-    apiState: {
-      put: vi.fn(),
-    },
-    mediaState: {} as Record<string, boolean>,
-    nowPlayingState: {
-      data: null as unknown,
-    },
-    navigate: vi.fn(),
-    searchState: { edit: undefined as string | undefined },
-  })
-)
+const {
+  authState,
+  apiState,
+  mediaState,
+  nowPlayingState,
+  navigate,
+  searchState,
+  mediaQueries,
+  translationNamespaces,
+  motionCalls,
+  profileState,
+} = vi.hoisted(() => ({
+  authState: {
+    user: null as User | null,
+    loading: false,
+    setUser: vi.fn(),
+  },
+  apiState: {
+    put: vi.fn(),
+  },
+  mediaState: {} as Record<string, boolean>,
+  mediaQueries: [] as string[],
+  nowPlayingState: {
+    data: null as unknown,
+  },
+  navigate: vi.fn(),
+  searchState: { edit: undefined as string | undefined },
+  translationNamespaces: [] as unknown[],
+  motionCalls: [] as Array<{
+    initial?: unknown
+    animate?: unknown
+    transition?: unknown
+  }>,
+  profileState: {
+    header: vi.fn(),
+    backdrop: vi.fn(),
+    editor: vi.fn(),
+    vCard: vi.fn(),
+  },
+}))
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => authState,
@@ -37,7 +59,10 @@ vi.mock("@tanstack/react-router", () => ({
 }))
 
 vi.mock("@/hooks/useMediaQuery", () => ({
-  default: (query: string) => mediaState[query] ?? false,
+  default: (query: string) => {
+    mediaQueries.push(query)
+    return mediaState[query] ?? false
+  },
 }))
 
 vi.mock("@/hooks/useNowPlaying", () => ({
@@ -45,16 +70,32 @@ vi.mock("@/hooks/useNowPlaying", () => ({
 }))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: unknown) => (typeof fallback === "string" ? fallback : key),
-  }),
+  useTranslation: (namespaces: unknown) => {
+    translationNamespaces.push(namespaces)
+    return {
+      t: (key: string, fallback?: unknown) => (typeof fallback === "string" ? fallback : key),
+    }
+  },
 }))
 
 vi.mock("framer-motion", () => ({
   m: {
-    div: ({ children, className }: { children?: ReactNode; className?: string }) => (
-      <div className={className}>{children}</div>
-    ),
+    div: ({
+      children,
+      className,
+      initial,
+      animate,
+      transition,
+    }: {
+      children?: ReactNode
+      className?: string
+      initial?: unknown
+      animate?: unknown
+      transition?: unknown
+    }) => {
+      motionCalls.push({ initial, animate, transition })
+      return <div className={className}>{children}</div>
+    },
   },
 }))
 
@@ -144,24 +185,27 @@ vi.mock("@/components/settings", () => {
 
 vi.mock("@/components/profile", () => {
   const ProfileSkeleton = () => <div data-testid="profile-skeleton" />
-  const ProfileBackdrop = () => <div data-testid="profile-backdrop" />
+  const ProfileBackdrop = (props: Record<string, unknown>) => {
+    profileState.backdrop(props)
+    return <div data-testid="profile-backdrop" />
+  }
   const NowPlayingCard = () => <div data-testid="now-playing-card" />
 
-  const ProfileHeader = ({
-    onEmailClick,
-    onQrClick,
-    onTelegramClick,
-  }: {
-    onEmailClick: () => void
-    onQrClick: () => void
-    onTelegramClick: () => void
-  }) => (
-    <div data-testid="profile-header">
-      <button type="button" data-testid="email-button" onClick={onEmailClick} />
-      <button type="button" data-testid="telegram-button" onClick={onTelegramClick} />
-      <button type="button" data-testid="qr-button" onClick={onQrClick} />
-    </div>
-  )
+  const ProfileHeader = (props: Record<string, unknown>) => {
+    profileState.header(props)
+    const { onEmailClick, onQrClick, onTelegramClick } = props as {
+      onEmailClick: () => void
+      onQrClick: () => void
+      onTelegramClick: () => void
+    }
+    return (
+      <div data-testid="profile-header">
+        <button type="button" data-testid="email-button" onClick={onEmailClick} />
+        <button type="button" data-testid="telegram-button" onClick={onTelegramClick} />
+        <button type="button" data-testid="qr-button" onClick={onQrClick} />
+      </div>
+    )
+  }
 
   const ProfileDetails = ({ isOpen, onToggle }: { isOpen: boolean; onToggle: () => void }) => (
     <section>
@@ -192,37 +236,34 @@ vi.mock("@/components/profile", () => {
     </section>
   )
 
-  const ProfileEditor = ({
-    email,
-    fullName,
-    onCancel,
-    onSave,
-    saving,
-    setFullName,
-  }: {
-    email: string
-    fullName: string
-    onCancel: () => void
-    onSave: () => void
-    saving: boolean
-    setFullName: (value: string) => void
-  }) => (
-    <section data-testid="profile-editor">
-      <input
-        aria-label="full name"
-        value={fullName}
-        onChange={(event) => setFullName(event.target.value)}
-      />
-      <input aria-label="email" value={email} readOnly />
-      <span data-testid="saving-state">{String(saving)}</span>
-      <button type="button" onClick={onSave} disabled={saving}>
-        save profile
-      </button>
-      <button type="button" onClick={onCancel}>
-        cancel profile
-      </button>
-    </section>
-  )
+  const ProfileEditor = (props: Record<string, unknown>) => {
+    profileState.editor(props)
+    const { email, fullName, onCancel, onSave, saving, setFullName } = props as {
+      email: string
+      fullName: string
+      onCancel: () => void
+      onSave: () => void
+      saving: boolean
+      setFullName: (value: string) => void
+    }
+    return (
+      <section data-testid="profile-editor">
+        <input
+          aria-label="full name"
+          value={fullName}
+          onChange={(event) => setFullName(event.target.value)}
+        />
+        <input aria-label="email" value={email} readOnly />
+        <span data-testid="saving-state">{String(saving)}</span>
+        <button type="button" onClick={onSave} disabled={saving}>
+          save profile
+        </button>
+        <button type="button" onClick={onCancel}>
+          cancel profile
+        </button>
+      </section>
+    )
+  }
 
   return {
     AchievementsSection,
@@ -232,7 +273,10 @@ vi.mock("@/components/profile", () => {
     ProfileEditor,
     ProfileHeader,
     ProfileSkeleton,
-    buildVCardString: () => "BEGIN:VCARD",
+    buildVCardString: (value: unknown) => {
+      profileState.vCard(value)
+      return "BEGIN:VCARD"
+    },
     calculateAvatarSize: (isMobile: boolean, isWideScreen: boolean) =>
       isMobile ? 80 : isWideScreen ? 160 : 120,
     calculateHeroLayout: (avatarSize: number) => ({ heroPaddingBottom: avatarSize }),
@@ -283,6 +327,13 @@ describe("Profile behavior", () => {
     }
     searchState.edit = undefined
     Object.keys(mediaState).forEach((key) => delete mediaState[key])
+    mediaQueries.splice(0)
+    translationNamespaces.splice(0)
+    motionCalls.splice(0)
+    profileState.header.mockReset()
+    profileState.backdrop.mockReset()
+    profileState.editor.mockReset()
+    profileState.vCard.mockReset()
   })
 
   afterEach(() => {
@@ -336,14 +387,49 @@ describe("Profile behavior", () => {
 
   it("renders profile details, now playing, responsive backdrop, and dialogs", () => {
     mediaState["(max-width: 768px)"] = true
-    mediaState["(min-width: 1440px)"] = true
-    mediaState["(max-width: 1200px)"] = true
+    mediaState["(min-width: 1350px)"] = true
+    mediaState["(max-width: 900px)"] = true
     render(<Profile />)
 
     expect(screen.getByTestId("profile-root")).toBeInTheDocument()
     expect(screen.getByTestId("now-playing-card")).toBeInTheDocument()
     expect(screen.getByTestId("profile-backdrop")).toBeInTheDocument()
     expect(screen.getByTestId("details-state")).toHaveTextContent("true")
+    expect(mediaQueries).toEqual(
+      expect.arrayContaining([
+        "(prefers-reduced-motion: reduce)",
+        "(min-width: 1350px)",
+        "(max-width: 768px)",
+        "(max-width: 900px)",
+      ])
+    )
+    expect(translationNamespaces).toContainEqual(["profile", "common"])
+    expect(profileState.backdrop).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        isNarrow: true,
+        isMobile: true,
+        prefersReducedMotion: false,
+      })
+    )
+    expect(profileState.header).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        avatarSize: "80px",
+        heroPaddingBottom: 80,
+        isOnline: true,
+        reduceMotion: false,
+      })
+    )
+    expect(motionCalls[0]).toMatchObject({
+      initial: false,
+      animate: { opacity: 1, y: 0 },
+      transition: { duration: 0 },
+    })
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(motionCalls[1]).toMatchObject({
+      initial: false,
+      animate: { opacity: 1, y: 0 },
+      transition: { duration: 0 },
+    })
 
     fireEvent.click(screen.getByText("toggle details"))
     expect(screen.getByTestId("details-state")).toHaveTextContent("false")
@@ -470,6 +556,69 @@ describe("Profile behavior", () => {
     })
   })
 
+  it("rehydrates all editor defaults when a sparse profile enters edit mode", async () => {
+    searchState.edit = undefined
+    authState.user = {
+      id: "sparse-user",
+      full_name: undefined,
+      email: undefined,
+      role: "student",
+      spotify_connected: false,
+      profile_detail: undefined,
+      education_path: undefined,
+    } as unknown as User
+
+    render(<Profile />)
+
+    fireEvent.click(screen.getByText("profile:buttons.edit"))
+
+    await waitFor(() => expect(screen.getByTestId("profile-editor")).toBeInTheDocument())
+    expect(profileState.editor).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        fullName: "",
+        email: "",
+        about: "",
+        recordBookNumber: "",
+        status: "",
+        institute: "",
+        course: "",
+        educationLevel: "",
+        track: "",
+        program: "",
+        telegram: "",
+        achievements: "",
+        department: "",
+        position: "",
+      })
+    )
+  })
+
+  it("preserves in-progress editor fields during a same-account refresh", async () => {
+    searchState.edit = "1"
+    const { rerender } = render(<Profile />)
+
+    fireEvent.change(screen.getByRole("textbox", { name: "full name" }), {
+      target: { value: "Grace Lovelace" },
+    })
+
+    authState.user = { ...user, full_name: "Ada refreshed" } as User
+    rerender(<Profile />)
+
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "full name" })).toHaveValue("Grace Lovelace")
+    )
+  })
+
+  it("enters edit mode when the search flag appears after the initial render", async () => {
+    const { rerender } = render(<Profile />)
+    expect(screen.queryByTestId("profile-editor")).not.toBeInTheDocument()
+
+    searchState.edit = "1"
+    rerender(<Profile />)
+
+    await waitFor(() => expect(screen.getByTestId("profile-editor")).toBeInTheDocument())
+  })
+
   it("renders a server string validation error while leaving edit mode active", async () => {
     apiState.put.mockRejectedValueOnce({ response: { data: { detail: "Email is already used" } } })
     render(<Profile />)
@@ -566,6 +715,9 @@ describe("Profile behavior", () => {
 
     expect(screen.getByTestId("profile-root")).toBeInTheDocument()
     expect(screen.queryByTestId("now-playing-card")).not.toBeInTheDocument()
+    expect(profileState.header).toHaveBeenLastCalledWith(
+      expect.objectContaining({ isOnline: false })
+    )
   })
 
   it("uses the null-user view without attempting Spotify playback", () => {
@@ -575,6 +727,25 @@ describe("Profile behavior", () => {
 
     expect(screen.getByTestId("profile-root")).toBeInTheDocument()
     expect(screen.queryByTestId("now-playing-card")).not.toBeInTheDocument()
+    expect(profileState.header).toHaveBeenLastCalledWith(
+      expect.objectContaining({ isOnline: true })
+    )
+
+    fireEvent.click(screen.getByTestId("qr-button"))
+    expect(screen.getByTestId("qr-code")).toHaveAttribute("data-value", "")
+    expect(profileState.vCard).not.toHaveBeenCalled()
+  })
+
+  it("supports the legacy Spotify connection field when deciding to show playback", () => {
+    authState.user = {
+      ...user,
+      spotify_connected: undefined,
+      spotify_is_connected: true,
+    } as unknown as User
+
+    render(<Profile />)
+
+    expect(screen.getByTestId("now-playing-card")).toBeInTheDocument()
   })
 
   it("renders production motion transitions when the app is not in test mode", async () => {

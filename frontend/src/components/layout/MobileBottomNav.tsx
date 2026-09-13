@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 import {
   LayoutDashboard as DashboardIcon,
@@ -32,6 +32,86 @@ export function navScrollBehavior(prefersReducedMotion: boolean): ScrollBehavior
   return prefersReducedMotion ? "auto" : "smooth"
 }
 
+export const MOBILE_NAV_TRANSLATION_NAMESPACE = "navigation"
+
+type MobileKeyboardStore = {
+  subscribe: (listener: () => void) => () => void
+  getSnapshot: () => boolean
+  getServerSnapshot: () => boolean
+}
+
+/** Detach both VisualViewport listeners only when a viewport was subscribed. */
+export function removeMobileKeyboardListeners(
+  viewport: Pick<VisualViewport, "removeEventListener"> | null,
+  listener: () => void
+): void {
+  if (viewport === null) return
+  viewport.removeEventListener("resize", listener)
+  viewport.removeEventListener("scroll", listener)
+}
+
+export function createMobileKeyboardStore(): MobileKeyboardStore {
+  let isOpen = false
+  let viewport: VisualViewport | null = null
+  let cleanup: (() => void) | null = null
+  const listeners = new Set<() => void>()
+
+  const notify = () => {
+    for (const listener of listeners) listener()
+  }
+
+  const syncKeyboardState = () => {
+    if (!viewport) return
+    const activeElement = document.activeElement
+    const next = shouldHideForVirtualKeyboard(
+      activeElement,
+      window.innerHeight,
+      viewport.height,
+      viewport.scale
+    )
+    if (next === isOpen) return
+    isOpen = next
+    notify()
+  }
+
+  const start = () => {
+    viewport = window.visualViewport ?? null
+    if (!viewport) return
+    syncKeyboardState()
+    viewport.addEventListener("resize", syncKeyboardState)
+    viewport.addEventListener("scroll", syncKeyboardState)
+    cleanup = () => {
+      removeMobileKeyboardListeners(viewport, syncKeyboardState)
+      viewport = null
+      isOpen = false
+      cleanup = null
+    }
+  }
+
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener)
+    if (cleanup === null) start()
+    return () => {
+      listeners.delete(listener)
+      if (listeners.size === 0) cleanup?.()
+    }
+  }
+
+  return {
+    subscribe,
+    getSnapshot: () => isOpen,
+    getServerSnapshot: () => false,
+  }
+}
+
+export function mobileNavAriaHidden(isVirtualKeyboardOpen: boolean): true | undefined {
+  return isVirtualKeyboardOpen ? true : undefined
+}
+
+export function mobileNavAriaCurrent(isActive: boolean): "page" | undefined {
+  return isActive ? "page" : undefined
+}
+
 export function shouldHideForVirtualKeyboard(
   activeElement: Element | null,
   innerHeight: number,
@@ -60,10 +140,15 @@ export function createMobileNavItems(t: Translation) {
 
 export default function MobileBottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const { t } = useTranslation(["navigation"])
+  const { t } = useTranslation(MOBILE_NAV_TRANSLATION_NAMESPACE)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const deferredScrollFrame = useRef<number | null>(null)
-  const [isVirtualKeyboardOpen, setIsVirtualKeyboardOpen] = useState(false)
+  const [viewportStore] = useState(createMobileKeyboardStore)
+  const isVirtualKeyboardOpen = useSyncExternalStore(
+    viewportStore.subscribe,
+    viewportStore.getSnapshot,
+    viewportStore.getServerSnapshot
+  )
 
   // Wave 128 SW3 — useIsomorphicLayoutEffect picks useEffect on SSR
   // (avoids React's "useLayoutEffect does nothing on the server" warning
@@ -74,7 +159,7 @@ export default function MobileBottomNav() {
       sessionStorage.removeItem("__scrollTopNext")
       deferredScrollFrame.current = requestAnimationFrame(() => {
         deferredScrollFrame.current = null
-        smoothToTop(getScrollRoot(), prefersReducedMotion ? "auto" : "smooth")
+        smoothToTop(getScrollRoot(), navScrollBehavior(prefersReducedMotion))
       })
     }
 
@@ -85,30 +170,6 @@ export default function MobileBottomNav() {
       }
     }
   }, [pathname, prefersReducedMotion])
-
-  useEffect(() => {
-    const viewport = window.visualViewport
-    if (!viewport) return
-
-    const syncKeyboardState = () => {
-      const activeElement = document.activeElement
-      setIsVirtualKeyboardOpen(
-        shouldHideForVirtualKeyboard(
-          activeElement,
-          window.innerHeight,
-          viewport.height,
-          viewport.scale
-        )
-      )
-    }
-    syncKeyboardState()
-    viewport.addEventListener("resize", syncKeyboardState)
-    viewport.addEventListener("scroll", syncKeyboardState)
-    return () => {
-      viewport.removeEventListener("resize", syncKeyboardState)
-      viewport.removeEventListener("scroll", syncKeyboardState)
-    }
-  }, [])
 
   const items = useMemo(() => createMobileNavItems(t), [t])
 
@@ -125,7 +186,7 @@ export default function MobileBottomNav() {
         className={`fixed inset-x-0 bottom-0 z-(--z-navbar) grid h-[calc(var(--bottom-nav-h)+var(--safe-area-bottom))] w-full grid-cols-5 items-stretch border-t border-glass-border bottom-nav-glass pb-(--safe-area-bottom) shadow-up transition-[transform,opacity] duration-200 motion-reduce:transition-none md:hidden ${isVirtualKeyboardOpen ? "pointer-events-none translate-y-full opacity-0" : "translate-y-0 opacity-100"}`}
         role="navigation"
         aria-label={t("navigation:aria.mainNavigation")}
-        aria-hidden={isVirtualKeyboardOpen || undefined}
+        aria-hidden={mobileNavAriaHidden(isVirtualKeyboardOpen)}
         data-virtual-keyboard={isVirtualKeyboardOpen ? "open" : "closed"}
         inert={isVirtualKeyboardOpen || undefined}
       >
@@ -158,7 +219,7 @@ export default function MobileBottomNav() {
               }}
               className="group relative flex h-full min-h-11 w-full flex-col items-center justify-center text-text-primary outline-none select-none focus-visible:shadow-focus"
               aria-label={it.label}
-              aria-current={isActive ? "page" : undefined}
+              aria-current={mobileNavAriaCurrent(isActive)}
             >
               <span
                 data-nav-icon

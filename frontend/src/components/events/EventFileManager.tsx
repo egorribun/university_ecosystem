@@ -15,7 +15,7 @@ import {
   captureActiveTelemetryContext,
   type CapturedTelemetryContext,
 } from "@/utils/telemetryContext"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import { resolveMediaUrl } from "@/utils/media"
 
 import type { Event } from "@/types/Event"

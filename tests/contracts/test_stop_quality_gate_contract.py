@@ -21,6 +21,7 @@ GO_MODULES = (
     "ws-hub",
     "file-processor",
     "cmd/uni-cli",
+    "pkg/logging",
     "pkg/spiffe",
     "pkg/spicedb",
 )

@@ -41,7 +41,8 @@ const auth = vi.hoisted(() => ({
 }))
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: auth.user }) }))
 vi.mock("@/contexts/LanguageContext", () => ({ useLanguage: () => ({ language: "en" }) }))
-vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => true }))
+const online = vi.hoisted(() => ({ value: true }))
+vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => online.value }))
 /* Debounce → identity so client-side filters run synchronously off searchQuery. */
 vi.mock("@/hooks/useDebounced", () => ({ useDebounced: (v: string) => v }))
 
@@ -67,10 +68,20 @@ const myQuery = vi.hoisted(() => ({
   isLoading: false,
   isFetching: false,
 }))
+const queryCalls = vi.hoisted(() => ({
+  list: [] as unknown[][],
+  mine: [] as unknown[][],
+}))
 vi.mock("@/api/hooks/events", () => ({
   EVENTS_PAGE_SIZE: 12,
-  useEventsListQuery: () => listQuery,
-  useMyEventsQuery: () => myQuery,
+  useEventsListQuery: (...args: unknown[]) => {
+    queryCalls.list.push(args)
+    return listQuery
+  },
+  useMyEventsQuery: (...args: unknown[]) => {
+    queryCalls.mine.push(args)
+    return myQuery
+  },
 }))
 
 const resetEtagSpy = vi.hoisted(() => ({ fn: vi.fn() }))
@@ -93,6 +104,7 @@ vi.mock("../components/EventsHeader", () => ({
   EventsHeader: (props: Record<string, unknown>) => (
     <div data-testid="header">
       <span data-testid="events-count">{String(props.eventsCount)}</span>
+      <span data-testid="header-admin">{String(props.isAdmin)}</span>
       <button onClick={() => (props.onTabChange as (v: string) => void)("my")}>tab-my</button>
       <button onClick={() => (props.onTabChange as (v: string) => void)("archive")}>
         tab-archive
@@ -185,6 +197,9 @@ beforeEach(() => {
   myQuery.data = undefined
   myQuery.isLoading = false
   myQuery.isFetching = false
+  online.value = true
+  queryCalls.list = []
+  queryCalls.mine = []
   resetEtagSpy.fn = vi.fn()
   invalidateSpy.fn = vi.fn()
   auth.user = { id: "u1", role: "student" }
@@ -267,6 +282,17 @@ describe("EventsFeature — tab-driven data + loading flags", () => {
     listQuery.events = [evt({ id: "a" }), evt({ id: "b" })]
     render(<EventsFeature />)
     expect(screen.getByTestId("list-count")).toHaveTextContent("2")
+    expect(queryCalls.list.at(-1)).toEqual([
+      {
+        language: "en",
+        is_active: true,
+        search: "",
+        location: "",
+        limit: 12,
+      },
+      { enabled: true },
+    ])
+    expect(queryCalls.mine.at(-1)).toEqual([{ language: "en", userId: "u1" }, { enabled: false }])
   })
 
   it("uses myEvents data + loading flags when tab is 'my' (156, 159-160)", () => {
@@ -278,6 +304,8 @@ describe("EventsFeature — tab-driven data + loading flags", () => {
     expect(screen.getByTestId("list-count")).toHaveTextContent("1")
     expect(screen.getByTestId("list-initial-loading")).toHaveTextContent("true")
     expect(screen.getByTestId("list-fetching")).toHaveTextContent("true")
+    expect(queryCalls.list.at(-1)?.[1]).toEqual({ enabled: false })
+    expect(queryCalls.mine.at(-1)).toEqual([{ language: "en", userId: "u1" }, { enabled: true }])
   })
 
   it("falls back to an empty array when myEvents data is undefined", () => {
@@ -300,6 +328,7 @@ describe("EventsFeature — tab-driven data + loading flags", () => {
     listQuery.events = [evt()]
     render(<EventsFeature />)
     expect(screen.getByTestId("list-count")).toHaveTextContent("1")
+    expect(queryCalls.list.at(-1)?.[0]).toMatchObject({ is_active: false })
   })
 })
 
@@ -355,6 +384,21 @@ describe("EventsFeature — client-side category + date filters", () => {
     const dayOfWeekSpy = vi.spyOn(Date.prototype, "getDay").mockReturnValue(0)
     search.params = { dr: "week" }
     listQuery.events = [evt({ id: "sunday-week" })]
+
+    try {
+      render(<EventsFeature />)
+      expect(screen.getByTestId("list-count")).toHaveTextContent("0")
+    } finally {
+      dayOfWeekSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
+  it("uses the weekday offset for a non-Sunday week start", () => {
+    vi.useFakeTimers()
+    const dayOfWeekSpy = vi.spyOn(Date.prototype, "getDay").mockReturnValue(1)
+    search.params = { dr: "week" }
+    listQuery.events = [evt({ id: "weekday-week" })]
 
     try {
       render(<EventsFeature />)
@@ -475,6 +519,24 @@ describe("EventsFeature — refresh + dialog + derived flags", () => {
     expect(listQuery.fetchNextPage).toHaveBeenCalled()
   })
 
+  it("does not prefetch an incomplete filtered dataset while loading, fetching, or offline", () => {
+    search.params = { cat: "lecture" }
+    listQuery.hasNextPage = true
+    listQuery.isLoading = true
+    render(<EventsFeature />)
+    expect(listQuery.fetchNextPage).not.toHaveBeenCalled()
+
+    listQuery.isLoading = false
+    listQuery.isFetchingNextPage = true
+    render(<EventsFeature />)
+    expect(listQuery.fetchNextPage).not.toHaveBeenCalled()
+
+    listQuery.isFetchingNextPage = false
+    online.value = false
+    render(<EventsFeature />)
+    expect(listQuery.fetchNextPage).not.toHaveBeenCalled()
+  })
+
   it("keeps pagination available and completes the dataset for a category filter", () => {
     search.params = { cat: "lecture" }
     listQuery.hasNextPage = true
@@ -486,16 +548,17 @@ describe("EventsFeature — refresh + dialog + derived flags", () => {
   it("treats teacher + admin roles as admins (isAdmin derivation)", () => {
     auth.user = { id: "u2", role: "admin" }
     const { unmount } = render(<EventsFeature />)
-    expect(screen.getByTestId("header")).toBeInTheDocument()
+    expect(screen.getByTestId("header-admin")).toHaveTextContent("true")
     unmount()
     auth.user = { id: "u3", role: "teacher" }
     render(<EventsFeature />)
-    expect(screen.getByTestId("header")).toBeInTheDocument()
+    expect(screen.getByTestId("header-admin")).toHaveTextContent("true")
   })
 
   it("handles a null user (user?.id ?? null + isAdmin false)", () => {
     auth.user = null
     render(<EventsFeature />)
-    expect(screen.getByTestId("header")).toBeInTheDocument()
+    expect(screen.getByTestId("header-admin")).toHaveTextContent("false")
+    expect(queryCalls.mine.at(-1)).toEqual([{ language: "en", userId: null }, { enabled: false }])
   })
 })

@@ -140,6 +140,9 @@ def _resolve_current_trace_id() -> str | None:
 from app.core.logging import (  # noqa: E402
     configure_logging as _configure_structured_logging,
 )
+from app.core.logging import get_logger  # noqa: E402
+
+_logger = get_logger(__name__)
 
 
 def _resolve_headers(value: str) -> Mapping[str, str]:
@@ -243,7 +246,7 @@ def _shutdown_otel_providers_bounded(providers: Iterable[object | None]) -> None
         remaining = max(0.0, deadline - time.monotonic())
         thread.join(timeout=remaining)
         if thread.is_alive():
-            logging.getLogger(__name__).warning(
+            _logger.warning(
                 "OpenTelemetry provider shutdown exceeded timeout; continuing without flush"
             )
 
@@ -372,7 +375,7 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
             except RuntimeError:
                 # Already instrumented
                 pass
-        except Exception:
+        except Exception:  # RZ-22-01-JUSTIFIED: fail-closed OTEL initialization cleanup
             # Provider registration is process-global and write-once. A partial
             # startup is therefore terminal for this process: tear down every
             # locally-created worker immediately and refuse unsafe retries.
@@ -773,9 +776,7 @@ def configure_worker_observability(
             trace.set_tracer_provider(tracer_provider)
 
     if worker_name:
-        logging.getLogger(__name__).info(
-            "Worker %s observability configured", worker_name
-        )
+        _logger.info("Worker %s observability configured", worker_name)
 
 
 @dataclass

@@ -13,7 +13,10 @@ This directory contains the configuration stub for integrating the
 
 ## Fuzzing engines
 
-Configured engines: **libFuzzer** (primary), **AFL++**, **Honggfuzz**.
+Configured engine: **libFuzzer**.  The builder invokes `cargo fuzz`, which
+produces libFuzzer executables; unsupported AFL++ and Honggfuzz claims are
+intentionally not advertised until separate builders are implemented and
+tested.
 
 Configured sanitizers: **AddressSanitizer (ASan)**, **UndefinedBehaviorSanitizer (UBSan)**.
 

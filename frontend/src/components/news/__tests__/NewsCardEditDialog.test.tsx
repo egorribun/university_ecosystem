@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
 
@@ -60,21 +60,27 @@ describe("NewsCardEditDialog", () => {
     apiMocks.logError.mockReset()
   })
 
-  it("renders the dialog with prefilled fields when open", () => {
-    render(<NewsCardEditDialog {...baseProps} />)
+  it("renders the dialog with prefilled fields when open", async () => {
+    await act(async () => {
+      render(<NewsCardEditDialog {...baseProps} />)
+    })
     expect(screen.getByText("news:dialogs.edit.title")).toBeInTheDocument()
     expect(screen.getByDisplayValue(initialData.title)).toBeInTheDocument()
     expect(screen.getByDisplayValue(initialData.content)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeInTheDocument()
   })
 
-  it("does not render the dialog body when closed", () => {
-    render(<NewsCardEditDialog {...baseProps} open={false} />)
+  it("does not render the dialog body when closed", async () => {
+    await act(async () => {
+      render(<NewsCardEditDialog {...baseProps} open={false} />)
+    })
     expect(screen.queryByText("news:dialogs.edit.title")).not.toBeInTheDocument()
   })
 
-  it("renders the form without an image preview when no image is available", () => {
-    render(<NewsCardEditDialog {...baseProps} initialData={{ ...initialData, image_url: "" }} />)
+  it("renders the form without an image preview when no image is available", async () => {
+    await act(async () => {
+      render(<NewsCardEditDialog {...baseProps} initialData={{ ...initialData, image_url: "" }} />)
+    })
 
     expect(screen.queryByRole("img")).not.toBeInTheDocument()
   })
@@ -220,8 +226,10 @@ describe("NewsCardEditDialog", () => {
     revokeObjectURL.mockRestore()
   })
 
-  it("ignores an image input change without a selected file", () => {
-    render(<NewsCardEditDialog {...baseProps} />)
+  it("ignores an image input change without a selected file", async () => {
+    await act(async () => {
+      render(<NewsCardEditDialog {...baseProps} />)
+    })
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
 
     fireEvent.change(fileInput, { target: { files: [] } })
@@ -303,11 +311,15 @@ describe("NewsCardEditDialog", () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  it("falls back to empty labels when translations are unavailable", () => {
+  it("falls back to empty labels when translations are unavailable", async () => {
     translationMocks.returnUndefined = true
     try {
-      const view = render(<NewsCardEditDialog {...baseProps} />)
+      let view: ReturnType<typeof render> | undefined
+      await act(async () => {
+        view = render(<NewsCardEditDialog {...baseProps} />)
+      })
       expect(screen.getByRole("dialog")).toBeInTheDocument()
+      if (!view) throw new Error("Dialog failed to render")
       view.unmount()
     } finally {
       translationMocks.returnUndefined = false

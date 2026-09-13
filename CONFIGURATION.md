@@ -10,6 +10,7 @@ This document describes all environment variables used by the University Ecosyst
 | `SECRET_KEY` | Primary JWT signing secret (min 32 chars) | - |
 | `AUDIT_LOG_SECRET` | Audit log signing secret (min 32 chars) | - |
 | `INTERNAL_HMAC_SECRET` | Internal gateway signature key (Required in production) | - |
+| `TOKEN_HMAC_SECRET` | Dedicated HMAC key for password-reset and email-change tokens (min 32 bytes; required in staging/production) | - |
 
 ---
 
@@ -41,6 +42,7 @@ This document describes all environment variables used by the University Ecosyst
 | `CSRF_HMAC_SECRET` | Key for signing CSRF tokens | (derived) |
 | `INTERNAL_HMAC_SECRET` | Verifies gateway `X-User-ID` headers | Required in Prod |
 | `AUDIT_LOG_SECRET` | HMAC key for audit log signatures (min 32 chars) | Required |
+| `TOKEN_HMAC_SECRET` | Dedicated HMAC key for password-reset and email-change token digests | Required in staging/prod |
 
 ### MFA Settings
 

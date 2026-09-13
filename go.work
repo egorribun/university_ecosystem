@@ -17,6 +17,7 @@ use (
 	./services/file-processor
 	./services/gateway
 	./services/pkg/spicedb
+	./services/pkg/logging
 	./services/pkg/spiffe
 	./services/ws-hub
 )

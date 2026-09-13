@@ -50,6 +50,7 @@ import (
 	"github.com/university-ecosystem/gateway/internal/handlers"
 	"github.com/university-ecosystem/gateway/internal/tlsutil"
 	"github.com/university-ecosystem/gateway/middleware"
+	"github.com/university-ecosystem/services/pkg/logging"
 	"github.com/university-ecosystem/services/pkg/spiffe"
 )
 
@@ -392,16 +393,7 @@ func run() error {
 }
 
 func initLogger() *slog.Logger {
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey {
-				a.Value = slog.StringValue(a.Value.Time().UTC().Format(time.RFC3339Nano))
-			}
-			return a
-		},
-	})
-	return slog.New(handler).With("service", "gateway")
+	return logging.NewJSONLogger(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}).With("service", "gateway")
 }
 
 func initSentry(cfg *config.Config, logger *slog.Logger) {

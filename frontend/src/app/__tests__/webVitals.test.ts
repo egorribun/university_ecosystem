@@ -182,6 +182,45 @@ describe("webVitals", () => {
     )
   })
 
+  it("fails closed when Blob changes between its type check and read", async () => {
+    const sendBeacon = vi.fn(() => true)
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
+    class TestBlob {
+      constructor(readonly parts: string[]) {}
+    }
+    const blobDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Blob")
+    let blobReads = 0
+    Object.defineProperty(globalThis, "Blob", {
+      configurable: true,
+      get: () => {
+        blobReads += 1
+        return blobReads === 1 ? TestBlob : undefined
+      },
+    })
+    try {
+      vi.stubGlobal("navigator", { ...navigator, sendBeacon })
+      vi.stubGlobal("fetch", fetchMock)
+      initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v" }))
+
+      const reporter = vi.mocked(onLCP).mock.calls[0]![0]
+      reporter(sampleMetric({ name: "LCP" }) as never)
+      await Promise.resolve()
+
+      expect(blobReads).toBe(2)
+      expect(sendBeacon).not.toHaveBeenCalled()
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://metrics.test/v",
+        expect.objectContaining({ method: "POST" })
+      )
+    } finally {
+      if (blobDescriptor) {
+        Object.defineProperty(globalThis, "Blob", blobDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, "Blob")
+      }
+    }
+  })
+
   it("does not construct a beacon after a missing Blob check", () => {
     const sendBeacon = vi.fn(() => true)
     const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))

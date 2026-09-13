@@ -195,7 +195,7 @@ async def test_fetch_active_user_ids_warns_at_safety_limit(
     with caplog.at_level("WARNING"):
         ids = await core._fetch_active_user_ids(db_session)
     assert len(ids) == 1
-    assert any("PERF-20-01" in rec.message for rec in caplog.records)
+    assert any("PERF-20-01" in rec.getMessage() for rec in caplog.records)
 
 
 @pytest.mark.asyncio

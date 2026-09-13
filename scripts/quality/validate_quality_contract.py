@@ -58,6 +58,7 @@ TIER0_FLOORS = (
     ("branches", 100),
     ("functions", 100),
 )
+METRIC_STATUSES = frozenset({"native", "derived", "unsupported"})
 COVERAGE_MINIMUMS = (
     ("lines", 100),
     ("statements", 100),
@@ -70,6 +71,7 @@ TOP_LEVEL_KEYS = frozenset(
         "version",
         "policy",
         "coverage_minimums",
+        "metric_statuses",
         "components",
         "tier0",
         "source_roots",
@@ -325,8 +327,6 @@ def _validate_coverage_values(
         percentage = _validate_percentage(coverage[metric], metric_field, errors)
         if percentage is None:
             continue
-        if not exact and percentage == 0:
-            continue
         if exact and percentage != threshold:
             errors.append(f"{metric_field} must equal {threshold}")
         elif not exact and percentage < threshold:
@@ -349,7 +349,128 @@ def _validate_policy(value: object, errors: list[str]) -> None:
         errors.append("policy.required_pr_matrix must be true")
 
 
-def _validate_components(value: object, errors: list[str]) -> None:
+def _validate_metric_statuses(value: object, errors: list[str]) -> None:
+    """Validate the explicit metric applicability contract.
+
+    A zero numeric floor is not sufficient evidence that a metric is genuinely
+    unavailable: it used to let a producer label any value ``unsupported`` and
+    bypass the quality gate.  The status matrix is the auditable declaration of
+    which toolchain statuses are allowed for each component/metric.  Only
+    ``native`` and trusted ``derived`` measurements can satisfy a gate; an
+    ``unsupported`` status is an explicit N/A and must be declared here.
+    ``missing`` and ``experimental`` are intentionally never contractually
+    acceptable because neither represents complete evidence.
+    """
+
+    statuses = _require_object(value, "metric_statuses", errors)
+    if statuses is None:
+        return
+    _validate_exact_keys(statuses, "metric_statuses", frozenset(COMPONENTS), errors)
+    for component in COMPONENTS:
+        if component not in statuses:
+            continue
+        component_statuses = _require_object(
+            statuses[component], f"metric_statuses.{component}", errors
+        )
+        if component_statuses is None:
+            continue
+        _validate_exact_keys(
+            component_statuses,
+            f"metric_statuses.{component}",
+            frozenset(METRICS),
+            errors,
+        )
+        for metric in METRICS:
+            if metric not in component_statuses:
+                continue
+            field = f"metric_statuses.{component}.{metric}"
+            allowed = component_statuses[metric]
+            if (
+                not isinstance(allowed, list)
+                or not allowed
+                or not all(isinstance(status, str) for status in allowed)
+            ):
+                errors.append(f"{field} must be a non-empty status array")
+                continue
+            if len(allowed) != len(set(allowed)):
+                errors.append(f"{field} must not contain duplicate statuses")
+            for status in allowed:
+                if status not in METRIC_STATUSES:
+                    errors.append(f"{field} contains unsupported status: {status}")
+
+
+def _metric_statuses_allow_unsupported(
+    metric_statuses: object,
+    component: str,
+    metric: str,
+) -> bool:
+    """Return whether a component/metric explicitly declares an N/A status.
+
+    Contract validation is intentionally independent from manifest validation,
+    so malformed status declarations are reported by both layers without ever
+    treating a numeric zero floor as implicit permission to omit evidence.
+    """
+
+    if not isinstance(metric_statuses, dict):
+        return False
+    component_statuses = metric_statuses.get(component)
+    if not isinstance(component_statuses, dict):
+        return False
+    allowed = component_statuses.get(metric)
+    return isinstance(allowed, list) and "unsupported" in allowed
+
+
+def _validate_component_floors(
+    value: object,
+    *,
+    component: str,
+    metric_statuses: object,
+    field: str,
+    errors: list[str],
+) -> None:
+    """Validate component floors without an implicit zero-floor bypass.
+
+    A component floor is a contract declaration, not measured coverage.  A
+    measured native/derived metric therefore has to retain the platform 100%
+    floor.  Zero is reserved for a toolchain metric that is explicitly
+    declared ``unsupported`` in ``metric_statuses``; all other values in the
+    component floor object must be 100.
+    """
+
+    coverage = _require_object(value, field, errors)
+    if coverage is None:
+        return
+    expected_keys = frozenset(metric for metric, _ in COMPONENT_FLOORS)
+    _validate_exact_keys(coverage, field, expected_keys, errors)
+    for metric, _ in COMPONENT_FLOORS:
+        if metric not in coverage:
+            continue
+        metric_field = f"{field}.{metric}"
+        percentage = _validate_percentage(coverage[metric], metric_field, errors)
+        if percentage is None:
+            continue
+        if percentage == 0:
+            if _metric_statuses_allow_unsupported(
+                metric_statuses,
+                component,
+                metric,
+            ):
+                continue
+            errors.append(
+                f"{metric_field} must be at least 100; zero floor requires "
+                f"metric_statuses.{component}.{metric} to allow unsupported"
+            )
+            continue
+        if percentage < 100:
+            errors.append(f"{metric_field} must be at least 100")
+
+
+def _validate_components(
+    value: object,
+    errors: list[str],
+    *,
+    metric_statuses: object = None,
+) -> None:
     components = _require_object(value, "components", errors)
     if components is None:
         return
@@ -379,11 +500,11 @@ def _validate_components(value: object, errors: list[str]) -> None:
             errors,
         )
         if "coverage" in component_config:
-            _validate_coverage_values(
+            _validate_component_floors(
                 component_config["coverage"],
-                f"{component}.coverage",
-                COMPONENT_FLOORS,
-                exact=False,
+                component=component,
+                metric_statuses=metric_statuses,
+                field=f"{component}.coverage",
                 errors=errors,
             )
 
@@ -723,8 +844,14 @@ def validate_contract(contract: dict[str, object], *, today: date) -> list[str]:
             exact=True,
             errors=errors,
         )
+    if "metric_statuses" in contract:
+        _validate_metric_statuses(contract["metric_statuses"], errors)
     if "components" in contract:
-        _validate_components(contract["components"], errors)
+        _validate_components(
+            contract["components"],
+            errors,
+            metric_statuses=contract.get("metric_statuses"),
+        )
     if "tier0" in contract:
         _validate_tier0(contract["tier0"], errors)
     if "source_roots" in contract:
@@ -988,16 +1115,61 @@ def _contract_component_floors(
     return {metric: cast(int, coverage[metric]) for metric in METRICS}
 
 
+def _contract_component_metric_statuses(
+    contract: dict[str, object], component: str
+) -> dict[str, frozenset[str]]:
+    """Return the explicitly allowed evidence statuses for one component.
+
+    ``validate_contract`` requires this matrix before manifest validation.  The
+    defensive checks here keep direct library callers fail-closed as well: a
+    malformed or absent matrix yields empty status sets, so no metric can pass
+    by relying on an implicit numeric zero floor.
+    """
+
+    raw = contract.get("metric_statuses")
+    if not isinstance(raw, dict):
+        return {metric: frozenset() for metric in METRICS}
+    component_raw = raw.get(component)
+    if not isinstance(component_raw, dict):
+        return {metric: frozenset() for metric in METRICS}
+    result: dict[str, frozenset[str]] = {}
+    for metric in METRICS:
+        values = component_raw.get(metric)
+        if not isinstance(values, list) or not all(
+            isinstance(status, str) for status in values
+        ):
+            result[metric] = frozenset()
+        else:
+            result[metric] = frozenset(cast(str, status) for status in values)
+    return result
+
+
 def _validate_metric_for_floor(
     metric: dict[str, object],
     *,
     floor: int,
     field: str,
+    allowed_statuses: frozenset[str] | None = None,
 ) -> list[str]:
     status = metric["status"]
+    if allowed_statuses is not None and status not in allowed_statuses:
+        if status == "unsupported" and floor != 0:
+            return [
+                f"{field} is unsupported but its component floor is {floor}; "
+                "the metric contract also disallows this N/A status "
+                "(not allowed by the metric contract)"
+            ]
+        allowed = ", ".join(sorted(allowed_statuses)) or "none"
+        return [
+            f"{field} status {status!r} is not allowed by the metric contract "
+            f"(allowed: {allowed})"
+        ]
     if status in {"missing", "experimental"}:
         return [f"{field} is {status}; incomplete evidence is never acceptable"]
     if status == "unsupported":
+        reason_code = metric.get("reason_code")
+        if not isinstance(reason_code, str) or not reason_code.strip():
+            return [f"{field} unsupported metric must include a reason_code for N/A"]
         if floor != 0:
             return [f"{field} is unsupported but its component floor is {floor}"]
         return []
@@ -1338,6 +1510,7 @@ def _validate_components_manifest(
             errors.append(f"components.{component}.errors must be empty")
         metrics = cast(dict[str, object], entry["metrics"])
         floors = _contract_component_floors(contract, component)
+        status_contract = _contract_component_metric_statuses(contract, component)
         for metric_name in METRICS:
             metric = cast(dict[str, object], metrics[metric_name])
             errors.extend(
@@ -1345,6 +1518,7 @@ def _validate_components_manifest(
                     metric,
                     floor=floors[metric_name],
                     field=f"components.{component}.{metric_name}",
+                    allowed_statuses=status_contract[metric_name],
                 )
             )
     return errors
@@ -1472,6 +1646,7 @@ def _validate_tier0_manifest(
         if not any(_tier0_rule_matches(path, rule) for rule in rules):
             errors.append(f"tier0 file {path} does not match a declared Tier0 rule")
         floors = _contract_component_floors(contract, component)
+        status_contract = _contract_component_metric_statuses(contract, component)
         metrics = cast(dict[str, object], record["metrics"])
         for metric_name in METRICS:
             metric = cast(dict[str, object], metrics[metric_name])
@@ -1480,6 +1655,7 @@ def _validate_tier0_manifest(
                     metric,
                     floor=floors[metric_name],
                     field=f"{path}.{metric_name}",
+                    allowed_statuses=status_contract[metric_name],
                 )
             )
             if metric["status"] in {"native", "derived"}:
@@ -1496,6 +1672,18 @@ def _validate_tier0_manifest(
 
     summaries = cast(dict[str, object], tier0["metric_summary"])
     aggregate = cast(dict[str, object], tier0["coverage"])
+    # Aggregate status is checked against every applicable component's status
+    # contract below; keep a union so a derived aggregate remains valid when
+    # file-level evidence mixes native and derived producers.
+    aggregate_statuses: dict[str, frozenset[str]] = {
+        metric: frozenset() for metric in METRICS
+    }
+    for component in COVERAGE_COMPONENTS:
+        component_statuses = _contract_component_metric_statuses(contract, component)
+        for metric in METRICS:
+            aggregate_statuses[metric] = (
+                aggregate_statuses[metric] | component_statuses[metric]
+            )
     for metric_name in METRICS:
         entries = measured_by_metric[metric_name]
         expected_summary = {
@@ -1512,12 +1700,26 @@ def _validate_tier0_manifest(
                 errors.append(
                     f"tier0.coverage.{metric_name} must be N/A when no files are applicable"
                 )
+            elif "unsupported" not in aggregate_statuses[metric_name]:
+                errors.append(
+                    f"tier0.coverage.{metric_name} is N/A but the metric contract "
+                    "does not declare unsupported evidence"
+                )
+            elif (
+                not isinstance(aggregate_metric.get("reason_code"), str)
+                or not cast(str, aggregate_metric["reason_code"]).strip()
+            ):
+                errors.append(
+                    f"tier0.coverage.{metric_name} unsupported metric must include "
+                    "a reason_code for N/A"
+                )
             continue
         errors.extend(
             _validate_metric_for_floor(
                 aggregate_metric,
                 floor=100,
                 field=f"tier0.coverage.{metric_name}",
+                allowed_statuses=aggregate_statuses[metric_name],
             )
         )
         covered = sum(cast(int, entry["covered"]) for entry in entries)

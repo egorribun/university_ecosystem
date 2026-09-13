@@ -182,7 +182,13 @@ def test_hook_removes_every_custom_root_option_before_runner(
 
 def test_custom_root_wrapper_succeeds_with_actual_detect_secrets_runner(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Keep the integration hook hermetic.  Reusing a developer's global
+    # pre-commit cache can make this contract fail for unrelated filesystem
+    # permissions (for example, a stale read-only cloned repository on
+    # Windows) and hides whether the wrapper itself works.
+    monkeypatch.setenv("PRE_COMMIT_HOME", str(tmp_path / "pre-commit-home"))
     repository_root = Path(__file__).resolve().parents[1]
     config = tmp_path / "detect-secrets-integration.yaml"
     config.write_text(
@@ -243,7 +249,17 @@ def test_precommit_keeps_filename_filtering_and_example_exclusions() -> None:
     assert exclusion.search(".env.example")
     assert exclusion.search(".env.docker.example")
     assert exclusion.search("uv.lock")
+    assert exclusion.fullmatch(".secrets.baseline")
+    assert exclusion.fullmatch("frontend/WASM_SOURCE_PROVENANCE.json")
+    assert not exclusion.search("frontend/WASM_SOURCE_PROVENANCE.json.bak")
+    assert not exclusion.search("frontend/WASM_INVENTORY.json")
     assert not exclusion.search("app/core/config.py")
+
+
+def test_generated_wasm_provenance_is_not_added_to_the_suppression_ledger() -> None:
+    baseline = json.loads(Path(".secrets.baseline").read_text(encoding="utf-8"))
+
+    assert "frontend/WASM_SOURCE_PROVENANCE.json" not in baseline["results"]
 
 
 def test_canonicalizer_retries_when_content_changes_before_replace(

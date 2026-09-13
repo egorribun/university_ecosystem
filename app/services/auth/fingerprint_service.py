@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hmac
-import logging
 import os
 from datetime import UTC, datetime
 from typing import Any
@@ -16,10 +15,11 @@ from app.auth.fingerprint import (
     get_suspicious_activity_detector,
 )
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.models import ActiveSession, User
 
-logger = logging.getLogger("app.auth.security")
+logger = get_logger(__name__)
 
 
 class AuthFingerprintService:

@@ -29,6 +29,9 @@ jobs:
       # parallel keeps the heaviest test populations bounded without
       # dropping any test: merge_mutmut_stats.py rejects overlap and requires
       # every shard to contain a non-empty, valid stats payload.
+      # Four concurrent stats legs leave capacity for the nightly dependency
+      # and browser lanes while PR workflows are sharing the same pool.
+      max-parallel: 4
       matrix:
         stats_shard: [0, 1, 2, 3, 4, 5, 6, 7]
     runs-on: ubuntu-24.04
@@ -52,6 +55,33 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --group dev
+
+      # Helm dependencies are generated (and ignored by Git), but the
+      # isolated mutmut tree copies the chart directory as a contract input.
+      # Build the lock-bound archives before mutmut creates that tree so
+      # chart-lock tests see the exact reviewed dependency set on a clean
+      # scheduled checkout as well as on a developer worktree.
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Resolve Helm chart dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem/; then
+              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
+              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       - name: Collect full mutmut stats shard
         run: |
@@ -145,11 +175,15 @@ jobs:
           for shard in $(seq 1 128); do
             printf -v shard_file 'shard-%02d.txt' "$shard"
             test -s "mutants/mutmut-full-plan/$shard_file"
+            # Keep nightly's stats-derived bound aligned with the measured
+            # mutation startup envelope; the live deadline guard remains the
+            # authoritative setup/evidence safety check.
             uv run python scripts/mutmut_shard_budget.py \
               --selected-file "mutants/mutmut-full-plan/$shard_file" \
               --stats mutants/mutmut-stats.json \
               --max-children 8 \
               --control-cycle-reserve-seconds 1 \
+              --metadata-startup-reserve-seconds 120 \
               --max-timeout-seconds 20970 \
               --output "mutants/mutmut-full-plan/budget-${shard_file%.txt}.json"
           done
@@ -173,9 +207,11 @@ jobs:
     needs: mutation-tests-full-plan
     strategy:
       fail-fast: false
-      # Request the complete measured hosted-runner allocation. GitHub remains
-      # the account-wide arbiter when Python and frontend producers overlap.
-      max-parallel: 20
+      # Keep the complete 128-shard inventory while reserving hosted-runner
+      # capacity for pull-request quality gates and the frontend lane. The
+      # account-wide ceiling is shared with every workflow, so requesting all
+      # twenty runners here can starve a fresh PR run indefinitely.
+      max-parallel: 8
       # Each leg creates the same pristine universe, executes only its exact
       # duration-balanced IDs, and uploads terminal proof. The aggregate job
       # below rejects overlap, mixed universes, and incomplete coverage.
@@ -212,6 +248,32 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --group dev
+
+      # Recreate the ignored chart archives in every execution checkout. The
+      # full mutation runner regenerates mutmut's isolated tree and executes
+      # infrastructure contract tests inside it, so relying on the stats
+      # producer's filesystem would make the result non-reproducible.
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Resolve Helm chart dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem/; then
+              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
+              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       # The preflight job merges the isolated stats populations once, reduces
       # the primary map monotonically, and rejects any shard that cannot fit
@@ -296,11 +358,15 @@ jobs:
             --prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
             --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_FAILURE_REASON="deriving the stats-based mutation budget"
+          # The live deadline check below accounts for runner setup and the
+          # required evidence reserve; this 120-second helper reserve covers
+          # mutmut's internal startup/metadata phase without truncation.
           MUTMUT_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
             --max-children 8 \
             --control-cycle-reserve-seconds 1 \
+            --metadata-startup-reserve-seconds 120 \
             --max-timeout-seconds 20970 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
@@ -378,10 +444,13 @@ jobs:
             if [ "$survivor_count" -gt 0 ]; then
               cp mutants/mutmut-stats-full.json mutants/mutmut-stats.json
               MUTMUT_FAILURE_REASON="deriving the full-map survivor confirmation budget"
+              # Survivor confirmation uses the same bounded mutmut startup
+              # phase and remains subject to the job-level deadline guard.
               FULL_MAP_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
                 --selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt" \
                 --stats mutants/mutmut-stats-full.json \
                 --max-children 2 \
+                --metadata-startup-reserve-seconds 120 \
                 --max-timeout-seconds 20970 \
                 --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget.json")"
               if ! [[ "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
@@ -589,9 +658,10 @@ jobs:
     needs: frontend-mutation-preflight
     strategy:
       fail-fast: false
-      # Use the complete measured hosted-runner allocation; GitHub's scheduler
-      # enforces the account-wide ceiling when producer families overlap.
-      max-parallel: 20
+      # Keep all 64 logical shards and their exact evidence, but do not let the
+      # scheduled lane consume the entire account-wide runner pool while a PR
+      # quality run is active.
+      max-parallel: 8
       matrix:
         shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
     permissions:
@@ -893,6 +963,7 @@ jobs:
     name: Full backend unit (shard ${{ matrix.unit-shard }})
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         unit-shard: [0, 1, 2, 3]
     uses: ./.github/workflows/reusable-backend-tests.yml
@@ -915,6 +986,7 @@ jobs:
     name: Full backend integration (shard ${{ matrix.integration-shard }})
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         integration-shard: [0, 1, 2, 3]
     uses: ./.github/workflows/reusable-backend-tests.yml
@@ -939,6 +1011,7 @@ jobs:
     name: Go integration (${{ matrix.service-directory }})
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         service-directory:
           - services/gateway
@@ -991,10 +1064,22 @@ jobs:
           tests/integration/test_spicedb_integration.py
           --maxfail=1
 
+  # Build generated WASM once and bind every nightly browser job to this
+  # immutable same-run artifact. Keeping this producer independent lets it
+  # overlap the rest of the nightly fan-out instead of serializing browsers
+  # behind frontend or mutation jobs.
+  e2e-wasm-build:
+    name: E2E WASM Build
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-e2e-wasm-build.yml
+
   browser-matrix:
     name: Browser matrix (${{ matrix.browser }})
+    needs: e2e-wasm-build
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         browser:
           - chromium
@@ -1004,6 +1089,7 @@ jobs:
     uses: ./.github/workflows/reusable-e2e-tests.yml
     permissions:
       contents: read
+      actions: read
     with:
       node-version: "24"
       python-version: "3.14"
@@ -1011,6 +1097,9 @@ jobs:
       shard-index: 1
       shard-total: 1
       collect-coverage: ${{ matrix.browser == 'chromium' }}
+      wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
+      wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
+      wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
   load-and-chaos:
     name: Load and chaos resilience
@@ -1278,6 +1367,7 @@ jobs:
       - frontend-mutation-shards
       - frontend-mutation-tests-full
       - frontend-mutation-roundtrip
+      - e2e-wasm-build
       - backend-full
       - backend-integration
       - go-integration

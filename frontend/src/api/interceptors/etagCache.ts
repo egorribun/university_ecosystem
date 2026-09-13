@@ -23,13 +23,20 @@ const MAX_CACHE_ENTRIES = 200
 // the result is discarded so user A's response is never stored under user B's session.
 let _sessionEpoch = 0
 
+// Keep the epoch monotonic and non-negative. The lower bound is part of the
+// security contract: a fresh session must always advance the epoch so
+// in-flight work from the previous session is rejected.
+function advanceSessionEpoch(): void {
+  _sessionEpoch = Math.max(0, _sessionEpoch + 1)
+}
+
 /**
  * Increment the session epoch on login. Must be called AFTER the new signing key
  * is registered so any in-flight async HMAC computations from the previous session
  * detect the epoch change and discard their results.
  */
 export const incrementSessionEpoch = (): void => {
-  _sessionEpoch++
+  advanceSessionEpoch()
 }
 
 /**
@@ -37,7 +44,7 @@ export const incrementSessionEpoch = (): void => {
  * that in-flight requests (which captured the old key) cannot store data after clear.
  */
 export const clearCachesOnLogout = (): void => {
-  _sessionEpoch++ // invalidate any in-flight async computations first
+  advanceSessionEpoch() // invalidate any in-flight async computations first
   responseCache.clear()
   etagCache.clear()
 }
@@ -89,10 +96,10 @@ const computeHmac = async (payload: string, key: string): Promise<string> => {
 /** Constant-time hex comparison to prevent timing attacks. */
 const timingSafeEqual = (a: string, b: string): boolean => {
   if (a.length !== b.length) return false
-  let result = 0
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  }
+  const result = Array.from<undefined>({ length: a.length }).reduce<number>(
+    (accumulator, _, index) => accumulator | (a.charCodeAt(index) ^ b.charCodeAt(index)),
+    0
+  )
   return result === 0
 }
 
@@ -156,11 +163,14 @@ if (typeof document !== "undefined") {
 // and would grow unboundedly; this cleans them up once per page load.
 if (typeof window !== "undefined") {
   try {
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const k = localStorage.key(i)
-      if (k && k.startsWith("ue:etag-cache") && k !== ETAG_CACHE_KEY) {
-        localStorage.removeItem(k)
-      }
+    const staleKeys = Array.from({ length: localStorage.length }, (_, index) =>
+      localStorage.key(index)
+    ).filter(
+      (key): key is string =>
+        typeof key === "string" && key.startsWith("ue:etag-cache") && key !== ETAG_CACHE_KEY
+    )
+    for (const key of staleKeys) {
+      localStorage.removeItem(key)
     }
   } catch {
     // Ignore quota/security errors during cleanup
@@ -178,7 +188,7 @@ function flushEtagCache(): void {
     if (err instanceof DOMException && err.name === "QuotaExceededError") {
       const entries = Array.from(_etagMap.entries()).sort((a, b) => a[1].lastUsed - b[1].lastUsed)
       const evictCount = Math.ceil(_etagMap.size / 2)
-      for (let i = 0; i < evictCount; i++) _etagMap.delete(entries[i]![0])
+      for (const [key] of entries.slice(0, evictCount)) _etagMap.delete(key)
       try {
         localStorage.setItem(ETAG_CACHE_KEY, JSON.stringify(Array.from(_etagMap.entries())))
       } catch {
@@ -194,8 +204,8 @@ function flushEtagCache(): void {
 function evictLruEtag(cache: Map<string, EtagEntry>): void {
   if (cache.size <= MAX_CACHE_ENTRIES) return
   const sorted = Array.from(cache.entries()).sort((a, b) => a[1].lastUsed - b[1].lastUsed)
-  for (let i = 0; i < sorted.length - MAX_CACHE_ENTRIES; i++) {
-    cache.delete(sorted[i]![0])
+  for (const [key] of sorted.slice(0, sorted.length - MAX_CACHE_ENTRIES)) {
+    cache.delete(key)
   }
 }
 
@@ -251,8 +261,8 @@ const _responseMap = new Map<string, SignedCacheEntry>()
 function evictLruResponse(): void {
   if (_responseMap.size <= MAX_CACHE_ENTRIES) return
   const sorted = Array.from(_responseMap.entries()).sort((a, b) => a[1].ts - b[1].ts)
-  for (let i = 0; i < sorted.length - MAX_CACHE_ENTRIES; i++) {
-    _responseMap.delete(sorted[i]![0])
+  for (const [key] of sorted.slice(0, sorted.length - MAX_CACHE_ENTRIES)) {
+    _responseMap.delete(key)
   }
 }
 
@@ -287,14 +297,16 @@ export const handleEtagResponse = async (response: AxiosResponse, etagKey: strin
   const responseHeaders = AxiosHeaders.from(
     (response.headers ?? undefined) as AxiosHeaders | string | undefined
   )
-  const tag = responseHeaders.get("etag") ?? responseHeaders.get("ETag")
+  // AxiosHeaders performs case-insensitive lookup, so one canonical key keeps
+  // the contract deterministic for both `etag` and `ETag` response spellings.
+  const tag = responseHeaders.get("etag")
 
   if (typeof tag === "string" && tag.trim()) {
     etagCache.set(etagKey, tag)
     // Only cache JSON responses — caching HTML error pages or other content types
     // can corrupt the response cache and break the app on 304 cache hit.
-    const contentType = (responseHeaders.get("content-type") as string | null) ?? ""
-    const isJson = contentType.includes("application/json")
+    const contentType = responseHeaders.get("content-type")
+    const isJson = typeof contentType === "string" && contentType.includes("application/json")
 
     if (response.status === 200 && response.data && isJson) {
       const signingKey = getSigningKey()

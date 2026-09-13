@@ -22,7 +22,7 @@ async def test_update_story_translates_missing_record_to_http_error():
         patch.object(stories, "resolve_locale", return_value="en"),
     ):
         with pytest.raises(HTTPException) as exc_info:
-            await stories.update_story(
+            await stories.update_story.__dishka_orig_func__(
                 uuid4(),
                 MagicMock(),
                 data=MagicMock(),
@@ -43,7 +43,7 @@ async def test_delete_story_translates_false_result_to_http_error():
         patch.object(stories, "resolve_locale", return_value="en"),
     ):
         with pytest.raises(HTTPException) as exc_info:
-            await stories.delete_story(
+            await stories.delete_story.__dishka_orig_func__(
                 uuid4(),
                 MagicMock(),
                 service=service,

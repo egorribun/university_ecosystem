@@ -1,7 +1,7 @@
 import { memo, useMemo, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { Calendar as TodayIcon, Plus as AddIcon } from "lucide-react"
-import { Badge } from "@/components/ui"
+import { Badge } from "@/components/ui/Badge"
 import { EmptyState } from "@/components/ui/EmptyState"
 import OfflineFallback from "@/components/feedback/OfflineFallback"
 import { cn } from "@/utils/cn"

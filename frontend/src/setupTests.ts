@@ -6,7 +6,7 @@ import { webcrypto } from "node:crypto"
 import { afterAll, afterEach, beforeAll, expect, vi } from "vitest"
 import { toHaveNoViolations } from "jest-axe"
 import { server } from "./tests/mocks/server"
-import { configure } from "@testing-library/react"
+import { cleanup, configure } from "@testing-library/react"
 import {
   resetAdminDeadLetterJobs,
   resetTestEvents,
@@ -18,6 +18,7 @@ import {
 import i18n from "./i18n/config"
 import { etagCache, responseCache } from "./api/interceptors/etagCache"
 import { validateRequestBody, validateResponseBody } from "./tests/contractValidator"
+import { installStrictConsole, resetStrictConsoleDiagnostics } from "./tests/strictConsole"
 
 declare module "vitest" {
   export interface Assertion {
@@ -79,6 +80,7 @@ if (!("dispatchEvent" in globalThis)) {
 const requestBodyMap = new WeakMap<Request, Promise<string>>()
 
 beforeAll(async () => {
+  installStrictConsole()
   await i18n.changeLanguage("en")
   if (typeof document !== "undefined") {
     // jsdom env only — guard for node-env tests (Wave 133 SW1 ssrCookie tests use
@@ -173,6 +175,12 @@ beforeAll(async () => {
 import { resetDatabaseForTesting } from "./db"
 
 afterEach(async () => {
+  // Unmount every React tree before resetting i18next and shared stores.  The
+  // language change notifies useTranslation subscribers synchronously; if a
+  // tree is still mounted, React correctly reports an update outside `act`
+  // and can retain it into the next test file when workers are reused.
+  cleanup()
+  resetStrictConsoleDiagnostics()
   server.resetHandlers()
   resetTestSessions()
   resetTestEvents()
@@ -491,24 +499,4 @@ if (typeof HTMLCanvasElement !== "undefined") {
       canvas: this,
     } as any
   })
-}
-
-const IGNORED_WARNINGS = [
-  "Warning:",
-  "The current testing environment is not configured to support act(...)",
-  "You are trying to animate backgroundColor from",
-  "An update to",
-]
-
-const originalConsoleError = console.error
-const originalConsoleWarn = console.warn
-console.error = (...args: unknown[]) => {
-  const firstArg = args[0]
-  if (typeof firstArg === "string" && IGNORED_WARNINGS.some((w) => firstArg.includes(w))) return
-  originalConsoleError(...args)
-}
-console.warn = (...args: unknown[]) => {
-  const firstArg = args[0]
-  if (typeof firstArg === "string" && IGNORED_WARNINGS.some((w) => firstArg.includes(w))) return
-  originalConsoleWarn(...args)
 }

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
 import {
+  useAuthStore,
+  useAuthUser,
+  useAuthLoading,
+  useAuthPendingMfa,
+  useAuthOperation,
+  useAuthActions,
   useNotificationStore,
   useScheduleUIStore,
   useAppShellStore,
@@ -20,6 +26,12 @@ import {
 
 describe("Stores Index re-exports", () => {
   it("successfully exports all stores and selectors", () => {
+    expect(useAuthStore).toBeDefined()
+    expect(useAuthUser).toBeDefined()
+    expect(useAuthLoading).toBeDefined()
+    expect(useAuthPendingMfa).toBeDefined()
+    expect(useAuthOperation).toBeDefined()
+    expect(useAuthActions).toBeDefined()
     expect(useNotificationStore).toBeDefined()
     expect(useScheduleUIStore).toBeDefined()
     expect(useAppShellStore).toBeDefined()

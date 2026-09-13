@@ -188,6 +188,14 @@ jobs:
         with:
           tool: wasm-pack@0.13.1
 
+      - name: Setup Rust toolchain
+        # Keep generated WASM reproducible when the hosted stable channel
+        # advances; checked-in consumers enforce byte-exact provenance.
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # pinned action
+        with:
+          toolchain: 1.97.1
+          targets: wasm32-unknown-unknown
+
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
@@ -256,8 +264,7 @@ jobs:
         # chromium only (wave138 needs that path for axe-core compat); admin
         # smoke (wave165) uses real Chrome for visual fidelity.
         working-directory: frontend
-        run: |
-          npx playwright install --with-deps chromium chrome
+        run: bash ../scripts/ci/install-playwright-with-deps.sh chromium chrome
 
       - name: Start backend
         # Mirrors visual-audit.yml:285-287.
