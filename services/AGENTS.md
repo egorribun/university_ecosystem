@@ -111,7 +111,7 @@ if exists {
 ### 4.6. Handler Dispatching
 - `/api/v1/*` routes undergo JWT validation and request dispatch.
 - `ProxyOrFileHandler` intercepts `/files/process/sync` and forwards to gRPC file processor, while proxying general requests to backend.
-- The gateway publishes verified cache-invalidation intent when a request requires it; the **ws-hub** owns the NATS listener and applies `cache.invalidate` eviction for empty-`room_id` messages. Keeping subscription ownership in ws-hub prevents duplicate consumers and makes the cache-invalidation trust boundary explicit.
+- The backend `WsHubClient` publishes verified cache-invalidation intent when a request requires it; the **ws-hub** owns the NATS listener and applies `cache.invalidate` eviction for empty-`room_id` messages. Keeping subscription ownership in ws-hub prevents duplicate consumers and makes the cache-invalidation trust boundary explicit.
 
 ---
 
