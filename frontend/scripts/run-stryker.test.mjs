@@ -2774,6 +2774,83 @@ test("isolates measured API test-graph hotspots in dedicated first-attempt shard
   )
 })
 
+test("keeps the client enclosing graph separate from UI hotspot ranges", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count, startLine = 0) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: startLine + index * 2, column: 0 },
+        end: { line: startLine + index * 2, column: 4 },
+      },
+    }))
+  const clientMutants = [
+    {
+      fileName: "src/api/client.ts",
+      mutatorName: "BlockStatement",
+      replacement: "{}",
+      location: {
+        start: { line: 246, column: 46 },
+        end: { line: 360, column: 0 },
+      },
+    },
+    ...makeMutants("src/api/client.ts", 300, 400),
+  ]
+  const badgeMutants = [
+    {
+      fileName: "src/components/ui/Badge.tsx",
+      mutatorName: "ObjectLiteral",
+      replacement: "{}",
+      location: {
+        start: { line: 5, column: 1 },
+        end: { line: 91, column: 2 },
+      },
+    },
+    {
+      fileName: "src/components/ui/Badge.tsx",
+      mutatorName: "BlockStatement",
+      replacement: "{}",
+      location: {
+        start: { line: 117, column: 20 },
+        end: { line: 138, column: 26 },
+      },
+    },
+  ]
+  const regularFiles = Array.from({ length: 10 }, (_, index) => {
+    const file = `src/regular-client-separation-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    ["src/api/client.ts", { mutants: clientMutants }],
+    ["src/components/ui/Badge.tsx", { mutants: badgeMutants }],
+    ...regularFiles,
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  const expectedMutants = [...preflight.values()].reduce(
+    (total, entry) => total + entry.mutants.length,
+    0
+  )
+
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    expectedMutants
+  )
+  assert.ok(
+    plan.every((shard) => {
+      const hasClient = shard.files.some((pattern) => pattern.startsWith("src/api/client.ts"))
+      const hasBadge = shard.files.some((pattern) =>
+        pattern.startsWith("src/components/ui/Badge.tsx")
+      )
+      return !(hasClient && hasBadge)
+    }),
+    "client and Badge related-test graphs must not share a first-attempt shard"
+  )
+})
+
 test("isolates the recurrent unmeasured API/core timeout graph in dedicated first-attempt shards", async () => {
   const { planMutationShards } = await import(runnerUrl)
   const makeMutants = (file, count) =>

@@ -647,6 +647,10 @@ const firstAttemptCostAwareShardCount = 12
 // fine-grained below before the remaining weighted placement.
 const firstAttemptDedicatedFiles = [
   "src/api/backendOrigin.ts",
+  // The client request wrapper contains an unsplittable enclosing AST range
+  // that selects a broad related-test graph. Keep every first-attempt range
+  // on an isolated runner so it cannot be packed with UI hotspot ranges.
+  "src/api/client.ts",
   "src/hooks/auth/useProfileSync.ts",
   "src/hooks/auth/useSessionCrypto.ts",
   // Run 34743194178 shard 24 carried this component's enclosing

@@ -26,7 +26,7 @@ def test_dual_defaults_inventory_and_exceptions_are_recorded() -> None:
         assert heading in adr
     assert "26 declarations have both" in adr
     assert "91 effective declarations are python-only" in adr
-    assert "18 declarations are server-only" in adr
+    assert "17 declarations are server-only" in adr
     assert "108 `mapped_column` calls" in adr
     assert re.search(r"26 both,\s+65 python-only and 17\s+server-only", adr)
     assert "uuidv7 primary-key" in adr
@@ -45,8 +45,12 @@ def test_effective_metadata_inventory_matches_adr_snapshot() -> None:
     from app.core.database import Base
 
     counts = {"both": 0, "python_only": 0, "server_only": 0}
+    computed_columns = []
     for table in Base.metadata.tables.values():
         for column in table.c:
+            if column.computed is not None:
+                computed_columns.append(f"{table.name}.{column.name}")
+                continue
             has_python_default = column.default is not None
             has_server_default = column.server_default is not None
             if has_python_default and has_server_default:
@@ -57,4 +61,5 @@ def test_effective_metadata_inventory_matches_adr_snapshot() -> None:
                 counts["server_only"] += 1
 
     assert len(Base.metadata.tables) == 45
-    assert counts == {"both": 26, "python_only": 91, "server_only": 18}
+    assert computed_columns == ["events.search_vector"]
+    assert counts == {"both": 26, "python_only": 91, "server_only": 17}

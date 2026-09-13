@@ -26,12 +26,12 @@ pretend that source metadata alone proves the DDL of every deployed database.
 ## Inventory
 
 The current SQLAlchemy metadata (measured 2026-09-13) contains 45 tables and
-135 effective defaulted columns (computed expressions and `default=None`
+134 effective defaulted columns (computed expressions and `default=None`
 excluded):
 
 - 26 declarations have both an ORM and server default;
 - 91 effective declarations are Python-only;
-- 18 declarations are server-only.
+- 17 declarations are server-only.
 
 The source-level AST inventory contains 108 `mapped_column` calls with a
 `default` or `server_default` keyword: 26 both, 65 Python-only and 17
