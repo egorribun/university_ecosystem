@@ -507,10 +507,10 @@ reportDuplicateImport = true
 
 [tool.bandit]
 # Bandit static analysis security scanner.
-# TD-W17-05 (Wave 17): tests/ no longer excluded — test code can contain
-# security anti-patterns (hardcoded credentials, shell=True, pickle) that
-# leak to production via copy-paste. Intentional fixtures use # nosec.
-targets = ["app", "tests"]
+# The required gate targets deployable backend code only. Test fixtures and
+# chaos helpers are covered by dedicated secret/SAST checks and are not part
+# of the production artifact; do not blanket-suppress their findings here.
+targets = ["app"]
 exclude_dirs = ["alembic"]
 skips = [
   # B101: assert — acceptable in non-production guard code.

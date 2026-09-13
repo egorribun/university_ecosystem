@@ -4072,8 +4072,11 @@ generated token file unchanged.
 
 ## 54. Bandit scope characterization and infrastructure contract refresh (2026-09-13)
 
-The SEC-08 tooling item was characterized without changing the security gate.
-The production-targeted command used by the pre-commit/CI path remains:
+The SEC-08 tooling item is now explicit and aligned across `pyproject.toml`,
+pre-commit and CI: the required Bandit gate targets deployable `app/` code;
+test fixtures and chaos helpers remain covered by their dedicated secret/SAST
+checks without blanket `# nosec` suppressions. The production-targeted command
+used by the pre-commit/CI path is:
 
 ```text
 $env:PYTHONUTF8='1'; uv run bandit -c pyproject.toml -r app -q
@@ -4092,7 +4095,7 @@ Those test fixtures are not deployed production code and use the repository's
 existing secret-fixture conventions. They are intentionally not converted into
 blanket `# nosec` suppressions, and no findings are used as release evidence.
 SEC-08 therefore remains `EXTERNAL-ONLY / TOOLING`: the authoritative Linux
-workflow must keep the production scope explicit and publish its fresh scan;
+workflow must publish a fresh scan for the explicit production scope;
 expanding the required scope requires a separately reviewed fixture policy.
 
 The infrastructure contract characterization also completed locally:

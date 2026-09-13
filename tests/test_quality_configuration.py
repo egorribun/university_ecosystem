@@ -309,6 +309,16 @@ def test_governance_quality_configuration_matches_contract() -> None:
     assert mutation_exclusions == {"version": 1, "exclusions": []}
 
 
+def test_bandit_scope_is_explicitly_production_code_only() -> None:
+    """Keep the required Bandit gate aligned with its deployable source scope."""
+
+    bandit = _read_pyproject()["tool"]["bandit"]
+
+    assert bandit["targets"] == ["app"]
+    assert bandit["exclude_dirs"] == ["alembic"]
+    assert set(bandit["skips"]) == {"B101", "B104"}
+
+
 def test_uv_version_is_pinned_for_reproducible_ci_bootstrap() -> None:
     uv_config = _read_pyproject()["tool"]["uv"]
 
