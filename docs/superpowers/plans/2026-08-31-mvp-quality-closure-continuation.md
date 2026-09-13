@@ -3768,3 +3768,12 @@ changes; the four user-owned untracked paths listed in §49.1 remain untouched.
 This documentation-only commit does not alter source, test, mutation
 inventory, runner caps, thresholds or the requirement to wait for the old run
 to become terminal before the non-force push.
+
+### 49.5 Measured inventory reference refresh (2026-09-13)
+
+The stale BE-02 figures in the historical narrative were corrected to the
+measured 45-table inventory in commit `c0f3db144`
+(`docs: refresh default inventory references`). This is the current local head
+at the time of writing (fourteen commits ahead of the remote); no source,
+runtime behavior, mutation inventory, thresholds or user-owned untracked paths
+were changed.
