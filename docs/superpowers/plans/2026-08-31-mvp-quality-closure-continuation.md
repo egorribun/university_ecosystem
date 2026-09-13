@@ -3976,3 +3976,45 @@ artifact-byte verification, detached producer provenance, runner RSS/CPU,
 billed minutes, repository-wide retry classification, generic cross-job
 heartbeat diagnostics, three comparable green runs before any cap change, and
 all merge/staging/release evidence remain open exactly as recorded in §50.
+
+## 52. Local fast-preflight evidence checkpoint (2026-09-13)
+
+The documented local acceleration path was exercised from the current checkout
+without changing tracked source or touching the user-owned untracked paths.
+The shell-free runner used six workers and a 600-second per-check fail-closed
+timeout:
+
+```text
+uv run python scripts/fast_preflight.py --max-workers 6 --timeout-seconds 600 --include-output
+Fast preflight: 6/6 passed
+frontend-typecheck      10.829s
+frontend-lint           84.421s
+backend-typecheck        7.969s
+backend-lint             0.151s
+verify-harness           34.595s (29/29)
+focused-contract-tests  53.853s
+report: artifacts/fast-preflight/fast-preflight.json
+```
+
+The same checkout also passed the broader CI/workflow contract inventory:
+
+```text
+uv run pytest -q -p no:cacheprovider \
+  tests/test_ci_check_catalog.py tests/test_ci_execution_contract.py \
+  tests/test_ci_health_report.py tests/test_ci_critical_path_analysis.py \
+  tests/test_quality_workflow_contract.py tests/test_workflow_fail_closed_contracts.py \
+  tests/test_frontend_ci_performance_contracts.py \
+  tests/contracts/test_ci_release_capacity_contract.py
+294 passed in 146.43s
+uv run pytest -q -p no:cacheprovider \
+  tests/test_ci_critical_path_analysis.py tests/test_mutmut_shard_budget.py
+68 passed in 21.19s
+uv run python scripts/quality/validate_ci_check_catalog.py
+CI check catalog: OK (55 workflows, 180 jobs)
+```
+
+These are local readiness and regression signals only. They do not promote
+the branch to `FRESH-GREEN`: current-SHA GitHub matrix completion, strict
+mutation/coverage artifacts, live ruleset comparison, and all external
+Docker/Kubernetes/staging/release evidence remain mandatory. The generated
+JSON report is ignored by Git and is not a release artifact.
