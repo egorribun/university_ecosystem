@@ -1,0 +1,495 @@
+#!/usr/bin/env python3
+"""Validate the repository's machine-readable GitHub Actions check catalog.
+
+The catalog is deliberately static and local: it never calls GitHub and never
+changes workflow execution.  It is a fail-closed inventory of every workflow
+and job, with profile inheritance for ownership, required/advisory policy,
+artifact provenance, runbooks, retry policy, and execution budgets.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
+
+import yaml
+from jsonschema import Draft202012Validator
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CATALOG = REPOSITORY_ROOT / "quality" / "ci-check-catalog.json"
+DEFAULT_SCHEMA = REPOSITORY_ROOT / "quality" / "ci-check-catalog.schema.json"
+WORKFLOW_DIRECTORY = REPOSITORY_ROOT / ".github" / "workflows"
+WORKFLOW_EVENTS = frozenset(
+    {"push", "pull_request", "schedule", "workflow_dispatch", "workflow_call"}
+)
+POLICY_EVENTS = frozenset({"pull_request_main", "push_main"})
+RETRY_MARKERS = (
+    "retry",
+    "for attempt",
+    "max_attempts",
+    "retry-all-errors",
+    "retries",
+)
+
+
+class CatalogError(ValueError):
+    """Raised when a catalog cannot be trusted as a complete inventory."""
+
+
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise CatalogError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_non_finite(value: str) -> None:
+    raise CatalogError(f"non-finite JSON number: {value}")
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        loaded = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_non_finite,
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise CatalogError(f"cannot read JSON {path}: {exc}") from exc
+    if not isinstance(loaded, dict):
+        raise CatalogError(f"JSON root must be an object: {path}")
+    return loaded
+
+
+def _load_workflow(path: Path) -> dict[str, Any]:
+    try:
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise CatalogError(f"cannot read workflow {path}: {exc}") from exc
+    if not isinstance(loaded, dict):
+        raise CatalogError(f"workflow root must be an object: {path}")
+    return loaded
+
+
+def workflow_triggers(workflow: dict[str, Any]) -> dict[str, Any]:
+    """Return the YAML ``on`` mapping, including PyYAML's YAML 1.1 quirk."""
+
+    raw = workflow.get("on", workflow.get(True, {}))
+    if isinstance(raw, str):
+        return {raw: None}
+    if isinstance(raw, list):
+        return {str(item): None for item in raw}
+    if isinstance(raw, dict):
+        return {str(key): value for key, value in raw.items()}
+    raise CatalogError("workflow trigger declaration must be a string, list, or object")
+
+
+def _canonical(value: Any) -> str:
+    """Render YAML values deterministically for a source-bound guard string."""
+
+    if value is None:
+        return "any"
+    try:
+        return json.dumps(
+            value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+    except (TypeError, ValueError) as exc:
+        raise CatalogError(f"workflow guard is not JSON-renderable: {value!r}") from exc
+
+
+def _workflow_path(path: str, repository_root: Path) -> Path:
+    if not isinstance(path, str) or not path or Path(path).is_absolute():
+        raise CatalogError(f"workflow path must be a relative POSIX path: {path!r}")
+    if "\\" in path or any(part in {"", ".", ".."} for part in path.split("/")):
+        raise CatalogError(f"workflow path is not canonical: {path!r}")
+    candidate = (repository_root / Path(path)).resolve()
+    root = repository_root.resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise CatalogError(f"path escapes repository: {path!r}") from exc
+    return candidate
+
+
+def _repo_file(path: str, repository_root: Path, field: str) -> Path:
+    if not isinstance(path, str) or not path or Path(path).is_absolute():
+        raise CatalogError(f"{field} must be a relative POSIX path: {path!r}")
+    if "\\" in path or any(part in {"", ".", ".."} for part in path.split("/")):
+        raise CatalogError(f"{field} is not canonical: {path!r}")
+    candidate = (repository_root / Path(path)).resolve()
+    try:
+        candidate.relative_to(repository_root.resolve())
+    except ValueError as exc:
+        raise CatalogError(f"{field} escapes repository: {path!r}") from exc
+    if not candidate.is_file():
+        raise CatalogError(f"{field} does not exist: {path!r}")
+    return candidate
+
+
+def _as_string(value: Any, *, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise CatalogError(f"{field} must be a non-empty string")
+    return value
+
+
+def _is_retry_candidate(job: dict[str, Any]) -> bool:
+    try:
+        rendered = json.dumps(
+            job, ensure_ascii=False, sort_keys=True, default=str
+        ).lower()
+    except (TypeError, ValueError):
+        rendered = repr(job).lower()
+    return any(marker in rendered for marker in RETRY_MARKERS)
+
+
+def _artifact_inventory(job: dict[str, Any]) -> list[dict[str, Any]]:
+    artifacts: list[dict[str, Any]] = []
+    for step in job.get("steps", []) or []:
+        if not isinstance(step, dict):
+            continue
+        action = str(step.get("uses", "")).lower()
+        if not action.startswith("actions/upload-artifact@"):
+            continue
+        with_values = step.get("with") or {}
+        if not isinstance(with_values, dict):
+            raise CatalogError("upload-artifact step has malformed with mapping")
+        name = with_values.get("name")
+        path = with_values.get("path")
+        if not isinstance(name, str) or not name.strip():
+            raise CatalogError("upload-artifact step has no non-empty artifact name")
+        if not isinstance(path, str) or not path.strip():
+            raise CatalogError(f"artifact {name!r} has no non-empty path")
+        if "github.sha" in name:
+            provenance = "sha"
+        elif "run_attempt" in name or "run_id" in name:
+            provenance = "run_id_attempt"
+        elif "inputs." in name:
+            provenance = "input"
+        else:
+            provenance = "none"
+        artifacts.append(
+            {
+                "name_pattern": name,
+                "path_pattern": path,
+                "required": False,
+                "provenance": provenance,
+            }
+        )
+    return artifacts
+
+
+def _job_timeout(job: dict[str, Any], *, reusable_timeouts: dict[str, int]) -> int:
+    timeout = job.get("timeout-minutes")
+    if isinstance(timeout, int) and not isinstance(timeout, bool):
+        return timeout
+    uses = job.get("uses")
+    if isinstance(uses, str) and uses.startswith("./.github/workflows/"):
+        return reusable_timeouts.get(uses, 60)
+    # External reusable workflow budgets are intentionally explicit in the
+    # catalog but cannot be compared to a local timeout declaration.
+    if uses:
+        return 60
+    raise CatalogError("job has neither runs-on timeout-minutes nor uses")
+
+
+def _reusable_timeout_index(workflow_directory: Path) -> dict[str, int]:
+    index: dict[str, int] = {}
+    for path in workflow_directory.glob("*.y*ml"):
+        workflow = _load_workflow(path)
+        try:
+            triggers = workflow_triggers(workflow)
+        except CatalogError:
+            continue
+        if "workflow_call" not in triggers:
+            continue
+        timeouts = [
+            job.get("timeout-minutes")
+            for job in (workflow.get("jobs") or {}).values()
+            if isinstance(job, dict) and isinstance(job.get("timeout-minutes"), int)
+        ]
+        if timeouts:
+            relative = f"./.github/workflows/{path.name}"
+            index[relative] = max(timeouts)
+    return index
+
+
+def _schema_errors(catalog: dict[str, Any], schema: dict[str, Any]) -> list[str]:
+    validator = Draft202012Validator(schema)
+    return [
+        f"schema: {error.json_path}: {error.message}"
+        for error in sorted(
+            validator.iter_errors(catalog), key=lambda item: item.json_path
+        )
+    ]
+
+
+def _effective_profile(
+    profile_name: str, profiles: dict[str, Any], *, location: str
+) -> dict[str, Any]:
+    profile = profiles.get(profile_name)
+    if not isinstance(profile, dict):
+        raise CatalogError(f"{location} references unknown profile {profile_name!r}")
+    effective = dict(profile)
+    effective["_profile"] = profile_name
+    return effective
+
+
+def _merge_job(profile: dict[str, Any], job: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(profile)
+    merged.update({key: value for key, value in job.items() if key != "profile"})
+    return merged
+
+
+def _validate_artifacts(
+    effective: dict[str, Any], expected: list[dict[str, Any]], location: str
+) -> list[str]:
+    errors: list[str] = []
+    actual = effective.get("artifacts")
+    if actual != expected:
+        errors.append(
+            f"{location}: artifact metadata does not match upload-artifact steps "
+            f"(catalog={actual!r}, source={expected!r})"
+        )
+    return errors
+
+
+def validate_catalog(
+    catalog: dict[str, Any],
+    *,
+    repository_root: Path = REPOSITORY_ROOT,
+    workflow_directory: Path | None = None,
+    schema: dict[str, Any] | None = None,
+) -> list[str]:
+    """Return all fail-closed catalog errors; an empty list means valid."""
+
+    errors: list[str] = []
+    if schema is not None:
+        errors.extend(_schema_errors(catalog, schema))
+    workflow_directory = workflow_directory or repository_root / ".github" / "workflows"
+    if not workflow_directory.is_dir():
+        return [f"workflow directory is missing: {workflow_directory}"]
+    profiles = catalog.get("profiles")
+    if not isinstance(profiles, dict):
+        return [*errors, "catalog.profiles must be an object"]
+    default_runbook = catalog.get("default_runbook")
+    try:
+        if isinstance(default_runbook, str):
+            _repo_file(default_runbook, repository_root, "default_runbook")
+    except CatalogError as exc:
+        errors.append(str(exc))
+
+    raw_workflows = catalog.get("workflows")
+    if not isinstance(raw_workflows, list):
+        return [*errors, "catalog.workflows must be an array"]
+    source_paths = {
+        path.relative_to(repository_root).as_posix()
+        for path in workflow_directory.glob("*.y*ml")
+    }
+    catalog_paths: list[str] = []
+    used_profiles: set[str] = set()
+    reusable_timeouts = _reusable_timeout_index(workflow_directory)
+    for index, entry in enumerate(raw_workflows):
+        location = f"workflows[{index}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{location} must be an object")
+            continue
+        path_value = entry.get("path")
+        if not isinstance(path_value, str):
+            errors.append(f"{location}.path must be a string")
+            continue
+        catalog_paths.append(path_value)
+        try:
+            workflow_path = _workflow_path(path_value, repository_root)
+            workflow = _load_workflow(workflow_path)
+            triggers = workflow_triggers(workflow)
+        except CatalogError as exc:
+            errors.append(f"{location}: {exc}")
+            continue
+        if path_value not in source_paths:
+            errors.append(f"{location}: workflow is not present in .github/workflows")
+        if entry.get("name") != workflow.get("name", workflow_path.stem):
+            errors.append(f"{location}: workflow name is stale")
+        owner = entry.get("owner")
+        if not isinstance(owner, str) or not owner.strip():
+            errors.append(f"{location}.owner must be non-empty")
+        event_entries = entry.get("events")
+        if not isinstance(event_entries, list):
+            errors.append(f"{location}.events must be an array")
+            event_entries = []
+        source_events = set(triggers)
+        catalog_events: set[str] = set()
+        for event_index, event_entry in enumerate(event_entries):
+            event_location = f"{location}.events[{event_index}]"
+            if not isinstance(event_entry, dict):
+                errors.append(f"{event_location} must be an object")
+                continue
+            event_name = event_entry.get("event")
+            guard = event_entry.get("guard")
+            if event_name not in WORKFLOW_EVENTS:
+                errors.append(f"{event_location}.event is unsupported: {event_name!r}")
+                continue
+            catalog_events.add(event_name)
+            expected_guard = _canonical(triggers.get(event_name))
+            if guard != expected_guard:
+                errors.append(f"{event_location}.guard is stale")
+        if catalog_events != source_events:
+            errors.append(
+                f"{location}: event inventory mismatch "
+                f"(catalog={sorted(catalog_events)}, source={sorted(source_events)})"
+            )
+        jobs = entry.get("jobs")
+        source_jobs = workflow.get("jobs")
+        if not isinstance(source_jobs, dict):
+            errors.append(f"{location}: source jobs must be an object")
+            source_jobs = {}
+        if not isinstance(jobs, dict):
+            errors.append(f"{location}.jobs must be an object")
+            jobs = {}
+        source_job_ids = {str(job_id) for job_id in source_jobs}
+        catalog_job_ids = {str(job_id) for job_id in jobs}
+        if source_job_ids != catalog_job_ids:
+            errors.append(
+                f"{location}: job inventory mismatch "
+                f"(catalog={sorted(catalog_job_ids)}, source={sorted(source_job_ids)})"
+            )
+        for job_id, job_entry in jobs.items():
+            job_location = f"{location}.jobs[{job_id!r}]"
+            source_job = source_jobs.get(job_id)
+            if not isinstance(source_job, dict):
+                errors.append(f"{job_location}: source job is not an object")
+                continue
+            if not isinstance(job_entry, dict):
+                errors.append(f"{job_location} must be an object")
+                continue
+            profile_name = job_entry.get("profile")
+            if not isinstance(profile_name, str):
+                errors.append(f"{job_location}.profile must be a string")
+                continue
+            try:
+                profile = _effective_profile(
+                    profile_name, profiles, location=job_location
+                )
+            except CatalogError as exc:
+                errors.append(str(exc))
+                continue
+            used_profiles.add(profile_name)
+            effective = _merge_job(profile, job_entry)
+            try:
+                expected_timeout = _job_timeout(
+                    source_job, reusable_timeouts=reusable_timeouts
+                )
+            except CatalogError as exc:
+                errors.append(f"{job_location}: {exc}")
+                continue
+            timeout = effective.get("expected_timeout_minutes")
+            if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout < 1:
+                errors.append(f"{job_location}.expected_timeout_minutes is invalid")
+            elif "runs-on" in source_job and timeout != expected_timeout:
+                errors.append(
+                    f"{job_location}: timeout differs from workflow "
+                    f"(catalog={timeout}, source={expected_timeout})"
+                )
+            duration = effective.get("expected_duration_seconds")
+            if (
+                not isinstance(duration, int)
+                or isinstance(duration, bool)
+                or duration < 1
+            ):
+                errors.append(f"{job_location}.expected_duration_seconds is invalid")
+            elif isinstance(timeout, int) and duration < timeout * 60:
+                errors.append(f"{job_location}: duration must cover timeout budget")
+            guard = effective.get("guard")
+            expected_job_guard = (
+                str(source_job["if"]) if "if" in source_job else "workflow trigger"
+            )
+            if guard != expected_job_guard:
+                errors.append(f"{job_location}.guard is stale")
+            expected_name = str(source_job.get("name", job_id))
+            if effective.get("check_name_template") != expected_name:
+                errors.append(f"{job_location}.check_name_template is stale")
+            try:
+                runbook = effective.get("runbook", default_runbook)
+                _repo_file(runbook, repository_root, f"{job_location}.runbook")
+            except CatalogError as exc:
+                errors.append(str(exc))
+            retry_policy = effective.get("retry_policy")
+            if not isinstance(retry_policy, dict):
+                errors.append(f"{job_location}.retry_policy is missing")
+            elif _is_retry_candidate(source_job) and retry_policy.get("mode") == "none":
+                errors.append(
+                    f"{job_location}: retry behavior is present but policy is declared none"
+                )
+            errors.extend(
+                _validate_artifacts(
+                    effective, _artifact_inventory(source_job), job_location
+                )
+            )
+            classification = effective.get("classification")
+            required_events = effective.get("required_events")
+            if classification == "required":
+                if not required_events:
+                    errors.append(
+                        f"{job_location}: required job has no required_events"
+                    )
+                elif not set(required_events).issubset(POLICY_EVENTS):
+                    errors.append(f"{job_location}: unsupported required event alias")
+                elif (
+                    "pull_request_main" in required_events
+                    and "pull_request" not in source_events
+                ):
+                    errors.append(
+                        f"{job_location}: pull_request_main is not a source event"
+                    )
+                elif "push_main" in required_events and "push" not in source_events:
+                    errors.append(f"{job_location}: push_main is not a source event")
+            elif required_events:
+                errors.append(f"{job_location}: non-required job has required_events")
+    if len(catalog_paths) != len(set(catalog_paths)):
+        errors.append("catalog contains duplicate workflow paths")
+    if set(catalog_paths) != source_paths:
+        errors.append(
+            "workflow inventory mismatch "
+            f"(catalog={sorted(set(catalog_paths))}, source={sorted(source_paths)})"
+        )
+    unused_profiles = set(profiles) - used_profiles
+    if unused_profiles:
+        errors.append(f"catalog contains unused profiles: {sorted(unused_profiles)}")
+    return errors
+
+
+def main(argv: Iterable[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
+    parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
+    parser.add_argument("--repository-root", type=Path, default=REPOSITORY_ROOT)
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    try:
+        catalog = _read_json(args.catalog)
+        schema = _read_json(args.schema)
+        errors = validate_catalog(
+            catalog,
+            repository_root=args.repository_root.resolve(),
+            workflow_directory=args.repository_root.resolve() / ".github" / "workflows",
+            schema=schema,
+        )
+    except CatalogError as exc:
+        print(f"CI check catalog: ERROR: {exc}", file=sys.stderr)
+        return 1
+    if errors:
+        for error in errors:
+            print(f"CI check catalog: ERROR: {error}", file=sys.stderr)
+        return 1
+    workflow_count = len(catalog["workflows"])
+    job_count = sum(len(workflow["jobs"]) for workflow in catalog["workflows"])
+    print(f"CI check catalog: OK ({workflow_count} workflows, {job_count} jobs)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
