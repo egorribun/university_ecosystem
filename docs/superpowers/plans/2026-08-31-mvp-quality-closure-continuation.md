@@ -4069,3 +4069,20 @@ ts-prune and dependency audit: exit code 0
 does not fail the configured command, and `lint:depcheck` reported no unused
 dependencies. Token synchronization was deterministic and left the tracked
 generated token file unchanged.
+
+## 53. CDC lifecycle and service-documentation refresh (2026-09-13)
+
+The external audit's BE-08 item was rechecked against the current source. The
+CDC implementation remains deliberately inactive in the application lifecycle:
+Dishka/lifespan owns the polling `OutboxWorker`, while+`CdcOutboxWorker.run_forever()` is not registered as a second transport. The+existing ADR-037 and closure tests protect this boundary; enabling CDC without+an explicit feature flag, single-consumer ownership, replication preflight,+idempotency and PostgreSQL integration evidence would risk duplicate delivery.+
+Current local focused evidence:
+
+```text
+uv run pytest -q -p no:cacheprovider \
+  tests/test_cdc_outbox.py tests/test_cdc_outbox_closure.py
+45 passed in 12.62s
+```
+
+This is code/contract evidence only; BE-08 remains an architectural backlog+until a separately approved CDC enablement slice supplies lifecycle,+replication and staging evidence.
+
+The P3 GO-06 documentation drift was corrected in `services/AGENTS.md`: the+Gateway is documented as an HTTP JWKS poller, while ws-hub is the sole NATS+consumer for `keys.rotated` and `cache.invalidate`. No runtime subscriber was+added merely to satisfy stale documentation, and `git diff --check` remains+clean.

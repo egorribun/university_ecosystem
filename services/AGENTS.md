@@ -99,7 +99,11 @@ if exists {
 - **Configuration**:
   - `JWKS_ENDPOINT`: URL of backend RSA JWKS.
   - `JWKS_REFRESH_INTERVAL`: Default `300s` (5 minutes).
-  - Also listens for `keys.rotated` NATS subjects for instant key invalidation.
+  - The gateway is intentionally an HTTP-polling consumer and does not subscribe
+    to `keys.rotated` or `cache.invalidate`. The ws-hub owns those NATS
+    subscriptions; keeping a single consumer per subject avoids duplicate
+    invalidation and makes the trust boundary explicit. A key rotation is
+    therefore observed by the gateway on the next bounded JWKS poll.
 
 ### 4.5. Health Probe Auth Exemption
 - Selective auth interceptors (`selectiveUnaryAuth` and `selectiveStreamAuth`) must explicitly exempt `/grpc.health.v1.Health/` so that Kubernetes `grpc_health_probe` succeeds without receiving HTTP/gRPC 401 Unauthenticated.
