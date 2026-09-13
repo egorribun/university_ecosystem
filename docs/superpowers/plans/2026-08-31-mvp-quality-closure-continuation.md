@@ -4397,3 +4397,32 @@ the four local commits are pushed, so that its mutation evidence is not
 cancelled. After terminal inventory, push non-force and require a fresh
 current-SHA matrix; only then compare setup/queue/billed-minute distributions
 and decide whether a duration-aware mutation experiment is justified.
+
+## 61. CDC shutdown-race mutation closure (2026-09-14)
+
+The still-running diagnostic matrix `34780640933` (source SHA
+`ecfe0dba6668cb0a9b8f68186aa1a003f597d285`) exposed the same viable mutational
+gap in four completed mutmut groups: 40, 41, 43 and 44. The surviving
+mutants were `CdcOutboxWorker.run_forever__mutmut_10`, `_11`, `_13` and `_14`;
+each changed only the exact shutdown-provisioning log template (case or marker
+text), while leaving control flow unchanged. The old run therefore remains
+diagnostic evidence and is not retroactively reclassified as current-head
+quality evidence.
+
+Commit `cafb13da5` adds one deterministic contract test that forces a
+provisioning failure after shutdown, asserts the complete non-PII log template,
+and verifies that no fallback worker is started. The assertion kills the
+entire family of equivalent string mutants rather than adding an exclusion or
+weakening the score gate. Local evidence on the current head is:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_cdc_outbox.py tests/test_cdc_outbox_closure.py
+    47 passed
+    git diff --check: exit 0
+    isolated pre-commit hooks: all configured hooks passed
+
+The test-only commit is included in the next source-aware mutation universe;
+it is not claimed as proof until a fresh current-SHA matrix regenerates stats,
+executes the selected mutants, and seals complete evidence. The old matrix
+must still reach a terminal state so its complete failure inventory can be
+recorded before the branch is pushed non-force.
