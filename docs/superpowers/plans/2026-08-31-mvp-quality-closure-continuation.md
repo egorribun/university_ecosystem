@@ -4038,3 +4038,21 @@ All four supported compositions returned exit code 0. Overlay files such as
 `docker-compose.observability.yml` are fragments by design and are not valid
 standalone projects; testing them without their documented base produces an
 expected undefined-network/image error and is not a release failure.
+
+The complete frontend qualification path was also exercised locally after the
+WASM producer fixes:
+
+```text
+npm run test:ci --prefix frontend -- --silent=true
+WASM contract stage: 259 passed
+Vitest: 673 test files, 7,116 tests passed
+Coverage: Statements 100% (18,860/18,860)
+           Branches   100% (13,326/13,326)
+           Functions  100% (4,533/4,533)
+           Lines      100% (17,009/17,009)
+```
+
+The command completed with exit code 0 and emitted only the existing jsdom CSS
+parser notices and intentionally informational navigation messages; no test,
+coverage or build failure was suppressed. Reports were written to ignored
+workspace paths and no tracked or user-owned files changed.
