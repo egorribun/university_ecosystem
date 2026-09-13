@@ -3105,6 +3105,84 @@ test("keeps static reload hotspots within bounded first-attempt assignments", as
   )
 })
 
+test("isolates the unsplittable Select AST hotspot without changing the 64-way denominator", async () => {
+  const { mutationPatternCoversMutant, planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index, column: 0 },
+        end: { line: index, column: 4 },
+      },
+    }))
+  const selectFile = "src/components/ui/Select.tsx"
+  const selectMutants = [
+    {
+      fileName: selectFile,
+      mutatorName: "BlockStatement",
+      replacement: "{}",
+      // This enclosing AST mutation spans the component and makes the source
+      // range unsplittable: narrowing it would drop the enclosing mutant.
+      location: {
+        start: { line: 47, column: 19 },
+        end: { line: 304, column: 1 },
+      },
+    },
+    ...Array.from({ length: 215 }, (_, index) => ({
+      fileName: selectFile,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: 48 + index, column: 0 },
+        end: { line: 48 + index, column: 4 },
+      },
+    })),
+  ]
+  const regularFiles = Array.from({ length: 10 }, (_, index) => {
+    const file = `src/select-hotspot-regular-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    [selectFile, { mutants: selectMutants }],
+    [
+      "src/api/interceptors/etagCache.ts",
+      {
+        mutants: makeMutants("src/api/interceptors/etagCache.ts", 239),
+      },
+    ],
+    ...regularFiles,
+  ])
+  const plan = planMutationShards(preflight, 750, 64)
+  const reversePlan = planMutationShards(new Map([...preflight].reverse()), 750, 64)
+  const expectedMutants = [...preflight.values()].reduce(
+    (total, entry) => total + entry.mutants.length,
+    0
+  )
+
+  assert.equal(plan.length, 64)
+  assert.deepEqual(plan, reversePlan)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    expectedMutants
+  )
+  const assignments = plan.flatMap(({ files }) => files)
+  assert.equal(new Set(assignments).size, assignments.length)
+
+  const selectShards = plan.filter((shard) =>
+    shard.files.some((pattern) => pattern.startsWith(`${selectFile}:`))
+  )
+  assert.equal(selectShards.length, 1)
+  assert.deepEqual(selectShards[0].files, [`${selectFile}:48:19-305:1`])
+  assert.equal(
+    selectMutants.filter((mutant) =>
+      mutationPatternCoversMutant(selectShards[0].files[0], mutant, selectFile)
+    ).length,
+    selectMutants.length
+  )
+})
+
 test("keeps the dedicated first-attempt planner total with two requested shards", async () => {
   const { planMutationShards } = await import(runnerUrl)
   const makeMutants = (file, count) =>

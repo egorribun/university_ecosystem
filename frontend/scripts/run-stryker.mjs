@@ -649,6 +649,13 @@ const firstAttemptDedicatedFiles = [
   "src/api/backendOrigin.ts",
   "src/hooks/auth/useProfileSync.ts",
   "src/hooks/auth/useSessionCrypto.ts",
+  // Run 34743194178 shard 24 carried this component's enclosing
+  // BlockStatement range together with unrelated API/UI work and reached the
+  // 120-minute producer cap.  The range cannot be narrowed without losing the
+  // enclosing mutant, so keep the complete unsplittable unit on its own
+  // first-attempt runner.  This is placement-only; the full source inventory
+  // and mutant denominator remain mandatory for aggregation.
+  "src/components/ui/Select.tsx",
 ]
 
 // These module-level sources were present in the timed-out shard 22/64. Their
