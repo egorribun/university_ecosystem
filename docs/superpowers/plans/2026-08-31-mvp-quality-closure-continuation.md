@@ -4297,3 +4297,46 @@ typecheck passed. The four user-owned untracked paths remain outside the
 index. A new matrix run for commit `6e6185b73` is required before any
 release claim; the prior run's two failures are superseded and remain
 diagnostic history only.
+
+## 59. Workflow install-network overhead hardening (2026-09-14)
+
+The branch now contains two small, independently reviewable CI optimization
+commits, both intentionally kept separate from mutation-cap changes:
+
+- `36875bdcd` changes the PR-critical `ci.yml` and reusable frontend/E2E/security
+  install steps to `npm ci --no-audit --no-fund` and adds a regression contract
+  preserving the explicit `scripts/audit_dependencies.py` security gate.
+- `a6fe722ac` applies the same install-only flags to every remaining workflow
+  `npm ci` invocation, including nightly/manual mutation, release, visual,
+  cache-helper and setup workflows. Lifecycle scripts remain enabled; no
+  mutable `npm install`, `--ignore-scripts`, audit allowlist or security-gate
+  bypass was introduced.
+
+The command is supported by the pinned CI toolchain (npm `11.17.0`), and the
+dedicated audit remains a separate blocking step. The contract now scans every
+`.github/workflows/*.yml` command form and fails if a future bare `npm ci`
+appears. Local evidence:
+
+    uv run pytest -q --no-cov --disable-warnings --tb=short \
+      tests/test_frontend_ci_performance_contracts.py
+    8 passed
+    uv run python -c "import pathlib,yaml; paths=sorted(pathlib.Path('.github/workflows').glob('*.yml')); [yaml.safe_load(p.read_text(encoding='utf-8')) for p in paths]"
+    parsed 55 workflow YAML files
+    isolated pre-commit hooks for the changed files: all configured hooks passed
+    verify_harness.py: 29 passed
+
+The timing audit shows this is a bounded setup optimization, not the primary
+latency fix: recent Stryker install p50/p95 were about 28/30 seconds and
+execution p95 about 24.5 minutes, with a roughly 75-minute outlier. The
+current runner cap remains unchanged (6 Stryker + 10 mutmut, peak observed
+19/20). A/B impact must be measured on the next comparable current-SHA runs
+using queue/setup p50/p95 and billed-minute evidence; no release or mutation
+capacity claim is inferred from this local change.
+
+The current live matrix `34780640933` is still bound to the pre-optimization
+SHA `ecfe0dba6668cb0a9b8f68186aa1a003f597d285`; at the last poll it had 310
+jobs, 152 successes, 12 intentional skips, 16 active and 130 queued, with no
+failure/cancellation/timeout. The two commits are deliberately not pushed
+until that run reaches terminal state, so its late mutation evidence is not
+discarded. After terminal inventory, push non-force and require a fresh
+current-SHA matrix before treating these changes as CI evidence.
