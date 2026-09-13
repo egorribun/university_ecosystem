@@ -3353,6 +3353,9 @@ this snapshot.
   effective defaults: 26 dual, 91 Python-only and 17 server-only, with source AST
   cross-checks) and a PostgreSQL catalog/preflight migration policy; no unsafe
   blanket DDL rewrite was attempted.
+- `app/AGENTS.md` now uses the same scoped invariant: applicable defaults are
+  dual-declared, while UUIDv7 IDs, signing keys, JSON topic defaults,
+  `Computed`, and `default=None` require explicit ADR-036 inventory entries.
 - Isolated pre-commit hooks pass (Ruff, detect-secrets, hardcoded-secrets,
   Bandit, mypy, strong-env-secrets, no-Python2-except, actionlint, Semgrep and
   Renovate); harness is **29/29** and frontend typecheck pre-push dry-run is
