@@ -101,6 +101,96 @@ def test_analyzer_reports_dependency_wait_utilization_and_duplicates() -> None:
     assert rows["frontend-tests"]["setup_install_seconds"] == 40.0
     assert rows["frontend-tests"]["artifact_seconds"] == 20.0
 
+    assert summary["peak_concurrency"] == 1
+    assert summary["retry_classification"] == {
+        "state": "initial_workflow_attempt",
+        "run_attempts": [1],
+    }
+    timeout_summary = summary["timeout_classification"]
+    assert isinstance(timeout_summary, dict)
+    assert timeout_summary["counts"] == {
+        "cancelled": 0,
+        "not_timed_out": 3,
+        "timed_out": 0,
+        "unknown": 0,
+    }
+    assert rows["frontend-tests"]["retry_classification"] == (
+        "initial_workflow_attempt"
+    )
+    assert rows["frontend-tests"]["timeout_classification"] == "not_timed_out"
+
+    timing = summary["timing_seconds"]
+    assert isinstance(timing, dict)
+    assert timing["queue"] == {
+        "count": 2,
+        "total_seconds": 120.0,
+        "p50_seconds": 30.0,
+        "p95_seconds": 90.0,
+        "max_seconds": 90.0,
+    }
+    assert timing["setup"] == {
+        "count": 2,
+        "total_seconds": 70.0,
+        "p50_seconds": 30.0,
+        "p95_seconds": 40.0,
+        "max_seconds": 40.0,
+    }
+    assert timing["test"] == {
+        "count": 2,
+        "total_seconds": 90.0,
+        "p50_seconds": 30.0,
+        "p95_seconds": 60.0,
+        "max_seconds": 60.0,
+    }
+    assert timing["artifact"] == {
+        "count": 2,
+        "total_seconds": 20.0,
+        "p50_seconds": 0.0,
+        "p95_seconds": 20.0,
+        "max_seconds": 20.0,
+    }
+
+
+def test_diagnostic_timing_classifies_workflow_rerun_and_timeout() -> None:
+    payload = _payload()
+    assert isinstance(payload, dict)
+    records = payload["jobs"]
+    assert isinstance(records, list)
+    for record in records:
+        assert isinstance(record, dict)
+        record.update(run_id=1, run_attempt=2, head_sha="a" * 40)
+    first = records[0]
+    assert isinstance(first, dict)
+    first["conclusion"] = "failure"
+    first_steps = first["steps"]
+    assert isinstance(first_steps, list)
+    first_step = first_steps[-1]
+    assert isinstance(first_step, dict)
+    first_step["conclusion"] = "timed_out"
+
+    report = analyze_jobs(
+        parse_jobs(payload),
+        repository="egorribun/university_ecosystem",
+        run_id=1,
+        concurrency_cap=20,
+        diagnostic_lower_bound=True,
+    )
+    summary = report["summary"]
+    assert isinstance(summary, dict)
+    assert summary["peak_concurrency"] == 1
+    assert summary["retry_classification"] == {
+        "state": "workflow_rerun",
+        "run_attempts": [2],
+    }
+    timeout_summary = summary["timeout_classification"]
+    assert isinstance(timeout_summary, dict)
+    assert timeout_summary["counts"]["timed_out"] == 1
+    assert timeout_summary["timed_out_job_ids"] == [101]
+    report_jobs = cast(list[dict[str, object]], report["jobs"])
+    rows = {row["id"]: row for row in report_jobs}
+    assert rows[101]["retry_classification"] == "workflow_rerun"
+    assert rows[101]["timeout_classification"] == "timed_out"
+
 
 @pytest.mark.parametrize(
     ("payload", "message"),

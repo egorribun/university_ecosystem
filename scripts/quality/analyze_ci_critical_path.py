@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import subprocess
 from collections import Counter
@@ -67,6 +68,7 @@ class StepTiming:
     name: str
     started_at: datetime
     completed_at: datetime
+    conclusion: str | None = None
 
     @property
     def seconds(self) -> float:
@@ -192,7 +194,16 @@ def _parse_steps(raw: object, job_name: str) -> tuple[StepTiming, ...]:
             continue
         if completed < started:
             raise AnalysisError(f"job {job_name!r} step {index} ends before it starts")
-        result.append(StepTiming(name, started, completed))
+        step_conclusion_value = value.get("conclusion")
+        step_conclusion = (
+            None
+            if step_conclusion_value is None
+            else _text(
+                step_conclusion_value,
+                f"job {job_name!r} step {index}.conclusion",
+            )
+        )
+        result.append(StepTiming(name, started, completed, step_conclusion))
     return tuple(result)
 
 
@@ -603,6 +614,136 @@ def _utilization(jobs: Sequence[JobTiming], cap: int) -> tuple[float, float, flo
     return peak, (area / wall / cap if wall and cap else 0.0), wall
 
 
+def _nearest_rank(values: Sequence[float], percentile: float) -> float | None:
+    """Return a deterministic percentile without interpolation surprises.
+
+    A nearest-rank percentile is stable for small job cohorts and keeps the
+    ledger explainable: p95 is always one observed duration rather than a
+    synthetic value between two jobs.  The caller supplies a validated
+    percentile in the closed interval (0, 1].
+    """
+    if not values:
+        return None
+    ordered = sorted(values)
+    rank = max(1, min(len(ordered), math.ceil(len(ordered) * percentile)))
+    return ordered[rank - 1]
+
+
+def _timing_distribution(values: Sequence[float]) -> dict[str, object]:
+    ordered = sorted(values)
+    return {
+        "count": len(ordered),
+        "total_seconds": round(sum(ordered), 3),
+        "p50_seconds": (
+            None if (p50 := _nearest_rank(ordered, 0.50)) is None else round(p50, 3)
+        ),
+        "p95_seconds": (
+            None if (p95 := _nearest_rank(ordered, 0.95)) is None else round(p95, 3)
+        ),
+        "max_seconds": None if not ordered else round(ordered[-1], 3),
+    }
+
+
+def _timing_ledger(jobs: Sequence[JobTiming]) -> dict[str, dict[str, object]]:
+    """Aggregate measured queue/setup/test/artifact durations.
+
+    Incomplete jobs are omitted from aggregate distributions.  Treating a
+    queued or cancelled job with no runner timestamps as a zero-second sample
+    would under-report queue and setup pressure, so only observed intervals
+    contribute to p50/p95 and totals.
+    """
+    values: dict[str, list[float]] = {
+        "queue": [],
+        "setup": [],
+        "test": [],
+        "artifact": [],
+    }
+    for job in jobs:
+        if job.started_at is None or job.completed_at is None:
+            continue
+        if job.queued_at is not None:
+            values["queue"].append(job.queue_wait_seconds)
+        setup, actual, artifact = _duration_buckets(job)
+        values["setup"].append(setup)
+        values["test"].append(actual)
+        values["artifact"].append(artifact)
+    return {name: _timing_distribution(samples) for name, samples in values.items()}
+
+
+def _retry_classification(job: JobTiming) -> str:
+    """Classify only the workflow-attempt signal exposed by GitHub's API.
+
+    The Jobs API does not expose an independent per-job retry counter.  A
+    ``run_attempt`` greater than one proves a workflow rerun, but cannot prove
+    which individual job was retried; the wording intentionally preserves
+    that distinction.
+    """
+    if job.api_run_attempt is None:
+        return "unknown"
+    if job.api_run_attempt == 1:
+        return "initial_workflow_attempt"
+    return "workflow_rerun"
+
+
+def _retry_summary(jobs: Sequence[JobTiming]) -> dict[str, object]:
+    attempts = sorted(
+        {job.api_run_attempt for job in jobs if job.api_run_attempt is not None}
+    )
+    complete = len(attempts) == 1 and len(
+        [job for job in jobs if job.api_run_attempt is not None]
+    ) == len(jobs)
+    if not complete:
+        state = "unknown"
+    elif attempts[0] == 1:
+        state = "initial_workflow_attempt"
+    else:
+        state = "workflow_rerun"
+    return {"state": state, "run_attempts": attempts}
+
+
+def _timeout_classification(job: JobTiming) -> str:
+    """Classify timeout evidence without inferring it from duration alone."""
+    if job.conclusion == "timed_out" or any(
+        step.conclusion == "timed_out" for step in job.steps
+    ):
+        return "timed_out"
+    if job.conclusion == "cancelled":
+        return "cancelled"
+    if job.status != "completed" or job.conclusion is None:
+        return "unknown"
+    return "not_timed_out"
+
+
+def _timeout_summary(jobs: Sequence[JobTiming]) -> dict[str, object]:
+    classifications = {job.job_id: _timeout_classification(job) for job in jobs}
+    counts = {
+        state: sum(value == state for value in classifications.values())
+        for state in ("cancelled", "not_timed_out", "timed_out", "unknown")
+    }
+    return {
+        "counts": counts,
+        "timed_out_job_ids": sorted(
+            job_id for job_id, state in classifications.items() if state == "timed_out"
+        ),
+        "cancelled_job_ids": sorted(
+            job_id for job_id, state in classifications.items() if state == "cancelled"
+        ),
+    }
+
+
+def _step_rows(job: JobTiming) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for step in job.steps:
+        row: dict[str, object] = {
+            "name": step.name,
+            "seconds": round(step.seconds, 3),
+        }
+        if step.conclusion is not None:
+            row["conclusion"] = step.conclusion
+        rows.append(row)
+    return rows
+
+
 def _diagnostic_lower_bound_report(
     jobs: Sequence[JobTiming], *, repository: str, run_id: int, concurrency_cap: int
 ) -> dict[str, object]:
@@ -631,13 +772,12 @@ def _diagnostic_lower_bound_report(
                 "setup_install_seconds": round(setup, 3),
                 "actual_test_seconds": round(actual, 3),
                 "artifact_seconds": round(artifact, 3),
+                "retry_classification": _retry_classification(job),
+                "timeout_classification": _timeout_classification(job),
                 "critical_path_end_seconds": None,
                 "upstream_failure_blocked": "unknown",
                 "continued_after_core_failure": "unknown",
-                "steps": [
-                    {"name": step.name, "seconds": round(step.seconds, 3)}
-                    for step in job.steps
-                ],
+                "steps": _step_rows(job),
             }
         )
     duplicate_setup = [
@@ -658,7 +798,11 @@ def _diagnostic_lower_bound_report(
             "critical_path_lower_bound_seconds": round(wall_seconds, 3),
             "wall_clock_seconds": round(wall_seconds, 3),
             "peak_slot_utilization": peak,
+            "peak_concurrency": peak,
             "average_slot_utilization": round(average_utilization, 6),
+            "timing_seconds": _timing_ledger(jobs),
+            "retry_classification": _retry_summary(jobs),
+            "timeout_classification": _timeout_summary(jobs),
             "duplicate_setup_download_work": duplicate_setup,
             "upstream_failure_blocked_jobs": "unknown",
             "jobs_continued_after_core_failure": "unknown",
@@ -739,16 +883,12 @@ def analyze_jobs(
                 "setup_install_seconds": round(setup, 3),
                 "actual_test_seconds": round(actual, 3),
                 "artifact_seconds": round(artifact, 3),
+                "retry_classification": _retry_classification(job),
+                "timeout_classification": _timeout_classification(job),
                 "critical_path_end_seconds": round(end_times[job.job_id], 3),
                 "upstream_failure_blocked": upstream_failure[job.job_id],
                 "continued_after_core_failure": continued,
-                "steps": [
-                    {
-                        "name": step.name,
-                        "seconds": round(step.seconds, 3),
-                    }
-                    for step in job.steps
-                ],
+                "steps": _step_rows(job),
             }
         )
     duplicate_setup = [
@@ -770,7 +910,11 @@ def analyze_jobs(
             "critical_path_seconds": round(critical_path, 3),
             "wall_clock_seconds": round(wall_seconds, 3),
             "peak_slot_utilization": peak,
+            "peak_concurrency": peak,
             "average_slot_utilization": round(average_utilization, 6),
+            "timing_seconds": _timing_ledger(jobs),
+            "retry_classification": _retry_summary(jobs),
+            "timeout_classification": _timeout_summary(jobs),
             "duplicate_setup_download_work": duplicate_setup,
             "upstream_failure_blocked_jobs": [
                 row["id"] for row in job_rows if row["upstream_failure_blocked"]
