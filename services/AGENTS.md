@@ -21,7 +21,7 @@ Windows host has no C compiler, run the same checks in pinned containers rather
 than silently replacing `go test -race` with a non-race run:
 
 ```powershell
-docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub golang:1.26.4-bookworm bash -lc 'CGO_ENABLED=1 go test -race ./...'
+docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub docker.io/library/golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 bash -lc 'CGO_ENABLED=1 go test -race ./...'
 docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub golangci/golangci-lint:v2.13.2 golangci-lint run --config /workspace/.golangci.yml --timeout 5m
 ```
 

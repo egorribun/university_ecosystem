@@ -1523,6 +1523,42 @@ def test_active_go_toolchain_pins_use_current_security_patch() -> None:
     )
 
 
+def test_pr_executed_go_jobs_never_persist_the_workflow_token() -> None:
+    """PR-controlled Go tooling must not receive a persisted Git credential."""
+
+    jobs = (
+        ("ci.yml", "go-fuzz"),
+        ("go-fuzz.yml", "fuzz"),
+        ("nilaway.yml", "nilaway"),
+        ("reusable-go-integration-tests.yml", "integration"),
+    )
+    for workflow_name, job_name in jobs:
+        workflow = yaml.safe_load(
+            (REPOSITORY_ROOT / ".github" / "workflows" / workflow_name).read_text(
+                encoding="utf-8"
+            )
+        )
+        checkout = next(
+            step
+            for step in workflow["jobs"][job_name]["steps"]
+            if str(step.get("uses", "")).startswith("actions/checkout@")
+        )
+        assert checkout["with"]["persist-credentials"] is False, (
+            workflow_name,
+            job_name,
+        )
+
+
+def test_go_service_container_example_uses_canonical_immutable_toolchain() -> None:
+    """The documented race-test container must match audited CI provenance."""
+
+    services_agents = (REPOSITORY_ROOT / "services" / "AGENTS.md").read_text(
+        encoding="utf-8"
+    )
+    assert BENCHMARK_GO_IMAGE in services_agents
+    assert "golang:1.26.4-bookworm" not in services_agents
+
+
 def test_go_integration_workflow_validates_service_input_before_shell_use() -> None:
     workflow_path = (
         REPOSITORY_ROOT / ".github" / "workflows" / "reusable-go-integration-tests.yml"
