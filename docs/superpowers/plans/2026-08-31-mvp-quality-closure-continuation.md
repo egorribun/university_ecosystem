@@ -3773,7 +3773,7 @@ to become terminal before the non-force push.
 
 The stale BE-02 figures in the historical narrative were corrected to the
 measured 45-table inventory in commit `c0f3db144`
-(`docs: refresh default inventory references`). This is the current local head
-at the time of writing (fourteen commits ahead of the remote); no source,
-runtime behavior, mutation inventory, thresholds or user-owned untracked paths
-were changed.
+(`docs: refresh default inventory references`). Any later documentation-only
+checkpoint commits do not change that inventory or runtime behavior; derive
+the exact push SHA and ahead count from `git rev-parse`/`git status` immediately
+before the non-force push. No user-owned untracked paths were changed.
