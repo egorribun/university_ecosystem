@@ -217,6 +217,69 @@ async def test_event_bus_timeout_middleware_exception_and_cancel_paths() -> None
 
 
 @pytest.mark.asyncio
+async def test_event_bus_external_cancellation_awaits_child_handler_cleanup() -> None:
+    event = UserCreated(email="cancel-cleanup@example.com")
+    bus = EventBus()
+    handler_started = asyncio.Event()
+    cleanup_complete = asyncio.Event()
+
+    async def hanging_handler(_event: object) -> None:
+        handler_started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            # Make cleanup asynchronous so an un-awaited child task is observable.
+            await asyncio.sleep(0)
+            cleanup_complete.set()
+
+    async def wait_forever(
+        _tasks: set[asyncio.Task[object]], *, timeout: float
+    ) -> None:
+        del timeout
+        await asyncio.Future()
+
+    bus.subscribe(event.event_type, hanging_handler)
+    with patch.object(events.asyncio, "wait", side_effect=wait_forever):
+        publish_task = asyncio.create_task(bus.publish(event))
+        await handler_started.wait()
+        publish_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await publish_task
+
+    assert cleanup_complete.is_set()
+
+
+@pytest.mark.asyncio
+async def test_event_bus_timeout_awaits_child_handler_cleanup() -> None:
+    event = UserCreated(email="timeout-cleanup@example.com")
+    bus = EventBus()
+    handler_started = asyncio.Event()
+    cleanup_complete = asyncio.Event()
+
+    async def hanging_handler(_event: object) -> None:
+        handler_started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            # Keep cleanup asynchronous so timeout ownership is observable.
+            await asyncio.sleep(0)
+            cleanup_complete.set()
+
+    async def pending_wait(
+        tasks: set[asyncio.Task[object]], *, timeout: float
+    ) -> tuple[set[asyncio.Task[object]], set[asyncio.Task[object]]]:
+        del timeout
+        await handler_started.wait()
+        return set(), tasks
+
+    bus.subscribe(event.event_type, hanging_handler)
+    with patch.object(events.asyncio, "wait", side_effect=pending_wait):
+        await bus.publish(event)
+
+    assert cleanup_complete.is_set()
+
+
+@pytest.mark.asyncio
 async def test_event_bus_successful_chain_and_handler_registry_lifecycle() -> None:
     event = UserCreated(email="success@example.com")
     bus = EventBus()
