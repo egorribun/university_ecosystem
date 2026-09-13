@@ -3708,17 +3708,18 @@ does not change the mutation inventory, runner caps or release thresholds.
 | Field | Value |
 |---|---|
 | Branch | `egorribun` |
-| Local source head | `ed486ce53` (`fix: await event handler cancellation cleanup`) |
+| Local source head | `f593648e7` (`docs: refresh dual default inventory`) |
 | Remote source head | `d85180438` |
-| Local delta | 7 commits ahead; no tracked uncommitted changes |
+| Local delta | 9 commits ahead; no tracked uncommitted changes |
 | User-owned untracked paths | `.tmp_preflight/`, `.tmp_stryker_18/`, `.tmp_stryker_22/`, `docs/audits/AUDIT_PLATFORM_FULL.md` — untouched and unstaged |
 | Previous PR matrix | run `34743194178`, source `d8518043898cc6a39c295a37dadca230e06baf57`, non-terminal |
 
-The seven local commits are intentionally small and independently reviewable:
+The nine local commits are intentionally small and independently reviewable:
 the two exact mutmut survivor contracts (`8f3c699c4`), quality/CI reference
 alignment (`a76d3a275`), Stryker timeout/provenance notes (`88009228e`,
 `fb434d3a2`, `25f4813f9`), service/NATS contract alignment (`757543d2c`) and
-event-handler cancellation cleanup (`ed486ce53`). No commit contains a
+event-handler cancellation cleanup (`ed486ce53`) and the measured dual-default
+inventory refresh (`f593648e7`). No commit contains a
 `Co-Authored-By` trailer.
 
 ### 49.2 Current local evidence
@@ -3749,7 +3750,7 @@ The run remains non-terminal and contributes no release evidence.
 
 1. Continue bounded polling until this old run is terminal; inventory every
    late failure, cancellation, timeout, annotation and artifact exactly once.
-2. Re-run the final local inventory, then push `ed486ce53` (and this checkpoint)
+2. Re-run the final local inventory, then push `f593648e7` (and this checkpoint)
    non-force to `origin/egorribun`. The resulting current-SHA matrix is the
    only accepted CI evidence; stale run results must not be reused.
 3. After a terminal fresh matrix, obtain complete coverage/mutation manifests,
