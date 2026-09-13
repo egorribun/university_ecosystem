@@ -4056,3 +4056,16 @@ The command completed with exit code 0 and emitted only the existing jsdom CSS
 parser notices and intentionally informational navigation messages; no test,
 coverage or build failure was suppressed. Reports were written to ignored
 workspace paths and no tracked or user-owned files changed.
+
+The expanded frontend static-quality sequence was green as well:
+
+```text
+npm run lint:all --prefix frontend
+eslint, architecture/barrel contracts, manifests, CSS token closure/sync,
+ts-prune and dependency audit: exit code 0
+```
+
+`ts-prune` prints the repository's known export inventory as diagnostics; it
+does not fail the configured command, and `lint:depcheck` reported no unused
+dependencies. Token synchronization was deterministic and left the tracked
+generated token file unchanged.
