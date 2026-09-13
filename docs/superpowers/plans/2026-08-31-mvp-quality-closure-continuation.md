@@ -3804,3 +3804,124 @@ The safe order remains: wait for the old run to terminate, push one coherent
 current-SHA change set, collect three comparable green runs, then run a
 bounded Stryker 7→8 or lane-split experiment with automatic rollback on queue,
 timeout, resource, reliability or provenance regression.
+
+## 50. CI catalog governance and current-run evidence checkpoint (2026-09-13)
+
+This overlay supersedes the stale catalog disposition in §49.6 while keeping
+the release boundary unchanged. It records repository-local work only; the
+current remote matrix is still bound to the older remote SHA until the catalog
+commit is pushed after the active run reaches a terminal state.
+
+### 50.1 Source identity and preservation
+
+| Field | Value |
+|---|---|
+| Branch | `egorribun` |
+| Local source head | derive with `git rev-parse HEAD` at verification time (latest checkpoint before this docs commit: `57d11f958`) |
+| Remote source head | `d9a964be0896cb90377de51ba37aaa27333f91d9` |
+| Local delta | derive with `git rev-list --count origin/egorribun..HEAD` at verification time |
+| User-owned untracked paths | `.tmp_preflight/`, `.tmp_stryker_18/`, `.tmp_stryker_22/`, `docs/audits/AUDIT_PLATFORM_FULL.md` — untouched, unstaged |
+| Active remote matrix | run `34761805023`, source SHA `d9a964be0`, PR #1266, non-terminal |
+
+No force-push, merge, branch deletion, stash mutation, or user-file staging was
+performed. The local catalog commit is documentation/quality governance only;
+it does not alter workflow execution, mutation inventory, caps, thresholds or
+security policy.
+
+### 50.2 Catalog expansion completed locally
+
+Commit `ce3b07580` (`docs: expand CI check catalog governance`) extends the
+machine-validated catalog from the 55-workflow/180-source-job inventory to
+include:
+
+- four provider-managed protected contexts (`CodeQL`, `Checkov`, `spectral`,
+  `zizmor`) with integration ID `57789`, explicit external ownership and
+  required-event metadata;
+- eight reusable-workflow/matrix expansion records covering 44 exact protected
+  contexts, caller/reusable job bindings, profiles, owners, runbooks and
+  source references;
+- strict schema and fail-closed validator checks for duplicate/colliding
+  contexts, canonical repository paths, profile/classification/event
+  consistency, workflow-call bindings and matrix evidence;
+- focused tests retained and extended from 10 to 17 cases.
+
+Independent local verification completed:
+
+```text
+uv run python scripts/quality/validate_ci_check_catalog.py                 # OK (55 workflows, 180 jobs)
+uv run pytest -q -p no:cacheprovider tests/test_ci_check_catalog.py         # 17 passed (three independent runs)
+uv run ruff check scripts/quality/validate_ci_check_catalog.py tests/test_ci_check_catalog.py  # passed
+uv run ruff format --check scripts/quality/validate_ci_check_catalog.py tests/test_ci_check_catalog.py  # passed
+Draft202012Validator.check_schema + catalog validation                       # schema OK; 0 errors
+git diff --check HEAD~1..HEAD                                                # clean
+```
+
+The live active ruleset was refreshed read-only: 92 required contexts were
+present, all four provider contexts used integration ID `57789`, and the
+catalog's 48 supplemental contexts matched the live selected set exactly
+(48/48, no catalog-only or ruleset-only entries). The volatile ruleset ID and
+conclusions remain intentionally outside the static catalog.
+
+### 50.3 Independent security review
+
+Codex Security diff scan `cbe4b9c3-74db-457b-94f4-0a07e3709381` reviewed the
+exact range `d9a964be0..ce3b07580` across all three changed source files. The
+scan completed with zero reportable findings and complete diff-surface
+coverage. Daybreak access was `not_granted` (advisory only), so protected
+provider output display remains a limitation; this does not replace the live
+ruleset refresh or current-SHA CI evidence.
+
+### 50.4 Active run and timing evidence
+
+Run `34761805023` remains non-terminal and has no observed failure,
+cancellation or timeout. The latest snapshot has 310 jobs, 119 successful,
+12 skipped by workflow guards, and 179 queued/in progress while the mutation
+phase drains under the existing fan-out. Observed peak concurrency is 19 under
+the diagnostic cap of 20; no cap change is authorized from this single run.
+
+The diagnostic lower-bound report is retained outside the repository at
+`C:\Temp\ci-34761805023-diagnostic-20260913.json`. It measured wall-clock
+lower bound `2668s`, average slot utilization `0.351949`, queue p50/p95
+`96s/365s`, test p50/p95 `50s/760s`, setup p50/p95 `29s/109s`, and artifact
+p50/p95 `0s/5s`. Repeated checkout/setup/install/upload steps are now quantified
+for later cache/sharding experiments. This report is diagnostic-only, not a
+strict release certificate, because the run is non-terminal and no trusted
+same-run DAG/artifact-selector provenance was supplied.
+
+### 50.5 Updated acceleration dispositions
+
+| Checklist item | Disposition after this checkpoint |
+|---|---|
+| Machine timing ledger | `PARTIAL`: diagnostic analyzer and report are proven; strict same-run producer, runner RSS/CPU, billed minutes and continuous artifact publication remain open |
+| Duration-aware sharding | `PARTIAL`: historical-cost plumbing exists; three comparable green runs are still required before cap/lane experiments |
+| Immutable dependency/artifact caches | `PARTIAL`: cache namespaces and provenance selectors exist; repeated setup remains measured work |
+| Required vs advisory catalog | `IMPLEMENTED-LOCAL / LIVE-REVIEW-PENDING`: static source/provider/expansion catalog and validator are green; refresh ruleset after push and compare all required contexts |
+| Transient-only retries | `PARTIAL`: targeted retries exist; repository-wide first-failure-preserving classifier remains open |
+| Unified check/artifact/owner catalog | `IMPLEMENTED-LOCAL`: 55 workflows/180 source jobs plus protected supplemental contexts are schema-validated |
+| Compact CI health report | `OPEN`: diagnostic JSON exists on demand; a current-run published health artifact and run-summary integration remain open |
+| Local parallel fast-preflight | `IMPLEMENTED-LOCAL / EVIDENCE-PENDING`: focused contracts are green; current full developer invocation remains non-release evidence |
+| Generic heartbeat diagnostics | `PARTIAL`: mutation watchdog exists; cross-job stall diagnostics remain open |
+
+### 50.6 Next safe actions
+
+1. Continue bounded polling of run `34761805023` and inventory every terminal
+   failure/cancellation/timeout/artifact exactly once; do not cancel or restart
+   it merely because mutation queues are long.
+2. After terminal success (or after exact failure remediation), run the final
+   local inventory and push the current `HEAD` non-force (the catalog,
+   enforcement and checkpoint commits together). The resulting current-SHA
+   matrix is the only acceptable evidence; do not reuse run `34761805023` for
+   any pushed commit.
+3. The catalog validator is now integrated into the existing required
+   `quality-inventory-check` job (commit `57d11f958`), with a RED→GREEN contract
+   test (`165 passed` in the focused workflow-contract suite) and isolated
+   pre-commit/actionlint/ruff checks. Re-run this step on the post-push SHA;
+   no new fan-out lane was introduced.
+4. Produce a compact current-run health artifact and strict timing evidence;
+   preserve first failures and all artifacts. Do not tune Stryker/mutmut caps
+   until three comparable green runs satisfy the queue/resource/provenance
+   rollback criteria.
+5. Keep merge-to-main, exact-six immutable image producer, digest Docker smoke,
+   Kubernetes/TLS/ExternalSecrets/observability staging, device CWV,
+   chaos/restart/rollback, production release and final SHA-bound audit
+   explicitly external and release-blocking.
