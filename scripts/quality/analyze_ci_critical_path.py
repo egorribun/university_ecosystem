@@ -6,7 +6,8 @@ as an instruction.  It never mutates a run, retries a job, or accepts a report
 from another run.  A fixture can be supplied with ``--jobs-json`` for local
 reproducibility; otherwise ``gh api --paginate`` is used to read the jobs for
 the requested run. Exact critical-path analysis requires an attempt-bound DAG
-sidecar supplied with ``--dag-json``. API-only timing is available only through
+sidecar supplied with ``--dag-json`` plus a detached provenance record obtained
+from the same-run-artifact selector. API-only timing is available only through
 the explicitly labelled ``--diagnostic-lower-bound`` mode.
 """
 
@@ -16,18 +17,28 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
 import subprocess
+import tempfile
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 ISO_RE = re.compile(r"Z$", re.ASCII)
 SHA_RE = re.compile(r"^[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?$")
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+MAX_JSON_BYTES = 16 * 1024 * 1024
+MAX_JOBS = 2048
+MAX_STEPS_PER_JOB = 512
+MAX_NEEDS_PER_JOB = 512
+MAX_WORKFLOW_FILES = 256
+MAX_ERROR_CHARS = 2000
+MAX_TEXT_CHARS = 4096
+MAX_FETCH_SECONDS = 120
 _NON_TIMEOUT_CONCLUSIONS = frozenset(
     {
         "success",
@@ -40,6 +51,7 @@ _NON_TIMEOUT_CONCLUSIONS = frozenset(
         "startup_failure",
     }
 )
+_TERMINAL_CONCLUSIONS = _NON_TIMEOUT_CONCLUSIONS | {"timed_out"}
 
 
 class AnalysisError(ValueError):
@@ -70,7 +82,9 @@ def _positive_integer(value: object, field: str) -> int:
 def _text(value: object, field: str, *, allow_empty: bool = False) -> str:
     if not isinstance(value, str) or (not allow_empty and not value.strip()):
         raise AnalysisError(f"{field} must be a non-empty string")
-    if any(character in value for character in "\x00\r\n"):
+    if len(value) > MAX_TEXT_CHARS:
+        raise AnalysisError(f"{field} exceeds maximum length of {MAX_TEXT_CHARS}")
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in value):
         raise AnalysisError(f"{field} contains a forbidden control character")
     return value
 
@@ -83,9 +97,9 @@ class StepTiming:
     conclusion: str | None = None
 
     @property
-    def seconds(self) -> float:
+    def seconds(self) -> float | None:
         if self.started_at is None or self.completed_at is None:
-            return 0.0
+            return None
         return max(0.0, (self.completed_at - self.started_at).total_seconds())
 
 
@@ -106,21 +120,21 @@ class JobTiming:
     api_head_sha: str | None = None
 
     @property
-    def duration_seconds(self) -> float:
+    def duration_seconds(self) -> float | None:
         if self.started_at is None or self.completed_at is None:
-            return 0.0
+            return None
         return max(0.0, (self.completed_at - self.started_at).total_seconds())
 
     @property
-    def queue_wait_seconds(self) -> float:
+    def queue_wait_seconds(self) -> float | None:
         if self.queued_at is None or self.started_at is None:
-            return 0.0
+            return None
         return max(0.0, (self.started_at - self.queued_at).total_seconds())
 
 
 @dataclass(frozen=True)
 class DAGEvidence:
-    """Validated, attempt-bound dependency metadata from a trusted sidecar."""
+    """Validated, attempt-bound dependency and artifact metadata."""
 
     dependency_ids: dict[int, tuple[int, ...]]
     logical_ids: dict[int, str]
@@ -133,10 +147,46 @@ class DAGEvidence:
     workflow_sha: str
     workflow_files_sha256: dict[str, str]
     dag_sha256: str
+    artifact_id: int
+    artifact_name: str
+    artifact_digest: str
+    producer_attempt: int
 
 
 def _canonical_json(value: Mapping[str, object]) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise AnalysisError(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
+def _reject_non_finite_json_constant(value: str) -> object:
+    raise AnalysisError(f"non-finite JSON constant {value!r} is not allowed")
+
+
+def _parse_json_text(text: str, *, source: str) -> object:
+    try:
+        return json.loads(
+            text,
+            object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=_reject_non_finite_json_constant,
+        )
+    except AnalysisError:
+        raise
+    except (json.JSONDecodeError, RecursionError) as error:
+        raise AnalysisError(f"{source} contains invalid JSON") from error
 
 
 def _validate_sha(value: object, field: str, *, sha256_only: bool = False) -> str:
@@ -150,6 +200,105 @@ def _validate_sha(value: object, field: str, *, sha256_only: bool = False) -> st
         )
         raise AnalysisError(f"{field} must be {expected}")
     return text.lower()
+
+
+def _validate_artifact_digest(value: object, field: str) -> str:
+    """Normalize GitHub's ``sha256:<hex>`` artifact digest representation."""
+    text = _text(value, field)
+    if text.startswith("sha256:"):
+        text = text.removeprefix("sha256:")
+    return _validate_sha(text, field, sha256_only=True)
+
+
+def _validate_trusted_provenance(
+    value: object,
+    *,
+    repository: str,
+    run_id: int,
+    run_attempt: int,
+    source_head_sha: str,
+    tested_commit_sha: str,
+    workflow_path: str,
+    workflow_ref: str,
+    workflow_sha: str,
+    workflow_files_sha256: Mapping[str, str],
+    dag_sha256: str,
+) -> tuple[int, str, str, int]:
+    """Bind a DAG to a detached same-run artifact-selector record.
+
+    The selector record is intentionally separate from the DAG JSON. A
+    checksum on the DAG alone proves integrity only after the producer is
+    trusted; requiring this independently selected artifact identity prevents
+    a caller from changing provenance fields and recomputing ``dag_sha256``
+    without detection. Cryptographic authenticity of the selector itself is
+    owned by its GitHub API/attestation workflow and is not invented here.
+    """
+    if not isinstance(value, Mapping):
+        raise AnalysisError(
+            "strict analysis requires an authenticated provenance record"
+        )
+    allowed = {
+        "selector",
+        "repository",
+        "run_id",
+        "run_attempt",
+        "source_head_sha",
+        "tested_commit_sha",
+        "workflow_path",
+        "workflow_ref",
+        "workflow_sha",
+        "workflow_files_sha256",
+        "artifact_id",
+        "artifact_name",
+        "artifact_digest",
+        "producer_attempt",
+        "dag_sha256",
+    }
+    unknown = sorted(str(key) for key in set(value) - allowed)
+    if unknown:
+        raise AnalysisError(
+            "trusted provenance contains unknown fields: " + ", ".join(unknown)
+        )
+    if value.get("selector") != "select_same_run_artifact_cli":
+        raise AnalysisError("trusted provenance selector is not approved")
+    expected_scalars = {
+        "repository": repository,
+        "run_id": run_id,
+        "run_attempt": run_attempt,
+        "source_head_sha": source_head_sha,
+        "tested_commit_sha": tested_commit_sha,
+        "workflow_path": workflow_path,
+        "workflow_ref": workflow_ref,
+        "workflow_sha": workflow_sha,
+        "dag_sha256": dag_sha256,
+    }
+    for field, expected in expected_scalars.items():
+        actual = value.get(field)
+        if type(actual) is not type(expected) or actual != expected:
+            raise AnalysisError(f"trusted provenance {field} does not match DAG")
+    trusted_workflow_hashes = value.get("workflow_files_sha256")
+    if not isinstance(trusted_workflow_hashes, Mapping):
+        raise AnalysisError("trusted provenance workflow_files_sha256 is malformed")
+    if dict(trusted_workflow_hashes) != dict(workflow_files_sha256):
+        raise AnalysisError(
+            "trusted provenance workflow_files_sha256 does not match DAG"
+        )
+    artifact_id = _positive_integer(
+        value.get("artifact_id"), "trusted provenance artifact_id"
+    )
+    artifact_name = _text(
+        value.get("artifact_name"), "trusted provenance artifact_name"
+    )
+    artifact_digest = _validate_artifact_digest(
+        value.get("artifact_digest"),
+        "trusted provenance artifact_digest",
+    )
+    producer_attempt = _positive_integer(
+        value.get("producer_attempt"), "trusted provenance producer_attempt"
+    )
+    if producer_attempt > run_attempt:
+        raise AnalysisError("trusted provenance producer_attempt is from the future")
+    return artifact_id, artifact_name, artifact_digest, producer_attempt
 
 
 def _decode_jobs_payload(payload: object) -> list[Mapping[str, object]]:
@@ -173,11 +322,27 @@ def _decode_jobs_payload(payload: object) -> list[Mapping[str, object]]:
         )
 
     flattened: list[object] = []
+    expected_total: int | None = None
     for index, page in enumerate(page_candidates):
         if isinstance(page, Mapping) and "jobs" in page:
             jobs = page["jobs"]
             if not isinstance(jobs, list):
                 raise AnalysisError(f"jobs page {index} must contain an array")
+            if "total_count" in page:
+                total_count = page["total_count"]
+                if (
+                    isinstance(total_count, bool)
+                    or not isinstance(total_count, int)
+                    or total_count < 0
+                    or total_count > MAX_JOBS
+                ):
+                    raise AnalysisError(f"jobs page {index} total_count is invalid")
+                if expected_total is None:
+                    expected_total = total_count
+                elif total_count != expected_total:
+                    raise AnalysisError("jobs pagination total_count changed")
+                if len(flattened) + len(jobs) > expected_total:
+                    raise AnalysisError("jobs pagination contains too many records")
             flattened.extend(jobs)
         elif isinstance(page, list):
             flattened.extend(page)
@@ -187,6 +352,14 @@ def _decode_jobs_payload(payload: object) -> list[Mapping[str, object]]:
             flattened.append(page)
         else:
             raise AnalysisError(f"jobs page {index} must be an object or array")
+        if len(flattened) > MAX_JOBS:
+            raise AnalysisError(f"jobs payload exceeds maximum of {MAX_JOBS} jobs")
+
+    if expected_total is not None and len(flattened) != expected_total:
+        raise AnalysisError(
+            "jobs pagination is incomplete: expected "
+            f"{expected_total} records, received {len(flattened)}"
+        )
 
     records: list[Mapping[str, object]] = []
     for index, item in enumerate(flattened):
@@ -201,6 +374,10 @@ def _parse_steps(raw: object, job_name: str) -> tuple[StepTiming, ...]:
         return ()
     if not isinstance(raw, list):
         raise AnalysisError(f"job {job_name!r} steps must be an array")
+    if len(raw) > MAX_STEPS_PER_JOB:
+        raise AnalysisError(
+            f"job {job_name!r} steps exceed maximum of {MAX_STEPS_PER_JOB}"
+        )
     result: list[StepTiming] = []
     for index, value in enumerate(raw):
         if not isinstance(value, Mapping):
@@ -221,12 +398,7 @@ def _parse_steps(raw: object, job_name: str) -> tuple[StepTiming, ...]:
         completed = _parse_timestamp(
             value.get("completed_at"), f"job {job_name!r} step {index}.completed_at"
         )
-        if started is None or completed is None:
-            if step_conclusion is None:
-                continue
-            result.append(StepTiming(name, started, completed, step_conclusion))
-            continue
-        if completed < started:
+        if started is not None and completed is not None and completed < started:
             raise AnalysisError(f"job {job_name!r} step {index} ends before it starts")
         result.append(StepTiming(name, started, completed, step_conclusion))
     return tuple(result)
@@ -241,6 +413,10 @@ def _parse_needs(value: object, job_name: str) -> tuple[str, ...]:
         values = value
     else:
         raise AnalysisError(f"job {job_name!r}.needs must be a string or array")
+    if len(values) > MAX_NEEDS_PER_JOB:
+        raise AnalysisError(
+            f"job {job_name!r}.needs exceeds maximum of {MAX_NEEDS_PER_JOB}"
+        )
     result = tuple(
         sorted(
             {
@@ -286,6 +462,10 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
         completed = _parse_timestamp(
             record.get("completed_at"), f"job {name!r}.completed_at"
         )
+        steps = _parse_steps(record.get("steps"), name)
+        core_failure_value = record.get("core_failure", False)
+        if not isinstance(core_failure_value, bool):
+            raise AnalysisError(f"job {name!r}.core_failure must be boolean")
         if queued is not None and started is not None and queued > started:
             raise AnalysisError(f"job {name!r} {queued_field} is after it starts")
         if started is not None and completed is not None and completed < started:
@@ -295,7 +475,11 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
             # that API sentinel as a zero-duration guarded terminal job, but
             # keep malformed timestamps a hard error for every job that
             # could have executed.
-            if conclusion in {"skipped", "cancelled"} and not record.get("steps"):
+            if (
+                conclusion in {"skipped", "cancelled"}
+                and not steps
+                and started - completed <= timedelta(seconds=1)
+            ):
                 completed = started
             else:
                 raise AnalysisError(f"job {name!r} ends before it starts")
@@ -309,8 +493,8 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
                 started_at=started,
                 completed_at=completed,
                 needs=_parse_needs(record.get("needs"), name),
-                steps=_parse_steps(record.get("steps"), name),
-                core_failure=bool(record.get("core_failure", False)),
+                steps=steps,
+                core_failure=core_failure_value,
                 api_run_id=(
                     None
                     if record.get("run_id") is None
@@ -347,15 +531,16 @@ def _validate_dag_sidecar(
     *,
     repository: str,
     run_id: int,
+    trusted_provenance: object | None,
 ) -> DAGEvidence:
     """Validate a normalized, immutable DAG envelope for exact analysis."""
     if not isinstance(dag, Mapping):
         raise AnalysisError("strict analysis requires a DAG sidecar object")
-    if dag.get("schema_version") != 1:
+    if type(dag.get("schema_version")) is not int or dag.get("schema_version") != 1:
         raise AnalysisError("DAG sidecar schema_version must be 1")
     if dag.get("repository") != repository:
         raise AnalysisError("DAG sidecar repository does not match run repository")
-    if dag.get("run_id") != run_id:
+    if type(dag.get("run_id")) is not int or dag.get("run_id") != run_id:
         raise AnalysisError("DAG sidecar run_id does not match requested run_id")
     sidecar_run_attempt = _positive_integer(
         dag.get("run_attempt"), "DAG sidecar run_attempt"
@@ -375,6 +560,11 @@ def _validate_dag_sidecar(
         raise AnalysisError(
             "DAG sidecar workflow_files_sha256 must be a non-empty object"
         )
+    if len(workflow_hashes) > MAX_WORKFLOW_FILES:
+        raise AnalysisError(
+            "DAG sidecar workflow_files_sha256 exceeds "
+            f"maximum of {MAX_WORKFLOW_FILES} files"
+        )
     normalized_workflow_hashes: dict[str, str] = {}
     for path, digest in workflow_hashes.items():
         path_text = _text(path, "DAG sidecar workflow file path")
@@ -389,9 +579,12 @@ def _validate_dag_sidecar(
     )
     canonical = dict(dag)
     canonical.pop("dag_sha256", None)
-    expected_digest = hashlib.sha256(
-        _canonical_json(canonical).encode("utf-8")
-    ).hexdigest()
+    try:
+        expected_digest = hashlib.sha256(
+            _canonical_json(canonical).encode("utf-8")
+        ).hexdigest()
+    except (TypeError, ValueError, RecursionError) as error:
+        raise AnalysisError("DAG sidecar contains non-canonical JSON values") from error
     if supplied_digest != expected_digest:
         raise AnalysisError("DAG sidecar dag_sha256 does not match its contents")
 
@@ -400,6 +593,61 @@ def _validate_dag_sidecar(
         raise AnalysisError(
             "strict analysis requires terminal jobs; nonterminal job IDs: "
             + ", ".join(str(job_id) for job_id in nonterminal)
+        )
+    invalid_conclusions = [
+        job.job_id for job in jobs if job.conclusion not in _TERMINAL_CONCLUSIONS
+    ]
+    if invalid_conclusions:
+        raise AnalysisError(
+            "strict analysis requires terminal conclusions; invalid job IDs: "
+            + ", ".join(str(job_id) for job_id in invalid_conclusions)
+        )
+    incomplete_timing = [
+        job.job_id
+        for job in jobs
+        if not (job.started_at is not None and job.completed_at is not None)
+        and not (
+            job.started_at is None
+            and job.completed_at is None
+            and not job.steps
+            and job.conclusion in {"skipped", "cancelled"}
+        )
+    ]
+    if incomplete_timing:
+        raise AnalysisError(
+            "strict analysis requires complete job timing; incomplete job IDs: "
+            + ", ".join(str(job_id) for job_id in incomplete_timing)
+        )
+    incomplete_steps = [
+        job.job_id
+        for job in jobs
+        if any(
+            step.started_at is None or step.completed_at is None for step in job.steps
+        )
+    ]
+    if incomplete_steps:
+        raise AnalysisError(
+            "strict analysis requires complete step timing; incomplete job IDs: "
+            + ", ".join(str(job_id) for job_id in incomplete_steps)
+        )
+    outside_steps = [
+        job.job_id
+        for job in jobs
+        if job.started_at is not None
+        and job.completed_at is not None
+        and any(
+            step.started_at is not None
+            and step.completed_at is not None
+            and (
+                step.started_at < job.started_at or step.completed_at > job.completed_at
+            )
+            for step in job.steps
+        )
+    ]
+    if outside_steps:
+        raise AnalysisError(
+            "strict analysis requires step timing within job bounds; job IDs: "
+            + ", ".join(str(job_id) for job_id in outside_steps)
         )
 
     nodes = dag.get("nodes")
@@ -432,6 +680,7 @@ def _validate_dag_sidecar(
             )
     dependency_ids: dict[int, tuple[int, ...]] = {}
     logical_ids: dict[int, str] = {}
+    logical_id_values: set[str] = set()
     core_failures: dict[int, bool] = {}
     for index, node in enumerate(nodes):
         if not isinstance(node, Mapping):
@@ -446,7 +695,7 @@ def _validate_dag_sidecar(
         logical_id = _text(
             node.get("logical_id"), f"DAG sidecar nodes[{index}].logical_id"
         )
-        if logical_id in logical_ids.values():
+        if logical_id in logical_id_values:
             raise AnalysisError(f"duplicate DAG sidecar logical_id {logical_id!r}")
         for field in ("phase", "core_role", "skip_classification"):
             _text(node.get(field), f"DAG sidecar nodes[{index}].{field}")
@@ -458,6 +707,11 @@ def _validate_dag_sidecar(
         raw_needs = node.get("needs")
         if not isinstance(raw_needs, list):
             raise AnalysisError(f"DAG sidecar nodes[{index}].needs must be an array")
+        if len(raw_needs) > MAX_NEEDS_PER_JOB:
+            raise AnalysisError(
+                f"DAG sidecar nodes[{index}].needs exceeds "
+                f"maximum of {MAX_NEEDS_PER_JOB}"
+            )
         needs = tuple(
             _positive_integer(value, f"DAG sidecar nodes[{index}].needs[{need_index}]")
             for need_index, value in enumerate(raw_needs)
@@ -466,6 +720,7 @@ def _validate_dag_sidecar(
             raise AnalysisError(f"DAG sidecar nodes[{index}].needs contains duplicates")
         dependency_ids[job_id] = needs
         logical_ids[job_id] = logical_id
+        logical_id_values.add(logical_id)
         core_failures[job_id] = core_failure
     if set(dependency_ids) != set(jobs_by_id):
         raise AnalysisError("DAG sidecar job IDs do not match the jobs payload")
@@ -475,6 +730,21 @@ def _validate_dag_sidecar(
                 raise AnalysisError(
                     f"DAG sidecar job {job_id} references unknown dependency id {dependency_id}"
                 )
+    artifact_id, artifact_name, artifact_digest, producer_attempt = (
+        _validate_trusted_provenance(
+            trusted_provenance,
+            repository=repository,
+            run_id=run_id,
+            run_attempt=sidecar_run_attempt,
+            source_head_sha=sidecar_source_sha,
+            tested_commit_sha=sidecar_tested_sha,
+            workflow_path=workflow_path,
+            workflow_ref=workflow_ref,
+            workflow_sha=workflow_sha,
+            workflow_files_sha256=normalized_workflow_hashes,
+            dag_sha256=supplied_digest,
+        )
+    )
     return DAGEvidence(
         dependency_ids=dependency_ids,
         logical_ids=logical_ids,
@@ -487,6 +757,10 @@ def _validate_dag_sidecar(
         workflow_sha=workflow_sha,
         workflow_files_sha256=normalized_workflow_hashes,
         dag_sha256=supplied_digest,
+        artifact_id=artifact_id,
+        artifact_name=artifact_name,
+        artifact_digest=artifact_digest,
+        producer_attempt=producer_attempt,
     )
 
 
@@ -532,7 +806,16 @@ def _step_bucket(name: str) -> str | None:
     return None
 
 
-def _duration_buckets(job: JobTiming) -> tuple[float, float, float]:
+def _duration_buckets(
+    job: JobTiming,
+) -> tuple[float | None, float | None, float | None]:
+    if job.duration_seconds is None:
+        return None, None, None
+    if not any(
+        step.started_at is not None and step.completed_at is not None
+        for step in job.steps
+    ):
+        return None, None, None
     setup = [
         (step.started_at, step.completed_at)
         for step in job.steps
@@ -615,7 +898,7 @@ def _longest_dependency_path(
                 or dependency_chain_failure.get(predecessor.job_id, False)
             )
         start = max(predecessor_ends, default=0.0)
-        end = start + job.duration_seconds
+        end = start + (job.duration_seconds or 0.0)
         visiting.remove(job.job_id)
         end_times[job.job_id] = end
         # A dependency failure is only a *blocked* job when the job never ran.
@@ -713,12 +996,16 @@ def _timing_ledger(jobs: Sequence[JobTiming]) -> dict[str, dict[str, object]]:
     for job in jobs:
         if job.started_at is None or job.completed_at is None:
             continue
-        if job.queued_at is not None:
-            values["queue"].append(job.queue_wait_seconds)
+        if (
+            job.queued_at is not None
+            and (queue_wait := job.queue_wait_seconds) is not None
+        ):
+            values["queue"].append(queue_wait)
         setup, actual, artifact = _duration_buckets(job)
-        values["setup"].append(setup)
-        values["test"].append(actual)
-        values["artifact"].append(artifact)
+        if setup is not None and actual is not None and artifact is not None:
+            values["setup"].append(setup)
+            values["test"].append(actual)
+            values["artifact"].append(artifact)
     return {name: _timing_distribution(samples) for name, samples in values.items()}
 
 
@@ -785,12 +1072,16 @@ def _timeout_summary(jobs: Sequence[JobTiming]) -> dict[str, object]:
     }
 
 
+def _rounded_seconds(value: float | None) -> float | None:
+    return None if value is None else round(value, 3)
+
+
 def _step_rows(job: JobTiming) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for step in job.steps:
         row: dict[str, object] = {
             "name": step.name,
-            "seconds": round(step.seconds, 3),
+            "seconds": _rounded_seconds(step.seconds),
         }
         if step.conclusion is not None:
             row["conclusion"] = step.conclusion
@@ -809,6 +1100,18 @@ def _validate_job_run_ids(jobs: Sequence[JobTiming], run_id: int) -> None:
             f"job {mismatched[0]} run_id does not match requested run_id"
             + (" (and additional jobs)" if len(mismatched) > 1 else "")
         )
+
+
+def _validate_diagnostic_identity(jobs: Sequence[JobTiming]) -> None:
+    attempts = {job.api_run_attempt for job in jobs if job.api_run_attempt is not None}
+    if len(attempts) > 1:
+        raise AnalysisError(
+            "diagnostic analysis cannot mix run_attempt values: "
+            + ", ".join(str(value) for value in sorted(attempts))
+        )
+    source_heads = {job.api_head_sha for job in jobs if job.api_head_sha is not None}
+    if len(source_heads) > 1:
+        raise AnalysisError("diagnostic analysis cannot mix source head SHAs")
 
 
 def _diagnostic_provenance(
@@ -861,6 +1164,11 @@ def _strict_provenance(
         "workflow_sha": dag.workflow_sha,
         "workflow_files_sha256": dag.workflow_files_sha256,
         "dag_sha256": dag.dag_sha256,
+        "authentication": "same-run-artifact-selector",
+        "artifact_id": dag.artifact_id,
+        "artifact_name": dag.artifact_name,
+        "artifact_digest": dag.artifact_digest,
+        "producer_attempt": dag.producer_attempt,
     }
 
 
@@ -878,7 +1186,7 @@ def _diagnostic_lower_bound_report(
                 setup_signatures[step.name.casefold()] += 1
         queue_wait: float | None = None
         if job.status != "queued":
-            queue_wait = round(job.queue_wait_seconds, 3)
+            queue_wait = _rounded_seconds(job.queue_wait_seconds)
         job_rows.append(
             {
                 "id": job.job_id,
@@ -886,12 +1194,12 @@ def _diagnostic_lower_bound_report(
                 "status": job.status,
                 "conclusion": job.conclusion,
                 "needs": "unknown",
-                "duration_seconds": round(job.duration_seconds, 3),
+                "duration_seconds": _rounded_seconds(job.duration_seconds),
                 "dependency_wait_seconds": None,
                 "github_queue_wait_seconds": queue_wait,
-                "setup_install_seconds": round(setup, 3),
-                "actual_test_seconds": round(actual, 3),
-                "artifact_seconds": round(artifact, 3),
+                "setup_install_seconds": _rounded_seconds(setup),
+                "actual_test_seconds": _rounded_seconds(actual),
+                "artifact_seconds": _rounded_seconds(artifact),
                 "retry_classification": _retry_classification(job),
                 "timeout_classification": _timeout_classification(job),
                 "critical_path_end_seconds": None,
@@ -942,6 +1250,7 @@ def analyze_jobs(
     concurrency_cap: int,
     dag: object | None = None,
     diagnostic_lower_bound: bool = False,
+    trusted_provenance: object | None = None,
 ) -> dict[str, object]:
     if not REPOSITORY_RE.fullmatch(repository):
         raise AnalysisError("repository must be an owner/name pair")
@@ -952,11 +1261,16 @@ def analyze_jobs(
     _validate_job_run_ids(jobs, run_id)
     if diagnostic_lower_bound and dag is not None:
         raise AnalysisError("DAG sidecar cannot be combined with diagnostic mode")
+    if diagnostic_lower_bound and trusted_provenance is not None:
+        raise AnalysisError(
+            "trusted provenance cannot be combined with diagnostic mode"
+        )
     if dag is None:
         if not diagnostic_lower_bound:
             raise AnalysisError(
                 "strict analysis requires a DAG sidecar; use diagnostic-lower-bound mode for API-only jobs"
             )
+        _validate_diagnostic_identity(jobs)
         return _diagnostic_lower_bound_report(
             jobs,
             repository=repository,
@@ -964,7 +1278,11 @@ def analyze_jobs(
             concurrency_cap=concurrency_cap,
         )
     dag_evidence = _validate_dag_sidecar(
-        dag, jobs, repository=repository, run_id=run_id
+        dag,
+        jobs,
+        repository=repository,
+        run_id=run_id,
+        trusted_provenance=trusted_provenance,
     )
     end_times, upstream_failure = _longest_dependency_path(
         jobs, dag_evidence.dependency_ids
@@ -999,14 +1317,15 @@ def analyze_jobs(
                     dag_evidence.logical_ids[dependency_id]
                     for dependency_id in dag_evidence.dependency_ids[job.job_id]
                 ],
-                "duration_seconds": round(job.duration_seconds, 3),
+                "duration_seconds": _rounded_seconds(job.duration_seconds),
                 "dependency_wait_seconds": round(
-                    max(0.0, end_times[job.job_id] - job.duration_seconds), 3
+                    max(0.0, end_times[job.job_id] - (job.duration_seconds or 0.0)),
+                    3,
                 ),
-                "github_queue_wait_seconds": round(job.queue_wait_seconds, 3),
-                "setup_install_seconds": round(setup, 3),
-                "actual_test_seconds": round(actual, 3),
-                "artifact_seconds": round(artifact, 3),
+                "github_queue_wait_seconds": _rounded_seconds(job.queue_wait_seconds),
+                "setup_install_seconds": _rounded_seconds(setup),
+                "actual_test_seconds": _rounded_seconds(actual),
+                "artifact_seconds": _rounded_seconds(artifact),
                 "retry_classification": _retry_classification(job),
                 "timeout_classification": _timeout_classification(job),
                 "critical_path_end_seconds": round(end_times[job.job_id], 3),
@@ -1056,34 +1375,107 @@ def analyze_jobs(
 
 def _load_json(path: Path) -> object:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_JSON_BYTES + 1)
+        if len(raw) > MAX_JSON_BYTES:
+            raise AnalysisError(
+                f"JSON file {path} exceeds maximum size of {MAX_JSON_BYTES} bytes"
+            )
+        text = raw.decode("utf-8")
+        return _parse_json_text(text, source=f"JSON file {path}")
+    except AnalysisError:
+        raise
+    except (OSError, UnicodeError) as error:
         raise AnalysisError(f"unable to read JSON {path}: {error}") from error
 
 
+def _safe_error_excerpt(value: object) -> str:
+    raw = "" if value is None else str(value)
+    sanitized = "".join(
+        character if character in "\t " or ord(character) >= 0x20 else "?"
+        for character in raw
+    ).strip()
+    return sanitized[:MAX_ERROR_CHARS]
+
+
 def _fetch_jobs(repository: str, run_id: int) -> object:
+    if not REPOSITORY_RE.fullmatch(repository):
+        raise AnalysisError("repository must be an owner/name pair")
+    _positive_integer(run_id, "run_id")
     endpoint = f"repos/{repository}/actions/runs/{run_id}/jobs?per_page=100"
     # ``repository`` is validated by the caller and the endpoint is passed as
     # one argv element, so no shell interpretation is possible.
-    completed = subprocess.run(  # noqa: S603
-        ["gh", "api", "--paginate", "--slurp", endpoint],  # noqa: S607
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    if completed.returncode:
-        message = completed.stderr.strip() or "gh api failed"
-        raise AnalysisError(message)
-    if not completed.stdout.strip():
-        raise AnalysisError("gh api returned no jobs payload")
     try:
-        # ``--slurp`` emits one JSON array containing all page envelopes.  Do
-        # not wrap that array in another list: the decoder below deliberately
-        # distinguishes a page envelope from a list of page envelopes.
-        return json.loads(completed.stdout)
-    except json.JSONDecodeError as error:
-        raise AnalysisError("gh api returned invalid JSON") from error
+        with (
+            tempfile.TemporaryFile(mode="w+b") as stdout_file,
+            tempfile.TemporaryFile(mode="w+b") as stderr_file,
+        ):
+            try:
+                completed = subprocess.run(  # noqa: S603
+                    ["gh", "api", "--paginate", "--slurp", endpoint],  # noqa: S607
+                    stdin=subprocess.DEVNULL,
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    check=False,
+                    timeout=MAX_FETCH_SECONDS,
+                )
+            except subprocess.TimeoutExpired as error:
+                raise AnalysisError("gh api jobs request timed out") from error
+            stdout_file.seek(0)
+            stdout = stdout_file.read(MAX_JSON_BYTES + 1)
+            stderr_file.seek(0)
+            stderr = stderr_file.read(MAX_ERROR_CHARS + 1)
+    except AnalysisError:
+        raise
+    except OSError as error:
+        raise AnalysisError("unable to execute gh api") from error
+    if completed.returncode:
+        message = (
+            _safe_error_excerpt(stderr.decode("utf-8", errors="replace"))
+            or "gh api failed"
+        )
+        raise AnalysisError(message)
+    if len(stdout) > MAX_JSON_BYTES:
+        raise AnalysisError(
+            f"gh api jobs payload exceeds maximum size of {MAX_JSON_BYTES} bytes"
+        )
+    try:
+        stdout_text = stdout.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise AnalysisError("gh api returned invalid UTF-8") from error
+    if not stdout_text.strip():
+        raise AnalysisError("gh api returned no jobs payload")
+    # ``--slurp`` emits one JSON array containing all page envelopes.  Do
+    # not wrap that array in another list: the decoder below deliberately
+    # distinguishes a page envelope from a list of page envelopes.
+    return _parse_json_text(stdout_text, source="gh api jobs payload")
+
+
+def _write_atomic_text(path: Path, text: str) -> None:
+    """Write evidence via a flushed temporary file and atomic replacement."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except (OSError, UnicodeError):
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1103,18 +1495,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="read the required attempt-bound normalized DAG sidecar",
     )
     parser.add_argument(
+        "--trusted-provenance-json",
+        type=Path,
+        help="read the detached provenance record from the same-run artifact selector",
+    )
+    parser.add_argument(
         "--diagnostic-lower-bound",
         action="store_true",
         help="report API-only timing as a lower bound without dependency claims",
     )
     args = parser.parse_args(argv)
     try:
+        if not REPOSITORY_RE.fullmatch(args.repository):
+            raise AnalysisError("repository must be an owner/name pair")
+        _positive_integer(args.run_id, "run_id")
+        _positive_integer(args.concurrency_cap, "concurrency_cap")
         payload = (
             _load_json(args.jobs_json)
             if args.jobs_json
             else _fetch_jobs(args.repository, args.run_id)
         )
         dag = _load_json(args.dag_json) if args.dag_json else None
+        trusted_provenance = (
+            _load_json(args.trusted_provenance_json)
+            if args.trusted_provenance_json
+            else None
+        )
         report = analyze_jobs(
             parse_jobs(payload),
             repository=args.repository,
@@ -1122,13 +1528,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             concurrency_cap=args.concurrency_cap,
             dag=dag,
             diagnostic_lower_bound=args.diagnostic_lower_bound,
+            trusted_provenance=trusted_provenance,
         )
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
+        report["report_sha256"] = hashlib.sha256(
+            _canonical_json(report).encode("utf-8")
+        ).hexdigest()
+        _write_atomic_text(
+            args.output,
             json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
         )
-    except (AnalysisError, OSError) as error:
+    except (AnalysisError, OSError, UnicodeError) as error:
         parser.error(str(error))
     return 0
 

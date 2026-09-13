@@ -60,9 +60,24 @@ uv run python scripts/quality/analyze_ci_critical_path.py \
 
 The Jobs API does not expose the workflow `needs` graph for every nested
 reusable-workflow leg. Consequently, `critical_path_lower_bound_seconds` is the
-analyzer's dependency-free lower bound for the returned job records (strict
-exact analysis requires an attempt-bound `--dag-json` sidecar), while
-`wall_clock_seconds`, queue waits, and observed peak are direct timing observations.
+analyzer's dependency-free lower bound for the returned job records. Strict
+exact analysis additionally requires an attempt-bound `--dag-json` sidecar and
+the detached provenance record selected by
+`select_same_run_artifact_cli` (passed as `--trusted-provenance-json`). A
+structurally valid sidecar without that independently selected record is
+rejected and is never release evidence. `wall_clock_seconds`, queue waits, and
+observed peak remain direct timing observations in diagnostic mode.
+
+The selector output is an independently checked GitHub REST metadata record, not
+an archive attestation: `select_same_run_artifact_cli` validates the current-run
+identity, artifact ownership, producer attempt, and server-issued digest format,
+but deliberately does not download or hash the archive bytes. The analyzer also
+does not claim cryptographic authenticity for arbitrary JSON supplied by a caller.
+Therefore strict output is release-eligible only when a trusted workflow obtains
+the selector result, verifies the downloaded archive against that digest, and
+binds the resulting DAG and workflow provenance before invoking the analyzer. No
+repository workflow currently invokes this analyzer end-to-end, so on-demand
+reports remain diagnostic/engineering evidence rather than a release certificate.
 
 | Run | Source head | Result | Job records | Wall clock | Lower bound | Observed peak | Average utilization | Max queue wait |
 |---:|---|---|---:|---:|---:|---:|---:|---:|

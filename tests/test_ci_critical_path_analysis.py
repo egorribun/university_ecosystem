@@ -9,6 +9,7 @@ from typing import cast
 
 import pytest
 
+from scripts.quality import analyze_ci_critical_path as analyzer
 from scripts.quality.analyze_ci_critical_path import (
     AnalysisError,
     analyze_jobs,
@@ -28,6 +29,10 @@ def _bound_payload(payload: object, *, run_id: int = 33349026009) -> dict[str, o
     assert isinstance(payload, dict)
     records = cast(list[dict[str, object]], payload["jobs"])
     for record in records:
+        record.setdefault("status", "completed")
+        record.setdefault("conclusion", "success")
+        record.setdefault("started_at", "2026-08-31T10:00:00Z")
+        record.setdefault("completed_at", "2026-08-31T10:00:01Z")
         record.update(run_id=run_id, run_attempt=1, head_sha="a" * 40)
     return payload
 
@@ -71,14 +76,36 @@ def _dag_payload(payload: object, *, run_id: int = 33349026009) -> dict[str, obj
     return envelope
 
 
+def _trusted_provenance(dag: dict[str, object]) -> dict[str, object]:
+    return {
+        "selector": "select_same_run_artifact_cli",
+        "repository": dag["repository"],
+        "run_id": dag["run_id"],
+        "run_attempt": dag["run_attempt"],
+        "source_head_sha": dag["source_head_sha"],
+        "tested_commit_sha": dag["tested_commit_sha"],
+        "workflow_path": dag["workflow_path"],
+        "workflow_ref": dag["workflow_ref"],
+        "workflow_sha": dag["workflow_sha"],
+        "workflow_files_sha256": dag["workflow_files_sha256"],
+        "artifact_id": 1,
+        "artifact_name": f"ci-critical-path-{dag['run_id']}-{dag['run_attempt']}",
+        "artifact_digest": "e" * 64,
+        "producer_attempt": dag["run_attempt"],
+        "dag_sha256": dag["dag_sha256"],
+    }
+
+
 def test_analyzer_reports_dependency_wait_utilization_and_duplicates() -> None:
     payload = _bound_payload(_payload())
+    dag = _dag_payload(payload)
     report = analyze_jobs(
         parse_jobs(payload),
         repository="egorribun/university_ecosystem",
         run_id=33349026009,
         concurrency_cap=20,
-        dag=_dag_payload(payload),
+        dag=dag,
+        trusted_provenance=_trusted_provenance(dag),
     )
 
     assert report["schema_version"] == 1
@@ -131,6 +158,11 @@ def test_analyzer_reports_dependency_wait_utilization_and_duplicates() -> None:
         "workflow_sha": "c" * 40,
         "workflow_files_sha256": {".github/workflows/ci.yml": "d" * 64},
         "dag_sha256": _dag_payload(payload)["dag_sha256"],
+        "authentication": "same-run-artifact-selector",
+        "artifact_id": 1,
+        "artifact_name": "ci-critical-path-33349026009-1",
+        "artifact_digest": "e" * 64,
+        "producer_attempt": 1,
     }
 
     timing = summary["timing_seconds"]
@@ -332,13 +364,15 @@ def test_analyzer_rejects_ambiguous_or_incomplete_evidence(
     payload: object, message: str
 ) -> None:
     payload = _bound_payload(payload, run_id=1)
+    dag = _dag_payload(payload, run_id=1)
     with pytest.raises(AnalysisError, match=message):
         analyze_jobs(
             parse_jobs(payload),
             repository="egorribun/university_ecosystem",
             run_id=1,
             concurrency_cap=20,
-            dag=_dag_payload(payload, run_id=1),
+            dag=dag,
+            trusted_provenance=_trusted_provenance(dag),
         )
 
 
@@ -534,12 +568,14 @@ def test_diagnostic_mode_does_not_treat_queued_timestamp_sentinel_as_started() -
 
 def test_strict_analysis_uses_numeric_sidecar_dependencies() -> None:
     payload = _bound_payload(_payload())
+    dag = _dag_payload(payload)
     report = analyze_jobs(
         parse_jobs(payload),
         repository="egorribun/university_ecosystem",
         run_id=33349026009,
         concurrency_cap=20,
-        dag=_dag_payload(payload),
+        dag=dag,
+        trusted_provenance=_trusted_provenance(dag),
     )
 
     summary = report["summary"]
@@ -554,6 +590,7 @@ def test_strict_analysis_uses_numeric_sidecar_dependencies() -> None:
 def test_strict_analysis_rejects_dag_digest_tampering() -> None:
     payload = _bound_payload(_payload())
     dag = _dag_payload(payload)
+    trusted = _trusted_provenance(dag)
     dag["nodes"][0]["phase"] = "tampered"  # type: ignore[index]
 
     with pytest.raises(AnalysisError, match="dag_sha256"):
@@ -563,12 +600,14 @@ def test_strict_analysis_rejects_dag_digest_tampering() -> None:
             run_id=33349026009,
             concurrency_cap=20,
             dag=dag,
+            trusted_provenance=trusted,
         )
 
 
 def test_strict_analysis_rejects_dag_identity_mismatch() -> None:
     payload = _bound_payload(_payload())
     dag = _dag_payload(payload)
+    trusted = _trusted_provenance(dag)
     dag["run_id"] = 999
 
     with pytest.raises(AnalysisError, match="run_id"):
@@ -578,12 +617,14 @@ def test_strict_analysis_rejects_dag_identity_mismatch() -> None:
             run_id=33349026009,
             concurrency_cap=20,
             dag=dag,
+            trusted_provenance=trusted,
         )
 
 
 def test_strict_analysis_rejects_job_identity_mismatch() -> None:
     payload = _bound_payload(_payload())
     payload["jobs"][0]["run_id"] = 999  # type: ignore[index]
+    dag = _dag_payload(payload)
 
     with pytest.raises(AnalysisError, match="job 101 run_id"):
         analyze_jobs(
@@ -591,7 +632,8 @@ def test_strict_analysis_rejects_job_identity_mismatch() -> None:
             repository="egorribun/university_ecosystem",
             run_id=33349026009,
             concurrency_cap=20,
-            dag=_dag_payload(payload),
+            dag=dag,
+            trusted_provenance=_trusted_provenance(dag),
         )
 
 
@@ -608,6 +650,7 @@ def test_strict_analysis_rejects_nonterminal_jobs() -> None:
             }
         ]
     }
+    dag = _dag_payload(payload)
 
     with pytest.raises(AnalysisError, match="terminal"):
         analyze_jobs(
@@ -615,7 +658,8 @@ def test_strict_analysis_rejects_nonterminal_jobs() -> None:
             repository="egorribun/university_ecosystem",
             run_id=33349026009,
             concurrency_cap=20,
-            dag=_dag_payload(payload),
+            dag=dag,
+            trusted_provenance=_trusted_provenance(dag),
         )
 
 
@@ -633,6 +677,7 @@ def test_strict_analysis_requires_api_identity_fields() -> None:
             }
         ]
     }
+    dag = _dag_payload(payload)
 
     with pytest.raises(AnalysisError, match="identity"):
         analyze_jobs(
@@ -640,5 +685,465 @@ def test_strict_analysis_requires_api_identity_fields() -> None:
             repository="egorribun/university_ecosystem",
             run_id=33349026009,
             concurrency_cap=20,
-            dag=_dag_payload(payload),
+            dag=dag,
+            trusted_provenance=_trusted_provenance(dag),
+        )
+
+
+def test_strict_analysis_rejects_completed_job_without_timing() -> None:
+    payload = _bound_payload(_payload())
+    first = cast(dict[str, object], payload["jobs"][0])
+    first["started_at"] = None
+    first["completed_at"] = None
+    first["steps"] = []
+    dag = _dag_payload(payload)
+
+    with pytest.raises(AnalysisError, match="complete job timing"):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=33349026009,
+            concurrency_cap=20,
+            dag=dag,
+            trusted_provenance=_trusted_provenance(dag),
+        )
+
+
+def test_diagnostic_analysis_rejects_mixed_run_attempts() -> None:
+    payload = _payload()
+    assert isinstance(payload, dict)
+    records = cast(list[dict[str, object]], payload["jobs"])
+    for record in records:
+        record.update(run_id=1, run_attempt=1, head_sha="a" * 40)
+    records[1]["run_attempt"] = 2
+
+    with pytest.raises(AnalysisError, match="mix run_attempt"):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=1,
+            concurrency_cap=20,
+            diagnostic_lower_bound=True,
+        )
+
+
+def test_diagnostic_analysis_rejects_mixed_source_heads() -> None:
+    payload = _payload()
+    assert isinstance(payload, dict)
+    records = cast(list[dict[str, object]], payload["jobs"])
+    for record in records:
+        record.update(run_id=1, run_attempt=1, head_sha="a" * 40)
+    records[1]["head_sha"] = "b" * 40
+
+    with pytest.raises(AnalysisError, match="mix source head"):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=1,
+            concurrency_cap=20,
+            diagnostic_lower_bound=True,
+        )
+
+
+def test_strict_analysis_rejects_boolean_schema_version() -> None:
+    payload = _bound_payload(_payload())
+    dag = _dag_payload(payload)
+    dag["schema_version"] = True
+    canonical = dict(dag)
+    canonical.pop("dag_sha256")
+    dag["dag_sha256"] = hashlib.sha256(
+        json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+    with pytest.raises(AnalysisError, match="schema_version"):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=33349026009,
+            concurrency_cap=20,
+            dag=dag,
+        )
+
+
+def test_strict_analysis_rejects_non_integer_dag_run_id() -> None:
+    payload = _bound_payload(_payload())
+    dag = _dag_payload(payload)
+    dag["run_id"] = 33349026009.0
+    canonical = dict(dag)
+    canonical.pop("dag_sha256")
+    dag["dag_sha256"] = hashlib.sha256(
+        json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+    with pytest.raises(AnalysisError, match="run_id"):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=33349026009,
+            concurrency_cap=20,
+            dag=dag,
+        )
+
+
+def test_strict_analysis_rejects_structurally_valid_but_untrusted_sidecar() -> None:
+    payload = _bound_payload(_payload())
+    dag = _dag_payload(payload)
+
+    with pytest.raises(AnalysisError, match="authenticated provenance"):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=33349026009,
+            concurrency_cap=20,
+            dag=dag,
+        )
+
+
+def test_strict_analysis_rejects_sidecar_tampering_against_trusted_record() -> None:
+    payload = _bound_payload(_payload())
+    dag = _dag_payload(payload)
+    trusted = _trusted_provenance(dag)
+    dag["tested_commit_sha"] = "f" * 40
+    canonical = dict(dag)
+    canonical.pop("dag_sha256")
+    dag["dag_sha256"] = hashlib.sha256(
+        json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+    with pytest.raises(AnalysisError, match="trusted provenance"):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=33349026009,
+            concurrency_cap=20,
+            dag=dag,
+            trusted_provenance=trusted,
+        )
+
+
+@pytest.mark.parametrize("field", ["run_id", "run_attempt"])
+def test_strict_analysis_rejects_float_trusted_identity(field: str) -> None:
+    payload = _bound_payload(_payload())
+    dag = _dag_payload(payload)
+    trusted = _trusted_provenance(dag)
+    trusted[field] = float(cast(int, dag[field]))
+
+    with pytest.raises(AnalysisError, match="trusted provenance"):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=33349026009,
+            concurrency_cap=20,
+            dag=dag,
+            trusted_provenance=trusted,
+        )
+
+
+def test_strict_analysis_rejects_completed_job_without_conclusion() -> None:
+    payload = _bound_payload(_payload())
+    first = cast(dict[str, object], payload["jobs"][0])
+    first["conclusion"] = None
+    dag = _dag_payload(payload)
+
+    with pytest.raises(AnalysisError, match="terminal conclusions"):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=33349026009,
+            concurrency_cap=20,
+            dag=dag,
+            trusted_provenance=_trusted_provenance(dag),
+        )
+
+
+def test_strict_analysis_rejects_incomplete_step_timing() -> None:
+    payload = _bound_payload(_payload())
+    first = cast(dict[str, object], payload["jobs"][0])
+    first["steps"] = [{"name": "partially-recorded-step"}]
+    dag = _dag_payload(payload)
+
+    with pytest.raises(AnalysisError, match="complete step timing"):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=33349026009,
+            concurrency_cap=20,
+            dag=dag,
+            trusted_provenance=_trusted_provenance(dag),
+        )
+
+
+def test_strict_analysis_rejects_step_outside_job_interval() -> None:
+    payload = _bound_payload(_payload())
+    first = cast(dict[str, object], payload["jobs"][0])
+    first["steps"] = [
+        {
+            "name": "outside-job",
+            "started_at": "2026-08-31T09:59:59Z",
+            "completed_at": "2026-08-31T10:00:31Z",
+        }
+    ]
+    dag = _dag_payload(payload)
+
+    with pytest.raises(AnalysisError, match="within job bounds"):
+        analyze_jobs(
+            parse_jobs(payload),
+            repository="egorribun/university_ecosystem",
+            run_id=33349026009,
+            concurrency_cap=20,
+            dag=dag,
+            trusted_provenance=_trusted_provenance(dag),
+        )
+
+
+def test_parser_rejects_large_cancelled_timestamp_inversion() -> None:
+    with pytest.raises(AnalysisError, match="ends before"):
+        parse_jobs(
+            {
+                "jobs": [
+                    {
+                        "id": 1,
+                        "name": "cancelled-empty-job",
+                        "status": "completed",
+                        "conclusion": "cancelled",
+                        "started_at": "2030-01-01T00:00:00Z",
+                        "completed_at": "1970-01-01T00:00:00Z",
+                        "steps": [],
+                    }
+                ]
+            }
+        )
+
+
+def test_timing_ledger_omits_unmeasured_step_buckets() -> None:
+    report = analyze_jobs(
+        parse_jobs(
+            {
+                "jobs": [
+                    {
+                        "id": 1,
+                        "name": "job-without-step-timing",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "created_at": "2026-08-31T10:00:00Z",
+                        "started_at": "2026-08-31T10:00:10Z",
+                        "completed_at": "2026-08-31T10:01:10Z",
+                        "steps": [],
+                    }
+                ]
+            }
+        ),
+        repository="egorribun/university_ecosystem",
+        run_id=1,
+        concurrency_cap=20,
+        diagnostic_lower_bound=True,
+    )
+    timing = cast(
+        dict[str, dict[str, object]],
+        cast(dict[str, object], report["summary"])["timing_seconds"],
+    )
+    assert timing["queue"]["count"] == 1
+    assert timing["setup"]["count"] == 0
+    assert timing["test"]["count"] == 0
+    assert timing["artifact"]["count"] == 0
+
+
+def test_strict_json_rejects_duplicate_keys_and_non_finite_values(
+    tmp_path: Path,
+) -> None:
+    duplicate = tmp_path / "duplicate.json"
+    duplicate.write_text('{"jobs": [], "jobs": []}', encoding="utf-8")
+    with pytest.raises(AnalysisError, match="duplicate JSON key"):
+        analyzer._load_json(duplicate)
+
+    non_finite = tmp_path / "non-finite.json"
+    non_finite.write_text('{"value": NaN}', encoding="utf-8")
+    with pytest.raises(AnalysisError, match="non-finite"):
+        analyzer._load_json(non_finite)
+
+
+def test_parser_rejects_control_characters_in_job_names() -> None:
+    with pytest.raises(AnalysisError, match="control character"):
+        parse_jobs({"jobs": [{"id": 1, "name": "bad\x1b"}]})
+
+
+def test_parser_rejects_incomplete_paginated_payload() -> None:
+    with pytest.raises(AnalysisError, match="pagination is incomplete"):
+        parse_jobs(
+            [
+                {
+                    "total_count": 2,
+                    "jobs": [{"id": 1, "name": "one"}],
+                }
+            ]
+        )
+
+
+def test_cli_report_contains_canonical_integrity_digest(tmp_path: Path) -> None:
+    output = tmp_path / "critical-path.json"
+    assert (
+        main(
+            [
+                "--repository",
+                "egorribun/university_ecosystem",
+                "--run-id",
+                "33349026009",
+                "--concurrency-cap",
+                "20",
+                "--jobs-json",
+                str(FIXTURE),
+                "--output",
+                str(output),
+                "--diagnostic-lower-bound",
+            ]
+        )
+        == 0
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    digest = report.pop("report_sha256")
+    canonical = json.dumps(
+        report, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    assert digest == hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def test_cli_strict_mode_loads_detached_trusted_provenance(
+    tmp_path: Path,
+) -> None:
+    payload = _bound_payload(_payload())
+    dag = _dag_payload(payload)
+    jobs_path = tmp_path / "jobs.json"
+    dag_path = tmp_path / "dag.json"
+    trusted_path = tmp_path / "trusted-provenance.json"
+    output = tmp_path / "critical-path.json"
+    jobs_path.write_text(json.dumps(payload), encoding="utf-8")
+    dag_path.write_text(json.dumps(dag), encoding="utf-8")
+    trusted_path.write_text(json.dumps(_trusted_provenance(dag)), encoding="utf-8")
+
+    assert (
+        main(
+            [
+                "--repository",
+                "egorribun/university_ecosystem",
+                "--run-id",
+                "33349026009",
+                "--concurrency-cap",
+                "20",
+                "--jobs-json",
+                str(jobs_path),
+                "--dag-json",
+                str(dag_path),
+                "--trusted-provenance-json",
+                str(trusted_path),
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["provenance"]["authentication"] == ("same-run-artifact-selector")
+    assert report["provenance"]["artifact_id"] == 1
+
+
+@pytest.mark.parametrize("repository", ["owner/repo/extra", "owner/repo/../../secret"])
+def test_cli_rejects_invalid_repository_before_fetch(
+    monkeypatch: pytest.MonkeyPatch, repository: str, tmp_path: Path
+) -> None:
+    def fail_fetch(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("gh must not be invoked for an invalid repository")
+
+    monkeypatch.setattr(analyzer, "_fetch_jobs", fail_fetch)
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "--repository",
+                repository,
+                "--run-id",
+                "1",
+                "--concurrency-cap",
+                "20",
+                "--output",
+                str(tmp_path / "report.json"),
+                "--diagnostic-lower-bound",
+            ]
+        )
+
+
+def test_fetch_jobs_bounds_and_sanitizes_helper_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(*_args: object, **_kwargs: object) -> object:
+        stderr = _kwargs["stderr"]
+        assert hasattr(stderr, "write")
+        stderr.write(b"secret\x1b[31m" + (b"x" * 5000))
+        return analyzer.subprocess.CompletedProcess(
+            args=[],
+            returncode=1,
+            stdout=None,
+            stderr=None,
+        )
+
+    monkeypatch.setattr(analyzer.subprocess, "run", fake_run)
+    with pytest.raises(AnalysisError) as error:
+        analyzer._fetch_jobs("owner/repo", 1)
+    message = str(error.value)
+    assert "secret" in message
+    assert "\x1b" not in message
+    assert len(message) <= analyzer.MAX_ERROR_CHARS
+
+
+def test_fetch_jobs_times_out_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def timeout_run(*_args: object, **_kwargs: object) -> object:
+        raise analyzer.subprocess.TimeoutExpired(
+            cmd="gh", timeout=analyzer.MAX_FETCH_SECONDS
+        )
+
+    monkeypatch.setattr(analyzer.subprocess, "run", timeout_run)
+    with pytest.raises(AnalysisError, match="timed out"):
+        analyzer._fetch_jobs("owner/repo", 1)
+
+
+def test_parser_rejects_non_boolean_core_failure() -> None:
+    with pytest.raises(AnalysisError, match="core_failure must be boolean"):
+        parse_jobs(
+            {
+                "jobs": [
+                    {
+                        "id": 1,
+                        "name": "typed-core-failure",
+                        "core_failure": "false",
+                    }
+                ]
+            }
+        )
+
+
+def test_parser_rejects_oversized_job_and_step_collections() -> None:
+    with pytest.raises(AnalysisError, match="maximum of"):
+        parse_jobs(
+            {
+                "jobs": [
+                    {
+                        "id": 1,
+                        "name": "too-many-steps",
+                        "steps": [
+                            {"name": "step"}
+                            for _ in range(analyzer.MAX_STEPS_PER_JOB + 1)
+                        ],
+                    }
+                ]
+            }
+        )
+    with pytest.raises(AnalysisError, match="maximum of"):
+        parse_jobs(
+            {
+                "jobs": [
+                    {
+                        "id": index + 1,
+                        "name": f"job-{index}",
+                    }
+                    for index in range(analyzer.MAX_JOBS + 1)
+                ]
+            }
         )

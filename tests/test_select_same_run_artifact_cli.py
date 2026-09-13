@@ -163,6 +163,7 @@ def test_selects_newest_valid_earlier_artifact_and_writes_all_outputs(
         artifact_id=20,
         artifact_name=f"{PREFIX}{RUN_ID}-2-{SUFFIX}",
         producer_attempt=2,
+        artifact_digest="sha256:" + "b" * 64,
     )
     assert github_output.read_text(encoding="utf-8") == (
         "prior=true\n"
@@ -170,6 +171,7 @@ def test_selects_newest_valid_earlier_artifact_and_writes_all_outputs(
         "artifact_id=20\n"
         f"artifact_name={PREFIX}{RUN_ID}-2-{SUFFIX}\n"
         "producer_attempt=2\n"
+        "artifact_digest=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n"
     )
     assert [request.path for request in network.requests] == [
         f"/repos/{REPOSITORY}/actions/runs/{RUN_ID}",
@@ -321,6 +323,7 @@ def test_explicit_attempt_layout_selects_lighthouse_style_same_run_evidence(
         artifact_id=24,
         artifact_name="lighthouse-reports-attempt-2",
         producer_attempt=2,
+        artifact_digest="sha256:" + "b" * 64,
     )
 
 

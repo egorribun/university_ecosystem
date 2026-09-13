@@ -100,6 +100,7 @@ class SelectionResult:
     artifact_id: int | None
     artifact_name: str | None
     producer_attempt: int | None
+    artifact_digest: str | None = None
 
 
 RequestTransport = Callable[[Request, int], HttpResponse]
@@ -319,7 +320,7 @@ def _validate_current_run(
 
 def _candidate_from_artifact(
     artifact: Mapping[str, object], arguments: SelectionArguments
-) -> tuple[int, str, int] | None:
+) -> tuple[int, str, int, str] | None:
     name = _require_text(_required(artifact, "name"), "artifact.name")
     if not name.startswith(arguments.artifact_prefix):
         return None
@@ -347,12 +348,8 @@ def _candidate_from_artifact(
     expired = _required(artifact, "expired")
     if not isinstance(expired, bool) or expired:
         raise SameRunArtifactError("artifact is expired or malformed")
-    if (
-        _DIGEST.fullmatch(
-            _require_text(_required(artifact, "digest"), "artifact.digest")
-        )
-        is None
-    ):
+    digest = _require_text(_required(artifact, "digest"), "artifact.digest")
+    if _DIGEST.fullmatch(digest) is None:
         raise SameRunArtifactError("artifact digest is invalid")
     workflow_run = _required(artifact, "workflow_run")
     if not isinstance(workflow_run, Mapping):
@@ -377,28 +374,30 @@ def _candidate_from_artifact(
         raise SameRunArtifactError("artifact producer attempt is from the future")
     if arguments.attempt_policy == "earlier" and attempt == consumer_attempt:
         return None
-    return artifact_id, name, attempt
+    return artifact_id, name, attempt, digest
 
 
 def _select_candidate(
     artifacts: Sequence[Mapping[str, object]], arguments: SelectionArguments
 ) -> SelectionResult | None:
-    candidates: dict[int, tuple[int, str]] = {}
+    candidates: dict[int, tuple[int, str, str]] = {}
     artifact_ids: set[int] = set()
     for artifact in artifacts:
         candidate = _candidate_from_artifact(artifact, arguments)
         if candidate is None:
             continue
-        artifact_id, artifact_name, producer_attempt = candidate
+        artifact_id, artifact_name, producer_attempt, artifact_digest = candidate
         if producer_attempt in candidates or artifact_id in artifact_ids:
             raise SameRunArtifactError("artifact candidates are duplicated")
-        candidates[producer_attempt] = (artifact_id, artifact_name)
+        candidates[producer_attempt] = (artifact_id, artifact_name, artifact_digest)
         artifact_ids.add(artifact_id)
     if not candidates:
         return None
     producer_attempt = max(candidates)
-    artifact_id, artifact_name = candidates[producer_attempt]
-    return SelectionResult(True, artifact_id, artifact_name, producer_attempt)
+    artifact_id, artifact_name, artifact_digest = candidates[producer_attempt]
+    return SelectionResult(
+        True, artifact_id, artifact_name, producer_attempt, artifact_digest
+    )
 
 
 def _list_artifact_snapshot(
@@ -559,7 +558,10 @@ def _append_output(path: Path, result: SelectionResult) -> None:
         f"artifact_id={result.artifact_id if result.artifact_id is not None else ''}\n"
         f"artifact_name={result.artifact_name or ''}\n"
         f"producer_attempt={result.producer_attempt if result.producer_attempt is not None else ''}\n"
-    ).encode()
+    )
+    if result.artifact_digest is not None:
+        values += f"artifact_digest={result.artifact_digest}\n"
+    values_bytes = values.encode()
     try:
         descriptor, temporary_name = tempfile.mkstemp(
             prefix=".same-run-output-", dir=parent
@@ -571,7 +573,7 @@ def _append_output(path: Path, result: SelectionResult) -> None:
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "wb") as stream:
-            stream.write(previous + values)
+            stream.write(previous + values_bytes)
             stream.flush()
             os.fsync(stream.fileno())
         if not _same_file_identity(after, _safe_output_file(path)):
