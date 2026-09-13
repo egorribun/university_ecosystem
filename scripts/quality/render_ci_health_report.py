@@ -153,6 +153,13 @@ def _validate_report_hash(report: Mapping[str, object]) -> str | None:
     return value.lower()
 
 
+def _require_report_hash(report: object) -> None:
+    root = _mapping(report, "report")
+    if root.get("report_sha256") is None:
+        raise HealthReportError("report_sha256 is required for CLI rendering")
+    _validate_report_hash(root)
+
+
 def _validate_timing(summary: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
     raw_timing = _mapping(summary.get("timing_seconds"), "summary.timing_seconds")
     timing: dict[str, Mapping[str, object]] = {}
@@ -374,6 +381,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = _load_json(args.input)
+        _require_report_hash(report)
         rendered = render_report(report, max_skipped=args.max_skipped)
         _write_atomic(args.output, rendered)
     except (HealthReportError, OSError, UnicodeError) as error:

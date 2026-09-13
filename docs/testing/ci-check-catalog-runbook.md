@@ -89,8 +89,11 @@ The required `ci-success` finalizer publishes one run-bound pair named
 `ci-health-${{ github.run_id }}-${{ github.run_attempt }}`.  The pair contains
 `artifacts/quality/ci-health-report.json` (the full analyzer ledger) and
 `artifacts/quality/ci-health-report.md` (a compact step-summary projection).
-The renderer validates the analyzer schema, report digest, outcome counts and
-queue/setup/test/artifact p50/p95 values before writing Markdown.  Job names
+The CLI renderer requires and validates the analyzer's `report_sha256` digest,
+then validates the schema, outcome counts and queue/setup/test/artifact p50/p95
+values before writing Markdown.  A library caller may render an in-memory
+report without a digest for focused tests, but no persisted CI artifact may
+cross the CLI boundary unsigned.  Job names
 are HTML-escaped and bounded; pending or unknown outcomes are called out and
 never presented as a green release signal.
 

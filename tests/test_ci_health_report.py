@@ -92,6 +92,16 @@ def test_cli_writes_report_and_rejects_tampered_digest(tmp_path: Path) -> None:
     assert main(["--input", str(source), "--output", str(destination)]) == 1
 
 
+def test_cli_rejects_analyzer_report_without_digest(tmp_path: Path) -> None:
+    report = _diagnostic_report()
+    source = tmp_path / "health.json"
+    destination = tmp_path / "health.md"
+    source.write_text(json.dumps(report), encoding="utf-8")
+
+    assert main(["--input", str(source), "--output", str(destination)]) == 1
+    assert not destination.exists()
+
+
 @pytest.mark.parametrize(
     "mutator",
     [
