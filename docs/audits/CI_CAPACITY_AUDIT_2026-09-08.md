@@ -128,3 +128,36 @@ After the frontend coverage and mutation defects are green on one source SHA:
 Until that evidence exists, the current 6/10 mutation caps and coverage phase
 barrier are the measured safe configuration. This note intentionally records
 an `OPEN-PERF/EVIDENCE-BLOCKED` condition rather than claiming a speedup.
+
+## Addendum: current active matrix (2026-09-13)
+
+The next source SHA, `d8518043898cc6a39c295a37dadca230e06baf57`, is running as
+workflow `CI - Matrix Expansion` run `34743194178` (attempt 1). This is a live
+diagnostic observation, not release evidence. The Jobs API currently reports
+310 jobs: 215 completed, 16 in progress, and 69 queued. The active mutation
+fan-out is 10 Python execution groups plus 6 frontend Stryker shards, which
+matches the documented 16-job mutation budget and leaves four hosted slots for
+other required work.
+
+The only completed failures in this run are the two mutmut groups below:
+
+- group 29: `app.cli.migrate_passwords.x__report_bcrypt_users__mutmut_15`,
+  which removes the deterministic `order_by(User.id)` clause;
+- group 41: `app.workers.cdc_outbox.x|CdcOutboxWorker|dispatch_insert_record__mutmut_25`,
+  which changes the warning template and is observable through the structured
+  logging contract.
+
+Exact-evidence artifacts show 8 killed and 1 survived mutant in each group.
+Both survivors are stale-test-snapshot failures: the local RED-to-GREEN fixes
+now assert the deterministic query ordering and the exact warning template and
+arguments in `tests/test_cli_migrate_passwords_closure.py` and
+`tests/test_cdc_outbox_closure.py`. The current run cannot see those
+uncommitted assertions, so it must not be re-used as a mutation or release
+result. After the run reaches a terminal state, commit the focused test fixes,
+run the two affected shards on the resulting SHA, and only then start the
+three-green-run capacity measurement cycle above.
+
+No workflow caps, inventory, exclusions, retry policy, or quality thresholds
+were changed by this addendum. The `OPEN-PERF/EVIDENCE-BLOCKED` status remains
+in force until three comparable green runs provide queue, dependency, setup,
+test, artifact, CPU/RSS, reliability, and billed-minute evidence.

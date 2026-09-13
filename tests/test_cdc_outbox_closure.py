@@ -283,7 +283,10 @@ async def test_missing_event_type_log_does_not_include_raw_cdc_payload() -> None
     warning.assert_called_once()
     template, *arguments = warning.call_args.args
     rendered = " ".join(str(value) for value in arguments)
-    assert "missing event_type" in template
+    assert template == (
+        "CDC record missing event_type (relation=%s, lsn=%s, fields=%d)"
+    )
+    assert arguments == ["stored_events", 42, 3]
     assert "alice@example.edu" not in rendered
     assert "+7 999 123-45-67" not in rendered
     assert "secret-token" not in rendered

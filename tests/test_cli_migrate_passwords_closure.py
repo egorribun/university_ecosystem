@@ -204,6 +204,7 @@ async def test_report_bcrypt_users_projects_ids_and_applies_bcrypt_predicate() -
     assert "users.id" in compiled
     assert "users.hashed_password" in compiled
     assert "users.is_active is true" in compiled
+    assert "order by users.id" in compiled
 
 
 def test_report_is_count_only_without_explicit_id_opt_in():
