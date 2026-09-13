@@ -25,21 +25,22 @@ pretend that source metadata alone proves the DDL of every deployed database.
 
 ## Inventory
 
-The current SQLAlchemy metadata contains 45 tables and 134 effective
-defaulted columns (computed expressions excluded):
+The current SQLAlchemy metadata (measured 2026-09-13) contains 45 tables and
+135 effective defaulted columns (computed expressions and `default=None`
+excluded):
 
-- 24 declarations have both an ORM and server default;
+- 26 declarations have both an ORM and server default;
 - 91 effective declarations are Python-only;
-- 19 declarations are server-only.
+- 18 declarations are server-only.
 
-The source-level AST inventory is 108 `mapped_column` calls with a default or
-server default: 24 both, 65 Python-only and 19 server-only. The difference
-between effective metadata and source counts is explained by 37 UUIDv7
-primary-key defaults inherited from the mixin and ten `default=None`
-declarations. Of the explicit
-one-sided declarations, 54 explicit Python-only defaults and 19 server-only defaults
-are the measured migration candidates. These figures supersede the external
-audit's stale 92-column number and must be regenerated after model changes.
+The source-level AST inventory contains 108 `mapped_column` calls with a
+`default` or `server_default` keyword: 26 both, 65 Python-only and 17
+server-only. The effective/source difference includes UUIDv7 primary-key
+defaults inherited from the mixin and explicit `default=None` declarations;
+the candidate list must therefore be generated from both metadata and the
+PostgreSQL catalog rather than inferred by subtracting totals. These figures
+supersede the external audit's stale 92-column number and must be regenerated
+after model changes.
 
 ## Decision
 
@@ -77,7 +78,7 @@ downgrade, ORM and direct-write evidence.
 The following values remain intentionally application-only unless a separate
 security/schema decision changes their contract:
 
-- 37 inherited UUIDv7 primary-key defaults: a database fallback could destroy
+- inherited UUIDv7 primary-key defaults: a database fallback could destroy
   the time-ordered UUIDv7 invariant;
 - `active_sessions.signing_key`: a PostgreSQL default must never replace the
   CSPRNG secret generator;

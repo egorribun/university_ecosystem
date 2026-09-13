@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,9 +24,13 @@ def test_dual_defaults_inventory_and_exceptions_are_recorded() -> None:
         "## exceptions",
     ):
         assert heading in adr
-    assert "54 explicit python-only" in adr
-    assert "19 server-only" in adr
-    assert "37 uuidv7" in adr
+    assert "26 declarations have both" in adr
+    assert "91 effective declarations are python-only" in adr
+    assert "18 declarations are server-only" in adr
+    assert "108 `mapped_column` calls" in adr
+    assert re.search(r"26 both,\s+65 python-only and 17\s+server-only", adr)
+    assert "uuidv7 primary-key" in adr
+    assert "54 explicit python-only" not in adr
     assert "postgresql catalog preflight" in adr
     assert "check ... not valid" in adr
     index = index_path.read_text(encoding="utf-8")
