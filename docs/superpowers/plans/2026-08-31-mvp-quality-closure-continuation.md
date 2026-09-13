@@ -3777,3 +3777,30 @@ measured 45-table inventory in commit `c0f3db144`
 checkpoint commits do not change that inventory or runtime behavior; derive
 the exact push SHA and ahead count from `git rev-parse`/`git status` immediately
 before the non-force push. No user-owned untracked paths were changed.
+
+### 49.6 CI acceleration checklist audit (2026-09-13)
+
+The supplemental acceleration checklist was audited against the current
+workflow, scripts and live diagnostic data. It is not a release certificate;
+the old run is bound to an obsolete SHA and remains non-terminal.
+
+| Checklist item | Disposition | Evidence / remaining boundary |
+|---|---|---|
+| Machine timing ledger (queue/setup/test/upload, concurrency, RSS/CPU, retries/timeouts) | `PARTIAL` | `scripts/quality/analyze_ci_critical_path.py` emits per-job queue/setup/test/artifact timing and peak utilization. It is currently an on-demand diagnostic and does not yet collect runner RSS/CPU, retry classification or a mandatory current-run artifact. |
+| Duration-aware Stryker/mutmut sharding | `PARTIAL` | `mutmut_shard_matrix.py` and the stats-derived budget use durations; Stryker accepts a verified same-run historical-cost candidate. A current-SHA timeout (shard 24) and three comparable green runs are still required before tuning. |
+| Immutable dependency/artifact caches | `PARTIAL` | npm/uv/Cargo/pre-commit/Stryker caches and SHA/run-bound artifact selectors are present. Repeated shard setup remains, and Go image builds have no scoped BuildKit module/build-cache mounts; benchmark before changing. |
+| Required PR gates vs advisory/nightly jobs | `PARTIAL` | `quality/release-required-checks.json`, advisory flags and nightly/manual workflows exist. Actual branch-protection contexts and duplicate check topology still need a live ruleset inventory; path filters cannot be changed blindly. |
+| Transient-only automatic retry | `PARTIAL` | Targeted retries exist for known network/tool failures (for example WASM, Trivy and OSV). There is no repository-wide classifier that preserves the first failure and all artifacts for every retryable job. |
+| Unified check/artifact/owner/duration/runbook catalog | `PARTIAL` | CODEOWNERS, artifact validators and focused runbooks exist. A machine-validated catalog covering every workflow/check and expected duration is not yet present. |
+| Compact CI health report (p50/p95/queue/skips) | `OPEN` | Historical snapshots and the analyzer provide point-in-time queue/utilization data, but no continuously published current-run p50/p95 health artifact exists. |
+| Local parallel fast-preflight | `PARTIAL` | Hooks, `verify_harness.py`, typecheck and lint are available and were run in parallel during this audit. A single supported command that fans out focused checks and emits one aggregate report is still absent. |
+| Heartbeat diagnostics for long jobs | `PARTIAL` | Mutmut has a deadline-aware watchdog and fail-closed evidence finalization. A generic heartbeat/diagnostic monitor for all genuinely stalled jobs is not implemented. |
+
+The analyzer applied to live run `34743194178` at this checkpoint reported
+310 jobs, a 19-job observed peak under the diagnostic cap of 20 and 0.704366
+average slot utilization; the data also exposed repeated checkout/setup and
+artifact steps. This is useful for choosing work, not evidence to relax caps.
+The safe order remains: wait for the old run to terminate, push one coherent
+current-SHA change set, collect three comparable green runs, then run a
+bounded Stryker 7→8 or lane-split experiment with automatic rollback on queue,
+timeout, resource, reliability or provenance regression.
