@@ -134,7 +134,8 @@ an `OPEN-PERF/EVIDENCE-BLOCKED` condition rather than claiming a speedup.
 The next source SHA, `d8518043898cc6a39c295a37dadca230e06baf57`, is running as
 workflow `CI - Matrix Expansion` run `34743194178` (attempt 1). This is a live
 diagnostic observation, not release evidence. The Jobs API currently reports
-310 jobs: 215 completed, 16 in progress, and 69 queued. The active mutation
+310 jobs: 219 completed, 16 in progress, and 75 queued, with one completed
+cancellation. The active mutation
 fan-out is 10 Python execution groups plus 6 frontend Stryker shards, which
 matches the documented 16-job mutation budget and leaves four hosted slots for
 other required work.
@@ -161,3 +162,16 @@ No workflow caps, inventory, exclusions, retry policy, or quality thresholds
 were changed by this addendum. The `OPEN-PERF/EVIDENCE-BLOCKED` status remains
 in force until three comparable green runs provide queue, dependency, setup,
 test, artifact, CPU/RSS, reliability, and billed-minute evidence.
+
+The same run also provides a concrete timeout signal: job `103690583926`
+(`Frontend mutation shard 24/64`) was cancelled at the 120-minute job timeout
+while its `Run fresh Stryker shard` step had consumed approximately 119.5
+minutes. The follow-up evidence upload failed because the report did not
+exist, and logs are unavailable until the workflow is terminal. This is a
+real cancellation, not a reason to raise the timeout or relax the mutation
+gate. The preflight plan assigned 801 mutants to shard 24, while shard 19
+completed 247 mutants in approximately 91.6 minutes; the comparison shows
+that mutant count alone is not a safe duration predictor. The next tuning
+experiment is therefore bounded, cost-aware first-attempt rebalancing that
+preserves the 64-shard denominator, hotspot isolation, full inventory, and
+fail-closed evidence checks.
