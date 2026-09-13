@@ -4238,4 +4238,41 @@ remaining release-blocking evidence is unchanged: fresh current-SHA CI,
 PostgreSQL catalog/phased migration and full Dishka migration evidence,
 terminal mutation/coverage artifacts, immutable image producer and digest
 Docker smoke, Kubernetes/TLS/ExternalSecrets/observability staging, real
-browser/device/CWV checks, chaos/rollback, and the final SHA-bound audit.
+ browser/device/CWV checks, chaos/rollback, and the final SHA-bound audit.
+
+## 57. Current-head security scanner provenance hardening (2026-09-13)
+
+The security workflow's Trivy bootstrap was hardened in commit
+`03ccbb67c`. The previous implementation enabled a live third-party apt
+repository and imported its signing key at job runtime, which made the
+security gate depend on mutable repository metadata. The workflow now
+downloads the official Trivy `0.73.0` Linux archive over HTTPS/TLS 1.2,
+verifies the pinned SHA-256 digest before extraction, installs only the
+verified binary, and keeps the existing blocking filesystem scan and SARIF
+upload semantics. The temporary directory is removed on exit and the
+version/digest/download/verification order is protected by a workflow
+contract test; no action inventory or mutation denominator changed.
+
+Verification for this checkpoint:
+
+```text
+uv run pytest -q -p no:cacheprovider \
+  tests/test_security_hardening_workflow_contract.py
+7 passed
+uv run pytest -q -p no:cacheprovider \
+  tests/test_security_hardening_workflow_contract.py \
+  tests/test_workflow_fail_closed_contracts.py \
+  tests/test_quality_workflow_contract.py
+97 passed
+uv run python scripts/quality/validate_ci_check_catalog.py
+CI check catalog: OK (55 workflows, 180 jobs)
+actionlint v1.7.12: exit 0
+git diff --check: exit 0
+```
+
+The current branch is now 23 commits ahead of `origin/egorribun`; only the
+four documented user-owned untracked paths remain. This is a local hardening
+checkpoint, not release evidence: the old remote run remains tied to
+`d9a964be0896cb90377de51ba37aaa27333f91d9` and is still non-terminal, so the
+branch must be pushed only after its final failure inventory and then
+validated by a fresh current-SHA matrix.
