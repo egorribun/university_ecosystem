@@ -14,6 +14,23 @@ The active reference set is deliberately limited to the three most recent
 reports. New audit reports must move the oldest active report into `archive/`
 in the same change.
 
+## Supplemental historical evidence
+
+- [CI capacity and mutation bottleneck audit](CI_CAPACITY_AUDIT_2026-09-08.md)
+  — historical queue/capacity observations and the evidence required before a
+  future concurrency change. This is diagnostic evidence only, not a current
+  quality certificate or a reason to relax any gate.
+- [Migration and dead-letter UUID audit](AUDIT_MIGRATION_148642_UUID_2026-09-08.md)
+  — bounded historical schema-contract audit.
+- [Backend defaults and CDC worker audit](AUDIT_BE_DEFAULTS_CDC_2026-09-08.md)
+  — bounded historical backend audit.
+- [uv `exclude-newer` audit](AUDIT_UV_EXCLUDE_NEWER_2026-09-08.md)
+  — bounded toolchain-configuration audit.
+
+Supplemental reports preserve reproducible historical context. They do not
+supersede the current quality contract, a fresh same-SHA CI result, or a
+certified release snapshot.
+
 ## Historical reports
 
 Completed reports are retained in [`archive/`](archive/) as immutable evidence.

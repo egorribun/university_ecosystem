@@ -17,13 +17,13 @@ Welcome to the **University Ecosystem Platform** contribution guide. Please foll
 
 ## ⚛️ Frontend Workflow (`frontend/`)
 
-- **Dependencies**: Frontend dependencies are managed via `npm`. Run `npm install` from `frontend/` after checking out a branch.
-- **Type Checking**: Run `npx tsc --noEmit` before opening a PR to verify TypeScript type safety.
+- **Dependencies**: Frontend dependencies are managed via the committed lockfile. Run `npm ci --prefix frontend` after checking out a branch; do not use `npm install` in CI or as a substitute for the lockfile-resolved setup.
+- **Type Checking**: Run `npm run typecheck --prefix frontend` before opening a PR to verify TypeScript type safety.
 - **Linting & Formatting**:
-  - Run `npm run lint` (ESLint with zero-warning threshold).
-  - Run `npm run format:check` (Prettier).
+  - Run `npm run lint --prefix frontend` (ESLint with zero-warning threshold).
+  - Run `npm run format:check --prefix frontend` (Prettier).
 - **Unit & Component Testing**:
-  - Run `npm run test` (Vitest suite covering pages, hooks, components, and i18n translation parity).
+  - Run `npm run test --prefix frontend` (Vitest suite covering pages, hooks, components, and i18n translation parity).
   - Translation tests in `src/tests/pageTranslations.test.tsx` verify localized copy across `en` and `ru`.
 - **Validation**: Frontend schemas use **Valibot** (Zod has been completely removed).
 - **Bundle Budget**: Frontend main JS chunk must stay under **500 KB** (enforced in CI via bundle analysis).
@@ -33,11 +33,11 @@ Welcome to the **University Ecosystem Platform** contribution guide. Please foll
 ## 🐍 Backend Workflow (`app/`)
 
 - **Runtime & Toolchain**: Python **3.14** managed via `uv`.
-- **Dependency Sync**: Run `uv sync` to set up environment dependencies.
+- **Dependency Sync**: Run `uv sync --frozen` to reproduce the lockfile-resolved environment.
 - **Linting & Formatting**:
-  - `python -m ruff check app/`
-  - `python -m ruff format app/`
-  - `mypy app/` (Python 3.14 target).
+  - `uv run ruff check app/`
+  - `uv run ruff format app/`
+  - `uv run mypy --config-file pyproject.toml app/` (Python 3.14 target).
 - **Test Coverage**:
   - CI enforces the per-component thresholds from the
     [quality contract](../quality/quality-contract.json); do not duplicate or
@@ -83,4 +83,4 @@ Welcome to the **University Ecosystem Platform** contribution guide. Please foll
 Before pushing commits to remote:
 1. Run pre-commit hooks: `pre-commit run --all-files`
 2. Ensure `.secrets.baseline` is re-staged if modified.
-3. Verify all automated CI status checks pass (`pytest`, `vitest`, `tsc`, `go test`, `cargo test`).
+3. Verify all automated CI status checks pass (`uv run pytest`, `npm run test --prefix frontend`, `npm run typecheck --prefix frontend`, `go test`, `cargo test`).

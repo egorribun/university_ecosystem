@@ -143,7 +143,7 @@ The only completed failures in this run are the two mutmut groups below:
 
 - group 29: `app.cli.migrate_passwords.x__report_bcrypt_users__mutmut_15`,
   which removes the deterministic `order_by(User.id)` clause;
-- group 41: `app.workers.cdc_outbox.x|CdcOutboxWorker|dispatch_insert_record__mutmut_25`,
+- group 41: `app.workers.cdc_outbox.xǁCdcOutboxWorkerǁdispatch_insert_record__mutmut_25`,
   which changes the warning template and is observable through the structured
   logging contract.
 
