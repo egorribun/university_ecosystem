@@ -520,9 +520,16 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
         for step in inventory_job.get("steps", [])
         if isinstance(step, dict)
     )
-    assert (
-        "python scripts/quality/validate_ci_check_catalog.py" in inventory_commands
-    ), "quality-inventory-check must validate the machine-readable CI check catalog"
+    for command in (
+        "uv run python scripts/quality/generate_test_inventory.py",
+        "uv run python scripts/quality/validate_ci_check_catalog.py",
+        "uv run python scripts/quality/check_orphans_and_anti_patterns.py",
+        "uv run python verify_harness.py --repo-only",
+    ):
+        assert command in inventory_commands, (
+            "quality-inventory-check must run every Python helper through the "
+            f"locked uv environment: missing {command!r}"
+        )
 
     # Assert in needs of ci-success
     assert "quality-inventory-check" in needs, (
@@ -904,7 +911,7 @@ def test_reusable_trivy_materializes_and_validates_each_helm_chart() -> None:
 
 
 def test_reusable_trivy_install_isolated_from_hosted_apt_mirror_drift() -> None:
-    """An unrelated hosted apt source must not prevent the security gate."""
+    """Trivy must be checksum-bound and independent of hosted apt mirrors."""
 
     security_workflow = yaml.safe_load(
         SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -912,15 +919,43 @@ def test_reusable_trivy_install_isolated_from_hosted_apt_mirror_drift() -> None:
     install = next(
         step
         for step in security_workflow["jobs"]["docker-security"]["steps"]
-        if step.get("name") == "Install Trivy (via apt repo)"
+        if step.get("name") == "Install checksum-pinned Trivy"
     )
     script = str(install["run"])
 
-    assert "google-chrome.list" in script
-    assert "google-chrome.sources" in script
-    assert "apt-get update -qq -o Acquire::Retries=3" in script
-    assert script.count("apt_update") >= 2
-    assert "return 1" in script
+    assert (
+        install["env"]
+        == {
+            "TRIVY_VERSION": "0.73.0",
+            "TRIVY_ARCHIVE_SHA256": (
+                "2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b"  # pragma: allowlist secret -- public Trivy release checksum
+            ),
+        }
+    )
+    assert "--proto '=https'" in script
+    assert "--tlsv1.2" in script
+    assert (
+        "https://github.com/aquasecurity/trivy/releases/download/"
+        "v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+    ) in script
+    assert "sha256sum --check --strict" in script
+    assert "apt-get" not in script
+    assert "aquasecurity.github.io/trivy-repo" not in script
+    assert "wget" not in script
+
+    lines = [line.strip() for line in script.splitlines()]
+    checksum_index = next(
+        index
+        for index, line in enumerate(lines)
+        if "sha256sum --check --strict" in line
+    )
+    extract_index = next(
+        index for index, line in enumerate(lines) if line.startswith("tar --extract")
+    )
+    install_index = next(
+        index for index, line in enumerate(lines) if line.startswith("sudo install")
+    )
+    assert checksum_index < extract_index < install_index
 
 
 def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:

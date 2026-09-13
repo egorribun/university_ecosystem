@@ -20,6 +20,14 @@ PRE_COMMIT_CONFIG = ROOT / ".pre-commit-config.yaml"
 PYPROJECT = ROOT / "pyproject.toml"
 UV_LOCK = ROOT / "uv.lock"
 LOCKED_PRE_COMMIT_VERSION = "4.6.0"
+HELM_3_17_0_LINUX_AMD64_SHA256 = "fb5d12662fde6eeff36ac4ccacbf3abed96b0ee2de07afdde4edb14e613aee24"  # pragma: allowlist secret -- public Helm release checksum
+DEPLOY_SMOKE_REQUIREMENTS = {
+    "requests==2.33.1": "4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a",  # pragma: allowlist secret -- public PyPI wheel checksum
+    "certifi==2026.4.22": "3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a",  # pragma: allowlist secret -- public PyPI wheel checksum
+    "charset-normalizer==3.4.7": "bd6c2a1c7573c64738d716488d2cdd3c00e340e4835707d8fdb8dc1a66ef164e",  # pragma: allowlist secret -- public PyPI wheel checksum
+    "idna==3.18": "7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2",  # pragma: allowlist secret -- public PyPI wheel checksum
+    "urllib3==2.7.0": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",  # pragma: allowlist secret -- public PyPI wheel checksum
+}
 
 EXPECTED_EXTERNAL_IMAGES = {
     "pgvector/pgvector:pg17": (
@@ -1238,6 +1246,108 @@ def test_deployment_workflows_cannot_report_mock_success() -> None:
     dora = _step(deploy, "Record DORA Lead Time for Changes")
     assert steps.index(smoke) < steps.index(kyverno) < steps.index(rollback)
     assert steps.index(rollback) < steps.index(dora)
+
+
+def test_deploy_bootstraps_checksum_bound_tools_before_oidc() -> None:
+    """Deployment tooling must be immutable before cloud credentials exist."""
+
+    workflow = _workflow(WORKFLOWS / "deploy.yml")
+    deploy = workflow["jobs"]["deploy"]
+    steps = deploy["steps"]
+    names = [step.get("name") for step in steps]
+
+    assert not any(
+        str(step.get("uses", "")).startswith(
+            ("azure/setup-kubectl@", "azure/setup-helm@")
+        )
+        for step in steps
+    )
+    tooling = _step(deploy, "Install checksum-pinned deployment tools")
+    oidc = _step(deploy, "Configure AWS credentials (OIDC)")
+    assert names.index(tooling["name"]) < names.index(oidc["name"])
+    assert tooling["env"] == {
+        "KUBECTL_VERSION": "${{ vars.KUBECTL_VERSION }}",
+        "KUBECTL_SHA256": "${{ vars.KUBECTL_SHA256 }}",
+        "HELM_VERSION": "v3.17.0",
+        "HELM_ARCHIVE_SHA256": HELM_3_17_0_LINUX_AMD64_SHA256,
+    }
+
+    run = str(tooling["run"])
+    assert "set -euo pipefail" in run
+    assert '[[ "$KUBECTL_VERSION" =~ ^v1\\.[0-9]+\\.[0-9]+$ ]]' in run
+    assert '[[ "$KUBECTL_SHA256" =~ ^[0-9a-f]{64}$ ]]' in run
+    assert '[[ "$HELM_VERSION" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]' in run
+    assert '[[ "$HELM_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]' in run
+    assert "mktemp -d" in run
+    assert "--proto '=https'" in run
+    assert "--tlsv1.2" in run
+    assert "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" in run
+    assert "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" in run
+    assert run.count("sha256sum --check --strict") == 2
+    assert "sudo install --mode 0755" in run
+    assert "kubectl version --client --output=json" in run
+    assert "helm version --template '{{.Version}}'" in run
+
+    lines = [line.strip() for line in run.splitlines()]
+    verify_indices = [
+        index
+        for index, line in enumerate(lines)
+        if "sha256sum --check --strict" in line
+    ]
+    install_indices = [
+        index for index, line in enumerate(lines) if line.startswith("sudo install")
+    ]
+    assert len(verify_indices) == 2
+    assert len(install_indices) == 2
+    assert max(verify_indices) < min(install_indices)
+
+    contract = _step(deploy, "Validate deployment contract")
+    assert contract["env"]["KUBECTL_VERSION"] == "${{ vars.KUBECTL_VERSION }}"
+    assert contract["env"]["KUBECTL_SHA256"] == "${{ vars.KUBECTL_SHA256 }}"
+    assert "KUBECTL_VERSION" in contract["run"]
+    assert "KUBECTL_SHA256" in contract["run"]
+
+
+def test_deploy_smoke_dependencies_are_hash_locked_before_oidc() -> None:
+    """Smoke-test dependencies cannot execute mutable index artifacts."""
+
+    deploy = _workflow(WORKFLOWS / "deploy.yml")["jobs"]["deploy"]
+    steps = deploy["steps"]
+    names = [step.get("name") for step in steps]
+    install = _step(deploy, "Install hash-locked smoke-test dependencies")
+    setup_python = _step(deploy, "Setup Python")
+    oidc = _step(deploy, "Configure AWS credentials (OIDC)")
+    assert names.index(setup_python["name"]) < names.index(oidc["name"])
+    assert names.index(install["name"]) < names.index(oidc["name"])
+
+    run = str(install["run"])
+    assert "python -m pip --isolated install" in run
+    assert "--index-url https://pypi.org/simple" in run
+    assert "--require-hashes" in run
+    assert "--only-binary=:all:" in run
+    assert "--no-deps" in run
+    assert 'pip install "requests==' not in run
+    for requirement, digest in DEPLOY_SMOKE_REQUIREMENTS.items():
+        assert f"{requirement} --hash=sha256:{digest}" in run
+    assert 'requests.__version__ == "2.33.1"' in run
+
+
+def test_deploy_rejects_unsupported_kubectl_server_version_skew() -> None:
+    """The environment-selected client must be compatible with the live API server."""
+
+    deploy = _workflow(WORKFLOWS / "deploy.yml")["jobs"]["deploy"]
+    cluster = _step(deploy, "Configure and verify cluster access")
+    assert cluster["env"]["KUBECTL_VERSION"] == "${{ vars.KUBECTL_VERSION }}"
+
+    run = str(cluster["run"])
+    assert "kubectl version --output=json" in run
+    assert ".clientVersion.major" in run
+    assert ".clientVersion.minor" in run
+    assert ".serverVersion.major" in run
+    assert ".serverVersion.minor" in run
+    assert "version_skew=$((client_minor - server_minor))" in run
+    assert "version_skew < -1 || version_skew > 1" in run
+    assert "outside the supported +/-1 minor version skew" in run
 
 
 def test_sbom_osv_reporting_does_not_hide_scanner_failures() -> None:

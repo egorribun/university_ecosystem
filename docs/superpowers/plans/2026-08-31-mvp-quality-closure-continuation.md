@@ -3850,14 +3850,12 @@ include:
 
 Independent local verification completed:
 
-```text
-uv run python scripts/quality/validate_ci_check_catalog.py                 # OK (55 workflows, 180 jobs)
-uv run pytest -q -p no:cacheprovider tests/test_ci_check_catalog.py         # 17 passed (three independent runs)
-uv run ruff check scripts/quality/validate_ci_check_catalog.py tests/test_ci_check_catalog.py  # passed
-uv run ruff format --check scripts/quality/validate_ci_check_catalog.py tests/test_ci_check_catalog.py  # passed
-Draft202012Validator.check_schema + catalog validation                       # schema OK; 0 errors
-git diff --check HEAD~1..HEAD                                                # clean
-```
+    uv run python scripts/quality/validate_ci_check_catalog.py                 # OK (55 workflows, 180 jobs)
+    uv run pytest -q -p no:cacheprovider tests/test_ci_check_catalog.py         # 17 passed (three independent runs)
+    uv run ruff check scripts/quality/validate_ci_check_catalog.py tests/test_ci_check_catalog.py  # passed
+    uv run ruff format --check scripts/quality/validate_ci_check_catalog.py tests/test_ci_check_catalog.py  # passed
+    Draft202012Validator.check_schema + catalog validation                       # schema OK; 0 errors
+    git diff --check HEAD~1..HEAD                                                # clean
 
 The live active ruleset was refreshed read-only: 92 required contexts were
 present, all four provider contexts used integration ID `57789`, and the
@@ -3938,14 +3936,12 @@ finalizer requests `actions: read` and `contents: read`, checks out the exact
 workflow SHA with credentials disabled, and after the authoritative
 fail-closed result table runs:
 
-```text
-scripts/quality/analyze_ci_critical_path.py
-  --repository "$GITHUB_REPOSITORY"
-  --run-id "$GITHUB_RUN_ID"
-  --concurrency-cap 20
-  --diagnostic-lower-bound
-scripts/quality/render_ci_health_report.py
-```
+    scripts/quality/analyze_ci_critical_path.py
+      --repository "$GITHUB_REPOSITORY"
+      --run-id "$GITHUB_RUN_ID"
+      --concurrency-cap 20
+      --diagnostic-lower-bound
+    scripts/quality/render_ci_health_report.py
 
 The analyzer JSON and an escaped Markdown projection are uploaded as the
 run/attempt-bound artifact
@@ -3959,19 +3955,17 @@ fails the existing finalizer rather than manufacturing a green signal.
 
 Focused RED→GREEN evidence:
 
-```text
-uv run pytest -q -p no:cacheprovider tests/test_ci_health_report.py
-  6 passed
-uv run pytest -q -p no:cacheprovider \
-  tests/test_ci_health_report.py tests/test_quality_workflow_contract.py \
-  tests/test_ci_check_catalog.py
-  189 passed
-uv run ruff check scripts/quality/render_ci_health_report.py \
-  tests/test_ci_health_report.py tests/test_quality_workflow_contract.py
-  passed
-uv run python scripts/quality/validate_ci_check_catalog.py
-  CI check catalog: OK (55 workflows, 180 jobs)
-```
+    uv run pytest -q -p no:cacheprovider tests/test_ci_health_report.py
+      6 passed
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_ci_health_report.py tests/test_quality_workflow_contract.py \
+      tests/test_ci_check_catalog.py
+      189 passed
+    uv run ruff check scripts/quality/render_ci_health_report.py \
+      tests/test_ci_health_report.py tests/test_quality_workflow_contract.py
+      passed
+    uv run python scripts/quality/validate_ci_check_catalog.py
+      CI check catalog: OK (55 workflows, 180 jobs)
 
 This closes the compact report implementation gap locally, but the report is
 still diagnostic-only API timing and not a release certificate.  Strict DAG /
@@ -3987,34 +3981,30 @@ without changing tracked source or touching the user-owned untracked paths.
 The shell-free runner used six workers and a 600-second per-check fail-closed
 timeout:
 
-```text
-uv run python scripts/fast_preflight.py --max-workers 6 --timeout-seconds 600 --include-output
-Fast preflight: 6/6 passed
-frontend-typecheck      10.829s
-frontend-lint           84.421s
-backend-typecheck        7.969s
-backend-lint             0.151s
-verify-harness           34.595s (29/29)
-focused-contract-tests  53.853s
-report: artifacts/fast-preflight/fast-preflight.json
-```
+    uv run python scripts/fast_preflight.py --max-workers 6 --timeout-seconds 600 --include-output
+    Fast preflight: 6/6 passed
+    frontend-typecheck      10.829s
+    frontend-lint           84.421s
+    backend-typecheck        7.969s
+    backend-lint             0.151s
+    verify-harness           34.595s (29/29)
+    focused-contract-tests  53.853s
+    report: artifacts/fast-preflight/fast-preflight.json
 
 The same checkout also passed the broader CI/workflow contract inventory:
 
-```text
-uv run pytest -q -p no:cacheprovider \
-  tests/test_ci_check_catalog.py tests/test_ci_execution_contract.py \
-  tests/test_ci_health_report.py tests/test_ci_critical_path_analysis.py \
-  tests/test_quality_workflow_contract.py tests/test_workflow_fail_closed_contracts.py \
-  tests/test_frontend_ci_performance_contracts.py \
-  tests/contracts/test_ci_release_capacity_contract.py
-294 passed in 146.43s
-uv run pytest -q -p no:cacheprovider \
-  tests/test_ci_critical_path_analysis.py tests/test_mutmut_shard_budget.py
-68 passed in 21.19s
-uv run python scripts/quality/validate_ci_check_catalog.py
-CI check catalog: OK (55 workflows, 180 jobs)
-```
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_ci_check_catalog.py tests/test_ci_execution_contract.py \
+      tests/test_ci_health_report.py tests/test_ci_critical_path_analysis.py \
+      tests/test_quality_workflow_contract.py tests/test_workflow_fail_closed_contracts.py \
+      tests/test_frontend_ci_performance_contracts.py \
+      tests/contracts/test_ci_release_capacity_contract.py
+    294 passed in 146.43s
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_ci_critical_path_analysis.py tests/test_mutmut_shard_budget.py
+    68 passed in 21.19s
+    uv run python scripts/quality/validate_ci_check_catalog.py
+      CI check catalog: OK (55 workflows, 180 jobs)
 
 These are local readiness and regression signals only. They do not promote
 the branch to `FRESH-GREEN`: current-SHA GitHub matrix completion, strict
@@ -4026,15 +4016,13 @@ The Compose matrix was validated using the repository's supported composition
 patterns (base file plus the required overlays), with environment variables
 provided only in the process environment:
 
-```text
-docker compose --env-file .env.docker -f docker-compose.full.yml config --quiet
-docker compose --env-file .env.docker -f docker-compose.yml config --quiet
-docker compose --env-file .env.docker \
-  -f docker-compose.yml -f docker-compose.infra.yml \
-  -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml config --quiet
-docker compose --env-file .env.docker --profile prod \
-  -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml config --quiet
-```
+    docker compose --env-file .env.docker -f docker-compose.full.yml config --quiet
+    docker compose --env-file .env.docker -f docker-compose.yml config --quiet
+    docker compose --env-file .env.docker \
+      -f docker-compose.yml -f docker-compose.infra.yml \
+      -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml config --quiet
+    docker compose --env-file .env.docker --profile prod \
+      -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml config --quiet
 
 All four supported compositions returned exit code 0. Overlay files such as
 `docker-compose.go.yml`, `docker-compose.infra.yml` and
@@ -4045,15 +4033,13 @@ expected undefined-network/image error and is not a release failure.
 The complete frontend qualification path was also exercised locally after the
 WASM producer fixes:
 
-```text
-npm run test:ci --prefix frontend -- --silent=true
-WASM contract stage: 259 passed
-Vitest: 673 test files, 7,116 tests passed
-Coverage: Statements 100% (18,860/18,860)
-           Branches   100% (13,326/13,326)
-           Functions  100% (4,533/4,533)
-           Lines      100% (17,009/17,009)
-```
+    npm run test:ci --prefix frontend -- --silent=true
+    WASM contract stage: 259 passed
+    Vitest: 673 test files, 7,116 tests passed
+    Coverage: Statements 100% (18,860/18,860)
+               Branches   100% (13,326/13,326)
+               Functions  100% (4,533/4,533)
+               Lines      100% (17,009/17,009)
 
 The command completed with exit code 0 and emitted only the existing jsdom CSS
 parser notices and intentionally informational navigation messages; no test,
@@ -4062,11 +4048,9 @@ workspace paths and no tracked or user-owned files changed.
 
 The expanded frontend static-quality sequence was green as well:
 
-```text
-npm run lint:all --prefix frontend
-eslint, architecture/barrel contracts, manifests, CSS token closure/sync,
-ts-prune and dependency audit: exit code 0
-```
+    npm run lint:all --prefix frontend
+    eslint, architecture/barrel contracts, manifests, CSS token closure/sync,
+    ts-prune and dependency audit: exit code 0
 
 `ts-prune` prints the repository's known export inventory as diagnostics; it
 does not fail the configured command, and `lint:depcheck` reported no unused
@@ -4085,11 +4069,9 @@ idempotency and PostgreSQL integration evidence would risk duplicate delivery.
 
 Current local focused evidence:
 
-```text
-uv run pytest -q -p no:cacheprovider \
-  tests/test_cdc_outbox.py tests/test_cdc_outbox_closure.py
-45 passed in 12.62s
-```
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_cdc_outbox.py tests/test_cdc_outbox_closure.py
+    45 passed in 12.62s
 
 This is code/contract evidence only; BE-08 remains an architectural backlog
 until a separately approved CDC enablement slice supplies lifecycle,
@@ -4109,18 +4091,14 @@ test fixtures and chaos helpers remain covered by their dedicated secret/SAST
 checks without blanket `# nosec` suppressions. The production-targeted command
 used by the pre-commit/CI path is:
 
-```text
-$env:PYTHONUTF8='1'; uv run bandit -c pyproject.toml -r app -q
-exit code 0 (Bandit emitted only existing nosec/comment diagnostics)
-```
+    $env:PYTHONUTF8='1'; uv run bandit -c pyproject.toml -r app -q
+    exit code 0 (Bandit emitted only existing nosec/comment diagnostics)
 
 For comparison, an explicit all-code diagnostic invocation was run once:
 
-```text
-uv run bandit -c pyproject.toml -r app tests
-exit code 1: 0 high, 13 medium and 863 low findings, concentrated in
-test-only fixture credentials and subprocess/chaos helpers
-```
+    uv run bandit -c pyproject.toml -r app tests
+    exit code 1: 0 high, 13 medium and 863 low findings, concentrated in
+    test-only fixture credentials and subprocess/chaos helpers
 
 Those test fixtures are not deployed production code and use the repository's
 existing secret-fixture conventions. They are intentionally not converted into
@@ -4131,11 +4109,9 @@ expanding the required scope requires a separately reviewed fixture policy.
 
 The infrastructure contract characterization also completed locally:
 
-```text
-uv run pytest -q -p no:cacheprovider \
-  tests/test_infra_audit_contract.py tests/test_docker_startup_contracts.py
-96 passed, 1 skipped in 37.53s
-```
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_infra_audit_contract.py tests/test_docker_startup_contracts.py
+    96 passed, 1 skipped in 37.53s
 
 The sole skip is the documented Windows limitation that `bash` is not an
 executable on this host; the wrapper's Linux execution remains release-gated.
@@ -4163,15 +4139,13 @@ external follow-ups; neither item is being falsely marked release-complete.
 
 Local focused evidence for this checkpoint:
 
-```text
-node --test frontend/scripts/run-stryker.test.mjs
-97 passed
-uv run pytest -q -p no:cacheprovider \
-  tests/test_model_default_policy.py tests/test_route_dependency_inventory.py
-6 passed
-python verify_harness.py --repo-only
-29 passed
-```
+    node --test frontend/scripts/run-stryker.test.mjs
+    97 passed
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_model_default_policy.py tests/test_route_dependency_inventory.py
+    6 passed
+    python verify_harness.py --repo-only
+    29 passed
 
 The old remote run `34761805023` is still bound to the previous SHA and has a
 confirmed Stryker shard-20 hard timeout; it remains non-terminal and is not
@@ -4255,20 +4229,18 @@ contract test; no action inventory or mutation denominator changed.
 
 Verification for this checkpoint:
 
-```text
-uv run pytest -q -p no:cacheprovider \
-  tests/test_security_hardening_workflow_contract.py
-7 passed
-uv run pytest -q -p no:cacheprovider \
-  tests/test_security_hardening_workflow_contract.py \
-  tests/test_workflow_fail_closed_contracts.py \
-  tests/test_quality_workflow_contract.py
-97 passed
-uv run python scripts/quality/validate_ci_check_catalog.py
-CI check catalog: OK (55 workflows, 180 jobs)
-actionlint v1.7.12: exit 0
-git diff --check: exit 0
-```
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_security_hardening_workflow_contract.py
+    7 passed
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_security_hardening_workflow_contract.py \
+      tests/test_workflow_fail_closed_contracts.py \
+      tests/test_quality_workflow_contract.py
+    97 passed
+    uv run python scripts/quality/validate_ci_check_catalog.py
+    CI check catalog: OK (55 workflows, 180 jobs)
+    actionlint v1.7.12: exit 0
+    git diff --check: exit 0
 
 At the time of this checkpoint the security fix brought the branch to 23
 commits ahead of `origin/egorribun`; the follow-up documentation commit is

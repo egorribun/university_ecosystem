@@ -5011,18 +5011,18 @@ jobs:
           npm --prefix frontend ci
 
       - name: Generate Inventory Manifest
-        run: python scripts/quality/generate_test_inventory.py
+        run: uv run python scripts/quality/generate_test_inventory.py
 
       - name: Validate CI check catalog
         # Keep the static governance contract on the existing required
         # inventory runner; this adds no fan-out lane or runner pressure.
-        run: python scripts/quality/validate_ci_check_catalog.py
+        run: uv run python scripts/quality/validate_ci_check_catalog.py
 
       - name: Verify Orphans and Anti-Patterns
-        run: python scripts/quality/check_orphans_and_anti_patterns.py
+        run: uv run python scripts/quality/check_orphans_and_anti_patterns.py
 
       - name: Verify developer harness (hermetic repository checks)
-        run: python verify_harness.py --repo-only
+        run: uv run python verify_harness.py --repo-only
 
   kyverno-test:
     name: Kyverno policy tests
