@@ -4270,9 +4270,10 @@ actionlint v1.7.12: exit 0
 git diff --check: exit 0
 ```
 
-The current branch is now 23 commits ahead of `origin/egorribun`; only the
-four documented user-owned untracked paths remain. This is a local hardening
-checkpoint, not release evidence: the old remote run remains tied to
+At the time of this checkpoint the security fix brought the branch to 23
+commits ahead of `origin/egorribun`; the follow-up documentation commit is
+recorded separately. Only the four documented user-owned untracked paths
+remain. This is a local hardening checkpoint, not release evidence: the old remote run remains tied to
 `d9a964be0896cb90377de51ba37aaa27333f91d9` and is still non-terminal, so the
 branch must be pushed only after its final failure inventory and then
 validated by a fresh current-SHA matrix.
