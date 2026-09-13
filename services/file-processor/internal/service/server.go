@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path"
-	"strings"
 	"time"
 
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
@@ -67,7 +65,7 @@ func validateProcessFileIdentity(req *pb.ProcessFileRequest) error {
 
 func validateProcessFileKeys(sourceKey, destKey string) error {
 	// RZ-26-04: bound key lengths to prevent Temporal workflow history bloat.
-	const maxKeyLen = 1024
+	const maxKeyLen = objectkey.MaxLength
 	if len(sourceKey) > maxKeyLen || len(destKey) > maxKeyLen {
 		return status.Errorf(codes.InvalidArgument, "source_key/dest_key exceeds %d bytes", maxKeyLen)
 	}
@@ -88,15 +86,19 @@ func validateProcessFileKeys(sourceKey, destKey string) error {
 }
 
 func validateProcessFileKey(key string) error {
-	if objectkey.IsAbsolute(key) {
-		return status.Errorf(codes.InvalidArgument, "absolute path is not allowed in key: %q", key)
-	}
-	cleaned := path.Clean(key)
-	if objectkey.IsAbsolute(cleaned) {
-		return status.Errorf(codes.InvalidArgument, "absolute path is not allowed in key: %q", key)
-	}
-	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") {
-		return status.Errorf(codes.InvalidArgument, "path traversal in key: %q", key)
+	if _, err := objectkey.Normalize(key); err != nil {
+		switch {
+		case errors.Is(err, objectkey.ErrAbsolute):
+			return status.Error(codes.InvalidArgument, "absolute path is not allowed in key")
+		case errors.Is(err, objectkey.ErrTraversal):
+			return status.Error(codes.InvalidArgument, "path traversal in key")
+		case errors.Is(err, objectkey.ErrNUL):
+			return status.Error(codes.InvalidArgument, "object key contains NUL")
+		case errors.Is(err, objectkey.ErrEmpty):
+			return status.Error(codes.InvalidArgument, "object key must not be empty")
+		default:
+			return status.Error(codes.InvalidArgument, "invalid object key")
+		}
 	}
 	return nil
 }
@@ -121,8 +123,10 @@ func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*
 
 	// Create common job from proto
 	job := workflow.ProcessJob{
-		ID:        req.Id,
-		Type:      req.Type,
+		ID:   req.Id,
+		Type: req.Type,
+		// The workflow calls objectkey.Normalize again immediately before
+		// storage access, after this boundary has rejected unsafe values.
 		SourceKey: req.SourceKey,
 		DestKey:   req.DestKey,
 		Options:   make(map[string]interface{}, len(req.Options)),

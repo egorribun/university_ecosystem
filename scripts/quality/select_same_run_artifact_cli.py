@@ -8,6 +8,7 @@ the caller can pass the selected server-issued artifact id to a pinned action.
 from __future__ import annotations
 
 import argparse
+import contextvars
 import json
 import os
 import re
@@ -15,6 +16,7 @@ import ssl
 import stat
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
@@ -33,6 +35,7 @@ _MAX_DECIMAL_DIGITS = 20
 _MAX_REQUESTS_PER_SELECTION = 1 + _MAX_CATALOG_SNAPSHOT_ATTEMPTS * (
     (_MAX_ARTIFACTS // _ARTIFACT_PAGE_SIZE) + 1
 )
+_MAX_SELECTION_SECONDS = 120
 _DECIMAL = re.compile(r"[1-9][0-9]*$")
 _SHA = re.compile(r"[0-9a-f]{40}$")
 _REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -42,6 +45,9 @@ _DIGEST = re.compile(r"sha256:[0-9a-f]{64}$")
 _API_TARGET = re.compile(
     r"/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/runs/[1-9][0-9]*"
     r"(?:/artifacts\?per_page=100&page=[1-9][0-9]*)?$"
+)
+_REQUEST_DEADLINE: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "same_run_request_deadline", default=None
 )
 
 
@@ -172,6 +178,14 @@ def _default_request(request: Request, maximum_bytes: int) -> HttpResponse:
         )
     url = f"https://api.github.com{request.path}"
     try:
+        deadline = _REQUEST_DEADLINE.get()
+        if deadline is None:
+            timeout = 20.0
+        else:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise SameRunArtifactError("GitHub API selection deadline exceeded")
+            timeout = min(20.0, remaining)
         http_request = urllib.request.Request(  # noqa: S310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL is restricted to a fixed HTTPS api.github.com origin and a strict path allowlist
             url,
             method="GET",
@@ -183,7 +197,7 @@ def _default_request(request: Request, maximum_bytes: int) -> HttpResponse:
         with urllib.request.urlopen(  # noqa: S310  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             http_request,
             context=context,
-            timeout=20,
+            timeout=timeout,
         ) as response:
             status = response.status
             if not _is_int(status):
@@ -469,16 +483,26 @@ def _list_artifacts(
 
 
 def _bounded_request_transport(request: RequestTransport) -> RequestTransport:
-    """Bound total REST calls, including all catalog convergence retries."""
+    """Bound total REST calls and wall-clock time for one selection."""
 
     remaining = _MAX_REQUESTS_PER_SELECTION
+    deadline = time.monotonic() + _MAX_SELECTION_SECONDS
 
     def bounded(request_item: Request, maximum_bytes: int) -> HttpResponse:
         nonlocal remaining
         if remaining < 1:
             raise SameRunArtifactError("GitHub API request budget exceeded")
+        if time.monotonic() >= deadline:
+            raise SameRunArtifactError("GitHub API selection deadline exceeded")
         remaining -= 1
-        return request(request_item, maximum_bytes)
+        marker = _REQUEST_DEADLINE.set(deadline)
+        try:
+            response = request(request_item, maximum_bytes)
+        finally:
+            _REQUEST_DEADLINE.reset(marker)
+        if time.monotonic() > deadline:
+            raise SameRunArtifactError("GitHub API selection deadline exceeded")
+        return response
 
     return bounded
 

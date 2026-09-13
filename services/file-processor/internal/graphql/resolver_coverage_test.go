@@ -53,6 +53,8 @@ func TestSanitizeKey(t *testing.T) {
 		{"leading slash collapsed", "/uploads/a.png", "uploads/a.png", false},
 		{"traversal rejected", "../etc/passwd", "", true},
 		{"embedded traversal rejected", "uploads/../../etc/passwd", "", true},
+		{"backslash traversal rejected", `uploads\\..\\etc\\passwd`, "", true},
+		{"backslash absolute rejected", `C:\\Windows\\system32`, "", true},
 		{"empty rejected", "", "", true},
 		{"root rejected", "/", "", true},
 	}

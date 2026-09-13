@@ -6,7 +6,6 @@ package jobcontract
 import (
 	"encoding/json"
 	"errors"
-	"path"
 	"strings"
 
 	"github.com/university-ecosystem/file-processor/internal/objectkey"
@@ -17,7 +16,7 @@ import (
 // limits for keys, options, and option values.
 const (
 	MaxIDLen          = 256
-	MaxKeyLen         = 1024
+	MaxKeyLen         = objectkey.MaxLength
 	MaxOptions        = 10
 	MaxOptionKeyLen   = 64
 	MaxOptionValueLen = 1024
@@ -85,20 +84,21 @@ func validateKey(key string) error {
 	if strings.IndexByte(key, 0) >= 0 {
 		return errors.New("object_key_nul")
 	}
-	if objectkey.IsAbsolute(key) {
-		return errors.New("object_key_absolute")
-	}
-	// Object keys are platform-neutral.  Treat backslashes as separators before
-	// cleaning so Windows-style traversal cannot bypass the POSIX path check.
-	normalized := strings.ReplaceAll(key, "\\", "/")
-	for _, segment := range strings.Split(normalized, "/") {
-		if segment == ".." {
+	if _, err := objectkey.Normalize(key); err != nil {
+		switch {
+		case errors.Is(err, objectkey.ErrAbsolute):
+			return errors.New("object_key_absolute")
+		case errors.Is(err, objectkey.ErrTraversal):
 			return errors.New("object_key_traversal")
+		case errors.Is(err, objectkey.ErrEmpty):
+			return errors.New("object_key_empty")
+		case errors.Is(err, objectkey.ErrTooLong):
+			return errors.New("object_key_too_long")
+		case errors.Is(err, objectkey.ErrNUL):
+			return errors.New("object_key_nul")
+		default:
+			return errors.New("object_key_invalid")
 		}
-	}
-	cleaned := path.Clean(normalized)
-	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") {
-		return errors.New("object_key_traversal")
 	}
 	return nil
 }

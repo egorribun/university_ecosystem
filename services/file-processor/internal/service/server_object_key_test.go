@@ -45,6 +45,23 @@ func TestValidateProcessFileRequestAcceptsNonDriveColonKey(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestValidateProcessFileRequestRejectsBackslashTraversal(t *testing.T) {
+	for _, key := range []string{`a\..\secret`, `a\\..\\secret`} {
+		t.Run(key+"/source", func(t *testing.T) {
+			err := validateProcessFileRequest(validProcessFileRequest(key, "output/result.png"))
+			require.Error(t, err)
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+			require.ErrorContains(t, err, "path traversal")
+		})
+		t.Run(key+"/destination", func(t *testing.T) {
+			err := validateProcessFileRequest(validProcessFileRequest("input/source.png", key))
+			require.Error(t, err)
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+			require.ErrorContains(t, err, "path traversal")
+		})
+	}
+}
+
 func TestValidateProcessFileRequestRejectsCanonicalizedAbsoluteKeys(t *testing.T) {
 	keys := []struct {
 		name string

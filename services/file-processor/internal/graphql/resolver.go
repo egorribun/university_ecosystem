@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"path"
 	"strings"
 
 	"github.com/google/uuid"
 	gql "github.com/graph-gophers/graphql-go"
+	"github.com/university-ecosystem/file-processor/internal/objectkey"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
 	"go.temporal.io/sdk/client"
 )
@@ -25,11 +25,16 @@ func (r *Resolver) Health() string {
 }
 
 func sanitizeKey(key string) (string, error) {
-	cleaned := path.Clean("/" + key)
-	if cleaned == "/" || strings.Contains(key, "..") {
+	// GraphQL historically accepted one leading slash as a shorthand for a
+	// relative object key. Preserve that compatibility while routing the actual
+	// validation through the same platform-neutral boundary as gRPC, NATS, and
+	// Temporal activities.
+	key = strings.TrimPrefix(key, "/")
+	cleaned, err := objectkey.Normalize(key)
+	if err != nil {
 		return "", fmt.Errorf("invalid path string")
 	}
-	return cleaned[1:], nil
+	return cleaned, nil
 }
 
 // File returns a resolver for a specific file.

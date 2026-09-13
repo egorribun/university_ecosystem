@@ -39,6 +39,16 @@ func TestSanitizeMinIOKeyAcceptsNonDriveColonKey(t *testing.T) {
 	require.Equal(t, key, cleaned)
 }
 
+func TestSanitizeMinIOKeyRejectsBackslashTraversal(t *testing.T) {
+	for _, key := range []string{`a\..\secret`, `a\\..\\secret`} {
+		t.Run(key, func(t *testing.T) {
+			_, err := sanitizeMinIOKey(key)
+			require.Error(t, err)
+			require.ErrorContains(t, err, "path traversal")
+		})
+	}
+}
+
 func TestSanitizeMinIOKeyRejectsCanonicalizedAbsoluteKeys(t *testing.T) {
 	keys := []struct {
 		name string

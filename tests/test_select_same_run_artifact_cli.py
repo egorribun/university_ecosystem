@@ -403,6 +403,85 @@ def test_default_rest_transport_is_single_host_bounded_and_redacts_network_error
     assert "token-must-not-appear" not in str(raised.value)
 
 
+def test_default_rest_transport_honors_selection_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = _UrlopenResponse(200, {}, b"{}")
+    calls: list[float] = []
+
+    def fake_urlopen(
+        _request: urllib.request.Request,
+        *,
+        context: ssl.SSLContext,
+        timeout: float,
+    ) -> _UrlopenResponse:
+        del context
+        calls.append(timeout)
+        return response
+
+    monkeypatch.setattr(
+        "scripts.quality.select_same_run_artifact_cli.urllib.request.urlopen",
+        fake_urlopen,
+    )
+    monkeypatch.setattr(selector.time, "monotonic", lambda: 2.0)
+    marker = selector._REQUEST_DEADLINE.set(10.0)
+    try:
+        selector._default_request(
+            selector.Request("/repos/example/repository/actions/runs/1"), 2
+        )
+    finally:
+        selector._REQUEST_DEADLINE.reset(marker)
+    assert calls == [8.0]
+
+
+def test_default_rest_transport_rejects_expired_selection_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(selector.time, "monotonic", lambda: 2.0)
+    marker = selector._REQUEST_DEADLINE.set(1.0)
+    try:
+        with pytest.raises(selector.SameRunArtifactError, match="deadline"):
+            selector._default_request(
+                selector.Request("/repos/example/repository/actions/runs/1"), 2
+            )
+    finally:
+        selector._REQUEST_DEADLINE.reset(marker)
+
+
+def test_bounded_transport_enforces_wall_clock_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(selector, "_MAX_SELECTION_SECONDS", 1)
+    monotonic_values = iter((0.0, 2.0))
+    monkeypatch.setattr(selector.time, "monotonic", lambda: next(monotonic_values))
+    called = False
+
+    def request(
+        _request: selector.Request, _maximum_bytes: int
+    ) -> selector.HttpResponse:
+        nonlocal called
+        called = True
+        return selector.HttpResponse(200, {}, b"{}")
+
+    bounded = selector._bounded_request_transport(request)
+    with pytest.raises(selector.SameRunArtifactError, match="deadline"):
+        bounded(selector.Request("/repos/example/repository/actions/runs/1"), 2)
+    assert not called
+
+
+def test_bounded_transport_rejects_response_that_exceeds_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(selector, "_MAX_SELECTION_SECONDS", 1)
+    monotonic_values = iter((0.0, 0.0, 2.0))
+    monkeypatch.setattr(selector.time, "monotonic", lambda: next(monotonic_values))
+    bounded = selector._bounded_request_transport(
+        lambda _request, _maximum_bytes: selector.HttpResponse(200, {}, b"{}")
+    )
+    with pytest.raises(selector.SameRunArtifactError, match="deadline"):
+        bounded(selector.Request("/repos/example/repository/actions/runs/1"), 2)
+
+
 def test_request_json_normalizes_oversized_integer_value_errors() -> None:
     body = b'{"id":' + b"9" * 5000 + b"}"
 

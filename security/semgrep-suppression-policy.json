@@ -121,8 +121,8 @@
     {
       "rule_id": "python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected",
       "path": "scripts/quality/select_same_run_artifact_cli.py",
-      "start_line": 183,
-      "end_line": 187,
+      "start_line": 197,
+      "end_line": 200,
       "owner": "security@university.example",
       "expires": "2026-12-31",
       "reason": "The URL uses the fixed api.github.com origin and a strict current-run path allowlist; the request uses an explicit verified TLS context and bounded response reader."
