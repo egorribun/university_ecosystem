@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -9,12 +10,8 @@ CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 FRONTEND_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml"
 )
-INSTALL_WORKFLOW_PATHS = (
-    REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml",
-    FRONTEND_WORKFLOW_PATH,
-    REPOSITORY_ROOT / ".github" / "workflows" / "reusable-e2e-tests.yml",
-    REPOSITORY_ROOT / ".github" / "workflows" / "reusable-security-audit.yml",
-)
+WORKFLOW_DIRECTORY = REPOSITORY_ROOT / ".github" / "workflows"
+NPM_CI_COMMAND = re.compile(r"^\s*(?:run:\s*)?npm ci(?:\s|$)")
 
 
 def _load(path: Path) -> dict[str, object]:
@@ -36,14 +33,15 @@ def test_npm_ci_skips_duplicate_audit_and_funding_network_work() -> None:
     Keeping it out of every ``npm ci`` invocation avoids repeating network work
     on each matrix leg without disabling lifecycle scripts or the dedicated audit.
     """
-    for workflow_path in INSTALL_WORKFLOW_PATHS:
+    for workflow_path in sorted(WORKFLOW_DIRECTORY.glob("*.yml")):
         text = workflow_path.read_text(encoding="utf-8")
         install_lines = [
             line.strip()
             for line in text.splitlines()
-            if "npm ci" in line and not line.lstrip().startswith("#")
+            if NPM_CI_COMMAND.match(line) and not line.lstrip().startswith("#")
         ]
-        assert install_lines, f"{workflow_path} has no npm ci installation"
+        if not install_lines:
+            continue
         assert all(
             line.endswith("npm ci --no-audit --no-fund") for line in install_lines
         ), f"{workflow_path} contains an unoptimized npm ci invocation"

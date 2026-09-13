@@ -121,7 +121,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Build WASM modules
         # Retry transient Binaryen downloads; each build is idempotent and reuses cache.

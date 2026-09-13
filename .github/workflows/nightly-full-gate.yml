@@ -635,7 +635,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Generate canonical immutable Stryker preflight
         working-directory: frontend
@@ -692,7 +692,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Select immutable same-run Stryker preflight candidate
         id: select_stryker_preflight
@@ -813,7 +813,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Select immutable same-run Stryker preflight candidate
         id: select_stryker_preflight
@@ -925,7 +925,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Select immutable same-run validated Stryker evidence candidate
         id: select_stryker_validated
