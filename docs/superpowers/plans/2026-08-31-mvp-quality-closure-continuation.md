@@ -4184,3 +4184,58 @@ replication provisioning fails after `stop()` has been requested, the worker
 now exits without starting a fresh polling fallback. The focused CDC suite is
 **46 passed**; this closes the observed cancellation race but does not claim
 the separately gated PostgreSQL replication/staging enablement work.
+
+## 56. Additional current-head closure fixes and verified hardening (2026-09-13)
+
+The current `egorribun` branch is now **20 commits ahead** of
+`origin/egorribun`; all tracked changes are committed and the only remaining
+worktree entries are the pre-existing user-owned untracked paths documented in
+the handoff.  No stash entry or user artifact was modified.
+
+Three reproducible defects found while running the full local gates were closed
+with small, independently reviewable commits:
+
+- `7b1b7641f` adds an exact SQL projection assertion for the bcrypt migration
+  inventory.  The old mutmut survivor replaced `select(User.id)` with
+  `select(None)` while the existing `ORDER BY users.id` assertion still passed.
+  The focused closure suite is **15 passed**.
+- `3b5c143c5` makes the SQLite-only computed-column adaptation in
+  `app/core/lifespan.py` transactional with respect to shared SQLAlchemy
+  metadata: `computed` and `nullable` are snapshotted and restored in a
+  `finally` block after `create_all`, including failure paths.  The ordered
+  adversarial/model-default regression and lifespan suite are **40 passed**;
+  this removes cross-test metadata contamination without changing PostgreSQL
+  behavior.
+- `f1561222e` makes duration-aware pytest sharding fail closed on malformed,
+  duplicate, non-finite, negative or boolean history values.  The validator is
+  covered by seven new contract cases and included in `fast_preflight`; the
+  focused timing/preflight set is **14 passed**, the expanded CI contract set
+  remains **271 passed**, and the catalog remains **55 workflows / 180 jobs**.
+
+The Go trust-boundary/documentation hardening commit `04b05c5a0` adds
+`persist-credentials: false` to all PR-executed Go checkouts covered by the
+contract, updates the documented race-test image to the immutable audited
+Go 1.26.6 digest, and adds fail-closed workflow tests.  Evidence is **168
+quality-workflow tests passed**, **7 focused tests passed**, actionlint passed
+for all four changed workflows, and `git show --check` is clean.  The
+non-PR-only `go-lint.yml` checkout was intentionally left unchanged; required
+PR lint uses the already hardened reusable Go-test path.
+
+The previous GitHub run `34761805023` is still tied to SHA
+`d9a964be0896cb90377de51ba37aaa27333f91d9`, not this branch.  Its authoritative
+Jobs API currently reports 310 jobs with two terminal non-success outcomes:
+Stryker shard 20 cancellation after the two-hour watchdog and mutmut execution
+group 65's single survivor (`select(None)`), both now addressed locally.  It
+also has pending/queued work, so no result from that run is treated as
+current-head evidence.  After the run reaches a terminal state, push this
+branch non-force and start a fresh current-SHA matrix; only that matrix can
+certify mutation, coverage, provenance or release readiness.
+
+The full backend coverage process was started before the SQLite restoration
+fix and reported an intermediate failure at the historical contamination
+point; it must be rerun from the fixed head before any coverage claim.  The
+remaining release-blocking evidence is unchanged: fresh current-SHA CI,
+PostgreSQL catalog/phased migration and full Dishka migration evidence,
+terminal mutation/coverage artifacts, immutable image producer and digest
+Docker smoke, Kubernetes/TLS/ExternalSecrets/observability staging, real
+browser/device/CWV checks, chaos/rollback, and the final SHA-bound audit.
