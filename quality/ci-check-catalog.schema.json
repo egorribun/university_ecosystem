@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/egorribun/university_ecosystem/quality/ci-check-catalog.schema.json",
   "title": "University Ecosystem CI check catalog",
-  "description": "Fail-closed inventory and governance metadata for every GitHub Actions workflow and job.",
+  "description": "Fail-closed inventory and governance metadata for every GitHub Actions workflow/job plus protected provider and expansion contexts.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,6 +12,8 @@
     "repository",
     "default_runbook",
     "profiles",
+    "external_checks",
+    "expansions",
     "workflows"
   ],
   "properties": {
@@ -39,6 +41,20 @@
       "minProperties": 1,
       "additionalProperties": {
         "$ref": "#/$defs/profile"
+      }
+    },
+    "external_checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/external_check"
+      }
+    },
+    "expansions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/expansion"
       }
     },
     "workflows": {
@@ -184,6 +200,226 @@
           "type": "string"
         }
       }
+    },
+    "external_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "integration_id",
+        "context",
+        "profile",
+        "classification",
+        "owner",
+        "source_reference",
+        "runbook",
+        "externally_owned"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "integration_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "context": {
+          "type": "string",
+          "minLength": 1
+        },
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classification": {
+          "$ref": "#/$defs/classification"
+        },
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "source_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runbook": {
+          "$ref": "#/$defs/repository_path"
+        },
+        "externally_owned": {
+          "const": true
+        }
+      }
+    },
+    "expansion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "caller_workflow_path",
+        "caller_job_id",
+        "profile",
+        "classification",
+        "owner",
+        "runbook",
+        "source_reference"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "reusable_workflow",
+            "matrix"
+          ]
+        },
+        "caller_workflow_path": {
+          "$ref": "#/$defs/repository_path"
+        },
+        "caller_job_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reusable_workflow_path": {
+          "$ref": "#/$defs/repository_path"
+        },
+        "reusable_job_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reusable_job_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classification": {
+          "$ref": "#/$defs/classification"
+        },
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "runbook": {
+          "$ref": "#/$defs/repository_path"
+        },
+        "source_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context_template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "declared_contexts": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "context_template"
+          ],
+          "not": {
+            "required": [
+              "declared_contexts"
+            ]
+          }
+        },
+        {
+          "required": [
+            "declared_contexts"
+          ],
+          "not": {
+            "required": [
+              "context_template"
+            ]
+          }
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "reusable_workflow"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reusable_workflow_path"
+            ],
+            "oneOf": [
+              {
+                "required": [
+                  "reusable_job_id"
+                ],
+                "not": {
+                  "required": [
+                    "reusable_job_ids"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "reusable_job_ids"
+                ],
+                "not": {
+                  "required": [
+                    "reusable_job_id"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "matrix"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "reusable_workflow_path"
+                  ]
+                },
+                {
+                  "required": [
+                    "reusable_job_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "reusable_job_ids"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
     },
     "event": {
       "type": "object",

@@ -259,6 +259,270 @@ def _validate_artifacts(
     return errors
 
 
+def _validate_external_checks(
+    entries: object,
+    *,
+    profiles: dict[str, Any],
+    repository_root: Path,
+    source_contexts: set[str],
+    used_profiles: set[str],
+) -> tuple[list[str], set[str]]:
+    """Validate checks emitted by a provider outside repository workflows."""
+
+    errors: list[str] = []
+    contexts: set[str] = set()
+    if not isinstance(entries, list):
+        return ["catalog.external_checks must be an array"], contexts
+    for index, entry in enumerate(entries):
+        location = f"external_checks[{index}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{location} must be an object")
+            continue
+        provider = entry.get("provider")
+        context = entry.get("context")
+        integration_id = entry.get("integration_id")
+        source_reference = entry.get("source_reference")
+        if not isinstance(provider, str) or not provider.strip():
+            errors.append(f"{location}.provider must be non-empty")
+        if not isinstance(context, str) or not context.strip():
+            errors.append(f"{location}.context must be non-empty")
+            continue
+        if context in contexts:
+            errors.append(f"{location}: duplicate provider context {context!r}")
+        if context in source_contexts:
+            errors.append(
+                f"{location}: provider context collides with a source check {context!r}"
+            )
+        contexts.add(context)
+        if (
+            not isinstance(integration_id, int)
+            or isinstance(integration_id, bool)
+            or integration_id < 1
+        ):
+            errors.append(f"{location}.integration_id is invalid")
+        if not isinstance(source_reference, str) or not source_reference.strip():
+            errors.append(f"{location}.source_reference must be non-empty")
+        if entry.get("externally_owned") is not True:
+            errors.append(f"{location}.externally_owned must be true")
+        owner = entry.get("owner")
+        if not isinstance(owner, str) or not owner.strip():
+            errors.append(f"{location}.owner must be non-empty")
+        profile_name = entry.get("profile")
+        if not isinstance(profile_name, str):
+            errors.append(f"{location}.profile must be a string")
+            continue
+        try:
+            profile = _effective_profile(profile_name, profiles, location=location)
+        except CatalogError as exc:
+            errors.append(str(exc))
+            continue
+        used_profiles.add(profile_name)
+        effective = _merge_job(profile, entry)
+        if entry.get("classification") != effective.get("classification"):
+            errors.append(f"{location}.classification does not match profile")
+        classification = effective.get("classification")
+        required_events = effective.get("required_events")
+        if classification == "required":
+            if not required_events:
+                errors.append(
+                    f"{location}: required provider check has no required_events"
+                )
+            elif not set(required_events).issubset(POLICY_EVENTS):
+                errors.append(f"{location}: unsupported required event alias")
+        elif required_events:
+            errors.append(
+                f"{location}: non-required provider check has required_events"
+            )
+        try:
+            _repo_file(entry.get("runbook"), repository_root, f"{location}.runbook")
+        except CatalogError as exc:
+            errors.append(str(exc))
+    return errors, contexts
+
+
+def _validate_expansions(
+    entries: object,
+    *,
+    profiles: dict[str, Any],
+    repository_root: Path,
+    workflow_directory: Path,
+    source_paths: set[str],
+    source_contexts: set[str],
+    external_contexts: set[str],
+    used_profiles: set[str],
+) -> list[str]:
+    """Validate caller-qualified and matrix-expanded protected contexts."""
+
+    errors: list[str] = []
+    if not isinstance(entries, list):
+        return ["catalog.expansions must be an array"]
+    seen_ids: set[str] = set()
+    seen_contexts: set[str] = set()
+    known_contexts = source_contexts | external_contexts
+    for index, entry in enumerate(entries):
+        location = f"expansions[{index}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{location} must be an object")
+            continue
+        expansion_id = entry.get("id")
+        if not isinstance(expansion_id, str) or not expansion_id.strip():
+            errors.append(f"{location}.id must be non-empty")
+        elif expansion_id in seen_ids:
+            errors.append(f"{location}: duplicate expansion id {expansion_id!r}")
+        else:
+            seen_ids.add(expansion_id)
+        kind = entry.get("kind")
+        if kind not in {"reusable_workflow", "matrix"}:
+            errors.append(f"{location}.kind is unsupported")
+        caller_path_value = entry.get("caller_workflow_path")
+        caller_job_id = entry.get("caller_job_id")
+        try:
+            caller_path = _workflow_path(caller_path_value, repository_root)
+            caller_relative = caller_path.relative_to(repository_root).as_posix()
+            if caller_relative not in source_paths:
+                errors.append(f"{location}: caller workflow is not in source inventory")
+            caller_workflow = _load_workflow(caller_path)
+        except CatalogError as exc:
+            errors.append(f"{location}: {exc}")
+            caller_workflow = None
+        source_jobs = (
+            caller_workflow.get("jobs") if isinstance(caller_workflow, dict) else None
+        )
+        if not isinstance(source_jobs, dict):
+            source_jobs = {}
+        if not isinstance(caller_job_id, str) or not caller_job_id:
+            errors.append(f"{location}.caller_job_id must be non-empty")
+            caller_job = None
+        else:
+            caller_job = source_jobs.get(caller_job_id)
+            if not isinstance(caller_job, dict):
+                errors.append(
+                    f"{location}: caller job does not exist: {caller_job_id!r}"
+                )
+                caller_job = None
+        profile_name = entry.get("profile")
+        profile: dict[str, Any] | None = None
+        if not isinstance(profile_name, str):
+            errors.append(f"{location}.profile must be a string")
+        else:
+            try:
+                profile = _effective_profile(profile_name, profiles, location=location)
+                used_profiles.add(profile_name)
+            except CatalogError as exc:
+                errors.append(str(exc))
+        owner = entry.get("owner")
+        if not isinstance(owner, str) or not owner.strip():
+            errors.append(f"{location}.owner must be non-empty")
+        source_reference = entry.get("source_reference")
+        if not isinstance(source_reference, str) or not source_reference.strip():
+            errors.append(f"{location}.source_reference must be non-empty")
+        try:
+            _repo_file(entry.get("runbook"), repository_root, f"{location}.runbook")
+        except CatalogError as exc:
+            errors.append(str(exc))
+        if kind == "reusable_workflow":
+            reusable_path_value = entry.get("reusable_workflow_path")
+            try:
+                reusable_path = _workflow_path(reusable_path_value, repository_root)
+                reusable_workflow = _load_workflow(reusable_path)
+                reusable_triggers = workflow_triggers(reusable_workflow)
+                if "workflow_call" not in reusable_triggers:
+                    errors.append(f"{location}: reusable workflow is not workflow_call")
+                expected_uses = (
+                    f"./{reusable_path.relative_to(repository_root).as_posix()}"
+                )
+                if (
+                    isinstance(caller_job, dict)
+                    and caller_job.get("uses") != expected_uses
+                ):
+                    errors.append(
+                        f"{location}: caller uses does not bind to reusable workflow "
+                        f"(catalog={expected_uses!r}, source={caller_job.get('uses')!r})"
+                    )
+                reusable_jobs = reusable_workflow.get("jobs")
+                if not isinstance(reusable_jobs, dict):
+                    reusable_jobs = {}
+                reusable_job_ids = entry.get("reusable_job_ids")
+                if isinstance(entry.get("reusable_job_id"), str):
+                    reusable_job_ids = [entry["reusable_job_id"]]
+                if not isinstance(reusable_job_ids, list) or not reusable_job_ids:
+                    errors.append(f"{location}: reusable_job_ids are missing")
+                else:
+                    for reusable_job_id in reusable_job_ids:
+                        if not isinstance(reusable_job_id, str):
+                            errors.append(
+                                f"{location}: reusable job ID must be a string"
+                            )
+                            continue
+                        if reusable_job_id not in reusable_jobs:
+                            errors.append(
+                                f"{location}: reusable job does not exist: {reusable_job_id!r}"
+                            )
+            except CatalogError as exc:
+                errors.append(f"{location}: {exc}")
+        elif kind == "matrix" and isinstance(caller_job, dict):
+            strategy = caller_job.get("strategy")
+            matrix = strategy.get("matrix") if isinstance(strategy, dict) else None
+            conditional_name = "${{" in str(caller_job.get("name", ""))
+            if not isinstance(matrix, dict) and not conditional_name:
+                errors.append(
+                    f"{location}: matrix caller has no matrix or conditional name"
+                )
+        if profile is not None:
+            if entry.get("classification") != profile.get("classification"):
+                errors.append(f"{location}.classification does not match profile")
+            classification = profile.get("classification")
+            required_events = profile.get("required_events")
+            source_events = set()
+            if isinstance(caller_workflow, dict):
+                try:
+                    source_events = set(workflow_triggers(caller_workflow))
+                except CatalogError:
+                    pass
+            if classification == "required":
+                if not required_events:
+                    errors.append(
+                        f"{location}: required expansion has no required_events"
+                    )
+                elif not set(required_events).issubset(POLICY_EVENTS):
+                    errors.append(f"{location}: unsupported required event alias")
+                elif (
+                    "pull_request_main" in required_events
+                    and "pull_request" not in source_events
+                ):
+                    errors.append(
+                        f"{location}: pull_request_main is not a source event"
+                    )
+                elif "push_main" in required_events and "push" not in source_events:
+                    errors.append(f"{location}: push_main is not a source event")
+            elif required_events:
+                errors.append(f"{location}: non-required expansion has required_events")
+        declared_contexts = entry.get("declared_contexts")
+        template = entry.get("context_template")
+        if isinstance(declared_contexts, list):
+            declared_seen: set[str] = set()
+            for context in declared_contexts:
+                if isinstance(context, str):
+                    if context in declared_seen:
+                        errors.append(f"{location}: duplicate expanded context")
+                    declared_seen.add(context)
+            contexts_to_check = declared_contexts
+        else:
+            contexts_to_check = [template] if isinstance(template, str) else []
+        for context in contexts_to_check:
+            if not isinstance(context, str) or not context.strip():
+                errors.append(f"{location}: expanded context must be non-empty")
+                continue
+            if context in seen_contexts:
+                errors.append(f"{location}: duplicate expanded context {context!r}")
+            seen_contexts.add(context)
+            if context in known_contexts:
+                errors.append(
+                    f"{location}: expanded context collides with existing context {context!r}"
+                )
+    return errors
+
+
 def validate_catalog(
     catalog: dict[str, Any],
     *,
@@ -293,6 +557,7 @@ def validate_catalog(
     }
     catalog_paths: list[str] = []
     used_profiles: set[str] = set()
+    source_contexts: set[str] = set()
     reusable_timeouts = _reusable_timeout_index(workflow_directory)
     for index, entry in enumerate(raw_workflows):
         location = f"workflows[{index}]"
@@ -413,6 +678,7 @@ def validate_catalog(
             expected_name = str(source_job.get("name", job_id))
             if effective.get("check_name_template") != expected_name:
                 errors.append(f"{job_location}.check_name_template is stale")
+            source_contexts.add(expected_name)
             try:
                 runbook = effective.get("runbook", default_runbook)
                 _repo_file(runbook, repository_root, f"{job_location}.runbook")
@@ -457,6 +723,26 @@ def validate_catalog(
             "workflow inventory mismatch "
             f"(catalog={sorted(set(catalog_paths))}, source={sorted(source_paths)})"
         )
+    external_errors, external_contexts = _validate_external_checks(
+        catalog.get("external_checks"),
+        profiles=profiles,
+        repository_root=repository_root,
+        source_contexts=source_contexts,
+        used_profiles=used_profiles,
+    )
+    errors.extend(external_errors)
+    errors.extend(
+        _validate_expansions(
+            catalog.get("expansions"),
+            profiles=profiles,
+            repository_root=repository_root,
+            workflow_directory=workflow_directory,
+            source_paths=source_paths,
+            source_contexts=source_contexts,
+            external_contexts=external_contexts,
+            used_profiles=used_profiles,
+        )
+    )
     unused_profiles = set(profiles) - used_profiles
     if unused_profiles:
         errors.append(f"catalog contains unused profiles: {sorted(unused_profiles)}")

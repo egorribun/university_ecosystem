@@ -38,6 +38,51 @@ retry-like behavior that has not yet been proven to be transient-only.  Do not
 silently relabel such a job as `none` or `transient-only`; first-failure
 artifacts and a classifier must be added and tested before changing the entry.
 
+### Provider checks and expanded contexts
+
+`external_checks` records provider-managed required contexts that do not map
+one-to-one to a repository workflow/job name (`CodeQL`, `Checkov`, `spectral`,
+and `zizmor`).  The provider integration ID is the identity of the GitHub
+Advanced Security integration, not a ruleset ID.  `externally_owned: true`, an
+explicit provider owner, classification, source reference, and runbook are
+required so ownership is never inferred from a stale check run.
+
+`expansions` records protected contexts emitted by reusable-workflow callers or
+matrix jobs.  Each expansion binds an existing caller workflow/job to an
+existing reusable workflow/job set (or a matrix strategy) and declares the
+finite, exact context names.  These entries supplement, but never replace, the
+complete 55-workflow/180-source-job inventory.  A context must not be duplicated
+between source jobs, provider checks, or expansions.
+
+### Refresh live ruleset evidence
+
+The catalog intentionally does not store a volatile branch-ruleset ID,
+snapshot, or current check conclusion.  Refresh live evidence immediately
+before a release review and retain the command output in the SHA-bound audit
+artifact:
+
+```bash
+repo='egorribun/university_ecosystem'
+ruleset_ids=$(gh api "repos/${repo}/rulesets" --paginate \
+  --jq '.[] | select(.target == "branch" and .enforcement == "active") | .id')
+test -n "$ruleset_ids"
+for ruleset_id in $ruleset_ids; do
+  gh api "repos/${repo}/rulesets/${ruleset_id}" \
+    --jq '{id, name, target, enforcement, conditions, required_status_checks:
+      [.rules[] | select(.type == "required_status_checks") |
+      .parameters.required_status_checks[] | {context, integration_id}]}'
+done
+```
+
+Confirm that the active ruleset targeting `refs/heads/main` contains every
+required source and expanded/provider context from the catalog, with the
+expected integration ID.  Treat a missing, duplicate, renamed, or unexpected
+context as a release-blocking catalog/ruleset drift finding.  Do not copy the
+returned ruleset ID or a transient status conclusion into
+`quality/ci-check-catalog.json`; update the catalog only when the source
+workflow, provider integration, or protected-context contract intentionally
+changes, and rerun its focused tests and validator.
+
 ## Updating safely
 
 When adding, removing, or renaming a workflow/job:

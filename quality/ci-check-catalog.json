@@ -1,7 +1,7 @@
 {
   "$schema": "./ci-check-catalog.schema.json",
   "schema_version": 1,
-  "catalog_version": "1.0.0",
+  "catalog_version": "1.1.0",
   "repository": "egorribun/university_ecosystem",
   "default_runbook": "docs/testing/ci-check-catalog-runbook.md",
   "profiles": {
@@ -109,8 +109,253 @@
         "review_required": false
       },
       "notes": "Reusable workflow implementation; required/advisory policy comes from its caller."
+    },
+    "external-required-pr": {
+      "classification": "required",
+      "required_events": [
+        "pull_request_main"
+      ],
+      "owner": "@github-advanced-security",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "artifacts": [],
+      "retry_policy": {
+        "mode": "none",
+        "first_failure_preserved": true,
+        "classifier": "provider-managed",
+        "review_required": false
+      },
+      "notes": "Provider-managed required context; live ruleset ownership and current conclusion are refreshed separately."
     }
   },
+  "external_checks": [
+    {
+      "provider": "github-advanced-security",
+      "integration_id": 57789,
+      "context": "CodeQL",
+      "profile": "external-required-pr",
+      "classification": "required",
+      "owner": "@github-advanced-security",
+      "source_reference": ".github/workflows/codeql.yml; live provider context evidence is refreshed with gh api",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "externally_owned": true
+    },
+    {
+      "provider": "github-advanced-security",
+      "integration_id": 57789,
+      "context": "Checkov",
+      "profile": "external-required-pr",
+      "classification": "required",
+      "owner": "@github-advanced-security",
+      "source_reference": ".github/workflows/checkov.yml; live provider context evidence is refreshed with gh api",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "externally_owned": true
+    },
+    {
+      "provider": "github-advanced-security",
+      "integration_id": 57789,
+      "context": "spectral",
+      "profile": "external-required-pr",
+      "classification": "required",
+      "owner": "@github-advanced-security",
+      "source_reference": ".github/workflows/contract-validation.yml; live provider context evidence is refreshed with gh api",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "externally_owned": true
+    },
+    {
+      "provider": "github-advanced-security",
+      "integration_id": 57789,
+      "context": "zizmor",
+      "profile": "external-required-pr",
+      "classification": "required",
+      "owner": "@github-advanced-security",
+      "source_reference": ".github/workflows/zizmor.yml; live provider context evidence is refreshed with gh api",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "externally_owned": true
+    }
+  ],
+  "expansions": [
+    {
+      "id": "backend-tests-units",
+      "kind": "reusable_workflow",
+      "caller_workflow_path": ".github/workflows/ci.yml",
+      "caller_job_id": "backend-tests",
+      "reusable_workflow_path": ".github/workflows/reusable-backend-tests.yml",
+      "reusable_job_ids": [
+        "unit-tests"
+      ],
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/ci.yml#jobs.backend-tests -> reusable-backend-tests.yml#jobs.unit-tests",
+      "declared_contexts": [
+        "Backend Tests (Python 3.14-shard-0) / Unit Tests (All-Python 3.14-shard-0)",
+        "Backend Tests (Python 3.14-shard-1) / Unit Tests (All-Python 3.14-shard-1)",
+        "Backend Tests (Python 3.14-shard-2) / Unit Tests (All-Python 3.14-shard-2)",
+        "Backend Tests (Python 3.14-shard-3) / Unit Tests (All-Python 3.14-shard-3)"
+      ]
+    },
+    {
+      "id": "frontend-tests-protected",
+      "kind": "reusable_workflow",
+      "caller_workflow_path": ".github/workflows/ci.yml",
+      "caller_job_id": "frontend-tests",
+      "reusable_workflow_path": ".github/workflows/reusable-frontend-tests.yml",
+      "reusable_job_ids": [
+        "bundle-analysis",
+        "lighthouse-shards",
+        "lighthouse",
+        "lint",
+        "build",
+        "unit-tests-shard",
+        "unit-tests"
+      ],
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/ci.yml#jobs.frontend-tests -> reusable-frontend-tests.yml#jobs.{bundle-analysis,lighthouse-shards,lighthouse,lint,build,unit-tests-shard,unit-tests}",
+      "declared_contexts": [
+        "Frontend Tests / Bundle Analysis",
+        "Frontend Tests / Lighthouse Audit",
+        "Frontend Tests / Lighthouse Audit (content)",
+        "Frontend Tests / Lighthouse Audit (core)",
+        "Frontend Tests / Lighthouse Audit (fallback)",
+        "Frontend Tests / Lighthouse Audit (realtime)",
+        "Frontend Tests / Lint & Format",
+        "Frontend Tests / Production Build",
+        "Frontend Tests / Unit Tests",
+        "Frontend Tests / Unit Tests (shard 1/4)",
+        "Frontend Tests / Unit Tests (shard 2/4)",
+        "Frontend Tests / Unit Tests (shard 3/4)",
+        "Frontend Tests / Unit Tests (shard 4/4)"
+      ]
+    },
+    {
+      "id": "e2e-tests-chromium",
+      "kind": "reusable_workflow",
+      "caller_workflow_path": ".github/workflows/ci.yml",
+      "caller_job_id": "e2e-tests",
+      "reusable_workflow_path": ".github/workflows/reusable-e2e-tests.yml",
+      "reusable_job_ids": [
+        "e2e"
+      ],
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/ci.yml#jobs.e2e-tests -> reusable-e2e-tests.yml#jobs.e2e",
+      "declared_contexts": [
+        "E2E Tests (shard 1/4) / E2E Tests (chromium)",
+        "E2E Tests (shard 2/4) / E2E Tests (chromium)",
+        "E2E Tests (shard 3/4) / E2E Tests (chromium)",
+        "E2E Tests (shard 4/4) / E2E Tests (chromium)"
+      ]
+    },
+    {
+      "id": "go-tests-protected",
+      "kind": "reusable_workflow",
+      "caller_workflow_path": ".github/workflows/ci.yml",
+      "caller_job_id": "go-tests",
+      "reusable_workflow_path": ".github/workflows/reusable-go-tests.yml",
+      "reusable_job_ids": [
+        "test",
+        "lint"
+      ],
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/ci.yml#jobs.go-tests -> reusable-go-tests.yml#jobs.{test,lint}",
+      "declared_contexts": [
+        "Go Tests (services/cmd/uni-cli) / Lint Go Service (services/cmd/uni-cli)",
+        "Go Tests (services/cmd/uni-cli) / Test Go Service (services/cmd/uni-cli)",
+        "Go Tests (services/file-processor) / Lint Go Service (services/file-processor)",
+        "Go Tests (services/file-processor) / Test Go Service (services/file-processor)",
+        "Go Tests (services/gateway) / Lint Go Service (services/gateway)",
+        "Go Tests (services/gateway) / Test Go Service (services/gateway)",
+        "Go Tests (services/ws-hub) / Lint Go Service (services/ws-hub)",
+        "Go Tests (services/ws-hub) / Test Go Service (services/ws-hub)"
+      ]
+    },
+    {
+      "id": "security-audit-protected",
+      "kind": "reusable_workflow",
+      "caller_workflow_path": ".github/workflows/ci.yml",
+      "caller_job_id": "security-audit",
+      "reusable_workflow_path": ".github/workflows/reusable-security-audit.yml",
+      "reusable_job_ids": [
+        "pip-audit",
+        "npm-audit",
+        "docker-security",
+        "govulncheck",
+        "sbom",
+        "detect-secrets-baseline",
+        "semgrep"
+      ],
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/ci.yml#jobs.security-audit -> reusable-security-audit.yml#jobs.{pip-audit,npm-audit,docker-security,govulncheck,sbom,detect-secrets-baseline,semgrep}",
+      "declared_contexts": [
+        "Security Audit / Python Dependency Audit",
+        "Security Audit / Node.js Dependency Audit",
+        "Security Audit / Container Security Scan",
+        "Security Audit / Go Vulnerability Scan",
+        "Security Audit / Generate SBOM",
+        "Security Audit / detect-secrets Baseline Integrity",
+        "Security Audit / Semgrep SAST"
+      ]
+    },
+    {
+      "id": "codeql-languages",
+      "kind": "matrix",
+      "caller_workflow_path": ".github/workflows/codeql.yml",
+      "caller_job_id": "analyze",
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/codeql.yml#jobs.analyze.strategy.matrix.include[language]",
+      "declared_contexts": [
+        "Analyze (actions)",
+        "Analyze (go)",
+        "Analyze (javascript-typescript)",
+        "Analyze (python)",
+        "Analyze (rust)"
+      ]
+    },
+    {
+      "id": "rust-fuzz-command",
+      "kind": "matrix",
+      "caller_workflow_path": ".github/workflows/rust-fuzz.yml",
+      "caller_job_id": "fuzz",
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/rust-fuzz.yml#jobs.fuzz protected pull_request/push branch",
+      "declared_contexts": [
+        "Run cargo fuzz"
+      ]
+    },
+    {
+      "id": "rust-fuzz-additional",
+      "kind": "matrix",
+      "caller_workflow_path": ".github/workflows/rust-fuzz.yml",
+      "caller_job_id": "fuzz-additional-rust-crates",
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/rust-fuzz.yml#jobs.fuzz-additional-rust-crates.strategy.matrix.include",
+      "declared_contexts": [
+        "Fuzz frontend/rust-crypto/fuzz",
+        "Fuzz frontend/wasm-sanitizer/fuzz"
+      ]
+    }
+  ],
   "workflows": [
     {
       "path": ".github/workflows/admin-smoke-monitoring.yml",

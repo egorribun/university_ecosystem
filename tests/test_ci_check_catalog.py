@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 
@@ -169,3 +170,138 @@ def test_cli_fails_closed_for_invalid_catalog(tmp_path: Path) -> None:
     invalid = tmp_path / "invalid.json"
     invalid.write_text(json.dumps({"schema_version": 1}), encoding="utf-8")
     assert main(["--catalog", str(invalid), "--schema", str(DEFAULT_SCHEMA)]) == 1
+
+
+def test_catalog_declares_external_provider_contexts() -> None:
+    value = _catalog()
+    checks = value["external_checks"]
+    assert isinstance(checks, list)
+    by_context = {entry["context"]: entry for entry in checks}
+    assert set(by_context) == {"CodeQL", "Checkov", "spectral", "zizmor"}
+    expected_sources = {
+        "CodeQL": ".github/workflows/codeql.yml",
+        "Checkov": ".github/workflows/checkov.yml",
+        "spectral": ".github/workflows/contract-validation.yml",
+        "zizmor": ".github/workflows/zizmor.yml",
+    }
+    for context, entry in by_context.items():
+        assert entry["provider"] == "github-advanced-security", context
+        assert entry["integration_id"] == 57789, context
+        assert entry["profile"] == "external-required-pr", context
+        assert entry["classification"] == "required", context
+        assert entry["externally_owned"] is True, context
+        assert entry["owner"] == "@github-advanced-security", context
+        assert entry["runbook"] == "docs/testing/ci-check-catalog-runbook.md", context
+        assert expected_sources[context] in entry["source_reference"], context
+
+
+def test_catalog_declares_protected_reusable_and_matrix_expansions() -> None:
+    value = _catalog()
+    expansions = value["expansions"]
+    assert isinstance(expansions, list)
+    by_id = {entry["id"]: entry for entry in expansions}
+    expected = {
+        "backend-tests-units",
+        "frontend-tests-protected",
+        "e2e-tests-chromium",
+        "go-tests-protected",
+        "security-audit-protected",
+        "codeql-languages",
+        "rust-fuzz-command",
+        "rust-fuzz-additional",
+    }
+    assert set(by_id) == expected
+    for entry in expansions:
+        assert entry["profile"] == "required-pr-main", entry["id"]
+        assert entry["classification"] == "required", entry["id"]
+        assert entry["owner"] == "@egorribun", entry["id"]
+        assert entry["runbook"] == "docs/testing/ci-check-catalog-runbook.md", entry[
+            "id"
+        ]
+        assert entry["declared_contexts"], entry["id"]
+        assert len(entry["declared_contexts"]) == len(
+            set(entry["declared_contexts"])
+        ), entry["id"]
+        assert entry["source_reference"], entry["id"]
+    assert by_id["backend-tests-units"]["reusable_workflow_path"].endswith(
+        "reusable-backend-tests.yml"
+    )
+    assert by_id["frontend-tests-protected"]["reusable_workflow_path"].endswith(
+        "reusable-frontend-tests.yml"
+    )
+    assert by_id["e2e-tests-chromium"]["reusable_workflow_path"].endswith(
+        "reusable-e2e-tests.yml"
+    )
+    assert by_id["go-tests-protected"]["reusable_workflow_path"].endswith(
+        "reusable-go-tests.yml"
+    )
+    assert by_id["security-audit-protected"]["reusable_workflow_path"].endswith(
+        "reusable-security-audit.yml"
+    )
+    assert len(by_id["codeql-languages"]["declared_contexts"]) == 5
+    assert len(by_id["rust-fuzz-command"]["declared_contexts"]) == 1
+    assert len(by_id["rust-fuzz-additional"]["declared_contexts"]) == 2
+
+
+def test_duplicate_external_context_is_rejected() -> None:
+    value = _catalog()
+    checks = value["external_checks"]
+    assert isinstance(checks, list)
+    checks.append(copy.deepcopy(checks[0]))
+
+    errors = _errors(value)
+    assert any("duplicate provider context" in error for error in errors)
+
+
+def test_duplicate_expanded_context_is_rejected() -> None:
+    value = _catalog()
+    expansions = value["expansions"]
+    assert isinstance(expansions, list)
+    duplicate = copy.deepcopy(expansions[0])
+    duplicate["id"] = "duplicate-expansion"
+    expansions.append(duplicate)
+
+    errors = _errors(value)
+    assert any("duplicate expanded context" in error for error in errors)
+
+
+def test_expansion_reference_profile_owner_and_runbook_are_fail_closed() -> None:
+    value = _catalog()
+    expansions = value["expansions"]
+    assert isinstance(expansions, list)
+    entry = expansions[0]
+    entry["caller_job_id"] = "does-not-exist"
+    entry["profile"] = "does-not-exist"
+    entry["owner"] = ""
+    entry["runbook"] = "docs/testing/does-not-exist.md"
+
+    errors = _errors(value)
+    assert any("caller job does not exist" in error for error in errors)
+    assert any("unknown profile" in error for error in errors)
+    assert any("owner must be non-empty" in error for error in errors)
+    assert any("runbook does not exist" in error for error in errors)
+
+
+def test_expansion_rejects_malformed_reference_path() -> None:
+    value = _catalog()
+    expansions = value["expansions"]
+    assert isinstance(expansions, list)
+    entry = expansions[0]
+    entry["caller_workflow_path"] = "../.github/workflows/ci.yml"
+
+    errors = _errors(value)
+    assert any(
+        "workflow path must be a relative POSIX path" in error or "schema:" in error
+        for error in errors
+    )
+
+
+def test_expansion_rejects_unknown_reusable_job() -> None:
+    value = _catalog()
+    expansions = value["expansions"]
+    assert isinstance(expansions, list)
+    entry = expansions[0]
+    entry["reusable_job_ids"] = ["does-not-exist"]
+
+    errors = _errors(value)
+    assert any("reusable job does not exist" in error for error in errors)
