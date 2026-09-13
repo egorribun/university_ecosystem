@@ -25,6 +25,7 @@ CARGO_BINSTALL_SCRIPT_SHA256 = "d3a93702160e0ec03e2a4e996855db1f01adee801fb84a43
 SLSA_VERIFIER_SHA256 = "499befb675efcca9001afe6e5156891b91e71f9c07ab120a8943979f85cc82e6"  # pragma: allowlist secret -- release checksum
 KUBECONFORM_SHA256 = "95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73"  # pragma: allowlist secret -- release checksum
 K6_SHA256 = "c7f03434854f837b6790ee81572e4b0f955241974c79a43cbb9f8d0fef069589"  # pragma: allowlist secret -- release checksum
+TRIVY_SHA256 = "2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b"  # pragma: allowlist secret -- release checksum
 CRD_CATALOG_COMMIT = "866b2653a5334db9aed20ad74701e20fd464471b"  # pragma: allowlist secret -- immutable schema revision
 
 
@@ -114,6 +115,52 @@ def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_lock
             rf"(?m)^{re.escape(requirement)}\s+--hash=sha256:{digest}\s*$",
             requirements,
         )
+
+
+def test_security_audit_trivy_bootstrap_is_immutable_and_checksum_verified() -> None:
+    """The security gate must verify Trivy before the scanner can execute."""
+
+    job = _workflow(SECURITY_AUDIT)["jobs"]["docker-security"]
+    install = _step(job, "Install checksum-pinned Trivy")
+    assert install["name"] == "Install checksum-pinned Trivy"
+    assert install["env"] == {
+        "TRIVY_VERSION": "0.73.0",
+        "TRIVY_ARCHIVE_SHA256": TRIVY_SHA256,
+    }
+
+    run = install["run"]
+    assert "set -euo pipefail" in run
+    assert '[[ "$TRIVY_VERSION" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]]' in run
+    assert '[[ "$TRIVY_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]' in run
+    assert "mktemp -d" in run
+    assert "trap 'rm -rf -- \"$trivy_dir\"' EXIT" in run
+    assert "curl --fail --silent --show-error --location" in run
+    assert "--proto '=https'" in run
+    assert "--tlsv1.2" in run
+    assert (
+        "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+        in run
+    )
+    assert "sha256sum --check --strict" in run
+    assert "sudo install --mode 0755" in run
+    assert "trivy --version" in run
+    assert "aquasecurity.github.io/trivy-repo" not in run
+    assert "apt-get install" not in run
+    assert "wget" not in run
+
+    lines = [line.strip() for line in run.splitlines()]
+    verify_index = next(
+        index
+        for index, line in enumerate(lines)
+        if "sha256sum --check --strict" in line
+    )
+    extract_index = next(
+        index for index, line in enumerate(lines) if line.startswith("tar --extract")
+    )
+    install_index = next(
+        index for index, line in enumerate(lines) if line.startswith("sudo install")
+    )
+    assert verify_index < extract_index < install_index
 
 
 def test_cargo_udeps_bootstrap_is_immutable_and_checksum_verified() -> None:

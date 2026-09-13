@@ -160,46 +160,27 @@ jobs:
             sleep $((attempt * 15))
           done
 
-      - name: Install Trivy (via apt repo)
-        # GitHub-Releases downloads are unreliable on this runner;
-        # the Aqua apt repository is the stable fallback.
+      - name: Install checksum-pinned Trivy
+        env:
+          TRIVY_VERSION: 0.73.0
+          # Official immutable GitHub release asset digest for
+          # trivy_0.73.0_Linux-64bit.tar.gz.
+          TRIVY_ARCHIVE_SHA256: 2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b # pragma: allowlist secret -- official public release checksum
         run: |
           set -euo pipefail
-          # GitHub's Ubuntu image includes an optional Chrome source whose
-          # Packages index can be refreshed while apt is downloading it. A
-          # transient hash mismatch there must not prevent the independent
-          # Trivy security gate from starting. Disable only those known image
-          # sources for this ephemeral runner; all Ubuntu and Aqua sources
-          # remain enabled and every apt operation stays fail-closed.
-          for source in \
-            /etc/apt/sources.list.d/google-chrome.list \
-            /etc/apt/sources.list.d/google-chrome.sources; do
-            if [[ -f "$source" ]]; then
-              sudo mv "$source" "$source.disabled"
-            fi
-          done
-          apt_update() {
-            local attempt
-            for attempt in 1 2 3; do
-              if sudo apt-get update -qq -o Acquire::Retries=3; then
-                return 0
-              fi
-              if [[ "$attempt" -eq 3 ]]; then
-                echo "apt metadata refresh failed after 3 attempts." >&2
-                return 1
-              fi
-              sleep $((attempt * 5))
-            done
-          }
-          apt_update
-          sudo apt-get install -y --no-install-recommends wget apt-transport-https gnupg
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
-            | gpg --dearmor \
-            | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
-          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
-            | sudo tee /etc/apt/sources.list.d/trivy.list
-          apt_update
-          sudo apt-get install -y trivy
+          [[ "$TRIVY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$TRIVY_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          trivy_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$trivy_dir"' EXIT
+          archive="$trivy_dir/trivy.tar.gz"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            --output "$archive" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          printf '%s  %s\n' "$TRIVY_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict -
+          tar --extract --gzip --file "$archive" --directory "$trivy_dir" trivy
+          sudo install --mode 0755 "$trivy_dir/trivy" /usr/local/bin/trivy
+          trivy --version
 
       - name: Run Trivy vulnerability scanner (filesystem)
         id: trivy_fs
@@ -214,7 +195,7 @@ jobs:
           # SARIF otherwise contains every severity even when the scan filter
           # is restricted. Keep Code Scanning aligned with the blocking policy.
           limit-severities-for-sarif: true
-          # skip-setup-trivy: use the binary we installed above via apt
+          # Use the checksum-verified binary installed above.
           skip-setup-trivy: true
           # Preserve SARIF upload, then re-assert this blocking result below.
           exit-code: "1"
