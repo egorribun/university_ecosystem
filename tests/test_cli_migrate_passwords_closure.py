@@ -201,6 +201,7 @@ async def test_report_bcrypt_users_projects_ids_and_applies_bcrypt_predicate() -
             dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
         )
     ).lower()
+    assert "select users.id" in compiled
     assert "users.id" in compiled
     assert "users.hashed_password" in compiled
     assert "users.is_active is true" in compiled
