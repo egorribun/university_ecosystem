@@ -1073,18 +1073,37 @@ def test_cli_rejects_invalid_repository_before_fetch(
 def test_fetch_jobs_bounds_and_sanitizes_helper_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_run(*_args: object, **_kwargs: object) -> object:
-        stderr = _kwargs["stderr"]
-        assert hasattr(stderr, "write")
-        stderr.write(b"secret\x1b[31m" + (b"x" * 5000))
-        return analyzer.subprocess.CompletedProcess(
-            args=[],
-            returncode=1,
-            stdout=None,
-            stderr=None,
-        )
+    class _Pipe:
+        def __init__(self, body: bytes) -> None:
+            self._body = body
+            self.closed = False
 
-    monkeypatch.setattr(analyzer.subprocess, "run", fake_run)
+        def read(self, maximum: int) -> bytes:
+            chunk, self._body = self._body[:maximum], self._body[maximum:]
+            return chunk
+
+        def close(self) -> None:
+            self.closed = True
+
+    class _Process:
+        def __init__(self) -> None:
+            self.stdout = _Pipe(b"")
+            self.stderr = _Pipe(b"secret\x1b[31m" + (b"x" * 5000))
+            self.returncode = 1
+            self.killed = False
+
+        def poll(self) -> int:
+            return self.returncode
+
+        def kill(self) -> None:
+            self.killed = True
+
+        def wait(self, *, timeout: float) -> int:
+            del timeout
+            return self.returncode
+
+    process = _Process()
+    monkeypatch.setattr(analyzer.subprocess, "Popen", lambda *_a, **_k: process)
     with pytest.raises(AnalysisError) as error:
         analyzer._fetch_jobs("owner/repo", 1)
     message = str(error.value)
@@ -1093,13 +1112,49 @@ def test_fetch_jobs_bounds_and_sanitizes_helper_errors(
     assert len(message) <= analyzer.MAX_ERROR_CHARS
 
 
-def test_fetch_jobs_times_out_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    def timeout_run(*_args: object, **_kwargs: object) -> object:
-        raise analyzer.subprocess.TimeoutExpired(
-            cmd="gh", timeout=analyzer.MAX_FETCH_SECONDS
-        )
+@pytest.mark.parametrize(
+    "value",
+    [
+        "Authorization: Bearer ghp_super-secret",
+        "https://user:" + "password" + "@example.test/path",
+        "?access_token=super-secret&ok=yes",
+        "github_pat_super-secret",
+    ],
+)
+def test_safe_error_excerpt_redacts_credentials(value: str) -> None:
+    excerpt = analyzer._safe_error_excerpt(value)
+    assert "super-secret" not in excerpt
+    assert "password" not in excerpt
+    assert "[REDACTED]" in excerpt
 
-    monkeypatch.setattr(analyzer.subprocess, "run", timeout_run)
+
+def test_fetch_jobs_times_out_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Pipe:
+        def read(self, _: int) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            pass
+
+    class _Process:
+        def __init__(self) -> None:
+            self.stdout = _Pipe()
+            self.stderr = _Pipe()
+            self.returncode: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+        def wait(self, *, timeout: float) -> int:
+            del timeout
+            return -9
+
+    monkeypatch.setattr(analyzer.subprocess, "Popen", lambda *_a, **_k: _Process())
+    monotonic_values = iter((0.0, float(analyzer.MAX_FETCH_SECONDS + 1)))
+    monkeypatch.setattr(analyzer.time, "monotonic", lambda: next(monotonic_values))
     with pytest.raises(AnalysisError, match="timed out"):
         analyzer._fetch_jobs("owner/repo", 1)
 

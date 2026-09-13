@@ -85,8 +85,9 @@ class _UrlopenResponse:
         del args
         self.closed = True
 
-    def read(self, _: int) -> bytes:
-        return self._body
+    def read(self, maximum: int) -> bytes:
+        chunk, self._body = self._body[:maximum], self._body[maximum:]
+        return chunk
 
 
 def _response(payload: dict[str, object]) -> selector.HttpResponse:
@@ -525,8 +526,20 @@ def test_read_limited_rejects_oversized_or_non_bytes_bodies(body: object) -> Non
         def read(self, _: int) -> object:
             return body
 
-    with pytest.raises(selector.SameRunArtifactError, match="maximum size"):
+    with pytest.raises(selector.SameRunArtifactError, match=r"maximum size|malformed"):
         selector._read_limited(_Stream(), 2)
+
+
+def test_read_limited_detects_oversized_tail_after_short_reads() -> None:
+    class _ShortReadStream:
+        def __init__(self) -> None:
+            self._chunks = iter((b"1", b"2", b"3"))
+
+        def read(self, _: int) -> bytes:
+            return next(self._chunks, b"")
+
+    with pytest.raises(selector.SameRunArtifactError, match="maximum size"):
+        selector._read_limited(_ShortReadStream(), 2)
 
 
 @pytest.mark.parametrize(

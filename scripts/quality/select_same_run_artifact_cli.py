@@ -144,10 +144,23 @@ def _read_limited(stream: object, maximum_bytes: int) -> bytes:
     read = getattr(stream, "read", None)
     if not callable(read):
         raise SameRunArtifactError("GitHub REST response is malformed")
-    body = read(maximum_bytes + 1)
-    if not isinstance(body, bytes) or len(body) > maximum_bytes:
-        raise SameRunArtifactError("GitHub REST response exceeds its maximum size")
-    return body
+    body = bytearray()
+    total = 0
+    # Some HTTP response implementations legally return short reads even when
+    # more bytes remain.  Keep reading until EOF so an oversized tail cannot be
+    # hidden behind a short first chunk.  The request is still bounded by one
+    # byte beyond the accepted limit.
+    while total <= maximum_bytes:
+        chunk = read(min(64 * 1024, maximum_bytes + 1 - total))
+        if not isinstance(chunk, bytes):
+            raise SameRunArtifactError("GitHub REST response is malformed")
+        if not chunk:
+            break
+        body.extend(chunk)
+        total += len(chunk)
+        if total > maximum_bytes:
+            raise SameRunArtifactError("GitHub REST response exceeds its maximum size")
+    return bytes(body)
 
 
 def _default_request(request: Request, maximum_bytes: int) -> HttpResponse:

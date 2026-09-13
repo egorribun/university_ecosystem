@@ -21,6 +21,8 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
+import time
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -39,6 +41,7 @@ MAX_WORKFLOW_FILES = 256
 MAX_ERROR_CHARS = 2000
 MAX_TEXT_CHARS = 4096
 MAX_FETCH_SECONDS = 120
+MAX_PIPE_READ_BYTES = 64 * 1024
 _NON_TIMEOUT_CONCLUSIONS = frozenset(
     {
         "success",
@@ -1389,13 +1392,75 @@ def _load_json(path: Path) -> object:
         raise AnalysisError(f"unable to read JSON {path}: {error}") from error
 
 
+_SECRET_PATTERNS = (
+    re.compile(r"(?i)(authorization\s*:\s*bearer\s+)[^\s]+"),
+    re.compile(r"(?i)(https?://)[^/@\s:]+:[^/@\s]+@"),
+    re.compile(
+        r"(?i)([?&](?:access[_-]?token|api[_-]?key|auth|password|secret|signature|token)=)[^&\s]+"
+    ),
+    re.compile(r"(?i)\b(?:ghp|github_pat|xox[baprs])_[A-Za-z0-9_\-]+\b"),
+)
+
+
 def _safe_error_excerpt(value: object) -> str:
     raw = "" if value is None else str(value)
     sanitized = "".join(
         character if character in "\t " or ord(character) >= 0x20 else "?"
         for character in raw
     ).strip()
+    for pattern in _SECRET_PATTERNS:
+        if pattern.groups:
+            replacement = r"\1[REDACTED]"
+        else:
+            replacement = "[REDACTED]"
+        sanitized = pattern.sub(replacement, sanitized)
     return sanitized[:MAX_ERROR_CHARS]
+
+
+def _read_process_pipe(
+    stream: object,
+    maximum_bytes: int,
+    sink: bytearray,
+    overflow: threading.Event,
+    overflow_streams: list[str],
+    errors: list[str],
+    label: str,
+) -> None:
+    """Copy one child pipe into a capped buffer without unbounded disk/memory."""
+
+    read = getattr(stream, "read", None)
+    if not callable(read):
+        errors.append(f"gh api {label} pipe is malformed")
+        overflow.set()
+        return
+    try:
+        while len(sink) <= maximum_bytes:
+            chunk = read(min(MAX_PIPE_READ_BYTES, maximum_bytes + 1 - len(sink)))
+            if not isinstance(chunk, bytes):
+                errors.append(f"gh api {label} pipe returned malformed bytes")
+                overflow.set()
+                return
+            if not chunk:
+                return
+            sink.extend(chunk)
+            if len(sink) > maximum_bytes:
+                overflow_streams.append(label)
+                overflow.set()
+                return
+    except (OSError, ValueError):
+        errors.append(f"gh api {label} pipe read failed")
+        overflow.set()
+
+
+def _terminate_fetch_process(process: subprocess.Popen[bytes]) -> None:
+    try:
+        process.kill()
+    except OSError:
+        pass
+    try:
+        process.wait(timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
 
 
 def _fetch_jobs(repository: str, run_id: int) -> object:
@@ -1404,43 +1469,100 @@ def _fetch_jobs(repository: str, run_id: int) -> object:
     _positive_integer(run_id, "run_id")
     endpoint = f"repos/{repository}/actions/runs/{run_id}/jobs?per_page=100"
     # ``repository`` is validated by the caller and the endpoint is passed as
-    # one argv element, so no shell interpretation is possible.
+    # one argv element, so no shell interpretation is possible.  Pipes are
+    # drained incrementally below: redirecting to TemporaryFile and checking
+    # its size after process exit would allow a hostile ``gh`` response to fill
+    # runner storage for the full timeout window.
+    process: subprocess.Popen[bytes] | None = None
+    stdout = bytearray()
+    stderr = bytearray()
+    overflow = threading.Event()
+    overflow_streams: list[str] = []
+    errors: list[str] = []
     try:
-        with (
-            tempfile.TemporaryFile(mode="w+b") as stdout_file,
-            tempfile.TemporaryFile(mode="w+b") as stderr_file,
-        ):
-            try:
-                completed = subprocess.run(  # noqa: S603
-                    ["gh", "api", "--paginate", "--slurp", endpoint],  # noqa: S607
-                    stdin=subprocess.DEVNULL,
-                    stdout=stdout_file,
-                    stderr=stderr_file,
-                    check=False,
-                    timeout=MAX_FETCH_SECONDS,
-                )
-            except subprocess.TimeoutExpired as error:
-                raise AnalysisError("gh api jobs request timed out") from error
-            stdout_file.seek(0)
-            stdout = stdout_file.read(MAX_JSON_BYTES + 1)
-            stderr_file.seek(0)
-            stderr = stderr_file.read(MAX_ERROR_CHARS + 1)
+        process = subprocess.Popen(  # noqa: S603
+            ["gh", "api", "--paginate", "--slurp", endpoint],  # noqa: S607
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            close_fds=True,
+        )
     except AnalysisError:
         raise
     except OSError as error:
         raise AnalysisError("unable to execute gh api") from error
-    if completed.returncode:
-        message = (
-            _safe_error_excerpt(stderr.decode("utf-8", errors="replace"))
-            or "gh api failed"
-        )
-        raise AnalysisError(message)
-    if len(stdout) > MAX_JSON_BYTES:
+
+    if process.stdout is None or process.stderr is None:
+        _terminate_fetch_process(process)
+        raise AnalysisError("gh api did not expose bounded output pipes")
+
+    threads = [
+        threading.Thread(
+            target=_read_process_pipe,
+            args=(
+                process.stdout,
+                MAX_JSON_BYTES,
+                stdout,
+                overflow,
+                overflow_streams,
+                errors,
+                "stdout",
+            ),
+            daemon=True,
+        ),
+        threading.Thread(
+            target=_read_process_pipe,
+            args=(
+                process.stderr,
+                MAX_ERROR_CHARS,
+                stderr,
+                overflow,
+                overflow_streams,
+                errors,
+                "stderr",
+            ),
+            daemon=True,
+        ),
+    ]
+    for thread in threads:
+        thread.start()
+
+    deadline = time.monotonic() + MAX_FETCH_SECONDS
+    timed_out = False
+    while process.poll() is None:
+        if overflow.is_set():
+            _terminate_fetch_process(process)
+            break
+        if time.monotonic() >= deadline:
+            timed_out = True
+            _terminate_fetch_process(process)
+            break
+        time.sleep(0.01)
+    for thread in threads:
+        thread.join(timeout=5)
+    process.stdout.close()
+    process.stderr.close()
+
+    if timed_out:
+        raise AnalysisError("gh api jobs request timed out")
+    if "stdout" in overflow_streams:
         raise AnalysisError(
             f"gh api jobs payload exceeds maximum size of {MAX_JSON_BYTES} bytes"
         )
+    if errors:
+        raise AnalysisError(errors[0])
+    if "stderr" in overflow_streams and process.returncode == 0:
+        raise AnalysisError(
+            f"gh api stderr exceeds maximum size of {MAX_ERROR_CHARS} bytes"
+        )
+    if process.returncode:
+        message = (
+            _safe_error_excerpt(bytes(stderr).decode("utf-8", errors="replace"))
+            or "gh api failed"
+        )
+        raise AnalysisError(message)
     try:
-        stdout_text = stdout.decode("utf-8")
+        stdout_text = bytes(stdout).decode("utf-8")
     except UnicodeDecodeError as error:
         raise AnalysisError("gh api returned invalid UTF-8") from error
     if not stdout_text.strip():

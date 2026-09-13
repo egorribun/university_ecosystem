@@ -132,7 +132,11 @@ def test_aggregate_report_is_failed_closed_and_writes_json(tmp_path: Path) -> No
 def test_run_check_marks_timeout_and_does_not_raise(tmp_path: Path) -> None:
     check = fast_preflight.CheckSpec(
         "slow",
-        (sys.executable, "-c", "import time; time.sleep(2)"),
+        (
+            sys.executable,
+            "-c",
+            "import time; time.sleep(2) # pragma: allowlist bound",
+        ),
     )
 
     result = fast_preflight.run_check(
