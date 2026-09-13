@@ -62,6 +62,24 @@ func TestValidateProcessFileRequestRejectsBackslashTraversal(t *testing.T) {
 	}
 }
 
+func TestValidateProcessFileKeyRejectsSharedBoundaryErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		key          string
+		wantContains string
+	}{
+		{name: "empty", key: "", wantContains: "must not be empty"},
+		{name: "nul", key: "a\x00b", wantContains: "contains NUL"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateProcessFileKey(tc.key)
+			require.Error(t, err)
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+			require.ErrorContains(t, err, tc.wantContains)
+		})
+	}
+}
+
 func TestValidateProcessFileRequestRejectsCanonicalizedAbsoluteKeys(t *testing.T) {
 	keys := []struct {
 		name string

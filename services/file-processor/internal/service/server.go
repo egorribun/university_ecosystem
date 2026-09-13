@@ -87,18 +87,18 @@ func validateProcessFileKeys(sourceKey, destKey string) error {
 
 func validateProcessFileKey(key string) error {
 	if _, err := objectkey.Normalize(key); err != nil {
-		switch {
-		case errors.Is(err, objectkey.ErrAbsolute):
+		if errors.Is(err, objectkey.ErrAbsolute) {
 			return status.Error(codes.InvalidArgument, "absolute path is not allowed in key")
-		case errors.Is(err, objectkey.ErrTraversal):
-			return status.Error(codes.InvalidArgument, "path traversal in key")
-		case errors.Is(err, objectkey.ErrNUL):
-			return status.Error(codes.InvalidArgument, "object key contains NUL")
-		case errors.Is(err, objectkey.ErrEmpty):
-			return status.Error(codes.InvalidArgument, "object key must not be empty")
-		default:
-			return status.Error(codes.InvalidArgument, "invalid object key")
 		}
+		if errors.Is(err, objectkey.ErrNUL) {
+			return status.Error(codes.InvalidArgument, "object key contains NUL")
+		}
+		if errors.Is(err, objectkey.ErrEmpty) {
+			return status.Error(codes.InvalidArgument, "object key must not be empty")
+		}
+		// All other errors from the shared validator are rejected as traversal;
+		// this fail-closed fallback keeps future guards from becoming bypasses.
+		return status.Error(codes.InvalidArgument, "path traversal in key")
 	}
 	return nil
 }

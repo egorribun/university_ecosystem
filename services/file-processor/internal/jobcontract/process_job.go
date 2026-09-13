@@ -85,20 +85,13 @@ func validateKey(key string) error {
 		return errors.New("object_key_nul")
 	}
 	if _, err := objectkey.Normalize(key); err != nil {
-		switch {
-		case errors.Is(err, objectkey.ErrAbsolute):
+		if errors.Is(err, objectkey.ErrAbsolute) {
 			return errors.New("object_key_absolute")
-		case errors.Is(err, objectkey.ErrTraversal):
-			return errors.New("object_key_traversal")
-		case errors.Is(err, objectkey.ErrEmpty):
-			return errors.New("object_key_empty")
-		case errors.Is(err, objectkey.ErrTooLong):
-			return errors.New("object_key_too_long")
-		case errors.Is(err, objectkey.ErrNUL):
-			return errors.New("object_key_nul")
-		default:
-			return errors.New("object_key_invalid")
 		}
+		// Empty, oversized, and NUL-containing values are rejected above. Any
+		// other shared-normalizer error is therefore a traversal failure; keep
+		// this fail-closed so adding a new normalizer guard cannot admit a key.
+		return errors.New("object_key_traversal")
 	}
 	return nil
 }
