@@ -374,6 +374,27 @@ async def test_run_forever_connects_and_processes_replication_stream() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_forever_logs_shutdown_provisioning_without_starting_fallback() -> (
+    None
+):
+    """A shutdown race must be observable and must not start the fallback worker."""
+    worker = cdc.CdcOutboxWorker(nats_broker=MagicMock(is_connected=True))
+
+    async def fail_after_shutdown() -> None:
+        worker._is_running = False
+        raise OSError("database unavailable")
+
+    worker.provision_replication_resources = AsyncMock(side_effect=fail_after_shutdown)
+    with patch.object(cdc.logger, "info") as info:
+        await worker.run_forever()
+
+    info.assert_any_call(
+        "CdcOutboxWorker: provisioning failed after shutdown; fallback skipped"
+    )
+    assert worker._fallback_worker is None
+
+
+@pytest.mark.asyncio
 async def test_replication_writer_ignores_data_after_stop() -> None:
     broker = MagicMock(is_connected=True)
     worker = cdc.CdcOutboxWorker(nats_broker=broker)
