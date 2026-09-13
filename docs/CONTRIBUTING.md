@@ -28,6 +28,21 @@ Welcome to the **University Ecosystem Platform** contribution guide. Please foll
 - **Validation**: Frontend schemas use **Valibot** (Zod has been completely removed).
 - **Bundle Budget**: Frontend main JS chunk must stay under **500 KB** (enforced in CI via bundle analysis).
 
+### ⚡ Local Fast Preflight
+
+Before pushing a change, run the supported shell-free preflight from the
+repository root:
+
+```bash
+uv run python scripts/fast_preflight.py --report artifacts/fast-preflight/fast-preflight.json
+```
+
+The command runs frontend typecheck/lint, backend mypy/Ruff, the repository
+harness and focused CI-contract tests concurrently. It waits for every check,
+writes one bounded JSON report, and exits non-zero on any failure, launch
+error or timeout. This is an early-feedback aid only; it never replaces the
+full CI matrix, coverage/mutation gates or SHA-bound release evidence.
+
 ---
 
 ## 🐍 Backend Workflow (`app/`)
