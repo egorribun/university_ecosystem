@@ -4249,3 +4249,51 @@ remain. This is a local hardening checkpoint, not release evidence: the old remo
 `d9a964be0896cb90377de51ba37aaa27333f91d9` and is still non-terminal, so the
 branch must be pushed only after its final failure inventory and then
 validated by a fresh current-SHA matrix.
+
+## 58. Current-SHA CI blocker closure and deploy trust-boundary hardening (2026-09-13)
+
+`6e6185b73` closes the two deterministic failures observed in fresh matrix run
+`34777996115` for the preceding SHA `fabb517f6c4d018dafcca619298debb9dab18a74`.
+
+The quality-inventory job now invokes every repository Python helper through
+the locked `uv` interpreter (`uv run python`). This prevents the runner's
+system Python from bypassing the frozen environment and failing to import
+PyYAML/jsonschema. The workflow contract test requires all four invocations.
+
+The plan document's evidence blocks now use the repository's required indented
+Markdown style, eliminating all 14 MD046 violations without changing evidence.
+The stale Trivy apt-mirror regression was replaced with a checksum-bound
+contract covering version `0.73.0`, the official HTTPS/TLS 1.2 release URL,
+strict checksum-before-extract-before-install ordering, and explicit absence of
+apt repository and `wget` bootstrapping.
+
+The deploy workflow no longer executes mutable setup actions for kubectl or
+Helm. It downloads official artifacts over HTTPS/TLS 1.2, verifies SHA-256
+before installation, installs Helm `v3.17.0` with its published digest, and
+requires environment-scoped `KUBECTL_VERSION` and `KUBECTL_SHA256`. After OIDC
+authentication it validates client/API-server major equality and a supported
+minor skew of at most plus or minus one. Requests and its four dependency
+artifacts are installed before OIDC using isolated pip, binary-only and
+`--require-hashes` from the repository lockfile. Missing or mismatched
+deployment variables fail closed.
+
+Focused evidence before commit:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_quality_workflow_contract.py \
+      tests/test_workflow_fail_closed_contracts.py \
+      tests/test_security_hardening_workflow_contract.py
+    211 passed in 98.45s
+    npx --yes markdownlint-cli2@0.20.0 \
+      docs/superpowers/plans/2026-08-31-mvp-quality-closure-continuation.md
+    Summary: 0 error(s)
+    pre-commit run --files <five changed files>
+    all configured hooks passed
+    git diff --check
+    exit code 0
+
+The commit was pushed non-force to `origin/egorribun`; pre-push TypeScript
+typecheck passed. The four user-owned untracked paths remain outside the
+index. A new matrix run for commit `6e6185b73` is required before any
+release claim; the prior run's two failures are superseded and remain
+diagnostic history only.
