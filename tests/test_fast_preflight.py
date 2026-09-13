@@ -48,6 +48,10 @@ def test_default_checks_cover_frontend_backend_harness_and_focused_contracts() -
         item.endswith("/tests/contracts/test_ci_release_capacity_contract.py")
         for item in normalized_command
     )
+    assert any(
+        item.endswith("/tests/test_duration_sharding_contract.py")
+        for item in normalized_command
+    )
 
 
 def test_run_checks_executes_all_checks_and_preserves_spec_order(

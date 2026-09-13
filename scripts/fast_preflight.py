@@ -29,6 +29,7 @@ DEFAULT_TIMEOUT_SECONDS = 600.0
 DEFAULT_REPORT_PATH = Path("artifacts/fast-preflight/fast-preflight.json")
 _FOCUSED_TESTS = (
     "tests/contracts/test_ci_release_capacity_contract.py",
+    "tests/test_duration_sharding_contract.py",
     "tests/test_frontend_ci_performance_contracts.py",
     "tests/test_workflow_fail_closed_contracts.py",
     "tests/test_fast_preflight.py",

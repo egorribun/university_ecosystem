@@ -1,6 +1,8 @@
 import atexit
 import base64
 import hashlib
+import json
+import math
 import os
 import shutil
 import sys
@@ -959,6 +961,66 @@ def pytest_runtest_setup(item):
         pytest.skip("skipping quarantined flaky test (use --run-quarantined to run)")
 
 
+def _duration_history_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    for key, value in pairs:
+        if key in payload:
+            raise ValueError(f"duplicate key {key!r}")
+        payload[key] = value
+    return payload
+
+
+def _load_historical_test_durations(path: Path) -> tuple[dict[str, float], float]:
+    """Load the shard planner's tracked timing input without silent fallback."""
+
+    try:
+        payload = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_duration_history_object,
+        )
+    except (OSError, UnicodeError, ValueError) as error:
+        raise pytest.UsageError(
+            f"Unable to read historical test durations: {error}"
+        ) from error
+    if not isinstance(payload, dict):
+        raise pytest.UsageError(
+            "Invalid historical test durations: root must be an object"
+        )
+
+    raw_durations = payload.get("durations", {})
+    if not isinstance(raw_durations, dict):
+        raise pytest.UsageError(
+            "Invalid historical test durations: durations must be an object"
+        )
+    raw_default = payload.get("default_duration_seconds", 1.0)
+    if (
+        isinstance(raw_default, bool)
+        or not isinstance(raw_default, int | float)
+        or not math.isfinite(float(raw_default))
+        or raw_default < 0
+    ):
+        raise pytest.UsageError(
+            "Invalid historical test durations: default duration must be finite and non-negative"
+        )
+
+    durations: dict[str, float] = {}
+    for test_path, raw_duration in raw_durations.items():
+        if (
+            not isinstance(test_path, str)
+            or not test_path
+            or isinstance(raw_duration, bool)
+            or not isinstance(raw_duration, int | float)
+            or not math.isfinite(float(raw_duration))
+            or raw_duration < 0
+        ):
+            raise pytest.UsageError(
+                "Invalid historical test durations: entries must map non-empty paths "
+                "to finite non-negative numbers"
+            )
+        durations[test_path] = float(raw_duration)
+    return durations, float(raw_default)
+
+
 def pytest_collection_modifyitems(config, items):
     shard_id = config.getoption("--shard-id")
     num_shards = config.getoption("--num-shards")
@@ -973,7 +1035,6 @@ def pytest_collection_modifyitems(config, items):
                 f"--shard-id must be between 0 and {num_shards - 1} inclusive."
             )
 
-        import json
         from collections import defaultdict
 
         # 1. Group items by file
@@ -987,12 +1048,7 @@ def pytest_collection_modifyitems(config, items):
         durations = {}
         default_dur = 1.0
         if durations_path.exists():
-            try:
-                data = json.loads(durations_path.read_text(encoding="utf-8"))
-                durations = data.get("durations", {})
-                default_dur = data.get("default_duration_seconds", 1.0)
-            except Exception:  # noqa: S110
-                pass
+            durations, default_dur = _load_historical_test_durations(durations_path)
 
         # 3. Estimate duration of each file
         file_durations = []
