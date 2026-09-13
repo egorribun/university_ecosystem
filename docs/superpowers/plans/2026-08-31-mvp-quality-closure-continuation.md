@@ -4139,3 +4139,48 @@ uv run pytest -q -p no:cacheprovider \
 
 The sole skip is the documented Windows limitation that `bash` is not an
 executable on this host; the wrapper's Linux execution remains release-gated.
+
+## 55. Current-SHA mutation and dependency-drift hardening (2026-09-13)
+
+The current branch added two bounded, regression-tested fixes without changing
+the required mutation denominator or CI runner caps:
+
+- `308ba3e3d` isolates the expensive `src/api/client.ts` first-attempt Stryker
+  ranges from UI hotspot ranges. The planner still emits exactly 64 logical
+  shards and preserves every preflight mutant; the regression fixture proves
+  complete accounting, unique assignments and no client/Badge graph mixing.
+- `5502da1a2` adds the fail-closed BE-04 AST route-dependency inventory and
+  reviewed ledger. The current inventory contains 148 route callsites (25
+  canonical Dishka, 110 approved legacy, 9 public/no-DB and 4 internal/
+  websocket) with zero mixed ownership. New legacy routes or ownership changes
+  now fail until the ledger is deliberately reviewed.
+
+The effective BE-02 metadata inventory is synchronized with ADR-036 and the
+backend rules: 134 applicable defaults (26 dual, 91 Python-only, 17
+server-only) plus one separately tracked `Computed` expression. PostgreSQL
+catalog, phased migration and full legacy-DI migration evidence remain
+external follow-ups; neither item is being falsely marked release-complete.
+
+Local focused evidence for this checkpoint:
+
+```text
+node --test frontend/scripts/run-stryker.test.mjs
+97 passed
+uv run pytest -q -p no:cacheprovider \
+  tests/test_model_default_policy.py tests/test_route_dependency_inventory.py
+6 passed
+python verify_harness.py --repo-only
+29 passed
+```
+
+The old remote run `34761805023` is still bound to the previous SHA and has a
+confirmed Stryker shard-20 hard timeout; it remains non-terminal and is not
+used as current-SHA evidence. Push is intentionally deferred until its final
+failure/artifact inventory is available, after which a fresh matrix will be
+run against the current head.
+
+The CDC boundary also received a race-safe shutdown hardening: if logical
+replication provisioning fails after `stop()` has been requested, the worker
+now exits without starting a fresh polling fallback. The focused CDC suite is
+**46 passed**; this closes the observed cancellation race but does not claim
+the separately gated PostgreSQL replication/staging enablement work.

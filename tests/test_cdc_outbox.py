@@ -534,6 +534,47 @@ async def test_cdc_outbox_worker_stop_stops_fallback_worker(
     assert len(fallback_instances) == 1
 
 
+@pytest.mark.asyncio
+async def test_cdc_outbox_worker_stop_during_failed_provisioning_skips_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provisioning failure after shutdown must not launch a new poller."""
+    provisioning_started = asyncio.Event()
+    release_provisioning = asyncio.Event()
+    fallback_started = asyncio.Event()
+
+    async def fail_provisioning() -> None:
+        provisioning_started.set()
+        await release_provisioning.wait()
+        raise OSError("logical replication unavailable")
+
+    class FakeOutboxWorker:
+        async def run_forever(self) -> None:
+            fallback_started.set()
+
+        async def stop(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.workers.outbox.OutboxWorker", FakeOutboxWorker)
+    broker = AsyncMock()
+    broker.is_connected = True
+    worker = CdcOutboxWorker(nats_broker=broker)
+    worker.provision_replication_resources = fail_provisioning
+
+    task = asyncio.create_task(worker.run_forever())
+    try:
+        await asyncio.wait_for(provisioning_started.wait(), timeout=1)
+        await worker.stop()
+        release_provisioning.set()
+        await asyncio.wait_for(task, timeout=1)
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    assert not fallback_started.is_set()
+
+
 # ── Remediation Tests for Reviewer 2 Feedback ───────────────────────────────
 
 

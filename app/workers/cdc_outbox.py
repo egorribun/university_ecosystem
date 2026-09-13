@@ -741,6 +741,12 @@ class CdcOutboxWorker:
             OSError,
             ConnectionError,
         ) as e:  # RZ-20-04: narrowed — postgres replication resources setup
+            if self._stop_requested():
+                logger.info(
+                    "CdcOutboxWorker: provisioning failed after shutdown; "
+                    "fallback skipped"
+                )
+                return
             logger.warning(
                 "CdcOutboxWorker: logical replication provisioning failed (%s). Falling back to OutboxWorker.",
                 e,
