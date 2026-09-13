@@ -3898,7 +3898,7 @@ same-run DAG/artifact-selector provenance was supplied.
 | Required vs advisory catalog | `IMPLEMENTED-LOCAL / LIVE-REVIEW-PENDING`: static source/provider/expansion catalog and validator are green; refresh ruleset after push and compare all required contexts |
 | Transient-only retries | `PARTIAL`: targeted retries exist; repository-wide first-failure-preserving classifier remains open |
 | Unified check/artifact/owner catalog | `IMPLEMENTED-LOCAL`: 55 workflows/180 source jobs plus protected supplemental contexts are schema-validated |
-| Compact CI health report | `OPEN`: diagnostic JSON exists on demand; a current-run published health artifact and run-summary integration remain open |
+| Compact CI health report | `IMPLEMENTED-LOCAL / EVIDENCE-PENDING`: existing `ci-success` now publishes a run/attempt-bound diagnostic JSON+Markdown artifact and step-summary projection; current-SHA terminal runs are still required |
 | Local parallel fast-preflight | `IMPLEMENTED-LOCAL / EVIDENCE-PENDING`: focused contracts are green; current full developer invocation remains non-release evidence |
 | Generic heartbeat diagnostics | `PARTIAL`: mutation watchdog exists; cross-job stall diagnostics remain open |
 
@@ -3917,11 +3917,62 @@ same-run DAG/artifact-selector provenance was supplied.
    test (`165 passed` in the focused workflow-contract suite) and isolated
    pre-commit/actionlint/ruff checks. Re-run this step on the post-push SHA;
    no new fan-out lane was introduced.
-4. Produce a compact current-run health artifact and strict timing evidence;
-   preserve first failures and all artifacts. Do not tune Stryker/mutmut caps
-   until three comparable green runs satisfy the queue/resource/provenance
-   rollback criteria.
+4. Verify the compact current-run health artifact on the next current-SHA
+   terminal run and produce strict timing evidence; preserve first failures
+   and all artifacts. Do not tune Stryker/mutmut caps until three comparable
+   green runs satisfy the queue/resource/provenance rollback criteria.
 5. Keep merge-to-main, exact-six immutable image producer, digest Docker smoke,
    Kubernetes/TLS/ExternalSecrets/observability staging, device CWV,
    chaos/restart/rollback, production release and final SHA-bound audit
    explicitly external and release-blocking.
+
+## 51. Compact current-run CI health report implementation (2026-09-13)
+
+The previously `OPEN` compact-health item now has a repository-local producer
+without adding a fan-out lane or changing any required test, coverage,
+mutation, security, or concurrency threshold.  The existing `ci-success`
+finalizer requests `actions: read` and `contents: read`, checks out the exact
+workflow SHA with credentials disabled, and after the authoritative
+fail-closed result table runs:
+
+```text
+scripts/quality/analyze_ci_critical_path.py
+  --repository "$GITHUB_REPOSITORY"
+  --run-id "$GITHUB_RUN_ID"
+  --concurrency-cap 20
+  --diagnostic-lower-bound
+scripts/quality/render_ci_health_report.py
+```
+
+The analyzer JSON and an escaped Markdown projection are uploaded as the
+run/attempt-bound artifact
+`ci-health-${{ github.run_id }}-${{ github.run_attempt }}` and the Markdown is
+also appended to the finalizer step summary.  The renderer validates schema
+version, repository/run identity, optional report SHA-256, job cardinality,
+status/conclusion values, and all queue/setup/test/artifact p50/p95/max
+statistics.  It bounds and escapes job names, lists skipped jobs, and emits an
+explicit warning for pending/unknown outcomes; malformed or missing evidence
+fails the existing finalizer rather than manufacturing a green signal.
+
+Focused RED→GREEN evidence:
+
+```text
+uv run pytest -q -p no:cacheprovider tests/test_ci_health_report.py
+  6 passed
+uv run pytest -q -p no:cacheprovider \
+  tests/test_ci_health_report.py tests/test_quality_workflow_contract.py \
+  tests/test_ci_check_catalog.py
+  189 passed
+uv run ruff check scripts/quality/render_ci_health_report.py \
+  tests/test_ci_health_report.py tests/test_quality_workflow_contract.py
+  passed
+uv run python scripts/quality/validate_ci_check_catalog.py
+  CI check catalog: OK (55 workflows, 180 jobs)
+```
+
+This closes the compact report implementation gap locally, but the report is
+still diagnostic-only API timing and not a release certificate.  Strict DAG /
+artifact-byte verification, detached producer provenance, runner RSS/CPU,
+billed minutes, repository-wide retry classification, generic cross-job
+heartbeat diagnostics, three comparable green runs before any cap change, and
+all merge/staging/release evidence remain open exactly as recorded in §50.

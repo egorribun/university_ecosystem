@@ -83,6 +83,25 @@ returned ruleset ID or a transient status conclusion into
 workflow, provider integration, or protected-context contract intentionally
 changes, and rerun its focused tests and validator.
 
+### Current-run health artifact
+
+The required `ci-success` finalizer publishes one run-bound pair named
+`ci-health-${{ github.run_id }}-${{ github.run_attempt }}`.  The pair contains
+`artifacts/quality/ci-health-report.json` (the full analyzer ledger) and
+`artifacts/quality/ci-health-report.md` (a compact step-summary projection).
+The renderer validates the analyzer schema, report digest, outcome counts and
+queue/setup/test/artifact p50/p95 values before writing Markdown.  Job names
+are HTML-escaped and bounded; pending or unknown outcomes are called out and
+never presented as a green release signal.
+
+The report is intentionally diagnostic-only: it observes the completed run
+through the GitHub Jobs API and therefore is a lower bound, not proof of the
+dependency DAG, archive bytes, or release provenance.  Strict timing evidence
+still requires the detached same-run DAG/artifact-selector workflow described
+in the continuation plan.  A missing or malformed report fails the existing
+finalizer after the authoritative result table has been evaluated, preserving
+the required fail-closed behavior without adding a fan-out job.
+
 ## Updating safely
 
 When adding, removing, or renaming a workflow/job:

@@ -5074,6 +5074,9 @@ jobs:
     name: CI Success
     runs-on: ubuntu-24.04
     timeout-minutes: 5 # CI-03 (audit Wave 10)
+    permissions:
+      actions: read
+      contents: read
     # The authoritative aggregate must execute even while dependencies are
     # cancelled. A conditionally skipped required job is reported as success by
     # GitHub, so cancellation is evaluated by the fail-closed result table below.
@@ -5351,3 +5354,51 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Required Go integration results - ws-hub: $ws, file-processor: $fp, gateway: $gw"
            echo "Release-blocking results - browsers: $browsers, chaos: $toxi, migration: $dbmig"
+
+      - name: Checkout source for CI health report
+        if: ${{ always() }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python for CI health report
+        if: ${{ always() }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Generate current-run CI timing ledger
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/quality
+          python scripts/quality/analyze_ci_critical_path.py \
+            --repository "${GITHUB_REPOSITORY}" \
+            --run-id "${GITHUB_RUN_ID}" \
+            --concurrency-cap 20 \
+            --diagnostic-lower-bound \
+            --output artifacts/quality/ci-health-report.json
+
+      - name: Render compact current-run CI health report
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/render_ci_health_report.py \
+            --input artifacts/quality/ci-health-report.json \
+            --output artifacts/quality/ci-health-report.md
+          cat artifacts/quality/ci-health-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload current-run CI health report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v6.0.0
+        with:
+          name: ci-health-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/quality/ci-health-report.*
+          if-no-files-found: error
+          retention-days: 14

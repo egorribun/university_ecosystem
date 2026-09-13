@@ -557,6 +557,53 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
     assert kyverno_job["timeout-minutes"] == 15
 
 
+def test_ci_success_publishes_current_run_health_artifact() -> None:
+    """The existing finalizer must publish one current-run health projection."""
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    ci_success = workflow["jobs"]["ci-success"]
+    assert ci_success["permissions"] == {"actions": "read", "contents": "read"}
+    steps = ci_success["steps"]
+    checkout = next(
+        step
+        for step in steps
+        if step.get("name") == "Checkout source for CI health report"
+    )
+    assert checkout["uses"] == CHECKOUT_ACTION_PIN
+    assert checkout["with"] == {
+        "ref": "${{ github.sha }}",
+        "fetch-depth": 1,
+        "persist-credentials": False,
+    }
+    analyzer = next(
+        step
+        for step in steps
+        if step.get("name") == "Generate current-run CI timing ledger"
+    )
+    analyzer_run = analyzer["run"]
+    assert "--diagnostic-lower-bound" in analyzer_run
+    assert "${GITHUB_RUN_ID}" in analyzer_run
+    assert "--concurrency-cap 20" in analyzer_run
+    renderer = next(
+        step
+        for step in steps
+        if step.get("name") == "Render compact current-run CI health report"
+    )
+    assert "render_ci_health_report.py" in renderer["run"]
+    upload = next(
+        step
+        for step in steps
+        if step.get("name") == "Upload current-run CI health report"
+    )
+    assert upload["uses"] == UPLOAD_ARTIFACT_ACTION_PIN
+    assert upload["with"] == {
+        "name": "ci-health-${{ github.run_id }}-${{ github.run_attempt }}",
+        "path": "artifacts/quality/ci-health-report.*",
+        "if-no-files-found": "error",
+        "retention-days": 14,
+    }
+
+
 def test_kyverno_matrix_covers_every_policy_with_positive_and_negative_cases() -> None:
     policies = {
         document["metadata"]["name"]

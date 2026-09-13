@@ -1704,7 +1704,14 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "${{ always() }}",
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "ci-health-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "artifacts/quality/ci-health-report.*",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,
