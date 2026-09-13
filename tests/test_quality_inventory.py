@@ -271,6 +271,31 @@ def test_matches_source_accepts_tests_for_utility_scripts() -> None:
     )
 
 
+def test_matches_source_accepts_authored_test_support_module() -> None:
+    assert (
+        matches_source(
+            "tests/test_duration_sharding_contract.py",
+            set(),
+            [],
+            {"tests", "tests.conftest"},
+            reference_paths={"tests/conftest.py"},
+        )
+        is True
+    )
+
+    # Importing another test module is not an ownership relationship.
+    assert (
+        matches_source(
+            "tests/test_duration_sharding_contract.py",
+            set(),
+            [],
+            {"tests", "tests.test_other"},
+            reference_paths={"tests/conftest.py"},
+        )
+        is False
+    )
+
+
 def test_matches_source_accepts_named_workflow_contract_tests() -> None:
     workflow_paths = {".github/workflows/dast.yml"}
 
