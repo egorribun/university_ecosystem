@@ -165,26 +165,39 @@ async def _handle_schema_and_extensions() -> None:
 
     try:
         async with engine.begin() as conn:
-            if conn.dialect.name == "postgresql":
-                try:
-                    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-                except (
-                    OSError,
-                    ConnectionError,
-                ) as e:  # RZ-22-01: narrowed — DB extension creation errors
-                    _logger.warning("pgvector unavailable: %s", e)
-                    runtime_flags.disable("semantic_search_enabled")
-            else:
-                # Patch SQLite for tests
-                for table in Base.metadata.tables.values():
-                    for column in table.columns:
-                        if column.computed is not None and "to_tsvector" in str(
-                            column.computed.sqltext
-                        ):
-                            column.computed = None
-                            column.nullable = True
+            sqlite_metadata_snapshot: list[tuple[Any, Any, bool | None]] = []
+            try:
+                if conn.dialect.name == "postgresql":
+                    try:
+                        await conn.execute(
+                            text("CREATE EXTENSION IF NOT EXISTS vector")
+                        )
+                    except (
+                        OSError,
+                        ConnectionError,
+                    ) as e:  # RZ-22-01: narrowed — DB extension creation errors
+                        _logger.warning("pgvector unavailable: %s", e)
+                        runtime_flags.disable("semantic_search_enabled")
+                else:
+                    # SQLite cannot compile PostgreSQL's tsvector expression.
+                    # Adapt the shared metadata only for create_all, then restore it
+                    # so later startup cycles and tests see the canonical model.
+                    for table in Base.metadata.tables.values():
+                        for column in table.columns:
+                            if column.computed is not None and "to_tsvector" in str(
+                                column.computed.sqltext
+                            ):
+                                sqlite_metadata_snapshot.append(
+                                    (column, column.computed, column.nullable)
+                                )
+                                column.computed = None
+                                column.nullable = True
 
-            await conn.run_sync(Base.metadata.create_all)
+                await conn.run_sync(Base.metadata.create_all)
+            finally:
+                for column, computed, nullable in sqlite_metadata_snapshot:
+                    column.computed = computed
+                    column.nullable = nullable
     except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises in non-dev envs (reviewed TD-27-04)
         if settings.environment not in {"development", "local", "testing"}:
             raise
