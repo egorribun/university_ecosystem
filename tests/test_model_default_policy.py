@@ -36,3 +36,25 @@ def test_dual_defaults_inventory_and_exceptions_are_recorded() -> None:
     index = index_path.read_text(encoding="utf-8")
     assert "ADR-036" in index
     assert "SQLAlchemy Dual-Defaults Migration Policy" in index
+
+
+def test_effective_metadata_inventory_matches_adr_snapshot() -> None:
+    """Keep the measured ADR counts synchronized with SQLAlchemy metadata."""
+
+    import app.models  # noqa: F401  # ensure every model is registered
+    from app.core.database import Base
+
+    counts = {"both": 0, "python_only": 0, "server_only": 0}
+    for table in Base.metadata.tables.values():
+        for column in table.c:
+            has_python_default = column.default is not None
+            has_server_default = column.server_default is not None
+            if has_python_default and has_server_default:
+                counts["both"] += 1
+            elif has_python_default:
+                counts["python_only"] += 1
+            elif has_server_default:
+                counts["server_only"] += 1
+
+    assert len(Base.metadata.tables) == 45
+    assert counts == {"both": 26, "python_only": 91, "server_only": 18}
