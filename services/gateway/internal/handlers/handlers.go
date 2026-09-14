@@ -136,95 +136,152 @@ func ProxyOrFileHandler(proxy *httputil.ReverseProxy, internalSecret []byte, ctx
 	}
 }
 
-// FileProcessSyncHandler proximales a synchronous file processing request to the file-processor service over gRPC.
-//
-//nolint:cyclop
+// fileProcessSyncRequest is the validated HTTP representation of a synchronous
+// file-processing request. Keeping it named makes the request validation and
+// capability binding helpers share one exact contract.
+type fileProcessSyncRequest struct {
+	ID        string            `json:"id" binding:"required,uuid"`
+	Type      string            `json:"type" binding:"required"`
+	SourceKey string            `json:"source_key" binding:"required"`
+	DestKey   string            `json:"dest_key" binding:"required"`
+	Options   map[string]string `json:"options"`
+}
+
+func bindFileProcessSyncRequest(c *gin.Context) (fileProcessSyncRequest, error) {
+	var req fileProcessSyncRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		return fileProcessSyncRequest{}, err
+	}
+	return req, nil
+}
+
+// verifyFileProcessCapability validates the trusted backend proof before any
+// caller-controlled capability reaches the gRPC boundary. It also removes the
+// bearer value from the HTTP request once verified so generic middleware and
+// access logging cannot persist it.
+func verifyFileProcessCapability(c *gin.Context, req fileProcessSyncRequest, capabilitySecrets ...[]byte) (string, bool) {
+	if len(capabilitySecrets) == 0 || len(capabilitySecrets[0]) == 0 {
+		return "", true
+	}
+
+	values := c.Request.Header.Values(pb.ProcessingCapabilityHeader)
+	if len(values) != 1 || strings.TrimSpace(values[0]) == "" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return "", false
+	}
+	userID, userOK := c.Get("user_id")
+	sessionID, sessionOK := c.Get("session_id")
+	user, userStringOK := userID.(string)
+	session, sessionStringOK := sessionID.(string)
+	tenant, _ := c.Get("tenant_id")
+	tenantID, _ := tenant.(string)
+	if !userOK || !sessionOK || !userStringOK || !sessionStringOK || user == "" || session == "" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return "", false
+	}
+
+	verifiedCapability := strings.TrimSpace(values[0])
+	claims, err := pb.VerifyProcessingCapability(verifiedCapability, capabilitySecrets[0], time.Now().UTC())
+	if err != nil || !claims.Matches(pb.ProcessingCapabilityExpectation{
+		ID:        req.ID,
+		Type:      req.Type,
+		SourceKey: req.SourceKey,
+		DestKey:   req.DestKey,
+		UserID:    user,
+		SessionID: session,
+		TenantID:  tenantID,
+	}) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return "", false
+	}
+
+	c.Request.Header.Del(pb.ProcessingCapabilityHeader)
+	return verifiedCapability, true
+}
+
+func fileProcessRPCContext(c *gin.Context, verifiedCapability string) (context.Context, context.CancelFunc) {
+	// Use the per-request context so cancellation propagates when the client
+	// disconnects (RZ-33-04).
+	rpcCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	if authHeader := c.GetHeader("Authorization"); authHeader != "" {
+		rpcCtx = metadata.AppendToOutgoingContext(rpcCtx, "authorization", authHeader)
+	}
+	tenantIDVal, _ := c.Get("tenant_id")
+	if tenantID, ok := tenantIDVal.(string); ok && tenantID != "" {
+		rpcCtx = metadata.AppendToOutgoingContext(rpcCtx, "x-tenant-id", tenantID)
+	}
+	if verifiedCapability != "" {
+		rpcCtx = metadata.AppendToOutgoingContext(
+			rpcCtx,
+			strings.ToLower(pb.ProcessingCapabilityHeader),
+			verifiedCapability,
+		)
+	}
+	return rpcCtx, cancel
+}
+
+func writeFileProcessError(c *gin.Context, logger *slog.Logger, err error) {
+	// PERF-W5-03: Map gRPC status codes to semantically correct HTTP codes.
+	// Load balancers and monitoring treat 504 vs 500 very differently — 504
+	// triggers upstream-timeout alerts and retries, 500 triggers error-rate alerts.
+	switch status.Code(err) {
+	case codes.DeadlineExceeded:
+		logger.WarnContext(c.Request.Context(), "gRPC upstream timeout", "err", err)
+		c.JSON(http.StatusGatewayTimeout, gin.H{"error": "upstream_timeout"})
+	case codes.Unavailable:
+		logger.WarnContext(c.Request.Context(), "gRPC upstream unavailable", "err", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "upstream_unavailable"})
+	case codes.PermissionDenied, codes.Unauthenticated:
+		logger.WarnContext(c.Request.Context(), "gRPC permission denied", "err", err)
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+	case codes.ResourceExhausted:
+		logger.WarnContext(c.Request.Context(), "gRPC resource exhausted", "err", err)
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too_many_requests"})
+	case codes.InvalidArgument:
+		logger.WarnContext(c.Request.Context(), "gRPC invalid argument", "err", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_argument"})
+	case codes.NotFound:
+		logger.WarnContext(c.Request.Context(), "gRPC resource not found", "err", err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
+	case codes.AlreadyExists:
+		logger.WarnContext(c.Request.Context(), "gRPC resource already exists", "err", err)
+		c.JSON(http.StatusConflict, gin.H{"error": "already_exists"})
+	case codes.Unimplemented:
+		logger.WarnContext(c.Request.Context(), "gRPC method unimplemented", "err", err)
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "unimplemented"})
+	case codes.OK, codes.Canceled, codes.Unknown, codes.FailedPrecondition, codes.Aborted, codes.OutOfRange, codes.Internal, codes.DataLoss:
+		// Fall through to the default handler for uncommon/unexpected codes.
+		fallthrough
+	default:
+		logger.ErrorContext(c.Request.Context(), "gRPC call failed", "err", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "processing_failed"})
+	}
+}
+
+// FileProcessSyncHandler proxies a synchronous file-processing request to the
+// file-processor service over gRPC.
 func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *slog.Logger, capabilitySecrets ...[]byte) gin.HandlerFunc {
 	return func(c *gin.Context) { //nolint:contextcheck // uses c.Request.Context() for gRPC calls
-		// GW-P2-02 (audit Wave 10): removed TOCTOU gRPC state pre-check.
-		// grpcConn.GetState() is advisory — the state can transition from Ready
-		// to TransientFailure between the check and the actual RPC call, creating
-		// a race condition.  gRPC itself returns codes.Unavailable on connection
-		// failure; we handle that in the error switch below.
+		// GW-P2-02 (audit Wave 10): grpcConn.GetState() is advisory and was
+		// intentionally removed; the RPC itself reports transient failures.
 		if grpcConn == nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "File processor unavailable"})
 			return
 		}
 
-		var req struct {
-			ID        string            `json:"id" binding:"required,uuid"`
-			Type      string            `json:"type" binding:"required"`
-			SourceKey string            `json:"source_key" binding:"required"`
-			DestKey   string            `json:"dest_key" binding:"required"`
-			Options   map[string]string `json:"options"`
-		}
-
-		if err := c.ShouldBindJSON(&req); err != nil {
+		req, err := bindFileProcessSyncRequest(c)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		// A configured capability secret closes the gateway-to-file-processor
-		// authorization boundary. The proof is minted by the trusted backend and
-		// binds the exact job, operation, object keys, user, session, and tenant.
-		// Never forward a caller-supplied capability without verifying it first.
-		var verifiedCapability string
-		if len(capabilitySecrets) > 0 && len(capabilitySecrets[0]) > 0 {
-			values := c.Request.Header.Values(pb.ProcessingCapabilityHeader)
-			if len(values) != 1 || strings.TrimSpace(values[0]) == "" {
-				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
-				return
-			}
-			userID, userOK := c.Get("user_id")
-			sessionID, sessionOK := c.Get("session_id")
-			user, userStringOK := userID.(string)
-			session, sessionStringOK := sessionID.(string)
-			tenant, _ := c.Get("tenant_id")
-			tenantID, _ := tenant.(string)
-			if !userOK || !sessionOK || !userStringOK || !sessionStringOK || user == "" || session == "" {
-				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
-				return
-			}
-			verifiedCapability = strings.TrimSpace(values[0])
-			claims, err := pb.VerifyProcessingCapability(verifiedCapability, capabilitySecrets[0], time.Now().UTC())
-			if err != nil || !claims.Matches(pb.ProcessingCapabilityExpectation{
-				ID:        req.ID,
-				Type:      req.Type,
-				SourceKey: req.SourceKey,
-				DestKey:   req.DestKey,
-				UserID:    user,
-				SessionID: session,
-				TenantID:  tenantID,
-			}) {
-				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
-				return
-			}
-			// Do not leave a bearer capability in the HTTP request where generic
-			// middleware or access logging could accidentally persist it.
-			c.Request.Header.Del(pb.ProcessingCapabilityHeader)
+		verifiedCapability, ok := verifyFileProcessCapability(c, req, capabilitySecrets...)
+		if !ok {
+			return
 		}
 
-		// Call gRPC — use the per-request context so cancellation propagates
-		// when the client disconnects (RZ-33-04).
-		rpcCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		rpcCtx, cancel := fileProcessRPCContext(c, verifiedCapability)
 		defer cancel()
-
-		// Propagate Authorization header to gRPC metadata
-		if authHeader := c.GetHeader("Authorization"); authHeader != "" {
-			rpcCtx = metadata.AppendToOutgoingContext(rpcCtx, "authorization", authHeader)
-		}
-		tenantIDVal, _ := c.Get("tenant_id")
-		if tenantID, ok := tenantIDVal.(string); ok && tenantID != "" {
-			rpcCtx = metadata.AppendToOutgoingContext(rpcCtx, "x-tenant-id", tenantID)
-		}
-		if verifiedCapability != "" {
-			rpcCtx = metadata.AppendToOutgoingContext(
-				rpcCtx,
-				strings.ToLower(pb.ProcessingCapabilityHeader),
-				verifiedCapability,
-			)
-		}
-
 		resp, err := fileClient.ProcessFile(rpcCtx, &pb.ProcessFileRequest{
 			Id:        req.ID,
 			Type:      req.Type,
@@ -232,43 +289,8 @@ func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, file
 			DestKey:   req.DestKey,
 			Options:   req.Options,
 		})
-
 		if err != nil {
-			// PERF-W5-03: Map gRPC status codes to semantically correct HTTP codes.
-			// Load balancers and monitoring treat 504 vs 500 very differently — 504
-			// triggers upstream-timeout alerts and retries, 500 triggers error-rate alerts.
-			switch status.Code(err) {
-			case codes.DeadlineExceeded:
-				logger.WarnContext(c.Request.Context(), "gRPC upstream timeout", "err", err)
-				c.JSON(http.StatusGatewayTimeout, gin.H{"error": "upstream_timeout"})
-			case codes.Unavailable:
-				logger.WarnContext(c.Request.Context(), "gRPC upstream unavailable", "err", err)
-				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "upstream_unavailable"})
-			case codes.PermissionDenied, codes.Unauthenticated:
-				logger.WarnContext(c.Request.Context(), "gRPC permission denied", "err", err)
-				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
-			case codes.ResourceExhausted:
-				logger.WarnContext(c.Request.Context(), "gRPC resource exhausted", "err", err)
-				c.JSON(http.StatusTooManyRequests, gin.H{"error": "too_many_requests"})
-			case codes.InvalidArgument:
-				logger.WarnContext(c.Request.Context(), "gRPC invalid argument", "err", err)
-				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_argument"})
-			case codes.NotFound:
-				logger.WarnContext(c.Request.Context(), "gRPC resource not found", "err", err)
-				c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
-			case codes.AlreadyExists:
-				logger.WarnContext(c.Request.Context(), "gRPC resource already exists", "err", err)
-				c.JSON(http.StatusConflict, gin.H{"error": "already_exists"})
-			case codes.Unimplemented:
-				logger.WarnContext(c.Request.Context(), "gRPC method unimplemented", "err", err)
-				c.JSON(http.StatusNotImplemented, gin.H{"error": "unimplemented"})
-			case codes.OK, codes.Canceled, codes.Unknown, codes.FailedPrecondition, codes.Aborted, codes.OutOfRange, codes.Internal, codes.DataLoss:
-				// Fallthrough to default handler for uncommon/unexpected codes
-				fallthrough
-			default:
-				logger.ErrorContext(c.Request.Context(), "gRPC call failed", "err", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "processing_failed"})
-			}
+			writeFileProcessError(c, logger, err)
 			return
 		}
 

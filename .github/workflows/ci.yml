@@ -2596,12 +2596,18 @@ jobs:
         working-directory: native/rust_ext
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-native
+          NIGHTLY_CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-native-nightly
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo llvm-cov clean
           cargo llvm-cov --locked --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-native/llvm.json
           cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-native/codecov.json
+          # Nightly branch instrumentation has a different compiler/configuration
+          # identity. Keep its object files and profdata in a separate target
+          # tree so the stable report lifecycle cannot remove or invalidate them.
+          nightly_target_dir="${NIGHTLY_CARGO_TARGET_DIR:?}"
+          export CARGO_TARGET_DIR="$nightly_target_dir"
           cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --locked --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-native/branch-llvm.json
 
@@ -2609,12 +2615,16 @@ jobs:
         working-directory: crates/pyo3-sanitizer
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-pyo3-sanitizer
+          NIGHTLY_CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-pyo3-sanitizer-nightly
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo llvm-cov clean
           cargo llvm-cov --locked --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
           cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
+          # Isolate nightly branch objects from the stable coverage tree.
+          nightly_target_dir="${NIGHTLY_CARGO_TARGET_DIR:?}"
+          export CARGO_TARGET_DIR="$nightly_target_dir"
           cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --locked --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
 
@@ -2622,10 +2632,14 @@ jobs:
         working-directory: frontend/wasm-sanitizer
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-wasm-sanitizer
+          NIGHTLY_CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-wasm-sanitizer-nightly
         run: |
           cargo llvm-cov clean
           cargo llvm-cov --locked --lib --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
           cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
+          # Isolate nightly branch objects from the stable coverage tree.
+          nightly_target_dir="${NIGHTLY_CARGO_TARGET_DIR:?}"
+          export CARGO_TARGET_DIR="$nightly_target_dir"
           cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --locked --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json
 
@@ -2633,6 +2647,7 @@ jobs:
         working-directory: frontend/rust-crypto
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-crypto
+          NIGHTLY_CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-crypto-nightly
         # Include tests/native.rs in the coverage universe; --lib alone only
         # measures the two src/lib.rs unit tests and leaves the contract below
         # the 99/98 rust-crypto floor.
@@ -2640,6 +2655,9 @@ jobs:
           cargo llvm-cov clean
           cargo llvm-cov --locked --all-targets --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
           cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-crypto/codecov.json
+          # Isolate nightly branch objects from the stable coverage tree.
+          nightly_target_dir="${NIGHTLY_CARGO_TARGET_DIR:?}"
+          export CARGO_TARGET_DIR="$nightly_target_dir"
           cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --locked --all-targets --branch --json --output-path ../../artifacts/coverage/rust/rust-crypto/branch-llvm.json
 

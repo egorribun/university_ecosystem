@@ -4995,3 +4995,96 @@ execute the Linux matrix, immutable six-image digest smoke, Kubernetes
 TLS/observability/CWV checks, chaos/rollback scenarios and the final
 SHA-bound audit. Do not claim MVP release readiness from these local checks
 alone.
+
+## 75. Current CI blocker closure and recertification checkpoint (2026-09-14)
+
+Diagnostic run `34874327356` (head `b3c15342a797bec80e3bfacaa3c29a9fb4129b41`)
+was inventoried from its job outputs before making this checkpoint. It is
+diagnostic evidence only: the run finished with 118 jobs (`85` successful,
+`9` failed and `24` skipped) and must not be treated as a release certificate.
+The nine root failures were:
+
+- orphaned generated Go capability tests in the source/test inventory;
+- a Semgrep suppression ledger line drift after middleware edits;
+- Rust nightly `llvm-cov` object files being removed or invalidated by the
+  stable coverage target tree;
+- gateway synchronous file-processing handler complexity above the configured
+  limit;
+- file-processor statement coverage below the required floor;
+- ws-hub statement coverage below the required floor;
+- an entropy-invalid CWV RUM fixture;
+- approved legacy chat/event routes missing from the dependency inventory;
+- the aggregate CI-success job cascading from the preceding failures.
+
+The current worktree contains the corresponding code and contract fixes:
+
+- generated `gen/go` files are classified before authored capability sources,
+  ownership and inventory rules include the generated root, and focused tests
+  prevent future orphan drift;
+- the Semgrep suppression remains exact, line-bound, owner-bound and expiry-
+  bound at the middleware's current line;
+- each Rust component now has a separate fail-fast nightly
+  `CARGO_TARGET_DIR`, exported before nightly cleanup/branch instrumentation;
+  stable commands, thresholds, artifact paths, uploads and provenance are
+  unchanged;
+- gateway request binding, capability verification, RPC context creation and
+  gRPC error mapping were extracted into cohesive helpers without changing
+  the trust boundary or response contract;
+- ws-hub has an explicit staging/production missing-internal-token regression
+  test;
+- file-processor authentication, JWKS, Redis revocation/replay, startup and
+  authorization boundary paths have focused tests and test-only seams. A
+  fresh aggregate profile from `services/file-processor` reports `100.0%`
+  statements for every package with no zero-count ranges;
+- CWV fixtures use entropy-valid deterministic test material, and the route
+  inventory records the two approved legacy file-download routes plus the
+  corrected database dependency.
+
+Fresh local evidence for this checkpoint:
+
+    python verify_harness.py --repo-only
+    # 29 passed, 0 failures/errors
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_quality_inventory.py
+    # 73 passed
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_semgrep_sarif_validator.py
+    # 33 passed
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_route_dependency_inventory.py \
+      tests/test_cwv_rum_security.py \
+      tests/test_non_auth_quality_closure.py
+    # 101 passed
+
+    cd services/file-processor
+    go test -count=1 ./...
+    go test -count=1 -coverprofile=<fresh-profile> ./...
+    go tool cover -func=<fresh-profile>
+    # all packages passed; aggregate statements 100.0%, no zero ranges
+    go vet ./...
+    golangci-lint run --config ../../.golangci.yml ./...
+    # 0 issues
+
+    python scripts/check_route_dependency_inventory.py
+    python scripts/quality/check_orphans_and_anti_patterns.py
+    # both passed
+
+The mandatory Linux-only race gate remains external evidence: this Windows
+host has `CGO_ENABLED=0` and no C compiler, so `go test -race` cannot be
+executed locally. The untracked user-owned directories
+`.tmp_preflight/`, `.tmp_stryker_18/`, `.tmp_stryker_22/`, the external audit
+`docs/audits/AUDIT_PLATFORM_FULL.md`, and the generated coverprofile
+`services/file-processor/coverage_capability` remain untouched and unstaged.
+The newly authored file-processor closure tests are intended tracked inputs
+and must be staged explicitly.
+
+This checkpoint is not a release claim. A new current-SHA push must still
+produce a schema-valid quality manifest, fresh security scan, Linux race and
+mutation/coverage evidence, browser/Lighthouse/Schemathesis results, immutable
+six-image and Docker smoke evidence, Kubernetes TLS/observability/CWV checks,
+chaos/rollback results and the final SHA-bound audit. CI timing/capacity
+optimizations remain evidence-gated; no matrix cap or quality threshold was
+changed from the diagnostic run.

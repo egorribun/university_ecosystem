@@ -36,6 +36,13 @@ const (
 	requiredRSAPublicExponent = 65537
 )
 
+var (
+	newJWKSRequestFunc = http.NewRequestWithContext
+	doJWKSRequestFunc  = func(client *http.Client, request *http.Request) (*http.Response, error) {
+		return client.Do(request)
+	}
+)
+
 // rsaKeySet is immutable after it has been published to rsaKeySetStore.  A
 // fresh map is created for every Store call so readers never race with a
 // refresh and an unsuccessful refresh cannot damage the LKG snapshot.
@@ -257,11 +264,11 @@ func fetchJWKSKeySet(ctx context.Context, client *http.Client, endpoint string) 
 	client = &clientCopy
 	requestCtx, cancel := context.WithTimeout(ctx, jwksRequestTimeout)
 	defer cancel()
-	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, endpoint, nil)
+	request, err := newJWKSRequestFunc(requestCtx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("JWKS request creation failed: %w", err)
 	}
-	response, err := client.Do(request)
+	response, err := doJWKSRequestFunc(client, request)
 	if err != nil {
 		return nil, fmt.Errorf("JWKS fetch failed: %w", err)
 	}

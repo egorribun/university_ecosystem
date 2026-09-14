@@ -331,6 +331,15 @@ func TestRun_PropagatesNATSInitializationFailure(t *testing.T) {
 	require.EqualError(t, err, "nats initialization failed")
 }
 
+func TestRun_RejectsMissingInternalAuthTokenForStaging(t *testing.T) {
+	t.Setenv("WS_HUB_INTERNAL_SECRET", "test-secret-at-least-32-characters-long")
+	t.Setenv("VITE_ENVIRONMENT", "staging")
+	t.Setenv("INTERNAL_AUTH_TOKEN", "")
+
+	err := run()
+	require.EqualError(t, err, "INTERNAL_AUTH_TOKEN is not set for staging/production")
+}
+
 func TestInitializeTracerShutdown_CancelledContextIsSafe(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

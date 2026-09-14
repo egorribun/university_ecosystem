@@ -374,18 +374,25 @@ def test_rust_coverage_job_does_not_restore_stale_llvm_build_artifacts() -> None
         assert coverage_step["env"]["CARGO_TARGET_DIR"] == (
             "${{ runner.temp }}/llvm-cov/" + component
         )
+        assert coverage_step["env"]["NIGHTLY_CARGO_TARGET_DIR"] == (
+            "${{ runner.temp }}/llvm-cov/" + component + "-nightly"
+        )
         coverage_script = coverage_step["run"]
         stable_clean = "cargo llvm-cov clean"
         stable_report = f"{component}/llvm.json"
         codecov_report = f"{component}/codecov.json"
+        nightly_target = 'export CARGO_TARGET_DIR="$nightly_target_dir"'
         nightly_clean = "cargo +nightly llvm-cov clean"
         nightly_report = f"{component}/branch-llvm.json"
         assert stable_clean in coverage_script
         assert nightly_clean in coverage_script
+        assert 'nightly_target_dir="${NIGHTLY_CARGO_TARGET_DIR:?}"' in coverage_script
+        assert nightly_target in coverage_script
         assert (
             coverage_script.index(stable_clean)
             < coverage_script.index(stable_report)
             < coverage_script.index(codecov_report)
+            < coverage_script.index(nightly_target)
             < coverage_script.index(nightly_clean)
             < coverage_script.index(nightly_report)
         )

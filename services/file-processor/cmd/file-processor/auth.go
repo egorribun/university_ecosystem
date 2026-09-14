@@ -31,10 +31,13 @@ const (
 )
 
 var (
-	errRevocationStoreUnavailable = errors.New("session revocation store unavailable")
-	errSessionRevoked             = errors.New("session revoked")
-	errInactiveToken              = errors.New("user account is inactive")
-	errInvalidJWTClaims           = errors.New("invalid JWT claims")
+	errRevocationStoreUnavailable  = errors.New("session revocation store unavailable")
+	errSessionRevoked              = errors.New("session revoked")
+	errInactiveToken               = errors.New("user account is inactive")
+	errInvalidJWTClaims            = errors.New("invalid JWT claims")
+	closeRevocationRedisClientFunc = func(client *redis.Client) error { return client.Close() }
+	redisCapabilityNowFunc         = func() time.Time { return time.Now().UTC() }
+	redisCapabilityTTLFunc         = func(expiresAt time.Time) time.Duration { return time.Until(expiresAt) }
 )
 
 type revocationChecker interface {
@@ -73,10 +76,11 @@ type redisCapabilityReplayGuard struct {
 }
 
 func (g *redisCapabilityReplayGuard) Consume(ctx context.Context, nonce string, expiresAt time.Time) (bool, error) {
-	if g == nil || g.client == nil || !validJWTString(nonce, 128) || !expiresAt.After(time.Now().UTC()) {
+	now := redisCapabilityNowFunc()
+	if g == nil || g.client == nil || !validJWTString(nonce, 128) || !expiresAt.After(now) {
 		return false, errors.New("processing capability replay admission is invalid")
 	}
-	ttl := time.Until(expiresAt)
+	ttl := redisCapabilityTTLFunc(expiresAt)
 	if ttl <= 0 {
 		return false, errors.New("processing capability replay admission is expired")
 	}
@@ -112,7 +116,7 @@ func newRevocationRedisClient(ctx context.Context, redisURL string) (*redis.Clie
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if pingErr := client.Ping(pingCtx).Err(); pingErr != nil {
-		if closeErr := client.Close(); closeErr != nil {
+		if closeErr := closeRevocationRedisClientFunc(client); closeErr != nil {
 			return nil, fmt.Errorf("connect to revocation Redis: %w; close client: %v", pingErr, closeErr)
 		}
 		return nil, fmt.Errorf("connect to revocation Redis: %w", pingErr)

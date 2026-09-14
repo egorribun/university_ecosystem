@@ -710,7 +710,7 @@ func executeFileProcessWorkflow(ctx context.Context, c client.Client, options cl
 }
 
 func closeRevocationRedis(ctx context.Context, logger *slog.Logger, client *redis.Client) {
-	if err := client.Close(); err != nil {
+	if err := closeRevocationRedisClientFunc(client); err != nil {
 		logger.WarnContext(ctx, "Failed to close session revocation Redis", "err", err)
 	}
 }

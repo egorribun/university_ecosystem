@@ -22,8 +22,8 @@
     {
       "rule_id": "python.flask.security.audit.directly-returned-format-string.directly-returned-format-string",
       "path": "app/core/ratelimit/middleware.py",
-      "start_line": 219,
-      "end_line": 219,
+      "start_line": 224,
+      "end_line": 224,
       "owner": "security@university.example",
       "expires": "2026-12-31",
       "reason": "This is not a Flask route: it returns an internal rate-limit key containing only a SHA-256 digest of an HttpOnly cookie, never attacker-controlled HTML or a response body."

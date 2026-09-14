@@ -37,7 +37,7 @@ SHA = "a" * 40
 DIGEST = "sha256:" + "b" * 64
 SECRET = "cwv-signing-secret-with-at-least-32-bytes"  # pragma: allowlist secret
 INTERNAL_HMAC_SECRET = (
-    "internal-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret
+    "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!"  # pragma: allowlist secret
 )
 TOKEN_HMAC_SECRET = (
     "token-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret

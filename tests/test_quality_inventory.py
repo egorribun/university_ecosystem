@@ -88,6 +88,17 @@ def test_classify_file() -> None:
         == "source"
     )
     assert classify_file("services/gateway/main.go", generated_patterns) == "source"
+    # Authored capability code lives beside generated protobuf transport files
+    # under gen/go; generated patterns are checked first, so only the authored
+    # contract is treated as source and can own its focused Go tests.
+    assert (
+        classify_file("gen/go/file_processor/v1/capability.go", generated_patterns)
+        == "source"
+    )
+    assert (
+        classify_file("gen/go/file_processor/v1/file.pb.go", ["**/*.pb.go"])
+        == "generated"
+    )
 
     # Utility
     assert classify_file("scripts/setup.sh", generated_patterns) == "utility"

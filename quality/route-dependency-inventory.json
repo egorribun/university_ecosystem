@@ -348,6 +348,17 @@
     {
       "dishka_dependencies": [],
       "dishka_signals": [],
+      "id": "app.api.chat:download_chat_attachment:GET:/{chat_id}/attachments/{filename:path}",
+      "legacy_dependencies": [
+        "app.api.deps.auth.get_current_user",
+        "app.api.deps.localization.get_locale",
+        "app.core.database.get_db"
+      ],
+      "ownership": "approved_legacy"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
       "id": "app.api.chat:get_chat:GET:/{chat_id}",
       "legacy_dependencies": [
         "app.api.deps.auth.get_current_user",
@@ -600,6 +611,16 @@
     {
       "dishka_dependencies": [],
       "dishka_signals": [],
+      "id": "app.api.events:download_event_file:GET:/{event_id}/files/{filename:path}",
+      "legacy_dependencies": [
+        "app.api.deps.auth.get_current_user",
+        "app.core.database.get_db"
+      ],
+      "ownership": "approved_legacy"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
       "id": "app.api.events:get_event:GET:/{event_id}",
       "legacy_dependencies": [
         "app.api.deps.auth.get_current_user",
@@ -613,7 +634,7 @@
       "id": "app.api.events:get_event_files:GET:/{event_id}/files",
       "legacy_dependencies": [
         "app.api.deps.auth.get_current_user",
-        "app.core.database.get_read_db"
+        "app.core.database.get_db"
       ],
       "ownership": "approved_legacy"
     },
