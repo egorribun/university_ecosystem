@@ -108,7 +108,14 @@
 		reverse_proxy imgproxy:8080
 	}
 
-	# MinIO presigned URLs (optional direct access)
+	# Private chat/event blobs must never be exposed through the optional direct
+	# MinIO proxy.  Keep the deny-first matcher in the compose-mounted edge
+	# config in lockstep with services/caddy/Caddyfile; authorization belongs to
+	# the authenticated backend download routes.
+	@private_storage path /storage/chat_uploads/* /storage/event_files/*
+	respond @private_storage 404
+
+	# MinIO presigned URLs (optional direct access for public objects only)
 	handle /storage/* {
 		uri strip_prefix /storage
 		reverse_proxy minio:9000
