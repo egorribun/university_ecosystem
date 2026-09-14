@@ -4639,7 +4639,7 @@ require a clean external Docker/staging environment and current-SHA evidence.
 ## 68. Current-SHA fast-preflight recertification (2026-09-14)
 
 After the Compose evidence checkpoint, the bounded local preflight was rerun
-against the exact current HEAD `8809c5eb3cf870f0dc9d5331e215123324b37bdc`:
+against the exact current HEAD `3ea91fd5a4f0d82dadfb2ebe8f4aa7f9ec395add`:
 
     uv run python scripts/fast_preflight.py --max-workers 6 --timeout-seconds 600 --include-output
     # Fast preflight: 6/6 passed
@@ -4652,3 +4652,17 @@ developer evidence only and does not replace Linux current-SHA CI artifacts,
 mutation/coverage reports, or runtime/staging certification. The tracked
 worktree remained clean apart from intentional history and the four preserved
 user-owned untracked paths.
+
+## 69. Frontend unit and merged coverage recertification (2026-09-14)
+
+The complete frontend unit/coverage command was run from the exact source
+commit `3ea91fd5a4f0d82dadfb2ebe8f4aa7f9ec395add`:
+
+    npm run test:unit-ci --prefix frontend -- --silent=true
+
+It completed successfully with **673/673 test files**, **7,116/7,116 tests**,
+and 100% statements, branches, functions and lines (18,860/18,860,
+13,326/13,326, 4,533/4,533 and 17,009/17,009 respectively). The generated
+JUnit and coverage reports were local diagnostic artifacts only and were not
+staged. This is strong local evidence, not a substitute for the required
+current-SHA Linux CI mutation, browser, manifest or release evidence.
