@@ -278,7 +278,7 @@ jobs:
           exit-code: "1"
 
       - name: Upload Trivy filesystem scan results
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         if: always()
         continue-on-error: true
         with:
@@ -289,7 +289,7 @@ jobs:
           category: ".github/workflows/ci.yml:docker-security"
 
       - name: Upload Trivy config scan results
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         if: always()
         continue-on-error: true
         with:
@@ -297,7 +297,7 @@ jobs:
           category: "trivy-config"
 
       - name: Upload Trivy revocation-store results
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         if: always()
         continue-on-error: true
         with:
@@ -375,7 +375,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Syft
-        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
 
       - name: Generate SPDX-JSON SBOM
         # Scans the full repository (all languages/ecosystems Syft detects).
@@ -513,7 +513,7 @@ jobs:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
       - name: Upload SARIF to GitHub Advanced Security
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         if: always()
         with:
           sarif_file: semgrep.sarif
