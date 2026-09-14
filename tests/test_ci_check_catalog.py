@@ -243,6 +243,19 @@ def test_catalog_declares_protected_reusable_and_matrix_expansions() -> None:
     assert len(by_id["rust-fuzz-additional"]["declared_contexts"]) == 2
 
 
+def test_sonarcloud_advisory_classification_matches_workflow_contract() -> None:
+    value = _catalog()
+    workflows = value["workflows"]
+    assert isinstance(workflows, list)
+    workflow = next(
+        item for item in workflows if item["path"] == ".github/workflows/sonar.yml"
+    )
+    job = workflow["jobs"]["sonarcloud"]
+    assert job["profile"] == "advisory"
+    assert "required_events" not in job
+    assert _errors(value) == []
+
+
 def test_duplicate_external_context_is_rejected() -> None:
     value = _catalog()
     checks = value["external_checks"]

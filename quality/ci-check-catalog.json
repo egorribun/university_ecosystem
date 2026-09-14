@@ -4102,7 +4102,7 @@
       ],
       "jobs": {
         "sonarcloud": {
-          "profile": "required-pr-main",
+          "profile": "advisory",
           "check_name_template": "SonarCloud Scan",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
