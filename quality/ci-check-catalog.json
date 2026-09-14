@@ -608,6 +608,13 @@
         },
         "build": {
           "profile": "manual",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "workflow_dispatch",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
           "check_name_template": "Build and sign canonical release image",
           "expected_timeout_minutes": 180,
           "expected_duration_seconds": 10800,
@@ -661,6 +668,9 @@
       "jobs": {
         "cargo-deny-crates": {
           "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 4
+          },
           "check_name_template": "Cargo Deny (${{ matrix.name }})",
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
@@ -916,6 +926,9 @@
         },
         "backend-tests": {
           "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
           "check_name_template": "Backend Tests (${{ matrix.name }})",
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
@@ -944,6 +957,9 @@
         },
         "go-tests": {
           "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
           "check_name_template": "Go Tests (${{ matrix.service }})",
           "expected_timeout_minutes": 120,
           "expected_duration_seconds": 7200,
@@ -1070,6 +1086,9 @@
         },
         "stryker-shards": {
           "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 6
+          },
           "check_name_template": "Frontend mutation shard ${{ matrix.shard-index }}/64",
           "expected_timeout_minutes": 120,
           "expected_duration_seconds": 7200,
@@ -1146,6 +1165,9 @@
         },
         "e2e-tests": {
           "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
           "check_name_template": "E2E Tests (shard ${{ matrix.shard-index }}/4)",
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
@@ -1160,6 +1182,9 @@
         },
         "e2e-tests-cross-browser": {
           "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
           "check_name_template": "E2E Tests (cross-browser ${{ matrix.browser }})",
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
@@ -1340,6 +1365,9 @@
         },
         "schemathesis-api-tests-shard": {
           "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 4
+          },
           "check_name_template": "Schemathesis - API Schema Conformance / shard ${{ matrix.shard }}/8",
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
@@ -1480,6 +1508,9 @@
         },
         "mutation-tests-stats": {
           "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 8
+          },
           "check_name_template": "Incremental Mutation Stats (mutmut) / shard ${{ matrix.stats_shard }}/${{ matrix.stats_total }}",
           "expected_timeout_minutes": 25,
           "expected_duration_seconds": 1500,
@@ -1524,6 +1555,9 @@
         },
         "mutation-tests-incremental": {
           "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 10
+          },
           "check_name_template": "Incremental Mutation Tests (mutmut) / execution group ${{ matrix.group_id }}",
           "expected_timeout_minutes": 360,
           "expected_duration_seconds": 21600,
@@ -1751,6 +1785,13 @@
       "jobs": {
         "analyze": {
           "profile": "required-pr-main",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "push,pull_request,schedule",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
           "check_name_template": "Analyze (${{ matrix.language }})",
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
@@ -2269,6 +2310,13 @@
       "jobs": {
         "golangci-lint": {
           "profile": "required-main",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "workflow_dispatch,push",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
           "check_name_template": "Lint ${{ matrix.service }}",
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
@@ -2283,6 +2331,13 @@
         },
         "go-sbom": {
           "profile": "required-main",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "workflow_dispatch,push",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
           "check_name_template": "SBOM \u2014 ${{ matrix.service }}",
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
@@ -2321,6 +2376,13 @@
       "jobs": {
         "diagnostic": {
           "profile": "nightly",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "schedule,workflow_dispatch",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
           "check_name_template": "Go diagnostic (${{ matrix.service-directory }})",
           "expected_timeout_minutes": 120,
           "expected_duration_seconds": 7200,
@@ -2382,6 +2444,9 @@
       "jobs": {
         "manual-mutation-stats": {
           "profile": "manual",
+          "matrix_governance": {
+            "max_parallel": 8
+          },
           "check_name_template": "Manual Mutation Evidence (mutmut stats) / shard ${{ matrix.stats_shard }}/8",
           "expected_timeout_minutes": 25,
           "expected_duration_seconds": 1500,
@@ -2403,6 +2468,9 @@
         },
         "manual-mutation-tests": {
           "profile": "manual",
+          "matrix_governance": {
+            "max_parallel": 20
+          },
           "check_name_template": "Manual Mutation Evidence (mutmut) / shard ${{ matrix.shard }}/128",
           "expected_timeout_minutes": 360,
           "expected_duration_seconds": 21600,
@@ -2445,6 +2513,9 @@
         },
         "manual-frontend-mutation-shards": {
           "profile": "manual",
+          "matrix_governance": {
+            "max_parallel": 20
+          },
           "check_name_template": "Manual Mutation Evidence (frontend shard ${{ matrix.shard-index }}/64)",
           "expected_timeout_minutes": 120,
           "expected_duration_seconds": 7200,
@@ -2615,6 +2686,9 @@
       "jobs": {
         "mutation-tests-full-stats": {
           "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 4
+          },
           "check_name_template": "Full mutation stats (mutmut) / shard ${{ matrix.stats_shard }}/8",
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
@@ -2658,6 +2732,9 @@
         },
         "mutation-tests-full": {
           "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 8
+          },
           "check_name_template": "Full mutation score (mutmut) / shard ${{ matrix.shard }}/128",
           "expected_timeout_minutes": 360,
           "expected_duration_seconds": 21600,
@@ -2722,6 +2799,9 @@
         },
         "frontend-mutation-shards": {
           "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 8
+          },
           "check_name_template": "Nightly frontend mutation shard ${{ matrix.shard-index }}/64",
           "expected_timeout_minutes": 120,
           "expected_duration_seconds": 7200,
@@ -2778,6 +2858,9 @@
         },
         "backend-full": {
           "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
           "check_name_template": "Full backend unit (shard ${{ matrix.unit-shard }})",
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
@@ -2792,6 +2875,9 @@
         },
         "backend-integration": {
           "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
           "check_name_template": "Full backend integration (shard ${{ matrix.integration-shard }})",
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
@@ -2806,6 +2892,9 @@
         },
         "go-integration": {
           "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
           "check_name_template": "Go integration (${{ matrix.service-directory }})",
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
@@ -2848,6 +2937,9 @@
         },
         "browser-matrix": {
           "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
           "check_name_template": "Browser matrix (${{ matrix.browser }})",
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
@@ -3409,6 +3501,9 @@
         },
         "unit-tests-shard": {
           "profile": "internal",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
           "check_name_template": "Unit Tests (shard ${{ matrix.shard }}/4)",
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
@@ -3525,6 +3620,9 @@
         },
         "lighthouse-shards": {
           "profile": "internal",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
           "check_name_template": "Lighthouse Audit (${{ matrix.shard }})",
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
@@ -3891,6 +3989,13 @@
         },
         "fuzz-additional-rust-crates": {
           "profile": "required-pr-main",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "push,pull_request,schedule,workflow_dispatch",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
           "check_name_template": "Fuzz ${{ matrix.directory }}",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
@@ -4193,6 +4298,13 @@
       "jobs": {
         "unauthed-smoke": {
           "profile": "required-pr",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "pull_request,workflow_dispatch",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
           "check_name_template": "Unauthenticated routes smoke (theme=${{ matrix.theme }})",
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
@@ -4298,6 +4410,9 @@
       "jobs": {
         "refresh-shard": {
           "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 4
+          },
           "check_name_template": "Refresh pytest duration map (shard ${{ matrix.shard }}/4)",
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,

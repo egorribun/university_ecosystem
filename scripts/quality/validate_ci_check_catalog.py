@@ -184,6 +184,74 @@ def _artifact_inventory(job: dict[str, Any]) -> list[dict[str, Any]]:
     return artifacts
 
 
+def _matrix_governance_errors(
+    source_job: dict[str, Any], effective: dict[str, Any], location: str
+) -> list[str]:
+    """Require an explicit, source-bound concurrency contract for matrices."""
+
+    strategy = source_job.get("strategy")
+    has_matrix = isinstance(strategy, dict) and "matrix" in strategy
+    governance = effective.get("matrix_governance")
+    if not has_matrix:
+        if governance is not None:
+            return [f"{location}: matrix_governance is present for a non-matrix job"]
+        return []
+
+    if not isinstance(governance, dict):
+        return [f"{location}: matrix_governance is missing"]
+
+    errors: list[str] = []
+    has_max_parallel = "max_parallel" in governance
+    has_unbounded_justification = "unbounded_justification" in governance
+    source_has_max_parallel = "max-parallel" in strategy
+    source_max_parallel = strategy.get("max-parallel")
+
+    if source_has_max_parallel:
+        if (
+            not isinstance(source_max_parallel, int)
+            or isinstance(source_max_parallel, bool)
+            or source_max_parallel < 1
+        ):
+            errors.append(f"{location}: source max-parallel is invalid")
+        if not has_max_parallel:
+            errors.append(
+                f"{location}: source declares max-parallel; "
+                "matrix_governance.max_parallel is required"
+            )
+        elif governance.get("max_parallel") != source_max_parallel:
+            errors.append(
+                f"{location}: matrix max_parallel differs from workflow "
+                f"(catalog={governance.get('max_parallel')!r}, "
+                f"source={source_max_parallel!r})"
+            )
+        if has_unbounded_justification:
+            errors.append(
+                f"{location}: bounded matrix cannot declare unbounded_justification"
+            )
+    else:
+        if has_max_parallel:
+            errors.append(
+                f"{location}: source has no max-parallel; use unbounded_justification"
+            )
+        if not has_unbounded_justification:
+            errors.append(
+                f"{location}: unbounded matrix requires unbounded_justification"
+            )
+
+    if has_unbounded_justification:
+        justification = governance.get("unbounded_justification")
+        if not isinstance(justification, dict):
+            errors.append(f"{location}: unbounded_justification must be an object")
+        else:
+            for field in ("owner", "event_profile", "rationale"):
+                value = justification.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    errors.append(
+                        f"{location}: unbounded_justification.{field} must be non-empty"
+                    )
+    return errors
+
+
 def _job_timeout(job: dict[str, Any], *, reusable_timeouts: dict[str, int]) -> int:
     timeout = job.get("timeout-minutes")
     if isinstance(timeout, int) and not isinstance(timeout, bool):
@@ -679,6 +747,9 @@ def validate_catalog(
             if effective.get("check_name_template") != expected_name:
                 errors.append(f"{job_location}.check_name_template is stale")
             source_contexts.add(expected_name)
+            errors.extend(
+                _matrix_governance_errors(source_job, job_entry, job_location)
+            )
             try:
                 runbook = effective.get("runbook", default_runbook)
                 _repo_file(runbook, repository_root, f"{job_location}.runbook")

@@ -502,6 +502,67 @@
           "items": {
             "$ref": "#/$defs/required_event"
           }
+        },
+        "matrix_governance": {
+          "$ref": "#/$defs/matrix_governance"
+        }
+      }
+    },
+    "matrix_governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_parallel": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "unbounded_justification": {
+          "$ref": "#/$defs/unbounded_justification"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "max_parallel"
+          ],
+          "not": {
+            "required": [
+              "unbounded_justification"
+            ]
+          }
+        },
+        {
+          "required": [
+            "unbounded_justification"
+          ],
+          "not": {
+            "required": [
+              "max_parallel"
+            ]
+          }
+        }
+      ]
+    },
+    "unbounded_justification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "event_profile",
+        "rationale"
+      ],
+      "properties": {
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "event_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

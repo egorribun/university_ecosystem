@@ -6,6 +6,8 @@ import copy
 import json
 from pathlib import Path
 
+import yaml
+
 from scripts.quality.validate_ci_check_catalog import (
     DEFAULT_CATALOG,
     DEFAULT_SCHEMA,
@@ -31,6 +33,79 @@ def _errors(value: dict[str, object]) -> list[str]:
 
 def test_catalog_is_a_complete_current_workflow_inventory() -> None:
     assert _errors(_catalog()) == []
+
+
+def test_catalog_declares_matrix_governance_for_every_source_matrix() -> None:
+    """Every matrix has a source-bound cap or an explicit owner justification."""
+
+    value = _catalog()
+    workflows = value["workflows"]
+    assert isinstance(workflows, list)
+    catalog_by_path = {entry["path"]: entry for entry in workflows}
+
+    for workflow_path in (ROOT / ".github" / "workflows").glob("*.y*ml"):
+        source = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        relative_path = workflow_path.relative_to(ROOT).as_posix()
+        catalog_workflow = catalog_by_path[relative_path]
+        catalog_jobs = catalog_workflow["jobs"]
+        for job_id, source_job in source["jobs"].items():
+            strategy = source_job.get("strategy")
+            if not isinstance(strategy, dict) or "matrix" not in strategy:
+                continue
+
+            governance = catalog_jobs[job_id].get("matrix_governance")
+            assert isinstance(governance, dict), (
+                f"missing governance: {relative_path}::{job_id}"
+            )
+            if "max-parallel" in strategy:
+                assert governance == {"max_parallel": strategy["max-parallel"]}
+            else:
+                justification = governance.get("unbounded_justification")
+                assert isinstance(justification, dict)
+                assert set(justification) == {"owner", "event_profile", "rationale"}
+                assert all(
+                    isinstance(justification[field], str)
+                    and justification[field].strip()
+                    for field in ("owner", "event_profile", "rationale")
+                )
+
+
+def test_matrix_governance_is_source_bound_and_fail_closed() -> None:
+    value = _catalog()
+    workflows = value["workflows"]
+    assert isinstance(workflows, list)
+    ci = next(item for item in workflows if item["path"].endswith("ci.yml"))
+    ci_jobs = ci["jobs"]
+    bounded = ci_jobs["stryker-shards"]["matrix_governance"]
+    bounded["max_parallel"] = 7
+    unbounded = next(item for item in workflows if item["path"].endswith("codeql.yml"))[
+        "jobs"
+    ]["analyze"]["matrix_governance"]
+    unbounded["max_parallel"] = 1
+
+    errors = _errors(value)
+    assert any("matrix max_parallel differs from workflow" in error for error in errors)
+    assert any(
+        "source has no max-parallel; use unbounded_justification" in error
+        for error in errors
+    )
+
+
+def test_matrix_governance_is_required_only_for_matrix_jobs() -> None:
+    value = _catalog()
+    workflows = value["workflows"]
+    assert isinstance(workflows, list)
+    ci = next(item for item in workflows if item["path"].endswith("ci.yml"))
+    ci["jobs"]["ci-diagnostic"]["matrix_governance"] = {
+        "max_parallel": 1,
+    }
+    ci["jobs"]["e2e-tests"].pop("matrix_governance")
+
+    errors = _errors(value)
+    assert any(
+        "matrix_governance is present for a non-matrix job" in error for error in errors
+    )
+    assert any("matrix_governance is missing" in error for error in errors)
 
 
 def test_catalog_cli_reports_current_inventory() -> None:
