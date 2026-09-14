@@ -602,6 +602,23 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
       return
     }
 
+    // These requests are made by the shared authenticated shell even when a
+    // scenario does not exercise their feature. Keep their mock contracts
+    // explicit so an unhandled route cannot accidentally look successful.
+    if (normPath === "api/auth/csrf-cookie" && method === "GET") {
+      await route.fulfill({ status: 204 })
+      return
+    }
+
+    if (normPath === "api/chats" && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], has_more: false, next_cursor: null }),
+      })
+      return
+    }
+
     // --- Authentication ---
     if (normPath.includes("auth/login")) {
       const postData = route.request().postData() ?? ""
@@ -1119,12 +1136,19 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
       return
     }
 
-    // --- Catch-all for API/Auth to prevent external hits during tests ---
+    // --- Catch-all for API/Auth: fail closed instead of fabricating success ---
 
     if (normPath.startsWith("api/") || normPath.startsWith("auth/")) {
-      // eslint-disable-next-line no-console
-      console.log(`[mock] Generic 200 for unhandled path: ${normPath}`)
-      await route.fulfill({ status: 200, body: "{}" })
+      console.error(`[mock] Unhandled E2E API mock route: ${method} ${normPath}`)
+      await route.fulfill({
+        status: 501,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: "Unhandled E2E API mock route",
+          method,
+          path: `/${normPath}`,
+        }),
+      })
       return
     }
 

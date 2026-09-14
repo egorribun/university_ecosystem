@@ -1649,7 +1649,14 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "model-default-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "artifacts/quality/model-default-inventory.json",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,

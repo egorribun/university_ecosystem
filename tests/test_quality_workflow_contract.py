@@ -533,6 +533,24 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
         )
     assert "npm --prefix frontend ci --no-audit --no-fund" in inventory_commands
 
+    inventory_uploads = [
+        step
+        for step in inventory_job.get("steps", [])
+        if "upload-artifact" in str(step.get("uses", ""))
+    ]
+    assert len(inventory_uploads) == 1, (
+        "quality-inventory-check must publish exactly one model-default inventory artifact"
+    )
+    inventory_upload = inventory_uploads[0].get("with", {})
+    assert (
+        inventory_upload.get("name")
+        == "model-default-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}"
+    )
+    assert (
+        inventory_upload.get("path") == "artifacts/quality/model-default-inventory.json"
+    )
+    assert inventory_upload.get("if-no-files-found") == "error"
+
     # Assert in needs of ci-success
     assert "quality-inventory-check" in needs, (
         "quality-inventory-check must be in the needs list of ci-success"
