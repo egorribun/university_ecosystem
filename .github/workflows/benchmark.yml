@@ -6,8 +6,10 @@ on:
       - main
   pull_request: {}
 
-# Required pull-request contexts must be read-only. Historical charts are
-# published only by the guarded main-only job below.
+# Required pull-request contexts must be read-only. The benchmark job itself is
+# required by branch protection; its uploaded raw measurements are advisory
+# evidence only. Historical charts are published only by the guarded main-only
+# job below.
 permissions:
   contents: read
 
@@ -33,7 +35,7 @@ jobs:
           go-version: "1.26.6"
           cache: true
 
-      - name: Capture advisory Go benchmark evidence
+      - name: Capture Go benchmark evidence
         shell: bash
         run: |
           set -euo pipefail
@@ -66,7 +68,7 @@ jobs:
             --exclusive-maximum 4000 \
             --expected-samples 5
 
-      - name: Upload advisory Go benchmark evidence
+      - name: Upload Go benchmark evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

@@ -6301,6 +6301,17 @@ def test_performance_history_is_main_only_and_advisory() -> None:
         assert "${{" not in str(job["runs-on"])
 
 
+def test_required_go_benchmark_job_is_not_mislabeled_as_advisory() -> None:
+    """Keep workflow prose aligned with the live required status context."""
+
+    workflow_text = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml"
+    ).read_text(encoding="utf-8")
+    assert "required by branch protection" in workflow_text
+    assert "Capture advisory Go benchmark evidence" not in workflow_text
+    assert "Upload advisory Go benchmark evidence" not in workflow_text
+
+
 @pytest.mark.parametrize(
     "workflow_path",
     [
