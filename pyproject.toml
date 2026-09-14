@@ -215,7 +215,6 @@ module = [
   "starlette.*",
   "orjson",
   "anyio",
-  "dagger",
   "nh3",
   "defusedxml.*",
   "dishka.*",
