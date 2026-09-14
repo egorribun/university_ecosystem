@@ -4624,7 +4624,7 @@ runtime stack. Both commands completed with exit code 0:
     $env:IMGPROXY_KEY = ('0' * 64)
     $env:IMGPROXY_SALT = ('1' * 64)
     docker compose -f docker-compose.yml --env-file .env config --quiet
-    $env:WS_HUB_INTERNAL_SECRET = 'dummy-ci-validate-secret'
+    $env:WS_HUB_INTERNAL_SECRET = 'dummy-ci-validate-secret' # pragma: allowlist secret — documentation-only placeholder
     docker compose -f docker-compose.yml -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml --env-file .env config --quiet
 
 The first command validates the base topology; the second matches the
