@@ -382,8 +382,24 @@ describe("api/client — BroadcastChannel idempotency coordination", () => {
         throw new Error("BroadcastChannel unavailable")
       }
     }
-    vi.stubGlobal("BroadcastChannel", ThrowingBroadcastChannel)
-    const { default: safeApi } = await import("@/api/client")
+
+    // `client.ts` deliberately reads the constructor from `window`, while
+    // Vitest's `stubGlobal("BroadcastChannel", ...)` only changes the Node
+    // global.  Use a forwarding proxy so the module-level constructor call
+    // actually exercises the browser failure path (and kills a mutant that
+    // removes the defensive catch block).
+    vi.stubGlobal(
+      "window",
+      new Proxy(window, {
+        get(target, property, receiver) {
+          if (property === "BroadcastChannel") return ThrowingBroadcastChannel
+          return Reflect.get(target, property, receiver)
+        },
+      })
+    )
+    const clientModule = await import("@/api/client")
+    expect(clientModule.createDedupeChannel()).toBeNull()
+    const { default: safeApi } = clientModule
 
     safeApi.defaults.adapter = async (config): Promise<AxiosResponse> => ({
       config,

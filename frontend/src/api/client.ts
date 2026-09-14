@@ -166,7 +166,7 @@ const _inflightIdempotencyKeys = new Set<string>()
 // Prevents duplicate mutations when two tabs submit the same form simultaneously.
 // Server-side idempotency key is the authoritative check — this is defense-in-depth.
 let _dedupeChannel: BroadcastChannel | null = null
-const createDedupeChannel = (): BroadcastChannel | null => {
+export const createDedupeChannel = (): BroadcastChannel | null => {
   // Read the constructor from the browser window rather than the Node global.
   // Vitest/jsdom exposes Node's BroadcastChannel globally, and constructing it
   // during module evaluation leaves an open handle that can stall SSR/mutation
