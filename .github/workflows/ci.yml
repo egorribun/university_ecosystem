@@ -5008,10 +5008,26 @@ jobs:
       - name: Install harness dependencies
         run: |
           uv sync --frozen
-          npm --prefix frontend ci
+          npm --prefix frontend ci --no-audit --no-fund
 
       - name: Generate Inventory Manifest
         run: uv run python scripts/quality/generate_test_inventory.py
+
+      - name: Generate and verify model-default inventory
+        run: |
+          uv run python scripts/quality/audit_model_defaults.py \
+            --output artifacts/quality/model-default-inventory.json
+          uv run python scripts/quality/audit_model_defaults.py \
+            --check artifacts/quality/model-default-inventory.json
+
+      - name: Upload model-default inventory
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: model-default-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: artifacts/quality/model-default-inventory.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Validate CI check catalog
         # Keep the static governance contract on the existing required

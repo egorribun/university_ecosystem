@@ -54,6 +54,10 @@ downgrade, ORM and direct-write evidence.
 1. **Inventory first.** Compare SQLAlchemy metadata with `pg_get_expr` /
    `column_default`, nullability, existing NULL counts, enum/string values,
    JSON/JSONB type and the current Alembic head for every candidate.
+   The checked-in `quality/model-default-policy.json` and the CI-generated
+   `model-default-inventory.json` provide the source/metadata baseline and
+   bind it to the current commit SHA and migration head; they intentionally
+   report the PostgreSQL catalog as not checked.
 2. **Backfill before constraints.** For existing rows, use a bounded,
    idempotent backfill, then add `CHECK ... NOT VALID`, validate it, and only
    then set a server default or `NOT NULL` where the domain contract requires
@@ -132,6 +136,8 @@ coverage exclusion.
 
 - [`app/AGENTS.md`](../../app/AGENTS.md)
 - [`alembic/`](../../alembic/)
+- [`quality/model-default-policy.json`](../../quality/model-default-policy.json)
+- [`scripts/quality/audit_model_defaults.py`](../../scripts/quality/audit_model_defaults.py)
 - [`tests/test_model_default_policy.py`](../../tests/test_model_default_policy.py)
 - `docs/audits/AUDIT_PLATFORM_FULL.md`, Finding BE-02 (user-owned audit
   artifact; remains untracked and is not a release certificate)

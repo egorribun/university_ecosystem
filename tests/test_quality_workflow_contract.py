@@ -522,6 +522,7 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
     )
     for command in (
         "uv run python scripts/quality/generate_test_inventory.py",
+        "uv run python scripts/quality/audit_model_defaults.py",
         "uv run python scripts/quality/validate_ci_check_catalog.py",
         "uv run python scripts/quality/check_orphans_and_anti_patterns.py",
         "uv run python verify_harness.py --repo-only",
@@ -530,6 +531,7 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
             "quality-inventory-check must run every Python helper through the "
             f"locked uv environment: missing {command!r}"
         )
+    assert "npm --prefix frontend ci --no-audit --no-fund" in inventory_commands
 
     # Assert in needs of ci-success
     assert "quality-inventory-check" in needs, (
