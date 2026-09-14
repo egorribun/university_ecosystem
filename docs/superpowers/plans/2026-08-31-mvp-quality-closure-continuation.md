@@ -4586,3 +4586,31 @@ The machine-readable report is retained in the ignored local path
 and is not substituted for Linux current-SHA CI artifacts. `git diff --check`
 and the tracked worktree remain clean apart from the intentional commit
 history; user-owned untracked paths remain untouched and unstaged.
+
+## 66. Transient-only download retries and benchmark-policy alignment (2026-09-14)
+
+The CI speed/security audit identified four download paths using
+`curl --retry-all-errors`. That flag could retry deterministic HTTP failures
+and blur the first actionable failure. Commit `928015109` (`fix(ci): restrict
+retries to transient failures`) replaces it with curl's bounded retry plus
+`--retry-connrefused` in the Kyverno, E2E artifact and frontend artifact
+downloaders. `--fail`/`--fail-with-body`, checksum verification and all
+existing artifact contracts remain intact; no test or mutation inventory was
+removed. A regression contract now rejects `--retry-all-errors` in all four
+workflows and requires the transient-only option. The combined workflow and
+fail-closed contract suite passed **217 tests**.
+
+The live main ruleset currently requires the `Run Go Benchmarks` context while
+the workflow prose called its producer "advisory". Commit `6f80b2f36`
+(`fix(ci): align benchmark gate classification`) makes the distinction
+explicit: the job is required by branch protection, while raw uploaded
+measurements remain advisory evidence. The step labels and a regression
+contract now match the live policy; paired performance gates and historical
+chart publication are unchanged. YAML parsing, targeted performance contracts
+and the commit hooks passed.
+
+These changes improve fail-closed semantics and reduce misleading retry/owner
+signals, but do not claim a repository-wide transient classifier, global
+hosted-runner semaphore, resource telemetry or three-run sharding evidence.
+Those remain explicitly evidence-gated follow-up work after the old remote
+matrix reaches a terminal state.
