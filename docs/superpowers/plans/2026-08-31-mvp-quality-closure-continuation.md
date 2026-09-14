@@ -4532,3 +4532,33 @@ additional closure evidence:
   while it is active because the workflow's `cancel-in-progress: true` would
   discard late artifacts. After terminal inventory, push non-force and require
   a fresh current-SHA matrix.
+
+## 64. Lock-bound npm cache hardening (2026-09-14)
+
+The reusable dependency-cache workflow had a stale-executable risk: it cached
+`frontend/node_modules` and restored broad `node-${{ inputs.node-version }}-`
+prefixes, then skipped `npm ci` on a partial cache hit. This could combine a
+previous lockfile's executable tree with the current checkout. Commit
+`1e176dcb6` (`fix(ci): harden reusable npm dependency cache`) removes
+`frontend/node_modules` from the cache, removes the broad restore key, keeps
+the exact `frontend/package-lock.json` key for the npm download store, and
+always runs `npm ci --no-audit --no-fund`. No source, test, mutation or
+coverage inventory was reduced.
+
+The contract regression `test_reusable_node_cache_never_restores_stale_node_modules`
+proves the cache path, exact lock binding, absence of `restore-keys`, and
+unconditional install. Verification on the commit completed with:
+
+    uv run pytest -q -p no:cacheprovider tests/test_quality_workflow_contract.py
+    # 169 passed
+    uv run ruff check tests/test_quality_workflow_contract.py
+    uv run ruff format --check tests/test_quality_workflow_contract.py
+    uv run python scripts/quality/validate_ci_check_catalog.py
+    # CI check catalog: OK (55 workflows, 181 jobs)
+    git diff --check
+
+The commit hook also passed in an isolated pre-commit home (ruff,
+detect-secrets, gitleaks, actionlint and semgrep among the executed hooks).
+The global pre-commit cache permission error was not bypassed; isolation was
+used solely to avoid the unrelated locked cache path. The old remote run
+remains non-terminal, so current-SHA certification is still pending.
