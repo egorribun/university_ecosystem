@@ -1767,6 +1767,38 @@ def test_e2e_playwright_install_retries_and_ignores_stale_chrome_apt_source() ->
     assert install_step["env"]["PLAYWRIGHT_SKIP_SYSTEM_DEPS"] == "1"
 
 
+def test_e2e_playwright_browser_cache_is_lock_bound_and_narrow() -> None:
+    workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["e2e"]["steps"]
+    restore_step = next(
+        step for step in steps if step.get("name") == "Restore Playwright browser cache"
+    )
+    save_step = next(
+        step for step in steps if step.get("name") == "Save Playwright browser cache"
+    )
+
+    # Public actions/cache commit identifier, not credential material.
+    expected_cache_action = (
+        "55cc8345863c7cc4c66a329aec7e433d2d1c52a9"  # pragma: allowlist secret
+    )
+    assert restore_step["uses"] == "actions/cache/restore@" + expected_cache_action
+    assert save_step["uses"] == "actions/cache/save@" + expected_cache_action
+    assert restore_step["with"]["path"] == "~/.cache/ms-playwright"
+    assert save_step["with"]["path"] == "~/.cache/ms-playwright"
+
+    cache_key = restore_step["with"]["key"]
+    assert cache_key == save_step["with"]["key"]
+    assert cache_key.startswith("playwright-browsers-v1-")
+    assert "${{ runner.os }}" in cache_key
+    assert "inputs.browser == 'mobile-webkit' && 'webkit' || inputs.browser" in (
+        cache_key
+    )
+    assert "hashFiles('frontend/package-lock.json')" in cache_key
+    assert "node_modules" not in cache_key
+    assert "frontend/playwright-report" not in cache_key
+    assert "steps.restore_playwright_browser_cache.outputs.cache-hit" in save_step["if"]
+
+
 def test_all_linux_playwright_bootstraps_use_the_resilient_helper() -> None:
     helper = REPOSITORY_ROOT / "scripts" / "ci" / "install-playwright-with-deps.sh"
     assert helper.is_file()

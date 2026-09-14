@@ -357,6 +357,16 @@ jobs:
           echo "::error::WASM build failed after 3 attempts"
           exit 1
 
+      - name: Restore Playwright browser cache
+        id: restore_playwright_browser_cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Cache only Playwright-managed browser binaries. The lockfile and
+          # canonical browser name bind the entry to the exact dependency and
+          # browser variant; node_modules and test output never enter this key.
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-v1-${{ runner.os }}-${{ inputs.browser == 'mobile-webkit' && 'webkit' || inputs.browser }}-${{ hashFiles('frontend/package-lock.json') }}
+
       - name: Install Playwright
         working-directory: frontend
         env:
@@ -367,6 +377,13 @@ jobs:
           # removes the repeated apt bootstrap from this hosted E2E workflow.
           PLAYWRIGHT_SKIP_SYSTEM_DEPS: "1"
         run: bash ../scripts/ci/install-playwright-with-deps.sh "$BROWSER"
+
+      - name: Save Playwright browser cache
+        if: ${{ success() && steps.restore_playwright_browser_cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-v1-${{ runner.os }}-${{ inputs.browser == 'mobile-webkit' && 'webkit' || inputs.browser }}-${{ hashFiles('frontend/package-lock.json') }}
 
       - name: Run database migrations
         run: uv run alembic upgrade head
