@@ -3524,6 +3524,64 @@ def test_weekly_duration_refresh_is_a_reviewable_bot_pr() -> None:
     assert "gh pr create" in step_text
 
 
+def test_weekly_duration_refresh_uses_bounded_complete_junit_shards() -> None:
+    workflow_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "weekly-test-durations.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    shard_job = workflow["jobs"]["refresh-shard"]
+    aggregate_job = workflow["jobs"]["refresh"]
+
+    assert shard_job["strategy"] == {
+        "fail-fast": False,
+        "max-parallel": 4,
+        "matrix": {"shard": [0, 1, 2, 3]},
+    }
+    assert shard_job["timeout-minutes"] == 45
+    shard_run = _step_named(shard_job, "Run the measurable test suite")["run"]
+    for argument in (
+        "--no-cov",
+        "--ignore=tests/performance",
+        "--ignore=tests/chaos",
+        "--ignore=tests/test_schemathesis_api.py",
+        "--shard-id=${{ matrix.shard }}",
+        "--num-shards=4",
+        "--junitxml=pytest-report.xml",
+    ):
+        assert argument in shard_run
+    shard_upload = _step_named(shard_job, "Upload shard JUnit report")
+    assert (
+        shard_upload["with"]["name"]
+        == "weekly-test-duration-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}"
+    )
+    assert shard_upload["with"]["if-no-files-found"] == "error"
+
+    assert aggregate_job["needs"] == "refresh-shard"
+    assert aggregate_job["if"] == "${{ always() }}"
+    failed_shard_guard = _step_named(aggregate_job, "Fail if a duration shard failed")
+    checkout_index = next(
+        index
+        for index, step in enumerate(aggregate_job["steps"])
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert aggregate_job["steps"].index(failed_shard_guard) < checkout_index
+    assert failed_shard_guard["if"] == "${{ needs.refresh-shard.result != 'success' }}"
+    download = _step_named(aggregate_job, "Download shard JUnit reports")
+    assert (
+        download["with"]["pattern"]
+        == "weekly-test-duration-shard-*-attempt-${{ github.run_attempt }}"
+    )
+    merge = _step_named(aggregate_job, "Merge shard JUnit reports")
+    assert "scripts/quality/merge_junit_reports.py" in merge["run"]
+    assert "--expected-shards 4" in merge["run"]
+    rewrite = _step_named(aggregate_job, "Rewrite duration map")
+    assert "update_test_durations.py" in rewrite["run"]
+    assert "--replace" in rewrite["run"]
+    merged_upload = _step_named(aggregate_job, "Upload merged JUnit report")
+    assert "${{ github.run_id }}" in merged_upload["with"]["name"]
+    assert merged_upload["with"]["if-no-files-found"] == "error"
+
+
 def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))

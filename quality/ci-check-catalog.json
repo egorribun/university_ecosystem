@@ -4300,19 +4300,47 @@
         }
       ],
       "jobs": {
-        "refresh": {
+        "refresh-shard": {
           "profile": "nightly",
-          "check_name_template": "Refresh pytest duration map",
-          "expected_timeout_minutes": 90,
-          "expected_duration_seconds": 5400,
+          "check_name_template": "Refresh pytest duration map (shard ${{ matrix.shard }}/4)",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
           "guard": "workflow trigger",
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "weekly-test-duration-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "pytest-report.xml",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "review-required",
             "first_failure_preserved": false,
             "classifier": "not-yet-classified",
             "review_required": true,
-            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+            "notes": "Source YAML contains service health retries; classify these separately from test retries before relaxing this entry."
+          }
+        },
+        "refresh": {
+          "profile": "nightly",
+          "check_name_template": "Refresh pytest duration map",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "${{ always() }}",
+          "artifacts": [
+            {
+              "name_pattern": "weekly-test-duration-merged-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "pytest-report.xml",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
           }
         }
       }
