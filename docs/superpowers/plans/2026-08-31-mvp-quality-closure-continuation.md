@@ -4722,3 +4722,34 @@ These are local recertification signals only: the remote run
 current-SHA Linux mutation/browser/security matrix, strict manifest,
 live-ruleset comparison, immutable images and staging/release evidence remain
 release-blocking.
+
+## 71. Current-HEAD fast preflight and queue diagnostic (2026-09-14)
+
+The bounded local preflight was rerun after the latest documentation and CI
+governance commits, against the exact current HEAD `504b0c4b174d51cb7b653e053163fb91a663026d`:
+
+    $env:PRE_COMMIT_HOME='C:\Temp\pre-commit-cache-university-ecosystem'
+    uv run python scripts/fast_preflight.py --max-workers 6 --timeout-seconds 600 --include-output
+    # Fast preflight: 6/6 passed; 94.45 s
+
+All six independent checks passed: frontend typecheck (13.674 s), frontend
+lint (94.419 s), backend mypy (9.421 s), backend Ruff (0.243 s),
+`verify_harness.py --repo-only` (29/29, 40.453 s), and focused CI/quality
+contracts (66.824 s). The machine-readable report remains in the ignored
+developer path `artifacts/fast-preflight/fast-preflight.json`; it is not a
+release artifact and does not replace a trusted current-SHA CI producer.
+
+For the still-running historical run `34809326481` (source SHA
+`6c5aca38280861397d7425987e6d1077fc563bf0`), the read-only lower-bound timing
+ledger was generated at `C:\Temp\ci-critical-path-34809326481-diagnostic.json`
+with report SHA
+`f1897c956aeae489d0304379b2420478fe20c5e8f8d9ee571c424f73a18caae5`. At the
+snapshot it covered 311 jobs, observed peak concurrency 19/20, and estimated
+the lower-bound wall-clock path at 26,795 s. Queue latency dominated setup and
+test time (p50 2,839 s, p95 16,976 s, maximum 21,116 s; setup p95 63 s;
+test p95 2,150 s). The snapshot contained one failed mutmut execution group
+and one cancelled frontend mutation shard, with 40 jobs still queued and 16
+in progress; all findings remain stale until that run reaches a terminal
+state. This evidence supports investigating runner capacity and repeated
+setup, but does not justify raising mutation `max-parallel` or changing any
+quality inventory before three comparable terminal green runs.
