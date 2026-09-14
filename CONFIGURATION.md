@@ -111,6 +111,7 @@ This document describes all environment variables used by the University Ecosyst
 | `ELASTICSEARCH_PASSWORD` | ES password (`_FILE` supported) | Required |
 | `WS_HUB_INTERNAL_URL` | ws-hub control API | `http://ws-hub:8081` |
 | `WS_HUB_INTERNAL_SECRET` | HMAC for ws-hub cache invalidation | Required |
+| `INTERNAL_AUTH_TOKEN` | Token for ws-hub's exact room-participant callback; managed Compose/Helm/K8s deployments derive it from the existing ws-hub secret | Empty in development |
 | `IDEMPOTENCY_HMAC_SECRET` | signs idempotency keys | Empty |
 | `RUST_OPTIMIZER_URL` | Schedule optimization sidecar | `(8080)` |
 

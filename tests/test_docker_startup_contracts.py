@@ -1060,6 +1060,20 @@ def test_compose_has_no_hardcoded_or_optional_secret_fallbacks() -> None:
 def test_go_overlay_uses_the_base_nats_credential_contract() -> None:
     services = _compose("docker-compose.go.yml")["services"]
 
+    expected_internal_token = "${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - set in .env file}"
+    assert (
+        services["backend"]["environment"]["INTERNAL_AUTH_TOKEN"]
+        == expected_internal_token
+    )
+    assert (
+        services["ws-hub"]["environment"]["WS_HUB_INTERNAL_SECRET"]
+        == expected_internal_token
+    )
+    assert (
+        services["ws-hub"]["environment"]["INTERNAL_AUTH_TOKEN"]
+        == expected_internal_token
+    )
+
     for service_name, env_name in (
         ("ws-hub", "NATS_URL"),
         ("file-processor", "FP_NATS_URL"),
@@ -1073,10 +1087,27 @@ def test_go_overlay_uses_the_base_nats_credential_contract() -> None:
     ]["NATS_URL"]
     assert "${NATS_PASSWORD:?" in ci_ws_hub_url
     assert "NATS_AUTH_TOKEN" not in ci_ws_hub_url
+    ci_services = _compose("docker-compose.ci-loadtest.yml")["services"]
+    assert (
+        ci_services["backend"]["environment"]["INTERNAL_AUTH_TOKEN"]
+        == "${WS_HUB_INTERNAL_SECRET}"
+    )
+    assert (
+        ci_services["ws-hub"]["environment"]["INTERNAL_AUTH_TOKEN"]
+        == "${WS_HUB_INTERNAL_SECRET}"
+    )
 
     nightly = _read(".github/workflows/nightly-full-gate.yml")
     load_job = nightly.split("  load-and-chaos:", maxsplit=1)[1]
     assert "NATS_PASSWORD: nightly-nats-token" in load_job
+
+
+def test_full_compose_propagates_internal_chat_auth_token() -> None:
+    services = _compose("docker-compose.full.yml")["services"]
+    expected_token = "${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - run start-docker.ps1}"
+
+    assert services["backend"]["environment"]["INTERNAL_AUTH_TOKEN"] == expected_token
+    assert services["ws-hub"]["environment"]["INTERNAL_AUTH_TOKEN"] == expected_token
 
 
 def test_postgres_does_not_enable_retired_cdc_replication_settings() -> None:

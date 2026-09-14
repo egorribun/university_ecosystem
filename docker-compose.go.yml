@@ -2,6 +2,12 @@
 # Run with: docker compose -f docker-compose.yml -f docker-compose.go.yml up -d
 
 services:
+  # The backend protects the exact room-participant callback with the same
+  # secret that ws-hub uses for its internal control channel.
+  backend:
+    environment:
+      INTERNAL_AUTH_TOKEN: ${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - set in .env file}
+
   # API Gateway - Rate limiting, JWT validation, reverse proxy
   gateway:
     build:
@@ -53,6 +59,8 @@ services:
       REDIS_DB: "0"
       REVOCATION_REDIS_URL: redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
       JWT_SECRET: ${SECRET_KEY:?SECRET_KEY must be explicitly set in .env}
+      WS_HUB_INTERNAL_SECRET: ${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - set in .env file}
+      INTERNAL_AUTH_TOKEN: ${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - set in .env file}
       JWKS_URL: http://backend:8000/.well-known/jwks.json
       OTEL_EXPORTER_OTLP_ENDPOINT: tempo:4317
       OTEL_EXPORTER_OTLP_INSECURE: "true"

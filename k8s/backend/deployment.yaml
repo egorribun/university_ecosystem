@@ -92,6 +92,11 @@ spec:
                 secretKeyRef:
                   name: backend-secrets
                   key: WS_HUB_INTERNAL_SECRET
+            - name: INTERNAL_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: WS_HUB_INTERNAL_SECRET
             - name: IDEMPOTENCY_HMAC_SECRET
               valueFrom:
                 secretKeyRef:

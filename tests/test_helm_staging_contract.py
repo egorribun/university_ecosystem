@@ -974,6 +974,24 @@ def test_auth_token_hmac_secret_is_wired_from_application_secret() -> None:
         assert env["TOKEN_HMAC_SECRET"]["valueFrom"]["secretKeyRef"] == expected_ref
 
 
+def test_internal_chat_auth_token_is_shared_by_backend_and_ws_hub() -> None:
+    resources = _render_staging(release_name="university-ecosystem")
+    expected_ref = {
+        "name": "university-application",
+        "key": "ws-hub-internal-secret",
+    }
+
+    for component in ("backend", "ws-hub"):
+        deployment = _component_resource(resources, "Deployment", component)
+        container = next(
+            item
+            for item in deployment["spec"]["template"]["spec"]["containers"]
+            if item["name"] == component
+        )
+        env = {item["name"]: item for item in container["env"]}
+        assert env["INTERNAL_AUTH_TOKEN"]["valueFrom"]["secretKeyRef"] == expected_ref
+
+
 def test_ws_hub_is_a_restricted_helm_managed_atomic_workload() -> None:
     resources = _render_staging(release_name="university-ecosystem")
     deployment = _component_resource(resources, "Deployment", "ws-hub")

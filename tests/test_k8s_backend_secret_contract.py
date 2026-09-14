@@ -41,11 +41,15 @@ def test_backend_mounts_rsa_key_and_requires_distinct_redis_urls() -> None:
         "CACHE_REDIS_URL",
         "REVOCATION_REDIS_URL",
         "WS_HUB_INTERNAL_SECRET",
+        "INTERNAL_AUTH_TOKEN",
         "IDEMPOTENCY_HMAC_SECRET",
     ):
+        expected_key = (
+            "WS_HUB_INTERNAL_SECRET" if name == "INTERNAL_AUTH_TOKEN" else name
+        )
         assert env[name]["valueFrom"]["secretKeyRef"] == {
             "name": "backend-secrets",
-            "key": name,
+            "key": expected_key,
         }
 
     assert env["TOKEN_HMAC_SECRET"]["valueFrom"]["secretKeyRef"] == {

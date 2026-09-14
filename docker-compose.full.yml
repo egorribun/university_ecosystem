@@ -56,6 +56,9 @@ services:
       FLAGD_HOST: "flagd"
       FLAGD_PORT: "8013"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+      # Authenticate ws-hub's exact room-participant callback with the same
+      # existing internal trust secret, under the backend's canonical token key.
+      INTERNAL_AUTH_TOKEN: ${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - run start-docker.ps1}
       ENABLE_OTEL_LOGS: "false"
       ENABLE_OTEL_METRICS: "false"
       ENABLE_METRICS_ENDPOINT: "true"
@@ -764,6 +767,7 @@ services:
       JWT_SECRET: ${SECRET_KEY:?SECRET_KEY is required - run start-docker.ps1}
       # AUDIT-INFRA-02: required — ws-hub fails to start if empty
       WS_HUB_INTERNAL_SECRET: ${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - run start-docker.ps1}
+      INTERNAL_AUTH_TOKEN: ${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - run start-docker.ps1}
       # Wave 173 polish-v1: ws-hub reads REDIS_URL + REDIS_PASSWORD per
       # `services/ws-hub/pkg/config/config.go:120-121` (defaults: addr
       # `redis:6379`, no password). Pre-W173-polish-v1, REDIS_PASSWORD
