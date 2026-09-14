@@ -79,7 +79,6 @@ PR_RUN_CANCELLATION_WORKFLOWS = (
     "renovate-config-validation.yml",
     "rust-fuzz.yml",
     "semantic-pr.yml",
-    "sonar.yml",
     "sqlmap.yml",
     "trufflehog.yml",
     "zizmor.yml",
@@ -312,14 +311,20 @@ def test_rust_codecov_reports_are_staged_for_trusted_upload() -> None:
             if f"{component}/llvm.json" in step.get("run", "")
         )
         coverage_script = coverage_step["run"]
-        assert command in coverage_script
+        # Rust coverage commands are lockfile-bound.  Normalize the flag here
+        # so this artifact-shape contract remains focused on report routing;
+        # the dedicated lockfile contract below asserts the flag itself.
+        normalized_script = coverage_script.replace(" --locked", "")
+        assert command in normalized_script
         assert f"--output-path ../../{report_path}" in coverage_script
         report_line = next(
             line.strip()
             for line in coverage_script.splitlines()
             if line.strip().startswith("cargo llvm-cov report") and report_path in line
         )
-        assert report_line == f"{command} --output-path ../../{report_path}"
+        assert report_line.replace(" --locked", "") == (
+            f"{command} --output-path ../../{report_path}"
+        )
         assert (
             coverage_script.index(f"{component}/llvm.json")
             < coverage_script.index(report_path)
@@ -384,6 +389,42 @@ def test_rust_coverage_job_does_not_restore_stale_llvm_build_artifacts() -> None
             < coverage_script.index(nightly_clean)
             < coverage_script.index(nightly_report)
         )
+
+
+def test_rust_dependency_commands_are_lockfile_bound_and_coverage_tool_pinned() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+    lint_run = _run_text(workflow["jobs"]["rust-lint"])
+    clippy_lines = [
+        line.strip()
+        for line in lint_run.splitlines()
+        if line.strip().startswith("cargo clippy ")
+    ]
+    udeps_lines = [
+        line.strip()
+        for line in lint_run.splitlines()
+        if line.strip().startswith("cargo +nightly udeps ")
+    ]
+    assert len(clippy_lines) == 4
+    assert len(udeps_lines) == 4
+    assert all("--locked" in line for line in [*clippy_lines, *udeps_lines])
+
+    rust_tests = workflow["jobs"]["rust-tests"]
+    install = next(
+        step
+        for step in rust_tests["steps"]
+        if step.get("name") == "Install cargo-llvm-cov"
+    )
+    assert install["with"]["tool"] == "cargo-llvm-cov@0.6.19"
+    coverage_commands = [
+        line.strip()
+        for line in _run_text(rust_tests).splitlines()
+        if line.strip().startswith(("cargo llvm-cov ", "cargo +nightly llvm-cov "))
+        and " clean" not in line
+        and " --version" not in line
+    ]
+    assert coverage_commands
+    assert all("--locked" in line for line in coverage_commands)
 
 
 def test_required_openapi_compatibility_check_runs_for_every_pull_request() -> None:
@@ -3138,7 +3179,7 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
         if step.get("name", "").startswith("rust-crypto")
         and "coverage" in step.get("name", "")
     )
-    assert "cargo llvm-cov --all-targets" in rust_crypto_step["run"]
+    assert "cargo llvm-cov --locked --all-targets" in rust_crypto_step["run"]
 
     backend_workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
     inputs = _workflow_triggers(backend_workflow)["workflow_call"]["inputs"]

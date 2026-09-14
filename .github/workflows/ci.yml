@@ -516,10 +516,10 @@ jobs:
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
-          cargo clippy --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features -- -D warnings
-          cargo clippy --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets -- -D warnings
-          cargo clippy --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets -- -D warnings
-          cargo clippy --manifest-path frontend/rust-crypto/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features --locked -- -D warnings
+          cargo clippy --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets --locked -- -D warnings
+          cargo clippy --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets --locked -- -D warnings
+          cargo clippy --manifest-path frontend/rust-crypto/Cargo.toml --all-targets --locked -- -D warnings
 
       - name: Install cargo-udeps
         run: |
@@ -539,10 +539,10 @@ jobs:
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
-          cargo +nightly udeps --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features
-          cargo +nightly udeps --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets
-          cargo +nightly udeps --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets
-          cargo +nightly udeps --manifest-path frontend/rust-crypto/Cargo.toml --all-targets
+          cargo +nightly udeps --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features --locked
+          cargo +nightly udeps --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets --locked
+          cargo +nightly udeps --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets --locked
+          cargo +nightly udeps --manifest-path frontend/rust-crypto/Cargo.toml --all-targets --locked
 
 
   backend-tests:
@@ -2572,7 +2572,7 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # cargo-llvm-cov
         with:
-          tool: cargo-llvm-cov
+          tool: cargo-llvm-cov@0.6.19
 
       - name: Install nightly Rust for branch coverage
         run: rustup toolchain install nightly --component llvm-tools-preview --allow-downgrade --no-self-update
@@ -2600,10 +2600,10 @@ jobs:
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo llvm-cov clean
-          cargo llvm-cov --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-native/llvm.json
-          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-native/codecov.json
+          cargo llvm-cov --locked --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-native/llvm.json
+          cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-native/codecov.json
           cargo +nightly llvm-cov clean
-          cargo +nightly llvm-cov --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-native/branch-llvm.json
+          cargo +nightly llvm-cov --locked --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-native/branch-llvm.json
 
       - name: pyo3-sanitizer — native unit tests + coverage
         working-directory: crates/pyo3-sanitizer
@@ -2613,10 +2613,10 @@ jobs:
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo llvm-cov clean
-          cargo llvm-cov --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
-          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
+          cargo llvm-cov --locked --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
+          cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
           cargo +nightly llvm-cov clean
-          cargo +nightly llvm-cov --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
+          cargo +nightly llvm-cov --locked --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
 
       - name: wasm-sanitizer — native unit tests + coverage
         working-directory: frontend/wasm-sanitizer
@@ -2624,10 +2624,10 @@ jobs:
           CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-wasm-sanitizer
         run: |
           cargo llvm-cov clean
-          cargo llvm-cov --lib --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
-          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
+          cargo llvm-cov --locked --lib --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
+          cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
           cargo +nightly llvm-cov clean
-          cargo +nightly llvm-cov --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json
+          cargo +nightly llvm-cov --locked --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json
 
       - name: rust-crypto — native KAT tests + coverage
         working-directory: frontend/rust-crypto
@@ -2638,10 +2638,10 @@ jobs:
         # the 99/98 rust-crypto floor.
         run: |
           cargo llvm-cov clean
-          cargo llvm-cov --all-targets --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
-          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-crypto/codecov.json
+          cargo llvm-cov --locked --all-targets --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
+          cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-crypto/codecov.json
           cargo +nightly llvm-cov clean
-          cargo +nightly llvm-cov --all-targets --branch --json --output-path ../../artifacts/coverage/rust/rust-crypto/branch-llvm.json
+          cargo +nightly llvm-cov --locked --all-targets --branch --json --output-path ../../artifacts/coverage/rust/rust-crypto/branch-llvm.json
 
       - name: Write Rust coverage provenance
         shell: bash

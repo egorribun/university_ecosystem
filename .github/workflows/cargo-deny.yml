@@ -14,10 +14,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Run each independently versioned Rust crate in parallel.  Keeping this
-  # producer matrix separate from the stable aggregate below preserves the
-  # canonical `Cargo Deny Scan` release context while still covering every
-  # Rust dependency graph without serialising the scans.
+  # Run each independently versioned production Rust crate in parallel.
+  # Keeping this producer matrix separate from the stable aggregate below
+  # preserves the canonical `Cargo Deny Scan` release context without
+  # serialising the four production dependency scans. Fuzz and tooling graphs
+  # are covered by their dedicated audit/SBOM lanes.
   cargo-deny-crates:
     name: Cargo Deny (${{ matrix.name }})
     runs-on: ubuntu-24.04
