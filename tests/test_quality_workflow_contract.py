@@ -570,7 +570,8 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
         if isinstance(step, dict)
     )
     assert "kyverno test k8s/kyverno/tests/ --require-tests" in kyverno_text
-    assert "--retry-all-errors" in kyverno_text
+    assert "--retry-connrefused" in kyverno_text
+    assert "--retry-all-errors" not in kyverno_text
     assert "--connect-timeout 20" in kyverno_text
     assert 'test -s "$archive_path"' in kyverno_text
     assert 'test -s "$checksum_path"' in kyverno_text
@@ -582,6 +583,21 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
     assert "kyverno-test" in needs
     assert "needs.kyverno-test.result" in run_script
     assert kyverno_job["timeout-minutes"] == 15
+
+
+def test_release_download_retries_are_transient_only() -> None:
+    """Never retry deterministic HTTP/product errors as if they were flakes."""
+
+    workflow_paths = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "nightly-full-gate.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-e2e-tests.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml",
+    )
+    for workflow_path in workflow_paths:
+        text = workflow_path.read_text(encoding="utf-8")
+        assert "--retry-all-errors" not in text, workflow_path
+        assert "--retry-connrefused" in text, workflow_path
 
 
 def test_ci_success_publishes_current_run_health_artifact() -> None:
