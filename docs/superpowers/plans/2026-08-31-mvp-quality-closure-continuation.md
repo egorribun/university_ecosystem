@@ -4614,3 +4614,24 @@ signals, but do not claim a repository-wide transient classifier, global
 hosted-runner semaphore, resource telemetry or three-run sharding evidence.
 Those remain explicitly evidence-gated follow-up work after the old remote
 matrix reaches a terminal state.
+
+## 67. Supported Compose matrix revalidated (2026-09-14)
+
+The exact Compose configurations exercised by the primary CI workflow were
+revalidated from the current local checkout without starting or mutating the
+runtime stack. Both commands completed with exit code 0:
+
+    $env:IMGPROXY_KEY = ('0' * 64)
+    $env:IMGPROXY_SALT = ('1' * 64)
+    docker compose -f docker-compose.yml --env-file .env config --quiet
+    $env:WS_HUB_INTERNAL_SECRET = 'dummy-ci-validate-secret'
+    docker compose -f docker-compose.yml -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml --env-file .env config --quiet
+
+The first command validates the base topology; the second matches the
+workflow's merged infra/Go/load-test overlay. The standalone
+`docker-compose.go.yml` fragment is intentionally not treated as a supported
+topology because it relies on networks and services supplied by the base and
+infra files. This checkpoint proves interpolation and model validity only; it
+does not certify image builds, readiness, SSR, WebSocket, gRPC, observability,
+resource usage or immutable-digest runtime smoke. Those release gates still
+require a clean external Docker/staging environment and current-SHA evidence.
