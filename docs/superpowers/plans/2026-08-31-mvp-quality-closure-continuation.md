@@ -4666,3 +4666,59 @@ and 100% statements, branches, functions and lines (18,860/18,860,
 JUnit and coverage reports were local diagnostic artifacts only and were not
 staged. This is strong local evidence, not a substitute for the required
 current-SHA Linux CI mutation, browser, manifest or release evidence.
+
+## 70. Current local closure checkpoint and duplicate-evidence serialization (2026-09-14)
+
+The current local branch is `egorribun` at `a290d9485` (the parent
+`b4f3f4ba1` and this checkpoint contain CI-governance changes only after the
+last product-code recertification). User-owned untracked paths remain
+untouched and unstaged: `.tmp_preflight/`, `.tmp_stryker_18/`,
+`.tmp_stryker_22/` and `docs/audits/AUDIT_PLATFORM_FULL.md`.
+
+Commit `a290d9485` (`fix(ci): serialize duplicate evidence runs`) adds
+fail-safe `concurrency` groups with `cancel-in-progress: false` to the
+protected DAST, manual performance-evidence and quality-promotion workflows.
+This prevents duplicate long-lived evidence runs from consuming the shared
+runner pool or cancelling an in-flight report; it does not reduce any matrix,
+coverage, mutation or security inventory. A contract test covers all three
+groups.
+
+Fresh local evidence from this checkout:
+
+    python verify_harness.py
+    # 29 passed, 0 failed (106.40 s)
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_ci_critical_path_analysis.py tests/test_ci_health_report.py \
+      tests/contracts/test_ci_release_capacity_contract.py
+    # 70 passed (55.23 s)
+
+    uv run python scripts/quality/validate_ci_check_catalog.py
+    # CI check catalog: OK (55 workflows, 182 jobs)
+    uv run python scripts/quality/validate_quality_contract.py
+    # Quality contract is valid.
+
+The complete Python test/coverage run finished with `10263 passed, 106
+skipped` in 36:47. Its reports measured 100% of the applicable local Python
+scope: 30,690/30,690 lines and statements, and 7,464/7,464 branches; no
+measured line, statement or branch was missed. The report was generated before
+the final docs/CI-only commits and must be regenerated or bound by the trusted
+CI producer before entering a release manifest.
+
+Real PostgreSQL acceptance was also executed in an isolated testcontainers
+instance from the pinned `pgvector/pg17` digest:
+
+    USE_TESTCONTAINERS_POSTGRES=1 uv run pytest \
+      tests/integration/test_migration_148642dd1207.py \
+      tests/integration/test_migration_roundtrip.py \
+      tests/integration/test_migration_data.py -q -p no:cacheprovider
+    # 3 passed in 121.02 s
+
+The ephemeral database and Ryuk sidecar were removed automatically after the
+run; no project compose volume was started or changed. Rust PyO3 sanitizer
+all-target tests also passed (`42 passed`, including the benchmark smoke).
+These are local recertification signals only: the remote run
+`34809326481` remains non-terminal, its source SHA is stale, and the exact
+current-SHA Linux mutation/browser/security matrix, strict manifest,
+live-ruleset comparison, immutable images and staging/release evidence remain
+release-blocking.
