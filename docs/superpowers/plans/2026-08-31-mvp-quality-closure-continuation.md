@@ -4426,3 +4426,60 @@ it is not claimed as proof until a fresh current-SHA matrix regenerates stats,
 executes the selected mutants, and seals complete evidence. The old matrix
 must still reach a terminal state so its complete failure inventory can be
 recorded before the branch is pushed non-force.
+
+## 62. Source-default inventory and frontend contract-lane optimization (2026-09-14)
+
+Two bounded quality/performance improvements are now implemented locally and
+remain subject to a fresh current-SHA CI run:
+
+- `8b25422f0` adds the fail-closed BE-02 source inventory. The checked-in
+  `quality/model-default-policy.json` records the reviewed per-column
+  classifications and exception owners. `scripts/quality/audit_model_defaults.py`
+  parses the Alembic graph without importing migration modules, derives the
+  SQLAlchemy metadata/source inventory, binds the result to the full current
+  commit SHA and migration head, rejects unknown/duplicate/partial policy data,
+  and explicitly reports PostgreSQL catalog status as `not_checked` with
+  `required_for_release: true`. The existing required
+  `quality-inventory-check` job generates, re-reads and uploads the
+  run/attempt/SHA-scoped JSON artifact. This is a reproducible source/metadata
+  baseline, not a substitute for live `pg_get_expr` catalog, NULL-count,
+  upgrade/downgrade or raw-writer evidence.
+- `0c1a0fa12` adds one required `WASM Contract Tests` job to the reusable
+  frontend workflow. It runs the complete `npm run test:wasm` suite exactly
+  once after the immutable WASM producer, while the four unit shards use the
+  dedicated `test:unit-ci` script and no longer repeat the same repository-wide
+  contract suite. Artifact download paths and the required CI check catalog are
+  preserved; no test, source or mutation inventory is reduced. The quality
+  inventory install also uses `npm --prefix frontend ci --no-audit --no-fund`,
+  while the separate dependency audit remains blocking.
+
+Focused and full local evidence for this checkpoint:
+
+    uv run pytest -q -p no:cacheprovider tests/test_model_default_inventory.py
+    5 passed
+    uv run mypy --config-file pyproject.toml \
+      scripts/quality/audit_model_defaults.py tests/test_model_default_inventory.py
+    Success: no issues found in 2 source files
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_frontend_ci_performance_contracts.py \
+      tests/test_quality_workflow_contract.py
+    173 passed
+    npm run test:wasm
+    260 passed
+    uv run pytest -q --no-cov --disable-warnings --tb=short
+    10225 passed, 106 skipped, 2 deselected
+    pre-commit run --files <ten changed files> (isolated PRE_COMMIT_HOME)
+    all configured hooks passed
+    git diff --check
+    exit code 0
+
+The isolated pre-commit run avoids the previously inaccessible user cache and
+did not modify `.secrets.baseline`. Windows-only skips remain explicit
+environment limitations (PostgreSQL/ToxiProxy/Pact/FFI/symlink privileges),
+not relaxed gates. The current diagnostic run `34780640933` is still bound to
+the older SHA `ecfe0dba6668cb0a9b8f68186aa1a003f597d285`; at this snapshot it
+has 227/310 jobs completed, 16 active, 67 queued and four known mutmut
+failures. Because `ci.yml` uses `cancel-in-progress: true`, the nine local
+commits remain unpushed until that old run reaches terminal state and its
+complete failure/artifact inventory is recorded. A fresh current-SHA matrix is
+still mandatory before either improvement is treated as CI evidence.
