@@ -395,6 +395,29 @@ async def test_run_forever_logs_shutdown_provisioning_without_starting_fallback(
 
 
 @pytest.mark.asyncio
+async def test_fallback_worker_clears_owned_reference_after_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fallback completion must release the lifecycle-owned worker reference."""
+    instances: list[object] = []
+
+    class FakeOutboxWorker:
+        def __init__(self) -> None:
+            instances.append(self)
+
+        async def run_forever(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.workers.outbox.OutboxWorker", FakeOutboxWorker)
+    worker = cdc.CdcOutboxWorker(nats_broker=AsyncMock())
+
+    await worker._run_fallback_worker()
+
+    assert len(instances) == 1
+    assert worker._fallback_worker is None
+
+
+@pytest.mark.asyncio
 async def test_replication_writer_ignores_data_after_stop() -> None:
     broker = MagicMock(is_connected=True)
     worker = cdc.CdcOutboxWorker(nats_broker=broker)
