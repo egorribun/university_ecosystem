@@ -162,7 +162,7 @@ def _valid_manifest_fixture(
         "coverage_scope": contract["coverage_scope"],
         "tool_versions": {
             "coverage.py": "7.10.0",
-            "cargo-llvm-cov": "0.6.19",
+            "cargo-llvm-cov": "0.9.1",
             "go": "1.26.0",
             "node": "24.7.0",
             "python": "3.14.0",

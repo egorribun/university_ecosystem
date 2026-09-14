@@ -422,7 +422,7 @@ def test_rust_dependency_commands_are_lockfile_bound_and_coverage_tool_pinned() 
         for step in rust_tests["steps"]
         if step.get("name") == "Install cargo-llvm-cov"
     )
-    assert install["with"]["tool"] == "cargo-llvm-cov@0.6.19"
+    assert install["with"]["tool"] == "cargo-llvm-cov@0.9.1"
     coverage_commands = [
         line.strip()
         for line in _run_text(rust_tests).splitlines()

@@ -5088,3 +5088,35 @@ six-image and Docker smoke evidence, Kubernetes TLS/observability/CWV checks,
 chaos/rollback results and the final SHA-bound audit. CI timing/capacity
 optimizations remain evidence-gated; no matrix cap or quality threshold was
 changed from the diagnostic run.
+
+## 76. Rust coverage tool compatibility fix (2026-09-14)
+
+Fresh PR run `34882790312` (PR `#1266`, source head
+`9eaa2f68e576698fefb5c299be66fc721e2a2f0c`) reproduced one root failure in
+`Rust - cargo test (x3 crates) + wasm-pack + coverage` (job
+`104105919631`). All 76 `rust_ext` tests passed in both stable and nightly
+runs and the stable `llvm.json`/`codecov.json` reports were written. The
+nightly branch report alone failed with:
+
+    warning: not found object files (searched directories: .../rust-native-nightly/llvm-cov-target/debug)
+    error: ... llvm-cov export ... No filenames specified!
+
+The runner's current nightly Rust/Cargo (`rustc 1.100.0-nightly`) uses Cargo's
+build-dir v2 layout and emitted the instrumented test executable under
+`target/debug/build/<crate>/<hash>/out/`. The pinned `cargo-llvm-cov 0.6.19`
+collector only scanned `target/{debug,release}` and intentionally skipped
+`build`, so this was a deterministic report-discovery incompatibility rather
+than a test or coverage regression.
+
+The workflow and all version fixtures now pin `cargo-llvm-cov 0.9.1`, whose
+collector supports the new build-dir layout (including the Windows path
+matching fix), while retaining `--branch`, `--locked`, separate stable/nightly
+target roots, and all existing report/provenance/threshold gates. The exact
+references updated are `.github/workflows/ci.yml`,
+`tests/test_quality_workflow_contract.py`, `tests/test_quality_manifest_v2.py`,
+and `tests/quality_normalizer_v2_testkit.py`.
+
+Focused local contract/manifest tests pass after the update. The fix is
+committed separately and must be validated by a fresh Linux CI run; the failed
+run `34882790312` remains historical evidence only. No matrix cap, exclusion,
+quarantine, threshold, or mutation/security gate was changed.

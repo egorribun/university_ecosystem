@@ -192,5 +192,5 @@ TOOL_VERSION_ARGUMENTS = (
     "--tool-version",
     "rustc-nightly=1.92.0-nightly",
     "--tool-version",
-    "cargo-llvm-cov=0.6.19",
+    "cargo-llvm-cov=0.9.1",
 )
