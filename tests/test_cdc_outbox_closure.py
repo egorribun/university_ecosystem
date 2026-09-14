@@ -1,15 +1,84 @@
 from __future__ import annotations
 
+import ast
 import json
+import os
 import struct
 import time
 import uuid
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 import app.workers.cdc_outbox as cdc
 from app.core.events import UserCreated
+
+_CLOSE_REPLICATION_MUTANT_PREFIX = (
+    "xǁCdcOutboxWorkerǁ_close_replication_connection__mutmut_"
+)
+
+
+def _close_replication_function_node() -> ast.AsyncFunctionDef:
+    """Return the active close implementation from the imported source.
+
+    ``contextlib.suppress(OSError, ConnectionError, ...)`` deliberately names
+    both exception classes as part of the teardown contract.  ``ConnectionError``
+    subclasses ``OSError``, so a runtime-only test cannot distinguish removing
+    the explicit class from the original implementation.  During mutmut runs,
+    the generated module contains one sibling function per mutation; selecting
+    the active sibling makes this contract test fail for that otherwise
+    equivalent survivor without weakening the production behavior.
+    """
+    source_path = Path(cdc.__file__)
+    tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+    mutation = os.environ.get("MUTANT_UNDER_TEST", "")
+    _, _, mutant_name = mutation.rpartition(".")
+    generated_original = f"{_CLOSE_REPLICATION_MUTANT_PREFIX}mutmut_orig"
+    target_name = "_close_replication_connection"
+    generated_names = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith(_CLOSE_REPLICATION_MUTANT_PREFIX)
+    }
+    if generated_names:
+        target_name = (
+            mutant_name
+            if mutant_name.startswith(_CLOSE_REPLICATION_MUTANT_PREFIX)
+            else generated_original
+        )
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == target_name:
+            return node
+    raise AssertionError(f"{target_name} is missing from {source_path}")
+
+
+def test_close_replication_connection_keeps_explicit_connection_error_contract() -> (
+    None
+):
+    """The best-effort close path must explicitly retain ConnectionError."""
+    function = _close_replication_function_node()
+    suppressed: set[str] = set()
+    for node in ast.walk(function):
+        if not isinstance(node, ast.With):
+            continue
+        for item in node.items:
+            context = item.context_expr
+            if not isinstance(context, ast.Call):
+                continue
+            if (
+                not isinstance(context.func, ast.Attribute)
+                or context.func.attr != "suppress"
+            ):
+                continue
+            suppressed.update(
+                child.id
+                for argument in context.args
+                for child in ast.walk(argument)
+                if isinstance(child, ast.Name)
+            )
+    assert "ConnectionError" in suppressed
 
 
 def _relation_prefix(relation_id: int = 7, columns: int = 1) -> bytes:
