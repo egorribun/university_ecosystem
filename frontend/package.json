@@ -28,6 +28,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --configLoader runner",
     "test:ci": "npm run test:wasm && vitest run --configLoader runner --coverage --maxWorkers=4 --reporter=default --reporter=junit --outputFile=vitest-report.xml",
+    "test:unit-ci": "vitest run --configLoader runner --coverage --maxWorkers=4 --reporter=default --reporter=junit --outputFile=vitest-report.xml",
     "test:client-production": "vitest run --configLoader runner --mode production src/api/__tests__/client.csrf.production.test.ts --silent=true --maxWorkers=1",
     "test:mutation": "node ./scripts/run-stryker.mjs",
     "test:mutation:verify": "node ./scripts/verify-stryker-evidence.mjs",

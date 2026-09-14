@@ -3341,7 +3341,7 @@ def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
 
     assert shard_job["strategy"]["matrix"]["shard"] == [1, 2, 3, 4]
     shard_text = "\n".join(str(step.get("run", "")) for step in shard_job["steps"])
-    assert "npm run test:ci -- --shard=${{ matrix.shard }}/4" in shard_text
+    assert "npm run test:unit-ci -- --shard=${{ matrix.shard }}/4" in shard_text
     shard_artifacts = "\n".join(
         str(step.get("with", {}).get("name", ""))
         for step in shard_job["steps"]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -183,7 +184,7 @@ def test_frontend_wasm_is_built_once_and_reused_by_all_consumers() -> None:
         "compression-level": 0,
     }
 
-    for job_name in ("unit-tests-shard", "lint", "build"):
+    for job_name in ("wasm-tests", "unit-tests-shard", "lint", "build"):
         consumer = jobs[job_name]
         assert consumer["needs"] == "wasm-build"
         download = _step(consumer, "Download immutable WASM modules")
@@ -209,6 +210,69 @@ def test_frontend_wasm_is_built_once_and_reused_by_all_consumers() -> None:
 
     assert jobs["unit-tests-shard"]["strategy"]["matrix"]["shard"] == [1, 2, 3, 4]
     assert _step(jobs["build"], "Build app")["env"] == {"SKIP_WASM_BUILD": "1"}
+
+
+def test_unit_shards_reuse_wasm_without_repeating_the_contract_suite() -> None:
+    """Shard jobs must run Vitest only after the shared WASM gate completes.
+
+    ``test:ci`` intentionally includes ``test:wasm`` for the canonical local
+    command, while ``wasm-tests`` owns that suite in CI. Matrix shards already
+    download the immutable WASM artifact, so running the repository-wide
+    contract suite four more times only increases queue time without adding
+    coverage or assurance.
+    """
+    workflow = _load(FRONTEND_WORKFLOW_PATH)
+    shard_job = workflow["jobs"]["unit-tests-shard"]  # type: ignore[index]
+    shard_run = _step(shard_job, "Run unit-test shard")["run"]
+    package = json.loads(
+        (REPOSITORY_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
+    )
+
+    expected_vitest_command = (
+        "vitest run --configLoader runner --coverage --maxWorkers=4 "
+        "--reporter=default --reporter=junit --outputFile=vitest-report.xml"
+    )
+    assert package["scripts"]["test:unit-ci"] == expected_vitest_command
+    assert "npm run test:unit-ci --" in shard_run
+    assert "npm run test:ci" not in shard_run
+    assert "npm run test:wasm" not in shard_run
+
+
+def test_wasm_contract_suite_has_one_artifact_bound_required_runner() -> None:
+    workflow = _load(FRONTEND_WORKFLOW_PATH)
+    jobs = workflow["jobs"]  # type: ignore[index]
+    wasm_tests = jobs["wasm-tests"]
+
+    assert wasm_tests["name"] == "WASM Contract Tests"
+    assert wasm_tests["needs"] == "wasm-build"
+    assert wasm_tests["timeout-minutes"] == 30
+    assert wasm_tests["permissions"] == {"contents": "read", "actions": "read"}
+
+    standalone_mode = (
+        "${{ inputs.wasm-artifact-id == '' && inputs.wasm-artifact-name == '' "
+        "&& inputs.wasm-artifact-digest == '' }}"
+    )
+    external_mode = (
+        "${{ inputs.wasm-artifact-id != '' && inputs.wasm-artifact-name != '' "
+        "&& inputs.wasm-artifact-digest != '' }}"
+    )
+    standalone_download = _step(wasm_tests, "Download immutable WASM modules")
+    shared_download = _step(wasm_tests, "Download shared immutable WASM modules")
+    assert standalone_download["if"] == standalone_mode
+    assert standalone_download["with"] == {
+        "name": "frontend-wasm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+        "path": "${{ inputs.working-directory }}",
+    }
+    assert shared_download["if"] == external_mode
+    assert shared_download["with"] == {
+        "artifact-ids": "${{ inputs.wasm-artifact-id }}",
+        "path": "${{ inputs.working-directory }}",
+    }
+    run = _step(wasm_tests, "Run frontend WASM and quality contracts")["run"]
+    assert run.strip() == "npm run test:wasm"
+
+    workflow_text = FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert workflow_text.count("npm run test:wasm") == 1
 
 
 def test_frontend_wasm_target_is_installed_once_before_sequential_builds() -> None:

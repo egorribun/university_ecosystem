@@ -207,6 +207,7 @@
         "lighthouse",
         "lint",
         "build",
+        "wasm-tests",
         "unit-tests-shard",
         "unit-tests"
       ],
@@ -214,7 +215,7 @@
       "classification": "required",
       "owner": "@egorribun",
       "runbook": "docs/testing/ci-check-catalog-runbook.md",
-      "source_reference": ".github/workflows/ci.yml#jobs.frontend-tests -> reusable-frontend-tests.yml#jobs.{bundle-analysis,lighthouse-shards,lighthouse,lint,build,unit-tests-shard,unit-tests}",
+      "source_reference": ".github/workflows/ci.yml#jobs.frontend-tests -> reusable-frontend-tests.yml#jobs.{bundle-analysis,lighthouse-shards,lighthouse,lint,build,wasm-tests,unit-tests-shard,unit-tests}",
       "declared_contexts": [
         "Frontend Tests / Bundle Analysis",
         "Frontend Tests / Lighthouse Audit",
@@ -224,6 +225,7 @@
         "Frontend Tests / Lighthouse Audit (realtime)",
         "Frontend Tests / Lint & Format",
         "Frontend Tests / Production Build",
+        "Frontend Tests / WASM Contract Tests",
         "Frontend Tests / Unit Tests",
         "Frontend Tests / Unit Tests (shard 1/4)",
         "Frontend Tests / Unit Tests (shard 2/4)",
@@ -3382,6 +3384,20 @@
             "classifier": "not-yet-classified",
             "review_required": true,
             "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "wasm-tests": {
+          "profile": "internal",
+          "check_name_template": "WASM Contract Tests",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
           }
         },
         "unit-tests-shard": {
