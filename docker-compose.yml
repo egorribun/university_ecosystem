@@ -71,6 +71,8 @@ services:
       NATS_URL: nats://nats:4222
       NATS_AUTH_TOKEN: ${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-university-ecosystem-api}
+      JWT_ISSUER: ${JWT_ISSUER:-university-ecosystem}
       EMBEDDED_OUTBOX_WORKER_ENABLED: "false"
       # SpiceDB: dev stack runs plaintext gRPC (no TLS). SPICEDB_INSECURE=true
       # disables the forced-TLS default in app/core/spicedb.py so /healthz returns 200.

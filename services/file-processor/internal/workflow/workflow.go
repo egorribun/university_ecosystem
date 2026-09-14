@@ -28,9 +28,11 @@ type ProcessJob struct {
 	Type      string `json:"type"` // resize, thumbnail, optimize
 	SourceKey string `json:"source_key"`
 	DestKey   string `json:"dest_key"`
-	// Capability is an opaque, short-lived backend authorization proof. It is
-	// carried through Temporal so asynchronous execution remains bound to the
-	// exact owner-checked object keys that entered the service boundary.
+	// Capability is retained in the wire shape for backwards-compatible job
+	// decoding, but ingress handlers deliberately clear it before starting a
+	// workflow. The proof is verified at the transport boundary and must not be
+	// persisted in durable Temporal history; the exact object-bound keys are
+	// carried as the already-authorized job fields instead.
 	Capability  string                 `json:"capability"`
 	Options     map[string]interface{} `json:"options"`
 	CallbackURL string                 `json:"callback_url,omitempty"`

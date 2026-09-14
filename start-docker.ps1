@@ -348,6 +348,8 @@ function Ensure-JwtEnvironment {
     # full and base Compose modes, so keep their environment files aligned.
     foreach ($path in @($EnvFile, $EnvCompose)) {
         Set-EnvEntry -Path $path -Key "ALGORITHM" -Value "RS256"
+        Set-EnvEntry -Path $path -Key "JWT_AUDIENCE" -Value "university-ecosystem-api"
+        Set-EnvEntry -Path $path -Key "JWT_ISSUER" -Value "university-ecosystem"
         Set-EnvEntry -Path $path -Key "JWT_PRIVATE_KEY_PATH" -Value ".secrets/jwt_rs256.pem"
     }
 }
@@ -888,6 +890,8 @@ POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
 SECRET_KEY=$secretKey
 ALGORITHM=RS256
+JWT_AUDIENCE=university-ecosystem-api
+JWT_ISSUER=university-ecosystem
 JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 MINIO_ROOT_USER=minioadmin
@@ -931,6 +935,8 @@ POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
 SECRET_KEY=$secretKey
 ALGORITHM=RS256
+JWT_AUDIENCE=university-ecosystem-api
+JWT_ISSUER=university-ecosystem
 JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem
 MINIO_ROOT_USER=minioadmin
 MINIO_ROOT_PASSWORD=$minioPassword

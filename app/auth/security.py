@@ -453,6 +453,11 @@ def _mint_pure_jwt(
     payload: dict[str, Any] = {
         "sub": str(subject),
         "aud": settings.jwt_audience,
+        "iss": settings.jwt_issuer,
+        # Downstream zero-trust consumers require an explicit activity claim;
+        # callers issuing a bare/internal token may still override it through
+        # ``extra_claims`` when the token represents a different lifecycle.
+        "is_active": True,
         "iat": now,
         "nbf": now,
         "exp": now + timedelta(minutes=minutes),

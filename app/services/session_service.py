@@ -233,6 +233,11 @@ class SessionService:
         payload = {
             "sub": str(user_id),
             "aud": settings.jwt_audience,
+            "iss": settings.jwt_issuer,
+            # Keep the claim contract explicit even for internal callers that
+            # do not provide the login DTO's ``extra_claims`` map. Revocation
+            # remains authoritative for session lifecycle changes.
+            "is_active": True,
             "iat": iat,
             "nbf": iat,
             "exp": exp,

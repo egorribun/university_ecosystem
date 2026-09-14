@@ -30,6 +30,7 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
@@ -166,6 +167,33 @@ func runMain(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	keySet, err := initializeJWKSKeySet(ctx, cfg, rsaPublicKey, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to initialize JWKS verification", "err", err)
+		return err
+	}
+	var revocationRedisClient *redis.Client
+	var revocations revocationChecker
+	if redisURL := strings.TrimSpace(cfg.RevocationRedisURL); redisURL != "" {
+		revocationRedisClient, err = newRevocationRedisClient(ctx, redisURL)
+		if err != nil {
+			logger.ErrorContext(ctx, "Failed to initialize session revocation Redis", "err", err)
+			return err
+		}
+		revocations = &redisRevocationChecker{client: revocationRedisClient}
+		defer closeRevocationRedis(ctx, logger, revocationRedisClient)
+	}
+	jwtOptions, err := strictJWTOptionsWithKeySet(cfg, rsaPublicKey, revocations, keySet)
+	if err != nil {
+		logger.ErrorContext(ctx, "JWT security configuration is invalid", "err", err)
+		return err
+	}
+	var replayGuard pb.CapabilityReplayGuard = pb.NewCapabilityReplayRegistry(0)
+	if revocationRedisClient != nil {
+		// Release deployments use the same shared Redis authority for session
+		// revocation and one-time capability admission across replicas.
+		replayGuard = &redisCapabilityReplayGuard{client: revocationRedisClient}
+	}
 	initSentry(ctx, cfg, logger)
 
 	defer initializeTracerShutdown(ctx, cfg, logger)()
@@ -178,7 +206,7 @@ func runMain(ctx context.Context) error {
 	defer w.Stop()
 	logger.InfoContext(ctx, "Temporal Worker started", "queue", "FILE_PROCESSING_TASK_QUEUE")
 
-	if err := startNatsSubscriberFunc(ctx, cfg, c, logger); err != nil {
+	if err := startNatsSubscriberFunc(ctx, cfg, c, logger, replayGuard); err != nil {
 		logger.ErrorContext(ctx, "Failed to start NATS subscriber", "err", err)
 		return err
 	}
@@ -195,13 +223,13 @@ func runMain(ctx context.Context) error {
 		}()
 	}
 
-	grpcSrv, err := setupGRPCServerFunc(ctx, cfg, rsaPublicKey, c, spiffeClient, logger)
+	grpcSrv, err := setupGRPCServerFunc(ctx, cfg, rsaPublicKey, c, spiffeClient, logger, jwtOptions, replayGuard)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to setup gRPC server", "err", err)
 		return err
 	}
 
-	graphqlSrv, err := setupGraphQLServerFunc(ctx, cfg, rsaPublicKey, c, logger)
+	graphqlSrv, err := setupGraphQLServerFunc(ctx, cfg, rsaPublicKey, c, logger, jwtOptions, replayGuard)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to setup GraphQL server", "err", err)
 		return err
@@ -432,7 +460,13 @@ func (m natsProcessDeliveryMessage) NakWithDelay(d time.Duration) error {
 }
 func (m natsProcessDeliveryMessage) Term() error { return m.msg.Term() }
 
-func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Client, logger *slog.Logger) error {
+func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Client, logger *slog.Logger, options ...any) error {
+	var replayGuard pb.CapabilityReplayGuard
+	for _, option := range options {
+		if guard, ok := option.(pb.CapabilityReplayGuard); ok {
+			replayGuard = guard
+		}
+	}
 	var opts []nats.Option
 	if cfg.Environment == "testing" {
 		opts = append(opts, nats.Timeout(50*time.Millisecond))
@@ -472,7 +506,7 @@ func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Clien
 	}
 	subOpts = append(subOpts, nats.ManualAck())
 	_, err = js.QueueSubscribe(fileProcessSubject, fileProcessConsumer, func(msg *nats.Msg) {
-		handleFileProcessDelivery(ctx, natsProcessDeliveryMessage{msg: msg}, c, logger, []byte(strings.TrimSpace(cfg.ProcessingCapabilitySecret)))
+		handleFileProcessDelivery(ctx, natsProcessDeliveryMessage{msg: msg}, c, logger, []byte(strings.TrimSpace(cfg.ProcessingCapabilitySecret)), replayGuard)
 	}, subOpts...)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to subscribe to NATS queue", "err", err,
@@ -534,7 +568,7 @@ func reconcileFileProcessConsumer(js legacyNatsJetStream, subject, consumer stri
 	return "", false, fmt.Errorf("consumer %q did not converge to MaxDeliver=%d", consumer, fileProcessMaxDeliver)
 }
 
-func handleFileProcessDelivery(ctx context.Context, msg processDeliveryMessage, c client.Client, logger *slog.Logger, capabilitySecrets ...[]byte) {
+func handleFileProcessDelivery(ctx context.Context, msg processDeliveryMessage, c client.Client, logger *slog.Logger, capabilityOptions ...any) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.ErrorContext(ctx, "Recovered panic while handling NATS file-process message",
@@ -561,22 +595,25 @@ func handleFileProcessDelivery(ctx context.Context, msg processDeliveryMessage, 
 		terminateWithFallback(ctx, msg, logger, reason)
 		return
 	}
-	if len(capabilitySecrets) > 0 && len(capabilitySecrets[0]) > 0 {
-		claims, verifyErr := pb.VerifyProcessingCapability(job.Capability, capabilitySecrets[0], time.Now().UTC())
-		if verifyErr != nil || !claims.Matches(pb.ProcessingCapabilityExpectation{
-			ID: job.ID, Type: job.Type, SourceKey: job.SourceKey, DestKey: job.DestKey,
-			// The NATS envelope has no live user/session context. Those claims
-			// were authenticated and bound at the HTTP/gRPC ingress; echo them
-			// from the MAC-verified proof here so Matches still compares every
-			// security-relevant field without making valid async proofs
-			// impossible to consume.
-			UserID: claims.UserID, SessionID: claims.SessionID, TenantID: claims.TenantID,
-		}) {
+	capabilitySecret, replayGuard := capabilityOptionsFrom(capabilityOptions...)
+	var capabilityClaims pb.ProcessingCapabilityClaims
+	var capabilityNow time.Time
+	capabilityVerified := false
+	if len(capabilitySecret) > 0 {
+		capabilityNow = time.Now().UTC()
+		claims, verifyErr := verifyProcessingCapabilityForJob(job, capabilitySecret, capabilityNow)
+		if verifyErr != nil {
 			logger.ErrorContext(ctx, "Rejected NATS file-process message",
 				"reason", "capability_invalid", "consumer", fileProcessConsumer)
 			terminateWithFallback(ctx, msg, logger, "capability_invalid")
 			return
 		}
+		capabilityClaims = claims
+		capabilityVerified = true
+		// Verify the bearer proof at the NATS boundary but never persist it in
+		// Temporal history. The workflow only needs the already-validated job
+		// fields; retaining the short-lived secret would widen its exposure.
+		job.Capability = ""
 	}
 	if c == nil {
 		logger.ErrorContext(ctx, "Failed to execute workflow from NATS",
@@ -593,17 +630,89 @@ func handleFileProcessDelivery(ctx context.Context, msg processDeliveryMessage, 
 	}
 	wfCtx, wfCancel := context.WithTimeout(ctx, fileProcessStartTimeout)
 	defer wfCancel()
-	if _, execErr := c.ExecuteWorkflow(wfCtx, opt, workflow.FileProcessingWorkflow, job); execErr != nil {
-		if temporal.IsWorkflowExecutionAlreadyStartedError(execErr) {
-			ackProcessMessage(ctx, msg, logger, "workflow_already_started")
-			return
-		}
+	alreadyStarted, execErr := executeFileProcessWorkflow(wfCtx, c, opt, job)
+	if execErr != nil {
 		logger.ErrorContext(ctx, "Failed to execute workflow from NATS",
 			"reason", "temporal_start_failed", "consumer", fileProcessConsumer)
 		nakWithDelay(ctx, msg, logger, "temporal_start_failed")
 		return
 	}
+	if alreadyStarted {
+		ackProcessMessage(ctx, msg, logger, "workflow_already_started")
+		return
+	}
+	// Temporal's deterministic workflow ID is the authoritative idempotency
+	// boundary shared with the HTTP/gRPC ingresses. Consume the nonce only after
+	// ExecuteWorkflow succeeds; a transient start failure must leave the proof
+	// retryable. A failure to record this defense-in-depth signal cannot undo an
+	// already-started workflow, so acknowledge the message and rely on Temporal's
+	// REJECT_DUPLICATE policy for subsequent deliveries.
+	if capabilityVerified && replayGuard != nil {
+		accepted, replayErr := pb.ConsumeCapabilityReplay(
+			ctx,
+			replayGuard,
+			capabilityClaims.Nonce,
+			time.Unix(capabilityClaims.ExpiresAt, 0),
+			capabilityNow,
+		)
+		if replayErr != nil {
+			logger.ErrorContext(ctx, "Recorded NATS file-process workflow without replay admission",
+				"reason", "capability_replay_record_failed", "consumer", fileProcessConsumer)
+		} else if !accepted {
+			logger.InfoContext(ctx, "NATS file-process workflow already has replay admission",
+				"reason", "capability_replay_recorded_elsewhere", "consumer", fileProcessConsumer)
+		}
+	}
 	ackProcessMessage(ctx, msg, logger, "workflow_started")
+}
+
+func capabilityOptionsFrom(options ...any) ([]byte, pb.CapabilityReplayGuard) {
+	var capabilityKey []byte
+	var replayGuard pb.CapabilityReplayGuard
+	for _, option := range options {
+		switch value := option.(type) {
+		case []byte:
+			if capabilityKey == nil {
+				capabilityKey = value
+			}
+		case pb.CapabilityReplayGuard:
+			replayGuard = value
+		}
+	}
+	return capabilityKey, replayGuard
+}
+
+func verifyProcessingCapabilityForJob(job workflow.ProcessJob, secret []byte, now time.Time) (pb.ProcessingCapabilityClaims, error) {
+	claims, err := pb.VerifyProcessingCapability(job.Capability, secret, now)
+	if err != nil {
+		return pb.ProcessingCapabilityClaims{}, err
+	}
+	if !claims.Matches(pb.ProcessingCapabilityExpectation{
+		ID: job.ID, Type: job.Type, SourceKey: job.SourceKey, DestKey: job.DestKey,
+		// The NATS envelope has no live user/session context. Those claims
+		// were authenticated and bound at the HTTP/gRPC ingress; echo them
+		// from the MAC-verified proof here so Matches still compares every
+		// security-relevant field without making valid async proofs
+		// impossible to consume.
+		UserID: claims.UserID, SessionID: claims.SessionID, TenantID: claims.TenantID,
+	}) {
+		return pb.ProcessingCapabilityClaims{}, errors.New("processing capability does not match job")
+	}
+	return claims, nil
+}
+
+func executeFileProcessWorkflow(ctx context.Context, c client.Client, options client.StartWorkflowOptions, job workflow.ProcessJob) (bool, error) {
+	_, err := c.ExecuteWorkflow(ctx, options, workflow.FileProcessingWorkflow, job)
+	if temporal.IsWorkflowExecutionAlreadyStartedError(err) {
+		return true, nil
+	}
+	return false, err
+}
+
+func closeRevocationRedis(ctx context.Context, logger *slog.Logger, client *redis.Client) {
+	if err := client.Close(); err != nil {
+		logger.WarnContext(ctx, "Failed to close session revocation Redis", "err", err)
+	}
 }
 
 func decodeProcessJob(payload []byte) (workflow.ProcessJob, error) {
@@ -690,19 +799,16 @@ type authedServerStream struct {
 func (s *authedServerStream) Context() context.Context { return s.ctx }
 
 func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, opts ...any) (*grpc.Server, error) {
-	var spiffeClient *spiffe.Client
-	logger := slog.Default()
-
-	for _, opt := range opts {
-		switch v := opt.(type) {
-		case *slog.Logger:
-			logger = v
-		case *spiffe.Client:
-			spiffeClient = v
-		}
+	logger, spiffeClient, providedAuthOptions, replayGuard := parseGRPCServerOptions(opts...)
+	authOptions, err := resolveGRPCAuthOptions(cfg, rsaPub, providedAuthOptions)
+	if err != nil {
+		return nil, err
+	}
+	if replayGuard == nil {
+		replayGuard = pb.NewCapabilityReplayRegistry(0)
 	}
 
-	authFn := authFunc(cfg.JWTSecret, rsaPub, logger)
+	authFn := authFuncWithOptions(cfg.JWTSecret, rsaPub, logger, authOptions)
 	serverOpts := []grpc.ServerOption{
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainStreamInterceptor(
@@ -715,23 +821,9 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 		),
 	}
 
-	if cfg.SpiffeEnabled {
-		if spiffeClient == nil {
-			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
-			return nil, errors.New("SPIFFE is enabled but spiffeClient is nil")
-		}
-		creds, err := grpcServerCredentialsFunc(spiffeClient, cfg.AllowedClientSpiffeIDs...)
-		if err != nil {
-			logger.ErrorContext(ctx, "Failed to create SPIFFE gRPC server credentials", "err", err)
-			return nil, fmt.Errorf("failed to create SPIFFE gRPC server credentials: %w", err)
-		}
-		serverOpts = append(serverOpts, grpc.Creds(creds))
-	} else if cfg.GRPCTLSCertFile != "" || cfg.GRPCTLSKeyFile != "" || cfg.GRPCClientCAFile != "" {
-		creds, err := conventionalGRPCServerCredentials(cfg)
-		if err != nil {
-			return nil, err
-		}
-		serverOpts = append(serverOpts, grpc.Creds(creds))
+	serverOpts, err = addGRPCServerCredentials(ctx, cfg, spiffeClient, logger, serverOpts)
+	if err != nil {
+		return nil, err
 	}
 
 	grpcServer := grpc.NewServer(serverOpts...)
@@ -741,6 +833,7 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 		TemporalClient:    c,
 		CapabilitySecret:  capabilitySecret,
 		RequireCapability: len(capabilitySecret) > 0,
+		ReplayGuard:       replayGuard,
 	})
 	reflection.Register(grpcServer)
 	grpc_prometheus.Register(grpcServer)
@@ -751,6 +844,61 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 	healthServer.SetServingStatus("file_processor.v1.FileProcessingService", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	return grpcServer, nil
+}
+
+func parseGRPCServerOptions(opts ...any) (*slog.Logger, *spiffe.Client, *jwtAuthOptions, pb.CapabilityReplayGuard) {
+	logger := slog.Default()
+	var spiffeClient *spiffe.Client
+	var authOptions *jwtAuthOptions
+	var replayGuard pb.CapabilityReplayGuard
+	for _, opt := range opts {
+		switch value := opt.(type) {
+		case *slog.Logger:
+			logger = value
+		case *spiffe.Client:
+			spiffeClient = value
+		case jwtAuthOptions:
+			copy := value
+			authOptions = &copy
+		case pb.CapabilityReplayGuard:
+			replayGuard = value
+		}
+	}
+	return logger, spiffeClient, authOptions, replayGuard
+}
+
+func resolveGRPCAuthOptions(cfg *config.Config, rsaPub *rsa.PublicKey, provided *jwtAuthOptions) (jwtAuthOptions, error) {
+	if provided == nil {
+		return strictJWTOptions(cfg, rsaPub, nil)
+	}
+	authOptions := provided.normalized()
+	if err := validateJWTAuthOptions(authOptions, rsaPub); err != nil {
+		return jwtAuthOptions{}, err
+	}
+	return authOptions, nil
+}
+
+func addGRPCServerCredentials(ctx context.Context, cfg *config.Config, spiffeClient *spiffe.Client, logger *slog.Logger, serverOpts []grpc.ServerOption) ([]grpc.ServerOption, error) {
+	if cfg.SpiffeEnabled {
+		if spiffeClient == nil {
+			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
+			return nil, errors.New("SPIFFE is enabled but spiffeClient is nil")
+		}
+		creds, err := grpcServerCredentialsFunc(spiffeClient, cfg.AllowedClientSpiffeIDs...)
+		if err != nil {
+			logger.ErrorContext(ctx, "Failed to create SPIFFE gRPC server credentials", "err", err)
+			return nil, fmt.Errorf("failed to create SPIFFE gRPC server credentials: %w", err)
+		}
+		return append(serverOpts, grpc.Creds(creds)), nil
+	}
+	if cfg.GRPCTLSCertFile == "" && cfg.GRPCTLSKeyFile == "" && cfg.GRPCClientCAFile == "" {
+		return serverOpts, nil
+	}
+	creds, err := conventionalGRPCServerCredentials(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return append(serverOpts, grpc.Creds(creds)), nil
 }
 
 func conventionalGRPCServerCredentials(cfg *config.Config) (credentials.TransportCredentials, error) {
@@ -884,7 +1032,34 @@ func loadGraphQLSchema() ([]byte, error) {
 	return readBundledGraphQLSchema()
 }
 
-func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) (srv *http.Server, err error) {
+func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, options ...any) (srv *http.Server, err error) {
+	logger := slog.Default()
+	var authOptions jwtAuthOptions
+	var authOptionsProvided bool
+	var replayGuard pb.CapabilityReplayGuard
+	for _, option := range options {
+		switch value := option.(type) {
+		case *slog.Logger:
+			logger = value
+		case jwtAuthOptions:
+			authOptions = value
+			authOptionsProvided = true
+		case pb.CapabilityReplayGuard:
+			replayGuard = value
+		}
+	}
+	if !authOptionsProvided {
+		authOptions, err = strictJWTOptions(cfg, rsaPub, nil)
+	} else {
+		authOptions = authOptions.normalized()
+		err = validateJWTAuthOptions(authOptions, rsaPub)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if replayGuard == nil {
+		replayGuard = pb.NewCapabilityReplayRegistry(0)
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			logger.ErrorContext(ctx, "GraphQL schema parsing panicked", "panic", r)
@@ -903,6 +1078,7 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 		MinioBucket:       cfg.MinioBucket,
 		CapabilitySecret:  []byte(strings.TrimSpace(cfg.ProcessingCapabilitySecret)),
 		RequireCapability: strings.TrimSpace(cfg.ProcessingCapabilitySecret) != "",
+		ReplayGuard:       replayGuard,
 	}
 
 	var schemaOpts []graphql.SchemaOpt
@@ -917,7 +1093,7 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 		return nil, parseErr
 	}
 	mux := http.NewServeMux()
-	graphqlHandler := httpJWTMiddleware(cfg.JWTSecret, rsaPub, logger,
+	graphqlHandler := httpJWTMiddlewareWithOptions(cfg.JWTSecret, rsaPub, logger, authOptions,
 		middleware.MaxQueryDepthMiddleware(10,
 			middleware.RequestTimeoutMiddleware(30*time.Second,
 				&relay.Handler{Schema: schema},
@@ -1004,6 +1180,9 @@ func parseRSAPublicKey(pemStr string) (*rsa.PublicKey, error) {
 	if !ok {
 		return nil, fmt.Errorf("RSA_PUBLIC_KEY_PEM is not an RSA key (got %T)", pub)
 	}
+	if err := validateRSAPublicKey(rsaPub); err != nil {
+		return nil, fmt.Errorf("invalid RSA public key: %w", err)
+	}
 	return rsaPub, nil
 }
 
@@ -1019,11 +1198,17 @@ func jwtKeyFunc(secret string, rsaPub *rsa.PublicKey) jwt.Keyfunc {
 	return func(t *jwt.Token) (interface{}, error) {
 		switch t.Method.(type) {
 		case *jwt.SigningMethodRSA:
+			if t.Method != jwt.SigningMethodRS256 || t.Method.Alg() != "RS256" {
+				return nil, fmt.Errorf("unexpected RSA signing method: %v", t.Header["alg"])
+			}
 			if rsaPub == nil {
 				return nil, fmt.Errorf("RS256 token received but no RSA public key configured")
 			}
 			return rsaPub, nil
 		case *jwt.SigningMethodHMAC:
+			if t.Method != jwt.SigningMethodHS256 || t.Method.Alg() != "HS256" {
+				return nil, fmt.Errorf("unexpected HMAC signing method: %v", t.Header["alg"])
+			}
 			// FIX-ALG-01: Reject HS256 when RS256 is configured — RS256-only deployments
 			// must not fall back to HMAC, which would open an algorithm-confusion path.
 			if rsaPub != nil {
@@ -1062,6 +1247,15 @@ func checkJWTAlgHeader(tokenStr string, rsaPub *rsa.PublicKey, log *slog.Logger,
 }
 
 func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, next http.Handler) http.Handler {
+	return httpJWTMiddlewareWithOptions(secret, rsaPub, log, jwtAuthOptions{
+		RequireRS256: rsaPub != nil,
+	}, next)
+}
+
+func httpJWTMiddlewareWithOptions(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, options jwtAuthOptions, next http.Handler) http.Handler {
+	if log == nil {
+		log = slog.Default()
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		const prefix = "Bearer "
@@ -1079,34 +1273,33 @@ func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, n
 			return
 		}
 
-		// TD-W18-01: use unified keyFunc supporting both RS256 and HS256.
-		token, err := parseJWTFunc(tokenStr, jwtKeyFunc(secret, rsaPub))
-		if err != nil || !token.Valid {
+		claims, err := parseAndValidateJWT(r.Context(), tokenStr, secret, rsaPub, options)
+		if err != nil {
 			log.WarnContext(r.Context(), "GraphQL HTTP JWT validation failed",
 				"remote", r.RemoteAddr,
 				"err", err,
 			)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
+			if errors.Is(err, errRevocationStoreUnavailable) {
+				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if errors.Is(err, errInactiveToken) {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 		ctx := r.Context()
-		sub, _ := claims["sub"].(string)
-		if sub != "" {
-			ctx = context.WithValue(ctx, userIDKey, sub)
-		}
+		sub := claims["sub"].(string)
+		ctx = context.WithValue(ctx, userIDKey, sub)
 		// Tenant identity must come from the verified token. HTTP headers are
 		// caller-controlled and cannot establish tenant membership.
 		tenantID, _ := claims["tenant_id"].(string)
 		if tenantID != "" {
 			ctx = context.WithValue(ctx, tenantIDKey, tenantID)
 		}
-		sessionID, _ := claims["jti"].(string)
+		sessionID := claims["jti"].(string)
 		ctx = pb.WithProcessingIdentity(ctx, pb.ProcessingIdentity{
 			UserID: sub, SessionID: sessionID, TenantID: tenantID,
 		})
@@ -1117,40 +1310,47 @@ func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, n
 }
 
 func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.AuthFunc {
+	return authFuncWithOptions(secret, rsaPub, logger, jwtAuthOptions{
+		RequireRS256: rsaPub != nil,
+	})
+}
+
+func authFuncWithOptions(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger, options jwtAuthOptions) auth.AuthFunc {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return func(ctx context.Context) (context.Context, error) {
 		tokenStr, err := auth.AuthFromMD(ctx, "bearer")
 		if err != nil {
 			return nil, err
 		}
 
-		// TD-W18-01: use unified keyFunc supporting both RS256 and HS256.
-		token, err := parseJWTFunc(tokenStr, jwtKeyFunc(secret, rsaPub))
+		claims, err := parseAndValidateJWT(ctx, tokenStr, secret, rsaPub, options)
 
 		if err != nil {
 			logger.WarnContext(ctx, "gRPC auth failed", "err", err)
-			return nil, status.Errorf(codes.Unauthenticated, "invalid token: %v", err)
+			if errors.Is(err, errRevocationStoreUnavailable) {
+				return nil, status.Error(codes.Unavailable, "session verification temporarily unavailable")
+			}
+			if errors.Is(err, errInactiveToken) {
+				return nil, status.Error(codes.PermissionDenied, "user account is not active")
+			}
+			return nil, status.Error(codes.Unauthenticated, "invalid token")
 		}
 
-		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			sub, ok := claims["sub"].(string)
-			if !ok || sub == "" {
-				return nil, status.Errorf(codes.Unauthenticated, "invalid token claims: missing sub")
-			}
-			newCtx := context.WithValue(ctx, userIDKey, sub)
-			// Metadata is transport input, not an authenticated identity source.
-			// Derive tenant context exclusively from the verified JWT claim.
-			tenantID, _ := claims["tenant_id"].(string)
-			if tenantID != "" {
-				newCtx = context.WithValue(newCtx, tenantIDKey, tenantID)
-			}
-			sessionID, _ := claims["jti"].(string)
-			newCtx = pb.WithProcessingIdentity(newCtx, pb.ProcessingIdentity{
-				UserID: sub, SessionID: sessionID, TenantID: tenantID,
-			})
-			return newCtx, nil
+		sub := claims["sub"].(string)
+		newCtx := context.WithValue(ctx, userIDKey, sub)
+		// Metadata is transport input, not an authenticated identity source.
+		// Derive tenant context exclusively from the verified JWT claim.
+		tenantID, _ := claims["tenant_id"].(string)
+		if tenantID != "" {
+			newCtx = context.WithValue(newCtx, tenantIDKey, tenantID)
 		}
-
-		return nil, status.Errorf(codes.Unauthenticated, "invalid token claims")
+		sessionID := claims["jti"].(string)
+		newCtx = pb.WithProcessingIdentity(newCtx, pb.ProcessingIdentity{
+			UserID: sub, SessionID: sessionID, TenantID: tenantID,
+		})
+		return newCtx, nil
 	}
 }
 

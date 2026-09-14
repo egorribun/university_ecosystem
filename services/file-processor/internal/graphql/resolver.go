@@ -3,6 +3,7 @@ package graphql
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/university-ecosystem/file-processor/internal/workflow"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/temporal"
 )
 
 // Resolver is the root resolver for the GraphQL API.
@@ -22,7 +24,10 @@ type Resolver struct {
 	MinioBucket       string
 	CapabilitySecret  []byte
 	RequireCapability bool
-	Now               func() time.Time
+	// ReplayGuard is shared with the gRPC and NATS ingress paths by production
+	// bootstrap, preventing a capability from crossing ingress boundaries twice.
+	ReplayGuard pb.CapabilityReplayGuard
+	Now         func() time.Time
 }
 
 // Health returns the health status of the service.
@@ -87,6 +92,8 @@ func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFi
 	}
 
 	jobID := generateID()
+	var capabilityClaims pb.ProcessingCapabilityClaims
+	var capabilityNow time.Time
 	if r.RequireCapability {
 		identity, ok := pb.ProcessingIdentityFromContext(ctx)
 		if !ok {
@@ -96,6 +103,7 @@ func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFi
 		if r.Now != nil {
 			now = r.Now().UTC()
 		}
+		capabilityNow = now
 		claims, verifyErr := pb.VerifyProcessingCapability(args.Input.Capability, r.CapabilitySecret, now)
 		if verifyErr != nil || !claims.Matches(pb.ProcessingCapabilityExpectation{
 			ID: claims.ID, Type: args.Input.Type, SourceKey: safeSourceKey,
@@ -104,27 +112,63 @@ func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFi
 		}) {
 			return nil, fmt.Errorf("file processing authorization required")
 		}
+		capabilityClaims = claims
 		jobID = claims.ID
 	}
 
 	job := workflow.ProcessJob{
-		ID:         jobID,
-		Type:       args.Input.Type,
-		SourceKey:  safeSourceKey,
-		DestKey:    safeDestKey,
-		Capability: args.Input.Capability,
+		ID:        jobID,
+		Type:      args.Input.Type,
+		SourceKey: safeSourceKey,
+		DestKey:   safeDestKey,
+		// The bearer capability is an ingress proof, not workflow data. Do not
+		// persist it in Temporal history after this boundary has verified it.
+		Capability: "",
 		Options:    options,
 	}
 
 	workflowOptions := client.StartWorkflowOptions{
-		ID:                    "graphql-" + job.ID,
+		// All ingresses use the same workflow namespace. This is a second line of
+		// defense if a deployment has not yet wired a shared replay guard.
+		ID:                    "file-process-" + job.ID,
 		TaskQueue:             "FILE_PROCESSING_TASK_QUEUE",
 		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 	}
 
 	run, err := r.TemporalClient.ExecuteWorkflow(ctx, workflowOptions, workflow.FileProcessingWorkflow, job)
 	if err != nil {
+		// REJECT_DUPLICATE is the shared idempotency boundary for every ingress.
+		// Treat a duplicate submission as a successful handoff to the existing
+		// deterministic workflow rather than leaking Temporal's internal error to
+		// GraphQL clients.
+		if temporal.IsWorkflowExecutionAlreadyStartedError(err) {
+			return &FileJobResolver{
+				jobID:     workflowOptions.ID,
+				status:    "STARTED",
+				resultURL: "",
+			}, nil
+		}
 		return nil, err
+	}
+	// Temporal owns idempotency for this mutation. Every ingress submits the
+	// same deterministic workflow ID with REJECT_DUPLICATE, so record the
+	// capability nonce only after the workflow has been accepted. A transient
+	// start failure therefore leaves the capability retryable, while a replay
+	// cannot create a second workflow even if this defense-in-depth registry is
+	// temporarily unavailable.
+	if r.RequireCapability && r.ReplayGuard != nil {
+		if _, replayErr := pb.ConsumeCapabilityReplay(
+			ctx,
+			r.ReplayGuard,
+			capabilityClaims.Nonce,
+			time.Unix(capabilityClaims.ExpiresAt, 0),
+			capabilityNow,
+		); replayErr != nil {
+			// The deterministic Temporal workflow ID remains the idempotency
+			// authority. Keep the accepted job successful while recording a
+			// non-sensitive diagnostic for an unavailable replay guard.
+			slog.Default().ErrorContext(ctx, "capability replay admission failed after workflow start", "error_type", fmt.Sprintf("%T", replayErr))
+		}
 	}
 
 	return &FileJobResolver{

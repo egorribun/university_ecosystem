@@ -36,6 +36,8 @@ services:
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
       REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      JWT_AUDIENCE: "${JWT_AUDIENCE:-university-ecosystem-api}"
+      JWT_ISSUER: "${JWT_ISSUER:-university-ecosystem}"
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/1"
       MINIO_ENDPOINT: minio:9000
@@ -843,6 +845,12 @@ services:
       # Reusing the local internal secret is safe because the shared signer adds
       # a dedicated domain separator; production uses the same secret contract.
       FP_PROCESSING_CAPABILITY_SECRET: "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
+      FP_JWT_AUDIENCE: "${JWT_AUDIENCE:-university-ecosystem-api}"
+      FP_JWT_ISSUER: "${JWT_ISSUER:-university-ecosystem}"
+      FP_JWKS_URL: "http://backend:8000/.well-known/jwks.json"
+      FP_JWKS_REFRESH_INTERVAL: "${JWKS_REFRESH_INTERVAL:-300}"
+      FP_JWT_ACTIVE_KID: "${JWT_ACTIVE_KID:-primary}"
+      FP_REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       FP_RSA_PUBLIC_KEY_FILE: "/app/.secrets/jwt_rs256.pub.pem"
       FP_OTLP_ENDPOINT: "tempo:4317"
       FP_OTLP_INSECURE: "true"
@@ -906,8 +914,11 @@ services:
       #     stream and subscribes successfully (closes the chain W139 §Honesty #6).
       backend:
         condition: service_healthy
+      revocation-redis:
+        condition: service_healthy
     networks:
       - internal
+      - revocation_net
     # Wave 137 SW5: gRPC healthcheck via grpc_health_probe binary baked into
     # distroless runtime (services/file-processor/Dockerfile health-probe stage).
     # main.go:277-280 already registers grpc_health_v1.HealthCheckResponse_SERVING

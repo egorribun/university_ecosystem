@@ -97,8 +97,9 @@ async def test_create_access_token_with_extra_claims_embeds_is_active_true(
     assert "is_active" in decoded, "is_active claim must be embedded for gateway"
     assert decoded["is_active"] is True
 
-    for claim in ("sub", "aud", "iat", "nbf", "exp", "jti"):
+    for claim in ("sub", "aud", "iss", "is_active", "iat", "nbf", "exp", "jti"):
         assert claim in decoded, f"required claim {claim} missing"
+    assert decoded["is_active"] is True
 
 
 @pytest.mark.asyncio
@@ -118,21 +119,22 @@ async def test_create_access_token_with_extra_claims_embeds_is_active_false(
 
 
 @pytest.mark.asyncio
-async def test_create_access_token_without_extra_claims_omits_is_active(
+async def test_create_access_token_without_extra_claims_includes_is_active(
     db_session, test_user
 ):
-    """Backwards-compat: no extra_claims → JWT lacks is_active.
+    """Bare access tokens still satisfy the zero-trust claim contract.
 
-    Pre-W136 JWTs in flight at deploy time follow this path. Gateway's Go json
-    unmarshal defaults missing bool to false → 403 → user re-logs in. Documented
-    invalidation behavior under no-deploy scope.
+    The file processor validates the activity claim before accepting either
+    HTTP GraphQL or gRPC work.  A token minted without caller-supplied
+    ``extra_claims`` therefore gets the same active-user value as the login
+    path instead of relying on a Go decoder default.
     """
     service = _make_session_service(db_session)
 
     token, _ = await service.create_access_token(sub=test_user.id)
 
     decoded = _decode_jwt(token)
-    assert "is_active" not in decoded
+    assert decoded["is_active"] is True
 
 
 @pytest.mark.asyncio

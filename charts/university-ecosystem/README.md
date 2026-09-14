@@ -80,6 +80,29 @@ contract.
 `redis-gateway-url`, `redis-revocation-url`, `nats-url`, and
 `nats-auth-token`. `redis-credentials` must contain `redis-password`.
 
+The backend upload path is explicitly S3/MinIO in staging and production:
+`backend.config.storageBackend` must be `s3` or `minio`, the bucket must be
+non-empty, and the endpoint must use HTTPS. The access key and secret key are
+loaded from `minio-access-key` and `minio-secret-key` in
+`applicationSecrets.existingSecret`; never place them in Helm values.
+
+JWT consumers share one explicit contract. The backend signs RS256 tokens with
+the audience from `gateway.config.jwtAudience` and the canonical issuer from
+`global.jwtIssuer`; the file processor receives the same values as
+`FP_JWT_AUDIENCE` and `FP_JWT_ISSUER` and rejects tokens with a different
+issuer, audience, algorithm, or required security claims. Keep the issuer
+stable for an environment (the release script derives it from the HTTPS API
+host) and treat it as non-secret configuration. Revoked token JTIs and
+capability replay nonces use the dedicated persistent revocation Redis/Valkey
+store, not the evictable application cache.
+
+The file processor's `FP_JWKS_URL` defaults to the in-cluster backend
+`/.well-known/jwks.json` endpoint. It accepts only bounded `RS256` JWKS
+documents, resolves every token by its exact `kid`, and atomically retains the
+last-known-good key set when a refresh fails. `FP_JWKS_REFRESH_INTERVAL` is in
+seconds (default `300`, maximum `86400`), and `FP_JWT_ACTIVE_KID` names the
+static PEM fallback during startup (default `primary`).
+
 `university-nats-config` must contain `nats-server.conf`. That externally
 managed configuration is the canonical NATS authentication contract: it must
 use the same token stored as `nats-auth-token`, enable JetStream, set

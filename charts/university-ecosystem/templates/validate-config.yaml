@@ -66,6 +66,9 @@
   {{- if contains "REQUIRED_" (toJson .Values) -}}
     {{- fail "staging/production values contain an unresolved REQUIRED_ marker" -}}
   {{- end -}}
+  {{- if not (hasPrefix "https://" .Values.global.jwtIssuer) -}}
+    {{- fail "global.jwtIssuer must use https:// in staging/production" -}}
+  {{- end -}}
   {{- if not .Values.applicationSecrets.existingSecret -}}
     {{- fail "applicationSecrets.existingSecret must be set in staging/production so credentials do not enter Helm release state" -}}
   {{- end -}}
@@ -201,6 +204,15 @@
   {{- end -}}
   {{- if not .Values.backend.config.minioSecure -}}
     {{- fail "backend.config.minioSecure=true is required in staging/production" -}}
+  {{- end -}}
+  {{- if not (has .Values.backend.config.storageBackend (list "s3" "minio")) -}}
+    {{- fail "backend.config.storageBackend must be s3 or minio in staging/production" -}}
+  {{- end -}}
+  {{- if not .Values.backend.config.storageS3Bucket -}}
+    {{- fail "backend.config.storageS3Bucket is required in staging/production" -}}
+  {{- end -}}
+  {{- if not (hasPrefix "https://" .Values.backend.config.storageS3EndpointURL) -}}
+    {{- fail "backend.config.storageS3EndpointURL must use https:// in staging/production" -}}
   {{- end -}}
   {{- range $name, $dependency := dict "redis" .Values.redis "nats" .Values.nats -}}
     {{- if or (not $dependency.networkPolicy.enabled) $dependency.networkPolicy.allowExternal $dependency.networkPolicy.allowExternalEgress -}}

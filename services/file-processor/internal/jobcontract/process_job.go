@@ -84,7 +84,8 @@ func validateKey(key string) error {
 	if strings.IndexByte(key, 0) >= 0 {
 		return errors.New("object_key_nul")
 	}
-	if _, err := objectkey.Normalize(key); err != nil {
+	normalized, err := objectkey.Normalize(key)
+	if err != nil {
 		if errors.Is(err, objectkey.ErrAbsolute) {
 			return errors.New("object_key_absolute")
 		}
@@ -92,6 +93,9 @@ func validateKey(key string) error {
 		// other shared-normalizer error is therefore a traversal failure; keep
 		// this fail-closed so adding a new normalizer guard cannot admit a key.
 		return errors.New("object_key_traversal")
+	}
+	if normalized != key {
+		return errors.New("object_key_noncanonical")
 	}
 	return nil
 }

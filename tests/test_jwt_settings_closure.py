@@ -71,6 +71,19 @@ def test_production_placeholder_audience_logs_warning(monkeypatch, caplog):
     assert "generic placeholder" in caplog.text
 
 
+def test_jwt_issuer_is_required_and_normalized(monkeypatch):
+    _development_env(monkeypatch)
+    assert SecuritySettings(jwt_issuer="  https://issuer.example  ").jwt_issuer == (
+        "https://issuer.example"
+    )
+
+    with pytest.raises(ValueError, match="JWT_ISSUER must not be empty"):
+        SecuritySettings(jwt_issuer="   ")
+
+    with pytest.raises(ValueError, match="JWT_ISSUER contains invalid characters"):
+        SecuritySettings(jwt_issuer="issuer\nwith-control")
+
+
 def test_rs256_private_key_missing_falls_back_only_in_development(monkeypatch):
     _development_env(monkeypatch)
     monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", "app/core/config/mixins/jwt_settings.py")
@@ -157,6 +170,9 @@ def test_jwt_validators_reject_empty_and_short_production_values(monkeypatch):
 
     with pytest.raises(ValueError, match="JWT_AUDIENCE must not be empty"):
         SecuritySettings(jwt_audience="")
+
+    with pytest.raises(ValueError, match="JWT_ISSUER must not be empty"):
+        SecuritySettings(jwt_issuer="")
 
 
 def test_jwt_signing_registry_parses_entries_caches_and_exposes_aliases():

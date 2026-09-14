@@ -33,6 +33,11 @@ class JwtSettingsMixin:
     # operators SHOULD override via JWT_AUDIENCE to a service-specific audience string to
     # prevent cross-service token reuse (e.g. dev service accepting staging token).
     jwt_audience: str = "university-ecosystem-api"
+    # Stable token issuer shared by the backend and downstream service
+    # verifiers.  Release deployments should override this with the canonical
+    # environment-specific issuer; keeping a local default makes development
+    # and test tokens structurally identical to release tokens.
+    jwt_issuer: str = "university-ecosystem"
     algorithm: str = "RS256"
     access_token_expire_minutes: int = 60
     max_sessions_per_user: int = 5
@@ -172,6 +177,24 @@ class JwtSettingsMixin:
                 v,
             )
         return v.strip()
+
+    @field_validator("jwt_issuer")
+    @classmethod
+    def _validate_jwt_issuer(cls, v: str) -> str:
+        """Require a stable, non-blank issuer for every minted access token.
+
+        The file-processor and other zero-trust consumers use ``iss`` as an
+        explicit trust-boundary binding.  Accepting a blank value would make
+        those consumers either reject every backend token or fall back to an
+        issuer-agnostic policy.  Control characters are also rejected so the
+        value cannot be split or obscured in configuration and audit output.
+        """
+        normalized = v.strip()
+        if not normalized:
+            raise ValueError("JWT_ISSUER must not be empty")
+        if len(normalized) > 512 or any(ord(char) < 0x20 for char in normalized):
+            raise ValueError("JWT_ISSUER contains invalid characters")
+        return normalized
 
     def _build_jwt_signing_key_entries(self) -> list[tuple[str, str]]:
         entries: list[tuple[str, str]] = []

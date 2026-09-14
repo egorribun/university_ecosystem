@@ -7,6 +7,9 @@ fullnameOverride: university-ecosystem
 
 global:
   environment: staging
+  # The release script replaces REQUIRED_API_HOST with the exact public API
+  # origin, making issuer binding environment-specific and non-ambiguous.
+  jwtIssuer: https://REQUIRED_API_HOST
   # First-party repositories are set explicitly by deploy-helm.sh. Keeping the
   # global registry empty preserves the reviewed upstream dependency identity.
   imageRegistry: ""
@@ -70,6 +73,9 @@ backend:
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: 80
   config:
+    storageBackend: s3
+    storageS3Bucket: uploads
+    storageS3EndpointURL: https://REQUIRED_MINIO_ENDPOINT
     minioSecure: true
     elasticsearchURL: https://REQUIRED_ELASTICSEARCH_HOST
     flagdHost: REQUIRED_FLAGD_HOST
@@ -132,6 +138,11 @@ fileProcessor:
     minioSecure: true
     temporalHost: REQUIRED_TEMPORAL_HOST
     temporalTLSDisabled: false
+    # The deployment renders the in-cluster backend JWKS URL when this is
+    # empty; the public API origin remains the issuer, not the key transport.
+    jwksURL: ""
+    jwksRefreshInterval: 300
+    jwtActiveKID: primary
     otlpEndpoint: REQUIRED_OTLP_ENDPOINT
     otlpInsecure: false
 

@@ -5,6 +5,9 @@
   {{- $cwvKeys = list .Values.applicationSecrets.keys.cwvManualTesterUserIds -}}
 {{- end -}}
 {{- $backendKeys := concat (list "jwt-secret" "jwt-rsa-private-key" "internal-hmac-secret" "ws-hub-internal-secret" "csrf-hmac-secret" "spotify-token-secret" "elasticsearch-password" "spicedb-preshared-key" "audit-log-secret" "token-hmac-secret" "idempotency-hmac-secret") $mfaKeys $cwvKeys | uniq | sortAlpha -}}
+{{- if has .Values.backend.config.storageBackend (list "s3" "minio") -}}
+  {{- $backendKeys = concat $backendKeys (list "minio-access-key" "minio-secret-key") | uniq | sortAlpha -}}
+{{- end -}}
 {{- $outboxKeys := list "jwt-secret" "jwt-rsa-private-key" "internal-hmac-secret" "ws-hub-internal-secret" "csrf-hmac-secret" "spotify-token-secret" "elasticsearch-password" "spicedb-preshared-key" "audit-log-secret" "token-hmac-secret" "idempotency-hmac-secret" .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs | uniq | sortAlpha -}}
 {{- $applicationKeys := concat $backendKeys $outboxKeys -}}
 {{- if .Values.fileProcessor.enabled -}}

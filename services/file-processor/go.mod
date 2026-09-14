@@ -13,6 +13,7 @@ require (
 	github.com/nats-io/nats.go v1.53.1
 	github.com/pact-foundation/pact-go/v2 v2.7.0
 	github.com/prometheus/client_golang v1.24.1
+	github.com/redis/go-redis/v9 v9.22.0
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
@@ -75,6 +76,7 @@ require (
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
 )
 
@@ -130,7 +132,7 @@ require (
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
+	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

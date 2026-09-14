@@ -99,6 +99,12 @@ services:
       FP_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
       FP_MINIO_BUCKET: uploads
       FP_PROCESSING_CAPABILITY_SECRET: ${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - set in .env file}
+      FP_JWT_AUDIENCE: ${JWT_AUDIENCE:-university-ecosystem-api}
+      FP_JWT_ISSUER: ${JWT_ISSUER:-university-ecosystem}
+      FP_JWKS_URL: http://backend:8000/.well-known/jwks.json
+      FP_JWKS_REFRESH_INTERVAL: ${JWKS_REFRESH_INTERVAL:-300}
+      FP_JWT_ACTIVE_KID: ${JWT_ACTIVE_KID:-primary}
+      FP_REVOCATION_REDIS_URL: redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
       FP_TEMPORAL_HOST: temporal:7233
       FP_TEMPORAL_API_KEY_FILE: /app/.secrets/temporal_api_key
       FP_TEMPORAL_TLS_DISABLED: "true"
@@ -119,6 +125,8 @@ services:
         condition: service_completed_successfully
       backend:
         condition: service_healthy
+      revocation-valkey:
+        condition: service_healthy
     # The distroless image carries the statically linked probe built in
     # services/file-processor/Dockerfile. Keep the overlay independently
     # health-aware when it is combined with the base stack.
@@ -132,6 +140,7 @@ services:
       - internal
       - event_net
       - service_net
+      - revocation_net
     deploy:
       resources:
         limits:

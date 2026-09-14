@@ -128,6 +128,8 @@ func TestHandleFileProcessDelivery_AcceptsCapabilityAndRejectsDuplicateWorkflow(
 	require.Zero(t, first.termCount)
 	require.Zero(t, first.nakCount)
 	require.Len(t, stub.options, 1)
+	require.Len(t, stub.jobs, 1)
+	require.Empty(t, stub.jobs[0].Capability, "bearer capabilities must not enter Temporal history")
 	require.Equal(t, enums.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE, stub.options[0].WorkflowIDReusePolicy)
 
 	// A redelivered capability is not allowed to start another execution: the
@@ -142,6 +144,29 @@ func TestHandleFileProcessDelivery_AcceptsCapabilityAndRejectsDuplicateWorkflow(
 	require.Len(t, stub.options, 2)
 }
 
+func TestHandleFileProcessDelivery_TemporalFailureDoesNotBurnCapability(t *testing.T) {
+	job := natsCapabilityJob()
+	payload := natsCapabilityPayload(t, job, []byte(natsCapabilityKey), time.Now().UTC())
+	registry := pb.NewCapabilityReplayRegistry(4)
+	stub := &natsTemporalClientStub{
+		executeErr: errors.New("temporal unavailable"),
+		calls:      make(chan struct{}, 2),
+	}
+	first := &fakeProcessDeliveryMessage{payload: payload}
+	handleFileProcessDelivery(context.Background(), first, stub, discardLogger(), []byte(natsCapabilityKey), registry)
+	require.Zero(t, first.ackCount)
+	require.Equal(t, 1, first.nakCount)
+
+	stub.executeErr = nil
+	second := &fakeProcessDeliveryMessage{payload: payload}
+	handleFileProcessDelivery(context.Background(), second, stub, discardLogger(), []byte(natsCapabilityKey), registry)
+	require.Equal(t, 1, second.ackCount)
+	require.Zero(t, second.nakCount)
+	require.Len(t, stub.options, 2)
+	require.Len(t, stub.jobs, 2)
+	require.Empty(t, stub.jobs[1].Capability, "bearer capabilities must not enter Temporal history")
+}
+
 func TestHandleFileProcessDelivery_CapabilityFailureDoesNotRetry(t *testing.T) {
 	msg := &fakeProcessDeliveryMessage{payload: natsCapabilityPayload(t, natsCapabilityJob(), []byte(natsCapabilityKey), time.Now().UTC()), termErr: errors.New("term failed")}
 	var temporal natsTemporalClientStub
@@ -149,4 +174,20 @@ func TestHandleFileProcessDelivery_CapabilityFailureDoesNotRetry(t *testing.T) {
 	require.Equal(t, 1, msg.termCount)
 	require.Equal(t, 1, msg.nakCount, "termination failure is retried through the bounded fallback")
 	require.Equal(t, []time.Duration{fileProcessNakDelay}, msg.nakDelays)
+}
+
+func TestHandleFileProcessDelivery_RedeliveryUsesTemporalIdempotency(t *testing.T) {
+	job := natsCapabilityJob()
+	payload := natsCapabilityPayload(t, job, []byte(natsCapabilityKey), time.Now().UTC())
+	registry := pb.NewCapabilityReplayRegistry(4)
+	stub := &natsTemporalClientStub{calls: make(chan struct{}, 2)}
+	first := &fakeProcessDeliveryMessage{payload: payload}
+	handleFileProcessDelivery(context.Background(), first, stub, discardLogger(), []byte(natsCapabilityKey), registry)
+	require.Equal(t, 1, first.ackCount)
+	require.Len(t, stub.options, 1)
+	second := &fakeProcessDeliveryMessage{payload: payload}
+	handleFileProcessDelivery(context.Background(), second, stub, discardLogger(), []byte(natsCapabilityKey), registry)
+	require.Equal(t, 1, second.ackCount)
+	require.Zero(t, second.termCount)
+	require.Len(t, stub.options, 2, "the deterministic Temporal workflow ID is checked on each redelivery")
 }

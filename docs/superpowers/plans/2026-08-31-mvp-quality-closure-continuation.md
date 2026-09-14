@@ -4851,3 +4851,147 @@ This checkpoint closes the code-level findings but is not a release claim. A
 fresh current-SHA security scan, full mutation/coverage matrix, current-SHA
 quality manifest, and the remaining Docker/Kubernetes/TLS/observability,
 browser, performance and release evidence are still required.
+
+## 73. External-audit trust-boundary and release-storage closure (2026-09-14)
+
+The independent platform audit and a second security review identified two
+remaining release-critical boundaries that must be explicit in the MVP closure:
+
+1. File-processing callers could previously submit attacker-selected source and
+   destination object keys. A JWT proves identity, but not ownership of the
+   objects named in those keys. The safe interim contract is therefore
+   fail-closed in staging/production until a trusted backend owner-check issues
+   a capability; no ingress may silently fall back to key-only authorization.
+2. The canonical Helm staging overlay selected `MINIO_SECURE=true` while the
+   backend still defaulted to local static storage. With a read-only container
+   root this made uploads non-durable or unavailable. Release values must select
+   S3/MinIO explicitly and inject credentials only from the application Secret.
+
+The current implementation adds a shared, domain-separated, short-lived
+processing capability contract in `gen/go/file_processor/v1/capability.go`:
+
+- HMAC-SHA-256 proofs bind an ID, operation type, exact normalized source and
+  destination keys, user, session, optional tenant, expiry and nonce;
+- tokens have a 15-minute maximum lifetime, bounded size, CSPRNG nonce support,
+  constant-time MAC/claim comparisons and generic denial responses;
+- the gateway verifies the proof against the authenticated Gin identity before
+  forwarding only verified metadata; the file processor repeats the check at
+  the gRPC boundary and propagates the opaque proof into Temporal;
+- GraphQL and NATS ingress apply the same proof contract, and Temporal receives
+  only the verified, object-bound fields needed for processing; the opaque
+  capability proof is deliberately not persisted in workflow history. Temporal
+  workflow IDs reject duplicate starts to make capability replay fail closed;
+- release configuration requires at least 32 bytes of non-placeholder,
+  non-repeated capability secret material. Development may omit it only for
+  compatibility; release charts and Compose overlays wire it from the reviewed
+  internal Secret contract.
+
+This closes the arbitrary-key path by default, but it does not invent an
+ownership issuer. Before enabling user-facing file processing in a release,
+the backend must add the owner/tenant/resource check and mint a capability for
+the exact request; until then the release endpoint remains intentionally
+denied rather than accepting unbound keys. The capability header is not a
+replacement for bucket policy: MinIO/S3 and any CDN must still deny direct
+public access to private prefixes.
+
+The Helm storage closure now sets `backend.config.storageBackend=s3`, a
+non-empty bucket and HTTPS endpoint in staging, validates those invariants for
+staging/production, injects `STORAGE_S3_*` values and `minio-*` Secret keys into
+the read-only backend, and derives the endpoint from the reviewed deploy input.
+Focused evidence:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_helm_staging_contract.py tests/test_docker_startup_contracts.py
+    # 303 passed
+
+    cd services/gateway && go test ./...
+    # all packages passed
+    cd services/file-processor && go test ./...
+    # all packages passed
+    cd gen/go && go test ./...
+    # shared capability package passed
+
+The old read-only CI run `34809326481` is now terminal (315 jobs: 296
+successful, 5 failed, 1 cancelled, 13 skipped). Its failures are stale-source
+evidence: mutmut group 8 has one survivor (91.67%), group 112 has one timeout,
+and frontend mutation evidence is incomplete because shard 31 was cancelled.
+It must not be used as current-SHA certification; a fresh run is required
+after the capability/storage changes.
+
+The capability/storage changes are still uncommitted at this checkpoint. The
+four user-owned untracked paths remain preserved and unstaged:
+`.tmp_preflight/`, `.tmp_stryker_18/`, `.tmp_stryker_22/`, and
+`docs/audits/AUDIT_PLATFORM_FULL.md`. Remaining release gates are unchanged:
+fresh current-SHA security scan and manifest, Linux Go race/static analysis,
+all mutation/coverage/browser/Lighthouse/Schemathesis shards, immutable image
+and Docker smoke, Kubernetes TLS/observability/CWV staging, chaos/rollback,
+and final SHA-bound audit/release approval.
+
+## 74. Strict file-processor JWT/JWKS and replay hardening (2026-09-14)
+
+The file-processor trust boundary is now aligned with the backend/gateway JWT
+contract and has explicit key-rotation and replay controls. This is a code-level
+closure, not a release certification:
+
+- JWT verification requires the configured audience, issuer (mandatory in
+  staging/production), `exp`, `iat`, bounded token age, `sub`, `jti` and the
+  boolean `is_active` claim. Release environments are RS256-only and require a
+  revocation Redis check; Redis failures fail closed.
+- A bounded JWKS client accepts only HTTPS/HTTP endpoints without credentials,
+  query strings or fragments, never follows redirects, limits responses to
+  64 KiB, accepts RSA/RS256 keys with a canonical `kid`, at least 2048-bit
+  modulus and exponent 65537, and rejects duplicate or malformed keys.
+- Key snapshots are immutable and atomically replaced. Failed refreshes retain
+  the last-known-good snapshot; startup fails closed when no static or fetched
+  trust root is available. Static PEM fallback is constrained to the reviewed
+  active `kid`.
+- Capability nonces are admitted once through Redis `SET NX` with bounded TTL;
+  duplicate delivery is a normal rejection, while Redis errors fail closed.
+  The process-local fallback registry is bounded and covered independently for
+  development/test operation.
+- JWKS-only release configuration, issuer/audience wiring, revocation Redis,
+  active `kid` and refresh bounds are represented in Compose, Helm values,
+  deployment templates and schema validation. Weak or placeholder capability
+  secrets remain rejected in release environments.
+
+Focused local evidence on the current worktree:
+
+    cd services/file-processor
+    gofmt -w <modified Go sources>
+    go test -count=1 ./...
+    # passed
+    go vet ./...
+    # passed
+    golangci-lint run --config ../../.golangci.yml --timeout 5m ./...
+    # 0 issues
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_auth_jwt_payload.py tests/test_auth_jwt_rs256.py \
+      tests/test_jwt_settings_closure.py tests/test_security_tier0.py \
+      tests/test_cdc_outbox.py tests/test_cdc_outbox_closure.py \
+      tests/test_file_processor_keda_contract.py
+    # 90 passed
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_docker_startup_contracts.py tests/test_helm_staging_contract.py
+    # 303 passed
+
+    python verify_harness.py --repo-only
+    # 29 passed, 0 failures/errors
+
+    cd frontend
+    npm run typecheck
+    npm run lint -- --no-warn-ignored
+    npm run build
+    # all passed; orchestrated build completed with stable client/server/PWA artifacts
+
+The local Windows host cannot execute the mandatory Go race gate because it has
+no C compiler and `CGO_ENABLED=0`; Linux CI remains the source of truth for
+`go test -race`, full mutation/coverage, browser, Lighthouse and Schemathesis
+evidence. The current worktree also contains user-owned untracked audit and
+temporary directories that must remain unstaged. Before release, run a fresh
+current-SHA security scan, regenerate the quality manifest and prove its hashes,
+execute the Linux matrix, immutable six-image digest smoke, Kubernetes
+TLS/observability/CWV checks, chaos/rollback scenarios and the final
+SHA-bound audit. Do not claim MVP release readiness from these local checks
+alone.

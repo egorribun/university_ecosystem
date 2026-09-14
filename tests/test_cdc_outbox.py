@@ -41,6 +41,16 @@ async def test_cdc_worker_fallback_delegates_to_outbox_worker(
     fallback_run.assert_awaited_once_with()
 
 
+def test_cdc_worker_stop_requested_tracks_running_state() -> None:
+    """Shutdown checks must be observable without entering a real worker loop."""
+    worker = CdcOutboxWorker(nats_broker=AsyncMock())
+
+    assert worker._stop_requested() is True
+
+    worker._is_running = True
+    assert worker._stop_requested() is False
+
+
 # ── Helpers for Building Test Binary Payloads ─────────────────────────────────
 
 

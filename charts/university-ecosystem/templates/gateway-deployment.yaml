@@ -114,6 +114,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
                   key: internal-hmac-secret
+            - name: FILE_PROCESSING_CAPABILITY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+                  key: internal-hmac-secret
             # PERF-03 (RZ-W13): OTel sampling — 10% in production.
             - name: OTEL_TRACES_SAMPLER
               value: {{ .Values.otel.sampler | quote }}

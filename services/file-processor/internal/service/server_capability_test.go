@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
+	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -88,7 +90,7 @@ func TestProcessFile_AcceptsMatchingCapabilityAndPropagatesProof(t *testing.T) {
 	assert.Equal(t, "accepted", response.JobId)
 	job, ok := captured.(workflow.ProcessJob)
 	require.True(t, ok)
-	assert.NotEmpty(t, job.Capability)
+	assert.Empty(t, job.Capability, "bearer capabilities must not enter Temporal history")
 	assert.Equal(t, req.SourceKey, job.SourceKey)
 	assert.Equal(t, req.DestKey, job.DestKey)
 }
@@ -155,7 +157,7 @@ func TestProcessFile_RejectsNonCanonicalCapabilityRequest(t *testing.T) {
 	}
 	_, err := server.ProcessFile(ctx, nonCanonicalReq)
 	require.Error(t, err)
-	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
 func TestProcessFile_UsesWallClockWhenNowHookIsNil(t *testing.T) {
@@ -170,4 +172,68 @@ func TestProcessFile_UsesWallClockWhenNowHookIsNil(t *testing.T) {
 	response, err := server.ProcessFile(capabilityContextAt(t, req, "u-1", "session-1", time.Now().UTC()), req)
 	require.NoError(t, err)
 	assert.Equal(t, "wall-clock-accepted", response.JobId)
+}
+
+func TestProcessFile_RejectsCapabilityReplayAcrossRequests(t *testing.T) {
+	req := capabilityRequest()
+	registry := pb.NewCapabilityReplayRegistry(4)
+	calls := 0
+	now := time.Now().UTC()
+	server := &Server{
+		CapabilitySecret:  []byte(capabilityKey),
+		RequireCapability: true,
+		ReplayGuard:       registry,
+		Now:               func() time.Time { return now },
+		TemporalClient: &mockTemporalClient{executeFunc: func(_ context.Context, options client.StartWorkflowOptions, _ interface{}, _ ...interface{}) (client.WorkflowRun, error) {
+			calls++
+			assert.Equal(t, "file-process-"+req.Id, options.ID)
+			if calls > 1 {
+				return nil, serviceerror.NewWorkflowExecutionAlreadyStarted("already started", "request", "run")
+			}
+			return &mockWorkflowRun{id: "replay-guarded"}, nil
+		}},
+	}
+	ctx := capabilityContextAt(t, req, "u-1", "session-1", now)
+	_, err := server.ProcessFile(ctx, req)
+	require.NoError(t, err)
+	response, err := server.ProcessFile(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	require.Equal(t, "file-process-"+req.Id, response.JobId)
+	require.True(t, response.Success)
+	require.Equal(t, 2, calls, "Temporal deterministic workflow ID is the replay authority")
+}
+
+func TestProcessFile_TemporalFailureDoesNotBurnCapability(t *testing.T) {
+	req := capabilityRequest()
+	registry := pb.NewCapabilityReplayRegistry(4)
+	now := time.Now().UTC()
+	attempts := 0
+	server := &Server{
+		CapabilitySecret:  []byte(capabilityKey),
+		RequireCapability: true,
+		ReplayGuard:       registry,
+		Now:               func() time.Time { return now },
+		TemporalClient: &mockTemporalClient{executeFunc: func(context.Context, client.StartWorkflowOptions, interface{}, ...interface{}) (client.WorkflowRun, error) {
+			attempts++
+			if attempts == 1 {
+				return nil, errors.New("temporal unavailable")
+			}
+			return &mockWorkflowRun{id: "retried-after-temporal-failure"}, nil
+		}},
+	}
+	ctx := capabilityContextAt(t, req, "u-1", "session-1", now)
+	_, err := server.ProcessFile(ctx, req)
+	require.Error(t, err)
+	_, err = server.ProcessFile(ctx, req)
+	require.NoError(t, err)
+	require.Equal(t, 2, attempts)
+	accepted, replayErr := registry.ConsumeAt(
+		context.Background(),
+		"nonce-capability-123",
+		now.Add(5*time.Minute),
+		now,
+	)
+	require.NoError(t, replayErr)
+	require.False(t, accepted, "successful retry must record the capability after workflow start")
 }

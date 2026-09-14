@@ -3,6 +3,9 @@ fullnameOverride: ""
 
 global:
   environment: "development"
+  # Canonical JWT issuer shared by backend minting and zero-trust consumers.
+  # Release overlays replace this with the HTTPS API origin for the deployment.
+  jwtIssuer: "university-ecosystem"
   # Leave empty so dependency charts can use their own verified registries.
   imageRegistry: ""
   # Optional immutable release tag shared by all first-party workloads. A
@@ -191,6 +194,14 @@ backend:
     # Empty disables the Elasticsearch integration. Production URLs must use
     # HTTPS; the application validates this at startup.
     elasticsearchURL: ""
+    # User uploads use the local static directory only in development. Release
+    # environments must select S3/MinIO so the read-only container root is not
+    # used as durable storage. Credentials come from applicationSecrets.
+    storageBackend: "static"
+    storageS3Bucket: ""
+    storageS3Region: ""
+    storageS3EndpointURL: ""
+    storageS3BaseURL: ""
     minioSecure: false
     # OpenFeature RPC provider endpoint. The flagd Service is deployed from
     # k8s/flagd/ in the same namespace by the GitOps stack.
@@ -343,6 +354,12 @@ fileProcessor:
     temporalTLSDisabled: true
     temporalAPIKey: ""
     rsaPublicKeyPEM: ""
+    # File-processor fetches the backend's public RSA JWKS and retains the
+    # previous snapshot when a refresh fails. Empty uses the in-cluster backend
+    # service URL rendered by the deployment template.
+    jwksURL: ""
+    jwksRefreshInterval: 300
+    jwtActiveKID: "primary"
     otlpEndpoint: "otel-collector:4317"
     # Production config validation rejects true; set false with a TLS endpoint.
     otlpInsecure: true
@@ -587,7 +604,11 @@ keda:
       enabled: true
       monitoringEndpoint: ""
       stream: "FILES_PROCESS"
-      consumer: "file-processor-worker"
+      # Keep this durable name aligned with the canonical consumer declared by
+      # services/file-processor/cmd/file-processor/main.go.  KEDA reads lag for
+      # this exact durable; a different name silently scales the deployment
+      # based on a consumer that the service never creates.
+      consumer: "file-processors-temporal"
       lagThreshold: 10
 
   outboxWorker:

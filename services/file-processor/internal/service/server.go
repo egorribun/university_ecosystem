@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/university-ecosystem/file-processor/internal/workflow"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/temporal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -23,7 +25,11 @@ type Server struct {
 	TemporalClient    client.Client
 	CapabilitySecret  []byte
 	RequireCapability bool
-	Now               func() time.Time
+	// ReplayGuard is shared by every file-processing ingress in a process. A
+	// nil guard keeps local development compatibility; release setup must inject
+	// one so a signed bearer capability cannot be replayed.
+	ReplayGuard pb.CapabilityReplayGuard
+	Now         func() time.Time
 }
 
 // RZ-23-04 (audit 2026-03-25 Wave 23): Validate inputs before persisting to
@@ -92,7 +98,8 @@ func validateProcessFileKeys(sourceKey, destKey string) error {
 }
 
 func validateProcessFileKey(key string) error {
-	if _, err := objectkey.Normalize(key); err != nil {
+	normalized, err := objectkey.Normalize(key)
+	if err != nil {
 		if errors.Is(err, objectkey.ErrAbsolute) {
 			return status.Error(codes.InvalidArgument, "absolute path is not allowed in key")
 		}
@@ -105,6 +112,9 @@ func validateProcessFileKey(key string) error {
 		// All other errors from the shared validator are rejected as traversal;
 		// this fail-closed fallback keeps future guards from becoming bypasses.
 		return status.Error(codes.InvalidArgument, "path traversal in key")
+	}
+	if normalized != key {
+		return status.Error(codes.InvalidArgument, "object key must be canonical")
 	}
 	return nil
 }
@@ -121,17 +131,17 @@ func validateProcessFileOptions(options map[string]string) error {
 	return nil
 }
 
-func (s *Server) authorizeCapability(ctx context.Context, req *pb.ProcessFileRequest) (string, error) {
+func (s *Server) authorizeCapability(ctx context.Context, req *pb.ProcessFileRequest) (string, pb.ProcessingCapabilityClaims, error) {
 	if !s.RequireCapability {
-		return "", nil
+		return "", pb.ProcessingCapabilityClaims{}, nil
 	}
 	identity, ok := pb.ProcessingIdentityFromContext(ctx)
 	if !ok {
-		return "", status.Error(codes.PermissionDenied, "file processing authorization required")
+		return "", pb.ProcessingCapabilityClaims{}, status.Error(codes.PermissionDenied, "file processing authorization required")
 	}
 	values := metadata.ValueFromIncomingContext(ctx, strings.ToLower(pb.ProcessingCapabilityHeader))
 	if len(values) != 1 || strings.TrimSpace(values[0]) == "" {
-		return "", status.Error(codes.PermissionDenied, "file processing authorization required")
+		return "", pb.ProcessingCapabilityClaims{}, status.Error(codes.PermissionDenied, "file processing authorization required")
 	}
 	now := time.Now().UTC()
 	if s.Now != nil {
@@ -139,7 +149,7 @@ func (s *Server) authorizeCapability(ctx context.Context, req *pb.ProcessFileReq
 	}
 	claims, err := pb.VerifyProcessingCapability(values[0], s.CapabilitySecret, now)
 	if err != nil {
-		return "", status.Error(codes.PermissionDenied, "file processing authorization required")
+		return "", pb.ProcessingCapabilityClaims{}, status.Error(codes.PermissionDenied, "file processing authorization required")
 	}
 	// The gRPC boundary has already rejected unsafe keys. Normalize once more and
 	// require byte-for-byte equality so an alternate representation cannot be
@@ -147,7 +157,7 @@ func (s *Server) authorizeCapability(ctx context.Context, req *pb.ProcessFileReq
 	sourceKey, sourceErr := objectkey.Normalize(req.SourceKey)
 	destKey, destErr := objectkey.Normalize(req.DestKey)
 	if sourceErr != nil || destErr != nil || sourceKey != req.SourceKey || destKey != req.DestKey {
-		return "", status.Error(codes.PermissionDenied, "file processing authorization required")
+		return "", pb.ProcessingCapabilityClaims{}, status.Error(codes.PermissionDenied, "file processing authorization required")
 	}
 	if !claims.Matches(pb.ProcessingCapabilityExpectation{
 		ID:        req.Id,
@@ -158,9 +168,9 @@ func (s *Server) authorizeCapability(ctx context.Context, req *pb.ProcessFileReq
 		SessionID: identity.SessionID,
 		TenantID:  identity.TenantID,
 	}) {
-		return "", status.Error(codes.PermissionDenied, "file processing authorization required")
+		return "", pb.ProcessingCapabilityClaims{}, status.Error(codes.PermissionDenied, "file processing authorization required")
 	}
-	return values[0], nil
+	return values[0], claims, nil
 }
 
 // ProcessFile validates the request and starts an async Temporal workflow.
@@ -168,7 +178,7 @@ func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*
 	if err := validateProcessFileRequest(req); err != nil {
 		return nil, err
 	}
-	capability, err := s.authorizeCapability(ctx, req)
+	_, capabilityClaims, err := s.authorizeCapability(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -179,9 +189,12 @@ func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*
 		Type: req.Type,
 		// The workflow calls objectkey.Normalize again immediately before
 		// storage access, after this boundary has rejected unsafe values.
-		SourceKey:  req.SourceKey,
-		DestKey:    req.DestKey,
-		Capability: capability,
+		SourceKey: req.SourceKey,
+		DestKey:   req.DestKey,
+		// The bearer capability authenticates this ingress only. It is
+		// intentionally not copied into Temporal history, where durable payloads
+		// would outlive the short-lived proof and expose it to workflow readers.
+		Capability: "",
 		Options:    make(map[string]interface{}, len(req.Options)),
 	}
 	for k, v := range req.Options {
@@ -205,6 +218,19 @@ func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*
 	// Start workflow asynchronously
 	we, err := s.TemporalClient.ExecuteWorkflow(startCtx, workflowOptions, workflow.FileProcessingWorkflow, job)
 	if err != nil {
+		// REJECT_DUPLICATE is the cross-ingress idempotency authority. A
+		// redelivery can therefore safely return the deterministic workflow ID
+		// instead of exposing Temporal's internal AlreadyStarted error as an
+		// opaque gRPC Unknown failure.
+		if temporal.IsWorkflowExecutionAlreadyStartedError(err) {
+			return &pb.ProcessFileResponse{
+				JobId:      workflowOptions.ID,
+				Success:    true,
+				DestKey:    "",
+				Error:      "",
+				DurationMs: 0,
+			}, nil
+		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, status.Error(codes.DeadlineExceeded, "temporal unavailable: workflow start timed out")
 		}
@@ -212,6 +238,26 @@ func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*
 	}
 	if we == nil {
 		return nil, fmt.Errorf("temporal client returned nil workflow run without error")
+	}
+	// Temporal is the authoritative idempotency boundary: every ingress uses
+	// the same deterministic workflow ID and REJECT_DUPLICATE policy. Record the
+	// nonce only after ExecuteWorkflow succeeds so a transient Temporal outage
+	// never burns a valid capability before the job exists. If this best-effort
+	// defense-in-depth record is unavailable, the already-started deterministic
+	// workflow remains safe and the caller still receives the real job ID.
+	if s.RequireCapability && s.ReplayGuard != nil {
+		if _, replayErr := pb.ConsumeCapabilityReplay(
+			ctx,
+			s.ReplayGuard,
+			capabilityClaims.Nonce,
+			time.Unix(capabilityClaims.ExpiresAt, 0),
+			nowUTC(s.Now),
+		); replayErr != nil {
+			// The deterministic Temporal workflow ID remains the idempotency
+			// authority. Keep the accepted job successful while recording a
+			// non-sensitive diagnostic for an unavailable replay guard.
+			slog.Default().ErrorContext(ctx, "capability replay admission failed after workflow start", "error_type", fmt.Sprintf("%T", replayErr))
+		}
 	}
 
 	// Return immediately with the Job ID (RunID)
@@ -222,4 +268,11 @@ func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*
 		Error:      "",
 		DurationMs: 0,
 	}, nil
+}
+
+func nowUTC(now func() time.Time) time.Time {
+	if now != nil {
+		return now().UTC()
+	}
+	return time.Now().UTC()
 }

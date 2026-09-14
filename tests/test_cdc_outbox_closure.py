@@ -454,13 +454,17 @@ async def test_run_forever_logs_shutdown_provisioning_without_starting_fallback(
         raise OSError("database unavailable")
 
     worker.provision_replication_resources = AsyncMock(side_effect=fail_after_shutdown)
-    with patch.object(cdc.logger, "info") as info:
+    with (
+        patch.object(cdc.logger, "info") as info,
+        patch.object(worker, "_run_fallback_worker", new=AsyncMock()) as fallback,
+    ):
         await worker.run_forever()
 
     info.assert_any_call(
         "CdcOutboxWorker: provisioning failed after shutdown; fallback skipped"
     )
     assert worker._fallback_worker is None
+    fallback.assert_not_awaited()
 
 
 @pytest.mark.asyncio

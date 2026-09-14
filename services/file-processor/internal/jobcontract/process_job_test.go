@@ -62,6 +62,12 @@ func TestValidateRejectsUnsafeKeys(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsNonCanonicalKeys(t *testing.T) {
+	for _, key := range []string{"tenant/./input.png", `tenant\\input.png`} {
+		requireCode(t, Validate("job", "image_resize", key, "out/a", validOptions()), "object_key_noncanonical")
+	}
+}
+
 func TestValidateRejectsOptionsOutsideScalarBoundaries(t *testing.T) {
 	tests := []struct {
 		name    string

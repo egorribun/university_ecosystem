@@ -934,6 +934,9 @@ def test_launcher_manages_independent_application_secrets() -> None:
     assert gateway["environment"]["INTERNAL_HMAC_SECRET"] == (
         "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
     )
+    assert gateway["environment"]["FILE_PROCESSING_CAPABILITY_SECRET"] == (
+        "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
+    )
 
 
 def test_launcher_waits_for_pyroscope_readiness_not_just_process_state() -> None:
@@ -1131,10 +1134,31 @@ def test_file_processor_uses_prefixed_env_and_file_based_rs256_verification() ->
         assert environment["FP_RSA_PUBLIC_KEY_FILE"] == (
             "/app/.secrets/jwt_rs256.pub.pem"
         )
+        assert (
+            environment["FP_JWT_AUDIENCE"]
+            == "${JWT_AUDIENCE:-university-ecosystem-api}"
+        )
+        assert environment["FP_JWT_ISSUER"] == "${JWT_ISSUER:-university-ecosystem}"
+        assert environment["FP_JWKS_URL"] == "http://backend:8000/.well-known/jwks.json"
+        assert (
+            environment["FP_JWKS_REFRESH_INTERVAL"] == "${JWKS_REFRESH_INTERVAL:-300}"
+        )
+        assert environment["FP_JWT_ACTIVE_KID"] == "${JWT_ACTIVE_KID:-primary}"
+        assert "FP_REVOCATION_REDIS_URL" in environment
         assert all(
             not key.startswith(("NATS_", "MINIO_", "JWT_")) for key in environment
         )
         assert "./.secrets:/app/.secrets:ro" in service["volumes"]
+
+        revocation_service = (
+            "revocation-redis"
+            if relative_path == "docker-compose.full.yml"
+            else "revocation-valkey"
+        )
+        assert (
+            service["depends_on"][revocation_service]["condition"] == "service_healthy"
+        )
+        assert "revocation_net" in service["networks"]
 
 
 def test_outbox_healthcheck_requires_a_recent_event_loop_heartbeat() -> None:
@@ -1498,6 +1522,9 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "name": "contract-secrets",
         "key": "internal-hmac-secret",
     }
+    assert gateway_env["FILE_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
+        "secretKeyRef"
+    ] == {"name": "contract-secrets", "key": "internal-hmac-secret"}
     outbox = deployments["contract-university-ecosystem-outbox-worker"]
     outbox_env = {
         entry["name"]: entry
@@ -1551,6 +1578,9 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     assert file_processor_env["FP_OTLP_INSECURE"]["value"] == "true"
     assert file_processor_env["FP_TEMPORAL_TLS_DISABLED"]["value"] == "true"
     assert file_processor_env["FP_MINIO_SECURE"]["value"] == "false"
+    assert file_processor_env["FP_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
+        "secretKeyRef"
+    ] == {"name": "contract-secrets", "key": "internal-hmac-secret"}
 
     for item in resources:
         if item.get("kind") == "Service" and (

@@ -127,7 +127,7 @@ func TestProcessFile_SuccessThreadsOptionsAndPrefix(t *testing.T) {
 
 	assert.Equal(t, gql.ID("wf-run-1"), jobRes.JobID())
 	assert.Equal(t, "STARTED", jobRes.Status())
-	assert.True(t, strings.HasPrefix(capturedOptions.ID, "graphql-"))
+	assert.True(t, strings.HasPrefix(capturedOptions.ID, "file-process-"))
 	assert.Equal(t, "FILE_PROCESSING_TASK_QUEUE", capturedOptions.TaskQueue)
 	assert.Equal(t, 640, capturedJob.Options["width"])
 	assert.Equal(t, 480, capturedJob.Options["height"])

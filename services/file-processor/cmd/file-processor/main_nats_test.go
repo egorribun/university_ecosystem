@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/file-processor/internal/config"
+	"github.com/university-ecosystem/file-processor/internal/workflow"
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 )
@@ -118,15 +119,21 @@ type natsTemporalClientStub struct {
 	executeErr error
 	calls      chan struct{}
 	options    []client.StartWorkflowOptions
+	jobs       []workflow.ProcessJob
 }
 
 func (f *natsTemporalClientStub) ExecuteWorkflow(
 	_ context.Context,
 	options client.StartWorkflowOptions,
 	_ interface{},
-	_ ...interface{},
+	args ...interface{},
 ) (client.WorkflowRun, error) {
 	f.options = append(f.options, options)
+	if len(args) == 1 {
+		if job, ok := args[0].(workflow.ProcessJob); ok {
+			f.jobs = append(f.jobs, job)
+		}
+	}
 	f.calls <- struct{}{}
 	return nil, f.executeErr
 }

@@ -108,7 +108,7 @@ func TestValidateProcessFileRequestRejectsCanonicalizedAbsoluteKeys(t *testing.T
 
 func TestValidateProcessFileRequestAcceptsCanonicalizedNonDriveColonKey(t *testing.T) {
 	err := validateProcessFileRequest(validProcessFileRequest(
-		"./tenant:archive/object",
+		"tenant:archive/object",
 		"output/result.png",
 	))
 
