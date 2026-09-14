@@ -2503,6 +2503,39 @@ def test_mutation_jobs_cache_only_lock_bound_uv_packages() -> None:
             assert install_uv["with"] == expected_cache
 
 
+def test_reusable_node_cache_never_restores_stale_node_modules() -> None:
+    """Dependency cache must contain only the lock-bound npm download store.
+
+    Restoring ``node_modules`` from a broad prefix can silently combine an
+    older executable tree with the current lockfile.  The reusable cache
+    workflow therefore caches only ``~/.npm`` and always runs ``npm ci``.
+    """
+
+    workflow_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-cache-deps.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["cache"]["steps"]
+    cache_step = next(
+        step
+        for step in steps
+        if isinstance(step, dict) and step.get("name") == "Cache Node.js dependencies"
+    )
+    cache_paths = str(cache_step["with"]["path"])
+    assert "frontend/node_modules" not in cache_paths
+    assert "~/.npm" in cache_paths
+    assert "hashFiles('frontend/package-lock.json')" in cache_step["with"]["key"]
+    assert "restore-keys" not in cache_step["with"]
+
+    install_step = next(
+        step
+        for step in steps
+        if isinstance(step, dict) and step.get("name") == "Install Node.js dependencies"
+    )
+    assert "if" not in install_step
+    assert install_step["run"] == "npm ci --no-audit --no-fund"
+
+
 def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     ci_text = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
