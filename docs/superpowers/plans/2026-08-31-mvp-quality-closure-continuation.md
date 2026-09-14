@@ -4562,3 +4562,27 @@ detect-secrets, gitleaks, actionlint and semgrep among the executed hooks).
 The global pre-commit cache permission error was not bypassed; isolation was
 used solely to avoid the unrelated locked cache path. The old remote run
 remains non-terminal, so current-SHA certification is still pending.
+
+## 65. Current-HEAD fast-preflight checkpoint (2026-09-14)
+
+After the cache-hardening commit and its evidence checkpoint, the local
+current HEAD `0a1e666d6` passed the bounded parallel developer preflight:
+
+    uv run python scripts/fast_preflight.py --max-workers 6 \
+      --timeout-seconds 600 --include-output
+    # Fast preflight: 6/6 passed
+
+The six checks completed without suppressions or inventory changes:
+
+- frontend typecheck — 12.010 seconds;
+- frontend lint — 90.395 seconds;
+- backend mypy — 8.452 seconds;
+- backend Ruff — 0.150 seconds;
+- `verify_harness.py --repo-only` — 29/29 in 37.248 seconds;
+- focused CI contracts — 70 passed in 64.050 seconds.
+
+The machine-readable report is retained in the ignored local path
+`artifacts/fast-preflight/fast-preflight.json`; it is developer evidence only
+and is not substituted for Linux current-SHA CI artifacts. `git diff --check`
+and the tracked worktree remain clean apart from the intentional commit
+history; user-owned untracked paths remain untouched and unstaged.
