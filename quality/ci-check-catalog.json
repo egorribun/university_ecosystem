@@ -4093,11 +4093,7 @@
       "events": [
         {
           "event": "push",
-          "guard": "{\"branches\":[\"main\",\"develop\"]}"
-        },
-        {
-          "event": "pull_request",
-          "guard": "{\"types\":[\"opened\",\"synchronize\",\"reopened\"]}"
+          "guard": "{\"branches\":[\"main\"]}"
         }
       ],
       "jobs": {
@@ -4106,7 +4102,7 @@
           "check_name_template": "SonarCloud Scan",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
-          "guard": "${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push' }}",
+          "guard": "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",

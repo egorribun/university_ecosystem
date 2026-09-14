@@ -1022,7 +1022,13 @@ def test_sonar_optionality_is_explicit_and_isolated() -> None:
     scan = _step(job, "SonarScan")
 
     assert "Advisory external analysis" in text
-    assert "not a protected" in text
+    assert "token off" in text
+    assert "pull_request" not in text.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert (
+        job["if"]
+        == "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
+    )
+    assert "pull-requests" not in job.get("permissions", {})
     assert scan["continue-on-error"] is True
 
 
