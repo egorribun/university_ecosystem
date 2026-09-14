@@ -4753,3 +4753,101 @@ in progress; all findings remain stale until that run reaches a terminal
 state. This evidence supports investigating runner capacity and repeated
 setup, but does not justify raising mutation `max-parallel` or changing any
 quality inventory before three comparable terminal green runs.
+
+## 72. Private attachment and service-identity trust boundaries (2026-09-14)
+
+The Codex Security standard scan `05c853b3-47bc-4e1f-8a02-ba2387901cf2`
+identified two actionable findings in the pre-change tree: anonymous access to
+chat/event blobs through the public static, image-proxy and MinIO routes, and
+weak non-empty `INTERNAL_HMAC_SECRET` values accepted by the gateway/backend
+identity boundary. A fresh independent post-patch review also challenged the
+first remediation against the actual upload format and an over-encoded image
+path; both bypasses were reproduced and closed before committing.
+
+Commit `f0ed193e7` (`fix: close private attachment and hmac boundaries`) now:
+
+- blocks `chat_uploads/` and `event_files/` at the unauthenticated static
+  mount, static `HEAD` shortcut, image proxy (including repeatedly URL-decoded
+  paths), and same-origin Caddy/MinIO storage route;
+- maps private attachment URLs to authenticated chat-membership or event-view
+  download endpoints while preserving raw storage URLs in persistence for
+  cleanup and forwarding compatibility;
+- accepts both the current flat upload keys
+  (`chat_<id>_<hex>.ext` / `event_<id>_<hex>.ext`) and the legacy hierarchical
+  key shape, with strict filename/resource validation and fail-closed malformed
+  path handling;
+- reads revocation-sensitive membership/event authorization from the primary
+  database and returns private, no-store, content-sniff-safe responses;
+- regenerates the tracked OpenAPI schema, compatibility snapshot, TypeScript
+  SDK and MSW handlers, and updates frontend media resolution for the new
+  authenticated URLs;
+- enforces non-empty, at least 32-byte, non-placeholder/non-repeated internal
+  HMAC material in staging/production in both Python configuration and the Go
+  gateway, while retaining development/test compatibility without logging
+  secret material.
+
+Focused evidence for this commit:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_private_attachments.py \
+      tests/test_private_attachment_api_closure.py \
+      tests/test_images_api_closure.py tests/test_static_assets.py \
+      tests/test_chat_uploads.py tests/test_event_file_upload.py
+    # 40 passed
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_chat_uploads.py tests/test_chat_command_service.py \
+      tests/test_chat_forwarding.py tests/services/test_chat_helpers.py
+    # 65 passed
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_websocket_chat.py tests/test_events_api_closure.py \
+      tests/test_event_file_upload.py tests/test_image_proxy.py \
+      tests/test_images_api.py
+    # 81 passed
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_mfa_openapi_artifacts_contract.py \
+      tests/contracts/test_openapi_contract.py tests/test_chat_message_contract.py \
+      tests/test_openapi_links.py
+    # 42 passed
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_internal_hmac_secret_security.py tests/test_core_config.py \
+      tests/test_config_mixins_coverage.py tests/test_cors_settings_closure.py \
+      tests/test_jwt_settings_closure.py tests/test_auth_reset_foundation.py \
+      tests/test_api_deps_auth_behavior_closure.py
+    # 133 passed
+
+    cd frontend
+    npm run generate:api
+    npm run typecheck
+    npm run lint -- --no-warn-ignored
+    npm run test -- --run \
+      src/utils/__tests__/media.test.ts \
+      src/components/messenger/ChatWindow.branches.test.tsx --silent=true
+    # generation, typecheck and lint passed; 61 frontend tests passed
+
+    node --test scripts/generated-msw-contract.test.mjs \
+      scripts/stryker-inventory.test.mjs scripts/run-stryker.test.mjs
+    # 114 passed
+
+    cd services/gateway
+    go test ./...
+    go vet ./...
+    # all gateway packages passed; gofmt produced no diff
+
+The repository pre-commit suite also passed for the exact 34-file staged set:
+Ruff check/import/format, detect-secrets, gitleaks-equivalent secret scan,
+Bandit, mypy, no-Python-2-except, Semgrep and Renovate validation. No
+`.secrets.baseline` change was needed. Local `go test -race` remains
+environment-blocked because this Windows host has `CGO_ENABLED=0` and no `gcc`;
+the Linux CI race gate remains mandatory. Direct public URLs already issued by
+an external public CDN cannot be revoked by an application route alone; the
+staging/release gate must therefore verify private bucket/CDN ACLs and reject
+public object access before release.
+
+This checkpoint closes the code-level findings but is not a release claim. A
+fresh current-SHA security scan, full mutation/coverage matrix, current-SHA
+quality manifest, and the remaining Docker/Kubernetes/TLS/observability,
+browser, performance and release evidence are still required.
