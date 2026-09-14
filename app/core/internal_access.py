@@ -47,7 +47,14 @@ class InternalAccessMiddleware:
         path: str = scope.get("path", "") or "/"
         path = path.rstrip("/") or "/"
 
-        if not any(path.startswith(prefix) for prefix in self.internal_prefixes):
+        # Match a route prefix on a segment boundary.  Internal route groups
+        # such as ``/api/v1/admin/dlq`` still cover their child endpoints, but
+        # a single internal callback must not accidentally guard a public route
+        # whose name merely starts with the same string.
+        if not any(
+            path == prefix or path.startswith(f"{prefix}/")
+            for prefix in self.internal_prefixes
+        ):
             await self.app(scope, receive, send)
             return
 

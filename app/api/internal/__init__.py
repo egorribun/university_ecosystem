@@ -13,4 +13,11 @@ router.include_router(csp_router)
 router.include_router(internal_chat_router)
 router.include_router(jwks_router, prefix="")
 
-INTERNAL_ROUTE_PREFIXES = (f"{API_V1_PREFIX}{dlq_router.prefix}",)
+# Keep the participant callback internal without treating the entire public
+# ``/api/v1/chat`` API as an internal surface.  The callback is mounted by this
+# router, but its path is intentionally listed explicitly because chat itself
+# also has public, user-authenticated routes under the same path segment.
+INTERNAL_ROUTE_PREFIXES = (
+    f"{API_V1_PREFIX}{dlq_router.prefix}",
+    f"{API_V1_PREFIX}{internal_chat_router.prefix}/check-participant",
+)
