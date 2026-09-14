@@ -91,6 +91,7 @@ func TestLoad_RejectsInsecureProductionDataPlanes(t *testing.T) {
 	t.Setenv("FP_MINIO_SECURE", "true")
 	t.Setenv("FP_TEMPORAL_TLS_DISABLED", "false")
 	t.Setenv("FP_OTLP_INSECURE", "false")
+	t.Setenv("FP_PROCESSING_CAPABILITY_SECRET", strings.Repeat("k", 32))
 	t.Setenv("FP_GRPC_TLS_CERT_FILE", "/run/secrets/internal-grpc-mtls/tls.crt")
 	t.Setenv("FP_GRPC_TLS_KEY_FILE", "/run/secrets/internal-grpc-mtls/tls.key")
 	t.Setenv("FP_GRPC_CLIENT_CA_FILE", "/run/secrets/internal-grpc-mtls/ca.crt")
@@ -117,6 +118,12 @@ func TestLoad_RejectsInsecureProductionDataPlanes(t *testing.T) {
 		t.Setenv("FP_OTLP_INSECURE", "true")
 		_, err := Load()
 		assert.ErrorContains(t, err, "FP_OTLP_INSECURE=false")
+	})
+
+	t.Run("processing capability", func(t *testing.T) {
+		t.Setenv("FP_PROCESSING_CAPABILITY_SECRET", "")
+		_, err := Load()
+		assert.ErrorContains(t, err, "FP_PROCESSING_CAPABILITY_SECRET")
 	})
 }
 
@@ -178,6 +185,7 @@ func TestLoad_ReleaseWithoutSPIFFERequiresConventionalMTLSFiles(t *testing.T) {
 			t.Setenv("FP_MINIO_SECURE", "true")
 			t.Setenv("FP_TEMPORAL_TLS_DISABLED", "false")
 			t.Setenv("FP_OTLP_INSECURE", "false")
+			t.Setenv("FP_PROCESSING_CAPABILITY_SECRET", strings.Repeat("k", 32))
 			t.Setenv("FP_SPIFFE_ENABLED", "false")
 			for name := range required {
 				t.Setenv(name, "/run/secrets/internal-grpc-mtls/value")
@@ -194,10 +202,11 @@ func TestLoad_ReleaseWithoutSPIFFERequiresConventionalMTLSFiles(t *testing.T) {
 
 func TestValidateReleaseConfig_SPIFFEProvidesReleaseTransportIdentity(t *testing.T) {
 	cfg := &Config{
-		MinioSecure:         true,
-		TemporalTLSDisabled: false,
-		OTLPInsecure:        false,
-		SpiffeEnabled:       true,
+		MinioSecure:                true,
+		TemporalTLSDisabled:        false,
+		OTLPInsecure:               false,
+		ProcessingCapabilitySecret: strings.Repeat("k", 32),
+		SpiffeEnabled:              true,
 	}
 
 	assert.NoError(t, validateReleaseConfig(cfg, "staging"))
@@ -211,6 +220,7 @@ func TestLoad_ReleaseValidatesAllowedClientURIs(t *testing.T) {
 		t.Setenv("FP_MINIO_SECURE", "true")
 		t.Setenv("FP_TEMPORAL_TLS_DISABLED", "false")
 		t.Setenv("FP_OTLP_INSECURE", "false")
+		t.Setenv("FP_PROCESSING_CAPABILITY_SECRET", strings.Repeat("k", 32))
 		t.Setenv("FP_SPIFFE_ENABLED", "false")
 		t.Setenv("FP_GRPC_TLS_CERT_FILE", "/run/secrets/internal-grpc-mtls-server/tls.crt")
 		t.Setenv("FP_GRPC_TLS_KEY_FILE", "/run/secrets/internal-grpc-mtls-server/tls.key")

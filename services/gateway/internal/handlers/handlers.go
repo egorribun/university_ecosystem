@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"regexp"
+	"strings"
 	"time"
 
 	"log/slog"
@@ -121,9 +122,9 @@ func ReadinessHandler(client fileProcessorHealthChecker, timeout time.Duration) 
 // ProxyOrFileHandler routes /v1/files/process/sync to gRPC file-processor,
 // everything else to the reverse proxy. This avoids gin wildcard route conflict
 // between /v1/files/* and /v1/*path.
-func ProxyOrFileHandler(proxy *httputil.ReverseProxy, internalSecret []byte, ctx context.Context, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *slog.Logger) gin.HandlerFunc {
+func ProxyOrFileHandler(proxy *httputil.ReverseProxy, internalSecret []byte, ctx context.Context, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *slog.Logger, capabilitySecrets ...[]byte) gin.HandlerFunc {
 	proxyFn := ProxyHandler(proxy, internalSecret)
-	fileFn := FileProcessSyncHandler(ctx, grpcConn, fileClient, logger)
+	fileFn := FileProcessSyncHandler(ctx, grpcConn, fileClient, logger, capabilitySecrets...)
 
 	return func(c *gin.Context) {
 		path := c.Param("path")
@@ -138,7 +139,7 @@ func ProxyOrFileHandler(proxy *httputil.ReverseProxy, internalSecret []byte, ctx
 // FileProcessSyncHandler proximales a synchronous file processing request to the file-processor service over gRPC.
 //
 //nolint:cyclop
-func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *slog.Logger) gin.HandlerFunc {
+func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *slog.Logger, capabilitySecrets ...[]byte) gin.HandlerFunc {
 	return func(c *gin.Context) { //nolint:contextcheck // uses c.Request.Context() for gRPC calls
 		// GW-P2-02 (audit Wave 10): removed TOCTOU gRPC state pre-check.
 		// grpcConn.GetState() is advisory — the state can transition from Ready
@@ -163,6 +164,46 @@ func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, file
 			return
 		}
 
+		// A configured capability secret closes the gateway-to-file-processor
+		// authorization boundary. The proof is minted by the trusted backend and
+		// binds the exact job, operation, object keys, user, session, and tenant.
+		// Never forward a caller-supplied capability without verifying it first.
+		var verifiedCapability string
+		if len(capabilitySecrets) > 0 && len(capabilitySecrets[0]) > 0 {
+			values := c.Request.Header.Values(pb.ProcessingCapabilityHeader)
+			if len(values) != 1 || strings.TrimSpace(values[0]) == "" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+				return
+			}
+			userID, userOK := c.Get("user_id")
+			sessionID, sessionOK := c.Get("session_id")
+			user, userStringOK := userID.(string)
+			session, sessionStringOK := sessionID.(string)
+			tenant, _ := c.Get("tenant_id")
+			tenantID, _ := tenant.(string)
+			if !userOK || !sessionOK || !userStringOK || !sessionStringOK || user == "" || session == "" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+				return
+			}
+			verifiedCapability = strings.TrimSpace(values[0])
+			claims, err := pb.VerifyProcessingCapability(verifiedCapability, capabilitySecrets[0], time.Now().UTC())
+			if err != nil || !claims.Matches(pb.ProcessingCapabilityExpectation{
+				ID:        req.ID,
+				Type:      req.Type,
+				SourceKey: req.SourceKey,
+				DestKey:   req.DestKey,
+				UserID:    user,
+				SessionID: session,
+				TenantID:  tenantID,
+			}) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+				return
+			}
+			// Do not leave a bearer capability in the HTTP request where generic
+			// middleware or access logging could accidentally persist it.
+			c.Request.Header.Del(pb.ProcessingCapabilityHeader)
+		}
+
 		// Call gRPC — use the per-request context so cancellation propagates
 		// when the client disconnects (RZ-33-04).
 		rpcCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
@@ -175,6 +216,13 @@ func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, file
 		tenantIDVal, _ := c.Get("tenant_id")
 		if tenantID, ok := tenantIDVal.(string); ok && tenantID != "" {
 			rpcCtx = metadata.AppendToOutgoingContext(rpcCtx, "x-tenant-id", tenantID)
+		}
+		if verifiedCapability != "" {
+			rpcCtx = metadata.AppendToOutgoingContext(
+				rpcCtx,
+				strings.ToLower(pb.ProcessingCapabilityHeader),
+				verifiedCapability,
+			)
 		}
 
 		resp, err := fileClient.ProcessFile(rpcCtx, &pb.ProcessFileRequest{

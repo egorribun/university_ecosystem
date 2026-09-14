@@ -589,6 +589,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 			"X-Requested-With",
 			"X-Tenant-ID",
 			"X-Profile-Cache-Envelope",
+			pb.ProcessingCapabilityHeader,
 		},
 		ExposeHeaders:    []string{"X-Request-ID", "X-RateLimit-Remaining"},
 		AllowCredentials: true,
@@ -749,7 +750,15 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 
 	// All API routes under a single wildcard to avoid gin tree conflicts.
 	// Auth logic is handled inside the handler based on path prefix.
-	fileFn := handlers.ProxyOrFileHandler(proxy, internalSecret, ctx, grpcConn, fileClient, logger)
+	fileFn := handlers.ProxyOrFileHandler(
+		proxy,
+		internalSecret,
+		ctx,
+		grpcConn,
+		fileClient,
+		logger,
+		[]byte(strings.TrimSpace(cfg.FileProcessingCapabilitySecret)),
+	)
 	api := router.Group("/api")
 	{
 		api.Any("/v1/*path", func(c *gin.Context) {

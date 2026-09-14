@@ -5,18 +5,24 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	gql "github.com/graph-gophers/graphql-go"
+	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"github.com/university-ecosystem/file-processor/internal/objectkey"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
+	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 )
 
 // Resolver is the root resolver for the GraphQL API.
 type Resolver struct {
-	TemporalClient client.Client
-	MinioBucket    string
+	TemporalClient    client.Client
+	MinioBucket       string
+	CapabilitySecret  []byte
+	RequireCapability bool
+	Now               func() time.Time
 }
 
 // Health returns the health status of the service.
@@ -80,17 +86,40 @@ func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFi
 		return nil, fmt.Errorf("invalid destination key: %v", err)
 	}
 
+	jobID := generateID()
+	if r.RequireCapability {
+		identity, ok := pb.ProcessingIdentityFromContext(ctx)
+		if !ok {
+			return nil, fmt.Errorf("file processing authorization required")
+		}
+		now := time.Now().UTC()
+		if r.Now != nil {
+			now = r.Now().UTC()
+		}
+		claims, verifyErr := pb.VerifyProcessingCapability(args.Input.Capability, r.CapabilitySecret, now)
+		if verifyErr != nil || !claims.Matches(pb.ProcessingCapabilityExpectation{
+			ID: claims.ID, Type: args.Input.Type, SourceKey: safeSourceKey,
+			DestKey: safeDestKey, UserID: identity.UserID,
+			SessionID: identity.SessionID, TenantID: identity.TenantID,
+		}) {
+			return nil, fmt.Errorf("file processing authorization required")
+		}
+		jobID = claims.ID
+	}
+
 	job := workflow.ProcessJob{
-		ID:        generateID(),
-		Type:      args.Input.Type,
-		SourceKey: safeSourceKey,
-		DestKey:   safeDestKey,
-		Options:   options,
+		ID:         jobID,
+		Type:       args.Input.Type,
+		SourceKey:  safeSourceKey,
+		DestKey:    safeDestKey,
+		Capability: args.Input.Capability,
+		Options:    options,
 	}
 
 	workflowOptions := client.StartWorkflowOptions{
-		ID:        "graphql-" + job.ID,
-		TaskQueue: "FILE_PROCESSING_TASK_QUEUE",
+		ID:                    "graphql-" + job.ID,
+		TaskQueue:             "FILE_PROCESSING_TASK_QUEUE",
+		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 	}
 
 	run, err := r.TemporalClient.ExecuteWorkflow(ctx, workflowOptions, workflow.FileProcessingWorkflow, job)
@@ -147,11 +176,12 @@ func (r *FileJobResolver) ResultURL() *string { return &r.resultURL }
 
 // ProcessFileInput defines the input for the ProcessFile mutation.
 type ProcessFileInput struct {
-	Type      string
-	SourceKey string
-	DestKey   string
-	Width     *int32
-	Height    *int32
+	Type       string
+	SourceKey  string
+	DestKey    string
+	Capability string
+	Width      *int32
+	Height     *int32
 }
 
 // RZ-W19-17: use UUID instead of nanosecond timestamp to avoid collisions.

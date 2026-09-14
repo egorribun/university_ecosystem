@@ -472,7 +472,7 @@ func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Clien
 	}
 	subOpts = append(subOpts, nats.ManualAck())
 	_, err = js.QueueSubscribe(fileProcessSubject, fileProcessConsumer, func(msg *nats.Msg) {
-		handleFileProcessDelivery(ctx, natsProcessDeliveryMessage{msg: msg}, c, logger)
+		handleFileProcessDelivery(ctx, natsProcessDeliveryMessage{msg: msg}, c, logger, []byte(strings.TrimSpace(cfg.ProcessingCapabilitySecret)))
 	}, subOpts...)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to subscribe to NATS queue", "err", err,
@@ -534,7 +534,7 @@ func reconcileFileProcessConsumer(js legacyNatsJetStream, subject, consumer stri
 	return "", false, fmt.Errorf("consumer %q did not converge to MaxDeliver=%d", consumer, fileProcessMaxDeliver)
 }
 
-func handleFileProcessDelivery(ctx context.Context, msg processDeliveryMessage, c client.Client, logger *slog.Logger) {
+func handleFileProcessDelivery(ctx context.Context, msg processDeliveryMessage, c client.Client, logger *slog.Logger, capabilitySecrets ...[]byte) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.ErrorContext(ctx, "Recovered panic while handling NATS file-process message",
@@ -560,6 +560,23 @@ func handleFileProcessDelivery(ctx context.Context, msg processDeliveryMessage, 
 			"reason", reason, "consumer", fileProcessConsumer)
 		terminateWithFallback(ctx, msg, logger, reason)
 		return
+	}
+	if len(capabilitySecrets) > 0 && len(capabilitySecrets[0]) > 0 {
+		claims, verifyErr := pb.VerifyProcessingCapability(job.Capability, capabilitySecrets[0], time.Now().UTC())
+		if verifyErr != nil || !claims.Matches(pb.ProcessingCapabilityExpectation{
+			ID: job.ID, Type: job.Type, SourceKey: job.SourceKey, DestKey: job.DestKey,
+			// The NATS envelope has no live user/session context. Those claims
+			// were authenticated and bound at the HTTP/gRPC ingress; echo them
+			// from the MAC-verified proof here so Matches still compares every
+			// security-relevant field without making valid async proofs
+			// impossible to consume.
+			UserID: claims.UserID, SessionID: claims.SessionID, TenantID: claims.TenantID,
+		}) {
+			logger.ErrorContext(ctx, "Rejected NATS file-process message",
+				"reason", "capability_invalid", "consumer", fileProcessConsumer)
+			terminateWithFallback(ctx, msg, logger, "capability_invalid")
+			return
+		}
 	}
 	if c == nil {
 		logger.ErrorContext(ctx, "Failed to execute workflow from NATS",
@@ -719,7 +736,12 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 
 	grpcServer := grpc.NewServer(serverOpts...)
 
-	pb.RegisterFileProcessingServiceServer(grpcServer, &service.Server{TemporalClient: c})
+	capabilitySecret := []byte(strings.TrimSpace(cfg.ProcessingCapabilitySecret))
+	pb.RegisterFileProcessingServiceServer(grpcServer, &service.Server{
+		TemporalClient:    c,
+		CapabilitySecret:  capabilitySecret,
+		RequireCapability: len(capabilitySecret) > 0,
+	})
 	reflection.Register(grpcServer)
 	grpc_prometheus.Register(grpcServer)
 
@@ -877,8 +899,10 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 	}
 
 	resolver := &gql.Resolver{
-		TemporalClient: c,
-		MinioBucket:    cfg.MinioBucket,
+		TemporalClient:    c,
+		MinioBucket:       cfg.MinioBucket,
+		CapabilitySecret:  []byte(strings.TrimSpace(cfg.ProcessingCapabilitySecret)),
+		RequireCapability: strings.TrimSpace(cfg.ProcessingCapabilitySecret) != "",
 	}
 
 	var schemaOpts []graphql.SchemaOpt
@@ -1072,7 +1096,8 @@ func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, n
 			return
 		}
 		ctx := r.Context()
-		if sub, ok := claims["sub"].(string); ok {
+		sub, _ := claims["sub"].(string)
+		if sub != "" {
 			ctx = context.WithValue(ctx, userIDKey, sub)
 		}
 		// Tenant identity must come from the verified token. HTTP headers are
@@ -1081,6 +1106,10 @@ func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, n
 		if tenantID != "" {
 			ctx = context.WithValue(ctx, tenantIDKey, tenantID)
 		}
+		sessionID, _ := claims["jti"].(string)
+		ctx = pb.WithProcessingIdentity(ctx, pb.ProcessingIdentity{
+			UserID: sub, SessionID: sessionID, TenantID: tenantID,
+		})
 		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)
@@ -1114,6 +1143,10 @@ func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.Au
 			if tenantID != "" {
 				newCtx = context.WithValue(newCtx, tenantIDKey, tenantID)
 			}
+			sessionID, _ := claims["jti"].(string)
+			newCtx = pb.WithProcessingIdentity(newCtx, pb.ProcessingIdentity{
+				UserID: sub, SessionID: sessionID, TenantID: tenantID,
+			})
 			return newCtx, nil
 		}
 

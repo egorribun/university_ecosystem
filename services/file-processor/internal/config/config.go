@@ -36,8 +36,11 @@ type Config struct {
 	MinioAccessKey     string `mapstructure:"minio_access_key"`
 	MinioSecretKey     string `mapstructure:"minio_secret_key"`
 	MinioSecure        bool   `mapstructure:"minio_secure"`
-	GraphQLPort        string `mapstructure:"graphql_port"`
-	JWTSecret          string `mapstructure:"jwt_secret"`
+	// ProcessingCapabilitySecret authenticates backend-issued, object-bound
+	// processing capabilities at every ingress (gRPC, GraphQL and NATS).
+	ProcessingCapabilitySecret string `mapstructure:"processing_capability_secret"`
+	GraphQLPort                string `mapstructure:"graphql_port"`
+	JWTSecret                  string `mapstructure:"jwt_secret"`
 	// TD-W18-01 (audit 2026-03-23 Wave 18): RSA public key PEM for RS256 verification.
 	// When set, both RS256 and HS256 tokens are accepted (RS256 preferred).
 	// This brings file-processor into parity with ws-hub and gateway.
@@ -122,31 +125,32 @@ func configureViper() {
 
 func bindConfigEnvironment() error {
 	bindEnvs := map[string]string{
-		"grpc_port":                 "GRPC_PORT",
-		"nats_url":                  "NATS_URL",
-		"temporal_host":             "TEMPORAL_HOST",
-		"temporal_api_key_file":     "TEMPORAL_API_KEY_FILE",
-		"temporal_tls_disabled":     "TEMPORAL_TLS_DISABLED",
-		"minio_bucket":              "MINIO_BUCKET",
-		"minio_endpoint":            "MINIO_ENDPOINT",
-		"minio_access_key":          "MINIO_ACCESS_KEY",
-		"minio_secret_key":          "MINIO_SECRET_KEY",
-		"minio_secure":              "MINIO_SECURE",
-		"jwt_secret":                "JWT_SECRET",
-		"rsa_public_key_pem":        "RSA_PUBLIC_KEY_PEM",
-		"rsa_public_key_file":       "RSA_PUBLIC_KEY_FILE",
-		"sentry_dsn":                "SENTRY_DSN",
-		"otlp_endpoint":             "OTLP_ENDPOINT",
-		"otlp_insecure":             "OTLP_INSECURE",
-		"spiffe_enabled":            "SPIFFE_ENABLED",
-		"spiffe_endpoint_socket":    "SPIFFE_ENDPOINT_SOCKET",
-		"spiffe_trust_domain":       "SPIFFE_TRUST_DOMAIN",
-		"spiffe_my_id":              "SPIFFE_MY_ID",
-		"allowed_client_spiffe_ids": "ALLOWED_CLIENT_SPIFFE_IDS",
-		"grpc_tls_cert_file":        "GRPC_TLS_CERT_FILE",
-		"grpc_tls_key_file":         "GRPC_TLS_KEY_FILE",
-		"grpc_client_ca_file":       "GRPC_CLIENT_CA_FILE",
-		"grpc_allowed_client_uris":  "GRPC_ALLOWED_CLIENT_URIS",
+		"grpc_port":                    "GRPC_PORT",
+		"nats_url":                     "NATS_URL",
+		"temporal_host":                "TEMPORAL_HOST",
+		"temporal_api_key_file":        "TEMPORAL_API_KEY_FILE",
+		"temporal_tls_disabled":        "TEMPORAL_TLS_DISABLED",
+		"minio_bucket":                 "MINIO_BUCKET",
+		"minio_endpoint":               "MINIO_ENDPOINT",
+		"minio_access_key":             "MINIO_ACCESS_KEY",
+		"minio_secret_key":             "MINIO_SECRET_KEY",
+		"minio_secure":                 "MINIO_SECURE",
+		"processing_capability_secret": "PROCESSING_CAPABILITY_SECRET",
+		"jwt_secret":                   "JWT_SECRET",
+		"rsa_public_key_pem":           "RSA_PUBLIC_KEY_PEM",
+		"rsa_public_key_file":          "RSA_PUBLIC_KEY_FILE",
+		"sentry_dsn":                   "SENTRY_DSN",
+		"otlp_endpoint":                "OTLP_ENDPOINT",
+		"otlp_insecure":                "OTLP_INSECURE",
+		"spiffe_enabled":               "SPIFFE_ENABLED",
+		"spiffe_endpoint_socket":       "SPIFFE_ENDPOINT_SOCKET",
+		"spiffe_trust_domain":          "SPIFFE_TRUST_DOMAIN",
+		"spiffe_my_id":                 "SPIFFE_MY_ID",
+		"allowed_client_spiffe_ids":    "ALLOWED_CLIENT_SPIFFE_IDS",
+		"grpc_tls_cert_file":           "GRPC_TLS_CERT_FILE",
+		"grpc_tls_key_file":            "GRPC_TLS_KEY_FILE",
+		"grpc_client_ca_file":          "GRPC_CLIENT_CA_FILE",
+		"grpc_allowed_client_uris":     "GRPC_ALLOWED_CLIENT_URIS",
 	}
 
 	for key, env := range bindEnvs {
@@ -176,6 +180,9 @@ func validateConfig(cfg *Config) error {
 }
 
 func validateReleaseConfig(cfg *Config, environment string) error {
+	if len(strings.TrimSpace(cfg.ProcessingCapabilitySecret)) < 32 {
+		return fmt.Errorf("FP_PROCESSING_CAPABILITY_SECRET must contain at least 32 bytes in %s", environment)
+	}
 	if !cfg.MinioSecure {
 		return fmt.Errorf("FP_MINIO_SECURE=true is required in %s", environment)
 	}

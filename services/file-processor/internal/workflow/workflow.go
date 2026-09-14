@@ -24,10 +24,14 @@ import (
 // Shared between workflow and other packages, could be in a 'types' or 'domain' package.
 // For now, keeping it here and exporting.
 type ProcessJob struct {
-	ID          string                 `json:"id"`
-	Type        string                 `json:"type"` // resize, thumbnail, optimize
-	SourceKey   string                 `json:"source_key"`
-	DestKey     string                 `json:"dest_key"`
+	ID        string `json:"id"`
+	Type      string `json:"type"` // resize, thumbnail, optimize
+	SourceKey string `json:"source_key"`
+	DestKey   string `json:"dest_key"`
+	// Capability is an opaque, short-lived backend authorization proof. It is
+	// carried through Temporal so asynchronous execution remains bound to the
+	// exact owner-checked object keys that entered the service boundary.
+	Capability  string                 `json:"capability"`
 	Options     map[string]interface{} `json:"options"`
 	CallbackURL string                 `json:"callback_url,omitempty"`
 }

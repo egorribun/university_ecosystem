@@ -4,20 +4,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"github.com/university-ecosystem/file-processor/internal/objectkey"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
+	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
 // Server implements the FileProcessingService gRPC server.
 type Server struct {
 	pb.UnimplementedFileProcessingServiceServer
-	TemporalClient client.Client
+	TemporalClient    client.Client
+	CapabilitySecret  []byte
+	RequireCapability bool
+	Now               func() time.Time
 }
 
 // RZ-23-04 (audit 2026-03-25 Wave 23): Validate inputs before persisting to
@@ -115,9 +121,55 @@ func validateProcessFileOptions(options map[string]string) error {
 	return nil
 }
 
+func (s *Server) authorizeCapability(ctx context.Context, req *pb.ProcessFileRequest) (string, error) {
+	if !s.RequireCapability {
+		return "", nil
+	}
+	identity, ok := pb.ProcessingIdentityFromContext(ctx)
+	if !ok {
+		return "", status.Error(codes.PermissionDenied, "file processing authorization required")
+	}
+	values := metadata.ValueFromIncomingContext(ctx, strings.ToLower(pb.ProcessingCapabilityHeader))
+	if len(values) != 1 || strings.TrimSpace(values[0]) == "" {
+		return "", status.Error(codes.PermissionDenied, "file processing authorization required")
+	}
+	now := time.Now().UTC()
+	if s.Now != nil {
+		now = s.Now().UTC()
+	}
+	claims, err := pb.VerifyProcessingCapability(values[0], s.CapabilitySecret, now)
+	if err != nil {
+		return "", status.Error(codes.PermissionDenied, "file processing authorization required")
+	}
+	// The gRPC boundary has already rejected unsafe keys. Normalize once more and
+	// require byte-for-byte equality so an alternate representation cannot be
+	// authorized by a proof for a different canonical object.
+	sourceKey, sourceErr := objectkey.Normalize(req.SourceKey)
+	destKey, destErr := objectkey.Normalize(req.DestKey)
+	if sourceErr != nil || destErr != nil || sourceKey != req.SourceKey || destKey != req.DestKey {
+		return "", status.Error(codes.PermissionDenied, "file processing authorization required")
+	}
+	if !claims.Matches(pb.ProcessingCapabilityExpectation{
+		ID:        req.Id,
+		Type:      req.Type,
+		SourceKey: sourceKey,
+		DestKey:   destKey,
+		UserID:    identity.UserID,
+		SessionID: identity.SessionID,
+		TenantID:  identity.TenantID,
+	}) {
+		return "", status.Error(codes.PermissionDenied, "file processing authorization required")
+	}
+	return values[0], nil
+}
+
 // ProcessFile validates the request and starts an async Temporal workflow.
 func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*pb.ProcessFileResponse, error) {
 	if err := validateProcessFileRequest(req); err != nil {
+		return nil, err
+	}
+	capability, err := s.authorizeCapability(ctx, req)
+	if err != nil {
 		return nil, err
 	}
 
@@ -127,17 +179,19 @@ func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*
 		Type: req.Type,
 		// The workflow calls objectkey.Normalize again immediately before
 		// storage access, after this boundary has rejected unsafe values.
-		SourceKey: req.SourceKey,
-		DestKey:   req.DestKey,
-		Options:   make(map[string]interface{}, len(req.Options)),
+		SourceKey:  req.SourceKey,
+		DestKey:    req.DestKey,
+		Capability: capability,
+		Options:    make(map[string]interface{}, len(req.Options)),
 	}
 	for k, v := range req.Options {
 		job.Options[k] = v
 	}
 
 	workflowOptions := client.StartWorkflowOptions{
-		ID:        "file-process-" + req.Id,
-		TaskQueue: "FILE_PROCESSING_TASK_QUEUE",
+		ID:                    "file-process-" + req.Id,
+		TaskQueue:             "FILE_PROCESSING_TASK_QUEUE",
+		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 	}
 
 	// RED-05 (audit Wave 11): Bound the ExecuteWorkflow call with an explicit timeout.

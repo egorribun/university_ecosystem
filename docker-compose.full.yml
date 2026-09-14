@@ -731,6 +731,9 @@ services:
       JWKS_ENDPOINT: http://backend:8000/.well-known/jwks.json
       JWKS_REFRESH_INTERVAL: "60"
       INTERNAL_HMAC_SECRET: "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
+      # Domain-separated capability proof key; local compose reuses the reviewed
+      # high-entropy internal secret while production obtains it from a secret.
+      FILE_PROCESSING_CAPABILITY_SECRET: "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "tempo:4317"
       OTEL_SERVICE_NAME: "gateway"
       # AUDIT-INFRA-05: explicit opt-out for local dev — production K8s must NOT set this
@@ -836,6 +839,10 @@ services:
       FP_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
       FP_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
       FP_MINIO_BUCKET: uploads
+      # The gateway/backend issue short-lived proofs for user-owned processing.
+      # Reusing the local internal secret is safe because the shared signer adds
+      # a dedicated domain separator; production uses the same secret contract.
+      FP_PROCESSING_CAPABILITY_SECRET: "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
       FP_RSA_PUBLIC_KEY_FILE: "/app/.secrets/jwt_rs256.pub.pem"
       FP_OTLP_ENDPOINT: "tempo:4317"
       FP_OTLP_INSECURE: "true"
