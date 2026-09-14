@@ -299,9 +299,32 @@ async def upload_event_file(
 
 @router.get("/{event_id}/files", response_model=list[schemas.EventFileOut])
 async def get_event_files(
-    event_id: uuid.UUID | int, db: AsyncSession = Depends(get_read_db)
+    event_id: uuid.UUID | int,
+    *,
+    request: Request,
+    db: AsyncSession = Depends(get_read_db),
+    user: models.User = Depends(get_current_user),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> list[models.EventFile]:
     _validate_id_type(event_id)
+    locale = resolve_locale(request=request, user=user)
+
+    # Authorize against the parent event before touching its attachments.  The
+    # file rows contain private storage URLs and must never become an oracle for
+    # callers who lack event visibility.  Keep the existence check separate so
+    # missing ids retain the standard event 404 contract and cannot trigger an
+    # unnecessary SpiceDB lookup.
+    event = await db.get(models.Event, event_id)
+    ensure_exists(event, "events", locale)
+    assert event is not None  # noqa: S101
+    if not await checker.check_permission(
+        resource_type="event",
+        resource_id=str(event.id),
+        permission="view",
+        user_id=str(user.id),
+    ):
+        raise_forbidden(locale)
+
     repo = EventRepository(db)
     return await repo.get_event_files(event_id)
 

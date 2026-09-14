@@ -1906,6 +1906,7 @@ export const getEventFilesApiV1EventsEventIdFilesGet = <ThrowOnError extends boo
     ThrowOnError
   >({
     responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/events/{event_id}/files",
     ...options,
   })

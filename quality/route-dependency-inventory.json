@@ -612,6 +612,7 @@
       "dishka_signals": [],
       "id": "app.api.events:get_event_files:GET:/{event_id}/files",
       "legacy_dependencies": [
+        "app.api.deps.auth.get_current_user",
         "app.core.database.get_read_db"
       ],
       "ownership": "approved_legacy"
