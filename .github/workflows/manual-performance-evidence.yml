@@ -13,6 +13,13 @@ on:
 permissions:
   contents: read
 
+# Manual evidence runs share the hosted-runner pool and mutate no state.  Keep
+# one run per ref in flight, but queue a later dispatch so benchmark evidence
+# is never silently discarded by cancellation.
+concurrency:
+  group: manual-performance-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   benchmark:
     name: Manual Performance Evidence / Run Go Benchmarks

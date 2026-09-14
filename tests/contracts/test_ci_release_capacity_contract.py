@@ -159,6 +159,25 @@ def test_high_fanout_lanes_are_bounded_without_reducing_matrix_cardinality() -> 
         assert strategy["max-parallel"] == cap
 
 
+def test_manual_and_active_scan_workflows_serialize_duplicate_dispatches() -> None:
+    """Do not spend runner slots on duplicate long-lived evidence runs."""
+
+    for filename, expected_group in (
+        ("dast.yml", "dast-main"),
+        (
+            "manual-performance-evidence.yml",
+            "manual-performance-evidence-${{ github.ref }}",
+        ),
+        ("quality-promotion-check.yml", "quality-promotion-main"),
+    ):
+        workflow = _workflow(WORKFLOWS / filename)
+        concurrency = workflow.get("concurrency")
+        assert concurrency == {
+            "group": expected_group,
+            "cancel-in-progress": False,
+        }
+
+
 def test_mutmut_artifact_producers_use_explicit_read_only_permissions() -> None:
     jobs = _workflow(CI)["jobs"]
     expected_permissions = {"contents": "read", "actions": "read"}
