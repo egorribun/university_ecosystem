@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -27,6 +28,7 @@ CheckStatus = Literal["passed", "failed", "timed_out", "error"]
 
 DEFAULT_TIMEOUT_SECONDS = 600.0
 DEFAULT_REPORT_PATH = Path("artifacts/fast-preflight/fast-preflight.json")
+_COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 _FOCUSED_TESTS = (
     "tests/contracts/test_ci_release_capacity_contract.py",
     "tests/test_duration_sharding_contract.py",
@@ -258,6 +260,24 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def current_commit_sha(repo_root: Path) -> str | None:
+    """Read and validate the exact checkout SHA without shell interpolation."""
+
+    try:
+        completed = subprocess.run(
+            ("git", "rev-parse", "--verify", "HEAD"),
+            cwd=str(repo_root),
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = completed.stdout.strip()
+    return value if _COMMIT_SHA.fullmatch(value) else None
+
+
 def _tail(value: str, limit: int = 4000) -> str:
     if len(value) <= limit:
         return value
@@ -271,6 +291,7 @@ def build_report(
     max_workers: int,
     started_at: str,
     finished_at: str,
+    commit_sha: str | None = None,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     include_output: bool = False,
     duration_seconds: float | None = None,
@@ -298,6 +319,7 @@ def build_report(
         "schema_version": 1,
         "report_kind": "local-fast-preflight",
         "repo_root": str(repo_root.resolve()),
+        "commit_sha": commit_sha,
         "started_at": started_at,
         "finished_at": finished_at,
         "max_workers": max_workers,
@@ -433,6 +455,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_workers=max_workers,
         started_at=started_at,
         finished_at=finished_at,
+        commit_sha=current_commit_sha(repo_root),
         timeout_seconds=args.timeout_seconds,
         include_output=args.include_output,
         duration_seconds=time.monotonic() - started,

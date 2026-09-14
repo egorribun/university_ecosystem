@@ -121,16 +121,47 @@ def test_aggregate_report_is_failed_closed_and_writes_json(tmp_path: Path) -> No
         max_workers=2,
         started_at="2026-09-13T00:00:00Z",
         finished_at="2026-09-13T00:00:01Z",
+        commit_sha="a" * 40,
     )
     fast_preflight.write_report(report_path, report)
 
     loaded = json.loads(report_path.read_text(encoding="utf-8"))
     assert loaded["schema_version"] == 1
+    assert loaded["commit_sha"] == "a" * 40
     assert loaded["passed"] is False
     assert loaded["exit_code"] == 1
     assert loaded["checks"][0]["status"] == "passed"
     assert loaded["checks"][1]["status"] == "failed"
     assert "secret-looking output" not in report_path.read_text(encoding="utf-8")
+
+
+def test_current_commit_sha_reader_is_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Completed:
+        stdout = "b" * 40 + "\n"
+
+    monkeypatch.setattr(
+        "scripts.fast_preflight.subprocess.run",
+        lambda *args, **kwargs: Completed(),
+    )
+    assert fast_preflight.current_commit_sha(Path("/repo")) == "b" * 40
+
+    class Missing:
+        stdout = "not-a-sha\n"
+
+    monkeypatch.setattr(
+        "scripts.fast_preflight.subprocess.run",
+        lambda *args, **kwargs: Missing(),
+    )
+    assert fast_preflight.current_commit_sha(Path("/repo")) is None
+
+    def raise_os_error(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise OSError("git unavailable")
+
+    monkeypatch.setattr("scripts.fast_preflight.subprocess.run", raise_os_error)
+    assert fast_preflight.current_commit_sha(Path("/repo")) is None
 
 
 def test_run_check_marks_timeout_and_does_not_raise(tmp_path: Path) -> None:
