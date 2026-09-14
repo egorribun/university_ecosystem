@@ -18,8 +18,11 @@ from fastapi import (
     Form,
     Header,
     Query,
+    Response,
     UploadFile,
 )
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_chat_creation_service,
@@ -29,9 +32,13 @@ from app.api.deps import (
     get_locale,
     get_read_chat_query_service,
 )
+from app.api.validation import raise_forbidden, raise_not_found
+from app.core.config import settings
 from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
+from app.core.database import get_db
 from app.core.ratelimit import sensitive_route_limit
-from app.models import User
+from app.models import Attachment, Chat, Message, User
+from app.models.chat import chat_participants
 from app.schemas.chat import (
     AddParticipant,
     ChatCreate,
@@ -51,6 +58,12 @@ from app.services.chat.command_service import (
 )
 from app.services.chat.creation_service import ChatCreationService
 from app.services.chat.query_service import ChatQueryService
+from app.services.private_attachments import (
+    private_attachment_filename,
+    private_attachment_response,
+    private_attachment_storage_key,
+)
+from app.utils.files import _get_storage_backend
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
@@ -126,6 +139,67 @@ async def get_chat(
 ) -> ChatResponse:
     """Get details for a specific chat."""
     return await query_service.get_chat_details(chat_id, current_user, locale=locale)
+
+
+@router.get(
+    "/{chat_id}/attachments/{filename:path}",
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_static))
+    ],
+)
+async def download_chat_attachment(
+    chat_id: uuid.UUID,
+    filename: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    locale: Annotated[str, Depends(get_locale)],
+    # Membership is a revocation-sensitive authorization decision.  Always
+    # read it from the primary database instead of a potentially lagging read
+    # replica so removed participants lose access immediately.
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    """Download a chat attachment after live membership authorization."""
+
+    try:
+        private_attachment_storage_key("chat", chat_id, filename)
+    except ValueError:
+        raise_not_found("attachment", locale, exact_key="errors.not_found")
+
+    chat = await db.get(Chat, chat_id)
+    if chat is None:
+        raise_not_found("chat", locale)
+
+    membership = await db.execute(
+        select(chat_participants.c.user_id).where(
+            chat_participants.c.chat_id == chat_id,
+            chat_participants.c.user_id == current_user.id,
+        )
+    )
+    if membership.scalar_one_or_none() is None:
+        raise_forbidden(locale, "errors.chat.not_participant")
+
+    attachments = (
+        await db.execute(
+            select(Attachment)
+            .join(Message, Attachment.message_id == Message.id)
+            .where(Message.chat_id == chat_id)
+        )
+    ).scalars()
+    attachment = next(
+        (
+            item
+            for item in attachments
+            if private_attachment_filename(item.url, "chat") == filename
+        ),
+        None,
+    )
+    if attachment is None:
+        raise_not_found("attachment", locale, exact_key="errors.not_found")
+
+    try:
+        data = await _get_storage_backend().read_file(attachment.url)
+    except (FileNotFoundError, ValueError):
+        raise_not_found("attachment", locale, exact_key="errors.not_found")
+    return private_attachment_response(data, filename)
 
 
 @router.get(

@@ -96,6 +96,39 @@ async def test_proxy_image_disabled_is_hidden_as_not_found():
 
 
 @pytest.mark.asyncio
+async def test_proxy_image_rejects_private_attachment_prefixes():
+    with (
+        patch.object(settings, "image_proxy_enabled", True),
+        patch("app.api.images._get_storage_backend", return_value=object()),
+        patch("app.api.images.get_transformed_image", new=AsyncMock()) as transform,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await proxy_image(
+                _request(), "chat_uploads/chat_x/secret.png", w=None, accept=None
+            )
+    assert exc_info.value.status_code == 404
+    transform.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_proxy_image_rejects_overencoded_private_attachment_prefixes():
+    with (
+        patch.object(settings, "image_proxy_enabled", True),
+        patch("app.api.images._get_storage_backend", return_value=object()),
+        patch("app.api.images.get_transformed_image", new=AsyncMock()) as transform,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await proxy_image(
+                _request(),
+                "%2563hat_uploads%2Fchat_x%2Fsecret.png",
+                w=None,
+                accept=None,
+            )
+    assert exc_info.value.status_code == 404
+    transform.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_proxy_image_snaps_width_and_prefers_avif_for_static_content():
     with (
         patch.object(settings, "image_proxy_enabled", True),

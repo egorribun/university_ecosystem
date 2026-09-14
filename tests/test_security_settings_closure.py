@@ -100,13 +100,13 @@ def test_retired_repository_audit_keys_are_rejected_in_production(
     with pytest.raises(ValueError, match="placeholder"):
         SecuritySettings(
             audit_log_secret=retired_key,
-            internal_hmac_secret="h" * 32,
+            internal_hmac_secret="6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!",  # pragma: allowlist secret
         )
 
     with pytest.raises(ValueError, match="placeholder"):
         SecuritySettings(
             audit_log_secret=retired_key.upper(),
-            internal_hmac_secret="h" * 32,
+            internal_hmac_secret="6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!",  # pragma: allowlist secret
         )
 
 

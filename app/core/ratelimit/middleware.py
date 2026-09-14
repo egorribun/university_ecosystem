@@ -17,6 +17,7 @@ from app.core.ratelimit.models import EndpointRateLimit, RateLimitInfo
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
 from app.core.ratelimit.utils import resolve_client_ip
+from app.core.static import is_private_static_path
 
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -72,7 +73,11 @@ class RateLimitMiddleware:
         method = request.method.upper()
         path = request.url.path or ""
 
-        if method == "HEAD" and self._is_static_like_path(path):
+        if (
+            method == "HEAD"
+            and self._is_static_like_path(path)
+            and not is_private_static_path(path)
+        ):
             response = Response(status_code=200)
             await response(scope, receive, send)
             return

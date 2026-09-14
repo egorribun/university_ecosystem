@@ -3898,6 +3898,78 @@ export const handlers = [
       return HttpResponse.json(responseJson, init);
     },
   ),
+  http.get(
+    `${baseURL}/api/v1/chats/:chatId/attachments/:filename`,
+    async ({ request }) => {
+      const shouldEchoRequestBody = false;
+      let requestJson = null;
+      if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+        try {
+          requestJson = await request.clone().json();
+        } catch (e) {
+          requestJson = null;
+        }
+      }
+
+      const resultArray = [
+        [
+          await getDownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGet200Response(),
+          { status: 200 },
+        ],
+        [
+          await getDownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGet422Response(),
+          { status: 422 },
+        ],
+      ] as [any, { status: number }][];
+
+      const [body, init] =
+        resultArray[
+          next(`get /api/v1/chats/:chatId/attachments/:filename`) %
+            resultArray.length
+        ];
+      const responseJson =
+        requestJson && body && typeof body === "object" && !Array.isArray(body)
+          ? { ...body, ...requestJson }
+          : body;
+      return HttpResponse.json(responseJson, init);
+    },
+  ),
+  http.get(
+    `${baseURL}/api/v1/events/:eventId/files/:filename`,
+    async ({ request }) => {
+      const shouldEchoRequestBody = false;
+      let requestJson = null;
+      if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+        try {
+          requestJson = await request.clone().json();
+        } catch (e) {
+          requestJson = null;
+        }
+      }
+
+      const resultArray = [
+        [
+          await getDownloadEventFileApiV1EventsEventIdFilesFilenameGet200Response(),
+          { status: 200 },
+        ],
+        [
+          await getDownloadEventFileApiV1EventsEventIdFilesFilenameGet422Response(),
+          { status: 422 },
+        ],
+      ] as [any, { status: number }][];
+
+      const [body, init] =
+        resultArray[
+          next(`get /api/v1/events/:eventId/files/:filename`) %
+            resultArray.length
+        ];
+      const responseJson =
+        requestJson && body && typeof body === "object" && !Array.isArray(body)
+          ? { ...body, ...requestJson }
+          : body;
+      return HttpResponse.json(responseJson, init);
+    },
+  ),
   http.patch(
     `${baseURL}/api/v1/chats/:chatId/messages/:messageId`,
     async ({ request }) => {
@@ -6204,6 +6276,43 @@ export function getRenameChatApiV1ChatsChatIdPatch422Response() {
   };
 }
 
+export function getDownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGet200Response() {
+  return null;
+}
+
+export function getDownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
 export function getClearChatHistoryApiV1ChatsChatIdClearPost200Response() {
   return {
     chat_id: faker.string.uuid(),
@@ -7831,6 +7940,43 @@ export function getGetEventFilesApiV1EventsEventIdFilesGet200Response() {
 }
 
 export function getGetEventFilesApiV1EventsEventIdFilesGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getDownloadEventFileApiV1EventsEventIdFilesFilenameGet200Response() {
+  return null;
+}
+
+export function getDownloadEventFileApiV1EventsEventIdFilesFilenameGet422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;

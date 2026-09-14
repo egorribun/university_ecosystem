@@ -552,6 +552,19 @@ class EventFileOut(OrmModel):
     file_url: str
     description: str | None = None
 
+    @model_validator(mode="after")
+    def protect_private_url(self) -> EventFileOut:
+        """Expose event attachments only through the authorized download route."""
+
+        from app.services.private_attachments import private_attachment_url
+
+        object.__setattr__(
+            self,
+            "file_url",
+            private_attachment_url("event", self.event_id, self.file_url),
+        )
+        return self
+
 
 class EventCreate(BaseModel):
     title: CleanStr

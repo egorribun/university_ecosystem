@@ -130,6 +130,12 @@ import type {
   DisableUserPushApiV1PushAdminDisableUserPostResponses,
   DisconnectApiV1SpotifyDisconnectPostData,
   DisconnectApiV1SpotifyDisconnectPostResponses,
+  DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetData,
+  DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetErrors,
+  DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetResponses,
+  DownloadEventFileApiV1EventsEventIdFilesFilenameGetData,
+  DownloadEventFileApiV1EventsEventIdFilesFilenameGetErrors,
+  DownloadEventFileApiV1EventsEventIdFilesFilenameGetResponses,
   DownloadScheduleIcsApiV1ScheduleIcsGetData,
   DownloadScheduleIcsApiV1ScheduleIcsGetErrors,
   DownloadScheduleIcsApiV1ScheduleIcsGetResponses,
@@ -1177,6 +1183,31 @@ export const renameChatApiV1ChatsChatIdPatch = <ThrowOnError extends boolean = f
   })
 
 /**
+ * Download Chat Attachment
+ *
+ * Download a chat attachment after live membership authorization.
+ */
+export const downloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetData, ThrowOnError>
+): RequestResult<
+  DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetResponses,
+  DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetResponses,
+    DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}/attachments/{filename}",
+    ...options,
+  })
+
+/**
  * Clear Chat History
  *
  * Remove all messages (and attachments) from a chat for its participants.
@@ -1908,6 +1939,31 @@ export const getEventFilesApiV1EventsEventIdFilesGet = <ThrowOnError extends boo
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/events/{event_id}/files",
+    ...options,
+  })
+
+/**
+ * Download Event File
+ *
+ * Download an event file after checking the event's view permission.
+ */
+export const downloadEventFileApiV1EventsEventIdFilesFilenameGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<DownloadEventFileApiV1EventsEventIdFilesFilenameGetData, ThrowOnError>
+): RequestResult<
+  DownloadEventFileApiV1EventsEventIdFilesFilenameGetResponses,
+  DownloadEventFileApiV1EventsEventIdFilesFilenameGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    DownloadEventFileApiV1EventsEventIdFilesFilenameGetResponses,
+    DownloadEventFileApiV1EventsEventIdFilesFilenameGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/{event_id}/files/{filename}",
     ...options,
   })
 

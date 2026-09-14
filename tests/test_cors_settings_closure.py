@@ -154,7 +154,10 @@ class TestCorsSettingsClosure:
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.setenv("AUDIT_LOG_SECRET", "a" * 32)  # pragma: allowlist secret
         monkeypatch.setenv("SECRET_KEY", "p" * 48)  # pragma: allowlist secret
-        monkeypatch.setenv("INTERNAL_HMAC_SECRET", "i" * 48)  # pragma: allowlist secret
+        monkeypatch.setenv(
+            "INTERNAL_HMAC_SECRET",
+            "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!",  # pragma: allowlist secret
+        )
         monkeypatch.setenv(
             "TOKEN_HMAC_SECRET", "token-hmac-closure-random-material-0123456789"
         )  # pragma: allowlist secret

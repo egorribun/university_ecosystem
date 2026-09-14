@@ -240,7 +240,10 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
     monkeypatch.setenv("SPOTIFY_TOKEN_SECRET", "dummy_spotify_secret")
     monkeypatch.setenv("ELASTICSEARCH_PASSWORD", "dummy_elastic_pass")
     monkeypatch.setenv("SPICEDB_PRESHARED_KEY", "prod-preshared-key-for-test")
-    monkeypatch.setenv("INTERNAL_HMAC_SECRET", "a" * 32)
+    monkeypatch.setenv(
+        "INTERNAL_HMAC_SECRET",
+        "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!",  # pragma: allowlist secret
+    )
     monkeypatch.setenv(
         "TOKEN_HMAC_SECRET", "token-hmac-core-random-material-0123456789"
     )  # pragma: allowlist secret
@@ -275,7 +278,10 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, tmp_pa
     monkeypatch.setenv("SPOTIFY_TOKEN_SECRET", "dummy_spotify_secret")
     monkeypatch.setenv("ELASTICSEARCH_PASSWORD", "dummy_elastic_pass")
     monkeypatch.setenv("SPICEDB_PRESHARED_KEY", "prod-preshared-key-for-test")
-    monkeypatch.setenv("INTERNAL_HMAC_SECRET", "a" * 32)
+    monkeypatch.setenv(
+        "INTERNAL_HMAC_SECRET",
+        "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!",  # pragma: allowlist secret
+    )
     monkeypatch.setenv(
         "TOKEN_HMAC_SECRET", "token-hmac-core-random-material-0123456789"
     )  # pragma: allowlist secret

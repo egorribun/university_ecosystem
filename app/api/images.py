@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.ratelimit import sensitive_route_limit
 from app.services.image_proxy import get_transformed_image
+from app.services.private_attachments import is_private_attachment_path
 from app.utils.files import _get_storage_backend
 
 router = APIRouter(tags=["images"])
@@ -65,12 +66,16 @@ async def proxy_image(
         elif "image/webp" in accept:
             format_pref = "webp"
 
+    normalized_path = path.lstrip("/")
+
+    # Private chat/event blobs must be downloaded through their parent
+    # resource's authorization boundary, never through this public image
+    # transformation endpoint.
+    if is_private_attachment_path(normalized_path):
+        raise_not_found("image", "en", resource_id=path)
+
     backend = _get_storage_backend()
     try:
-        # Path might have leading slash from URL capturing,
-        # strip it for backend compatibility
-        normalized_path = path.lstrip("/")
-
         data, mime = await get_transformed_image(
             backend, normalized_path, width=target_width, format_preference=format_pref
         )

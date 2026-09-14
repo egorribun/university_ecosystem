@@ -136,12 +136,57 @@ _AUDIT_SECRET_PLACEHOLDER_DIGESTS: frozenset[bytes] = frozenset(
     }
 )
 
+# A minimum length by itself does not prevent an operator from deploying a
+# repeated value (for example, ``"a" * 32``) or a copied placeholder.  The
+# gateway and backend both use this value to authenticate the identity headers
+# crossing their trust boundary, so reject the small set of deterministic
+# values that can be identified without ever trying to estimate entropy from
+# the secret itself.  Real random material remains deliberately opaque.
+_INTERNAL_HMAC_PLACEHOLDER_PARTS: tuple[str, ...] = (
+    "change_me",
+    "change-me",
+    "changeme",
+    "placeholder",
+    "example",
+    "your-secret",
+    "internal_hmac_secret",
+    "internal-hmac-secret",
+    "test-secret",
+    "dummy-secret",
+)
+
 
 def _is_repository_known_audit_secret(value: str) -> bool:
     """Return whether ``value`` matches a retired repository key fingerprint."""
 
     digest = hashlib.sha256(value.lower().encode()).digest()
     return digest in _AUDIT_SECRET_PLACEHOLDER_DIGESTS
+
+
+def _validate_internal_hmac_secret_strength(value: str, *, label: str) -> str:
+    """Validate shared gateway HMAC material without exposing the secret.
+
+    HMAC keys must be at least 32 bytes and must not be obvious repeated or
+    placeholder material.  This is intentionally a conservative structural
+    check: cryptographic randomness cannot be proven from a configuration
+    string, but predictable values can and must be rejected before startup.
+    """
+
+    normalized = value.strip()
+    encoded = normalized.encode("utf-8")
+    if len(encoded) < 32:
+        raise ValueError(f"{label} must contain at least 32 bytes of entropy")
+
+    lowered = normalized.lower()
+    repeated = (
+        len(set(encoded)) < 4 or re.fullmatch(r"(.{1,8})\1+", normalized) is not None
+    )
+    if repeated or any(part in lowered for part in _INTERNAL_HMAC_PLACEHOLDER_PARTS):
+        raise ValueError(
+            f"{label} must contain at least 32 bytes of entropy; "
+            "placeholder or repeated values are not allowed"
+        )
+    return normalized
 
 
 class SecuritySettings(
@@ -235,7 +280,7 @@ class SecuritySettings(
     # When empty: verification is skipped (dev/single-node mode, logs a warning).
     # In production: set INTERNAL_HMAC_SECRET to an independent ≥32-byte random
     # value (e.g. `openssl rand -hex 32`) and set it on BOTH gateway and backend.
-    internal_hmac_secret: str = ""
+    internal_hmac_secret: str = Field(default="", validate_default=True)
 
     # ── SPIFFE Workload API & mTLS ──────────────────────────────────────────
     spiffe_enabled: bool = False
@@ -411,11 +456,13 @@ class SecuritySettings(
         env = str(
             info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
         ).lower()
-        if env not in _DEVELOPMENT_ENVIRONMENTS and not v:
+        if env in _DEVELOPMENT_ENVIRONMENTS:
+            return v.strip()
+        if not v.strip():
             raise ValueError(
                 "INTERNAL_HMAC_SECRET MUST be set in production to prevent identity spoofing (SSRF)."
             )
-        return v
+        return _validate_internal_hmac_secret_strength(v, label="INTERNAL_HMAC_SECRET")
 
     @field_validator("campus_subnets", mode="before")
     @classmethod

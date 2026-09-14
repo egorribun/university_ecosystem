@@ -113,6 +113,8 @@
 	}
 
 	# Optional same-origin access to MinIO objects.
+	@private_storage path /storage/chat_uploads/* /storage/event_files/*
+	respond @private_storage 404
 	handle /storage/* {
 		uri strip_prefix /storage
 		reverse_proxy minio:9000

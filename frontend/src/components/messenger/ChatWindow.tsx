@@ -22,7 +22,7 @@ import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
-import { sanitizeUrl } from "@/utils/media"
+import { resolveMediaUrl, sanitizeUrl } from "@/utils/media"
 import { useDebounced } from "@/hooks/useDebounced"
 import { Message } from "./types"
 import { ReactionPill } from "./ReactionPill"
@@ -772,7 +772,7 @@ export const ChatWindow = memo(function ChatWindow({
                             {message.attachments.map((attachment) => (
                               <div key={attachment.id} className="overflow-hidden rounded-xl">
                                 {attachment.type === "image" ? (
-                                  sanitizeUrl(attachment.url) ? (
+                                  sanitizeUrl(resolveMediaUrl(attachment.url)) ? (
                                     <button
                                       type="button"
                                       aria-label={`${t("messenger:viewAvatar")}: ${attachment.name}`}
@@ -780,22 +780,22 @@ export const ChatWindow = memo(function ChatWindow({
                                       onClick={() => {
                                         // Rendering already proved this immutable URL safe.
                                         window.open(
-                                          sanitizeUrl(attachment.url)!,
+                                          sanitizeUrl(resolveMediaUrl(attachment.url))!,
                                           "_blank",
                                           "noopener,noreferrer"
                                         )
                                       }}
                                     >
                                       <SmartImage
-                                        srcRaw={attachment.url}
+                                        srcRaw={resolveMediaUrl(attachment.url)}
                                         alt={attachment.name}
                                         className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-slow"
                                       />
                                     </button>
                                   ) : null
-                                ) : sanitizeUrl(attachment.url) ? (
+                                ) : sanitizeUrl(resolveMediaUrl(attachment.url)) ? (
                                   <a
-                                    href={sanitizeUrl(attachment.url)!}
+                                    href={sanitizeUrl(resolveMediaUrl(attachment.url))!}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className={cn(

@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -464,6 +465,7 @@ func TestLoad_ReleaseGRPCTLSRequiresConventionalMTLSFiles(t *testing.T) {
 	for missing, expected := range required {
 		t.Run(missing, func(t *testing.T) {
 			t.Setenv("JWT_SECRET", "test-secret-at-least-32-chars-long")
+			t.Setenv("INTERNAL_HMAC_SECRET", "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!") // pragma: allowlist secret
 			t.Setenv("VITE_ENVIRONMENT", "staging")
 			t.Setenv("GRPC_USE_TLS", "true")
 			t.Setenv("SPIFFE_ENABLED", "false")
@@ -513,6 +515,7 @@ func TestValidateGRPCClientIdentityURIRejectsNonCanonicalValues(t *testing.T) {
 
 func TestLoad_ReleaseRejectsNonCanonicalGRPCClientIdentityURI(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-at-least-32-chars-long")
+	t.Setenv("INTERNAL_HMAC_SECRET", "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!") // pragma: allowlist secret
 	t.Setenv("VITE_ENVIRONMENT", "staging")
 	t.Setenv("GRPC_USE_TLS", "true")
 	t.Setenv("SPIFFE_ENABLED", "false")
@@ -530,6 +533,7 @@ func TestLoad_ReleaseRejectsNonCanonicalGRPCClientIdentityURI(t *testing.T) {
 
 func TestLoad_ReleaseRejectsPlaintextGRPC(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret-at-least-32-chars-long")
+	t.Setenv("INTERNAL_HMAC_SECRET", "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!") // pragma: allowlist secret
 	t.Setenv("VITE_ENVIRONMENT", "production")
 	t.Setenv("GRPC_USE_TLS", "false")
 
@@ -537,4 +541,50 @@ func TestLoad_ReleaseRejectsPlaintextGRPC(t *testing.T) {
 
 	assert.Nil(t, cfg)
 	assert.ErrorContains(t, err, "GRPC_USE_TLS=true")
+}
+
+func TestValidateInternalHMACSecretRejectsPredictableValues(t *testing.T) {
+	for name, value := range map[string]string{
+		"short":          "too-short",
+		"single byte":    strings.Repeat("a", 32),
+		"repeated block": strings.Repeat("abcd", 8),
+		"placeholder":    "internal-hmac-secret-012345678901",
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := validateInternalHMACSecret(value)
+			if assert.ErrorContains(t, err, "INTERNAL_HMAC_SECRET") {
+				assert.NotContains(t, err.Error(), value)
+			}
+		})
+	}
+
+	assert.NoError(
+		t,
+		validateInternalHMACSecret("6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!"),
+	)
+}
+
+func TestValidateConfigRequiresStrongInternalHMACSecretInRelease(t *testing.T) {
+	base := Config{
+		JWTSecret:          "jwt-secret",
+		JWTAudience:        "university-ecosystem-api",
+		RevocationRedisURL: "redis://revocation:6379/0",
+		Environment:        "production",
+		GrpcUseTLS:         true,
+		SpiffeEnabled:      true,
+	}
+
+	weak := base
+	weak.InternalHMACSecret = strings.Repeat("a", 32)
+	assert.ErrorContains(t, validateConfig(&weak), "INTERNAL_HMAC_SECRET")
+
+	valid := base
+	valid.InternalHMACSecret = " 6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8! " // pragma: allowlist secret
+	assert.NoError(t, validateConfig(&valid))
+	assert.Equal(t, "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!", valid.InternalHMACSecret)
+
+	development := base
+	development.Environment = "development"
+	development.InternalHMACSecret = "dev-secret" // pragma: allowlist secret
+	assert.NoError(t, validateConfig(&development))
 }
