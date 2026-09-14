@@ -4669,9 +4669,9 @@ current-SHA Linux CI mutation, browser, manifest or release evidence.
 
 ## 70. Current local closure checkpoint and duplicate-evidence serialization (2026-09-14)
 
-The current local branch is `egorribun` at `a290d9485` (the parent
-`b4f3f4ba1` and this checkpoint contain CI-governance changes only after the
-last product-code recertification). User-owned untracked paths remain
+At checkpoint creation the local branch was `egorribun` at `a290d9485` (the
+parent `b4f3f4ba1` and that checkpoint contain CI-governance changes only after
+the last product-code recertification). User-owned untracked paths remain
 untouched and unstaged: `.tmp_preflight/`, `.tmp_stryker_18/`,
 `.tmp_stryker_22/` and `docs/audits/AUDIT_PLATFORM_FULL.md`.
 
