@@ -109,6 +109,17 @@ def test_private_storage_prefixes_are_denied_before_minio_proxy() -> None:
         )
 
 
+def test_websocket_ticket_is_redacted_from_access_logs() -> None:
+    """One-time WS tickets must never be persisted as raw bearer credentials."""
+    for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
+        content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        assert re.search(
+            r"format\s+filter\s*\{[^}]*request>uri\s+query\s*\{[^}]*replace\s+ticket\s+REDACTED",
+            content,
+            re.DOTALL,
+        ), f"Caddy access-log URI must redact ticket query values in {relative_path}"
+
+
 def test_ws_ticket_precedes_general_ws_block() -> None:
     """W173 SW1 critical invariant: /ws/ticket exception MUST appear BEFORE /ws/*.
 

@@ -145,6 +145,17 @@
 			health_timeout 20s
 		}
 	}
+
+	# Access logging is opt-in in this development edge config. If an operator
+	# enables it, redact the short-lived WebSocket ticket before it reaches any
+	# log sink; the query parameter is a bearer credential during its TTL.
+	log {
+		format filter {
+			request>uri query {
+				replace ticket REDACTED
+			}
+		}
+	}
 }
 
 # Production configuration (uncomment and customize)

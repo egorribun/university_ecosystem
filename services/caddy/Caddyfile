@@ -161,7 +161,14 @@
 	# --- Logging -----------------------------------------------------------
 	log {
 		output stderr
-		format json
+		# The WebSocket one-time ticket is intentionally carried in the browser
+		# query string for the upgrade, but it is a bearer credential. Keep the
+		# request shape for diagnostics while never persisting the token value.
+		format filter {
+			request>uri query {
+				replace ticket REDACTED
+			}
+		}
 		level INFO
 	}
 }
