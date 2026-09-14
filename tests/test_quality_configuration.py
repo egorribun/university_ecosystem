@@ -584,6 +584,37 @@ def test_test_duration_updater_replace_preserves_positive_estimate_for_skips() -
     }
 
 
+def test_test_duration_updater_partial_refresh_preserves_unmeasured_history() -> None:
+    """Weekly's intentionally partial report must retain excluded test files."""
+
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuite name='weekly-unit'>
+              <testcase file='tests/test_measured.py' time='1.5' />
+            </testsuite>""",
+            encoding="utf-8",
+        )
+        existing = {
+            "version": 1,
+            "default_duration_seconds": 2.0,
+            "durations": {
+                "tests/chaos/test_resilience.py": 20.0,
+                "tests/test_measured.py": 9.0,
+            },
+        }
+
+        payload = build_duration_payload(report_path, existing=existing)
+
+    assert payload["durations"] == {
+        "tests/chaos/test_resilience.py": 20.0,
+        "tests/test_measured.py": 1.5,
+    }
+
+
 def test_test_duration_updater_replace_omits_new_all_skipped_file() -> None:
     from scripts.quality.update_test_durations import build_duration_payload
 

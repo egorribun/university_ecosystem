@@ -4,8 +4,8 @@ The sharding plugin deliberately assigns whole test files to shards.  Keeping
 the measurements at file granularity makes the input deterministic and avoids
 splitting fixtures or stateful tests across runners.  Existing entries are
 preserved by default so a partial report cannot silently erase the historical
-fallback map; CI's full-suite updater passes ``--replace`` when it has a
-  complete report.  Replacement mode retains a positive historical value when
+fallback map.  A caller may pass ``--replace`` only when it has a
+complete report.  Replacement mode retains a positive historical value when
   a file contains skipped test cases: a partial or zero-second sample is not
   evidence that the file is cheap when some of its real tests were not run.
   Newly observed files whose cases are all skipped are omitted until a real

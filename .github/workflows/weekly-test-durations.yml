@@ -140,7 +140,7 @@ jobs:
       - name: Rewrite duration map
         run: >-
           uv run python scripts/quality/update_test_durations.py pytest-report.xml
-          --output quality/test-durations.json --replace
+          --output quality/test-durations.json
 
       - name: Open update pull request
         env:

@@ -3576,7 +3576,10 @@ def test_weekly_duration_refresh_uses_bounded_complete_junit_shards() -> None:
     assert "--expected-shards 4" in merge["run"]
     rewrite = _step_named(aggregate_job, "Rewrite duration map")
     assert "update_test_durations.py" in rewrite["run"]
-    assert "--replace" in rewrite["run"]
+    # The weekly report intentionally excludes performance, chaos, and
+    # Schemathesis tests.  Replacement mode would silently erase their
+    # historical estimates and make future shard planning less accurate.
+    assert "--replace" not in rewrite["run"]
     merged_upload = _step_named(aggregate_job, "Upload merged JUnit report")
     assert "${{ github.run_id }}" in merged_upload["with"]["name"]
     assert merged_upload["with"]["if-no-files-found"] == "error"
