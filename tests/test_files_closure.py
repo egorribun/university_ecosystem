@@ -257,6 +257,41 @@ async def test_save_attachment_rejects_polyglot_and_returns_metadata_on_success(
 
     assert result["url"] == "/static/document"
     assert result["detected_type"] == "application/pdf"
+    assert backend.save_file.await_args.kwargs["cache_control"] == (
+        "public, max-age=31536000, immutable"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "subdir", ["chat_uploads", "event_files", "chat_uploads/archive"]
+)
+async def test_save_attachment_marks_private_prefixes_non_cacheable(subdir: str):
+    upload = UploadFile(
+        filename="document.pdf",
+        file=io.BytesIO(b"%PDF-1.7"),
+        headers={"content-type": "application/pdf"},
+    )
+    backend = AsyncMock()
+    backend.save_file.return_value = "/static/document.pdf"
+
+    with (
+        patch.object(files_module, "detect_mime_type", return_value="application/pdf"),
+        patch.object(files_module, "_looks_like_polyglot", return_value=False),
+        patch.object(files_module, "scan_for_malware", new=AsyncMock()),
+        patch.object(files_module, "_get_storage_backend", return_value=backend),
+        patch.object(files_module, "_prepare_local_storage", new=AsyncMock()),
+    ):
+        await save_attachment(
+            upload,
+            subdir,
+            "doc",
+            allowed_mime_types={"application/pdf"},
+            allowed_extensions={"pdf"},
+            max_size_bytes=100,
+        )
+
+    assert backend.save_file.await_args.kwargs["cache_control"] == "private, no-store"
 
 
 @pytest.mark.asyncio

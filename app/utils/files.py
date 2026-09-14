@@ -10,6 +10,7 @@ from fastapi import HTTPException, UploadFile, status
 from app.core.config import settings
 from app.core.localization import translate
 from app.core.logging import get_logger
+from app.core.static import PRIVATE_STATIC_PREFIXES
 from app.services.file_scanner import scan_for_malware
 from app.services.storage import StaticFSStorage, StorageBackend, get_storage_backend
 
@@ -88,6 +89,7 @@ ALLOWED_IMAGE_TYPES: Final[set[str]] = {
     "image/webp",
 }
 MAX_IMAGE_SIZE: Final[int] = 5 * 1024 * 1024
+_PRIVATE_ATTACHMENT_PREFIXES: Final[frozenset[str]] = frozenset(PRIVATE_STATIC_PREFIXES)
 
 _PREFIX_CLEAN_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _PREFERRED_EXTENSIONS: Final[dict[str, str]] = {
@@ -308,6 +310,16 @@ def _gen_name(prefix: str, ext: str) -> str:
     return f"{safe_prefix}_{token}{ext}"
 
 
+def _cache_control_for_subdir(subdir: str) -> str:
+    """Return a cache policy that preserves attachment privacy at the object layer."""
+
+    normalized = subdir.replace("\\", "/").strip("/ ")
+    root = normalized.split("/", 1)[0]
+    if root in _PRIVATE_ATTACHMENT_PREFIXES:
+        return "private, no-store"
+    return "public, max-age=31536000, immutable"
+
+
 async def save_image(
     upload: UploadFile, subdir: str, prefix: str, *, locale: str | None = None
 ) -> str:
@@ -519,8 +531,7 @@ async def save_attachment(
     backend = _get_storage_backend()
     await _prepare_local_storage(backend, sanitized_subdir)
     relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
-    # Use aggressive caching for attachments as well
-    cache_control = "public, max-age=31536000, immutable"
+    cache_control = _cache_control_for_subdir(sanitized_subdir)
     url = await backend.save_file(
         relative_path,
         data,
