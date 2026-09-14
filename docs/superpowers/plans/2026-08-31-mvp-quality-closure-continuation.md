@@ -4635,3 +4635,20 @@ infra files. This checkpoint proves interpolation and model validity only; it
 does not certify image builds, readiness, SSR, WebSocket, gRPC, observability,
 resource usage or immutable-digest runtime smoke. Those release gates still
 require a clean external Docker/staging environment and current-SHA evidence.
+
+## 68. Current-SHA fast-preflight recertification (2026-09-14)
+
+After the Compose evidence checkpoint, the bounded local preflight was rerun
+against the exact current HEAD `8809c5eb3cf870f0dc9d5331e215123324b37bdc`:
+
+    uv run python scripts/fast_preflight.py --max-workers 6 --timeout-seconds 600 --include-output
+    # Fast preflight: 6/6 passed
+
+Measured durations were frontend typecheck 11.527 s, frontend lint 84.313 s,
+backend typecheck 5.351 s, backend lint 0.153 s, `verify_harness.py --repo-only`
+35.613 s (29/29), and focused contract tests 59.586 s. The report is retained
+at the ignored path `artifacts/fast-preflight/fast-preflight.json`; it is
+developer evidence only and does not replace Linux current-SHA CI artifacts,
+mutation/coverage reports, or runtime/staging certification. The tracked
+worktree remained clean apart from intentional history and the four preserved
+user-owned untracked paths.
