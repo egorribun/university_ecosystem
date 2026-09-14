@@ -5005,6 +5005,14 @@ jobs:
       - name: Install harness toolchains
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
+      - name: Generate ephemeral audit settings
+        # The model-default inventory imports SQLAlchemy metadata, which loads
+        # the settings object.  Keep the workflow-level SECRET_KEY empty and
+        # mint a runner-local value only for this unprivileged metadata check;
+        # no repository or long-lived CI secret is exposed to PR code.
+        if: env.SECRET_KEY == ''
+        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
       - name: Install harness dependencies
         run: |
           uv sync --frozen

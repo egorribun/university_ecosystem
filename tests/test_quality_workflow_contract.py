@@ -533,6 +533,19 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
         )
     assert "npm --prefix frontend ci --no-audit --no-fund" in inventory_commands
 
+    # The inventory helper imports SQLAlchemy models, which loads application
+    # settings.  Keep the workflow-level secret intentionally empty, but give
+    # this unprivileged metadata-only job a fresh process-scoped key so the
+    # fail-closed settings validator can run without consuming a repository
+    # secret or relying on a checked-in default.
+    inventory_step_text = "\n".join(
+        str(step.get("run", ""))
+        for step in inventory_job.get("steps", [])
+        if isinstance(step, dict)
+    )
+    assert "SECRET_KEY=$(openssl rand -hex 32)" in inventory_step_text
+    assert '>> "$GITHUB_ENV"' in inventory_step_text
+
     inventory_uploads = [
         step
         for step in inventory_job.get("steps", [])
