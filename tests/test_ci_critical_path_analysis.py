@@ -458,6 +458,52 @@ def test_parser_accepts_github_cancelled_empty_job_timestamp_sentinel() -> None:
     assert parsed[0].duration_seconds == 0.0
 
 
+def test_zero_duration_guarded_jobs_do_not_extend_utilization_window() -> None:
+    report = analyze_jobs(
+        parse_jobs(
+            {
+                "jobs": [
+                    {
+                        "id": 1,
+                        "name": "executed-job",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "started_at": "2026-08-31T10:00:00Z",
+                        "completed_at": "2026-08-31T10:01:00Z",
+                    },
+                    {
+                        "id": 2,
+                        "name": "skipped-job",
+                        "status": "completed",
+                        "conclusion": "skipped",
+                        "started_at": "2026-08-31T11:00:00Z",
+                        "completed_at": "2026-08-31T11:00:00Z",
+                        "steps": [],
+                    },
+                    {
+                        "id": 3,
+                        "name": "cancelled-job",
+                        "status": "completed",
+                        "conclusion": "cancelled",
+                        "started_at": "2026-08-31T12:00:01Z",
+                        "completed_at": "2026-08-31T12:00:00Z",
+                        "steps": [],
+                    },
+                ]
+            }
+        ),
+        repository="egorribun/university_ecosystem",
+        run_id=1,
+        concurrency_cap=20,
+        diagnostic_lower_bound=True,
+    )
+
+    summary = cast(dict[str, object], report["summary"])
+    assert summary["wall_clock_seconds"] == 60.0
+    assert summary["peak_concurrency"] == 1
+    assert summary["average_slot_utilization"] == 0.05
+
+
 def test_parser_rejects_inverted_cancelled_job_with_steps() -> None:
     with pytest.raises(AnalysisError, match="ends before"):
         parse_jobs(

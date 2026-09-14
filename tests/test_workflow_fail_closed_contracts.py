@@ -649,6 +649,85 @@ def test_scheduled_workflows_reject_missing_required_inputs() -> None:
     assert "exit 1" in missing["run"]
 
 
+def test_privileged_manual_workflows_are_main_bound_and_immutable() -> None:
+    """Manual runs must never execute write-capable code from another ref."""
+
+    quality = _workflow(WORKFLOWS / "quality-history.yml")["jobs"]["archive"]
+    assert quality["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    quality_guard = _step(quality, "Verify trusted main source")
+    assert quality_guard["env"] == {
+        "EVENT_SHA": "${{ github.sha }}",
+        "WORKFLOW_SHA": "${{ github.workflow_sha }}",
+    }
+    assert "refs/heads/main" in quality_guard["run"]
+    assert "git rev-parse refs/remotes/origin/main" in quality_guard["run"]
+    assert "git rev-parse HEAD" in quality_guard["run"]
+
+    weekly = _workflow(WORKFLOWS / "weekly-test-durations.yml")["jobs"]["refresh"]
+    assert weekly["if"] == "${{ always() && github.ref == 'refs/heads/main' }}"
+    weekly_guard = _step(weekly, "Verify trusted main source")
+    assert weekly_guard["env"] == {
+        "EVENT_SHA": "${{ github.sha }}",
+        "WORKFLOW_SHA": "${{ github.workflow_sha }}",
+    }
+    assert "git fetch origin" in weekly_guard["run"]
+
+    nightly_workflow = _workflow(WORKFLOWS / "nightly-full-gate.yml")
+    for job_name, job in nightly_workflow["jobs"].items():
+        assert "github.ref == 'refs/heads/main'" in str(job.get("if", "")), job_name
+
+    nightly = nightly_workflow["jobs"]["notify-failure"]
+    assert (
+        nightly["if"]
+        == "${{ github.ref == 'refs/heads/main' && always() && contains(needs.*.result, 'failure') }}"
+    )
+    nightly_guard = _step(nightly, "Verify trusted main source")
+    assert "github.workflow_sha" in str(nightly_guard["env"])
+    assert "git/ref/heads/main" in nightly_guard["run"]
+
+    scorecard = _workflow(WORKFLOWS / "scorecard.yml")["jobs"]["analysis"]
+    assert scorecard["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    scorecard_guard = _step(scorecard, "Verify trusted main source")
+    assert "github.sha" in str(scorecard_guard["env"])
+    assert "github.workflow_sha" in str(scorecard_guard["env"])
+
+    chromatic = _workflow(WORKFLOWS / "chromatic.yml")["jobs"]["chromatic"]
+    assert (
+        chromatic["if"]
+        == "${{ vars.CHROMATIC_ENABLED == 'true' && vars.CHROMATIC_BILLING_ACTIVE == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'repository_dispatch') }}"
+    )
+    assert chromatic["permissions"] == {
+        "contents": "read",
+        "pull-requests": "write",
+    }
+    chromatic_guard = _step(chromatic, "Verify trusted main source")
+    assert chromatic_guard["if"] == "${{ github.event_name == 'repository_dispatch' }}"
+    assert "git rev-parse refs/remotes/origin/main" in chromatic_guard["run"]
+
+    for path in (
+        "nightly-full-gate.yml",
+        "quality-history.yml",
+        "weekly-test-durations.yml",
+        "scorecard.yml",
+        "chromatic.yml",
+    ):
+        loaded = _workflow(WORKFLOWS / path)
+        triggers = loaded.get("on", loaded.get(True, {}))
+        assert "workflow_dispatch" not in triggers, path
+
+
+def test_build_orchestrated_runs_input_is_bounded() -> None:
+    workflow = _workflow(WORKFLOWS / "build-orchestrated-linux.yml")
+    run_step = _step(
+        workflow["jobs"]["build-validation"], "Run build-orchestrated.mjs × N"
+    )
+    script = run_step["run"]
+    assert "RUNS_MAX=10" in script
+    assert '[[ "$RUNS" =~ ^[1-9][0-9]*$ ]]' in script
+    assert "(( RUNS > RUNS_MAX ))" in script
+    assert "exit 1" in script
+
+
 def test_go_mutation_diagnostic_never_converts_tool_failure_to_success() -> None:
     job = _workflow(WORKFLOWS / "reusable-go-tests.yml")["jobs"]["mutation-diagnostic"]
     mutation = _step(job, "Run bounded Go mutation diagnostic")["run"]

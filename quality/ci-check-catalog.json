@@ -744,8 +744,8 @@
           "guard": "{\"branches\":[\"main\"],\"paths\":[\"frontend/**\",\".github/workflows/chromatic.yml\"]}"
         },
         {
-          "event": "workflow_dispatch",
-          "guard": "any"
+          "event": "repository_dispatch",
+          "guard": "{\"types\":[\"run-chromatic\"]}"
         }
       ],
       "jobs": {
@@ -754,7 +754,7 @@
           "check_name_template": "Chromatic Visual Regression",
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
-          "guard": "${{ vars.CHROMATIC_ENABLED == 'true' && vars.CHROMATIC_BILLING_ACTIVE == 'true' }}",
+          "guard": "${{ vars.CHROMATIC_ENABLED == 'true' && vars.CHROMATIC_BILLING_ACTIVE == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'repository_dispatch') }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -2679,8 +2679,8 @@
           "guard": "[{\"cron\":\"0 1 * * *\"}]"
         },
         {
-          "event": "workflow_dispatch",
-          "guard": "any"
+          "event": "repository_dispatch",
+          "guard": "{\"types\":[\"run-nightly-full-gate\"]}"
         }
       ],
       "jobs": {
@@ -2692,7 +2692,7 @@
           "check_name_template": "Full mutation stats (mutmut) / shard ${{ matrix.stats_shard }}/8",
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [
             {
               "name_pattern": "nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.stats_shard }}",
@@ -2714,7 +2714,7 @@
           "check_name_template": "Preflight exact full mutation plan",
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [
             {
               "name_pattern": "nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}",
@@ -2738,7 +2738,7 @@
           "check_name_template": "Full mutation score (mutmut) / shard ${{ matrix.shard }}/128",
           "expected_timeout_minutes": 360,
           "expected_duration_seconds": 21600,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [
             {
               "name_pattern": "nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}",
@@ -2760,7 +2760,7 @@
           "check_name_template": "Full mutation score (mutmut) / aggregate 128 shards",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
-          "guard": "${{ always() && !cancelled() }}",
+          "guard": "${{ github.ref == 'refs/heads/main' && always() && !cancelled() }}",
           "artifacts": [
             {
               "name_pattern": "nightly-mutmut-${{ github.run_id }}-${{ github.run_attempt }}",
@@ -2781,7 +2781,7 @@
           "check_name_template": "Nightly Frontend Mutation Preflight Universe",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [
             {
               "name_pattern": "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
@@ -2805,7 +2805,7 @@
           "check_name_template": "Nightly frontend mutation shard ${{ matrix.shard-index }}/64",
           "expected_timeout_minutes": 120,
           "expected_duration_seconds": 7200,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [
             {
               "name_pattern": "nightly-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}",
@@ -2826,7 +2826,7 @@
           "check_name_template": "Full frontend mutation score (100%)",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
-          "guard": "${{ always() && !cancelled() }}",
+          "guard": "${{ github.ref == 'refs/heads/main' && always() && !cancelled() }}",
           "artifacts": [
             {
               "name_pattern": "frontend-mutation-validated-${{ github.run_id }}-${{ github.run_attempt }}",
@@ -2847,7 +2847,7 @@
           "check_name_template": "Nightly Frontend Mutation Artifact Round-trip",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2864,7 +2864,7 @@
           "check_name_template": "Full backend unit (shard ${{ matrix.unit-shard }})",
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2881,7 +2881,7 @@
           "check_name_template": "Full backend integration (shard ${{ matrix.integration-shard }})",
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2898,7 +2898,7 @@
           "check_name_template": "Go integration (${{ matrix.service-directory }})",
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2912,7 +2912,7 @@
           "check_name_template": "Disposable MinIO and SpiceDB cells",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2926,7 +2926,7 @@
           "check_name_template": "E2E WASM Build",
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2943,7 +2943,7 @@
           "check_name_template": "Browser matrix (${{ matrix.browser }})",
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2957,7 +2957,7 @@
           "check_name_template": "Load and chaos resilience",
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -2972,7 +2972,7 @@
           "check_name_template": "Nightly Kyverno validation",
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -2987,7 +2987,7 @@
           "check_name_template": "Miri pure-Rust checks",
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3001,7 +3001,7 @@
           "check_name_template": "Report nightly regression",
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
-          "guard": "${{ always() && contains(needs.*.result, 'failure') }}",
+          "guard": "${{ github.ref == 'refs/heads/main' && always() && contains(needs.*.result, 'failure') }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3099,8 +3099,8 @@
           "guard": "[{\"cron\":\"30 2 * * *\"}]"
         },
         {
-          "event": "workflow_dispatch",
-          "guard": "{}"
+          "event": "repository_dispatch",
+          "guard": "{\"types\":[\"run-quality-history\"]}"
         }
       ],
       "jobs": {
@@ -3109,7 +3109,7 @@
           "check_name_template": "Archive quality manifest and render dashboard",
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -4143,8 +4143,8 @@
           "guard": "[{\"cron\":\"30 1 * * 1\"}]"
         },
         {
-          "event": "workflow_dispatch",
-          "guard": "any"
+          "event": "repository_dispatch",
+          "guard": "{\"types\":[\"run-scorecard\"]}"
         }
       ],
       "jobs": {
@@ -4153,7 +4153,7 @@
           "check_name_template": "Scorecard analysis",
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -4403,8 +4403,8 @@
           "guard": "[{\"cron\":\"0 4 * * 1\"}]"
         },
         {
-          "event": "workflow_dispatch",
-          "guard": "any"
+          "event": "repository_dispatch",
+          "guard": "{\"types\":[\"run-weekly-test-durations\"]}"
         }
       ],
       "jobs": {
@@ -4416,7 +4416,7 @@
           "check_name_template": "Refresh pytest duration map (shard ${{ matrix.shard }}/4)",
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [
             {
               "name_pattern": "weekly-test-duration-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}",
@@ -4438,7 +4438,7 @@
           "check_name_template": "Refresh pytest duration map",
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
-          "guard": "${{ always() }}",
+          "guard": "${{ always() && github.ref == 'refs/heads/main' }}",
           "artifacts": [
             {
               "name_pattern": "weekly-test-duration-merged-${{ github.run_id }}-attempt-${{ github.run_attempt }}",

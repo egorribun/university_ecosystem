@@ -3085,9 +3085,15 @@ def test_quality_history_archives_manifests_and_renders_dashboard() -> None:
     workflow = yaml.safe_load(QUALITY_HISTORY_WORKFLOW_PATH.read_text(encoding="utf-8"))
     triggers = _workflow_triggers(workflow)
     assert triggers["schedule"][0]["cron"] == "30 2 * * *"
+    assert triggers["repository_dispatch"]["types"] == ["run-quality-history"]
+    assert "workflow_dispatch" not in triggers
     assert workflow["permissions"]["actions"] == "read"
-    assert workflow["permissions"]["contents"] == "write"
-    assert workflow["permissions"]["pull-requests"] == "write"
+    assert workflow["permissions"]["contents"] == "read"
+    assert workflow["jobs"]["archive"]["permissions"] == {
+        "actions": "read",
+        "contents": "write",
+        "pull-requests": "write",
+    }
     text = "\n".join(
         step.get("run", "")
         for step in workflow["jobs"]["archive"]["steps"]
@@ -3554,8 +3560,15 @@ def test_weekly_duration_refresh_is_a_reviewable_bot_pr() -> None:
     )
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     assert _workflow_triggers(workflow)["schedule"][0]["cron"] == "0 4 * * 1"
-    assert workflow["permissions"]["contents"] == "write"
-    assert workflow["permissions"]["pull-requests"] == "write"
+    triggers = _workflow_triggers(workflow)
+    assert triggers["repository_dispatch"]["types"] == ["run-weekly-test-durations"]
+    assert "workflow_dispatch" not in triggers
+    assert workflow["permissions"]["contents"] == "read"
+    assert workflow["jobs"]["refresh"]["permissions"] == {
+        "actions": "read",
+        "contents": "write",
+        "pull-requests": "write",
+    }
     step_text = "\n".join(
         step.get("run", "")
         for step in workflow["jobs"]["refresh"]["steps"]
@@ -3598,7 +3611,7 @@ def test_weekly_duration_refresh_uses_bounded_complete_junit_shards() -> None:
     assert shard_upload["with"]["if-no-files-found"] == "error"
 
     assert aggregate_job["needs"] == "refresh-shard"
-    assert aggregate_job["if"] == "${{ always() }}"
+    assert aggregate_job["if"] == "${{ always() && github.ref == 'refs/heads/main' }}"
     failed_shard_guard = _step_named(aggregate_job, "Fail if a duration shard failed")
     checkout_index = next(
         index
@@ -4896,7 +4909,9 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         "frontend-mutation-preflight",
         "frontend-mutation-shards",
     ]
-    assert nightly_aggregate["if"] == "${{ always() && !cancelled() }}"
+    assert nightly_aggregate["if"] == (
+        "${{ github.ref == 'refs/heads/main' && always() && !cancelled() }}"
+    )
     assert nightly_aggregate["env"] == manual_aggregate["env"]
     manual_roundtrip = manual_jobs["manual-frontend-mutation-roundtrip"]
     assert manual_roundtrip["needs"] == "manual-frontend-mutation-aggregate"

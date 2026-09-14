@@ -928,7 +928,7 @@ def _utilization(jobs: Sequence[JobTiming], cap: int) -> tuple[float, float, flo
     valid = [
         (start, end)
         for start, end in intervals
-        if start is not None and end is not None
+        if start is not None and end is not None and end > start
     ]
     if not valid:
         return 0.0, 0.0, 0.0

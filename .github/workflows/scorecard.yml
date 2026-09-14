@@ -6,8 +6,10 @@ on:
   schedule:
     # Weekly scan — Monday 01:30 UTC (staggered from other Monday jobs)
     - cron: "30 1 * * 1"
-  # Allow manual trigger for ad-hoc scoring
-  workflow_dispatch:
+  # Manual reruns use repository_dispatch so the workflow is always loaded
+  # from the default branch, never from a caller-selected ref.
+  repository_dispatch:
+    types: [run-scorecard]
 
 permissions: read-all
 
@@ -20,6 +22,7 @@ concurrency:
 jobs:
   analysis:
     name: Scorecard analysis
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -35,8 +38,32 @@ jobs:
       - name: "Checkout code"
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
           # Scorecard needs full history to check commit signing, branch protection, etc.
           persist-credentials: false
+
+      - name: Verify trusted main source
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Scorecard refuses to run outside protected main."
+            exit 1
+          fi
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          trusted_sha="$(git rev-parse refs/remotes/origin/main)"
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [[ ! "$trusted_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Protected main did not resolve to a full commit SHA."
+            exit 1
+          fi
+          if [[ "$checked_out_sha" != "$trusted_sha" || "$EVENT_SHA" != "$trusted_sha" || "$WORKFLOW_SHA" != "$trusted_sha" ]]; then
+            echo "::error::Workflow source is not the current immutable protected-main commit."
+            exit 1
+          fi
 
       - name: Run OpenSSF Scorecard
         uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4

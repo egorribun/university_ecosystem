@@ -7,7 +7,10 @@ name: Nightly Full Quality Gate
 on:
   schedule:
     - cron: "0 1 * * *"
-  workflow_dispatch:
+  # repository_dispatch is resolved from the default branch, so a caller
+  # cannot select an untrusted ref containing a modified privileged workflow.
+  repository_dispatch:
+    types: [run-nightly-full-gate]
 
 permissions:
   contents: read
@@ -22,6 +25,7 @@ concurrency:
 jobs:
   mutation-tests-full-stats:
     name: Full mutation stats (mutmut) / shard ${{ matrix.stats_shard }}/8
+    if: ${{ github.ref == 'refs/heads/main' }}
     strategy:
       fail-fast: false
       # The complete pytest-to-mutant map is partitionable by the same stable
@@ -100,6 +104,7 @@ jobs:
 
   mutation-tests-full-plan:
     name: Preflight exact full mutation plan
+    if: ${{ github.ref == 'refs/heads/main' }}
     needs: mutation-tests-full-stats
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -204,6 +209,7 @@ jobs:
 
   mutation-tests-full:
     name: Full mutation score (mutmut) / shard ${{ matrix.shard }}/128
+    if: ${{ github.ref == 'refs/heads/main' }}
     needs: mutation-tests-full-plan
     strategy:
       fail-fast: false
@@ -547,7 +553,7 @@ jobs:
   mutation-tests-full-aggregate:
     name: Full mutation score (mutmut) / aggregate 128 shards
     needs: mutation-tests-full
-    if: ${{ always() && !cancelled() }}
+    if: ${{ github.ref == 'refs/heads/main' && always() && !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -613,6 +619,7 @@ jobs:
   # retaining a fail-closed source and toolchain provenance contract.
   frontend-mutation-preflight:
     name: Nightly Frontend Mutation Preflight Universe
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -653,6 +660,7 @@ jobs:
 
   frontend-mutation-shards:
     name: Nightly frontend mutation shard ${{ matrix.shard-index }}/64
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     needs: frontend-mutation-preflight
@@ -784,7 +792,7 @@ jobs:
     needs:
       - frontend-mutation-preflight
       - frontend-mutation-shards
-    if: ${{ always() && !cancelled() }}
+    if: ${{ github.ref == 'refs/heads/main' && always() && !cancelled() }}
     permissions:
       contents: read
       actions: read
@@ -897,6 +905,7 @@ jobs:
 
   frontend-mutation-roundtrip:
     name: Nightly Frontend Mutation Artifact Round-trip
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: frontend-mutation-tests-full
@@ -961,6 +970,7 @@ jobs:
 
   backend-full:
     name: Full backend unit (shard ${{ matrix.unit-shard }})
+    if: ${{ github.ref == 'refs/heads/main' }}
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -984,6 +994,7 @@ jobs:
 
   backend-integration:
     name: Full backend integration (shard ${{ matrix.integration-shard }})
+    if: ${{ github.ref == 'refs/heads/main' }}
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -1009,6 +1020,7 @@ jobs:
 
   go-integration:
     name: Go integration (${{ matrix.service-directory }})
+    if: ${{ github.ref == 'refs/heads/main' }}
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -1023,6 +1035,7 @@ jobs:
 
   container-integration-cells:
     name: Disposable MinIO and SpiceDB cells
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -1070,12 +1083,14 @@ jobs:
   # behind frontend or mutation jobs.
   e2e-wasm-build:
     name: E2E WASM Build
+    if: ${{ github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
     uses: ./.github/workflows/reusable-e2e-wasm-build.yml
 
   browser-matrix:
     name: Browser matrix (${{ matrix.browser }})
+    if: ${{ github.ref == 'refs/heads/main' }}
     needs: e2e-wasm-build
     strategy:
       fail-fast: false
@@ -1103,6 +1118,7 @@ jobs:
 
   load-and-chaos:
     name: Load and chaos resilience
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -1282,6 +1298,7 @@ jobs:
     # Kept distinct from the required fast-CI context because this workflow
     # is manually dispatchable as well as scheduled.
     name: Nightly Kyverno validation
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -1314,6 +1331,7 @@ jobs:
 
   miri:
     name: Miri pure-Rust checks
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -1358,7 +1376,7 @@ jobs:
 
   notify-failure:
     name: Report nightly regression
-    if: ${{ always() && contains(needs.*.result, 'failure') }}
+    if: ${{ github.ref == 'refs/heads/main' && always() && contains(needs.*.result, 'failure') }}
     timeout-minutes: 5
     needs:
       - mutation-tests-full-stats
@@ -1382,9 +1400,29 @@ jobs:
     permissions:
       contents: read
       issues: write
-    env:
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     steps:
+      - name: Verify trusted main source
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Nightly failure reporting refuses to run outside protected main."
+            exit 1
+          fi
+          trusted_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ ! "$trusted_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Protected main did not resolve to a full commit SHA."
+            exit 1
+          fi
+          if [[ "$EVENT_SHA" != "$trusted_sha" || "$WORKFLOW_SHA" != "$trusted_sha" ]]; then
+            echo "::error::Workflow source is not the current immutable protected-main commit."
+            exit 1
+          fi
+
       - name: Create or reuse a GitHub issue
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1399,6 +1437,8 @@ jobs:
 
       - name: Send optional Slack notification
         if: ${{ env.SLACK_WEBHOOK_URL != '' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           curl --fail-with-body --silent --show-error --request POST \
             --header 'Content-Type: application/json' \

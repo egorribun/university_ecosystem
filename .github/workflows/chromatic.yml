@@ -62,11 +62,13 @@ on:
     paths:
       - "frontend/**"
       - ".github/workflows/chromatic.yml"
-  workflow_dispatch:
+  # Manual reruns use repository_dispatch so the workflow is always loaded
+  # from the default branch, never from a caller-selected ref.
+  repository_dispatch:
+    types: [run-chromatic]
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: chromatic-${{ github.ref }}
@@ -97,7 +99,13 @@ jobs:
     #      stubs — posts passing statuses WITHOUT consuming snapshots — so even a
     #      premature re-enable can't hang the PR again; remove it to resume real
     #      visual diffs).
-    if: ${{ vars.CHROMATIC_ENABLED == 'true' && vars.CHROMATIC_BILLING_ACTIVE == 'true' }}
+    # The publish action receives a project token and executes repository code;
+    # keep it on trusted default-branch events only. Pull requests get no
+    # runner and no token, even when Chromatic is enabled.
+    if: ${{ vars.CHROMATIC_ENABLED == 'true' && vars.CHROMATIC_BILLING_ACTIVE == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'repository_dispatch') }}
+    permissions:
+      contents: read
+      pull-requests: write
     defaults:
       run:
         working-directory: frontend
@@ -106,6 +114,30 @@ jobs:
         with:
           # Chromatic needs full git history to detect baseline diffs.
           fetch-depth: 0
+
+      - name: Verify trusted main source
+        if: ${{ github.event_name == 'repository_dispatch' }}
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Chromatic manual dispatch refuses to run outside protected main."
+            exit 1
+          fi
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          trusted_sha="$(git rev-parse refs/remotes/origin/main)"
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [[ ! "$trusted_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Protected main did not resolve to a full commit SHA."
+            exit 1
+          fi
+          if [[ "$checked_out_sha" != "$trusted_sha" || "$EVENT_SHA" != "$trusted_sha" || "$WORKFLOW_SHA" != "$trusted_sha" ]]; then
+            echo "::error::Workflow source is not the current immutable protected-main commit."
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

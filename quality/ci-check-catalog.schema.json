@@ -436,6 +436,7 @@
             "pull_request",
             "schedule",
             "workflow_dispatch",
+            "repository_dispatch",
             "workflow_call"
           ]
         },

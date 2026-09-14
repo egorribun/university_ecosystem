@@ -24,7 +24,14 @@ DEFAULT_CATALOG = REPOSITORY_ROOT / "quality" / "ci-check-catalog.json"
 DEFAULT_SCHEMA = REPOSITORY_ROOT / "quality" / "ci-check-catalog.schema.json"
 WORKFLOW_DIRECTORY = REPOSITORY_ROOT / ".github" / "workflows"
 WORKFLOW_EVENTS = frozenset(
-    {"push", "pull_request", "schedule", "workflow_dispatch", "workflow_call"}
+    {
+        "push",
+        "pull_request",
+        "schedule",
+        "workflow_dispatch",
+        "repository_dispatch",
+        "workflow_call",
+    }
 )
 POLICY_EVENTS = frozenset({"pull_request_main", "push_main"})
 RETRY_MARKERS = (
