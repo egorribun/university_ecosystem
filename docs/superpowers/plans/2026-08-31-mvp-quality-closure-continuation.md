@@ -6091,3 +6091,28 @@ run now has 23 completed failures (all mutmut), 5 in-progress jobs and 79
 queued jobs; no non-mutmut failure has been observed. User-owned WASM edits,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
+
+## 109. Current-head fast-preflight recertification (2026-09-15; pending push)
+
+The exact current checkout at `7d0bdb18dbf34a2dddab5bb6ce693849aee1a0ab`
+passed the local parallel fast-preflight with all six checks green and no
+timeout or retry:
+
+    uv run python scripts/fast_preflight.py \
+      --max-workers 6 --timeout-seconds 600 --include-output
+    # 6/6 passed; report: artifacts/fast-preflight/fast-preflight.json
+    # total wall time 98.291 s; slowest lane frontend-lint 98.258 s
+
+The lanes were frontend typecheck/lint, backend mypy/Ruff, the repository
+harness and focused CI-contract tests. The report is commit-bound, contains
+the command/exit-code/duration/stdout provenance for every lane, and is an
+advisory developer acceleration aid; it does not replace the required Linux
+CI, mutation, coverage, security or release evidence. The run-level stale PR
+workflow `34923631288` is still non-terminal and bound to old SHA
+`2774de52d158cf0b7611b331586014a8420a1df2`; its job inventory remains the
+authoritative diagnostic source while the API incorrectly reports `queued`.
+
+No quality threshold, test/source/mutant inventory, timeout or retry policy
+was changed. User-owned WASM edits, temporary directories,
+`docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
