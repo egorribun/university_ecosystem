@@ -127,11 +127,21 @@ def test_analyzer_reports_dependency_wait_utilization_and_duplicates() -> None:
     assert rows["frontend-tests"]["github_queue_wait_seconds"] == 90.0
     assert rows["frontend-tests"]["setup_install_seconds"] == 40.0
     assert rows["frontend-tests"]["artifact_seconds"] == 20.0
+    assert rows["frontend-tests"]["retry_reason"] == "initial_workflow_attempt"
+    assert rows["frontend-tests"]["timeout_reason"] == "not_timed_out"
+    assert rows["stryker-preflight"]["skip_reason"] == "upstream_failure"
 
     assert summary["peak_concurrency"] == 1
     assert summary["retry_classification"] == {
         "state": "initial_workflow_attempt",
         "run_attempts": [1],
+    }
+    assert summary["resource_usage"] == {
+        "status": "unsupported",
+        "source": "github_jobs_api",
+        "reason": "runner CPU time and peak RSS are not exposed by the GitHub Jobs API",
+        "cpu_seconds": None,
+        "peak_rss_bytes": None,
     }
     timeout_summary = summary["timeout_classification"]
     assert isinstance(timeout_summary, dict)
@@ -235,7 +245,9 @@ def test_diagnostic_timing_classifies_workflow_rerun_and_timeout() -> None:
     report_jobs = cast(list[dict[str, object]], report["jobs"])
     rows = {row["id"]: row for row in report_jobs}
     assert rows[101]["retry_classification"] == "workflow_rerun"
+    assert rows[101]["retry_reason"] == "workflow_rerun"
     assert rows[101]["timeout_classification"] == "timed_out"
+    assert rows[101]["timeout_reason"] == "step_conclusion"
     provenance = report["provenance"]
     assert isinstance(provenance, dict)
     assert provenance["evidence_scope"] == "diagnostic-only"
@@ -275,6 +287,7 @@ def test_unknown_timeout_conclusion_and_incomplete_timed_out_step_fail_closed() 
     report_jobs = cast(list[dict[str, object]], report["jobs"])
     first_row = next(row for row in report_jobs if row["id"] == 101)
     assert first_row["timeout_classification"] == "timed_out"
+    assert first_row["timeout_reason"] == "step_conclusion"
     timeout_summary = cast(dict[str, object], report["summary"])[
         "timeout_classification"
     ]
@@ -299,6 +312,7 @@ def test_unknown_timeout_conclusion_and_incomplete_timed_out_step_fail_closed() 
         row for row in cast(list[dict[str, object]], report["jobs"]) if row["id"] == 101
     )
     assert first_row["timeout_classification"] == "unknown"
+    assert first_row["timeout_reason"] == "unknown_conclusion"
 
 
 def test_parser_rejects_queue_timestamp_after_job_start() -> None:

@@ -1058,6 +1058,60 @@ def _timeout_classification(job: JobTiming) -> str:
     return "unknown"
 
 
+def _retry_reason(job: JobTiming) -> str:
+    """Explain the only retry signal exposed by the Jobs API.
+
+    GitHub exposes the workflow attempt on a job, but not a per-job retry
+    counter or a transient/permanent failure classification.  Keep that
+    limitation explicit in the machine-readable ledger instead of guessing
+    from a duration or conclusion.
+    """
+    if job.api_run_attempt is None:
+        return "run_attempt_unavailable"
+    if job.api_run_attempt == 1:
+        return "initial_workflow_attempt"
+    return "workflow_rerun"
+
+
+def _timeout_reason(job: JobTiming) -> str:
+    """Return the observable source of a timeout/cancellation classification."""
+    if job.conclusion == "timed_out":
+        return "job_conclusion"
+    if any(step.conclusion == "timed_out" for step in job.steps):
+        return "step_conclusion"
+    if job.conclusion == "cancelled":
+        return "job_cancelled"
+    if job.status != "completed" or job.conclusion is None:
+        return "incomplete_evidence"
+    if job.conclusion not in _NON_TIMEOUT_CONCLUSIONS:
+        return "unknown_conclusion"
+    return "not_timed_out"
+
+
+def _skip_reason(job: JobTiming, *, upstream_failure: bool | str | None) -> str | None:
+    """Classify skipped jobs without inferring hidden ``if:`` expressions."""
+    if job.conclusion != "skipped":
+        return None
+    if upstream_failure is True:
+        return "upstream_failure"
+    # The Jobs API does not include the evaluated ``if:`` expression.  A
+    # diagnostic report therefore has to preserve the uncertainty explicitly.
+    if upstream_failure == "unknown" or upstream_failure is None:
+        return "condition_not_exposed_by_jobs_api"
+    return "job_condition_not_exposed_by_jobs_api"
+
+
+def _resource_usage_unavailable() -> dict[str, object]:
+    """Return an explicit N/A resource record for the Jobs API data source."""
+    return {
+        "status": "unsupported",
+        "source": "github_jobs_api",
+        "reason": "runner CPU time and peak RSS are not exposed by the GitHub Jobs API",
+        "cpu_seconds": None,
+        "peak_rss_bytes": None,
+    }
+
+
 def _timeout_summary(jobs: Sequence[JobTiming]) -> dict[str, object]:
     classifications = {job.job_id: _timeout_classification(job) for job in jobs}
     counts = {
@@ -1204,7 +1258,10 @@ def _diagnostic_lower_bound_report(
                 "actual_test_seconds": _rounded_seconds(actual),
                 "artifact_seconds": _rounded_seconds(artifact),
                 "retry_classification": _retry_classification(job),
+                "retry_reason": _retry_reason(job),
                 "timeout_classification": _timeout_classification(job),
+                "timeout_reason": _timeout_reason(job),
+                "skip_reason": _skip_reason(job, upstream_failure="unknown"),
                 "critical_path_end_seconds": None,
                 "upstream_failure_blocked": "unknown",
                 "continued_after_core_failure": "unknown",
@@ -1237,6 +1294,7 @@ def _diagnostic_lower_bound_report(
             "timing_seconds": _timing_ledger(jobs),
             "retry_classification": _retry_summary(jobs),
             "timeout_classification": _timeout_summary(jobs),
+            "resource_usage": _resource_usage_unavailable(),
             "duplicate_setup_download_work": duplicate_setup,
             "upstream_failure_blocked_jobs": "unknown",
             "jobs_continued_after_core_failure": "unknown",
@@ -1330,7 +1388,12 @@ def analyze_jobs(
                 "actual_test_seconds": _rounded_seconds(actual),
                 "artifact_seconds": _rounded_seconds(artifact),
                 "retry_classification": _retry_classification(job),
+                "retry_reason": _retry_reason(job),
                 "timeout_classification": _timeout_classification(job),
+                "timeout_reason": _timeout_reason(job),
+                "skip_reason": _skip_reason(
+                    job, upstream_failure=upstream_failure[job.job_id]
+                ),
                 "critical_path_end_seconds": round(end_times[job.job_id], 3),
                 "upstream_failure_blocked": upstream_failure[job.job_id],
                 "continued_after_core_failure": continued,
@@ -1364,6 +1427,7 @@ def analyze_jobs(
             "timing_seconds": _timing_ledger(jobs),
             "retry_classification": _retry_summary(jobs),
             "timeout_classification": _timeout_summary(jobs),
+            "resource_usage": _resource_usage_unavailable(),
             "duplicate_setup_download_work": duplicate_setup,
             "upstream_failure_blocked_jobs": [
                 row["id"] for row in job_rows if row["upstream_failure_blocked"]

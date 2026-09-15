@@ -19,6 +19,7 @@ import os
 import re
 import sys
 import tempfile
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -28,6 +29,31 @@ MAX_JOB_NAME_CHARS = 512
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 VALID_MODES = frozenset({"strict", "diagnostic-lower-bound"})
 VALID_STATUSES = frozenset({"queued", "in_progress", "completed"})
+VALID_RETRY_REASONS = frozenset(
+    {
+        "run_attempt_unavailable",
+        "initial_workflow_attempt",
+        "workflow_rerun",
+    }
+)
+VALID_TIMEOUT_REASONS = frozenset(
+    {
+        "job_conclusion",
+        "step_conclusion",
+        "job_cancelled",
+        "incomplete_evidence",
+        "unknown_conclusion",
+        "not_timed_out",
+    }
+)
+VALID_SKIP_REASONS = frozenset(
+    {
+        "upstream_failure",
+        "condition_not_exposed_by_jobs_api",
+        "job_condition_not_exposed_by_jobs_api",
+    }
+)
+VALID_RESOURCE_STATUSES = frozenset({"measured", "unsupported"})
 TIMING_BUCKETS = ("queue", "setup", "test", "artifact")
 OUTCOME_ORDER = (
     "success",
@@ -183,6 +209,32 @@ def _validate_timing(summary: Mapping[str, object]) -> dict[str, Mapping[str, ob
     return timing
 
 
+def _validate_resource_usage(summary: Mapping[str, object]) -> Mapping[str, object]:
+    """Validate runner-resource telemetry without treating N/A as a value."""
+    resource = _mapping(summary.get("resource_usage"), "summary.resource_usage")
+    status = resource.get("status")
+    if not isinstance(status, str) or status not in VALID_RESOURCE_STATUSES:
+        raise HealthReportError("summary.resource_usage.status is unsupported")
+    _non_empty_text(resource.get("source"), "summary.resource_usage.source")
+    _non_empty_text(resource.get("reason"), "summary.resource_usage.reason")
+    cpu_seconds = _non_negative_number(
+        resource.get("cpu_seconds"), "summary.resource_usage.cpu_seconds"
+    )
+    peak_rss_bytes = _non_negative_number(
+        resource.get("peak_rss_bytes"), "summary.resource_usage.peak_rss_bytes"
+    )
+    if status == "unsupported":
+        if cpu_seconds is not None or peak_rss_bytes is not None:
+            raise HealthReportError(
+                "unsupported resource telemetry must use null measurements"
+            )
+    elif cpu_seconds is None or peak_rss_bytes is None:
+        raise HealthReportError(
+            "measured resource telemetry requires CPU and peak RSS values"
+        )
+    return resource
+
+
 def _validate_jobs(
     report: Mapping[str, object], expected_count: int
 ) -> list[Mapping[str, object]]:
@@ -203,6 +255,26 @@ def _validate_jobs(
         conclusion = job.get("conclusion")
         if conclusion is not None:
             _non_empty_text(conclusion, f"jobs[{index}].conclusion", max_chars=64)
+        retry_reason = job.get("retry_reason")
+        if not isinstance(retry_reason, str) or retry_reason not in VALID_RETRY_REASONS:
+            raise HealthReportError(f"jobs[{index}].retry_reason is unsupported")
+        timeout_reason = job.get("timeout_reason")
+        if (
+            not isinstance(timeout_reason, str)
+            or timeout_reason not in VALID_TIMEOUT_REASONS
+        ):
+            raise HealthReportError(f"jobs[{index}].timeout_reason is unsupported")
+        skip_reason = job.get("skip_reason")
+        if skip_reason is not None and (
+            not isinstance(skip_reason, str) or skip_reason not in VALID_SKIP_REASONS
+        ):
+            raise HealthReportError(f"jobs[{index}].skip_reason is unsupported")
+        if conclusion == "skipped" and skip_reason is None:
+            raise HealthReportError(f"jobs[{index}].skip_reason is required")
+        if conclusion != "skipped" and skip_reason is not None:
+            raise HealthReportError(
+                f"jobs[{index}].skip_reason is only valid for skipped jobs"
+            )
         jobs.append(job)
     return jobs
 
@@ -214,6 +286,7 @@ def _validated_parts(
     Mapping[str, object],
     list[Mapping[str, object]],
     dict[str, Mapping[str, object]],
+    Mapping[str, object],
     str | None,
 ]:
     root = _mapping(report, "report")
@@ -226,8 +299,9 @@ def _validated_parts(
     if summary.get("analysis_mode") != root.get("analysis_mode"):
         raise HealthReportError("summary.analysis_mode does not match report")
     timing = _validate_timing(summary)
+    resource = _validate_resource_usage(summary)
     jobs = _validate_jobs(root, job_count)
-    return root, summary, jobs, timing, digest
+    return root, summary, jobs, timing, resource, digest
 
 
 def _outcome(job: Mapping[str, object]) -> str:
@@ -260,7 +334,7 @@ def render_report(report: object, *, max_skipped: int = 20) -> str:
         or not (0 <= max_skipped <= MAX_SKIPPED_JOBS)
     ):
         raise HealthReportError(f"max_skipped must be between 0 and {MAX_SKIPPED_JOBS}")
-    root, summary, jobs, timing, digest = _validated_parts(report)
+    root, summary, jobs, timing, resource, digest = _validated_parts(report)
     run_id, repository, mode = _validate_report_identity(root)
 
     outcomes = {outcome: 0 for outcome in OUTCOME_ORDER}
@@ -319,15 +393,47 @@ def render_report(report: object, *, max_skipped: int = 20) -> str:
             )
             + " |"
         )
+    retry_reasons = Counter(str(job["retry_reason"]) for job in jobs)
+    timeout_reasons = Counter(str(job["timeout_reason"]) for job in jobs)
+    lines.extend(
+        [
+            "",
+            "### Retry and timeout reasons",
+            "",
+            "| Signal | Reason | Jobs |",
+            "|---|---|---:|",
+        ]
+    )
+    for signal, reasons in (
+        ("retry", retry_reasons),
+        ("timeout", timeout_reasons),
+    ):
+        for reason, count in sorted(reasons.items()):
+            lines.append(f"| {_safe_cell(signal)} | {_safe_cell(reason)} | {count} |")
     lines.extend(["", "### Skipped jobs", ""])
     if not skipped:
         lines.append("None observed.")
     else:
         for job in skipped[:max_skipped]:
-            lines.append(f"- `{_safe_cell(job.get('name'))}`")
+            lines.append(
+                f"- `{_safe_cell(job.get('name'))}` — "
+                f"{_safe_cell(job.get('skip_reason'))}"
+            )
         omitted = len(skipped) - min(len(skipped), max_skipped)
         if omitted:
             lines.append(f"- _{omitted} additional skipped jobs omitted._")
+    lines.extend(
+        [
+            "",
+            "### Runner resource telemetry",
+            "",
+            f"- Status: `{_safe_cell(resource.get('status'))}`",
+            f"- Source: `{_safe_cell(resource.get('source'))}`",
+            f"- CPU seconds: **{_safe_cell(resource.get('cpu_seconds'))}**",
+            f"- Peak RSS bytes: **{_safe_cell(resource.get('peak_rss_bytes'))}**",
+            f"- Reason: {_safe_cell(resource.get('reason'))}",
+        ]
+    )
     if mode == "diagnostic-lower-bound":
         lines.extend(
             [

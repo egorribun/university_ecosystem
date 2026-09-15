@@ -97,6 +97,23 @@ cross the CLI boundary unsigned.  Job names
 are HTML-escaped and bounded; pending or unknown outcomes are called out and
 never presented as a green release signal.
 
+Every job row also carries machine-readable `retry_reason`,
+`timeout_reason`, and (for skipped jobs) `skip_reason` values.  These fields
+describe only evidence exposed by the Jobs API: a workflow rerun does not
+prove that an individual failure was retried or transient, and an
+`if:`-condition is reported as `condition_not_exposed_by_jobs_api` unless the
+validated DAG proves an upstream failure blocked the job.  The `artifact`
+timing bucket covers observed upload, download, cache, and other artifact
+steps; it is not presented as an upload-only duration when the API cannot
+distinguish those operations.
+
+The summary includes `resource_usage` with explicit CPU and peak-RSS
+measurements.  The current Jobs API does not expose runner resource telemetry,
+so the producer records `status: unsupported` and null measurements with a
+reason.  The renderer rejects a non-null value in that state; a future
+runner-side producer may use `status: measured` only when both values are
+actually captured.
+
 The report is intentionally diagnostic-only: it observes the completed run
 through the GitHub Jobs API and therefore is a lower bound, not proof of the
 dependency DAG, archive bytes, or release provenance.  Strict timing evidence

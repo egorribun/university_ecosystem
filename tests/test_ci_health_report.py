@@ -55,6 +55,12 @@ def test_render_report_includes_safe_summary_and_timing_table() -> None:
     assert "| queue | 2 | 120.0 | 30.0 | 90.0 | 90.0 |" in rendered
     assert "| success | 1 |" in rendered
     assert "| failure | 1 |" in rendered
+    assert "### Retry and timeout reasons" in rendered
+    assert "| retry | initial_workflow_attempt | 3 |" in rendered
+    assert "| timeout | not_timed_out | 3 |" in rendered
+    assert "### Runner resource telemetry" in rendered
+    assert "CPU seconds: **—**" in rendered
+    assert "Peak RSS bytes: **—**" in rendered
     assert "This report is diagnostic-only" in rendered
 
 
@@ -67,6 +73,7 @@ def test_render_report_escapes_untrusted_job_names_and_lists_skips() -> None:
 
     assert "bad\\|name&lt;script&gt;" in rendered
     assert "| skipped | 1 |" in rendered
+    assert "condition_not_exposed_by_jobs_api" in rendered
     assert "Skipped jobs" in rendered
 
 
@@ -113,6 +120,37 @@ def test_cli_rejects_analyzer_report_without_digest(tmp_path: Path) -> None:
     ],
 )
 def test_render_report_rejects_incomplete_or_invalid_evidence(mutator) -> None:
+    report = _diagnostic_report()
+    mutator(report)
+
+    with pytest.raises(HealthReportError):
+        render_report(report)
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        lambda report: cast(dict[str, object], report["summary"])[
+            "resource_usage"
+        ].__setitem__("status", "unsupported-but-measured"),
+        lambda report: cast(dict[str, object], report["summary"])[
+            "resource_usage"
+        ].__setitem__("status", []),
+        lambda report: cast(dict[str, object], report["summary"])[
+            "resource_usage"
+        ].__setitem__("cpu_seconds", 1.0),
+        lambda report: cast(list[dict[str, object]], report["jobs"])[0].__setitem__(
+            "timeout_reason", "guessed_from_duration"
+        ),
+        lambda report: cast(list[dict[str, object]], report["jobs"])[0].__setitem__(
+            "retry_reason", []
+        ),
+        lambda report: cast(list[dict[str, object]], report["jobs"])[2].__setitem__(
+            "skip_reason", None
+        ),
+    ],
+)
+def test_render_report_rejects_untrusted_reason_or_resource_claims(mutator) -> None:
     report = _diagnostic_report()
     mutator(report)
 
