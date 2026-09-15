@@ -34,6 +34,16 @@ jobs:
         with:
           go-version: "1.26.6"
           cache: true
+          cache-dependency-path: |
+            services/gateway/go.sum
+            services/file-processor/go.sum
+            services/ws-hub/go.sum
+            services/cmd/uni-cli/go.sum
+            services/pkg/spiffe/go.sum
+            services/pkg/spicedb/go.sum
+            services/pkg/logging/go.mod
+            gen/go/go.sum
+            go.sum
 
       - name: Capture Go benchmark evidence
         shell: bash

@@ -6466,6 +6466,34 @@ def test_performance_workflow_uses_same_run_immutable_paired_gates() -> None:
     )
 
 
+def test_benchmark_go_cache_covers_every_workspace_dependency_file() -> None:
+    """Benchmark cache invalidation must include every Go module in the workspace."""
+
+    workflow = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    setup_go = next(
+        step
+        for step in workflow["jobs"]["benchmark"]["steps"]
+        if isinstance(step, dict)
+        and str(step.get("uses", "")).startswith("actions/setup-go")
+    )
+    assert setup_go["with"]["cache"] is True
+    assert setup_go["with"]["cache-dependency-path"].splitlines() == [
+        "services/gateway/go.sum",
+        "services/file-processor/go.sum",
+        "services/ws-hub/go.sum",
+        "services/cmd/uni-cli/go.sum",
+        "services/pkg/spiffe/go.sum",
+        "services/pkg/spicedb/go.sum",
+        "services/pkg/logging/go.mod",
+        "gen/go/go.sum",
+        "go.sum",
+    ]
+
+
 def test_performance_history_is_main_only_and_advisory() -> None:
     """Historical charts cannot supply a PR decision or receive PR credentials."""
 
