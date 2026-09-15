@@ -5349,6 +5349,17 @@ No production threshold was changed and no test was weakened. The old run is
 still diagnostic; fresh current-SHA mutation evidence must prove the complete
 inventory at 100% viable score after push.
 
+## 84. Redundant attachment-separator mutation closure (2026-09-15; pending push)
+
+Stale group 33 (`104249725224`) changed the explicit slash check in
+`private_attachment_storage_key` to a different slash literal. This cannot
+change behavior because the anchored `_FILENAME_RE` rejects every path
+separator before that clause is reached. The already-committed simplification
+to `if safe_filename is None:` removes the redundant predicate and all of its
+equivalent literal mutations while retaining the same fail-closed filename
+allow-list and exact error contract. No exclusion or quality-threshold change
+was introduced.
+
 ## 82. CI capacity audit and evidence-gated speed policy (2026-09-15)
 
 The read-only capacity audit of workflow sources and stale run `34923631288`
