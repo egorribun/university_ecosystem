@@ -170,7 +170,7 @@ GitHub admin bypass on the main-branch ruleset is intentionally left enabled for
   - Grafana Loki + Fluent Bit aggregation.
   - Structlog processor `_redact_pii` automatically masks email addresses (>=2-char TLD) and phone numbers across all backend logs.
 - **Path Traversal Defense**:
-  - Backend: `StaticFSStorage._validate_resolved_path()` checks symlinks and `is_relative_to(base_dir)`.
+  - Backend: `StaticFSStorage._resolve_validated_path()` checks symlinks and `is_relative_to(base_dir)`.
   - Frontend SSR: `server-prod.mjs` validates `filePath.startsWith(staticRoot)`.
   - Go File Processor: `sourceKey` and `destKey` sanitized against directory traversal.
 - **Cross-Service Identity Assertion**:

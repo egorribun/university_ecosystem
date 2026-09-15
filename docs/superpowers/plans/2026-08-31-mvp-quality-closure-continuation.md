@@ -3836,7 +3836,7 @@ security policy.
 ### 50.2 Catalog expansion completed locally
 
 Commit `ce3b07580` (`docs: expand CI check catalog governance`) extends the
-machine-validated catalog from the 55-workflow/180-source-job inventory to
+then-current machine-validated 55-workflow/180-source-job inventory to
 include:
 
 - four provider-managed protected contexts (`CodeQL`, `Checkov`, `spectral`,
@@ -3849,6 +3849,12 @@ include:
   contexts, canonical repository paths, profile/classification/event
   consistency, workflow-call bindings and matrix evidence;
 - focused tests retained and extended from 10 to 17 cases.
+
+The canonical catalog was subsequently extended to 182 source jobs.  The
+current `quality/ci-check-catalog.json` and
+`docs/testing/ci-check-catalog-runbook.md` are authoritative for that count;
+the 180-job command outputs in this historical checkpoint remain retained as
+point-in-time evidence for the earlier catalog revision.
 
 Independent local verification completed:
 
@@ -3900,7 +3906,7 @@ same-run DAG/artifact-selector provenance was supplied.
 | Immutable dependency/artifact caches | `PARTIAL`: cache namespaces and provenance selectors exist; repeated setup remains measured work |
 | Required vs advisory catalog | `IMPLEMENTED-LOCAL / LIVE-REVIEW-PENDING`: static source/provider/expansion catalog and validator are green; refresh ruleset after push and compare all required contexts |
 | Transient-only retries | `PARTIAL`: targeted retries exist; repository-wide first-failure-preserving classifier remains open |
-| Unified check/artifact/owner catalog | `IMPLEMENTED-LOCAL`: 55 workflows/180 source jobs plus protected supplemental contexts are schema-validated |
+| Unified check/artifact/owner catalog | `IMPLEMENTED-LOCAL`: 55 workflows/182 source jobs plus protected supplemental contexts are schema-validated |
 | Compact CI health report | `IMPLEMENTED-LOCAL / EVIDENCE-PENDING`: existing `ci-success` now publishes a run/attempt-bound diagnostic JSON+Markdown artifact and step-summary projection; current-SHA terminal runs are still required |
 | Local parallel fast-preflight | `IMPLEMENTED-LOCAL / EVIDENCE-PENDING`: focused contracts are green; current full developer invocation remains non-release evidence |
 | Generic heartbeat diagnostics | `PARTIAL`: mutation watchdog exists; cross-job stall diagnostics remain open |
@@ -7152,3 +7158,60 @@ push the corrected test plus this checkpoint non-force, then require a new
 exact-SHA matrix and re-audit every current failure, mutation/coverage
 artifact, security result and release boundary. The roadmap remains
 `EVIDENCE-BLOCKED / EXTERNAL-ONLY` until that terminal evidence exists.
+
+## 130. Current-SHA Bandit scope contract closure (2026-09-15)
+
+The next exact-SHA matrix for `c34e84da818b47b855f98177ace92805e7a51ab6`
+(`35009187334`) reached a terminal state with one deterministic backend
+contract failure. Backend shard `104524519704` completed `2396 passed, 7
+skipped` before
+`tests/test_quality_configuration.py::test_bandit_scope_is_explicitly_production_code_only`
+failed because the merged dependency baseline had changed `[tool.bandit].targets`
+to `['app', 'tests']`, while the required production security contract and the
+pre-commit hook both scope Bandit to deployable `app/` code. No Bandit finding,
+secret, or runtime defect was reported. The terminal run contained `118` job
+records: `92` success, `24` skipped, the one backend failure above, and the
+dependent `CI Success` failure (`104529921438`); no other independent gate
+failure was observed.
+
+The `24` skipped records are not silently promoted: three backend integration
+shards are disabled by the current `run-integration:false` matrix inputs,
+Trusted Codecov and the WebSocket 10k advisory lane are event-gated, and the
+seven Go mutation-diagnostic reusable calls are intentionally not enabled by
+the PR matrix. The remaining skipped records are the fail-closed downstream
+coverage, chaos, mutmut, and Stryker jobs whose backend prerequisite failed;
+`CI Success` correctly treated those missing results as non-green rather than
+as evidence.
+
+The RED/GREEN correction restores `targets = ["app"]` and the documented
+production-only rationale in `pyproject.toml`. Test fixtures and chaos helpers
+remain covered by the dedicated detect-secrets/Semgrep gates; no blanket
+`nosec`, exclusion, quarantine, retry, or quality-floor change was introduced.
+The focused contract suite is green (`36 passed`), the two governance/Bandit
+tests pass, and `uv run bandit -c pyproject.toml -r app -q` exits `0` with only
+the repository's existing informational `nosec`/comment diagnostics. The
+default Windows pre-commit cache ACL error remains an environment limitation;
+the hosted Linux pre-commit gate remains authoritative.
+
+The same documentation-only cleanup is included in this source checkpoint:
+the continuation plan now distinguishes historical `180`-job output from the
+canonical `55 workflow / 182 source-job` catalog and synchronizes the measured
+BE-02 inventory (`36` dual, `81` Python-only, `17` server-only; source AST
+inventory `55`). `AGENTS.md` and `SECURITY.md` now reference the renamed
+`StaticFSStorage._resolve_validated_path()` method. Markdown links, catalog
+validation, targeted markdownlint, and `git diff --check` are clean.
+
+The c34 run is diagnostic only because the Bandit contract failure invalidates
+the source-bound matrix. Commit and push this correction non-force, then
+inspect the fresh exact-SHA matrix with full pagination. A release or
+full-plan completion claim remains prohibited until that run, current
+coverage/mutation/manifest artifacts, required-context comparison, and the
+Docker/Kubernetes/release evidence in §122.5 are all terminal and green.
+
+For completeness, the terminal run produced `54` non-expired artifacts; the
+attempt-bound CI health artifact is `ci-health-35009187334-1` (artifact ID
+`10413779925`, upload digest
+`sha256:25c66e9ec56def4912cbdc15effc93b8e2ac2f5035e924f869aae95c481a68fa`).
+The live main ruleset's `92` required contexts were all present on PR `#1266`
+(`missing_count = 0`); merge was blocked only by the backend shard failure,
+its fail-closed `CI Success` aggregate, and the expected downstream skips.
