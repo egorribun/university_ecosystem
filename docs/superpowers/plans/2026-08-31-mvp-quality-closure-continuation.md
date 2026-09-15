@@ -6513,3 +6513,23 @@ No release path was widened to plaintext, and no coverage/mutation threshold,
 exclusion, quarantine, suppression, retry, or timeout policy was weakened.
 The patch is pending its remediation commit and a fresh current-SHA security
 scan, hosted CI, and actual staging/TLS validation.
+
+## 117. CI check-catalog guard synchronization (2026-09-15; pending push)
+
+The workflow audit found one deterministic catalog drift: the privileged
+`weekly-cleanup` job now has an explicit main-branch guard, while its catalog
+entry still declared the old placeholder `workflow trigger` guard. Because the
+catalog validator compares every job guard against the parsed workflow source,
+that stale value blocked the quality gate before any product tests ran.
+
+The catalog entry now records the exact source expression
+`${{ github.ref == 'refs/heads/main' }}`. No job trigger, permissions, timeout,
+retry, matrix cap, or required/advisory policy was changed.
+
+Verification:
+
+    uv run python scripts/quality/validate_ci_check_catalog.py
+    # CI check catalog: OK (55 workflows, 182 jobs)
+
+The change is intentionally limited to the machine-readable catalog and is
+pending inclusion in the next remediation commit and current-SHA CI run.

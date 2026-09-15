@@ -4382,7 +4382,7 @@
           "check_name_template": "cleanup",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
-          "guard": "workflow trigger",
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
