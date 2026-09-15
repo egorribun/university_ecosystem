@@ -5969,6 +5969,7 @@ failure. User-owned WASM edits, temporary directories,
 `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
 
+
 ## 101. Local contract recertification after g65/g64 closures (2026-09-15; pending push)
 
 After the image-limit and pyvips focused tests, the local quality-contract and
@@ -6198,6 +6199,58 @@ TDD evidence on the current checkout:
 
 No mutation threshold, exclusion, quarantine or timeout policy was changed.
 The stale run remains bound to source SHA
+`2774de52d158cf0b7611b331586014a8420a1df2`; fresh current-SHA mutation
+evidence remains mandatory. User-owned WASM edits, temporary directories,
+`docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
+
+## 112. AVIF quality contract survivor closure (2026-09-15; pending push)
+
+Stale PR run `34923631288` completed mutmut execution group 88 in job
+`104249730312`; artifact `10392293513`
+(`mutmut-exact-evidence-34923631288-1-group-88`) selected five mutants from a
+54,141-mutant universe. Four were killed and the survivor was
+`app.services.image_proxy.x__process_image__mutmut_34`. The artifact records
+`status: survived`, `exit_code: 0`, selection SHA-256
+`ec1019c438256c0a980c6d85b0ea393a71aee5084ba3724aef4c2b725f0ecb49`, selected
+results SHA-256 `1cc8c77ba5610fb49ccb4638550538be77b3350ff87c80525b685a3cd24d74a9`,
+and universe SHA-256
+`2af0d764ca6e63eeafbec21028013ef7485211e2121145ead74e8013966324a2`.
+
+The stale generated source removed the explicit `quality=60` argument from
+the AVIF encoder call. This is a real output-contract mutation: it changes
+the configured AVIF quality rather than only changing syntax. The focused
+success-path test now requires the encoder callback to receive exactly
+`format="AVIF"` and `quality=60`, and asserts the complete keyword argument
+mapping. No production change was necessary because the current source
+already passed `quality=60`; the gap was only the missing assertion.
+
+TDD evidence on the current checkout:
+
+    # RED against a temporary mutant with quality=60 removed:
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_image_proxy_closure.py::test_process_image_returns_avif_when_encoding_succeeds \
+      --disable-warnings --maxfail=1
+    # 1 failed: callback rejected the missing required quality argument
+
+    # GREEN after restoring the production contract:
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_image_proxy_closure.py tests/test_images_v2.py \
+      --disable-warnings --maxfail=1
+    # 37 passed in 11.71s
+    uv run ruff check app/services/image_proxy.py tests/test_image_proxy_closure.py
+    # All checks passed!
+    uv run ruff format --check app/services/image_proxy.py \
+      tests/test_image_proxy_closure.py
+    # 2 files already formatted
+    uv run python -m mypy --config-file pyproject.toml \
+      app/services/image_proxy.py
+    # Success: no issues found in 1 source file
+    git diff --check
+    # passed
+
+No threshold, exclusion, quarantine, timeout or inventory policy was
+changed. The stale run remains bound to source SHA
 `2774de52d158cf0b7611b331586014a8420a1df2`; fresh current-SHA mutation
 evidence remains mandatory. User-owned WASM edits, temporary directories,
 `docs/audits/AUDIT_PLATFORM_FULL.md` and

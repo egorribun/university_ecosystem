@@ -66,8 +66,9 @@ def test_process_image_returns_avif_when_encoding_succeeds():
     image.format = "PNG"
     image.__enter__.return_value = image
 
-    def save(buffer, *, format, **_kwargs):
+    def save(buffer, *, format, quality):
         assert format == "AVIF"
+        assert quality == 60
         buffer.write(b"avif-data")
 
     image.save.side_effect = save
@@ -77,6 +78,7 @@ def test_process_image_returns_avif_when_encoding_succeeds():
 
     assert data == b"avif-data"
     assert mime == "image/avif"
+    assert image.save.call_args.kwargs == {"format": "AVIF", "quality": 60}
 
 
 def test_process_image_does_not_resize_when_width_matches_source():
