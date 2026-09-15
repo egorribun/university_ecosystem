@@ -5437,3 +5437,29 @@ Focused evidence:
 
 The historical job remains stale evidence; a fresh current-SHA mutation run
 must verify the complete frontend/backend mutation inventory after push.
+
+## 87. Full application scope for the local mypy hook (2026-09-15; pending push)
+
+The external audit's SEC-12 review found that the pre-commit mypy hook only
+selected `app/auth`, `services`, `api`, `core`, `repositories` and `graphql`,
+while CI's authoritative `pyproject.toml` scope is the complete `app/` tree.
+That left `app/models`, `app/schemas`, `app/utils`, CLI modules and
+`app/main.py` unchecked on local commits. The hook now uses the same anchored
+`^app/` scope. Its isolated environment also declares the locked CLI runtime
+packages `rich==15.0.0` and `typer==0.25.1`, so the expanded check is
+reproducible instead of failing on missing imports.
+
+The workflow contract asserts the scope, and the full isolated hook was run:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_workflow_fail_closed_contracts.py -k precommit_split
+    # 1 passed, 37 deselected
+
+    $env:PRE_COMMIT_HOME='C:\\Temp\\pre-commit-cache-mvp'
+    pre-commit run mypy --all-files --show-diff-on-failure
+    # Passed; 351 source files checked
+
+This closes the local-hook gap without changing CI's strict mypy policy or
+adding an exclusion. The external audit's SEC-07 detect-secrets baseline
+verification and Linux-only tooling checks remain evidence-gated follow-up
+items; no unverified baseline entry was silently accepted here.

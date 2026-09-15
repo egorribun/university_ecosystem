@@ -55,9 +55,10 @@ repos:
       - id: mypy
         name: mypy type-check (auth + services)
         args: ["--config-file", "pyproject.toml"]
-        # TD-W18-05 (audit 2026-03-23 Wave 18): expanded scope to cover app/services/,
-        # app/api/, and app/graphql/ — previously only auth+core+repos were strict-checked.
-        files: ^app/(auth|services|api|core|repositories|graphql)/
+        # Keep the local hook aligned with CI's strict ``files = ["app"]``
+        # contract.  Narrow package filters leave models, schemas, utils and
+        # the application entrypoint unchecked until a remote run.
+        files: ^app/
         additional_dependencies:
           - "pydantic>=2"
           - "pydantic-settings"
@@ -69,6 +70,10 @@ repos:
           - "types-pyyaml"
           - "types-zxcvbn"
           - "strawberry-graphql>=0.250"
+          # app/cli is part of the CI mypy tree; keep its runtime imports
+          # available in the isolated pre-commit environment as well.
+          - "rich==15.0.0"
+          - "typer==0.25.1"
           - "fastapi"
           - "starlette"
           - "nh3"

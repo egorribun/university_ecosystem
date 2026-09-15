@@ -341,6 +341,16 @@ def test_precommit_split_preserves_every_nonmanual_hook_and_fails_closed() -> No
     )
     assert detect_secrets["entry"] == "python scripts/run_detect_secrets.py"
     assert detect_secrets["args"] == ["--baseline", ".secrets.baseline"]
+    mypy_hook = next(
+        hook
+        for repo in config["repos"]
+        for hook in repo.get("hooks", [])
+        if hook["id"] == "mypy"
+    )
+    # The local hook must cover the same deployable application tree as CI;
+    # narrowing it to selected packages leaves models, schemas, utils and
+    # application entrypoints unchecked until a remote run.
+    assert mypy_hook["files"] == r"^app/"
 
     ci_success = jobs["ci-success"]
     assert "pre-commit-security-and-types" in ci_success["needs"]
