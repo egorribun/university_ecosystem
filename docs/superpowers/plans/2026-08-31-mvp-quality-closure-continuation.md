@@ -6116,3 +6116,24 @@ No quality threshold, test/source/mutant inventory, timeout or retry policy
 was changed. User-owned WASM edits, temporary directories,
 `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
+
+## 110. Static security-header survivor recertification (2026-09-15; pending push)
+
+Stale PR run `34923631288` completed mutmut group 81 in job `104249729693`;
+artifact `10391234933` selected nine mutants and reported one survivor:
+`app.core.static.PublicStaticFiles.get_response__mutmut_12`. The generated
+stale source changed the private-path response header name from
+`X-Content-Type-Options` to `XXX-Content-Type-OptionsXX`, which would remove
+the required `nosniff` header from the response contract.
+
+This is stale-source evidence, not a current defect. The exact current
+regression assertion
+`response.headers["x-content-type-options"] == "nosniff"` was added in
+commit `8bafb3ce5` after the stale universe SHA
+`2774de52d158cf0b7611b331586014a8420a1df2`; Starlette's case-insensitive
+headers preserve the lookup while the mutated name is absent, so the mutant
+now fails deterministically. The focused static/private-attachment suite
+also covers status and `Cache-Control` safety values. No product source,
+mutation inventory or threshold was changed, and no suppression or
+exclusion is appropriate. A fresh current-SHA mutmut universe remains
+mandatory before certification.
