@@ -660,6 +660,12 @@ const firstAttemptDedicatedFiles = [
   // first-attempt runner.  This is placement-only; the full source inventory
   // and mutant denominator remain mandatory for aggregation.
   "src/components/ui/Select.tsx",
+  // Run 35023906328 shard 25 combined StoryViewer's enclosing component
+  // mutation with unrelated API and UI graphs and hit the 15-minute initial
+  // perTest deadline.  The 158-mutant enclosing range is not safely
+  // splittable; isolate the complete source range without changing the
+  // canonical 64-shard denominator.
+  "src/components/stories/StoryViewer.tsx",
 ]
 
 // These module-level sources were present in the timed-out shard 22/64. Their

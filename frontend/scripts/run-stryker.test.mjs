@@ -3260,6 +3260,76 @@ test("isolates the unsplittable Select AST hotspot without changing the 64-way d
   )
 })
 
+test("isolates the unsplittable StoryViewer AST hotspot without changing the 64-way denominator", async () => {
+  const { mutationPatternCoversMutant, planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count, startLine = 0) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: startLine + index, column: 0 },
+        end: { line: startLine + index, column: 4 },
+      },
+    }))
+  const storyFile = "src/components/stories/StoryViewer.tsx"
+  const storyMutants = [
+    {
+      fileName: storyFile,
+      mutatorName: "BlockStatement",
+      replacement: "{}",
+      location: {
+        start: { line: 14, column: 17 },
+        end: { line: 304, column: 1 },
+      },
+    },
+    ...makeMutants(storyFile, 157, 20),
+  ]
+  const badgeFile = "src/components/ui/Badge.tsx"
+  const preflight = new Map([
+    [storyFile, { mutants: storyMutants }],
+    [badgeFile, { mutants: makeMutants(badgeFile, 32) }],
+    ...Array.from({ length: 10 }, (_, index) => {
+      const file = `src/story-hotspot-regular-${index}.ts`
+      return [file, { mutants: makeMutants(file, 1_000) }]
+    }),
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  const expectedMutants = [...preflight.values()].reduce(
+    (total, entry) => total + entry.mutants.length,
+    0
+  )
+
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    expectedMutants
+  )
+  const assignments = plan.flatMap(({ files }) => files)
+  assert.equal(new Set(assignments).size, assignments.length)
+
+  const storyShards = plan.filter((shard) =>
+    shard.files.some((pattern) => pattern.startsWith(`${storyFile}:`))
+  )
+  assert.equal(storyShards.length, 1)
+  assert.ok(storyShards[0].files.every((pattern) => pattern.startsWith(`${storyFile}:`)))
+  assert.equal(
+    storyMutants.filter((mutant) =>
+      mutationPatternCoversMutant(storyShards[0].files[0], mutant, storyFile)
+    ).length,
+    storyMutants.length
+  )
+  assert.ok(
+    plan.every(
+      (shard) =>
+        !shard.files.some((pattern) => pattern.startsWith(`${storyFile}:`)) ||
+        !shard.files.some((pattern) => pattern.startsWith(`${badgeFile}:`))
+    ),
+    "StoryViewer must not share its enclosing graph with UI hotspots"
+  )
+})
+
 test("keeps the dedicated first-attempt planner total with two requested shards", async () => {
   const { planMutationShards } = await import(runnerUrl)
   const makeMutants = (file, count) =>
