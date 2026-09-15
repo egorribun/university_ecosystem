@@ -5727,6 +5727,33 @@ then perform the external merge/release gates. User-owned WASM changes,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
 
+## 100. pyvips input-forwarding survivor closure (2026-09-15; pending push)
+
+Stale run `34923631288` completed mutmut execution group 65 with survivor
+`10388339017`: `app.utils.images_vips.x_optimize_image_vips__mutmut_10`
+replaced the payload passed to `pyvips.Image.new_from_buffer` with `None` in
+the `max_pixels` validation path. This is a real trust-boundary defect: image
+dimension validation must inspect the exact bytes supplied by the caller and
+must not silently validate a different payload.
+
+`tests/test_images_vips_full.py` now configures an 800x600 mock image, invokes
+`optimize_image_vips(b"raw", max_pixels=500_000)` and asserts the exact
+`new_from_buffer(b"raw", "")` call. Focused evidence:
+
+    uv run pytest -q -p no:cacheprovider tests/test_images_vips_full.py
+    # 19 passed
+    uv run ruff check tests/test_images_vips_full.py
+    uv run ruff format --check tests/test_images_vips_full.py
+    git diff --check
+    # all passed
+
+No source behavior, mutation inventory or threshold was weakened. The stale
+artifact is bound to `2774de52`; a fresh current-SHA mutation run remains
+mandatory. At the latest poll the run had 25 completed failures (all mutmut),
+6 in-progress jobs and 72 queued jobs; no non-mutmut failure was observed.
+User-owned WASM edits, temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md`
+and `services/file-processor/coverage_capability` remain unstaged.
+
 ## 99. Image pixel-budget state survivor closure (2026-09-15; pending push)
 
 The stale run `34923631288` then completed mutmut execution group 64 with
