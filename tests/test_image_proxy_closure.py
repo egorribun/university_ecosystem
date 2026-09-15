@@ -118,6 +118,33 @@ def test_process_image_resize_uses_resolved_high_quality_filter():
     assert mime == "image/png"
 
 
+def test_process_image_webp_uses_quality_and_method_contract():
+    """WebP output must keep the explicit quality and encoder method."""
+    image = MagicMock()
+    image.size = (100, 50)
+    image.format = "PNG"
+    image.__enter__.return_value = image
+
+    def save(buffer, *, format, quality, method):
+        assert format == "WEBP"
+        assert quality == 80
+        assert method == 6
+        buffer.write(b"webp-data")
+
+    image.save.side_effect = save
+
+    with patch("app.services.image_proxy.Image.open", return_value=image):
+        data, mime = _process_image(b"source", None, "webp")
+
+    assert image.save.call_args.kwargs == {
+        "format": "WEBP",
+        "quality": 80,
+        "method": 6,
+    }
+    assert data == b"webp-data"
+    assert mime == "image/webp"
+
+
 def test_image_proxy_cache_and_avif_import_branches():
     msgspec_package = types.ModuleType("msgspec")
     msgpack_module = types.ModuleType("msgspec.msgpack")

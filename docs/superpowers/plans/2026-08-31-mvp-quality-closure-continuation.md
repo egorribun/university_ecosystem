@@ -5727,6 +5727,43 @@ then perform the external merge/release gates. User-owned WASM changes,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
 
+## 105. WebP quality-parameter survivor closure (2026-09-15; pending push)
+
+Stale run `34923631288` completed mutmut execution group 74 in job
+`104249729115`; evidence artifact `10390627618` recorded the survivor
+`app.services.image_proxy.x__process_image__mutmut_56`. The generated mutant
+removed the explicit `quality=80` keyword from the WebP encoder call:
+
+    original: img.save(buffer, format="WEBP", quality=80, method=6)
+    mutant:   img.save(buffer, format="WEBP", method=6)
+
+This is observable product behavior because Pillow's default WebP quality is
+not the application's configured quality contract. The regression test
+`test_process_image_webp_uses_quality_and_method_contract` asserts the exact
+format, quality and method passed to `Image.save`, while also checking the
+returned bytes and MIME type. The test was first demonstrated RED against the
+mutated call (the observed kwargs omitted `quality`), then GREEN on the
+current production implementation without a source change.
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_image_proxy_closure.py::test_process_image_webp_uses_quality_and_method_contract
+    # 1 passed
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_image_proxy_closure.py tests/test_image_proxy.py
+    # 43 passed
+    uv run ruff check tests/test_image_proxy_closure.py app/services/image_proxy.py
+    uv run ruff format --check tests/test_image_proxy_closure.py app/services/image_proxy.py
+    git diff --check
+    # all passed
+
+No production behavior, mutation inventory or threshold was weakened. The
+stale artifact is bound to source SHA `2774de52d158cf0b7611b331586014a8420a1df2`;
+fresh current-SHA mutation evidence remains mandatory before certification.
+The focused test is intentionally exact so it also rejects equivalent removal
+of either WebP encoder parameter in a regenerated universe. User-owned WASM
+edits, temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
+
 ## 104. External-audit triage against current ancestry (2026-09-15; evidence pending)
 
 The independent review of the untracked external audit
