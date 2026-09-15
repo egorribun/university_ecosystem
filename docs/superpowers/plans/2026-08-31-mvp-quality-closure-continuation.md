@@ -7022,3 +7022,34 @@ every job reaches a terminal state, including mutation, coverage/manifest,
 browser, Schemathesis, security, and infrastructure artifacts. The plan
 remains `EVIDENCE-BLOCKED / EXTERNAL-ONLY`; no release or full-plan completion
 claim is authorized from this checkpoint.
+
+## 126. Documentation gate regression and archive-link closure (2026-09-15)
+
+The exact-SHA documentation follow-up exposed and closed one genuine quality
+regression before it could be promoted. The detect-secrets job for
+`ec69e2ab8` reported `docs/API_EXAMPLES.md:15` as a new `Secret Keyword`
+because explanatory prose used the literal generic token-field name. The
+follow-up `4701a502d` changed only that wording to “bearer token field”; an
+isolated `detect-secrets==1.5.0` scan against the repository baseline produced
+no new finding and did not modify `.secrets.baseline`. No secret, OTP, cookie,
+or credential was added.
+
+The subsequent docs commit `510a466d7` repaired 104 archived-audit links whose
+intended repository-root targets still exist and made the offline checker
+ignore Markdown examples embedded in inline/fenced code. Its focused suite is
+five tests with Ruff check/format clean. The default release-facing checker
+reports all `891` tracked Markdown files clean. An explicit
+`--include-archives` audit remains non-zero for exactly 12 targets that are
+historical-only (removed memory/design artifacts or machine-local `.claude`
+paths); those references are enumerated in `docs/audits/INDEX.md` and are not
+silently guessed, deleted, or treated as current evidence.
+
+The push for `510a466d7d2acf586c7d4d114f0dd2a977fc2052` created matrix run
+`35001273982` and companion performance run `35001272122`. At this checkpoint
+the matrix is still pending admission behind the shared runner queue; no
+failure, cancellation, or timeout has been observed. These run IDs are
+diagnostic until terminal. The next source change (this checkpoint) must be
+verified from its own exact SHA, and every required job/artifact—including
+detect-secrets, coverage/manifest, mutation, browser, Schemathesis, security,
+and infrastructure—must reach a terminal state before any release claim.
+The roadmap remains `EVIDENCE-BLOCKED / EXTERNAL-ONLY`.
