@@ -5727,6 +5727,43 @@ then perform the external merge/release gates. User-owned WASM changes,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
 
+## 107. WebP encoder-method survivor closure (2026-09-15; pending push)
+
+Stale run `34923631288` completed mutmut execution group 75 in job
+`104249729208`; evidence artifact `10392190685` recorded the survivor
+`app.services.image_proxy.x__process_image__mutmut_57`. Its generated source
+removed the explicit WebP encoder method while retaining the quality keyword:
+
+    original: img.save(buffer, format="WEBP", quality=80, method=6)
+    mutant:   img.save(buffer, format="WEBP", quality=80, )
+
+This changes the Pillow encoder behavior because the default method is not the
+application's explicit method-6 contract. The g74 regression test
+`test_process_image_webp_uses_quality_and_method_contract` already asserts the
+complete exact kwargs set, so it kills this sibling mutant as well; the test's
+required `method` argument also deterministically rejects the generated call.
+No additional production or test code is needed, and no mutation threshold or
+inventory was weakened.
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_image_proxy_closure.py::test_process_image_webp_uses_quality_and_method_contract
+    # 1 passed
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_image_proxy_closure.py tests/test_image_proxy.py
+    # 43 passed
+    uv run ruff check tests/test_image_proxy_closure.py app/services/image_proxy.py
+    uv run ruff format --check tests/test_image_proxy_closure.py app/services/image_proxy.py
+    git diff --check
+    # all passed
+
+The RED contract check against the mutated kwargs observed
+`{'format': 'WEBP', 'quality': 80}` and failed against the expected method-6
+contract. The stale artifact is bound to source SHA
+`2774de52d158cf0b7611b331586014a8420a1df2`; fresh current-SHA mutation
+evidence remains mandatory before certification. User-owned WASM edits,
+temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
+
 ## 106. Benchmark Go cache-key correctness (2026-09-15; pending push)
 
 The benchmark workflow previously enabled `actions/setup-go` caching without a
