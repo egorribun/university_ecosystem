@@ -38,6 +38,16 @@ retry-like behavior that has not yet been proven to be transient-only.  Do not
 silently relabel such a job as `none` or `transient-only`; first-failure
 artifacts and a classifier must be added and tested before changing the entry.
 
+The required `Trivy Image Scan` deliberately has no automatic retry.  The
+pinned `aquasecurity/trivy-action` exposes only a process outcome, not a typed
+failure reason, so a retry could hide a vulnerability finding or a deterministic
+configuration/image error.  Its CRITICAL/HIGH scan remains blocking; the SARIF
+upload is an evidence sink and may run after a failed scan.  For a suspected
+transient runner or registry failure, rerun the same workflow manually and
+retain the first run's logs and SARIF.  Do not add an automatic retry until a
+captured stdout/stderr classifier, bounded attempts, first-attempt artifacts,
+and focused positive/negative tests prove transient-only behavior.
+
 ### Provider checks and expanded contexts
 
 `external_checks` records provider-managed required contexts that do not map

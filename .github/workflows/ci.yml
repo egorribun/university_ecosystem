@@ -1946,32 +1946,10 @@ jobs:
       - name: Run Trivy vulnerability scanner
         id: trivy_scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.28.0
-        continue-on-error: true
         env:
           # Prefer the canonical GHCR database. The public mirror can be
           # transiently unavailable from GitHub-hosted runners; changing the
           # source does not alter severity policy or the fail-closed gate.
-          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
-        with:
-          image-ref: university-ecosystem/backend:${{ github.sha }}
-          format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL,HIGH
-          limit-severities-for-sarif: true
-          exit-code: "1"
-          ignore-unfixed: true
-
-      - name: Preserve first Trivy scan evidence
-        if: always() && steps.trivy_scan.outcome == 'failure' && hashFiles('trivy-results.sarif') != ''
-        shell: bash
-        run: cp -- trivy-results.sarif trivy-results-first.sarif
-
-      - name: Retry Trivy vulnerability scanner after registry transient failure
-        id: trivy_scan_retry
-        if: always() && steps.trivy_scan.outcome == 'failure'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.28.0
-        continue-on-error: true
-        env:
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
         with:
           image-ref: university-ecosystem/backend:${{ github.sha }}
@@ -1991,40 +1969,6 @@ jobs:
           # Match the pre-category configuration key used by main. The
           # reusable audit has a separate job key for filesystem/config scans.
           category: ".github/workflows/ci.yml:docker-security-scan"
-
-      - name: Re-assert Trivy vulnerability gate
-        if: always()
-        env:
-          FIRST_OUTCOME: ${{ steps.trivy_scan.outcome }}
-          RETRY_OUTCOME: ${{ steps.trivy_scan_retry.outcome }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "$FIRST_OUTCOME" != "failure" ]]; then
-            exit 0
-          fi
-          if [[ "$RETRY_OUTCOME" != "success" ]]; then
-            echo "::error::Trivy found a CRITICAL/HIGH backend image vulnerability or failed to complete the retry scan."
-            exit 1
-          fi
-          if [[ -f trivy-results-first.sarif ]] && ! jq -e '
-            type == "object" and
-            (.version | type == "string") and
-            (.runs | type == "array" and length > 0) and
-            ([.runs[]?.results[]?] | length == 0)
-          ' trivy-results-first.sarif >/dev/null; then
-            echo "::error::The initial Trivy failure produced findings or invalid SARIF; the security gate remains failed."
-            exit 1
-          fi
-          if [[ ! -s trivy-results.sarif ]] || ! jq -e '
-            type == "object" and
-            (.version | type == "string") and
-            (.runs | type == "array" and length > 0) and
-            ([.runs[]?.results[]?] | length == 0)
-          ' trivy-results.sarif >/dev/null; then
-            echo "::error::A successful Trivy retry did not produce valid zero-finding SARIF evidence."
-            exit 1
-          fi
 
   # MOD-W15-03 (audit 2026-03-23 Wave 15): Helm lint + kubeconform validation.
   # Catches broken Helm templates and K8s manifest schema violations before deploy.

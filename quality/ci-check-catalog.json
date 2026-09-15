@@ -1312,11 +1312,11 @@
           "guard": "workflow trigger",
           "artifacts": [],
           "retry_policy": {
-            "mode": "review-required",
-            "first_failure_preserved": false,
-            "classifier": "not-yet-classified",
-            "review_required": true,
-            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false,
+            "notes": "No automatic retry: the pinned Trivy action exposes no typed failure reason. Rerun the workflow manually for suspected transient runner or registry failures."
           }
         },
         "helm-validate": {
