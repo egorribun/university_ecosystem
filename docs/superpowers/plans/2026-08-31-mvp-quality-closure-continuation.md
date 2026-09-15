@@ -5463,3 +5463,68 @@ This closes the local-hook gap without changing CI's strict mypy policy or
 adding an exclusion. The external audit's SEC-07 detect-secrets baseline
 verification and Linux-only tooling checks remain evidence-gated follow-up
 items; no unverified baseline entry was silently accepted here.
+
+## 88. Cross-platform mutation evidence containment (2026-09-15; pending push)
+
+The frontend verifier reproduced a Windows-only false rejection when
+`repositoryRoot` ended with a path separator: the lexical
+`startsWith(root + path.sep)` check constructed a doubled separator and
+reported the valid `frontend/.depcheckrc` evidence path as escaping the
+repository. `resolveEvidencePath` now resolves the root once and uses
+`path.relative` to reject `..`, `..${path.sep}` and absolute relatives while
+accepting the root itself and valid descendants. The canonical-relative input
+validator remains unchanged and still rejects absolute, dot-segment and empty
+paths.
+
+Focused evidence from commit `43f81ba90a6dd632df0eadab761e1ae36cb59474`:
+
+    node --test frontend/scripts/verify-stryker-evidence.test.mjs
+    # 15 passed
+    npx eslint frontend/scripts/verify-stryker-evidence.mjs \
+      frontend/scripts/verify-stryker-evidence.test.mjs
+    # passed
+    npm run typecheck --prefix frontend
+    # passed
+    git diff --check
+    # passed
+
+This is a tooling correctness/security-boundary fix only; no mutation source,
+test or evidence inventory was reduced. A fresh current-SHA Linux Stryker
+producer and round-trip verifier remain release-blocking.
+
+## 89. SBOM stale-PR runner reclamation (2026-09-15; pending push)
+
+The CI capacity audit found that `.github/workflows/sbom.yml` used
+`github.run_id` for every non-push event and cancelled only push runs. Every
+new PR commit therefore left the previous read-only vulnerability gate queued
+or running, consuming the shared hosted-runner budget and delaying required
+checks. The workflow now groups PR runs by PR number (with ref fallback),
+cancels superseded PR and main-push runs, and preserves unique manual
+`workflow_dispatch` evidence. The trusted main-only attestation guards and
+all SBOM/vulnerability jobs are unchanged.
+
+The contract test in `tests/test_quality_workflow_contract.py` first failed
+against the old expression, then passed after the change; generic PR
+workflow cancellation coverage remains intact. Commit `b1502b537` contains
+only the workflow and contract-test change. This is a bounded stale-run
+optimization, not a mutation/test inventory or threshold change. Global
+cross-workflow concurrency remains evidence-gated; no cap increase or
+timeout inflation is allowed before three comparable green runs.
+
+## 90. SEC-07 baseline triage disposition (2026-09-15; evidence pending)
+
+The independent audit's wording that 326 entries were "unverified" was
+rechecked against the current baseline and detect-secrets 1.5.0 semantics.
+The current `.secrets.baseline` has 156 paths and 322 finding identities;
+every entry has explicit `is_secret: false`, and the scanner reports
+`322 false positives, 0 unknown, 0 true positives`. `detect-secrets audit
+.secrets.baseline` returns `Nothing to audit!`. In this version,
+`is_verified: false` is detector/plugin verification metadata and is not the
+manual false-positive triage decision; the latter is `is_secret: false`,
+which the fail-closed verifier requires for every baseline entry.
+
+No baseline entry is changed, no suppression is added, and no field is
+mass-marked `is_verified=true`. SEC-07 is therefore `CODE-COMPLETE /
+FRESH-EVIDENCE-PENDING`: the only remaining proof is a current-SHA Linux
+all-files scan plus trusted-base comparison in CI. A new finding, malformed
+artifact, or new trusted-base suppression must still fail closed.
