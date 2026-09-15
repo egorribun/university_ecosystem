@@ -5565,3 +5565,40 @@ The focused suite (`4 passed` for the weak/32-byte contract), Ruff,
 format-check and pre-commit all pass in commit `ae53f1f27`. The production
 predicate and thresholds were not weakened; fresh current-SHA mutmut evidence
 must still prove the complete inventory.
+
+## 93. Group-44 exact survivor closure (2026-09-15; pending push)
+
+The stale mutmut group-44 evidence was inspected from its immutable selected
+manifests rather than inferred from the aggregate failure. It contained two
+viable survivors:
+
+* `_validate_internal_hmac_secret_strength`: `len(set(encoded)) < 4` changed
+  to `<= 4`. The production contract now exercises a non-periodic 32-byte
+  value with exactly four distinct bytes (`"A" * 29 + "BCD"`) and asserts it
+  is accepted. This boundary is valid because the implementation rejects
+  fewer than four distinct bytes; it also remains outside the repeated-block
+  regular expression. Together with the two-distinct-byte rejection case in
+  §92, both the strict and inclusive comparison mutants are killed.
+* `image_proxy._process_image`: original-mode `img.save(...,
+  format=original_format)` changed to `format=None`. The existing focused
+  image-proxy contract supplies a PNG source and asserts the save callback
+  receives `format="PNG"`, so the mutant fails deterministically without
+  altering production behavior.
+
+Focused evidence after adding the exact diversity boundary:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_internal_hmac_secret_security.py \
+      tests/test_image_proxy_closure.py
+    # 15 passed (one expected Pydantic development warning)
+
+    uv run ruff check tests/test_internal_hmac_secret_security.py \
+      tests/test_image_proxy_closure.py
+    uv run ruff format --check tests/test_internal_hmac_secret_security.py \
+      tests/test_image_proxy_closure.py
+    git diff --check
+    # all passed
+
+The test-only change is committed as `2eb6be8ff`. The selected group-44
+artifact was produced against an older SHA; a fresh current-SHA mutation run
+must still verify the full inventory and score.
