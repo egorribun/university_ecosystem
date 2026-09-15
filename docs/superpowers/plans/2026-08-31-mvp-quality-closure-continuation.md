@@ -5727,6 +5727,35 @@ then perform the external merge/release gates. User-owned WASM changes,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
 
+## 102. pyvips dropped-payload survivor closure (2026-09-15; pending push)
+
+Stale run `34923631288` completed mutmut execution group 67 with survivor
+`10389139421` (job `104249728351`):
+`app.utils.images_vips.x_optimize_image_vips__mutmut_12` dropped the `data`
+argument from `pyvips.Image.new_from_buffer`. This is the sibling form of the
+group-65 payload substitution and would make validation inspect an empty or
+different image instead of the caller's bytes.
+
+The exact assertion introduced for group 65,
+`new_from_buffer.assert_called_once_with(b"raw", "")`, rejects both the
+`None` substitution and the dropped-argument mutation. Focused evidence
+remains:
+
+    uv run pytest -q -p no:cacheprovider tests/test_images_vips_full.py
+    # 19 passed
+    uv run ruff check tests/test_images_vips_full.py
+    uv run ruff format --check tests/test_images_vips_full.py
+    git diff --check
+    # all passed
+
+No production behavior, mutation inventory or threshold was weakened. The
+stale artifact is bound to `2774de52`; current-SHA mutation certification is
+still pending. At the latest poll 26 completed failures were recorded (all
+mutmut), with frontend/mutmut jobs still queued or running and no non-mutmut
+failure. User-owned WASM edits, temporary directories,
+`docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
+
 ## 101. Local contract recertification after g65/g64 closures (2026-09-15; pending push)
 
 After the image-limit and pyvips focused tests, the local quality-contract and
