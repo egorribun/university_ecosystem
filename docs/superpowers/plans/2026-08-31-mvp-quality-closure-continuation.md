@@ -5414,3 +5414,26 @@ Focused evidence:
     # all passed
 
 Fresh current-SHA security and E2E evidence remains required after push.
+
+## 86. Image pixel-limit error contract (2026-09-15; pending push)
+
+Stale run group 34 (`104249725185`) exposed a viable mutmut survivor in
+`ImagePixelLimitError.__init__`: changing the `width is None` branch swapped
+the decoder-level and dimension-level error messages. The implementation's
+two safety paths are intentionally distinct, so the focused contract now
+constructs both variants and asserts their exact public messages. This closes
+the survivor with a deterministic boundary test and does not alter the pixel
+budget or decoder behavior.
+
+Focused evidence:
+
+    uv run pytest -q -p no:cacheprovider tests/test_images_v2.py
+    # 28 passed
+
+    uv run ruff check app/utils/images.py tests/test_images_v2.py
+    uv run ruff format --check app/utils/images.py tests/test_images_v2.py
+    git diff --check
+    # all passed
+
+The historical job remains stale evidence; a fresh current-SHA mutation run
+must verify the complete frontend/backend mutation inventory after push.
