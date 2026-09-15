@@ -6933,3 +6933,48 @@ the next exact-SHA push. The prior `34994184640`/companion runs remain
 diagnostic because they ran before this synchronization and before the Go
 governance commit. No dependency gate, mutation inventory, coverage floor,
 security check or retry/timeout policy was weakened.
+
+## 124. Exact-SHA CI diagnosis and compatibility closure (2026-09-15)
+
+The first matrix started from exact pushed source
+`2726c32a4cfee0178442d861fd6defcc77e4727b` after main synchronization. It is
+diagnostic only because three required prerequisites failed before the long
+matrix could reach a terminal state:
+
+* both pre-commit runner jobs installed lockfile-pinned `pre-commit 4.6.2` but
+  asserted `4.6.0` in `.github/workflows/ci.yml`; this is one version-contract
+  drift manifested in two jobs;
+* the frontend static job reported ESLint 10 `preserve-caught-error` and
+  `no-useless-assignment` findings, while the Linux token-sync gate exposed a
+  host-dependent generated-file ordering risk;
+* Schemathesis shards were dependency-skipped after pre-commit failed, and the
+  aggregate surfaced that skipped result as a hard failure; no independent API
+  conformance failure is established by this run.
+
+The exact evidence is retained in run `34995139064` (head SHA
+`2726c32a4cfee0178442d861fd6defcc77e4727b`): the two pre-commit jobs failed at
+their explicit version assertions, frontend lint failed with 14 ESLint 10
+errors, and the Schemathesis aggregate received `SHARD_RESULT=skipped`. The
+companion performance run `34995138925` had no failures at the checkpoint.
+
+RED-GREEN-REFACTOR fixes are staged in the isolated integration worktree:
+
+* `dceca56fe` adds causes to all wrapped errors and removes only genuinely
+  unused assignments; no ESLint disable or rule downgrade was introduced;
+* `e8c1da8fb` aligns both pre-commit assertions and the regression contract to
+  `4.6.2` and uses a Unicode-code-point comparator for token generation,
+  removing Windows/Linux locale drift without changing token values.
+
+Local verification after these fixes is green: `npm run lint`,
+`npm run lint:all`, `npm run typecheck`, `npm run format:check`,
+`npm run lint:architecture` (`10` passed), `npm run tokens:check`, and the
+WASM/quality Node suite (`261` passed). The Python workflow/quality contract
+suite passed (`216` tests), and `git diff --check` is clean. The exact-SHA run
+must not be promoted; after this checkpoint is committed, the two commits are
+to be pushed non-force with a verified remote ref, then all exact-SHA workflow
+runs and every required job must be paginated to terminal state.
+
+The continuation plan remains `EVIDENCE-BLOCKED / EXTERNAL-ONLY` until the new
+SHA has current manifest/report hashes, complete mutation and coverage
+evidence, green security/browser/API/infra gates, and the Docker/Kubernetes/
+release evidence listed in §122.5.
