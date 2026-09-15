@@ -5727,6 +5727,27 @@ then perform the external merge/release gates. User-owned WASM changes,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
 
+## 99. Image pixel-budget state survivor closure (2026-09-15; pending push)
+
+The stale run `34923631288` then completed mutmut execution group 64 with
+survivor `10388471574`:
+`app.utils.images.xǁImagePixelLimitErrorǁ__init____mutmut_3` replaced
+`self.max_pixels = max_pixels` with `self.max_pixels = None`. The constructor's
+width, height and budget attributes form one structured error contract; the
+focused assertions added for group 62 already assert the complete tuple for
+both dimension and decoder errors and therefore kill this mutant as well.
+
+    uv run pytest -q -p no:cacheprovider tests/test_images_v2.py
+    # 28 passed
+
+No production change, exclusion, quarantine or threshold adjustment is needed
+for group 64. The stale artifact remains bound to `2774de52`; a fresh
+current-SHA mutation universe is still required for certification. At the
+latest poll the stale run had 23 completed failures, 4 in-progress jobs and 77
+queued jobs, all observed failures being mutmut survivors. User-owned WASM
+edits, temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
+
 ## 98. Current-head supplemental security scan (2026-09-15; pending push)
 
 A new Codex Security standard scan was run against the exact current committed
