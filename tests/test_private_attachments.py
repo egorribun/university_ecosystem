@@ -167,6 +167,7 @@ def test_static_private_path_selector_and_blocked_response() -> None:
     )
     assert response.status_code == 404
     assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 def test_uuid_type_is_supported_without_string_coercion() -> None:

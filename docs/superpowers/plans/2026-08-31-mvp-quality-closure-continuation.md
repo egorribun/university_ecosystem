@@ -5159,3 +5159,55 @@ The focused workflow, analyzer, renderer, and artifact-selector tests remain
 the acceptance evidence for these source-level contracts. Fresh Linux CI,
 three comparable green runs before any capacity experiment, and complete
 current-SHA mutation/coverage provenance remain release-blocking.
+
+## 78. Fail-closed Helm retries and stale-run mutation survivor closure (2026-09-15; pending push)
+
+The fresh PR run `34923631288` on source SHA
+`2774de52d158cf0b7611b331586014a8420a1df2` exposed one real mutation survivor
+before the staged retry hardening was published. Mutmut execution group 10
+(`104249723443`) changed the blocked static response header
+`X-Content-Type-Options: nosniff` to `XXnosniffXX`; the old test asserted only
+status and cache policy, so the mutant survived at 87.50%. This is stale-source
+evidence, not a release result. The regression test now asserts the exact
+security header, and a local activation of the exact generated mutant returns
+`XXnosniffXX`, proving the new assertion is mutation-sensitive.
+
+The staged CI reliability change adds the dependency-free
+`scripts/ci/helm_dependency_build.py` helper and routes Helm dependency setup
+in the PR, deploy, nightly, reusable-backend and reusable-security workflows
+through it. The helper:
+
+- retries only output-proven transient transport/rate-limit failures;
+- fails fast for authentication, chart, lock and validation errors;
+- bounds each attempt, preserves the first failure output and validates
+  required non-empty non-symlink archives;
+- uses a fixed argv with shell execution disabled and keeps all existing
+  inventory, artifact and quality gates unchanged.
+
+The workflow contract tests were updated to require the helper invocation and
+to reject direct `helm dependency build` snippets. Local focused evidence on
+the pending working tree:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_ci_helm_retry_policy.py \
+      tests/test_quality_workflow_contract.py \
+      tests/test_mfa_deploy_workflow_contract.py
+    # 232 passed
+
+    uv run pytest -q -p no:cacheprovider tests/test_private_attachments.py
+    # 6 passed
+
+    uv run ruff check scripts/ci/helm_dependency_build.py \
+      tests/test_ci_helm_retry_policy.py
+    uv run ruff format --check scripts/ci/helm_dependency_build.py \
+      tests/test_ci_helm_retry_policy.py
+    uv run mypy --config-file pyproject.toml \
+      scripts/ci/helm_dependency_build.py tests/test_ci_helm_retry_policy.py
+    python scripts/quality/validate_ci_check_catalog.py
+    # all passed; catalog remains 55 workflows / 182 source jobs
+
+The current run must finish so every stale-source failure is inventoried, then
+the pending changes require a small commit, push, and a new SHA-bound full
+matrix. No mutation inventory, coverage threshold, retry gate, or skip was
+weakened. The staged `.secrets.baseline` refresh and all user-owned untracked
+paths remain preserved and must be rechecked before commit.

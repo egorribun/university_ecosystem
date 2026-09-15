@@ -2043,19 +2043,9 @@ jobs:
       - name: Helm dependency build
         shell: bash
         run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem/; then
-              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
-              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
-              exit 0
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
+          python3 scripts/ci/helm_dependency_build.py \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
 
       - name: Helm lint — university-ecosystem chart
         run: |  # pragma: allowlist secret
@@ -2896,19 +2886,9 @@ jobs:
         if: needs.mutation-scope.outputs.has_python == 'true'
         shell: bash
         run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem/; then
-              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
-              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
-              exit 0
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
+          python3 scripts/ci/helm_dependency_build.py \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
 
       - name: Generate reusable mutmut source and metadata
         if: needs.mutation-scope.outputs.has_python == 'true'
@@ -3161,19 +3141,9 @@ jobs:
         if: steps.mutation_scope.outputs.has_python == 'true'
         shell: bash
         run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem/; then
-              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
-              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
-              exit 0
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
+          python3 scripts/ci/helm_dependency_build.py \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
 
       - name: Collect mutmut stats shard
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -3344,19 +3314,9 @@ jobs:
         if: steps.mutation_scope.outputs.has_python == 'true'
         shell: bash
         run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem/; then
-              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
-              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
-              exit 0
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
+          python3 scripts/ci/helm_dependency_build.py \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
 
       - name: Download same-run mutmut stats candidates
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -3938,19 +3898,9 @@ jobs:
         if: steps.mutation_scope.outputs.has_python == 'true' && steps.mutation_shard.outputs.has_mutants == 'true'
         shell: bash
         run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem/; then
-              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
-              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
-              exit 0
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
+          python3 scripts/ci/helm_dependency_build.py \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
 
       - name: Run incremental mutmut (blocking, stats-derived budget)
         id: run_incremental_mutmut

@@ -35,6 +35,22 @@ def _find_repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _assert_helm_dependency_helper_invocation(
+    script: str, *, skip_refresh: bool = False
+) -> None:
+    """Require workflows to use the bounded, fail-closed Helm helper."""
+
+    assert "python3 scripts/ci/helm_dependency_build.py" in script
+    assert "charts/university-ecosystem" in script
+    assert "redis-20.13.4.tgz" in script
+    assert "nats-8.5.4.tgz" in script
+    assert "helm dependency build" not in script
+    if skip_refresh:
+        assert "--skip-refresh" in script
+    else:
+        assert "--skip-refresh" not in script
+
+
 REPOSITORY_ROOT = _find_repo_root()
 CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 SQLMAP_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "sqlmap.yml"
@@ -977,8 +993,7 @@ def test_reusable_trivy_materializes_and_validates_each_helm_chart() -> None:
         if step.get("name") == "Build Helm dependencies for Trivy"
     )
     dependency_script = dependency_build["run"]
-    assert "helm dependency build charts/university-ecosystem/" in dependency_script
-    assert "Helm dependency build failed after 3 attempts." in dependency_script
+    _assert_helm_dependency_helper_invocation(dependency_script)
 
     preflight = next(
         step
@@ -2233,17 +2248,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
             if step.get("name") == "Resolve Helm chart dependencies"
         )
         assert helm_step["shell"] == "bash"
-        assert "for attempt in 1 2 3; do" in helm_step["run"]
-        assert "sleep $((attempt * 15))" in helm_step["run"]
-        assert "Helm dependency build failed after 3 attempts." in helm_step["run"]
-        assert (
-            "test -s charts/university-ecosystem/charts/redis-20.13.4.tgz"
-            in helm_step["run"]
-        )
-        assert (
-            "test -s charts/university-ecosystem/charts/nats-8.5.4.tgz"
-            in helm_step["run"]
-        )
+        _assert_helm_dependency_helper_invocation(helm_step["run"])
     universe_selector = next(
         step
         for step in mutation_job["steps"]
@@ -4231,18 +4236,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
 
     assert stats_helm["uses"].startswith("azure/setup-helm@")
     assert stats_helm["with"] == {"version": "v3.17.0"}
-    assert (
-        "helm dependency build charts/university-ecosystem/"
-        in stats_dependencies["run"]
-    )
-    assert (
-        "test -s charts/university-ecosystem/charts/redis-20.13.4.tgz"
-        in stats_dependencies["run"]
-    )
-    assert (
-        "test -s charts/university-ecosystem/charts/nats-8.5.4.tgz"
-        in stats_dependencies["run"]
-    )
+    _assert_helm_dependency_helper_invocation(stats_dependencies["run"])
     assert stats_steps.index(stats_dependencies) < stats_steps.index(stats_step)
 
     mutation_helm = next(
@@ -4255,18 +4249,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     )
     assert mutation_helm["uses"].startswith("azure/setup-helm@")
     assert mutation_helm["with"] == {"version": "v3.17.0"}
-    assert (
-        "helm dependency build charts/university-ecosystem/"
-        in mutation_dependencies["run"]
-    )
-    assert (
-        "test -s charts/university-ecosystem/charts/redis-20.13.4.tgz"
-        in mutation_dependencies["run"]
-    )
-    assert (
-        "test -s charts/university-ecosystem/charts/nats-8.5.4.tgz"
-        in mutation_dependencies["run"]
-    )
+    _assert_helm_dependency_helper_invocation(mutation_dependencies["run"])
     assert mutation_steps.index(mutation_dependencies) < run_step_index
 
     assert "rm -rf mutants" in stats_script

@@ -176,7 +176,9 @@ def test_helm_paths_pin_dependency_repositories_and_validate_chart_lock() -> Non
     run = str(build["run"])
     assert "Chart.lock" in run
     assert "sha256sum" in run
-    assert "helm dependency build --skip-refresh" in run
+    assert "python3 scripts/ci/helm_dependency_build.py" in run
+    assert "--skip-refresh" in run
+    assert "helm dependency build --skip-refresh" not in run
     assert "git diff --exit-code --" in run
     assert "helm dependency list" in run
 

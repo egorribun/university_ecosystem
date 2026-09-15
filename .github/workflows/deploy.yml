@@ -762,16 +762,7 @@ jobs:
           chart="charts/university-ecosystem"
           test -s "$chart/Chart.lock"
           lock_digest_before="$(sha256sum "$chart/Chart.lock" | awk '{print $1}')"
-          for attempt in 1 2 3; do
-            if helm dependency build --skip-refresh "$chart"; then
-              break
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
+          python3 scripts/ci/helm_dependency_build.py --skip-refresh "$chart"
           lock_digest_after="$(sha256sum "$chart/Chart.lock" | awk '{print $1}')"
           test "$lock_digest_after" = "$lock_digest_before"
           git diff --exit-code -- "$chart/Chart.yaml" "$chart/Chart.lock"
