@@ -77,6 +77,7 @@ def test_token_hmac_secret_accepts_random_production_value(monkeypatch):
         algorithm="RS256",
         audit_log_secret="audit-log-random-material-0123456789abcdef",  # pragma: allowlist secret
         internal_hmac_secret="internal-hmac-random-material-0123456789",  # pragma: allowlist secret
+        internal_auth_token="internal-route-token-for-test",  # pragma: allowlist secret
     )
     assert settings.token_hmac_secret == secret
 

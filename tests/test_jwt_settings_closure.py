@@ -19,6 +19,7 @@ def _development_env(monkeypatch):
 def _production_env(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("SECRET_KEY", "s" * 48)  # pragma: allowlist secret
+    monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "internal-route-token-for-test")
     monkeypatch.setenv("AUDIT_LOG_SECRET", "a" * 48)  # pragma: allowlist secret
     monkeypatch.setenv(
         "INTERNAL_HMAC_SECRET",
