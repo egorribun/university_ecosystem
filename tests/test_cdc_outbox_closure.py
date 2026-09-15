@@ -34,7 +34,7 @@ def _close_replication_function_node() -> ast.AsyncFunctionDef:
     tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
     mutation = os.environ.get("MUTANT_UNDER_TEST", "")
     _, _, mutant_name = mutation.rpartition(".")
-    generated_original = f"{_CLOSE_REPLICATION_MUTANT_PREFIX}mutmut_orig"
+    generated_original = f"{_CLOSE_REPLICATION_MUTANT_PREFIX}orig"
     target_name = "_close_replication_connection"
     generated_names = {
         node.name
@@ -79,6 +79,32 @@ def test_close_replication_connection_keeps_explicit_connection_error_contract()
                 if isinstance(child, ast.Name)
             )
     assert "ConnectionError" in suppressed
+
+
+def test_close_replication_function_falls_back_to_generated_original(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A stats run for another function must select mutmut's original sibling."""
+    generated_source = "\n".join(
+        (
+            "async def _close_replication_connection(self):",
+            "    pass",
+            "async def xǁCdcOutboxWorkerǁ_close_replication_connection__mutmut_orig(self):",
+            "    pass",
+            "async def xǁCdcOutboxWorkerǁ_close_replication_connection__mutmut_1(self):",
+            "    pass",
+        )
+    )
+    source_path = tmp_path / "cdc_outbox.py"
+    source_path.write_text(generated_source, encoding="utf-8")
+    monkeypatch.setattr(cdc, "__file__", str(source_path))
+    monkeypatch.setenv("MUTANT_UNDER_TEST", "xǁOtherWorkerǁother__mutmut_1")
+
+    function = _close_replication_function_node()
+
+    assert function.name == (
+        "xǁCdcOutboxWorkerǁ_close_replication_connection__mutmut_orig"
+    )
 
 
 def _relation_prefix(relation_id: int = 7, columns: int = 1) -> bytes:
