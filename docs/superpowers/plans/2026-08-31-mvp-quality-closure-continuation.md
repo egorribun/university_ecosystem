@@ -5789,11 +5789,12 @@ in force.
     git diff --check
     # all passed (actionlint is authoritative in the hosted hook environment)
 
-The implementation and contract test are committed as
-`96e8e806b4b73c39ff510ea21213d6296ca491b9`; fresh hosted validation remains
-required after pushing the current branch. User-owned WASM edits, temporary
-directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
-`services/file-processor/coverage_capability` remain unstaged.
+The implementation and contract test were introduced in
+`96e8e806b4b73c39ff510ea21213d6296ca491b9`; the RED→GREEN follow-up
+`d42eecb17` corrects the no-lockfile `spicedb` entry to its real `go.mod`.
+Fresh hosted validation remains required after pushing the current branch.
+User-owned WASM edits, temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md`
+and `services/file-processor/coverage_capability` remain unstaged.
 
 ## 105. WebP quality-parameter survivor closure (2026-09-15; pending push)
 
