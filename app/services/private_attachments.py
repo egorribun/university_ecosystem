@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import mimetypes
 import re
-from typing import Literal
+from typing import Final, Literal
 from urllib.parse import unquote, urlparse
 
 from starlette.responses import Response
@@ -21,6 +21,13 @@ _FLAT_FILENAME_RE = re.compile(
     r"^(?:chat|event)_[A-Za-z0-9-]{1,64}_[0-9a-fA-F]{32}"
     r"(?:\.[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$"
 )
+
+# Keep protocol field names outside request handling functions.  HTTP header
+# names are case-insensitive, so mutating their spelling inside the function
+# would create equivalent mutants that no response-level test can distinguish.
+_CACHE_CONTROL_HEADER: Final = "Cache-Control"
+_CONTENT_DISPOSITION_HEADER: Final = "Content-Disposition"
+_CONTENT_TYPE_OPTIONS_HEADER: Final = "X-Content-Type-Options"
 
 
 def _safe_filename(filename: str) -> str | None:
@@ -140,8 +147,8 @@ def private_attachment_response(data: bytes, filename: str) -> Response:
         content=data,
         media_type=media_type,
         headers={
-            "Cache-Control": "private, no-store",
-            "Content-Disposition": f'inline; filename="{filename}"',
-            "X-Content-Type-Options": "nosniff",
+            _CACHE_CONTROL_HEADER: "private, no-store",
+            _CONTENT_DISPOSITION_HEADER: f'inline; filename="{filename}"',
+            _CONTENT_TYPE_OPTIONS_HEADER: "nosniff",
         },
     )
