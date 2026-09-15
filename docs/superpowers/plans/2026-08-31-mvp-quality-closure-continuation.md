@@ -5602,3 +5602,47 @@ Focused evidence after adding the exact diversity boundary:
 The test-only change is committed as `2eb6be8ff`. The selected group-44
 artifact was produced against an older SHA; a fresh current-SHA mutation run
 must still verify the full inventory and score.
+
+## 94. Image-proxy mutation boundaries and local regression evidence (2026-09-15; pending push)
+
+The next stale groups were classified from their selected source artifacts:
+
+* group 46 (`104249726248`) targeted the spelling of the `Cache-Control`
+  response header. The historical source had a case-equivalent literal; this
+  was removed from the mutmut function universe by the module-level
+  `_CACHE_CONTROL_HEADER` constant in commit `f8cdf3efe`, while the response
+  value and security headers remain covered. No HTTP-level test is allowed to
+  assert a wire casing that the ASGI/HTTP contract deliberately normalizes.
+* group 47 (`104249726266`) removed the `format="PNG"` keyword from original
+  image encoding. The existing `test_process_image_does_not_resize_when_width_matches_source`
+  callback requires that keyword and exact format, so the mutant fails rather
+  than being treated as an equivalent spelling change.
+* group 48 (`104249726411`) replaced the high-quality resize filter with
+  `None`; the focused suite now patches `_resolve_resample_filter` with a
+  sentinel and asserts it is passed unchanged to `img.resize`.
+* group 49 (`104249726473`) removed the resize target-size argument; the same
+  focused contract asserts `(width, new_h)` and the expected sentinel in the
+  exact call, preserving both geometry and quality behavior.
+
+The image and HMAC contracts were run together after these additions:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_image_proxy_closure.py \
+      tests/test_internal_hmac_secret_security.py
+    # 16 passed (one expected Pydantic development warning)
+
+The new resize assertion is committed as `82dccb1ed`. It changes no mutation
+selection, timeout, retry, or coverage threshold. The stale group artifacts
+predate these tests; only a fresh current-SHA producer can certify the full
+mutation inventory.
+
+The full local backend regression also completed on this Windows host:
+
+    uv run pytest -q -p no:cacheprovider
+    # 10,363 passed, 106 platform/integration-guard skips,
+    # 2 deselected, 1 expected warning; exit 0 (2:20:44)
+
+Race-enabled Go evidence remains Linux/container-gated because this host has
+no C compiler (`go test -race` exits with the documented CGO requirement).
+Non-race `go test ./...` passed for gateway, ws-hub and file-processor; the
+release gate still requires the pinned Linux race jobs.
