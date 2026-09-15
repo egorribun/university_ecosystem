@@ -4,6 +4,13 @@ This directory is the canonical audit-history surface for University
 Ecosystem. Audit reports describe the repository at the recorded commit and
 must not be treated as current configuration or current quality evidence.
 
+## Current quality-closure roadmap
+
+- [MVP quality-closure continuation plan](../superpowers/plans/2026-08-31-mvp-quality-closure-continuation.md)
+  — the current operational roadmap and evidence-boundary record. It is a
+  plan, not an audit certificate; its historical checkpoints still require
+  exact-SHA re-verification.
+
 ## Current reference set
 
 - [PR #1249 Audit](AUDIT_PR1249.md) — multi-stack quality & architectural release certification

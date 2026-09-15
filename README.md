@@ -36,7 +36,7 @@
 - 📅 **Dynamic Academic Engine** – Real-time scheduling powered by a **Rust (PyO3)** native extension using Rayon parallel threads for instant timetable conflict resolution.
 - 💬 **High-Concurrency Real-Time Hub** – High-throughput WebSockets via **Go + NATS**, featuring JWKS hot-reloading, 60 KB frame caps, and max-client pre-checks.
 - 🔒 **Relationship-Based Auth (ReBAC)** – Granular, Zanzibar-inspired permission management powered by **SpiceDB** alongside **OpenFeature** + **flagd** feature flags.
-- 🖼️ **Media Intelligence & Workflows** – Asynchronous background processing, image optimization, and malware scanning via **Go file-processor**, **Temporal.io**, **MinIO**, and **ClamAV**.
+- 🖼️ **Media Intelligence & Workflows** – Asynchronous background processing and image optimization via **Go file-processor**, **Temporal.io**, and **MinIO**; the backend can enforce malware scanning through a configured `clamd` service.
 - ⚡ **XFetch L1/L2 Probabilistic Caching** – Rate-limiting circuit breakers and probabilistic cache refresh preventing cache stampedes across Redis/Valkey (`volatile-lru`).
 - 🗺️ **Vectorized Search & Navigation** – Context-aware semantic search and campus routing leveraging **pgvector** and OpenAI/custom embedding providers.
 - 📊 **Full-Spectrum Observability** – End-to-end distributed tracing (**OTEL + Tempo**), metrics (**Prometheus**), profiling (**Pyroscope**), and centralized logs (**Grafana Loki + Fluent Bit**).
@@ -229,7 +229,7 @@ for every runtime and Prometheus target:
 
 - **Multi-factor Auth**: **TOTP**, email OTP and one-time recovery codes alongside **Argon2id** password hashing.
 - **Strict Input Validation**: Client-side **Valibot** schemas and gRPC path traversal guards (RZ-27-04).
-- **Malware & SSRF Protection**: In-memory **ClamAV** scanning and strict URL validation blocking internal IP ranges.
+- **Malware & SSRF Protection**: Configurable `clamd` malware scanning for uploads (enabled and required according to environment configuration) plus strict URL validation blocking internal IP ranges. Verify scanner health before relying on upload acceptance.
 - **Zero-Trust Network Policies**: Kubernetes **Kyverno** admission policies and pod security profiles (`RuntimeDefault`).
 - **Sanitized Logging**: Automated PII redaction (`_redact_pii`) stripping emails and phone numbers from logs.
 
@@ -246,7 +246,7 @@ uv run ruff format app/     # Format Python codebase
 ### **React (Frontend)**
 ```bash
 cd frontend
-npm install        # Hydrate frontend dependencies
+npm ci              # Reproduce the dependency graph from package-lock.json
 npm run dev        # Start Vite 8 dev server
 npx tsc --noEmit   # Typecheck TypeScript
 npm run test       # Run Vitest test suite
