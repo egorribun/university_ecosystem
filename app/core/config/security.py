@@ -173,7 +173,7 @@ def _validate_internal_hmac_secret_strength(value: str, *, label: str) -> str:
     """
 
     normalized = value.strip()
-    encoded = normalized.encode("utf-8")
+    encoded = normalized.encode()
     if len(encoded) < 32:
         raise ValueError(f"{label} must contain at least 32 bytes of entropy")
 

@@ -5255,3 +5255,46 @@ structural elimination of an external semantic-equivalence mutant, not a
 quality threshold, inventory, or test exclusion. Fresh current-SHA
 mutation evidence is still required before considering either stale survivor
 closed.
+
+## 80. Additional stale mutmut boundary and validation-survivor closure (2026-09-15; pending push)
+
+The continuing stale-source run `34923631288` exposed three more focused
+survivors; each was reproduced and closed without reducing the mutation
+inventory or adding an exclusion:
+
+- group 22 (`104249724177`) changed `_process_image`'s resize guard from
+  `width < source_width` to `width <= source_width`. A requested width equal to
+  the source must be a no-op; the new focused test asserts that `resize` is not
+  called at the equality boundary.
+- group 23 (`104249724290`) replaced the computed proportional resize height
+  with `None`. A real-Pillow regression test now downsizes a 10x20 PNG to 5x10
+  and checks the encoded dimensions, so an invalid target height fails
+  deterministically rather than being hidden by a permissive mock.
+- group 26 (`104249724379`) changed the `private_attachment_storage_key`
+  filename-validation error text only. The contract now asserts the exact
+  `Invalid attachment filename` message for a valid resource id with an
+  invalid filename, preventing security-facing error drift.
+- group 29 (`104249724427`) changed `normalized.encode("utf-8")` to the
+  case-insensitive equivalent `normalized.encode("UTF-8")`. The implementation
+  now uses Python's documented default UTF-8 codec (`normalized.encode()`),
+  removing an unobservable literal mutation structurally rather than hiding it
+  with a pragma; existing entropy and Unicode validation behavior is retained.
+
+Local focused evidence on the pending tree:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_image_proxy_closure.py tests/test_image_proxy.py \
+      tests/test_private_attachments.py tests/test_config_mixins_coverage.py
+    # 114 passed
+
+    uv run ruff check app/core/config/security.py \
+      tests/test_image_proxy_closure.py tests/test_private_attachments.py
+    uv run ruff format --check app/core/config/security.py \
+      tests/test_image_proxy_closure.py tests/test_private_attachments.py
+    uv run mypy --config-file pyproject.toml app/core/config/security.py
+    git diff --check
+    # all passed
+
+These fixes are pending a small commit and fresh current-SHA mutation run;
+the old run remains diagnostic evidence only and may reveal further survivors
+until its matrix reaches a terminal state.

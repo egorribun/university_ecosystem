@@ -135,6 +135,8 @@ def test_private_attachment_helpers_fail_closed_for_invalid_paths() -> None:
     assert private_attachment_storage_key("event", 42, "agenda.pdf") == (
         "event_files/event_42/agenda.pdf"
     )
+    with pytest.raises(ValueError, match=r"^Invalid attachment filename$"):
+        private_attachment_storage_key("chat", "x", "../file.txt")
     for resource_id, filename in (
         ("../x", "file.txt"),
         ("x", "../file.txt"),
