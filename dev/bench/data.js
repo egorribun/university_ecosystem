@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789486618331,
+  "lastUpdate": 1789488935710,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -6210,6 +6210,174 @@ window.BENCHMARK_DATA = {
             "value": 11255,
             "unit": "ns/op",
             "extra": "148398 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "481dba81ec78d7d2a33873a3a661470b0ecdd512",
+          "message": "build(deps): bump the npm-dependencies group across 1 directory with 6 updates (#1288)\n\nBumps the npm-dependencies group with 6 updates in the /frontend directory:\n\n| Package | From | To |\n| --- | --- | --- |\n| [@tanstack/react-virtual](https://github.com/TanStack/virtual/tree/HEAD/packages/react-virtual) | `3.14.10` | `3.14.11` |\n| [lucide-react](https://github.com/lucide-icons/lucide/tree/HEAD/packages/lucide-react) | `1.41.0` | `1.43.0` |\n| [marked](https://github.com/markedjs/marked) | `18.0.11` | `18.0.12` |\n| [@rolldown/plugin-babel](https://github.com/rolldown/plugins/tree/HEAD/packages/babel) | `0.2.3` | `0.2.4` |\n| [@types/node](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/HEAD/types/node) | `26.4.1` | `26.5.0` |\n| [typescript-eslint](https://github.com/typescript-eslint/typescript-eslint/tree/HEAD/packages/typescript-eslint) | `8.69.0` | `8.70.0` |\n\n\n\nUpdates `@tanstack/react-virtual` from 3.14.10 to 3.14.11\n- [Release notes](https://github.com/TanStack/virtual/releases)\n- [Changelog](https://github.com/TanStack/virtual/blob/main/packages/react-virtual/CHANGELOG.md)\n- [Commits](https://github.com/TanStack/virtual/commits/@tanstack/react-virtual@3.14.11/packages/react-virtual)\n\nUpdates `lucide-react` from 1.41.0 to 1.43.0\n- [Release notes](https://github.com/lucide-icons/lucide/releases)\n- [Commits](https://github.com/lucide-icons/lucide/commits/1.43.0/packages/lucide-react)\n\nUpdates `marked` from 18.0.11 to 18.0.12\n- [Release notes](https://github.com/markedjs/marked/releases)\n- [Commits](https://github.com/markedjs/marked/compare/v18.0.11...v18.0.12)\n\nUpdates `@rolldown/plugin-babel` from 0.2.3 to 0.2.4\n- [Release notes](https://github.com/rolldown/plugins/releases)\n- [Changelog](https://github.com/rolldown/plugins/blob/main/packages/babel/CHANGELOG.md)\n- [Commits](https://github.com/rolldown/plugins/commits/plugin-babel@0.2.4/packages/babel)\n\nUpdates `@types/node` from 26.4.1 to 26.5.0\n- [Release notes](https://github.com/DefinitelyTyped/DefinitelyTyped/releases)\n- [Commits](https://github.com/DefinitelyTyped/DefinitelyTyped/commits/HEAD/types/node)\n\nUpdates `typescript-eslint` from 8.69.0 to 8.70.0\n- [Release notes](https://github.com/typescript-eslint/typescript-eslint/releases)\n- [Changelog](https://github.com/typescript-eslint/typescript-eslint/blob/main/packages/typescript-eslint/CHANGELOG.md)\n- [Commits](https://github.com/typescript-eslint/typescript-eslint/commits/v8.70.0/packages/typescript-eslint)\n\n---\nupdated-dependencies:\n- dependency-name: \"@tanstack/react-virtual\"\n  dependency-version: 3.14.11\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: npm-dependencies\n- dependency-name: lucide-react\n  dependency-version: 1.43.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: npm-dependencies\n- dependency-name: marked\n  dependency-version: 18.0.12\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: npm-dependencies\n- dependency-name: \"@rolldown/plugin-babel\"\n  dependency-version: 0.2.4\n  dependency-type: direct:development\n  update-type: version-update:semver-patch\n  dependency-group: npm-dependencies\n- dependency-name: \"@types/node\"\n  dependency-version: 26.5.0\n  dependency-type: direct:development\n  update-type: version-update:semver-minor\n  dependency-group: npm-dependencies\n- dependency-name: typescript-eslint\n  dependency-version: 8.70.0\n  dependency-type: direct:development\n  update-type: version-update:semver-minor\n  dependency-group: npm-dependencies\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-09-15T20:36:22+05:00",
+          "tree_id": "188543b753a644dabc8ee2143585bcc00957889a",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/481dba81ec78d7d2a33873a3a661470b0ecdd512"
+        },
+        "date": 1789488934730,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkHashRingLookup (github.com/university-ecosystem/gateway)",
+            "value": 33.99,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "32272750 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHashRingLookup (github.com/university-ecosystem/gateway) - ns/op",
+            "value": 33.99,
+            "unit": "ns/op",
+            "extra": "32272750 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHashRingLookup (github.com/university-ecosystem/gateway) - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "32272750 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHashRingLookup (github.com/university-ecosystem/gateway) - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "32272750 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKSValidation (github.com/university-ecosystem/gateway/middleware)",
+            "value": 122902,
+            "unit": "ns/op",
+            "extra": "9099 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback (github.com/university-ecosystem/gateway/middleware)",
+            "value": 113,
+            "unit": "ns/op",
+            "extra": "10358880 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader (github.com/university-ecosystem/gateway/middleware)",
+            "value": 842.6,
+            "unit": "ns/op",
+            "extra": "1422306 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT (github.com/university-ecosystem/gateway/middleware)",
+            "value": 69.34,
+            "unit": "ns/op",
+            "extra": "17377096 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit (github.com/university-ecosystem/gateway/middleware)",
+            "value": 149.2,
+            "unit": "ns/op",
+            "extra": "8029219 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss (github.com/university-ecosystem/gateway/middleware)",
+            "value": 16.07,
+            "unit": "ns/op",
+            "extra": "74771059 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey (github.com/university-ecosystem/gateway/middleware)",
+            "value": 654.1,
+            "unit": "ns/op",
+            "extra": "2132136 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic (github.com/university-ecosystem/gateway/middleware)",
+            "value": 119.7,
+            "unit": "ns/op",
+            "extra": "9296611 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256 (github.com/university-ecosystem/gateway/middleware)",
+            "value": 30.7,
+            "unit": "ns/op",
+            "extra": "38857688 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 569.8,
+            "unit": "ns/op",
+            "extra": "2131609 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1509,
+            "unit": "ns/op",
+            "extra": "729036 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 13.74,
+            "unit": "ns/op",
+            "extra": "84964846 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 751.6,
+            "unit": "ns/op",
+            "extra": "1652322 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 43.2,
+            "unit": "ns/op",
+            "extra": "27063079 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1337,
+            "unit": "ns/op",
+            "extra": "810386 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 31.42,
+            "unit": "ns/op",
+            "extra": "34801474 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 58.77,
+            "unit": "ns/op",
+            "extra": "20030246 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 51.87,
+            "unit": "ns/op",
+            "extra": "23327172 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 785.3,
+            "unit": "ns/op",
+            "extra": "1724740 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 17369,
+            "unit": "ns/op",
+            "extra": "97582 times\n4 procs"
           }
         ]
       }
