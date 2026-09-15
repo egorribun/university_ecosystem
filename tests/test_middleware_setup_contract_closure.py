@@ -58,6 +58,7 @@ def test_security_core_contract_passes_all_security_arguments():
             header_name="X-Internal-Auth",
             header_token="internal-token",
             internal_prefixes=INTERNAL_ROUTE_PREFIXES,
+            allow_ip_fallback=False,
         ),
     ]
 

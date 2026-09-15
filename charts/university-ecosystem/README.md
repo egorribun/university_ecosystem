@@ -96,6 +96,14 @@ host) and treat it as non-secret configuration. Revoked token JTIs and
 capability replay nonces use the dedicated persistent revocation Redis/Valkey
 store, not the evictable application cache.
 
+In development, the gateway's `JWKS_ENDPOINT` uses the in-cluster backend HTTP
+service so the local chart remains self-contained. In staging and production,
+the chart derives it from the required HTTPS `global.jwtIssuer` and appends
+`/.well-known/jwks.json`. The API ingress routes that path directly to the
+backend, and the gateway NetworkPolicy permits only TCP/443 for this release
+JWKS fetch. This keeps the signing-key transport encrypted without pretending
+that the backend's plain ClusterIP port is a TLS endpoint.
+
 The file processor's `FP_JWKS_URL` defaults to the in-cluster backend
 `/.well-known/jwks.json` endpoint. It accepts only bounded `RS256` JWKS
 documents, resolves every token by its exact `kid`, and atomically retains the

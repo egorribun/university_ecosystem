@@ -6387,3 +6387,129 @@ changed. Linux go test -race remains the authoritative concurrency gate and
 must be re-run in fresh hosted CI. The remaining SEC-03/SEC-04 items are
 configuration hardening candidates and remain explicitly tracked until their
 production-mode behavior is validated; they are not silently marked fixed.
+
+## 115. Internal-route token boundary (2026-09-15; pending push)
+
+The security baseline's SEC-04 (LOW, CWE-306) identified a legacy
+IP-only fallback in InternalAccessMiddleware: an allowlisted source address
+could invoke protected internal routes without X-Internal-Token, while
+production configuration only warned when the token was missing. This was a
+real trust-boundary weakness for loopback SSRF, local processes, or an
+exposed allowlisted address.
+
+The compatibility path is now explicit and fail-closed:
+
+* InternalAccessMiddleware accepts allow_ip_fallback=False by default;
+  source-IP authentication is therefore disabled unless a caller opts into
+  the compatibility behavior.
+* application wiring enables the flag only when settings.is_development is
+  True; staging, production, and unknown/bare settings use token-only
+  authentication.
+* CorsSettingsMixin now raises a validation error when INTERNAL_AUTH_TOKEN is
+  absent outside the documented development environments instead of logging a
+  warning and leaving the IP fallback available.
+* existing development compatibility tests pass the explicit flag, and new
+  regressions prove an allowlisted IP is denied when the flag is false.
+
+TDD and verification evidence:
+
+    # RED before the boundary change:
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_cors_settings_closure.py::TestCorsSettingsClosure::test_internal_auth_token_is_required_for_non_development \
+      tests/test_internal_access_closure.py::test_allowed_ip_is_rejected_when_ip_fallback_is_disabled \
+      --disable-warnings --maxfail=1
+    # failed because production missing-token configuration only warned and
+    # the middleware accepted an allowlisted IP without an explicit mode
+
+    # GREEN:
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_cors_settings_closure.py \
+      tests/test_internal_access_closure.py \
+      tests/test_middleware_setup_contract_closure.py \
+      tests/test_middleware_coverage.py tests/test_core_infra.py \
+      --disable-warnings --maxfail=1
+    # 124 passed in 33.21s
+    uv run ruff check app/core/config/mixins/cors_settings.py \
+      app/core/internal_access.py app/core/middleware/setup.py \
+      tests/test_core_infra.py tests/test_cors_settings_closure.py \
+      tests/test_internal_access_closure.py tests/test_middleware_coverage.py \
+      tests/test_middleware_setup_contract_closure.py
+    # All checks passed
+    uv run ruff format --check app/core/config/mixins/cors_settings.py \
+      app/core/internal_access.py app/core/middleware/setup.py \
+      tests/test_core_infra.py tests/test_cors_settings_closure.py \
+      tests/test_internal_access_closure.py tests/test_middleware_coverage.py \
+      tests/test_middleware_setup_contract_closure.py
+    # 8 files already formatted
+    uv run python -m mypy --config-file pyproject.toml \
+      app/core/config/mixins/cors_settings.py app/core/internal_access.py \
+      app/core/middleware/setup.py
+    # Success: no issues found in 3 source files
+    git diff --check
+    # passed
+
+No route was made more permissive, and no gate, exclusion, quarantine,
+suppression, or timeout policy was changed. The working-tree patch is pending
+review and commit; current-SHA CI and release-mode integration evidence remain
+mandatory.
+
+## 116. Release JWKS transport and ingress policy closure (2026-09-15; pending push)
+
+The security review also identified a release-configuration gap in SEC-03:
+the gateway's default JWKS URL was an in-cluster plaintext HTTP endpoint even
+when the chart was rendered for staging or production. The release path now
+uses the required HTTPS `global.jwtIssuer`, appending
+`/.well-known/jwks.json`. The API ingress adds a more-specific discovery route
+directly to the backend, so the gateway can fetch the public key through the
+TLS origin without recursing through itself. Development keeps the explicit,
+self-contained in-cluster HTTP endpoint for local operation.
+
+The NetworkPolicy contract is aligned with that route: release gateways may
+egress TCP/443, and the backend accepts TCP/8000 from the configured ingress
+controller selector in addition to the gateway. The selector remains
+parameterized for nginx, Traefik, AWS ALB, or Istio. TLS termination at the
+ingress boundary and the backend ClusterIP transport are intentionally not
+represented as pod-to-pod TLS; that separate infrastructure hardening concern
+must remain visible in staging acceptance evidence.
+
+TDD and chart evidence:
+
+    # RED before release transport and route hardening:
+    # focused contract observed the in-cluster http:// JWKS endpoint instead of
+    # the required https:// API origin (and later lacked the ingress-controller
+    # backend policy rule).
+
+    # GREEN:
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_helm_staging_contract.py::test_release_gateway_uses_tls_for_jwks_and_routes_discovery_to_backend \
+      --disable-warnings --maxfail=1
+    # 1 passed (the focused run was 1.81–2.12s across the two incremental
+    # contract assertions)
+
+    uv run pytest -q -p no:cacheprovider tests/test_helm_staging_contract.py \
+      --disable-warnings --maxfail=1
+    # 217 passed in about 121–126s
+
+    helm lint charts/university-ecosystem \
+      --values charts/university-ecosystem/values.yaml
+    # 1 chart(s) linted, 0 chart(s) failed
+
+    uv run ruff check app/core/config/mixins/cors_settings.py \
+      app/core/internal_access.py app/core/middleware/setup.py \
+      tests/test_core_infra.py tests/test_cors_settings_closure.py \
+      tests/test_helm_staging_contract.py tests/test_internal_access_closure.py \
+      tests/test_middleware_coverage.py tests/test_middleware_setup_contract_closure.py
+    # All checks passed
+
+    uv run python -m mypy --config-file pyproject.toml \
+      app/core/config/mixins/cors_settings.py app/core/internal_access.py \
+      app/core/middleware/setup.py
+    # Success: no issues found in 3 source files
+
+    git diff --check
+    # passed
+
+No release path was widened to plaintext, and no coverage/mutation threshold,
+exclusion, quarantine, suppression, retry, or timeout policy was weakened.
+The patch is pending its remediation commit and a fresh current-SHA security
+scan, hosted CI, and actual staging/TLS validation.

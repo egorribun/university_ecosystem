@@ -46,6 +46,7 @@ def _configure_security_core(app: FastAPI, settings: Settings) -> None:
         header_name=settings.internal_auth_header,
         header_token=settings.internal_auth_token,
         internal_prefixes=INTERNAL_ROUTE_PREFIXES,
+        allow_ip_fallback=getattr(settings, "is_development", False) is True,
     )
 
 

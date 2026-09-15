@@ -106,6 +106,71 @@ def _render_staging(
     return [resource for resource in yaml.safe_load_all(result.stdout) if resource]
 
 
+def test_release_gateway_uses_tls_for_jwks_and_routes_discovery_to_backend() -> None:
+    """Release gateways must never fetch signing keys over plaintext HTTP."""
+
+    resources = _render_staging(release_name="jwks-transport-contract")
+    gateway = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "Deployment"
+        and resource["metadata"]["name"].endswith("-gateway")
+    )
+    gateway_env = {
+        item["name"]: item["value"]
+        for item in gateway["spec"]["template"]["spec"]["containers"][0]["env"]
+        if "value" in item
+    }
+    assert gateway_env["JWKS_ENDPOINT"] == (
+        "https://api.university.staging.example.org/.well-known/jwks.json"
+    )
+
+    ingress = next(
+        resource for resource in resources if resource.get("kind") == "Ingress"
+    )
+    api_rule = next(
+        rule
+        for rule in ingress["spec"]["rules"]
+        if rule["host"] == "api.university.staging.example.org"
+    )
+    discovery_route = next(
+        path for path in api_rule["http"]["paths"] if path["path"] == "/.well-known"
+    )
+    assert discovery_route["pathType"] == "Prefix"
+    assert discovery_route["backend"]["service"]["name"].endswith("-backend")
+
+    gateway_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == "jwks-transport-contract-gateway-policy"
+    )
+    assert any(
+        port.get("port") == 443
+        for rule in gateway_policy["spec"]["egress"]
+        for port in rule.get("ports", [])
+    )
+
+    backend_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == "jwks-transport-contract-backend-policy"
+    )
+    ingress_controller_rule = next(
+        rule
+        for rule in backend_policy["spec"]["ingress"]
+        if any(
+            source.get("podSelector", {})
+            .get("matchLabels", {})
+            .get("app.kubernetes.io/name")
+            == "ingress-nginx"
+            for source in rule.get("from", [])
+        )
+    )
+    assert ingress_controller_rule["ports"] == [{"protocol": "TCP", "port": 8000}]
+
+
 def _resolved_revocation_store_args(release_name: str) -> list[str]:
     """Return the exact immutable identity supplied by the bootstrap script."""
 

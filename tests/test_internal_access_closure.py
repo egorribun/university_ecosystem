@@ -77,6 +77,7 @@ async def test_exact_internal_endpoint_ip_reaches_handler():
     middleware = InternalAccessMiddleware(
         app,
         allowed_ips=["127.0.0.1"],
+        allow_ip_fallback=True,
         internal_prefixes=("/api/v1/chat/check-participant",),
     )
 
@@ -145,12 +146,35 @@ async def test_valid_header_allows_request_and_injects_vary_header():
 async def test_allowed_ip_passes_request_without_header_token():
     app = AsyncMock()
     middleware = InternalAccessMiddleware(
-        app, allowed_ips=["127.0.0.1"], internal_prefixes=["/internal"]
+        app,
+        allowed_ips=["127.0.0.1"],
+        allow_ip_fallback=True,
+        internal_prefixes=["/internal"],
     )
 
     await middleware(_scope(), AsyncMock(), AsyncMock())
 
     app.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_allowed_ip_is_rejected_when_ip_fallback_is_disabled():
+    app = AsyncMock()
+    middleware = InternalAccessMiddleware(
+        app,
+        allowed_ips=["127.0.0.1"],
+        allow_ip_fallback=False,
+        internal_prefixes=["/internal"],
+    )
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    await middleware(_scope(), AsyncMock(), send)
+
+    app.assert_not_awaited()
+    assert sent[0]["status"] == 403
 
 
 @pytest.mark.asyncio

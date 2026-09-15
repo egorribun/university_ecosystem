@@ -419,6 +419,11 @@ ingress:
           pathType: Prefix
           # Keep authentication, rate limiting, and gRPC dispatch at the edge.
           service: gateway
+        - path: /.well-known
+          pathType: Prefix
+          # Release JWKS discovery is fetched through the HTTPS API origin and
+          # must terminate at the backend that owns the public key endpoint.
+          service: backend
   tls:
     - secretName: university-ecosystem-tls  # pragma: allowlist secret
       hosts:

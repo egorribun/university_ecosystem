@@ -1,3 +1,7 @@
+{{- $jwksEndpoint := printf "http://%s-backend:%v/.well-known/jwks.json" (include "university-ecosystem.fullname" .) .Values.backend.service.port -}}
+{{- if or (eq .Values.global.environment "staging") (eq .Values.global.environment "production") -}}
+{{- $jwksEndpoint = printf "%s/.well-known/jwks.json" (trimSuffix "/" (required "global.jwtIssuer must be set" .Values.global.jwtIssuer)) -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -106,7 +110,7 @@ spec:
             - name: GATEWAY_H3_ENABLED
               value: {{ .Values.gateway.config.h3Enabled | quote }}
             - name: JWKS_ENDPOINT
-              value: {{ printf "http://%s-backend:%v/.well-known/jwks.json" (include "university-ecosystem.fullname" .) .Values.backend.service.port | quote }}
+              value: {{ $jwksEndpoint | quote }}
             - name: JWKS_REFRESH_INTERVAL
               value: "60"
             - name: INTERNAL_HMAC_SECRET

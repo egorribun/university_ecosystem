@@ -176,6 +176,9 @@ ingress:
         - path: /
           pathType: Prefix
           service: gateway
+        - path: /.well-known
+          pathType: Prefix
+          service: backend
   tls:
     - secretName: university-ecosystem-tls # pragma: allowlist secret
       hosts:
