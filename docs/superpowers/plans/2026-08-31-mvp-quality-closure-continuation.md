@@ -6912,3 +6912,24 @@ Kubernetes staging/TLS/observability/CWV/chaos/rollback, three comparable
 parallelism experiments, and resulting-main/release certification. The plan
 therefore remains `EVIDENCE-BLOCKED / EXTERNAL-ONLY`; no release-ready or
 full-plan completion claim is permitted from these local results.
+
+## 123. Latest main dependency synchronization (2026-09-15)
+
+While the previous checkpoint was being pushed, `origin/main` advanced to
+`481dba81ec78d7d2a33873a3a661470b0ecdd512` through Dependabot PR `#1288`.
+The PR changed only the frontend lockfile but its generated root metadata
+selected Vitest 5, while the repository's compatible package declaration and
+Storybook adapter remain on Vitest 4.1.11. The isolated worktree therefore
+merged the exact new main commit, retained the reviewed package declaration,
+and regenerated `frontend/package-lock.json` from that declaration. The
+Dependabot upgrades for compatible tooling (Rolldown, TanStack Virtual,
+TypeScript ESLint and related transitive packages) are retained; Vitest is
+not silently upgraded across its breaking peer boundary.
+
+`npm install --package-lock-only --ignore-scripts --no-audit --no-fund` and
+`npm run typecheck` pass after synchronization. The resulting merge preserves
+the Go provenance, BE-02 and CI-health commits and is the only candidate for
+the next exact-SHA push. The prior `34994184640`/companion runs remain
+diagnostic because they ran before this synchronization and before the Go
+governance commit. No dependency gate, mutation inventory, coverage floor,
+security check or retry/timeout policy was weakened.
