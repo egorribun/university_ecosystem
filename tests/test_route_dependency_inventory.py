@@ -121,7 +121,6 @@ def test_check_rejects_new_legacy_route_without_ledger_update(tmp_path: Path) ->
         for route in inventory["routes"]
         if route["ownership"] != "approved_legacy"
     ]
-    inventory["summary"]["approved_legacy"] = 0
     ledger.write_text(json.dumps(inventory), encoding="utf-8")
 
     violations = check_inventory(app, ledger)
@@ -129,6 +128,24 @@ def test_check_rejects_new_legacy_route_without_ledger_update(tmp_path: Path) ->
     assert violations == [
         "route dependency inventory drift: added "
         "app.api.routes:legacy_route:POST:/legacy (approved_legacy)"
+    ]
+
+
+def test_check_rejects_summary_drift_even_when_routes_match(tmp_path: Path) -> None:
+    app = _fixture_app(tmp_path)
+    ledger = tmp_path / "route-dependency-inventory.json"
+    inventory = build_inventory(app)
+    inventory["summary"]["approved_legacy"] = 0
+    ledger.write_text(json.dumps(inventory), encoding="utf-8")
+
+    violations = check_inventory(app, ledger)
+
+    assert violations == [
+        "route dependency inventory summary drift: "
+        "expected {'approved_legacy': 1, 'canonical_dishka': 1, "
+        "'public_no_db': 1, 'worker_internal': 2}, "
+        "found {'approved_legacy': 0, 'canonical_dishka': 1, "
+        "'public_no_db': 1, 'worker_internal': 2}",
     ]
 
 

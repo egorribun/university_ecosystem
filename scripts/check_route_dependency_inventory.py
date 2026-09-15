@@ -384,6 +384,11 @@ def check_inventory(app_root: Path, ledger_path: Path) -> list[str]:
             "route dependency inventory schema mismatch: "
             f"expected {SCHEMA_VERSION}, got {ledger.get('schema_version')!r}"
         )
+    if ledger.get("summary") != current["summary"]:
+        violations.append(
+            "route dependency inventory summary drift: "
+            f"expected {current['summary']!r}, found {ledger.get('summary')!r}"
+        )
     return violations
 
 

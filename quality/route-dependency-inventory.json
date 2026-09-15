@@ -326,6 +326,17 @@
     {
       "dishka_dependencies": [],
       "dishka_signals": [],
+      "id": "app.api.chat:download_chat_attachment:GET:/{chat_id}/attachments/{filename:path}",
+      "legacy_dependencies": [
+        "app.api.deps.auth.get_current_user",
+        "app.api.deps.localization.get_locale",
+        "app.core.database.get_db"
+      ],
+      "ownership": "approved_legacy"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
       "id": "app.api.chat:edit_message:PATCH:/{chat_id}/messages/{message_id}",
       "legacy_dependencies": [
         "app.api.deps.auth.get_current_user",
@@ -342,17 +353,6 @@
         "app.api.deps.auth.get_current_user",
         "app.api.deps.localization.get_locale",
         "app.api.deps.services.get_chat_message_dispatcher"
-      ],
-      "ownership": "approved_legacy"
-    },
-    {
-      "dishka_dependencies": [],
-      "dishka_signals": [],
-      "id": "app.api.chat:download_chat_attachment:GET:/{chat_id}/attachments/{filename:path}",
-      "legacy_dependencies": [
-        "app.api.deps.auth.get_current_user",
-        "app.api.deps.localization.get_locale",
-        "app.core.database.get_db"
       ],
       "ownership": "approved_legacy"
     },
@@ -1556,7 +1556,7 @@
   ],
   "schema_version": 1,
   "summary": {
-    "approved_legacy": 110,
+    "approved_legacy": 112,
     "canonical_dishka": 25,
     "public_no_db": 9,
     "worker_internal": 4
