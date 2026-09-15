@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import type { ContextType, ReactElement } from "react"
 import { QueryClient } from "@tanstack/react-query"
+import { act, waitFor } from "@testing-library/react"
 
 import { checkA11y } from "../axeTest"
 import { AuthContext } from "@/contexts/AuthContext"
@@ -129,15 +130,23 @@ async function renderRoute({ element, authValue, initialEntries }: RouteTestCase
     </AuthContext.Provider>
   )
 
-  const result = await renderWithRouter({
-    ui: Wrapped,
-    path: routePath,
-    initialPath,
-    queryClient,
-    authProvider: false,
-  })
+  let result!: Awaited<ReturnType<typeof renderWithRouter>>
+  await act(async () => {
+    result = await renderWithRouter({
+      ui: Wrapped,
+      path: routePath,
+      initialPath,
+      queryClient,
+      authProvider: false,
+    })
 
-  await checkA11y(result.container)
+    // Keep query observer notifications inside the act scope and wait for the
+    // async lifecycle to settle before running the accessibility assertion.
+    await waitFor(() => {
+      expect(result.queryClient.isFetching()).toBe(0)
+    })
+    await checkA11y(result.container)
+  })
 
   queryClient.clear()
   return result

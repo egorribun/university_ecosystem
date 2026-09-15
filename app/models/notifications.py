@@ -96,7 +96,7 @@ class NotificationQueueJob(Base, UUID7PrimaryKeyMixin):
         DateTime(timezone=True), index=True
     )
     attempts: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
+        Integer, nullable=False, default=0, server_default=text("0")
     )
     last_error: Mapped[str | None] = mapped_column(Text)
     next_retry_at: Mapped[datetime | None] = mapped_column(
@@ -105,6 +105,7 @@ class NotificationQueueJob(Base, UUID7PrimaryKeyMixin):
     dead_lettered: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
+        default=False,
         server_default=text("false"),
         index=True,
     )

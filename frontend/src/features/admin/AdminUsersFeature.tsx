@@ -23,7 +23,7 @@ import { cn } from "@/utils/cn"
 import { TextField, SectionCard, Avatar } from "@/components/settings"
 import { DataTable } from "@/components/ui/data-table/DataTable"
 import { DataTableColumnHeader } from "@/components/ui/data-table/DataTableColumnHeader"
-import { ConfirmDialog } from "@/components/ui"
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 
 type UserFilters = AdminUserFilters
 

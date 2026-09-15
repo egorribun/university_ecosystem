@@ -77,10 +77,21 @@ func cacheCmd() *cobra.Command {
 
 			ctx := context.Background()
 
-			// Find keys
-			keys, err := client.Keys(ctx, pattern).Result()
-			if err != nil {
-				return err
+			// Find keys with cursor-based SCAN.  KEYS blocks Redis' single-threaded
+			// event loop for the duration of a full keyspace traversal and can take
+			// the entire platform offline on a production-sized cache.
+			var keys []string
+			var cursor uint64
+			for {
+				batch, nextCursor, scanErr := client.Scan(ctx, cursor, pattern, 1000).Result()
+				if scanErr != nil {
+					return scanErr
+				}
+				keys = append(keys, batch...)
+				cursor = nextCursor
+				if cursor == 0 {
+					break
+				}
 			}
 
 			if len(keys) == 0 {
@@ -95,10 +106,19 @@ func cacheCmd() *cobra.Command {
 				return nil
 			}
 
-			// Delete keys
-			deleted, err := client.Del(ctx, keys...).Result()
-			if err != nil {
-				return err
+			// Delete in bounded batches so a very large cache clear does not create
+			// an oversized Redis command or retain one huge argument frame.
+			var deleted int64
+			for start := 0; start < len(keys); start += 1000 {
+				end := start + 1000
+				if end > len(keys) {
+					end = len(keys)
+				}
+				deletedBatch, delErr := client.Del(ctx, keys[start:end]...).Result()
+				if delErr != nil {
+					return delErr
+				}
+				deleted += deletedBatch
 			}
 
 			fmt.Printf("Deleted %d keys\n", deleted)

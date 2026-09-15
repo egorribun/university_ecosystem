@@ -43,6 +43,9 @@ describe("resolveMediaUrl", () => {
     const { resolveMediaUrl } = await import("@/utils/media")
     expect(resolveMediaUrl("/media/avatar.png")).toBe("https://api.example.com/media/avatar.png")
     expect(resolveMediaUrl("static/logo.svg")).toBe("https://api.example.com/static/logo.svg")
+    expect(resolveMediaUrl("/api/v1/chats/chat-id/attachments/file.pdf")).toBe(
+      "https://api.example.com/api/v1/chats/chat-id/attachments/file.pdf"
+    )
   })
 
   it("downgrades to relative path in dev when origin is missing", async () => {

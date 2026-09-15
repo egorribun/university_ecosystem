@@ -317,13 +317,16 @@ describe("api/client — prefix normalization", () => {
     expect(seen[0]!.url).toBe("/api/v1/news")
   })
 
-  it("normalizes absolute doubled prefix during SSR", async () => {
-    const { default: api } = await loadClient()
-    const seen = installAdapter(api)
-    await api.get("http://localhost:8000/api/v1/api/v1/news")
-    expect(seen).toHaveLength(1)
-    expect(seen[0]!.url).toBe("http://localhost:8000/api/v1/news")
-  })
+  it.each(["http://localhost:8000", "https://api.example.test"])(
+    "normalizes an absolute doubled prefix while preserving the %s origin",
+    async (origin) => {
+      const { default: api } = await loadClient()
+      const seen = installAdapter(api)
+      await api.get(`${origin}/api/v1/api/v1/news`)
+      expect(seen).toHaveLength(1)
+      expect(seen[0]!.url).toBe(`${origin}/api/v1/news`)
+    }
+  )
 
   it("normalizes absolute single prefix if baseURL matches prefix", async () => {
     const { default: api } = await loadClient()

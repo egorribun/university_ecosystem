@@ -46,6 +46,15 @@ class AuthRepository(
         """
         max_active = max(1, int(settings.password_reset_max_active_tokens))
 
+        # Password-reset issuance and consumption share the same lock order:
+        # User -> password-reset token.  Locking the account row first closes
+        # the reset-token TOCTOU window where a request could issue a fresh
+        # token while a concurrent reset is rotating the password/security
+        # epoch and invalidating all outstanding tokens.
+        await self.db.execute(
+            select(models.User.id).where(models.User.id == user_id).with_for_update()
+        )
+
         # DB-1 (audit 2026-03): Use SELECT FOR UPDATE so that concurrent
         # password-reset requests for the same user_id serialise here instead
         # of racing through the read-check-modify pattern and creating N tokens.

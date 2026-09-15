@@ -329,7 +329,8 @@ func TestStartNatsSubscriber_FailGracefully(t *testing.T) {
 			Environment: "testing",
 		}
 		assert.NotPanics(t, func() {
-			startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+			err := startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+			assert.Error(t, err)
 		})
 	})
 
@@ -339,7 +340,8 @@ func TestStartNatsSubscriber_FailGracefully(t *testing.T) {
 			Environment: "testing",
 		}
 		assert.NotPanics(t, func() {
-			startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+			err := startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+			assert.Error(t, err)
 		})
 	})
 }
@@ -389,8 +391,11 @@ func TestSetupGraphQLServer_BundledSchemaFromWorkingDirectory(t *testing.T) {
 	content, err := os.ReadFile("../../schema.graphql")
 	require.NoError(t, err)
 	tempDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "schema.graphql"), content, 0600)) // #nosec G306 -- test-only schema.
 	t.Chdir(tempDir)
+	// #nosec G703 -- the filename is a constant and the working directory is
+	// the unique t.TempDir() selected immediately above, so no external path
+	// can influence this test fixture.
+	require.NoError(t, os.WriteFile("schema.graphql", content, 0600))
 	t.Setenv("FP_SCHEMA_PATH", "")
 
 	srv, err := setupGraphQLServer(context.Background(), &config.Config{
@@ -685,7 +690,9 @@ func TestSetupGraphQLServer_RestrictIntrospection(t *testing.T) {
 		JWTSecret:   "test-secret",
 		Environment: "production",
 	}
-	srv, err := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	// The production bootstrap supplies strict issuer/key/revocation settings;
+	// this schema-only test deliberately bypasses token verification.
+	srv, err := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger(), jwtAuthOptions{Audience: defaultJWTAudience})
 	require.NoError(t, err)
 	assert.NotNil(t, srv)
 	assert.False(t, denyGraphQLIntrospection(context.Background()))
@@ -1001,7 +1008,7 @@ func configureRunMainStubs(t *testing.T) {
 		}
 		return c, &mockWorker{}, nil
 	}
-	startNatsSubscriberFunc = func(context.Context, *config.Config, client.Client, *slog.Logger) {}
+	startNatsSubscriberFunc = func(context.Context, *config.Config, client.Client, *slog.Logger, ...any) error { return nil }
 }
 
 func TestRunMain_PropagatesSpiffeInitFailure(t *testing.T) {
@@ -1035,7 +1042,7 @@ func TestRunMain_PropagatesGraphQLSetupFailure(t *testing.T) {
 	setupGRPCServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*grpc.Server, error) {
 		return grpc.NewServer(), nil
 	}
-	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, *slog.Logger) (*http.Server, error) {
+	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*http.Server, error) {
 		return nil, errors.New("graphql setup failed")
 	}
 
@@ -1051,7 +1058,7 @@ func TestRunMain_PropagatesServerLifecycleFailure(t *testing.T) {
 	setupGRPCServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*grpc.Server, error) {
 		return grpc.NewServer(), nil
 	}
-	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, *slog.Logger) (*http.Server, error) {
+	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*http.Server, error) {
 		return &http.Server{ReadHeaderTimeout: time.Second}, nil
 	}
 	runServersFunc = func(context.Context, *grpc.Server, *http.Server, *config.Config, *slog.Logger) error {
@@ -1072,7 +1079,7 @@ func TestRunMain_ClosesInitializedSpiffeClientOnServerFailure(t *testing.T) {
 	setupGRPCServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*grpc.Server, error) {
 		return grpc.NewServer(), nil
 	}
-	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, *slog.Logger) (*http.Server, error) {
+	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*http.Server, error) {
 		return &http.Server{ReadHeaderTimeout: time.Second}, nil
 	}
 	runServersFunc = func(context.Context, *grpc.Server, *http.Server, *config.Config, *slog.Logger) error {
@@ -1147,7 +1154,7 @@ func TestRunMain_ClosesSpiffeClientErrorIsLogged(t *testing.T) {
 	setupGRPCServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*grpc.Server, error) {
 		return grpc.NewServer(grpc.Creds(insecure.NewCredentials())), nil
 	}
-	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, *slog.Logger) (*http.Server, error) {
+	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*http.Server, error) {
 		return &http.Server{ReadHeaderTimeout: time.Second}, nil
 	}
 	runServersFunc = func(context.Context, *grpc.Server, *http.Server, *config.Config, *slog.Logger) error {

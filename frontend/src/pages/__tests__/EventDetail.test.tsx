@@ -84,7 +84,7 @@ vi.mock("@/hooks/useEventRegistration", () => ({
 vi.mock("@/features/events/categories", () => ({ inferEventCategory: () => "lecture" }))
 vi.mock("@/utils/eventsTransition", () => ({ setEventsHeroId: mocks.setEventsHeroId }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Button", () => ({
   Button: ({
     children,
     onClick,
@@ -101,6 +101,9 @@ vi.mock("@/components/ui", () => ({
       {children}
     </button>
   ),
+}))
+
+vi.mock("@/components/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({
     open,
     title,

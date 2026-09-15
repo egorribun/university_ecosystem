@@ -23,6 +23,25 @@ interface NewsQuickViewProps {
   position?: "top" | "bottom"
 }
 
+export type NewsQuickViewPosition = "top" | "bottom"
+
+export function getNewsQuickViewMotion(position: NewsQuickViewPosition, prefersReduced: boolean) {
+  return {
+    initial: prefersReduced ? false : { opacity: 0, y: position === "top" ? 8 : -8, scale: 0.96 },
+    animate: { opacity: 1, y: 0, scale: 1 },
+    exit: prefersReduced
+      ? { opacity: 0 }
+      : { opacity: 0, y: position === "top" ? 4 : -4, scale: 0.98 },
+    transition: prefersReduced
+      ? { duration: 0 }
+      : { duration: 0.18, ease: [0.16, 1, 0.3, 1] as const },
+  }
+}
+
+export function getNewsQuickViewPlacement(position: NewsQuickViewPosition): string {
+  return position === "top" ? "bottom-full mb-2" : "top-full mt-2"
+}
+
 export function NewsQuickView({
   visible,
   title,
@@ -36,6 +55,7 @@ export function NewsQuickView({
   const { t } = useTranslation(["news"])
   const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
   const dateLabel = created_at ? getMoscowDate(created_at) : ""
+  const motion = getNewsQuickViewMotion(position, prefersReduced)
 
   return (
     <AnimatePresence>
@@ -43,19 +63,8 @@ export function NewsQuickView({
         <m.div
           role="tooltip"
           aria-hidden="true"
-          initial={
-            prefersReduced ? false : { opacity: 0, y: position === "top" ? 8 : -8, scale: 0.96 }
-          }
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={
-            prefersReduced
-              ? { opacity: 0 }
-              : { opacity: 0, y: position === "top" ? 4 : -4, scale: 0.98 }
-          }
-          transition={
-            prefersReduced ? { duration: 0 } : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }
-          }
-          className={`absolute left-0 right-0 z-floating pointer-events-none ${position === "top" ? "bottom-full mb-2" : "top-full mt-2"}`}
+          {...motion}
+          className={`absolute left-0 right-0 z-floating pointer-events-none ${getNewsQuickViewPlacement(position)}`}
         >
           <div className="glass-layer-floating glass-noise rounded-xl p-4 shadow-premium-lift border border-glass-border/(--opacity-soft) max-w-[24rem] mx-auto">
             {/* Category + date */}

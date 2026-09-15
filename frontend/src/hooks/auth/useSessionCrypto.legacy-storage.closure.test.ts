@@ -11,7 +11,7 @@ describe("useSessionCrypto legacy storage cleanup", () => {
     vi.resetModules()
 
     await expect(import("./useSessionCrypto")).resolves.toBeDefined()
-    expect(removeItem).toHaveBeenCalled()
+    expect(removeItem).toHaveBeenCalledWith("ecosystem.profile.cache.sessionKey")
     vi.unstubAllGlobals()
   })
 

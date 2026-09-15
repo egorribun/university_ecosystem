@@ -17,6 +17,7 @@ import {
 import { chatApi, type Message, type MessagesListResponse } from "@/api/chat"
 import api from "@/api/client"
 import * as wsMessageSchema from "@/api/schemas/wsMessage"
+import { withExpectedConsole } from "../strictConsole"
 
 const mocks = vi.hoisted(() => ({
   getDatabase: vi.fn(),
@@ -379,20 +380,24 @@ describe("useChatWebSocket", () => {
 
   it("does not throw on error / pong / rate_limit_exceeded frames", async () => {
     const { socket, unmount } = await mountAndOpen({ enabled: true })
-    expect(() => {
-      act(() => socket.receive({ type: "error", code: "message_too_large", detail: "too big" }))
-      act(() => socket.receive({ type: "pong" }))
-      act(() => socket.receive({ type: "rate_limit_exceeded" }))
-    }).not.toThrow()
+    await withExpectedConsole("error", "[WebSocket] Server error:", () => {
+      expect(() => {
+        act(() => socket.receive({ type: "error", code: "message_too_large", detail: "too big" }))
+        act(() => socket.receive({ type: "pong" }))
+        act(() => socket.receive({ type: "rate_limit_exceeded" }))
+      }).not.toThrow()
+    })
     unmount()
   })
 
   it("ignores an invalid (off-schema) frame without throwing", async () => {
     const onNewMessage = vi.fn()
     const { socket, unmount } = await mountAndOpen({ enabled: true, onNewMessage })
-    expect(() => {
-      act(() => socket.receive({ type: "new_message", chat_id: "not-a-uuid", message: {} }))
-    }).not.toThrow()
+    await withExpectedConsole("error", "[ws] Invalid frame dropped", () => {
+      expect(() => {
+        act(() => socket.receive({ type: "new_message", chat_id: "not-a-uuid", message: {} }))
+      }).not.toThrow()
+    })
     expect(onNewMessage).not.toHaveBeenCalled()
     unmount()
   })
@@ -548,29 +553,47 @@ describe("useChatWebSocket exponential backoffs and ticket exchange failures", (
 
   it("schedules reconnect when ticket exchange fails with HTTP 500", async () => {
     const random = vi.spyOn(Math, "random").mockReturnValue(0)
+    const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(true)
     let attempts = 0
     server.use(
       http.post("*/ws/ticket", () => {
         attempts += 1
+        // Let exactly one retry run, then model the browser going offline. The
+        // hook must skip logging/scheduling the second failure once offline;
+        // this keeps the negative-path test deterministic without arbitrary
+        // sleeps or an unbounded retry spin.
+        if (attempts === 2) online.mockReturnValue(false)
         return new HttpResponse(null, { status: 500 })
       })
     )
 
-    // Mount hook with enabled: true
-    const rendered = renderHook(() => useChatWebSocket({ enabled: true }), {
-      wrapper: ({ children }) => (
-        <QueryClientProvider client={new QueryClient()}>
-          <WebSocketProvider>{children}</WebSocketProvider>
-        </QueryClientProvider>
-      ),
-    })
-
-    // Wait and verify that it did not open a WebSocket because of the failure,
-    // but reconnect is scheduled. Since it fails to fetch a ticket, MockWebSocket.instances.length remains 0.
-    await waitFor(() => expect(attempts).toBeGreaterThanOrEqual(2))
+    // Mount and wait inside the diagnostic scope. Axios/MSW can settle the
+    // first failed request in the same turn as renderHook, so installing the
+    // expectation only after mounting would turn an expected transport signal
+    // into an unhandled strict-console rejection.
+    let rendered: ReturnType<typeof renderHook> | undefined
+    await withExpectedConsole(
+      "error",
+      "[WebSocket] Ticket fetch failed; will retry.",
+      async () => {
+        rendered = renderHook(() => useChatWebSocket({ enabled: true }), {
+          wrapper: ({ children }) => (
+            <QueryClientProvider client={new QueryClient()}>
+              <WebSocketProvider>{children}</WebSocketProvider>
+            </QueryClientProvider>
+          ),
+        })
+        await waitFor(() => expect(attempts).toBeGreaterThanOrEqual(2))
+        // Stop the retry loop while the scoped diagnostic expectation is still
+        // active. The handler has switched navigator.onLine to false on the
+        // second failure, so the hook will not schedule a third request.
+        rendered!.unmount()
+      },
+      1
+    )
     expect(MockWebSocket.instances.length).toBe(0)
 
-    rendered.unmount()
+    online.mockRestore()
     random.mockRestore()
   })
 
@@ -608,16 +631,22 @@ describe("useChatWebSocket exponential backoffs and ticket exchange failures", (
         })
       )
       const onAuthError = vi.fn()
-      const rendered = renderHook(() => useChatWebSocket({ enabled: true, onAuthError }), {
-        wrapper: ({ children }) => (
-          <QueryClientProvider client={new QueryClient()}>
-            <WebSocketProvider>{children}</WebSocketProvider>
-          </QueryClientProvider>
-        ),
-      })
-      await waitFor(() => expect(onAuthError).toHaveBeenCalledTimes(1))
-      expect(MockWebSocket.instances).toHaveLength(0)
-      rendered.unmount()
+      await withExpectedConsole(
+        "error",
+        "[WebSocket] Session invalid (status %s); aborting connection.",
+        async () => {
+          const rendered = renderHook(() => useChatWebSocket({ enabled: true, onAuthError }), {
+            wrapper: ({ children }) => (
+              <QueryClientProvider client={new QueryClient()}>
+                <WebSocketProvider>{children}</WebSocketProvider>
+              </QueryClientProvider>
+            ),
+          })
+          await waitFor(() => expect(onAuthError).toHaveBeenCalledTimes(1))
+          expect(MockWebSocket.instances).toHaveLength(0)
+          rendered.unmount()
+        }
+      )
     }
   )
 
@@ -642,9 +671,15 @@ describe("useChatWebSocket exponential backoffs and ticket exchange failures", (
 
     // Now at 11 sockets. The next close should NOT trigger another reconnect attempt.
     const lastSocket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!
-    act(() => {
-      lastSocket.close(1006)
-    })
+    await withExpectedConsole(
+      "error",
+      "[ws] Max reconnect attempts reached; giving up. Manual reconnect required.",
+      () => {
+        act(() => {
+          lastSocket.close(1006)
+        })
+      }
+    )
 
     // Wait some time and verify no new socket is created
     await new Promise((resolve) => setTimeout(resolve, 200))
@@ -806,10 +841,12 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     socket.send = () => {
       throw new Error("socket closed")
     }
-    expect(() => {
-      act(() => result.current.sendJoin("55555555-5555-4555-8555-555555555555"))
-      socket.onerror?.(new Event("error"))
-    }).not.toThrow()
+    await withExpectedConsole("error", "[WebSocket] Error:", () => {
+      expect(() => {
+        act(() => result.current.sendJoin("55555555-5555-4555-8555-555555555555"))
+        socket.onerror?.(new Event("error"))
+      }).not.toThrow()
+    })
     unmount()
   })
 
@@ -820,15 +857,17 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
       }
     }
     vi.stubGlobal("WebSocket", ThrowingWebSocket)
-    const rendered = renderHook(() => useChatWebSocket({ enabled: true }), {
-      wrapper: ({ children }) => (
-        <QueryClientProvider client={new QueryClient()}>
-          <WebSocketProvider>{children}</WebSocketProvider>
-        </QueryClientProvider>
-      ),
+    await withExpectedConsole("error", "[WebSocket] Failed to connect:", async () => {
+      const rendered = renderHook(() => useChatWebSocket({ enabled: true }), {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={new QueryClient()}>
+            <WebSocketProvider>{children}</WebSocketProvider>
+          </QueryClientProvider>
+        ),
+      })
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      rendered.unmount()
     })
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    rendered.unmount()
   })
 
   it("does not open a second socket when reconnect is requested while open", async () => {
@@ -844,9 +883,11 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
       throw new Error("validator failure")
     })
     const { socket, unmount } = await mountAndOpen({ enabled: true })
-    expect(() => {
-      act(() => socket.receive({ type: "pong" }))
-    }).not.toThrow()
+    await withExpectedConsole("error", "[WebSocket] Failed to parse message:", () => {
+      expect(() => {
+        act(() => socket.receive({ type: "pong" }))
+      }).not.toThrow()
+    })
     parseSpy.mockRestore()
     unmount()
   })

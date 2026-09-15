@@ -44,29 +44,166 @@ _EMAIL_RE = re.compile(
 )
 # RZ-30-04: Anchored phone regex — negative lookbehind/lookahead reject
 # timestamps (2026-03-25), IPs (192.168.1.1), and version-like sequences.
+# The explicit seven-digit alternatives cover common local numbers such as
+# ``555-0199`` (with or without a country code) that are otherwise too short
+# for the general international-number shape.  Their trailing guard avoids
+# redacting only a prefix of a longer number with an extension/group.
 _PHONE_RE = re.compile(
-    r"(?<![.\d])"  # no preceding dot/digit
-    r"(?:\+\d{1,3}[\s-]?)?"  # optional country code
-    r"\(?\d{2,4}\)?[\s.-]?"  # area code
-    r"\d{3,4}[\s.-]?"  # first group
-    r"\d{2,4}"  # second group
-    r"(?![.\d])"  # no trailing dot/digit
+    r"(?<![.\d])(?<!\d[\s.-])"  # no embedded numeric group
+    r"(?:"
+    r"\+\d{1,3}[\s-]?\(?\d{3}\)?[\s-]\d{3}[\s-]\d{2}[\s-]\d{2}"
+    r"|8[\s-]?\(?\d{3}\)?[\s-]\d{3}[\s-]\d{2}[\s-]\d{2}"
+    r"|(?:\+\d{1,3}[\s-]?)?\(?\d{3}\)?[\s.-]"
+    r"\d{3}[\s.-]\d{4}(?:[\s-]\d{1,5})?"  # 10-digit + extension
+    r"|\+\d{1,3}[\s-]?\d{3}[\s-]\d{4}(?![\s-]\d)"  # country + local
+    r"|(?:\+\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s.-]?"  # optional country/area
+    r"\d{3,4}[\s.-]?\d{2,4}"  # first + second groups
+    r"|\(?\d{3}\)?[\s-]\d{4}(?:[\s-]\d{1,5})?"  # local + extension
+    r")"
+    r"(?!\d|[.-]\d|[\s-]\d)"  # no numeric or numeric-separator suffix
+)
+_NON_PHONE_CONTEXT_RE = re.compile(
+    r"(?:\b(?:version|ver|build|release|id|identifier|ticket|record)\b|"
+    r"(?<![A-Za-z0-9])v)\s*[:=#-]?\s*$",
+    re.IGNORECASE,
+)
+_PHONE_CONTEXT_RE = re.compile(
+    r"\b(?:call|phone|telephone|tel|mobile|cell|contact|dial)\b"
+    r"\s*[:=#-]?\s*$",
+    re.IGNORECASE,
 )
 _PII_FIELD_NAMES = frozenset(
     {
         "email",
         "phone",
         "phone_number",
+        "mobile_phone",
         "ssn",
         "password",
+        "password_hash",
         "secret",
+        "credential",
+        "credentials",
+        "client_secret",
         "credit_card",
         "card_number",
         "passport",
         "token",
+        "authorization",
+        "proxy_authorization",
+        "access_token",
+        "refresh_token",
+        "id_token",
+        "session_token",
+        "session",
+        "session_id",
+        "session_cookie",
+        "csrf_token",
+        "x_csrf_token",
+        "cookie",
+        "set_cookie",
+        "api_key",
+        "x_api_key",
+        "private_key",
+        "internal_signature",
+        "x_internal_signature",
+        "otp",
+        "one_time_code",
+        "recovery_code",
+        "ticket",
+        "nonce",
+        "signature",
     }
 )
 _PII_REPLACEMENT = "[REDACTED]"
+
+
+def _normalize_field_name(value: str) -> str:
+    """Normalize snake/kebab/camel/Pascal-case keys for PII matching."""
+
+    value = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", value)
+    value = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", value)
+    return re.sub(r"[^A-Za-z0-9]+", "_", value).strip("_").lower()
+
+
+def _is_pii_field_name(value: object) -> bool:
+    """Return whether a structured field name is credential/PII-bearing."""
+
+    return isinstance(value, str) and _normalize_field_name(value) in _PII_FIELD_NAMES
+
+
+def _redact_free_text(value: str) -> str:
+    """Redact emails and phone numbers while preserving explicit numeric tokens."""
+
+    redacted = _EMAIL_RE.sub(_PII_REPLACEMENT, value)
+
+    def replace_phone(match: re.Match[str]) -> str:
+        prefix = redacted[: match.start()]
+        explicit_non_phone_context = _NON_PHONE_CONTEXT_RE.search(prefix) is not None
+        dotted_without_phone_context = "." in match.group() and not (
+            match.group().startswith("+")
+            or _PHONE_CONTEXT_RE.search(prefix) is not None
+        )
+        if explicit_non_phone_context or dotted_without_phone_context:
+            return match.group()
+        return _PII_REPLACEMENT
+
+    return _PHONE_RE.sub(replace_phone, redacted)
+
+
+def _redact_nested(value: Any, *, seen: set[int]) -> Any:
+    """Recursively redact strings and sensitive fields in structured values.
+
+    Structlog event values frequently contain decoded request payloads (nested
+    mappings and lists).  Walking those values before rendering closes the
+    bypass where a sensitive value hidden one level below ``event_dict`` would
+    otherwise be emitted verbatim.  ``seen`` prevents a malformed/cyclic value
+    supplied by an integration from recursing forever; cyclic references are
+    replaced with the same redaction marker rather than serialized.
+    """
+    if isinstance(value, str):
+        if len(value) <= 5:
+            return value
+        return _redact_free_text(value)
+
+    if isinstance(value, dict):
+        marker = id(value)
+        if marker in seen:
+            return _PII_REPLACEMENT
+        seen.add(marker)
+        try:
+            for key in list(value):
+                if _is_pii_field_name(key):
+                    value[key] = _PII_REPLACEMENT
+                else:
+                    value[key] = _redact_nested(value[key], seen=seen)
+        finally:
+            seen.discard(marker)
+        return value
+
+    if isinstance(value, list):
+        marker = id(value)
+        if marker in seen:
+            return _PII_REPLACEMENT
+        seen.add(marker)
+        try:
+            for index, item in enumerate(value):
+                value[index] = _redact_nested(item, seen=seen)
+        finally:
+            seen.discard(marker)
+        return value
+
+    if isinstance(value, tuple):
+        marker = id(value)
+        if marker in seen:
+            return _PII_REPLACEMENT
+        seen.add(marker)
+        try:
+            return tuple(_redact_nested(item, seen=seen) for item in value)
+        finally:
+            seen.discard(marker)
+
+    return value
 
 
 def _redact_pii(
@@ -80,15 +217,10 @@ def _redact_pii(
     - Value-level: email/phone patterns in string values are masked.
     """
     for key in list(event_dict):
-        if key in _PII_FIELD_NAMES:
+        if _is_pii_field_name(key):
             event_dict[key] = _PII_REPLACEMENT
             continue
-        value = event_dict[key]
-        if isinstance(value, str) and len(value) > 5:
-            value = _EMAIL_RE.sub(_PII_REPLACEMENT, value)
-            value = _PHONE_RE.sub(_PII_REPLACEMENT, value)
-            if value != event_dict[key]:
-                event_dict[key] = value
+        event_dict[key] = _redact_nested(event_dict[key], seen={id(event_dict)})
     return event_dict
 
 
@@ -164,15 +296,17 @@ def configure_logging(
     ]
 
     processors: list[Any]
+    renderer: Any
     if json_output:
         # Production: JSON output with orjson (fastest serializer)
+        renderer = structlog.processors.JSONRenderer(serializer=_orjson_serializer)
         processors = [
             structlog.stdlib.filter_by_level,
             *shared_processors,
             # JSON needs a serializable exception string. ConsoleRenderer
             # handles ``exc_info`` itself and warns if it is pre-formatted.
             structlog.processors.format_exc_info,
-            structlog.processors.JSONRenderer(serializer=_orjson_serializer),
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ]
         factory: Any = structlog.stdlib.LoggerFactory()
     else:
@@ -180,13 +314,14 @@ def configure_logging(
         # Locals routinely contain credentials, reset links and request payloads;
         # showing them would bypass the structured-log redaction processors.
         safe_traceback = structlog.dev.RichTracebackFormatter(show_locals=False)
+        renderer = structlog.dev.ConsoleRenderer(
+            colors=True,
+            exception_formatter=safe_traceback,
+        )
         processors = [
             structlog.stdlib.filter_by_level,
             *shared_processors,
-            structlog.dev.ConsoleRenderer(
-                colors=True,
-                exception_formatter=safe_traceback,
-            ),
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ]
         factory = structlog.stdlib.LoggerFactory()
 
@@ -197,12 +332,24 @@ def configure_logging(
         cache_logger_on_first_use=True,
     )
 
-    # Configure standard logging to bridge into structlog
+    # Configure standard logging to bridge into structlog.  Existing stdlib
+    # loggers (including auth/audit modules that have not yet migrated to
+    # ``get_logger``) must pass through the same redaction/context chain.
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
         level=level,
     )
+    foreign_pre_chain = list(shared_processors)
+    if json_output:
+        foreign_pre_chain.append(structlog.processors.format_exc_info)
+    processor_formatter = structlog.stdlib.ProcessorFormatter(
+        processor=renderer,
+        foreign_pre_chain=foreign_pre_chain,
+    )
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler, logging.StreamHandler):
+            handler.setFormatter(processor_formatter)
 
     # OpenTelemetry logger ownership lives in ``app.core.observability``.
     # Keeping provider creation out of this low-level structlog setup prevents
@@ -226,6 +373,20 @@ def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     from typing import cast
 
     return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))
+
+
+def get_stdlib_logger(name: str | None = None) -> logging.Logger:
+    """Return a stdlib logger whose records are processed by our bridge.
+
+    A small number of compatibility-facing emitters (notably the audit
+    service) intentionally pass a JSON audit payload as ``record.msg`` so
+    existing log consumers can parse it losslessly.  They still use this
+    helper rather than calling ``logging.getLogger`` directly: once
+    :func:`configure_logging` installs ``ProcessorFormatter`` on the root
+    handlers, these records receive the same redaction, context and renderer
+    chain as native structlog events.
+    """
+    return logging.getLogger(name)
 
 
 def bind_context(**kwargs: Any) -> None:
@@ -265,5 +426,6 @@ __all__ = [
     "clear_context",
     "configure_logging",
     "get_logger",
+    "get_stdlib_logger",
     "is_logger_enabled",
 ]

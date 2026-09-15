@@ -22,6 +22,14 @@ on:
 
 permissions: read-all
 
+# Active scans target one protected staging surface.  Serialize scheduled and
+# manual runs so a duplicate dispatch cannot consume two scanner stacks or
+# compete for the repository's hosted-runner budget.  Keep queued evidence
+# rather than cancelling an in-flight security scan.
+concurrency:
+  group: dast-main
+  cancel-in-progress: false
+
 jobs:
   verify-trusted-ref:
     name: Verify trusted DAST source

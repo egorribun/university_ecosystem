@@ -24,14 +24,27 @@ const SCRYPT_V3: &str = "7023bdcb3afd7348461c06cd81fd38ebfda8fbba904f8e3ea9b543f
 #[test]
 fn pbkdf2_hmac_sha256_rfc7914_vector() {
     assert_eq!(
-        pbkdf2_derive("passwd", "salt", 1, 64),
+        pbkdf2_derive("passwd", "salt", 1, 64).expect("valid PBKDF2 parameters"),
         PBKDF2_PASSWD_SALT_C1
     );
 }
 
 #[test]
 fn pbkdf2_length_tracks_key_size() {
-    assert_eq!(pbkdf2_derive("pw", "salt", 2, 20).len(), 40);
+    assert_eq!(
+        pbkdf2_derive("pw", "salt", 2, 20)
+            .expect("valid PBKDF2 parameters")
+            .len(),
+        40
+    );
+}
+
+#[test]
+fn pbkdf2_rejects_unbounded_parameters() {
+    assert!(pbkdf2_derive("pw", "salt", 0, 32).is_err());
+    assert!(pbkdf2_derive("pw", "salt", 1_000_001, 32).is_err());
+    assert!(pbkdf2_derive("pw", "salt", 1, 0).is_err());
+    assert!(pbkdf2_derive("pw", "salt", 1, 1_025).is_err());
 }
 
 #[test]
@@ -127,8 +140,9 @@ proptest! {
     }
 
     #[test]
-    fn pbkdf2_output_size_is_exact(key_size in 0usize..=128) {
-        let digest = pbkdf2_derive("property-password", "property-salt", 1, key_size);
+    fn pbkdf2_output_size_is_exact(key_size in 1usize..=128) {
+        let digest = pbkdf2_derive("property-password", "property-salt", 1, key_size)
+            .expect("bounded PBKDF2 key size is valid");
         prop_assert_eq!(digest.len(), key_size * 2);
     }
 

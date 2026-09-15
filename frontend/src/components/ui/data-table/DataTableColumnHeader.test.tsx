@@ -46,9 +46,10 @@ describe("DataTableColumnHeader — non-sortable column", () => {
 
 describe("DataTableColumnHeader — sortable column", () => {
   it("renders a button with the title text", () => {
-    render(<DataTableColumnHeader column={makeColumn()} title="Created" />)
+    const { container } = render(<DataTableColumnHeader column={makeColumn()} title="Created" />)
     const btn = screen.getByRole("button")
     expect(btn).toHaveTextContent("Created")
+    expect(container.firstElementChild).toHaveClass("flex", "items-center", "space-x-2")
   })
 
   it("announces 'not sorted' when no sort direction is set", () => {
@@ -81,6 +82,17 @@ describe("DataTableColumnHeader — sortable column", () => {
     render(<DataTableColumnHeader column={colB} title="X" />)
     await user.click(screen.getByRole("button"))
     expect(colB.toggleSorting).toHaveBeenCalledWith(true)
+  })
+
+  it.each([
+    [false, "lucide-chevrons-up-down"],
+    ["asc", "lucide-arrow-up"],
+    ["desc", "lucide-arrow-down"],
+  ] as const)("renders the icon for %s sort state", (isSorted, iconClass) => {
+    const { container } = render(
+      <DataTableColumnHeader column={makeColumn({ isSorted })} title="Created" />
+    )
+    expect(container.querySelector(`svg.${iconClass}`)).toBeInTheDocument()
   })
 })
 

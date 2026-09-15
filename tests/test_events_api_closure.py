@@ -256,7 +256,59 @@ async def test_get_event_files_and_upload_image_paths() -> None:
     db = AsyncMock()
     files = [SimpleNamespace(id=uuid.uuid4())]
     db.execute.return_value = _result(rows=files)
-    assert await api.get_event_files(event_id, db) == files
+    user = _user()
+    checker = MagicMock()
+    checker.check_permission = AsyncMock(return_value=True)
+    db.get.return_value = SimpleNamespace(id=event_id)
+    with patch.object(api, "resolve_locale", return_value="en"):
+        assert (
+            await api.get_event_files(
+                event_id,
+                request=_request(),
+                db=db,
+                user=user,
+                checker=checker,
+            )
+            == files
+        )
+    checker.check_permission.assert_awaited_once_with(
+        resource_type="event",
+        resource_id=str(event_id),
+        permission="view",
+        user_id=str(user.id),
+    )
+
+    # Authorization must happen before reading attachments.  A caller who
+    # cannot view an event must not be able to enumerate its file metadata.
+    checker.check_permission = AsyncMock(return_value=False)
+    db.execute.reset_mock()
+    with patch.object(api, "resolve_locale", return_value="en"):
+        with pytest.raises(HTTPException) as exc:
+            await api.get_event_files(
+                event_id,
+                request=_request(),
+                db=db,
+                user=user,
+                checker=checker,
+            )
+    assert exc.value.status_code == 403
+    db.execute.assert_not_awaited()
+
+    # Missing events return the same generic resource error used by the other
+    # event endpoints and do not trigger a permission lookup for an unknown id.
+    db.get.return_value = None
+    checker.check_permission.reset_mock()
+    with patch.object(api, "resolve_locale", return_value="en"):
+        with pytest.raises(HTTPException) as exc:
+            await api.get_event_files(
+                uuid.uuid4(),
+                request=_request(),
+                db=db,
+                user=user,
+                checker=checker,
+            )
+    assert exc.value.status_code == 404
+    checker.check_permission.assert_not_awaited()
 
     event = _event()
     checker = MagicMock()

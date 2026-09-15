@@ -1,0 +1,4491 @@
+{
+  "$schema": "./ci-check-catalog.schema.json",
+  "schema_version": 1,
+  "catalog_version": "1.1.0",
+  "repository": "egorribun/university_ecosystem",
+  "default_runbook": "docs/testing/ci-check-catalog-runbook.md",
+  "profiles": {
+    "required-pr-main": {
+      "classification": "required",
+      "required_events": [
+        "pull_request_main",
+        "push_main"
+      ],
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "artifacts": [],
+      "retry_policy": {
+        "mode": "none",
+        "first_failure_preserved": true,
+        "classifier": "not_applicable",
+        "review_required": false
+      },
+      "notes": "Required on pull requests and main pushes; exact branch protection remains a separate policy source."
+    },
+    "required-pr": {
+      "classification": "required",
+      "required_events": [
+        "pull_request_main"
+      ],
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "artifacts": [],
+      "retry_policy": {
+        "mode": "none",
+        "first_failure_preserved": true,
+        "classifier": "not_applicable",
+        "review_required": false
+      },
+      "notes": "Required on pull requests targeting main."
+    },
+    "required-main": {
+      "classification": "required",
+      "required_events": [
+        "push_main"
+      ],
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "artifacts": [],
+      "retry_policy": {
+        "mode": "none",
+        "first_failure_preserved": true,
+        "classifier": "not_applicable",
+        "review_required": false
+      },
+      "notes": "Required on main pushes."
+    },
+    "advisory": {
+      "classification": "advisory",
+      "required_events": [],
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "artifacts": [],
+      "retry_policy": {
+        "mode": "none",
+        "first_failure_preserved": true,
+        "classifier": "not_applicable",
+        "review_required": false
+      },
+      "notes": "Informational or policy-independent check; never inferred to be branch-protection required."
+    },
+    "nightly": {
+      "classification": "nightly",
+      "required_events": [],
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "artifacts": [],
+      "retry_policy": {
+        "mode": "none",
+        "first_failure_preserved": true,
+        "classifier": "not_applicable",
+        "review_required": false
+      },
+      "notes": "Scheduled or scheduled/manual evidence lane."
+    },
+    "manual": {
+      "classification": "manual",
+      "required_events": [],
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "artifacts": [],
+      "retry_policy": {
+        "mode": "none",
+        "first_failure_preserved": true,
+        "classifier": "not_applicable",
+        "review_required": false
+      },
+      "notes": "Explicit workflow_dispatch lane."
+    },
+    "internal": {
+      "classification": "internal",
+      "required_events": [],
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "artifacts": [],
+      "retry_policy": {
+        "mode": "none",
+        "first_failure_preserved": true,
+        "classifier": "not_applicable",
+        "review_required": false
+      },
+      "notes": "Reusable workflow implementation; required/advisory policy comes from its caller."
+    },
+    "external-required-pr": {
+      "classification": "required",
+      "required_events": [
+        "pull_request_main"
+      ],
+      "owner": "@github-advanced-security",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "artifacts": [],
+      "retry_policy": {
+        "mode": "none",
+        "first_failure_preserved": true,
+        "classifier": "provider-managed",
+        "review_required": false
+      },
+      "notes": "Provider-managed required context; live ruleset ownership and current conclusion are refreshed separately."
+    }
+  },
+  "external_checks": [
+    {
+      "provider": "github-advanced-security",
+      "integration_id": 57789,
+      "context": "CodeQL",
+      "profile": "external-required-pr",
+      "classification": "required",
+      "owner": "@github-advanced-security",
+      "source_reference": ".github/workflows/codeql.yml; live provider context evidence is refreshed with gh api",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "externally_owned": true
+    },
+    {
+      "provider": "github-advanced-security",
+      "integration_id": 57789,
+      "context": "Checkov",
+      "profile": "external-required-pr",
+      "classification": "required",
+      "owner": "@github-advanced-security",
+      "source_reference": ".github/workflows/checkov.yml; live provider context evidence is refreshed with gh api",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "externally_owned": true
+    },
+    {
+      "provider": "github-advanced-security",
+      "integration_id": 57789,
+      "context": "spectral",
+      "profile": "external-required-pr",
+      "classification": "required",
+      "owner": "@github-advanced-security",
+      "source_reference": ".github/workflows/contract-validation.yml; live provider context evidence is refreshed with gh api",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "externally_owned": true
+    },
+    {
+      "provider": "github-advanced-security",
+      "integration_id": 57789,
+      "context": "zizmor",
+      "profile": "external-required-pr",
+      "classification": "required",
+      "owner": "@github-advanced-security",
+      "source_reference": ".github/workflows/zizmor.yml; live provider context evidence is refreshed with gh api",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "externally_owned": true
+    }
+  ],
+  "expansions": [
+    {
+      "id": "backend-tests-units",
+      "kind": "reusable_workflow",
+      "caller_workflow_path": ".github/workflows/ci.yml",
+      "caller_job_id": "backend-tests",
+      "reusable_workflow_path": ".github/workflows/reusable-backend-tests.yml",
+      "reusable_job_ids": [
+        "unit-tests"
+      ],
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/ci.yml#jobs.backend-tests -> reusable-backend-tests.yml#jobs.unit-tests",
+      "declared_contexts": [
+        "Backend Tests (Python 3.14-shard-0) / Unit Tests (All-Python 3.14-shard-0)",
+        "Backend Tests (Python 3.14-shard-1) / Unit Tests (All-Python 3.14-shard-1)",
+        "Backend Tests (Python 3.14-shard-2) / Unit Tests (All-Python 3.14-shard-2)",
+        "Backend Tests (Python 3.14-shard-3) / Unit Tests (All-Python 3.14-shard-3)"
+      ]
+    },
+    {
+      "id": "frontend-tests-protected",
+      "kind": "reusable_workflow",
+      "caller_workflow_path": ".github/workflows/ci.yml",
+      "caller_job_id": "frontend-tests",
+      "reusable_workflow_path": ".github/workflows/reusable-frontend-tests.yml",
+      "reusable_job_ids": [
+        "bundle-analysis",
+        "lighthouse-shards",
+        "lighthouse",
+        "lint",
+        "build",
+        "wasm-tests",
+        "unit-tests-shard",
+        "unit-tests"
+      ],
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/ci.yml#jobs.frontend-tests -> reusable-frontend-tests.yml#jobs.{bundle-analysis,lighthouse-shards,lighthouse,lint,build,wasm-tests,unit-tests-shard,unit-tests}",
+      "declared_contexts": [
+        "Frontend Tests / Bundle Analysis",
+        "Frontend Tests / Lighthouse Audit",
+        "Frontend Tests / Lighthouse Audit (content)",
+        "Frontend Tests / Lighthouse Audit (core)",
+        "Frontend Tests / Lighthouse Audit (fallback)",
+        "Frontend Tests / Lighthouse Audit (realtime)",
+        "Frontend Tests / Lint & Format",
+        "Frontend Tests / Production Build",
+        "Frontend Tests / WASM Contract Tests",
+        "Frontend Tests / Unit Tests",
+        "Frontend Tests / Unit Tests (shard 1/4)",
+        "Frontend Tests / Unit Tests (shard 2/4)",
+        "Frontend Tests / Unit Tests (shard 3/4)",
+        "Frontend Tests / Unit Tests (shard 4/4)"
+      ]
+    },
+    {
+      "id": "e2e-tests-chromium",
+      "kind": "reusable_workflow",
+      "caller_workflow_path": ".github/workflows/ci.yml",
+      "caller_job_id": "e2e-tests",
+      "reusable_workflow_path": ".github/workflows/reusable-e2e-tests.yml",
+      "reusable_job_ids": [
+        "e2e"
+      ],
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/ci.yml#jobs.e2e-tests -> reusable-e2e-tests.yml#jobs.e2e",
+      "declared_contexts": [
+        "E2E Tests (shard 1/4) / E2E Tests (chromium)",
+        "E2E Tests (shard 2/4) / E2E Tests (chromium)",
+        "E2E Tests (shard 3/4) / E2E Tests (chromium)",
+        "E2E Tests (shard 4/4) / E2E Tests (chromium)"
+      ]
+    },
+    {
+      "id": "go-tests-protected",
+      "kind": "reusable_workflow",
+      "caller_workflow_path": ".github/workflows/ci.yml",
+      "caller_job_id": "go-tests",
+      "reusable_workflow_path": ".github/workflows/reusable-go-tests.yml",
+      "reusable_job_ids": [
+        "test",
+        "lint"
+      ],
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/ci.yml#jobs.go-tests -> reusable-go-tests.yml#jobs.{test,lint}",
+      "declared_contexts": [
+        "Go Tests (services/cmd/uni-cli) / Lint Go Service (services/cmd/uni-cli)",
+        "Go Tests (services/cmd/uni-cli) / Test Go Service (services/cmd/uni-cli)",
+        "Go Tests (services/file-processor) / Lint Go Service (services/file-processor)",
+        "Go Tests (services/file-processor) / Test Go Service (services/file-processor)",
+        "Go Tests (services/gateway) / Lint Go Service (services/gateway)",
+        "Go Tests (services/gateway) / Test Go Service (services/gateway)",
+        "Go Tests (services/ws-hub) / Lint Go Service (services/ws-hub)",
+        "Go Tests (services/ws-hub) / Test Go Service (services/ws-hub)"
+      ]
+    },
+    {
+      "id": "security-audit-protected",
+      "kind": "reusable_workflow",
+      "caller_workflow_path": ".github/workflows/ci.yml",
+      "caller_job_id": "security-audit",
+      "reusable_workflow_path": ".github/workflows/reusable-security-audit.yml",
+      "reusable_job_ids": [
+        "pip-audit",
+        "npm-audit",
+        "docker-security",
+        "govulncheck",
+        "sbom",
+        "detect-secrets-baseline",
+        "semgrep"
+      ],
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/ci.yml#jobs.security-audit -> reusable-security-audit.yml#jobs.{pip-audit,npm-audit,docker-security,govulncheck,sbom,detect-secrets-baseline,semgrep}",
+      "declared_contexts": [
+        "Security Audit / Python Dependency Audit",
+        "Security Audit / Node.js Dependency Audit",
+        "Security Audit / Container Security Scan",
+        "Security Audit / Go Vulnerability Scan",
+        "Security Audit / Generate SBOM",
+        "Security Audit / detect-secrets Baseline Integrity",
+        "Security Audit / Semgrep SAST"
+      ]
+    },
+    {
+      "id": "codeql-languages",
+      "kind": "matrix",
+      "caller_workflow_path": ".github/workflows/codeql.yml",
+      "caller_job_id": "analyze",
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/codeql.yml#jobs.analyze.strategy.matrix.include[language]",
+      "declared_contexts": [
+        "Analyze (actions)",
+        "Analyze (go)",
+        "Analyze (javascript-typescript)",
+        "Analyze (python)",
+        "Analyze (rust)"
+      ]
+    },
+    {
+      "id": "rust-fuzz-command",
+      "kind": "matrix",
+      "caller_workflow_path": ".github/workflows/rust-fuzz.yml",
+      "caller_job_id": "fuzz",
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/rust-fuzz.yml#jobs.fuzz protected pull_request/push branch",
+      "declared_contexts": [
+        "Run cargo fuzz"
+      ]
+    },
+    {
+      "id": "rust-fuzz-additional",
+      "kind": "matrix",
+      "caller_workflow_path": ".github/workflows/rust-fuzz.yml",
+      "caller_job_id": "fuzz-additional-rust-crates",
+      "profile": "required-pr-main",
+      "classification": "required",
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "source_reference": ".github/workflows/rust-fuzz.yml#jobs.fuzz-additional-rust-crates.strategy.matrix.include",
+      "declared_contexts": [
+        "Fuzz frontend/rust-crypto/fuzz",
+        "Fuzz frontend/wasm-sanitizer/fuzz"
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "path": ".github/workflows/admin-smoke-monitoring.yml",
+      "name": "Admin Smoke Monitoring (Linux Periodic)",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_dispatch",
+          "guard": "{}"
+        },
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"0 3 * * 1\"}]"
+        }
+      ],
+      "jobs": {
+        "admin-smoke": {
+          "profile": "nightly",
+          "check_name_template": "Admin React",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "admin-smoke-reports",
+              "path_pattern": "frontend/.screenshots/admin-visual-smoke",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/auto-merge-patches.yml",
+      "name": "Auto-merge dependabot patches",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "auto-merge": {
+          "profile": "advisory",
+          "check_name_template": "Auto Merge Dependabot Patches",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "github.actor == 'dependabot[bot]'",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/benchmark.yml",
+      "name": "Continuous Performance Benchmarking",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{}"
+        }
+      ],
+      "jobs": {
+        "benchmark": {
+          "profile": "required-pr-main",
+          "check_name_template": "Run Go Benchmarks",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "performance-advisory-go",
+              "path_pattern": "artifacts/performance/advisory/go",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "ws-hub-regression": {
+          "profile": "required-pr-main",
+          "check_name_template": "WS-Hub Go Benchmark Regression Gate",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "performance-ws-hub-paired",
+              "path_pattern": "${{ steps.capture_ws_hub.outputs.artifact_root }}",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "rust-criterion": {
+          "profile": "required-pr-main",
+          "check_name_template": "Rust Criterion Benchmarks (pyo3-sanitizer)",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "performance-advisory-rust-criterion",
+              "path_pattern": "artifacts/performance/advisory/rust-criterion",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "rust-native-regression": {
+          "profile": "required-pr-main",
+          "check_name_template": "Rust Native Optimizer Regression Gate",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "performance-rust-native-paired",
+              "path_pattern": "${{ steps.capture_rust_native.outputs.artifact_root }}",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "publish-performance-history": {
+          "profile": "advisory",
+          "check_name_template": "publish-performance-history",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/build-orchestrated-linux.yml",
+      "name": "Build Orchestrated Linux Validation",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_dispatch",
+          "guard": "{\"inputs\":{\"runs\":{\"default\":\"3\",\"description\":\"Number of consecutive builds to run for reproducibility check (default 3).\",\"required\":false,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "build-validation": {
+          "profile": "manual",
+          "check_name_template": "build-orchestrated.mjs on Linux",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "dist-linux-validation",
+              "path_pattern": "frontend/dist",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/build-release-images.yml",
+      "name": "Build Canonical Release Images",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_dispatch",
+          "guard": "{\"inputs\":{\"quality-run-id\":{\"description\":\"Successful main CI run that produced this SHA's quality evidence\",\"required\":true,\"type\":\"string\"},\"release-sha\":{\"description\":\"Exact current protected-main commit to build\",\"required\":true,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "certify": {
+          "profile": "manual",
+          "check_name_template": "Certify canonical image source",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [
+            {
+              "name_pattern": "quality-certification-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "artifacts/quality/certification.json\nartifacts/quality/certification-provenance.json\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "build": {
+          "profile": "manual",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "workflow_dispatch",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
+          "check_name_template": "Build and sign canonical release image",
+          "expected_timeout_minutes": 180,
+          "expected_duration_seconds": 10800,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "aggregate-image-provenance": {
+          "profile": "manual",
+          "check_name_template": "Aggregate canonical image provenance",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [
+            {
+              "name_pattern": "release-image-provenance-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "artifacts/release-images/release-image-manifest.json\nartifacts/release-images/release-image-manifest.json.sha256\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/cargo-deny.yml",
+      "name": "Cargo Deny (Rust Dependency Scan)",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"]}"
+        }
+      ],
+      "jobs": {
+        "cargo-deny-crates": {
+          "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 4
+          },
+          "check_name_template": "Cargo Deny (${{ matrix.name }})",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "cargo-deny": {
+          "profile": "required-pr-main",
+          "check_name_template": "Cargo Deny Scan",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "${{ always() }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/checkov.yml",
+      "name": "Checkov (IaC Scan)",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"]}"
+        }
+      ],
+      "jobs": {
+        "checkov": {
+          "profile": "required-pr-main",
+          "check_name_template": "Checkov Scan",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/chromatic.yml",
+      "name": "Chromatic",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"paths\":[\"frontend/**\",\".github/workflows/chromatic.yml\"]}"
+        },
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"frontend/**\",\".github/workflows/chromatic.yml\"]}"
+        },
+        {
+          "event": "repository_dispatch",
+          "guard": "{\"types\":[\"run-chromatic\"]}"
+        }
+      ],
+      "jobs": {
+        "chromatic": {
+          "profile": "required-pr-main",
+          "check_name_template": "Chromatic Visual Regression",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "${{ vars.CHROMATIC_ENABLED == 'true' && vars.CHROMATIC_BILLING_ACTIVE == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'repository_dispatch') }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "name": "CI - Matrix Expansion",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\",\"develop\",\"release/**\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"types\":[\"opened\",\"synchronize\",\"reopened\",\"ready_for_review\"]}"
+        }
+      ],
+      "jobs": {
+        "ci-diagnostic": {
+          "profile": "required-pr-main",
+          "check_name_template": "CI Diagnostic",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "pre-commit-check": {
+          "profile": "required-pr-main",
+          "check_name_template": "Pre-commit & Linting (Read-only)",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "pre-commit-security-and-types": {
+          "profile": "required-pr-main",
+          "check_name_template": "Pre-commit Security & Types (Read-only)",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "compose-validate": {
+          "profile": "required-pr-main",
+          "check_name_template": "Validate docker-compose.yml",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "actionlint": {
+          "profile": "required-pr-main",
+          "check_name_template": "Lint GitHub Actions Workflows",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "dockerfile-lint": {
+          "profile": "required-pr-main",
+          "check_name_template": "Dockerfile Lint",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "shellcheck": {
+          "profile": "required-pr-main",
+          "check_name_template": "ShellCheck Scripts",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "graphql-drift-check": {
+          "profile": "required-pr-main",
+          "check_name_template": "GraphQL Schema Drift Check",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "quality": {
+          "profile": "required-pr-main",
+          "check_name_template": "Code Spell & Markdown Lint",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "rust-lint": {
+          "profile": "required-pr-main",
+          "check_name_template": "Rust Lint & Format",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "backend-tests": {
+          "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
+          "check_name_template": "Backend Tests (${{ matrix.name }})",
+          "expected_timeout_minutes": 60,
+          "expected_duration_seconds": 3600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "backend-type-check": {
+          "profile": "required-pr-main",
+          "check_name_template": "Backend Type Check",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "go-tests": {
+          "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
+          "check_name_template": "Go Tests (${{ matrix.service }})",
+          "expected_timeout_minutes": 120,
+          "expected_duration_seconds": 7200,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "go-fuzz": {
+          "profile": "required-pr-main",
+          "check_name_template": "Go Fuzz Tests (ws-hub)",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "fuzz-crash-corpus",
+              "path_pattern": "services/ws-hub/testdata/fuzz/",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "go-integration-ws-hub": {
+          "profile": "required-pr-main",
+          "check_name_template": "Go Integration Tests (ws-hub)",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "go-integration-file-processor": {
+          "profile": "required-pr-main",
+          "check_name_template": "Go Integration Tests (file-processor)",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "go-integration-gateway": {
+          "profile": "required-pr-main",
+          "check_name_template": "Go Integration Tests (gateway)",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "frontend-tests": {
+          "profile": "required-pr-main",
+          "check_name_template": "Frontend Tests",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "e2e-wasm-build": {
+          "profile": "required-pr-main",
+          "check_name_template": "E2E WASM Build",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "stryker-preflight": {
+          "profile": "required-pr-main",
+          "check_name_template": "Frontend Mutation Preflight Universe",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.event_name == 'pull_request' && needs.pre-commit-check.result == 'success' && needs.e2e-wasm-build.result == 'success' && needs.frontend-tests.result == 'success' }}",
+          "artifacts": [
+            {
+              "name_pattern": "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "stryker-shards": {
+          "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 6
+          },
+          "check_name_template": "Frontend mutation shard ${{ matrix.shard-index }}/64",
+          "expected_timeout_minutes": 120,
+          "expected_duration_seconds": 7200,
+          "guard": "${{ github.event_name == 'pull_request' && needs.stryker-preflight.result == 'success' && needs.coverage-policy-gate.result == 'success' && needs.pre-commit-security-and-types.result == 'success' }}",
+          "artifacts": [
+            {
+              "name_pattern": "frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}",
+              "path_pattern": "frontend/reports/mutation/shards/**/mutation.json\nfrontend/reports/mutation/shards/**/SHARD_EVIDENCE.json\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "stryker-aggregate": {
+          "profile": "required-pr-main",
+          "check_name_template": "Frontend Mutation Evidence (100%)",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-preflight.result != 'skipped' && needs.coverage-policy-gate.result == 'success' && needs.pre-commit-security-and-types.result == 'success' }}",
+          "artifacts": [
+            {
+              "name_pattern": "frontend-mutation-historical-costs-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "frontend/reports/mutation/historical-costs/HISTORICAL_COSTS.json",
+              "required": false,
+              "provenance": "sha"
+            },
+            {
+              "name_pattern": "frontend-mutation-validated-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "frontend/reports/mutation/mutation.json\nfrontend/reports/mutation/inventory.json\nfrontend/reports/mutation/preflight.json\nfrontend/reports/mutation/VALIDATED.json\nfrontend/reports/mutation/external/**/mutation.json\nfrontend/reports/mutation/external/**/SHARD_EVIDENCE.json\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "stryker-evidence-roundtrip": {
+          "profile": "required-pr-main",
+          "check_name_template": "Frontend Mutation Artifact Round-trip",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.event_name == 'pull_request' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "frontend-mutation-required-context": {
+          "profile": "required-pr-main",
+          "check_name_template": "Incremental Mutation Tests (frontend)",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-aggregate.result != 'skipped' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "e2e-tests": {
+          "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
+          "check_name_template": "E2E Tests (shard ${{ matrix.shard-index }}/4)",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "e2e-tests-cross-browser": {
+          "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
+          "check_name_template": "E2E Tests (cross-browser ${{ matrix.browser }})",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "security-audit": {
+          "profile": "required-pr-main",
+          "check_name_template": "Security Audit",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "sbom-generate": {
+          "profile": "required-pr-main",
+          "check_name_template": "SBOM Generation",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "sbom",
+              "path_pattern": "sbom.spdx.json",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "provenance-check": {
+          "profile": "required-pr-main",
+          "check_name_template": "SLSA Provenance Dry-Run",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "alembic-migrations": {
+          "profile": "required-pr-main",
+          "check_name_template": "Alembic Migrations",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "openapi-verify": {
+          "profile": "required-pr-main",
+          "check_name_template": "Verify OpenAPI Types",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "verify-runtime-reqs": {
+          "profile": "required-pr-main",
+          "check_name_template": "Verify Runtime Requirements",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "performance-gate": {
+          "profile": "required-pr-main",
+          "check_name_template": "Performance Gate",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "docker-security-scan": {
+          "profile": "required-pr-main",
+          "check_name_template": "Trivy Image Scan",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "helm-validate": {
+          "profile": "required-pr-main",
+          "check_name_template": "Helm Lint & Validate",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "db-migration-gate": {
+          "profile": "required-pr-main",
+          "check_name_template": "DB Migration Gate (Postgres)",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "contract-tests": {
+          "profile": "required-pr-main",
+          "check_name_template": "Contract Tests",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "schemathesis-api-tests-shard": {
+          "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 4
+          },
+          "check_name_template": "Schemathesis - API Schema Conformance / shard ${{ matrix.shard }}/8",
+          "expected_timeout_minutes": 60,
+          "expected_duration_seconds": 3600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "schemathesis-api-tests": {
+          "profile": "required-pr-main",
+          "check_name_template": "Schemathesis - API Schema Conformance",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "${{ always() && !cancelled() }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "msw-mock-drift": {
+          "profile": "required-pr-main",
+          "check_name_template": "MSW Mock Drift Gate",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "rust-ffi-asan": {
+          "profile": "required-pr-main",
+          "check_name_template": "Rust FFI \u2014 ASan / LSan",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "github.event_name == 'push' ||\ngithub.event_name == 'pull_request'\n",
+          "artifacts": [
+            {
+              "name_pattern": "asan-report",
+              "path_pattern": "asan-report.*",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "rust-ffi-tsan": {
+          "profile": "required-pr-main",
+          "check_name_template": "Rust FFI \u2014 TSan",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "github.event_name == 'push' ||\ngithub.event_name == 'pull_request'\n",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "rust-tests": {
+          "profile": "required-pr-main",
+          "check_name_template": "Rust - cargo test (x3 crates) + wasm-pack + coverage",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "github.event_name == 'push' ||\ngithub.event_name == 'pull_request'\n",
+          "artifacts": [
+            {
+              "name_pattern": "rust-coverage",
+              "path_pattern": "artifacts/coverage/rust/rust-native/llvm.json\nartifacts/coverage/rust/rust-native/branch-llvm.json\nartifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json\nartifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json\nartifacts/coverage/rust/rust-crypto/llvm.json\nartifacts/coverage/rust/rust-crypto/branch-llvm.json\nartifacts/coverage/rust/coverage-provenance.json\n",
+              "required": false,
+              "provenance": "none"
+            },
+            {
+              "name_pattern": "rust-codecov-reports",
+              "path_pattern": "artifacts/coverage/rust/rust-native/codecov.json\nartifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json\nartifacts/coverage/rust/rust-wasm-sanitizer/codecov.json\nartifacts/coverage/rust/rust-crypto/codecov.json\n",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "mutation-scope": {
+          "profile": "required-pr-main",
+          "check_name_template": "Resolve mutation scope",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "mutation-tests-universe-base": {
+          "profile": "required-pr-main",
+          "check_name_template": "Prepare mutmut generation base",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "mutmut-generation-base-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "mutmut-universe-artifact.json\nmutants/\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "mutation-tests-stats": {
+          "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 8
+          },
+          "check_name_template": "Incremental Mutation Stats (mutmut) / shard ${{ matrix.stats_shard }}/${{ matrix.stats_total }}",
+          "expected_timeout_minutes": 25,
+          "expected_duration_seconds": 1500,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "mutmut-stats-shard-${{ matrix.stats_shard }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "mutmut-stats-upload",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "mutation-tests-universe": {
+          "profile": "required-pr-main",
+          "check_name_template": "Build central mutmut universe",
+          "expected_timeout_minutes": 35,
+          "expected_duration_seconds": 2100,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "mutmut-universe-artifact.json\nmutants/\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "mutation-tests-incremental": {
+          "profile": "required-pr-main",
+          "matrix_governance": {
+            "max_parallel": 10
+          },
+          "check_name_template": "Incremental Mutation Tests (mutmut) / execution group ${{ matrix.group_id }}",
+          "expected_timeout_minutes": 360,
+          "expected_duration_seconds": 21600,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-group-${{ matrix.group_id }}",
+              "path_pattern": "mutants/mutmut-cicd-stats.json\nmutants/mutmut-exact-evidence/\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "chaos-tests": {
+          "profile": "required-pr-main",
+          "check_name_template": "Chaos Engineering (ToxiProxy)",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "chaos-loadtest-orchestrator": {
+          "profile": "required-pr-main",
+          "check_name_template": "Chaos Loadtest Orchestrator",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "db-migration-integrity": {
+          "profile": "required-pr-main",
+          "check_name_template": "DB Migration Rollback Integrity",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "ws-stress-test": {
+          "profile": "advisory",
+          "check_name_template": "WebSocket 10k Scenario Validation (advisory)",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "coverage-policy-gate": {
+          "profile": "required-pr-main",
+          "check_name_template": "Coverage & Quality Policy Gate",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "coverage-codecov-inputs",
+              "path_pattern": "artifacts/coverage/codecov/",
+              "required": false,
+              "provenance": "none"
+            },
+            {
+              "name_pattern": "quality-evidence-${{ github.sha }}",
+              "path_pattern": "coverage.xml\nartifacts/coverage/python/coverage.json\nfrontend/coverage/lcov.info\nfrontend/coverage/coverage-final.json\nartifacts/coverage/go/gateway/coverage.out\nartifacts/coverage/go/ws-hub/coverage.out\nartifacts/coverage/go/file-processor/coverage.out\nartifacts/coverage/go/shared/coverage.out\nartifacts/coverage/go/shared-inputs/logging/coverage.out\nartifacts/coverage/rust/rust-native/llvm.json\nartifacts/coverage/rust/rust-native/branch-llvm.json\nartifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json\nartifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json\nartifacts/coverage/rust/rust-crypto/llvm.json\nartifacts/coverage/rust/rust-crypto/branch-llvm.json\nartifacts/coverage/provenance/python.json\nartifacts/coverage/provenance/go-shared.json\nartifacts/coverage/provenance/aggregate.json\nfrontend/coverage/coverage-provenance.json\nartifacts/coverage/rust/coverage-provenance.json\nartifacts/coverage/go/gateway/coverage-provenance.json\nartifacts/coverage/go/ws-hub/coverage-provenance.json\nartifacts/coverage/go/file-processor/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/logging/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json\nartifacts/coverage/quality-manifest.json\nartifacts/coverage/quality-manifest.json.sha256\n",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "codecov-upload": {
+          "profile": "required-pr-main",
+          "check_name_template": "Trusted Codecov Upload",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "quality-inventory-check": {
+          "profile": "required-pr-main",
+          "check_name_template": "Source/Test Inventory & Anti-Pattern Check",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "model-default-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "artifacts/quality/model-default-inventory.json",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "kyverno-test": {
+          "profile": "required-pr-main",
+          "check_name_template": "Kyverno policy tests",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "backend-tests-unit-dummy": {
+          "profile": "required-pr-main",
+          "check_name_template": "Backend Tests (Python 3.14) / Unit Tests (All-Python 3.14)",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "backend-tests-integration-dummy": {
+          "profile": "required-pr-main",
+          "check_name_template": "Backend Tests (Python 3.14) / Integration Tests (All-Python 3.14)",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "ci-success": {
+          "profile": "required-pr-main",
+          "check_name_template": "CI Success",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "${{ always() }}",
+          "artifacts": [
+            {
+              "name_pattern": "ci-health-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "artifacts/quality/ci-health-report.*",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/codeql.yml",
+      "name": "CodeQL Advanced",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"35 16 * * 6\"}]"
+        }
+      ],
+      "jobs": {
+        "analyze": {
+          "profile": "required-pr-main",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "push,pull_request,schedule",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
+          "check_name_template": "Analyze (${{ matrix.language }})",
+          "expected_timeout_minutes": 60,
+          "expected_duration_seconds": 3600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/contract-tests.yml",
+      "name": "Contract Tests \u2014 cross-process Pact boundaries",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/schemas.py\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/schemas.py\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "{}"
+        }
+      ],
+      "jobs": {
+        "consumer": {
+          "profile": "required-pr-main",
+          "check_name_template": "Python consumer \u2014 generate pact",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "pact-contracts-${{ github.sha }}",
+              "path_pattern": "tests/contracts/pacts/ws-hub-university-backend.json\ntests/contracts/pacts/gateway-university-backend.json\ntests/contracts/pacts/university-backend-file-processor.json\n",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "message-provider-verify": {
+          "profile": "required-pr-main",
+          "check_name_template": "Message providers \u2014 verify Pact",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "pact-provider-verify": {
+          "profile": "required-pr-main",
+          "check_name_template": "Pact provider \u2014 backend HTTP replay",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/contract-validation.yml",
+      "name": "Contract Validation \u2014 OpenAPI + Spectral",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"app/**\",\"pyproject.toml\",\".spectral.yml\",\".github/workflows/contract-validation.yml\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"types\":[\"opened\",\"synchronize\",\"reopened\",\"ready_for_review\"]}"
+        }
+      ],
+      "jobs": {
+        "spectral-lint": {
+          "profile": "required-pr-main",
+          "check_name_template": "Spectral \u2014 OpenAPI lint",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "openapi-diff": {
+          "profile": "required-pr-main",
+          "check_name_template": "OpenAPI Backward Compatibility Check",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "openapi-typescript-drift": {
+          "profile": "required-pr-main",
+          "check_name_template": "OpenAPI TypeScript Drift Check",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/cwv-field-certification.yml",
+      "name": "Field Core Web Vitals certification",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_dispatch",
+          "guard": "{\"inputs\":{\"deploy-run-attempt\":{\"description\":\"Exact staging deploy workflow run attempt\",\"required\":true,\"type\":\"string\"},\"deploy-run-id\":{\"description\":\"Successful staging deploy workflow run ID\",\"required\":true,\"type\":\"string\"},\"image-build-run-attempt\":{\"description\":\"Exact canonical image producer run attempt\",\"required\":true,\"type\":\"string\"},\"image-build-run-id\":{\"description\":\"Canonical six-image producer workflow run ID\",\"required\":true,\"type\":\"string\"},\"release-sha\":{\"description\":\"Exact protected-main commit deployed to staging\",\"required\":true,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "certify": {
+          "profile": "manual",
+          "check_name_template": "Certify staging field Core Web Vitals",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [
+            {
+              "name_pattern": "cwv-field-certificate-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "artifacts/cwv/certificate/**\nartifacts/cwv/deployment/**\nartifacts/cwv/provenance/**\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/dast.yml",
+      "name": "DAST \u2014 Nuclei + ZAP Scan",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"0 2 * * 0\"}]"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "{\"inputs\":{\"target_url\":{\"description\":\"Target URL to scan (overrides DAST_TARGET_URL secret)\",\"required\":false,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "verify-trusted-ref": {
+          "profile": "nightly",
+          "check_name_template": "Verify trusted DAST source",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "nuclei": {
+          "profile": "nightly",
+          "check_name_template": "Nuclei DAST scan",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ needs.verify-trusted-ref.result == 'success' }}",
+          "artifacts": [
+            {
+              "name_pattern": "nuclei-results-${{ github.run_id }}",
+              "path_pattern": "nuclei-results.json",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "zap": {
+          "profile": "nightly",
+          "check_name_template": "OWASP ZAP Full Scan",
+          "expected_timeout_minutes": 60,
+          "expected_duration_seconds": 3600,
+          "guard": "${{ needs.verify-trusted-ref.result == 'success' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/db-perf-gate.yml",
+      "name": "DB Performance Gate",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"paths\":[\"app/repositories/**\",\"alembic/**\",\"scripts/db_explain_check.py\"]}"
+        }
+      ],
+      "jobs": {
+        "explain-check": {
+          "profile": "required-pr",
+          "check_name_template": "explain-check",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/dependency-review.yml",
+      "name": "Dependency Review",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\",\"master\"]}"
+        }
+      ],
+      "jobs": {
+        "dependency-review": {
+          "profile": "required-pr",
+          "check_name_template": "Review Dependencies",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/deploy.yml",
+      "name": "Deploy (Helm / Kubernetes)",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_dispatch",
+          "guard": "{\"inputs\":{\"cwv-certification-run-attempt\":{\"default\":\"\",\"description\":\"Exact field-CWV certification run attempt (required for production)\",\"required\":false,\"type\":\"string\"},\"cwv-certification-run-id\":{\"default\":\"\",\"description\":\"Successful field-CWV certification run (required for production)\",\"required\":false,\"type\":\"string\"},\"environment\":{\"default\":\"staging\",\"description\":\"Target environment\",\"options\":[\"staging\",\"production\"],\"required\":true,\"type\":\"choice\"},\"image-build-run-attempt\":{\"description\":\"Exact canonical image producer run attempt\",\"required\":true,\"type\":\"string\"},\"image-build-run-id\":{\"description\":\"Successful canonical six-image producer workflow run ID\",\"required\":true,\"type\":\"string\"},\"quality-run-id\":{\"description\":\"Successful CI run that produced this SHA's quality evidence\",\"required\":true,\"type\":\"string\"},\"release-sha\":{\"description\":\"Exact current main commit to deploy\",\"required\":true,\"type\":\"string\"},\"rotate-mfa-keys\":{\"default\":false,\"description\":\"Reconcile ExternalSecret and restart MFA consumers\",\"required\":true,\"type\":\"boolean\"}}}"
+        }
+      ],
+      "jobs": {
+        "validate": {
+          "profile": "manual",
+          "check_name_template": "Pre-deployment validation",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "prepare": {
+          "profile": "manual",
+          "check_name_template": "Prepare release metadata",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "${{ always() && needs.validate.result == 'success' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "resolve-images": {
+          "profile": "manual",
+          "check_name_template": "Resolve canonical release images",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "deploy": {
+          "profile": "manual",
+          "check_name_template": "Deploy to ${{ inputs.environment }}",
+          "expected_timeout_minutes": 120,
+          "expected_duration_seconds": 7200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "staging-deployment-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "artifacts/cwv/staging-deployment.json\nartifacts/cwv/staging-deployment.json.sha256\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "rollback": {
+          "profile": "manual",
+          "check_name_template": "Database rollback capability test",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ inputs.environment == 'staging' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "notify": {
+          "profile": "manual",
+          "check_name_template": "Notify deployment status",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "always()",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/generate-openapi.yml",
+      "name": "Generate OpenAPI Spec",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"app/**\",\"pyproject.toml\"]}"
+        }
+      ],
+      "jobs": {
+        "generate": {
+          "profile": "required-main",
+          "check_name_template": "generate",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "openapi",
+              "path_pattern": "frontend/openapi.json",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/gitleaks.yml",
+      "name": "Gitleaks",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"]}"
+        }
+      ],
+      "jobs": {
+        "gitleaks": {
+          "profile": "required-pr-main",
+          "check_name_template": "Gitleaks scan",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/go-fuzz.yml",
+      "name": "Go Fuzzing",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"]}"
+        }
+      ],
+      "jobs": {
+        "fuzz": {
+          "profile": "required-pr-main",
+          "check_name_template": "Run Go Fuzz",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/go-lint.yml",
+      "name": "Go Lint & SBOM",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_dispatch",
+          "guard": "{}"
+        },
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"services/**/*.go\",\"services/**/go.mod\",\".golangci.yml\"]}"
+        }
+      ],
+      "jobs": {
+        "golangci-lint": {
+          "profile": "required-main",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "workflow_dispatch,push",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
+          "check_name_template": "Lint ${{ matrix.service }}",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "go-sbom": {
+          "profile": "required-main",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "workflow_dispatch,push",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
+          "check_name_template": "SBOM \u2014 ${{ matrix.service }}",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+          "artifacts": [
+            {
+              "name_pattern": "sbom-${{ matrix.service }}-${{ github.sha }}",
+              "path_pattern": "sbom-${{ matrix.service }}.spdx.json",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/go-mutation-diagnostic.yml",
+      "name": "Go Mutation Diagnostic",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"30 4 * * *\"}]"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "{}"
+        }
+      ],
+      "jobs": {
+        "diagnostic": {
+          "profile": "nightly",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "schedule,workflow_dispatch",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
+          "check_name_template": "Go diagnostic (${{ matrix.service-directory }})",
+          "expected_timeout_minutes": 120,
+          "expected_duration_seconds": 7200,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/lhci-linux.yml",
+      "name": "LHCI Linux On-Demand",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_dispatch",
+          "guard": "{\"inputs\":{\"urls\":{\"default\":\"\",\"description\":\"Comma-separated URL paths (empty = full default 10-URL sweep). Example: `,login,dashboard` for / + /login + /dashboard.\",\"required\":false,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "lhci": {
+          "profile": "manual",
+          "check_name_template": "Lighthouse on Linux",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "lighthouse-reports-on-demand",
+              "path_pattern": "frontend/.lighthouseci",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/manual-mutation-evidence.yml",
+      "name": "Manual Mutation Evidence",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_dispatch",
+          "guard": "{\"inputs\":{\"mutation_base_sha\":{\"description\":\"Full strict-ancestor commit SHA used to scope manual mutation evidence\",\"required\":true,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "manual-mutation-stats": {
+          "profile": "manual",
+          "matrix_governance": {
+            "max_parallel": 8
+          },
+          "check_name_template": "Manual Mutation Evidence (mutmut stats) / shard ${{ matrix.stats_shard }}/8",
+          "expected_timeout_minutes": 25,
+          "expected_duration_seconds": 1500,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "manual-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.stats_shard }}",
+              "path_pattern": "mutants/mutmut-stats.json",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "manual-mutation-tests": {
+          "profile": "manual",
+          "matrix_governance": {
+            "max_parallel": 20
+          },
+          "check_name_template": "Manual Mutation Evidence (mutmut) / shard ${{ matrix.shard }}/128",
+          "expected_timeout_minutes": 360,
+          "expected_duration_seconds": 21600,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "manual-mutation-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}",
+              "path_pattern": "mutants/mutmut-cicd-stats.json\nmutants/mutmut-exact-evidence/\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "manual-frontend-mutation-preflight": {
+          "profile": "manual",
+          "check_name_template": "Manual Mutation Evidence (frontend preflight universe)",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "manual-frontend-mutation-shards": {
+          "profile": "manual",
+          "matrix_governance": {
+            "max_parallel": 20
+          },
+          "check_name_template": "Manual Mutation Evidence (frontend shard ${{ matrix.shard-index }}/64)",
+          "expected_timeout_minutes": 120,
+          "expected_duration_seconds": 7200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "manual-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}",
+              "path_pattern": "frontend/reports/mutation/shards/**/mutation.json\nfrontend/reports/mutation/shards/**/SHARD_EVIDENCE.json\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "manual-frontend-mutation-aggregate": {
+          "profile": "manual",
+          "check_name_template": "Manual Mutation Evidence (frontend Stryker 100%)",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ always() && !cancelled() }}",
+          "artifacts": [
+            {
+              "name_pattern": "frontend-mutation-validated-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "frontend/reports/mutation/mutation.json\nfrontend/reports/mutation/inventory.json\nfrontend/reports/mutation/preflight.json\nfrontend/reports/mutation/VALIDATED.json\nfrontend/reports/mutation/external/**/mutation.json\nfrontend/reports/mutation/external/**/SHARD_EVIDENCE.json\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "manual-frontend-mutation-roundtrip": {
+          "profile": "manual",
+          "check_name_template": "Manual Mutation Evidence (frontend artifact round-trip)",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/manual-performance-evidence.yml",
+      "name": "Manual Performance Evidence",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_dispatch",
+          "guard": "{\"inputs\":{\"base_sha\":{\"description\":\"Full immutable base commit SHA for same-run performance evidence\",\"required\":true,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "benchmark": {
+          "profile": "manual",
+          "check_name_template": "Manual Performance Evidence / Run Go Benchmarks",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "manual-performance-advisory-go",
+              "path_pattern": "artifacts/performance/advisory/go",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "ws-hub-regression": {
+          "profile": "manual",
+          "check_name_template": "Manual Performance Evidence / WS-Hub Go Benchmark Regression Gate",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "manual-performance-ws-hub-paired",
+              "path_pattern": "${{ steps.capture_ws_hub.outputs.artifact_root }}",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "rust-criterion": {
+          "profile": "manual",
+          "check_name_template": "Manual Performance Evidence / Rust Criterion Benchmarks (pyo3-sanitizer)",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "manual-performance-advisory-rust-criterion",
+              "path_pattern": "artifacts/performance/advisory/rust-criterion",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "rust-native-regression": {
+          "profile": "manual",
+          "check_name_template": "Manual Performance Evidence / Rust Native Optimizer Regression Gate",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "manual-performance-rust-native-paired",
+              "path_pattern": "${{ steps.capture_rust_native.outputs.artifact_root }}",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/nightly-full-gate.yml",
+      "name": "Nightly Full Quality Gate",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"0 1 * * *\"}]"
+        },
+        {
+          "event": "repository_dispatch",
+          "guard": "{\"types\":[\"run-nightly-full-gate\"]}"
+        }
+      ],
+      "jobs": {
+        "mutation-tests-full-stats": {
+          "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 4
+          },
+          "check_name_template": "Full mutation stats (mutmut) / shard ${{ matrix.stats_shard }}/8",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [
+            {
+              "name_pattern": "nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.stats_shard }}",
+              "path_pattern": "mutants/mutmut-stats.json",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "mutation-tests-full-plan": {
+          "profile": "nightly",
+          "check_name_template": "Preflight exact full mutation plan",
+          "expected_timeout_minutes": 60,
+          "expected_duration_seconds": 3600,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [
+            {
+              "name_pattern": "nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "mutants/mutmut-stats.json\nmutants/mutmut-stats-full.json\nmutants/mutmut-stats-reduction.json\nmutants/mutmut-full-plan/\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "mutation-tests-full": {
+          "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 8
+          },
+          "check_name_template": "Full mutation score (mutmut) / shard ${{ matrix.shard }}/128",
+          "expected_timeout_minutes": 360,
+          "expected_duration_seconds": 21600,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [
+            {
+              "name_pattern": "nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}",
+              "path_pattern": "mutants/mutmut-cicd-stats.json\nmutants/mutmut-primary-cicd-stats.json\nmutants/mutmut-stats-full.json\nmutants/mutmut-stats-reduction.json\nmutants/mutmut-exact-evidence/\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "mutation-tests-full-aggregate": {
+          "profile": "nightly",
+          "check_name_template": "Full mutation score (mutmut) / aggregate 128 shards",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.ref == 'refs/heads/main' && always() && !cancelled() }}",
+          "artifacts": [
+            {
+              "name_pattern": "nightly-mutmut-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "mutants/mutmut-cicd-stats.json",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "frontend-mutation-preflight": {
+          "profile": "nightly",
+          "check_name_template": "Nightly Frontend Mutation Preflight Universe",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [
+            {
+              "name_pattern": "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "frontend-mutation-shards": {
+          "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 8
+          },
+          "check_name_template": "Nightly frontend mutation shard ${{ matrix.shard-index }}/64",
+          "expected_timeout_minutes": 120,
+          "expected_duration_seconds": 7200,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [
+            {
+              "name_pattern": "nightly-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}",
+              "path_pattern": "frontend/reports/mutation/shards/**/mutation.json\nfrontend/reports/mutation/shards/**/SHARD_EVIDENCE.json\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "frontend-mutation-tests-full": {
+          "profile": "nightly",
+          "check_name_template": "Full frontend mutation score (100%)",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.ref == 'refs/heads/main' && always() && !cancelled() }}",
+          "artifacts": [
+            {
+              "name_pattern": "frontend-mutation-validated-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "frontend/reports/mutation/mutation.json\nfrontend/reports/mutation/inventory.json\nfrontend/reports/mutation/preflight.json\nfrontend/reports/mutation/VALIDATED.json\nfrontend/reports/mutation/external/**/mutation.json\nfrontend/reports/mutation/external/**/SHARD_EVIDENCE.json\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "frontend-mutation-roundtrip": {
+          "profile": "nightly",
+          "check_name_template": "Nightly Frontend Mutation Artifact Round-trip",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "backend-full": {
+          "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
+          "check_name_template": "Full backend unit (shard ${{ matrix.unit-shard }})",
+          "expected_timeout_minutes": 60,
+          "expected_duration_seconds": 3600,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "backend-integration": {
+          "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
+          "check_name_template": "Full backend integration (shard ${{ matrix.integration-shard }})",
+          "expected_timeout_minutes": 60,
+          "expected_duration_seconds": 3600,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "go-integration": {
+          "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
+          "check_name_template": "Go integration (${{ matrix.service-directory }})",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "container-integration-cells": {
+          "profile": "nightly",
+          "check_name_template": "Disposable MinIO and SpiceDB cells",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "e2e-wasm-build": {
+          "profile": "nightly",
+          "check_name_template": "E2E WASM Build",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "browser-matrix": {
+          "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
+          "check_name_template": "Browser matrix (${{ matrix.browser }})",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "load-and-chaos": {
+          "profile": "nightly",
+          "check_name_template": "Load and chaos resilience",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "kyverno-test": {
+          "profile": "nightly",
+          "check_name_template": "Nightly Kyverno validation",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "miri": {
+          "profile": "nightly",
+          "check_name_template": "Miri pure-Rust checks",
+          "expected_timeout_minutes": 60,
+          "expected_duration_seconds": 3600,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "notify-failure": {
+          "profile": "nightly",
+          "check_name_template": "Report nightly regression",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "${{ github.ref == 'refs/heads/main' && always() && contains(needs.*.result, 'failure') }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/nilaway.yml",
+      "name": "Nilaway (Go Nil Pointer Analysis)",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "{}"
+        }
+      ],
+      "jobs": {
+        "nilaway": {
+          "profile": "required-pr-main",
+          "check_name_template": "Nilaway Scan",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/python-fuzz.yml",
+      "name": "Python Fuzzing",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"0 0 * * 0\"}]"
+        }
+      ],
+      "jobs": {
+        "fuzz": {
+          "profile": "required-pr-main",
+          "check_name_template": "Run Python Fuzz",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "fuzz-crash-dumps",
+              "path_pattern": "crash-*\nleak-*\nminimized-from-*\n",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/quality-history.yml",
+      "name": "Quality History",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"30 2 * * *\"}]"
+        },
+        {
+          "event": "repository_dispatch",
+          "guard": "{\"types\":[\"run-quality-history\"]}"
+        }
+      ],
+      "jobs": {
+        "archive": {
+          "profile": "nightly",
+          "check_name_template": "Archive quality manifest and render dashboard",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/quality-promotion-check.yml",
+      "name": "Quality Promotion Readiness",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_dispatch",
+          "guard": "{}"
+        }
+      ],
+      "jobs": {
+        "verify-canonical-ref": {
+          "profile": "manual",
+          "check_name_template": "Verify canonical promotion ref",
+          "expected_timeout_minutes": 2,
+          "expected_duration_seconds": 120,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "stabilization-window": {
+          "profile": "manual",
+          "check_name_template": "Verify 30-day nightly stabilization window",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "quality-stabilization-${{ github.run_id }}",
+              "path_pattern": "artifacts/quality/stabilization-window.json",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "name": "Release",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_dispatch",
+          "guard": "{\"inputs\":{\"cwv-certification-run-attempt\":{\"description\":\"Exact staging field-CWV certification run attempt\",\"required\":true,\"type\":\"string\"},\"cwv-certification-run-id\":{\"description\":\"Successful staging field-CWV certification workflow run ID\",\"required\":true,\"type\":\"string\"},\"image-build-run-attempt\":{\"description\":\"Exact canonical image producer run attempt\",\"required\":true,\"type\":\"string\"},\"image-build-run-id\":{\"description\":\"Successful canonical six-image producer workflow run ID\",\"required\":true,\"type\":\"string\"},\"quality-run-id\":{\"description\":\"Successful CI run certified by the canonical image manifest\",\"required\":true,\"type\":\"string\"},\"release-sha\":{\"description\":\"Exact current main commit to release\",\"required\":true,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "resolve-images": {
+          "profile": "manual",
+          "check_name_template": "Resolve promoted canonical image set",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "publish": {
+          "profile": "manual",
+          "check_name_template": "Publish Release",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/renovate-config-validation.yml",
+      "name": "Renovate Config Validation",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "renovate-validation": {
+          "profile": "required-pr-main",
+          "check_name_template": "Renovate Config Validator (Strict)",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/reusable-backend-tests.yml",
+      "name": "Backend Tests",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "{\"inputs\":{\"coverage-threshold\":{\"default\":90,\"description\":\"Minimum coverage percentage\",\"required\":false,\"type\":\"number\"},\"fail-fast\":{\"default\":false,\"description\":\"Stop on first test failure\",\"required\":false,\"type\":\"boolean\"},\"integration-num-shards\":{\"default\":1,\"description\":\"Total number of historical-duration integration shards\",\"required\":false,\"type\":\"number\"},\"integration-shard-id\":{\"default\":-1,\"description\":\"0-based historical-duration integration shard index\",\"required\":false,\"type\":\"number\"},\"integration-test-pattern\":{\"default\":\"tests/integration/\",\"description\":\"Pytest pattern for the PostgreSQL integration job\",\"required\":false,\"type\":\"string\"},\"num-shards\":{\"default\":1,\"description\":\"Total number of historical-duration shards\",\"required\":false,\"type\":\"number\"},\"parallel-workers\":{\"default\":0,\"description\":\"Number of parallel workers for pytest-xdist (0 = auto, -1 = disabled)\",\"required\":false,\"type\":\"number\"},\"python-gil\":{\"default\":\"1\",\"description\":\"PYTHON_GIL value ('1' = default GIL, '0' = free-threading). Only effective on Python 3.14+.\",\"required\":false,\"type\":\"string\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version to use\",\"required\":false,\"type\":\"string\"},\"run-integration-tests\":{\"default\":false,\"description\":\"Run PostgreSQL integration tests\",\"required\":false,\"type\":\"boolean\"},\"run-unit-tests\":{\"default\":true,\"description\":\"Run the unit-test job\",\"required\":false,\"type\":\"boolean\"},\"shard-id\":{\"default\":-1,\"description\":\"0-based historical-duration shard index\",\"required\":false,\"type\":\"number\"},\"test-group-name\":{\"default\":\"All\",\"description\":\"Name of the test group (e.g., Auth, Events)\",\"required\":false,\"type\":\"string\"},\"test-pattern\":{\"default\":\"tests/\",\"description\":\"Pytest pattern to include (e.g., tests/test_auth*)\",\"required\":false,\"type\":\"string\"}},\"secrets\":{\"SECRET_KEY\":{\"description\":\"Application secret key\",\"required\":false}}}"
+        }
+      ],
+      "jobs": {
+        "unit-tests": {
+          "profile": "internal",
+          "check_name_template": "Unit Tests (${{ inputs.test-group-name }})",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "${{ inputs.run-unit-tests }}",
+          "artifacts": [
+            {
+              "name_pattern": "backend-coverage-${{ inputs.test-group-name }}",
+              "path_pattern": "coverage-*.xml\nartifacts/coverage/python/coverage-*.json\n",
+              "required": false,
+              "provenance": "input"
+            },
+            {
+              "name_pattern": "backend-coverage-data-${{ inputs.test-group-name }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "artifacts/coverage/python/producer/.coverage.shard-${{ inputs.shard-id }}\nartifacts/coverage/python/producer/pytest-shard-${{ inputs.shard-id }}.json\nartifacts/coverage/python/producer/coverage-provenance-shard-${{ inputs.shard-id }}.json\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            },
+            {
+              "name_pattern": "backend-pytest-report-${{ inputs.test-group-name }}",
+              "path_pattern": "pytest-report.xml",
+              "required": false,
+              "provenance": "input"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "integration-tests": {
+          "profile": "internal",
+          "check_name_template": "Integration Tests (${{ inputs.test-group-name }})",
+          "expected_timeout_minutes": 60,
+          "expected_duration_seconds": 3600,
+          "guard": "${{ inputs.run-integration-tests }}",
+          "artifacts": [
+            {
+              "name_pattern": "postgres-test-failures-${{ inputs.test-group-name }}",
+              "path_pattern": "pytest-report.xml",
+              "required": false,
+              "provenance": "input"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/reusable-build-and-sign.yml",
+      "name": "Build and Sign Image",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "{\"inputs\":{\"build_args\":{\"description\":\"Newline-separated list of build arguments\",\"required\":false,\"type\":\"string\"},\"canonical_frontend\":{\"default\":false,\"description\":\"Build the one staging-certified promotable frontend variant\",\"required\":false,\"type\":\"boolean\"},\"context\":{\"default\":\".\",\"description\":\"Docker build context\",\"required\":false,\"type\":\"string\"},\"file\":{\"description\":\"Path to Dockerfile\",\"required\":true,\"type\":\"string\"},\"image_name\":{\"description\":\"Subject name for the image (e.g., backend)\",\"required\":true,\"type\":\"string\"},\"source-sha\":{\"description\":\"Exact validated commit SHA to check out and build\",\"required\":true,\"type\":\"string\"},\"tags\":{\"description\":\"Newline-separated list of tags to push\",\"required\":true,\"type\":\"string\"},\"target\":{\"description\":\"Target stage in multi-stage build\",\"required\":false,\"type\":\"string\"}},\"outputs\":{\"digest\":{\"description\":\"The pushed image digest\",\"value\":\"${{ jobs.build.outputs.digest }}\"},\"reference\":{\"description\":\"The final immutable image reference\",\"value\":\"${{ jobs.build.outputs.reference }}\"}}}"
+        }
+      ],
+      "jobs": {
+        "build": {
+          "profile": "internal",
+          "check_name_template": "build",
+          "expected_timeout_minutes": 180,
+          "expected_duration_seconds": 10800,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [
+            {
+              "name_pattern": "image-digest-evidence-${{ inputs.image_name }}-${{ inputs.source-sha }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "artifacts/image-evidence/${{ inputs.image_name }}.json",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/reusable-cache-deps.yml",
+      "name": "Cache Dependencies",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "{\"inputs\":{\"go-version\":{\"default\":\"1.26.6\",\"description\":\"Go version\",\"required\":false,\"type\":\"string\"},\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version\",\"required\":false,\"type\":\"string\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version\",\"required\":false,\"type\":\"string\"}},\"outputs\":{\"node-cache-hit\":{\"description\":\"Whether Node.js cache was hit\",\"value\":\"${{ jobs.cache.outputs.node-cache-hit }}\"},\"python-cache-hit\":{\"description\":\"Whether Python cache was hit\",\"value\":\"${{ jobs.cache.outputs.python-cache-hit }}\"}}}"
+        }
+      ],
+      "jobs": {
+        "cache": {
+          "profile": "internal",
+          "check_name_template": "Warm Dependency Caches",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/reusable-e2e-tests.yml",
+      "name": "E2E Tests",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "{\"inputs\":{\"advisory\":{\"default\":false,\"description\":\"Allow this E2E invocation to report without blocking its caller\",\"required\":false,\"type\":\"boolean\"},\"base-url\":{\"default\":\"\",\"description\":\"Override base URL for tests\",\"required\":false,\"type\":\"string\"},\"browser\":{\"default\":\"chromium\",\"description\":\"Browser to test (chromium, firefox, webkit)\",\"required\":false,\"type\":\"string\"},\"collect-coverage\":{\"default\":false,\"description\":\"Collect Chromium V8 coverage and upload an Istanbul/LCOV artifact\",\"required\":false,\"type\":\"boolean\"},\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version to use\",\"required\":false,\"type\":\"string\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version for backend\",\"required\":false,\"type\":\"string\"},\"shard-index\":{\"default\":1,\"description\":\"Playwright shard number (1-based)\",\"required\":false,\"type\":\"number\"},\"shard-total\":{\"default\":1,\"description\":\"Total number of Playwright shards\",\"required\":false,\"type\":\"number\"},\"test-pattern\":{\"default\":\"\",\"description\":\"Playwright test pattern\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-digest\":{\"default\":\"\",\"description\":\"Upload-artifact archive digest for the E2E WASM artifact\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-id\":{\"default\":\"\",\"description\":\"Server-issued same-run E2E WASM artifact id\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-name\":{\"default\":\"\",\"description\":\"Attempt- and SHA-bound E2E WASM artifact name\",\"required\":false,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "e2e": {
+          "profile": "internal",
+          "check_name_template": "E2E Tests (${{ inputs.browser }})",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "frontend-e2e-coverage-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}",
+              "path_pattern": "frontend/coverage/e2e/",
+              "required": false,
+              "provenance": "input"
+            },
+            {
+              "name_pattern": "playwright-report-${{ inputs.browser }}-shard-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}",
+              "path_pattern": "frontend/playwright-report/",
+              "required": false,
+              "provenance": "input"
+            },
+            {
+              "name_pattern": "playwright-traces-${{ inputs.browser }}-shard-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}",
+              "path_pattern": "frontend/test-results/",
+              "required": false,
+              "provenance": "input"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/reusable-e2e-wasm-build.yml",
+      "name": "E2E WASM Build",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "{\"outputs\":{\"artifact_digest\":{\"description\":\"Upload-artifact archive digest\",\"value\":\"${{ jobs.build.outputs.artifact_digest }}\"},\"artifact_id\":{\"description\":\"Server-issued same-run artifact id\",\"value\":\"${{ jobs.build.outputs.artifact_id }}\"},\"artifact_name\":{\"description\":\"Attempt- and SHA-bound artifact name\",\"value\":\"${{ jobs.build.outputs.artifact_name }}\"}}}"
+        }
+      ],
+      "jobs": {
+        "build": {
+          "profile": "internal",
+          "check_name_template": "Build E2E WASM modules",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "${{ steps.publish.outputs.artifact_name }}",
+              "path_pattern": "frontend/rust-crypto/pkg\nfrontend/wasm-sanitizer/pkg\nfrontend/WASM_SOURCE_PROVENANCE.json\nfrontend/WASM_PROVENANCE.json\nfrontend/WASM_INVENTORY.json\n",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/reusable-frontend-tests.yml",
+      "name": "Frontend Tests",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "{\"inputs\":{\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version to use\",\"required\":false,\"type\":\"string\"},\"run-e2e\":{\"default\":false,\"description\":\"Run Playwright E2E tests\",\"required\":false,\"type\":\"boolean\"},\"run-lighthouse\":{\"default\":false,\"description\":\"Run Lighthouse audits\",\"required\":false,\"type\":\"boolean\"},\"wasm-artifact-digest\":{\"default\":\"\",\"description\":\"Optional same-run WASM artifact archive digest\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-id\":{\"default\":\"\",\"description\":\"Optional same-run server-issued WASM artifact id\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-name\":{\"default\":\"\",\"description\":\"Optional same-run WASM artifact name\",\"required\":false,\"type\":\"string\"},\"working-directory\":{\"default\":\"frontend\",\"description\":\"Frontend directory\",\"required\":false,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "wasm-build": {
+          "profile": "internal",
+          "check_name_template": "Build WASM modules",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "frontend-wasm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "${{ inputs.working-directory }}/rust-crypto/pkg\n${{ inputs.working-directory }}/wasm-sanitizer/pkg\n",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "wasm-tests": {
+          "profile": "internal",
+          "check_name_template": "WASM Contract Tests",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "unit-tests-shard": {
+          "profile": "internal",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
+          "check_name_template": "Unit Tests (shard ${{ matrix.shard }}/4)",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "frontend-vitest-report-shard-${{ matrix.shard }}",
+              "path_pattern": "${{ inputs.working-directory }}/vitest-report.xml",
+              "required": false,
+              "provenance": "none"
+            },
+            {
+              "name_pattern": "frontend-coverage-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "${{ inputs.working-directory }}/coverage/coverage-final.json\n${{ inputs.working-directory }}/coverage/coverage-provenance.json\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "unit-tests": {
+          "profile": "internal",
+          "check_name_template": "Unit Tests",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "${{ always() }}",
+          "artifacts": [
+            {
+              "name_pattern": "frontend-vitest-report",
+              "path_pattern": "${{ inputs.working-directory }}/.vitest-reports/",
+              "required": false,
+              "provenance": "none"
+            },
+            {
+              "name_pattern": "frontend-coverage-attempt-${{ github.run_attempt }}",
+              "path_pattern": "frontend/coverage/lcov.info\nfrontend/coverage/coverage-final.json\nfrontend/coverage/coverage-provenance.json\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "lint": {
+          "profile": "internal",
+          "check_name_template": "Lint & Format",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "build": {
+          "profile": "internal",
+          "check_name_template": "Production Build",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "frontend-dist",
+              "path_pattern": "${{ inputs.working-directory }}/dist",
+              "required": false,
+              "provenance": "none"
+            },
+            {
+              "name_pattern": "frontend-lhci-dist",
+              "path_pattern": "${{ inputs.working-directory }}/dist",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "bundle-analysis": {
+          "profile": "internal",
+          "check_name_template": "Bundle Analysis",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "bundle-report",
+              "path_pattern": "${{ inputs.working-directory }}/bundle-report.json",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "lighthouse-shards": {
+          "profile": "internal",
+          "matrix_governance": {
+            "max_parallel": 2
+          },
+          "check_name_template": "Lighthouse Audit (${{ matrix.shard }})",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "${{ inputs.run-lighthouse }}",
+          "artifacts": [
+            {
+              "name_pattern": "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}",
+              "path_pattern": "${{ inputs.working-directory }}/.lighthouseci",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "lighthouse": {
+          "profile": "internal",
+          "check_name_template": "Lighthouse Audit",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "${{ always() && !cancelled() && inputs.run-lighthouse }}",
+          "artifacts": [
+            {
+              "name_pattern": "lighthouse-reports-attempt-${{ github.run_attempt }}",
+              "path_pattern": "artifacts/lighthouse/producer",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/reusable-go-integration-tests.yml",
+      "name": "Go Integration Tests",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "{\"inputs\":{\"go-version\":{\"default\":\"1.26.6\",\"description\":\"Go version to use\",\"required\":false,\"type\":\"string\"},\"service-directory\":{\"description\":\"Service directory to test (e.g., services/gateway)\",\"required\":true,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "integration": {
+          "profile": "internal",
+          "check_name_template": "Integration Tests (${{ inputs.service-directory }})",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "${{ steps.artifact-name.outputs.name }}-logs",
+              "path_pattern": "services/gateway/coverage.out\nservices/file-processor/coverage.out\nservices/ws-hub/coverage.out\n",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/reusable-go-tests.yml",
+      "name": "Go Tests",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "{\"inputs\":{\"coverage-canonical-path\":{\"description\":\"Repository-relative path used after artifact download\",\"required\":true,\"type\":\"string\"},\"coverage-component\":{\"description\":\"Canonical quality-contract component for this report\",\"required\":true,\"type\":\"string\"},\"coverage-threshold\":{\"default\":80,\"description\":\"Minimum Go test coverage percentage\",\"required\":false,\"type\":\"number\"},\"go-version\":{\"default\":\"1.26.6\",\"description\":\"Go version to use\",\"required\":false,\"type\":\"string\"},\"run-mutation-diagnostic\":{\"default\":false,\"description\":\"Run the bounded advisory mutation diagnostic (scheduled/manual only)\",\"required\":false,\"type\":\"boolean\"},\"service-directory\":{\"description\":\"Service directory to test (e.g., services/gateway)\",\"required\":true,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "test": {
+          "profile": "internal",
+          "check_name_template": "Test Go Service (${{ inputs.service-directory }})",
+          "expected_timeout_minutes": 120,
+          "expected_duration_seconds": 7200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "${{ steps.artifact-name.outputs.name }}",
+              "path_pattern": "artifacts/coverage/go-producer/coverage.out\nartifacts/coverage/go-producer/coverage-provenance.json\n",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "mutation-diagnostic": {
+          "profile": "internal",
+          "check_name_template": "Go mutation diagnostic (${{ inputs.service-directory }})",
+          "expected_timeout_minutes": 70,
+          "expected_duration_seconds": 4200,
+          "guard": "${{ inputs.run-mutation-diagnostic && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}",
+          "artifacts": [
+            {
+              "name_pattern": "go-mutation-diagnostic-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.diagnostic-artifact-name.outputs.name }}",
+              "path_pattern": "artifacts/go-mutation-diagnostic/mutation-diagnostic-summary.json\nartifacts/go-mutation-diagnostic/diagnostic-failure.txt\nartifacts/go-mutation-diagnostic/expected-targets.txt\nartifacts/go-mutation-diagnostic/**/report.json\nartifacts/go-mutation-diagnostic/**/run.log\nartifacts/go-mutation-diagnostic/**/status.txt\nartifacts/go-mutation-diagnostic/**/target.txt\nartifacts/go-mutation-diagnostic/**/target-hash.txt\nartifacts/go-mutation-diagnostic/**/source.sha256\n",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "lint": {
+          "profile": "internal",
+          "check_name_template": "Lint Go Service (${{ inputs.service-directory }})",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/reusable-security-audit.yml",
+      "name": "Security Audit",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "{\"inputs\":{\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version for npm audit\",\"required\":false,\"type\":\"string\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version for pip-audit\",\"required\":false,\"type\":\"string\"},\"run-npm-audit\":{\"default\":true,\"description\":\"Run npm audit for Node.js dependencies\",\"required\":false,\"type\":\"boolean\"},\"run-pip-audit\":{\"default\":true,\"description\":\"Run pip-audit for Python dependencies\",\"required\":false,\"type\":\"boolean\"}}}"
+        }
+      ],
+      "jobs": {
+        "pip-audit": {
+          "profile": "internal",
+          "check_name_template": "Python Dependency Audit",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "${{ inputs.run-pip-audit }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "npm-audit": {
+          "profile": "internal",
+          "check_name_template": "Node.js Dependency Audit",
+          "expected_timeout_minutes": 25,
+          "expected_duration_seconds": 1500,
+          "guard": "${{ inputs.run-npm-audit }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "docker-security": {
+          "profile": "internal",
+          "check_name_template": "Container Security Scan",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
+        "govulncheck": {
+          "profile": "internal",
+          "check_name_template": "Go Vulnerability Scan",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "sbom": {
+          "profile": "internal",
+          "check_name_template": "Generate SBOM",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "sbom-spdx-json",
+              "path_pattern": "sbom.spdx.json",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "detect-secrets-baseline": {
+          "profile": "internal",
+          "check_name_template": "detect-secrets Baseline Integrity",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "semgrep": {
+          "profile": "internal",
+          "check_name_template": "Semgrep SAST",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "github.actor != 'dependabot[bot]'",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/reusable-setup-node.yml",
+      "name": "Setup Node.js",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "{\"inputs\":{\"install-deps\":{\"default\":true,\"description\":\"Run npm ci to install dependencies\",\"required\":false,\"type\":\"boolean\"},\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version to install\",\"required\":false,\"type\":\"string\"},\"working-directory\":{\"default\":\"frontend\",\"description\":\"Working directory for npm install\",\"required\":false,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "setup": {
+          "profile": "internal",
+          "check_name_template": "setup",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/reusable-setup-python.yml",
+      "name": "Setup Python",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "{\"inputs\":{\"install-dev-deps\":{\"default\":false,\"description\":\"Install development dependencies\",\"required\":false,\"type\":\"boolean\"},\"python-version\":{\"default\":\"3.14\",\"description\":\"Python version to install\",\"required\":false,\"type\":\"string\"},\"working-directory\":{\"default\":\".\",\"description\":\"Working directory for pip install\",\"required\":false,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "setup": {
+          "profile": "internal",
+          "check_name_template": "setup",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/rust-fuzz.yml",
+      "name": "Rust Fuzzing",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\",\"master\"],\"paths\":[\"**\",\"native/rust_ext/**\",\"crates/pyo3-sanitizer/**\",\"frontend/wasm-sanitizer/**\",\"frontend/rust-crypto/**\",\".github/workflows/rust-fuzz.yml\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"paths\":[\"**\",\"native/rust_ext/**\",\"crates/pyo3-sanitizer/**\",\"frontend/wasm-sanitizer/**\",\"frontend/rust-crypto/**\",\".github/workflows/rust-fuzz.yml\"]}"
+        },
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"0 0 * * 0\"}]"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "fuzz": {
+          "profile": "required-pr-main",
+          "check_name_template": "${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'Run cargo fuzz' || 'Extended Rust fuzz evidence' }}",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "fuzz-crashes",
+              "path_pattern": "native/rust_ext/fuzz/artifacts/\nnative/rust_ext/fuzz/crash-*\n",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "fuzz-additional-rust-crates": {
+          "profile": "required-pr-main",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "push,pull_request,schedule,workflow_dispatch",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
+          "check_name_template": "Fuzz ${{ matrix.directory }}",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "fuzz-crashes-${{ matrix.name }}",
+              "path_pattern": "${{ matrix.directory }}/artifacts/\n${{ matrix.directory }}/crash-*\n",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/sbom.yml",
+      "name": "SBOM \u2014 Supply Chain Provenance",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "any"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "sbom-python": {
+          "profile": "required-pr-main",
+          "check_name_template": "Python SBOM (anchore/sbom-action)",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",
+          "artifacts": [
+            {
+              "name_pattern": "sbom-python",
+              "path_pattern": "sbom-python.spdx.json",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "sbom-go": {
+          "profile": "required-pr-main",
+          "check_name_template": "Go SBOM (osv-scanner)",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",
+          "artifacts": [
+            {
+              "name_pattern": "sbom-go-sarif",
+              "path_pattern": "go-vuln.sarif",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "sbom-rust": {
+          "profile": "required-pr-main",
+          "check_name_template": "Rust SBOM (cargo-audit)",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",
+          "artifacts": [
+            {
+              "name_pattern": "sbom-rust-audit",
+              "path_pattern": "rust-audit-reports/",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "vuln-gate": {
+          "profile": "required-pr-main",
+          "check_name_template": "Vulnerability gate (CRITICAL/HIGH)",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "vuln-gate-pr": {
+          "profile": "required-pr-main",
+          "check_name_template": "Vulnerability gate (CRITICAL/HIGH)",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.event_name == 'pull_request' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/scorecard.yml",
+      "name": "OpenSSF Scorecard",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"30 1 * * 1\"}]"
+        },
+        {
+          "event": "repository_dispatch",
+          "guard": "{\"types\":[\"run-scorecard\"]}"
+        }
+      ],
+      "jobs": {
+        "analysis": {
+          "profile": "required-main",
+          "check_name_template": "Scorecard analysis",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/semantic-pr.yml",
+      "name": "Semantic PR Title Check",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"types\":[\"opened\",\"edited\",\"synchronize\"]}"
+        }
+      ],
+      "jobs": {
+        "main": {
+          "profile": "required-pr",
+          "check_name_template": "Validate PR Title",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/sonar.yml",
+      "name": "SonarCloud Analysis",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        }
+      ],
+      "jobs": {
+        "sonarcloud": {
+          "profile": "advisory",
+          "check_name_template": "SonarCloud Scan",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/sqlmap.yml",
+      "name": "SQLMap (DAST SQL Injection Scan)",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"]}"
+        }
+      ],
+      "jobs": {
+        "sqlmap": {
+          "profile": "required-pr-main",
+          "check_name_template": "SQLMap Scan",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/trufflehog.yml",
+      "name": "TruffleHog Secrets Scan",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"]}"
+        }
+      ],
+      "jobs": {
+        "trufflehog": {
+          "profile": "required-pr-main",
+          "check_name_template": "TruffleHog Scan",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/unauthenticated-routes-smoke.yml",
+      "name": "Unauthenticated Routes Smoke (Linux PR)",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "{}"
+        }
+      ],
+      "jobs": {
+        "unauthed-smoke": {
+          "profile": "required-pr",
+          "matrix_governance": {
+            "unbounded_justification": {
+              "owner": "@egorribun",
+              "event_profile": "pull_request,workflow_dispatch",
+              "rationale": "The source strategy intentionally has no runner cap; keep this lane unchanged until comparable queue, resource, timeout and billed-minute evidence supports a bounded value."
+            }
+          },
+          "check_name_template": "Unauthenticated routes smoke (theme=${{ matrix.theme }})",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "unauthenticated-routes-smoke-${{ matrix.theme }}",
+              "path_pattern": "frontend/.screenshots/unauthenticated-routes-smoke-${{ matrix.theme }}",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/visual-audit.yml",
+      "name": "Visual Audit (Linux On-Demand)",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_dispatch",
+          "guard": "{\"inputs\":{\"routes\":{\"default\":\"\",\"description\":\"Comma-separated route subset (empty = full 8-SSR-route sweep). Example: `/dashboard` or `dashboard,events`.\",\"required\":false,\"type\":\"string\"}}}"
+        }
+      ],
+      "jobs": {
+        "visual-audit": {
+          "profile": "manual",
+          "check_name_template": "Axe a11y audit on Linux",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "workflow trigger",
+          "artifacts": [
+            {
+              "name_pattern": "visual-audit-reports",
+              "path_pattern": "frontend/.screenshots/authenticated-visual-audit",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/weekly-cleanup.yml",
+      "name": "Weekly cleanup",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"0 3 * * 1\"}]"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "cleanup": {
+          "profile": "nightly",
+          "check_name_template": "cleanup",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/weekly-test-durations.yml",
+      "name": "Weekly Test Duration Refresh",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"0 4 * * 1\"}]"
+        },
+        {
+          "event": "repository_dispatch",
+          "guard": "{\"types\":[\"run-weekly-test-durations\"]}"
+        }
+      ],
+      "jobs": {
+        "refresh-shard": {
+          "profile": "nightly",
+          "matrix_governance": {
+            "max_parallel": 4
+          },
+          "check_name_template": "Refresh pytest duration map (shard ${{ matrix.shard }}/4)",
+          "expected_timeout_minutes": 45,
+          "expected_duration_seconds": 2700,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [
+            {
+              "name_pattern": "weekly-test-duration-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "pytest-report.xml",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains service health retries; classify these separately from test retries before relaxing this entry."
+          }
+        },
+        "refresh": {
+          "profile": "nightly",
+          "check_name_template": "Refresh pytest duration map",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "${{ always() && github.ref == 'refs/heads/main' }}",
+          "artifacts": [
+            {
+              "name_pattern": "weekly-test-duration-merged-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "pytest-report.xml",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/zizmor.yml",
+      "name": "Zizmor (GitHub Actions Audit)",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "push",
+          "guard": "{\"branches\":[\"main\"]}"
+        },
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"]}"
+        }
+      ],
+      "jobs": {
+        "zizmor": {
+          "profile": "required-pr-main",
+          "check_name_template": "Zizmor Actions Scan",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    }
+  ]
+}

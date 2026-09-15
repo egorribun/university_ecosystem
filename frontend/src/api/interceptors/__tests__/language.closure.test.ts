@@ -32,6 +32,7 @@ describe("applyLanguageHeader", () => {
     ["ru-RU", "ru"],
     ["RU_ru, en;q=0.8", "ru"],
     ["en-US", "en"],
+    [" en_US ", "en"],
   ])("normalizes supported language %s to %s", async (language, expected) => {
     const headers = await withLanguage(language)
     expect(AxiosHeaders.from(headers).get("Accept-Language")).toBe(expected)

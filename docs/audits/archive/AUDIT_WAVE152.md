@@ -53,17 +53,17 @@
 `fix(wave152-phase1-suspense-fallback): App.tsx Suspense removal + router defaultPendingComponent`
 
 **File changes** (2 files, +55/-6):
-1. [`frontend/src/App.tsx`](frontend/src/App.tsx) — Removed outer `<Suspense>` wrapper around `<RouterProvider>` (was redundant — TanStack Router has internal Suspense for lazy routes; the outer wrapper had no `fallback` prop, defaulting to null = silent blank on suspend per W150 polish-followup hypothesis #7).
-2. [`frontend/src/router.ts`](frontend/src/router.ts) — Added `defaultPendingMs: 0` + `defaultPendingComponent: () => <div>Loading…</div>` (visible fallback for TanStack Router's INTERNAL `<Matches><Suspense fallback={null}>` so indefinite suspension becomes observable instead of silent blank).
+1. [`frontend/src/App.tsx`](../../../frontend/src/App.tsx) — Removed outer `<Suspense>` wrapper around `<RouterProvider>` (was redundant — TanStack Router has internal Suspense for lazy routes; the outer wrapper had no `fallback` prop, defaulting to null = silent blank on suspend per W150 polish-followup hypothesis #7).
+2. [`frontend/src/router.ts`](../../../frontend/src/router.ts) — Added `defaultPendingMs: 0` + `defaultPendingComponent: () => <div>Loading…</div>` (visible fallback for TanStack Router's INTERNAL `<Matches><Suspense fallback={null}>` so indefinite suspension becomes observable instead of silent blank).
 
 ### Phase 1.6+1.7+1.8 — commit [0f60c5de8](https://github.com/egorribun/university_ecosystem/commit/0f60c5de8)
 
 `fix(wave152-phase1.6+1.7): StartClient adoption + sync .ready + Phase 1.8 IDB strip negative result`
 
 **File changes** (3 files, +57/-9):
-1. [`frontend/src/main.tsx`](frontend/src/main.tsx) — Apply `.ready` class to `<div id="root">` SYNCHRONOUSLY after `createRoot.render()` (was rAF×2; if reconciler wedges, rAF never fires → `.ready` never added → `#root opacity: 0` invisible regardless of committed content).
-2. [`frontend/src/App.tsx`](frontend/src/App.tsx) — Adopted TanStack Start v1's official `<StartClient />` client entry per the W125 design doc deferral ("Phase 3 (W126+) may switch to `<StartClient />`"). `<StartClient />` internally calls `hydrateStart()` which aligns client router state with the SSR-emitted TSR stream (`self.$_TSR.router = ...`).
-3. [`frontend/src/routes/__root.tsx`](frontend/src/routes/__root.tsx) — Recorded the Phase 1.8 IDB-hydration diagnostic SWAP as a comment block. The swap (vanilla `<QueryClientProvider>` instead of `<PersistQueryClientProvider>`) was applied, user-tested in real Chrome, and reverted after returning NEGATIVE result (user-facing /login STILL blank, IDB hydration is NOT the wedge cause).
+1. [`frontend/src/main.tsx`](../../../frontend/src/main.tsx) — Apply `.ready` class to `<div id="root">` SYNCHRONOUSLY after `createRoot.render()` (was rAF×2; if reconciler wedges, rAF never fires → `.ready` never added → `#root opacity: 0` invisible regardless of committed content).
+2. [`frontend/src/App.tsx`](../../../frontend/src/App.tsx) — Adopted TanStack Start v1's official `<StartClient />` client entry per the W125 design doc deferral ("Phase 3 (W126+) may switch to `<StartClient />`"). `<StartClient />` internally calls `hydrateStart()` which aligns client router state with the SSR-emitted TSR stream (`self.$_TSR.router = ...`).
+3. [`frontend/src/routes/__root.tsx`](../../../frontend/src/routes/__root.tsx) — Recorded the Phase 1.8 IDB-hydration diagnostic SWAP as a comment block. The swap (vanilla `<QueryClientProvider>` instead of `<PersistQueryClientProvider>`) was applied, user-tested in real Chrome, and reverted after returning NEGATIVE result (user-facing /login STILL blank, IDB hydration is NOT the wedge cause).
 
 ---
 
@@ -134,7 +134,7 @@ NONE. The W150 polish-followup-v2 user-facing scope (§Honesty caveats #14 + #16
 
 **(b) Pre-W150-polish-followup bisect** — Identify which commit introduced the wedge by reverting commits one-at-a-time + testing. Likely candidates: W149 SW2 (hydrateRoot adoption), W134 SW1 (Bridge mechanism), W128 SW3 (per-request QueryClient), W127 SW1 (provider hoist), W125 Phase 2 (tanstackStart migration).
 
-**(c) NODE_ENV=development Docker build support** — Patch [`frontend/scripts/build-orchestrated.mjs`](frontend/scripts/build-orchestrated.mjs) to support `NODE_ENV=development` env propagation (currently hardcodes `MODE="production"`). Would enable Phase 0 Approach B (NODE_ENV=development Docker build) which is currently a NO-OP per W152 plan §"Build-system limitation discovered". ~30-60 min focused.
+**(c) NODE_ENV=development Docker build support** — Patch [`frontend/scripts/build-orchestrated.mjs`](../../../frontend/scripts/build-orchestrated.mjs) to support `NODE_ENV=development` env propagation (currently hardcodes `MODE="production"`). Would enable Phase 0 Approach B (NODE_ENV=development Docker build) which is currently a NO-OP per W152 plan §"Build-system limitation discovered". ~30-60 min focused.
 
 **(d) Cross-OS test** — Run the same Docker stack on a Linux host (CI runner or remote box) + test `/login` in headless Chrome via xvfb or Linux Chrome native. If Linux works but Windows wedges, it's a Windows-Chrome-specific issue. If Linux also wedges, code-level bug confirmed.
 

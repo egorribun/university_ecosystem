@@ -61,6 +61,18 @@ vi.mock("@/hooks/useNowPlaying", async () => {
   }
 })
 
+// Dashboard's clock aligns its first timeout to the next wall-clock minute.
+// Keep this axe suite independent of the minute boundary so a tick cannot
+// schedule a React update outside the test's act scope.
+vi.mock("@/hooks/useClock", () => ({
+  useClock: vi.fn(() => ({
+    hh: "12",
+    mm: "34",
+    dateStr: "Thursday, January 1",
+    time: new Date("2026-01-01T12:34:00.000Z"),
+  })),
+}))
+
 const baseUser: User = {
   id: "uuid-1",
   email: "user@example.com",
@@ -169,14 +181,23 @@ describe("Accessibility checks", () => {
   })
 
   it("Navbar has no axe violations", async () => {
-    const { container } = await renderForA11y(Navbar, "/dashboard")
+    const { container, unmount } = await renderForA11y(Navbar, "/dashboard")
 
-    await waitFor(() => expect(screen.getByRole("navigation")).toBeInTheDocument())
+    try {
+      await waitFor(() => expect(screen.getByRole("navigation")).toBeInTheDocument())
 
-    await checkA11y(container)
+      await checkA11y(container)
+    } finally {
+      unmount()
+    }
   })
 
   it("Dashboard page has no axe violations", async () => {
+    // The cascade is a one-shot decorative effect. Seed its persisted completion
+    // marker so this accessibility check remains deterministic even on slow CI
+    // runners where the one-second timer could fire before the assertion settles.
+    sessionStorage.setItem("dash-cascade-done", "1")
+
     const stories = [
       {
         id: "uuid-1",
@@ -220,24 +241,32 @@ describe("Accessibility checks", () => {
       })
     })
 
-    const { container } = await renderForA11y(Dashboard, "/dashboard")
+    const { container, unmount } = await renderForA11y(Dashboard, "/dashboard")
 
-    await waitFor(() => expect(api.get).toHaveBeenCalled())
-    // Wait for internal components to finish loading (e.g. ScheduleCard)
-    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(), {
-      timeout: 2000,
-    })
+    try {
+      await waitFor(() => expect(api.get).toHaveBeenCalled())
+      // Wait for internal components to finish loading (e.g. ScheduleCard)
+      await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(), {
+        timeout: 2000,
+      })
 
-    await checkA11y(container)
-    getSpy.mockRestore()
-    typedGetSpy.mockRestore()
+      await checkA11y(container)
+    } finally {
+      unmount()
+      getSpy.mockRestore()
+      typedGetSpy.mockRestore()
+    }
   })
 
   it("Profile page has no axe violations", async () => {
-    const { container } = await renderForA11y(Profile, "/profile")
+    const { container, unmount } = await renderForA11y(Profile, "/profile")
 
-    await waitFor(() => expect(screen.getByTestId("profile-root")).toBeInTheDocument())
+    try {
+      await waitFor(() => expect(screen.getByTestId("profile-root")).toBeInTheDocument())
 
-    await checkA11y(container)
+      await checkA11y(container)
+    } finally {
+      unmount()
+    }
   })
 })

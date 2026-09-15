@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   cancelDeferredIdle,
   clearDeferredTimer,
+  createDeferredOverlayStore,
   createMountedCommit,
+  createDeferredMountLifecycle,
   DEFERRED_INTERACTION_EVENTS,
   DEFERRED_INTERACTION_OPTIONS,
   DEFERRED_OVERLAY_DELAY_MS,
@@ -46,6 +48,13 @@ describe("DeferredGlobalOverlays", () => {
     unmountedCommit()
     expect(commit).toHaveBeenCalledOnce()
 
+    const lifecycleCommit = vi.fn()
+    const lifecycle = createDeferredMountLifecycle(lifecycleCommit)
+    lifecycle.commit()
+    lifecycle.unmount()
+    lifecycle.commit()
+    expect(lifecycleCommit).toHaveBeenCalledOnce()
+
     const clear = vi.fn()
     clearDeferredTimer(12, clear)
     clearDeferredTimer(null, clear)
@@ -66,6 +75,47 @@ describe("DeferredGlobalOverlays", () => {
       "focusin",
     ])
     expect(DEFERRED_INTERACTION_OPTIONS).toStrictEqual({ once: true, passive: true })
+  })
+
+  it("shares one deferred lifecycle until the final subscriber leaves and can restart", () => {
+    vi.useFakeTimers()
+    const addEventListener = vi.spyOn(window, "addEventListener")
+    const removeEventListener = vi.spyOn(window, "removeEventListener")
+    const setTimeout = vi.spyOn(window, "setTimeout")
+    const promotionEvents = new Set<string>(DEFERRED_INTERACTION_EVENTS)
+    const promotionCalls = (calls: typeof addEventListener.mock.calls) =>
+      calls.filter(([eventName]) => promotionEvents.has(String(eventName)))
+
+    try {
+      const store = createDeferredOverlayStore()
+      const unsubscribeFirst = store.subscribe(vi.fn())
+      const unsubscribeSecond = store.subscribe(vi.fn())
+
+      expect(store.getServerSnapshot()).toBe(false)
+      expect(promotionCalls(addEventListener.mock.calls)).toHaveLength(4)
+      expect(
+        setTimeout.mock.calls.filter(([, delay]) => delay === DEFERRED_OVERLAY_DELAY_MS)
+      ).toHaveLength(1)
+
+      unsubscribeFirst()
+      expect(promotionCalls(removeEventListener.mock.calls)).toHaveLength(0)
+
+      unsubscribeSecond()
+      expect(promotionCalls(removeEventListener.mock.calls)).toHaveLength(4)
+
+      const unsubscribeRestarted = store.subscribe(vi.fn())
+      expect(promotionCalls(addEventListener.mock.calls)).toHaveLength(8)
+      expect(
+        setTimeout.mock.calls.filter(([, delay]) => delay === DEFERRED_OVERLAY_DELAY_MS)
+      ).toHaveLength(2)
+
+      unsubscribeRestarted()
+      expect(promotionCalls(removeEventListener.mock.calls)).toHaveLength(8)
+    } finally {
+      addEventListener.mockRestore()
+      removeEventListener.mockRestore()
+      setTimeout.mockRestore()
+    }
   })
 
   it("keeps the server and first client render empty, then mounts every overlay", async () => {
@@ -103,9 +153,43 @@ describe("DeferredGlobalOverlays", () => {
     clearTimeout.mockRestore()
   })
 
+  it("does not notify listeners twice when an idle promotion races interaction", async () => {
+    vi.useFakeTimers()
+    let idleCallback: (() => void) | undefined
+    Object.defineProperty(window, "requestIdleCallback", {
+      configurable: true,
+      value: vi.fn((callback: () => void) => {
+        idleCallback = callback
+        return 41
+      }),
+    })
+
+    try {
+      const store = createDeferredOverlayStore()
+      const listener = vi.fn()
+      const unsubscribe = store.subscribe(listener)
+      await act(async () => {
+        vi.advanceTimersByTime(DEFERRED_OVERLAY_DELAY_MS)
+        await Promise.resolve()
+        window.dispatchEvent(new Event("pointerdown"))
+        await Promise.resolve()
+      })
+
+      expect(listener).toHaveBeenCalledOnce()
+      await act(async () => {
+        idleCallback?.()
+        await Promise.resolve()
+      })
+      expect(listener).toHaveBeenCalledOnce()
+      unsubscribe()
+    } finally {
+      Reflect.deleteProperty(window, "requestIdleCallback")
+    }
+  })
+
   it("registers every promotion listener with one-shot passive options", () => {
     const addEventListener = vi.spyOn(window, "addEventListener")
-    const { unmount } = render(<DeferredGlobalOverlays />)
+    const { rerender, unmount } = render(<DeferredGlobalOverlays />)
     const expectedEvents = ["pointerdown", "keydown", "touchstart", "focusin"]
 
     for (const eventName of expectedEvents) {
@@ -114,6 +198,11 @@ describe("DeferredGlobalOverlays", () => {
         passive: true,
       })
     }
+    rerender(<DeferredGlobalOverlays />)
+    const registrations = addEventListener.mock.calls.filter(([eventName]) =>
+      expectedEvents.includes(String(eventName))
+    )
+    expect(registrations).toHaveLength(expectedEvents.length)
     unmount()
     addEventListener.mockRestore()
   })
@@ -313,5 +402,13 @@ describe("DeferredGlobalOverlays", () => {
       Reflect.deleteProperty(window, "requestIdleCallback")
       Reflect.deleteProperty(window, "cancelIdleCallback")
     }
+  })
+
+  it("keeps final-subscriber cleanup idempotent after the store has already stopped", () => {
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+
+    unsubscribe()
+    expect(() => unsubscribe()).not.toThrow()
   })
 })

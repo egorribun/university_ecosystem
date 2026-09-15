@@ -1,7 +1,10 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use pyo3_sanitizer::sanitize_html_basic;
+
+#[path = "../../src/sanitizer.rs"]
+mod sanitizer;
+use sanitizer::sanitize_html_basic;
 
 fuzz_target!(|data: &[u8]| {
     if let Ok(s) = std::str::from_utf8(data) {

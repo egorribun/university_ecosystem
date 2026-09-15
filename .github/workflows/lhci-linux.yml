@@ -102,7 +102,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Install wasm-pack
         # W142 polish-v3 — taiki-e/install-action wasm-pack tool resolution
@@ -113,6 +113,14 @@ jobs:
         uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
         with:
           tool: wasm-pack@0.13.1
+
+      - name: Setup Rust toolchain
+        # Reproduce the checked-in WASM bytes independently of runner image
+        # updates and keep Lighthouse's build input deterministic.
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # pinned action
+        with:
+          toolchain: 1.97.1
+          targets: wasm32-unknown-unknown
 
       - name: Build WASM modules
         run: |

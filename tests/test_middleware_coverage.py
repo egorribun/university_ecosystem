@@ -114,6 +114,7 @@ async def test_internal_access_middleware():
     middleware = InternalAccessMiddleware(
         inner_app,
         allowed_ips=["127.0.0.1"],
+        allow_ip_fallback=True,
         header_name="X-Internal-Token",
         header_token="secret",
         internal_prefixes=["/internal"],

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from dishka.integrations.fastapi import FromDishka, inject
@@ -38,6 +37,7 @@ from app.auth.schemas import (
 from app.core.config import settings
 from app.core.fingerprint import extract_request_fingerprint
 from app.core.localization import resolve_locale, translate
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import RateLimitExceeded, sensitive_route_limit
 from app.models import User
@@ -50,7 +50,7 @@ from app.services.auth.login_service import LoginService
 from app.services.auth.mfa_coordinator import MfaCoordinator
 from app.services.user.compliance_service import UserComplianceService
 
-logger = logging.getLogger("app.auth.login")
+logger = get_logger(__name__)
 
 
 router = APIRouter(tags=["auth"])

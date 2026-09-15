@@ -176,7 +176,7 @@ export async function getVapidPublicKey(): Promise<string | null> {
   const schema = v.object({ publicKey: v.optional(v.nullable(v.string())) })
   const parsed = ensureValidResponse(schema, data, "GET /api/v1/push/vapid-public-key")
   const normalized = parsed.publicKey?.trim()
-  return normalized && normalized.length > 0 ? normalized : null
+  return normalized || null
 }
 
 const pushTopicsSchema = v.object({

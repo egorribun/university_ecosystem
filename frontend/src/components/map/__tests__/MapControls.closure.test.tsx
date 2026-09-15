@@ -1,5 +1,5 @@
 import type { MutableRefObject } from "react"
-import { render, screen } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { MapRef } from "react-map-gl/maplibre"
@@ -110,16 +110,16 @@ describe("MapControls closure", () => {
 
     const fullscreenButton = screen.getByRole("button", { name: "controls.fullscreen" })
     await user.click(fullscreenButton)
-    await Promise.resolve()
+    await waitFor(() => expect(mockLogError).toHaveBeenCalledTimes(1))
     expect(requestFullscreen).toHaveBeenCalledOnce()
 
     Object.defineProperty(document, "fullscreenElement", {
       configurable: true,
       value: container,
     })
-    document.dispatchEvent(new Event("fullscreenchange"))
+    act(() => document.dispatchEvent(new Event("fullscreenchange")))
     await user.click(fullscreenButton)
-    await Promise.resolve()
+    await waitFor(() => expect(mockLogError).toHaveBeenCalledTimes(2))
 
     expect(exitFullscreen).toHaveBeenCalledOnce()
     expect(mockLogError).toHaveBeenCalledTimes(2)

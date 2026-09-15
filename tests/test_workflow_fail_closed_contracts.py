@@ -19,7 +19,15 @@ CI = WORKFLOWS / "ci.yml"
 PRE_COMMIT_CONFIG = ROOT / ".pre-commit-config.yaml"
 PYPROJECT = ROOT / "pyproject.toml"
 UV_LOCK = ROOT / "uv.lock"
-LOCKED_PRE_COMMIT_VERSION = "4.6.0"
+LOCKED_PRE_COMMIT_VERSION = "4.6.2"
+HELM_3_17_0_LINUX_AMD64_SHA256 = "fb5d12662fde6eeff36ac4ccacbf3abed96b0ee2de07afdde4edb14e613aee24"  # pragma: allowlist secret -- public Helm release checksum
+DEPLOY_SMOKE_REQUIREMENTS = {
+    "requests==2.33.1": "4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a",  # pragma: allowlist secret -- public PyPI wheel checksum
+    "certifi==2026.4.22": "3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a",  # pragma: allowlist secret -- public PyPI wheel checksum
+    "charset-normalizer==3.4.7": "bd6c2a1c7573c64738d716488d2cdd3c00e340e4835707d8fdb8dc1a66ef164e",  # pragma: allowlist secret -- public PyPI wheel checksum
+    "idna==3.18": "7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2",  # pragma: allowlist secret -- public PyPI wheel checksum
+    "urllib3==2.7.0": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",  # pragma: allowlist secret -- public PyPI wheel checksum
+}
 
 EXPECTED_EXTERNAL_IMAGES = {
     "pgvector/pgvector:pg17": (
@@ -34,8 +42,8 @@ EXPECTED_EXTERNAL_IMAGES = {
         "nats:2.10.25-alpine@sha256:"
         "3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228"  # pragma: allowlist secret
     ),
-    "minio/minio:RELEASE.2025-09-07T16-13-09Z": (
-        "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:"
+    "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z": (
+        "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:"
         "14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"  # pragma: allowlist secret
     ),
     "ghcr.io/shopify/toxiproxy:2.9.0": (
@@ -333,6 +341,16 @@ def test_precommit_split_preserves_every_nonmanual_hook_and_fails_closed() -> No
     )
     assert detect_secrets["entry"] == "python scripts/run_detect_secrets.py"
     assert detect_secrets["args"] == ["--baseline", ".secrets.baseline"]
+    mypy_hook = next(
+        hook
+        for repo in config["repos"]
+        for hook in repo.get("hooks", [])
+        if hook["id"] == "mypy"
+    )
+    # The local hook must cover the same deployable application tree as CI;
+    # narrowing it to selected packages leaves models, schemas, utils and
+    # application entrypoints unchecked until a remote run.
+    assert mypy_hook["files"] == r"^app/"
 
     ci_success = jobs["ci-success"]
     assert "pre-commit-security-and-types" in ci_success["needs"]
@@ -373,13 +391,21 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     matrix_step = _step(universe, "Build validated mutmut execution matrix")
     assert "descriptor_count=" in matrix_step["run"]
     assert '"$descriptor_count" -gt 128' in matrix_step["run"]
+    assert "mutmut_shard_matrix.py groups" in matrix_step["run"]
+    assert "--target-groups 128" in matrix_step["run"]
+    assert "scripts/validate_mutmut_group_budgets.py" in matrix_step["run"]
+    assert "--output-manifest /tmp/mutmut-group-budgets.json" in matrix_step["run"]
+    assert "Preflight the exact execution budget" in matrix_step["run"]
+    assert "--metadata-startup-reserve-seconds 120" in matrix_step["run"]
+    assert "--max-timeout-seconds 20880" in matrix_step["run"]
+    assert "21,600 - 630 - 90" in matrix_step["run"]
     assert "Mutation matrix capacity" in matrix_step["run"]
     assert (
         'if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then'
         in matrix_step["run"]
     )
     assert (
-        'matrix_summary="Fully validated fixed plan assignments: 128"'
+        'matrix_summary="Fully validated 128 logical assignments; up to 128 budget-validated physical groups"'
         in matrix_step["run"]
     )
     assert (
@@ -393,13 +419,15 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     assert 'echo "- $matrix_summary"' in matrix_step["run"]
     assert 'echo "- $descriptor_summary"' in matrix_step["run"]
     assert "coverage phase barrier" in matrix_step["run"]
-    assert 'echo "- Mutmut producer max concurrency: 12"' in matrix_step["run"]
-    assert 'echo "- Stryker producer max concurrency: 8"' in matrix_step["run"]
-    assert "global hosted-runner cap: 20" in matrix_step["run"]
+    assert 'echo "- Mutmut producer max concurrency: 10"' in matrix_step["run"]
+    assert 'echo "- Stryker producer max concurrency: 6"' in matrix_step["run"]
+    assert "Repository mutation concurrency budget: 20" in matrix_step["run"]
+    assert "not globally enforced" in matrix_step["run"]
+    assert "global hosted-runner cap" not in matrix_step["run"]
 
     # After the coverage phase barrier, the two producer lanes consume the
-    # complete repository-wide 20-runner budget (12 mutmut + 8 Stryker).
-    for family, expected in ((runners, 12), (stryker, 8)):
+    # Keep four hosted runners reserved for required diagnostics/aggregation.
+    for family, expected in ((runners, 10), (stryker, 6)):
         max_parallel = family["strategy"]["max-parallel"]
         assert isinstance(max_parallel, int)
         assert 1 <= max_parallel <= 20
@@ -633,6 +661,103 @@ def test_scheduled_workflows_reject_missing_required_inputs() -> None:
     assert "exit 1" in missing["run"]
 
 
+def test_privileged_manual_workflows_are_main_bound_and_immutable() -> None:
+    """Manual runs must never execute write-capable code from another ref."""
+
+    quality = _workflow(WORKFLOWS / "quality-history.yml")["jobs"]["archive"]
+    assert quality["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    quality_guard = _step(quality, "Verify trusted main source")
+    assert quality_guard["env"] == {
+        "EVENT_SHA": "${{ github.sha }}",
+        "WORKFLOW_SHA": "${{ github.workflow_sha }}",
+    }
+    assert "refs/heads/main" in quality_guard["run"]
+    assert "git rev-parse refs/remotes/origin/main" in quality_guard["run"]
+    assert "git rev-parse HEAD" in quality_guard["run"]
+
+    weekly = _workflow(WORKFLOWS / "weekly-test-durations.yml")["jobs"]["refresh"]
+    assert weekly["if"] == "${{ always() && github.ref == 'refs/heads/main' }}"
+    weekly_guard = _step(weekly, "Verify trusted main source")
+    assert weekly_guard["env"] == {
+        "EVENT_SHA": "${{ github.sha }}",
+        "WORKFLOW_SHA": "${{ github.workflow_sha }}",
+    }
+    assert "git fetch origin" in weekly_guard["run"]
+
+    cleanup_workflow = _workflow(WORKFLOWS / "weekly-cleanup.yml")
+    cleanup = cleanup_workflow["jobs"]["cleanup"]
+    assert cleanup["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    cleanup_checkout = _step(cleanup, "Checkout repository")
+    assert cleanup_checkout["with"] == {
+        "fetch-depth": 0,
+        "persist-credentials": False,
+        "ref": "main",
+    }
+    cleanup_guard = _step(cleanup, "Verify trusted main source")
+    assert cleanup_guard["env"] == {
+        "EVENT_SHA": "${{ github.sha }}",
+        "WORKFLOW_SHA": "${{ github.workflow_sha }}",
+    }
+    assert "refs/heads/main" in cleanup_guard["run"]
+    assert "git rev-parse refs/remotes/origin/main" in cleanup_guard["run"]
+    assert "git rev-parse HEAD" in cleanup_guard["run"]
+
+    nightly_workflow = _workflow(WORKFLOWS / "nightly-full-gate.yml")
+    for job_name, job in nightly_workflow["jobs"].items():
+        assert "github.ref == 'refs/heads/main'" in str(job.get("if", "")), job_name
+
+    nightly = nightly_workflow["jobs"]["notify-failure"]
+    assert (
+        nightly["if"]
+        == "${{ github.ref == 'refs/heads/main' && always() && contains(needs.*.result, 'failure') }}"
+    )
+    nightly_guard = _step(nightly, "Verify trusted main source")
+    assert "github.workflow_sha" in str(nightly_guard["env"])
+    assert "git/ref/heads/main" in nightly_guard["run"]
+
+    scorecard = _workflow(WORKFLOWS / "scorecard.yml")["jobs"]["analysis"]
+    assert scorecard["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    scorecard_guard = _step(scorecard, "Verify trusted main source")
+    assert "github.sha" in str(scorecard_guard["env"])
+    assert "github.workflow_sha" in str(scorecard_guard["env"])
+
+    chromatic = _workflow(WORKFLOWS / "chromatic.yml")["jobs"]["chromatic"]
+    assert (
+        chromatic["if"]
+        == "${{ vars.CHROMATIC_ENABLED == 'true' && vars.CHROMATIC_BILLING_ACTIVE == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'repository_dispatch') }}"
+    )
+    assert chromatic["permissions"] == {
+        "contents": "read",
+        "pull-requests": "write",
+    }
+    chromatic_guard = _step(chromatic, "Verify trusted main source")
+    assert chromatic_guard["if"] == "${{ github.event_name == 'repository_dispatch' }}"
+    assert "git rev-parse refs/remotes/origin/main" in chromatic_guard["run"]
+
+    for path in (
+        "nightly-full-gate.yml",
+        "quality-history.yml",
+        "weekly-test-durations.yml",
+        "scorecard.yml",
+        "chromatic.yml",
+    ):
+        loaded = _workflow(WORKFLOWS / path)
+        triggers = loaded.get("on", loaded.get(True, {}))
+        assert "workflow_dispatch" not in triggers, path
+
+
+def test_build_orchestrated_runs_input_is_bounded() -> None:
+    workflow = _workflow(WORKFLOWS / "build-orchestrated-linux.yml")
+    run_step = _step(
+        workflow["jobs"]["build-validation"], "Run build-orchestrated.mjs × N"
+    )
+    script = run_step["run"]
+    assert "RUNS_MAX=10" in script
+    assert '[[ "$RUNS" =~ ^[1-9][0-9]*$ ]]' in script
+    assert "(( RUNS > RUNS_MAX ))" in script
+    assert "exit 1" in script
+
+
 def test_go_mutation_diagnostic_never_converts_tool_failure_to_success() -> None:
     job = _workflow(WORKFLOWS / "reusable-go-tests.yml")["jobs"]["mutation-diagnostic"]
     mutation = _step(job, "Run bounded Go mutation diagnostic")["run"]
@@ -651,7 +776,10 @@ def test_go_mutation_diagnostic_never_converts_tool_failure_to_success() -> None
     assert 'local isolated_root="$MUTATION_ROOT/$safe_target/repository"' in mutation
     assert 'local workdir="$isolated_root/$SERVICE_DIRECTORY"' in mutation
     assert 'cp -a "$GITHUB_WORKSPACE/$SERVICE_DIRECTORY/." "$workdir/"' in mutation
-    assert "for dependency in services/pkg/spiffe gen/go; do" in mutation
+    assert (
+        "for dependency in services/pkg/logging services/pkg/spiffe gen/go; do"
+        in mutation
+    )
     assert 'local dependency_source="$GITHUB_WORKSPACE/$dependency"' in mutation
     assert 'local dependency_destination="$isolated_root/$dependency"' in mutation
     assert (
@@ -787,8 +915,16 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     assert "stryker-preflight" in job["needs"]
     assert (
         'if [[ "$PRE_COMMIT_RESULT" == "success" && '
-        '"$FRONTEND_TESTS_RESULT" == "success" && '
+        '"$PRE_COMMIT_SECURITY_RESULT" == "success" && '
         '"$COVERAGE_RESULT" == "success" ]]; then' in gate
+    )
+    assert (
+        'elif [[ "$PRE_COMMIT_RESULT" == "success" && '
+        '"${{ needs.stryker-preflight.result }}" == "success" ]]; then' in gate
+    )
+    assert (
+        'assert_event_result "stryker-preflight" '
+        '"${{ needs.stryker-preflight.result }}" "success"' in gate
     )
     for mutation_job in (
         "stryker-preflight",
@@ -806,12 +942,12 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
         )
     assert 'assert_event_result "codecov-upload"' in gate
     assert '"sbom-generate|${{ needs.sbom-generate.result }}"' in gate
-    for advisory in (
+    for blocking in (
         "e2e-tests-cross-browser",
         "chaos-tests",
         "db-migration-integrity",
     ):
-        assert f'"{advisory}|${{{{ needs.{advisory}.result }}}}"' not in gate
+        assert f'"{blocking}|${{{{ needs.{blocking}.result }}}}"' in gate
 
 
 def test_ci_success_allows_coverage_skip_only_after_producer_failure() -> None:
@@ -847,6 +983,34 @@ def test_ci_success_allows_coverage_skip_only_after_producer_failure() -> None:
     # The special case must not turn an arbitrary skipped result into success:
     # only the explicit producer states above may select ``skipped``.
     assert 'if [[ "$prerequisite" == "cancelled"' not in gate
+
+
+def test_ci_success_models_dependency_gated_chaos_results_fail_closed() -> None:
+    """Only known dependency skips may satisfy the chaos result contract.
+
+    ``chaos-tests`` is gated by ``backend-tests`` and the loadtest orchestrator
+    is gated by ``pre-commit-check``.  When those prerequisites fail or are
+    skipped, GitHub reports the dependent job as skipped; a cancellation or an
+    unrelated skip must remain a hard failure.
+    """
+
+    job = _workflow(CI)["jobs"]["ci-success"]
+    gate = _step(job, "Check all jobs passed")["run"]
+
+    assert "chaos_expected_result=success" in gate
+    assert "chaos_loadtest_expected_result=success" in gate
+    assert (
+        'if [[ "$BACKEND_TESTS_RESULT" == "failure" || '
+        '"$BACKEND_TESTS_RESULT" == "skipped" ]]; then' in gate
+    )
+    assert (
+        'if [[ "$PRE_COMMIT_RESULT" == "failure" || '
+        '"$PRE_COMMIT_RESULT" == "skipped" ]]; then' in gate
+    )
+    assert 'if [[ "$BACKEND_TESTS_RESULT" == "cancelled"' not in gate
+    assert 'if [[ "$PRE_COMMIT_RESULT" == "cancelled"' not in gate
+    assert 'expected_result="$chaos_expected_result"' in gate
+    assert 'expected_result="$chaos_loadtest_expected_result"' in gate
 
 
 def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
@@ -981,11 +1145,11 @@ def test_critical_pattern_downloads_have_explicit_payload_guards() -> None:
         assert "-type d" in following_runs or "expected=" in following_runs
 
 
-def test_ci_success_does_not_enqueue_a_finalizer_after_run_cancellation() -> None:
-    """Superseded PR runs must release the workflow concurrency group promptly."""
+def test_ci_success_runs_while_dependencies_are_cancelled() -> None:
+    """The finalizer must classify cancelled dependencies instead of skipping."""
 
     job = _workflow(CI)["jobs"]["ci-success"]
-    assert job["if"] == "${{ always() && !cancelled() }}"
+    assert job["if"] == "${{ always() }}"
 
 
 def test_sonar_optionality_is_explicit_and_isolated() -> None:
@@ -995,7 +1159,13 @@ def test_sonar_optionality_is_explicit_and_isolated() -> None:
     scan = _step(job, "SonarScan")
 
     assert "Advisory external analysis" in text
-    assert "not a protected" in text
+    assert "token off" in text
+    assert "pull_request" not in text.split("on:", 1)[1].split("permissions:", 1)[0]
+    assert (
+        job["if"]
+        == "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
+    )
+    assert "pull-requests" not in job.get("permissions", {})
     assert scan["continue-on-error"] is True
 
 
@@ -1087,7 +1257,6 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
     assert observed_steps == expected_steps
     assert observed_jobs == {
         ("reusable-e2e-tests.yml", "e2e", "${{ inputs.advisory }}"),
-        ("reusable-go-tests.yml", "mutation-diagnostic", "True"),
     }
 
 
@@ -1220,6 +1389,108 @@ def test_deployment_workflows_cannot_report_mock_success() -> None:
     dora = _step(deploy, "Record DORA Lead Time for Changes")
     assert steps.index(smoke) < steps.index(kyverno) < steps.index(rollback)
     assert steps.index(rollback) < steps.index(dora)
+
+
+def test_deploy_bootstraps_checksum_bound_tools_before_oidc() -> None:
+    """Deployment tooling must be immutable before cloud credentials exist."""
+
+    workflow = _workflow(WORKFLOWS / "deploy.yml")
+    deploy = workflow["jobs"]["deploy"]
+    steps = deploy["steps"]
+    names = [step.get("name") for step in steps]
+
+    assert not any(
+        str(step.get("uses", "")).startswith(
+            ("azure/setup-kubectl@", "azure/setup-helm@")
+        )
+        for step in steps
+    )
+    tooling = _step(deploy, "Install checksum-pinned deployment tools")
+    oidc = _step(deploy, "Configure AWS credentials (OIDC)")
+    assert names.index(tooling["name"]) < names.index(oidc["name"])
+    assert tooling["env"] == {
+        "KUBECTL_VERSION": "${{ vars.KUBECTL_VERSION }}",
+        "KUBECTL_SHA256": "${{ vars.KUBECTL_SHA256 }}",
+        "HELM_VERSION": "v3.17.0",
+        "HELM_ARCHIVE_SHA256": HELM_3_17_0_LINUX_AMD64_SHA256,
+    }
+
+    run = str(tooling["run"])
+    assert "set -euo pipefail" in run
+    assert '[[ "$KUBECTL_VERSION" =~ ^v1\\.[0-9]+\\.[0-9]+$ ]]' in run
+    assert '[[ "$KUBECTL_SHA256" =~ ^[0-9a-f]{64}$ ]]' in run
+    assert '[[ "$HELM_VERSION" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]' in run
+    assert '[[ "$HELM_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]' in run
+    assert "mktemp -d" in run
+    assert "--proto '=https'" in run
+    assert "--tlsv1.2" in run
+    assert "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" in run
+    assert "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" in run
+    assert run.count("sha256sum --check --strict") == 2
+    assert "sudo install --mode 0755" in run
+    assert "kubectl version --client --output=json" in run
+    assert "helm version --template '{{.Version}}'" in run
+
+    lines = [line.strip() for line in run.splitlines()]
+    verify_indices = [
+        index
+        for index, line in enumerate(lines)
+        if "sha256sum --check --strict" in line
+    ]
+    install_indices = [
+        index for index, line in enumerate(lines) if line.startswith("sudo install")
+    ]
+    assert len(verify_indices) == 2
+    assert len(install_indices) == 2
+    assert max(verify_indices) < min(install_indices)
+
+    contract = _step(deploy, "Validate deployment contract")
+    assert contract["env"]["KUBECTL_VERSION"] == "${{ vars.KUBECTL_VERSION }}"
+    assert contract["env"]["KUBECTL_SHA256"] == "${{ vars.KUBECTL_SHA256 }}"
+    assert "KUBECTL_VERSION" in contract["run"]
+    assert "KUBECTL_SHA256" in contract["run"]
+
+
+def test_deploy_smoke_dependencies_are_hash_locked_before_oidc() -> None:
+    """Smoke-test dependencies cannot execute mutable index artifacts."""
+
+    deploy = _workflow(WORKFLOWS / "deploy.yml")["jobs"]["deploy"]
+    steps = deploy["steps"]
+    names = [step.get("name") for step in steps]
+    install = _step(deploy, "Install hash-locked smoke-test dependencies")
+    setup_python = _step(deploy, "Setup Python")
+    oidc = _step(deploy, "Configure AWS credentials (OIDC)")
+    assert names.index(setup_python["name"]) < names.index(oidc["name"])
+    assert names.index(install["name"]) < names.index(oidc["name"])
+
+    run = str(install["run"])
+    assert "python -m pip --isolated install" in run
+    assert "--index-url https://pypi.org/simple" in run
+    assert "--require-hashes" in run
+    assert "--only-binary=:all:" in run
+    assert "--no-deps" in run
+    assert 'pip install "requests==' not in run
+    for requirement, digest in DEPLOY_SMOKE_REQUIREMENTS.items():
+        assert f"{requirement} --hash=sha256:{digest}" in run
+    assert 'requests.__version__ == "2.33.1"' in run
+
+
+def test_deploy_rejects_unsupported_kubectl_server_version_skew() -> None:
+    """The environment-selected client must be compatible with the live API server."""
+
+    deploy = _workflow(WORKFLOWS / "deploy.yml")["jobs"]["deploy"]
+    cluster = _step(deploy, "Configure and verify cluster access")
+    assert cluster["env"]["KUBECTL_VERSION"] == "${{ vars.KUBECTL_VERSION }}"
+
+    run = str(cluster["run"])
+    assert "kubectl version --output=json" in run
+    assert ".clientVersion.major" in run
+    assert ".clientVersion.minor" in run
+    assert ".serverVersion.major" in run
+    assert ".serverVersion.minor" in run
+    assert "version_skew=$((client_minor - server_minor))" in run
+    assert "version_skew < -1 || version_skew > 1" in run
+    assert "outside the supported +/-1 minor version skew" in run
 
 
 def test_sbom_osv_reporting_does_not_hide_scanner_failures() -> None:

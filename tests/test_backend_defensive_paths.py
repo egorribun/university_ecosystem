@@ -6,7 +6,6 @@ import asyncio
 import builtins
 import importlib
 import sys
-from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -408,27 +407,33 @@ def test_utils_files_mime_detector_attribute_error(
 def test_utils_images_resampling_import_error_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When PIL.Image.Resampling raises ImportError, Resampling falls back to int (line 30)."""
-    for key in list(sys.modules):
-        if key == "app.utils.images":
-            monkeypatch.delitem(sys.modules, key)
-
-    # Create a fake PIL.Image module that has no Resampling attribute
-    # so that `from PIL.Image import Resampling` raises ImportError.
-    fake_pil_image = ModuleType("PIL.Image")
-    # Deliberately do NOT set Resampling — the import will fail.
-
-    monkeypatch.setitem(sys.modules, "PIL.Image", fake_pil_image)
-
+    """When PIL.Image.Resampling is unavailable, the module uses the int fallback."""
+    import builtins
     import importlib
 
+    module_name = "app.utils.images"
+    original_module = sys.modules.pop(module_name, None)
+    real_import = builtins.__import__
+
+    def fail_resampling_import(
+        name: str,
+        globals: dict[str, object] | None = None,
+        locals: dict[str, object] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ):
+        if name == "PIL.Image" and "Resampling" in fromlist:
+            raise ImportError("simulated legacy Pillow without Resampling")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fail_resampling_import)
     try:
-        mod = importlib.import_module("app.utils.images")
-        # Either the real enum or int fallback — both are valid outcomes.
-        assert mod.Resampling is not None
-    except ImportError:
-        # Acceptable in edge environments where PIL.Image cannot be re-imported.
-        pass
+        mod = importlib.import_module(module_name)
+        assert mod.Resampling is int
+    finally:
+        sys.modules.pop(module_name, None)
+        if original_module is not None:
+            sys.modules[module_name] = original_module
 
 
 # ---------------------------------------------------------------------------

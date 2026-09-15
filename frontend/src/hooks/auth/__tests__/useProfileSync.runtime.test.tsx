@@ -78,6 +78,7 @@ describe("useProfileSync runtime defensive paths", () => {
     const originalWindow = globalThis.window
     const queryClient = createQueryClient()
     vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    localStorage.setItem("ecosystem.profile.cache.v1", "legacy-cache")
     // A server-like global can expose a document object while lacking a
     // location. The cache listener must fail closed instead of subscribing.
     vi.stubGlobal("window", { document: globalThis.document, location: undefined })
@@ -89,6 +90,7 @@ describe("useProfileSync runtime defensive paths", () => {
         queryClient
       )
       expect(view.result.current.loading).toBe(true)
+      expect(localStorage.getItem("ecosystem.profile.cache.v1")).toBe("legacy-cache")
       view.unmount()
     } finally {
       vi.stubGlobal("window", originalWindow)
@@ -141,6 +143,26 @@ describe("useProfileSync runtime defensive paths", () => {
     view.unmount()
   })
 
+  it("restores the synthetic user when an LHCI render is cleared to null", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const view = renderRuntime(
+      vi.fn(async () => null),
+      null,
+      queryClient
+    )
+    expect(view.result.current.user?.id).toBe("lhci-mock-user")
+
+    await act(async () => {
+      view.result.current.setUser(null)
+      await Promise.resolve()
+    })
+    view.rerender({ ensureSessionSigningKey: vi.fn(async () => null) })
+    await waitFor(() => expect(view.result.current.user?.id).toBe("lhci-mock-user"))
+    view.unmount()
+  })
+
   it("starts a cold profile fetch after an authenticated audit state is cleared", async () => {
     vi.stubEnv("VITE_LHCI", "true")
     const queryClient = createQueryClient()
@@ -183,12 +205,13 @@ describe("useProfileSync runtime defensive paths", () => {
     })
 
     try {
-      const { result } = renderRuntime(
+      const view = renderRuntime(
         vi.fn(async () => null),
         null
       )
-      await waitFor(() => expect(result.current.loading).toBe(false))
+      await waitFor(() => expect(view.result.current.loading).toBe(false))
       expect(accesses).toBeGreaterThanOrEqual(3)
+      view.unmount()
     } finally {
       if (descriptor) Object.defineProperty(globalThis, "localStorage", descriptor)
     }
@@ -198,7 +221,9 @@ describe("useProfileSync runtime defensive paths", () => {
     localStorage.clear()
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as never)
     const firstEnsure = vi.fn(async () => null)
-    const view = renderRuntime(firstEnsure, null)
+    const queryClient = createQueryClient()
+    const fetchQuery = vi.spyOn(queryClient, "fetchQuery")
+    const view = renderRuntime(firstEnsure, null, queryClient)
 
     await waitFor(() => expect(api.get).toHaveBeenCalledOnce())
     await waitFor(() => expect(view.result.current.loading).toBe(false))
@@ -208,7 +233,29 @@ describe("useProfileSync runtime defensive paths", () => {
     await waitFor(() => expect(view.result.current.loading).toBe(false))
 
     expect(api.get).toHaveBeenCalledOnce()
+    expect(fetchQuery).toHaveBeenCalledOnce()
     expect(replacementEnsure).not.toHaveBeenCalled()
+  })
+
+  it("does not restart an in-flight fetch when an effect dependency changes", async () => {
+    const queryClient = createQueryClient()
+    const fetchQuery = vi
+      .spyOn(queryClient, "fetchQuery")
+      .mockReturnValue(new Promise<never>(() => undefined) as never)
+    const firstEnsure = vi.fn(async () => null)
+    const view = renderRuntime(firstEnsure, null, queryClient)
+
+    await waitFor(() => expect(fetchQuery).toHaveBeenCalledOnce())
+
+    const replacementEnsure = vi.fn(async () => null)
+    view.rerender({ ensureSessionSigningKey: replacementEnsure })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(fetchQuery).toHaveBeenCalledOnce()
+    expect(replacementEnsure).not.toHaveBeenCalled()
+    view.unmount()
   })
 
   it("runs the SSR initial-user and initializing branches", () => {

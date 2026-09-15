@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useId, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import useFocusTrap, { type UseFocusTrapOptions } from "@/hooks/useFocusTrap"
 import { X } from "lucide-react"
@@ -6,10 +6,22 @@ import { cn } from "@/utils/cn"
 
 type DialogSize = "sm" | "md" | "lg"
 
-const sizeClassMap: Record<DialogSize, string> = {
-  sm: "sm:max-w-[24rem]",
-  md: "sm:max-w-[32rem]",
-  lg: "sm:max-w-[42rem]",
+const getDialogSizeClass = (size: DialogSize): string => {
+  switch (size) {
+    case "sm":
+      return "sm:max-w-[24rem]"
+    case "lg":
+      return "sm:max-w-[42rem]"
+    case "md":
+      return "sm:max-w-[32rem]"
+  }
+}
+
+export function shouldRenderDialog(
+  open: boolean,
+  portalNode: HTMLElement | null
+): portalNode is HTMLElement {
+  return open && portalNode !== null
 }
 
 export type DialogProps = {
@@ -49,23 +61,21 @@ export function Dialog({
   initialFocus,
 }: DialogProps) {
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null)
-  const [mounted, setMounted] = useState(false)
   const dialogTitleId = useId()
   const dialogSubtitleId = useId()
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
+    if (!open) return
     const node = document.createElement("div")
     node.dataset.dialogRoot = "true"
     document.body.appendChild(node)
     setPortalNode(node)
-    setMounted(true)
     return () => {
       document.body.removeChild(node)
       setPortalNode(null)
-      setMounted(false)
     }
-  }, [])
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -77,7 +87,10 @@ export function Dialog({
   }, [open])
 
   const dialogRef = useFocusTrap<HTMLDivElement>({
-    active: open,
+    // The portal is created lazily when the dialog opens. Delay trap
+    // activation until its container exists so an open-on-mount dialog does
+    // not miss the focus-trap effect's first commit.
+    active: shouldRenderDialog(open, portalNode),
     onDeactivate: onClose,
     // The callback is only invoked for an open, committed dialog, whose close
     // button is always present in the same portal subtree.
@@ -85,17 +98,10 @@ export function Dialog({
     allowOutsideClick: true,
   })
 
-  const labelledBy = useMemo(() => {
-    if (!title) return undefined
-    return dialogTitleId
-  }, [dialogTitleId, title])
+  const labelledBy = title ? dialogTitleId : undefined
+  const describedBy = subtitle ? dialogSubtitleId : undefined
 
-  const describedBy = useMemo(() => {
-    if (!subtitle) return undefined
-    return dialogSubtitleId
-  }, [dialogSubtitleId, subtitle])
-
-  if (!mounted || !portalNode || !open) {
+  if (!shouldRenderDialog(open, portalNode)) {
     return null
   }
 
@@ -118,7 +124,7 @@ export function Dialog({
         aria-describedby={describedBy}
         className={cn(
           "relative z-surface w-full max-w-(--dialog-max-w)",
-          sizeClassMap[size],
+          getDialogSizeClass(size),
           fullScreenOnMobile
             ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/(--opacity-subtle) sm:h-auto sm:rounded-2xl sm:px-6 sm:pb-7"
             : "glass-layer-elevated overflow-y-auto rounded-2xl pb-6 pt-5 text-(--text-primary) ring-1 ring-white/(--opacity-subtle) sm:px-6 sm:pb-7",

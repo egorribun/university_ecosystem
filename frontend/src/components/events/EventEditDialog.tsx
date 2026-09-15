@@ -1,7 +1,7 @@
 import { useRef, useMemo, useId, type ChangeEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Pencil as EditIcon, X as CloseIcon } from "lucide-react"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import Dialog from "@/components/ui/Dialog"
 import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"

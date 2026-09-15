@@ -62,7 +62,10 @@ class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
         String(36), nullable=False, unique=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
@@ -84,7 +87,11 @@ class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
         String(128), nullable=False, default=_generate_session_signing_key
     )
     mfa_required: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, index=True
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+        index=True,
     )
     mfa_completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -119,7 +126,11 @@ class MfaTotpEnrollment(Base, UUID7PrimaryKeyMixin, UserFK):
     secret: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
     label: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, index=True
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        index=True,
     )
     confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -128,7 +139,10 @@ class MfaTotpEnrollment(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
     # MOD-W8-06: Belt-and-suspenders replay prevention.
     # SHA-256 hex digest (64 chars) of the last successfully verified TOTP code;
@@ -186,7 +200,10 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     attempt_count: Mapped[int] = mapped_column(
@@ -272,6 +289,7 @@ class FailedLoginAttempt(Base, UUID7PrimaryKeyMixin, UserFK):
     attempted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
         index=True,
     )
@@ -308,10 +326,17 @@ class PasswordResetToken(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), nullable=False, index=True
     )
     used: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, index=True
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        index=True,
     )
 
     user = relationship("User", lazy="noload")
@@ -335,10 +360,17 @@ class EmailChangeToken(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), nullable=False, index=True
     )
     used: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, index=True
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        index=True,
     )
 
     user = relationship("User", back_populates="email_change_tokens", lazy="noload")
@@ -378,6 +410,7 @@ class TrustedDevice(Base, UUID7PrimaryKeyMixin, UserFK):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
         nullable=False,
     )
@@ -468,10 +501,15 @@ class RecoveryCode(Base, UUID7PrimaryKeyMixin, UserFK):
         String(255), nullable=False
     )  # Argon2 hash of the code
     is_used: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, index=True
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
         nullable=False,
     )
@@ -499,11 +537,17 @@ class LoginHistory(Base, UUID7PrimaryKeyMixin, UserFK):
     )  # success, failed, locked
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
         nullable=False,
         index=True,
     )
-    is_suspicious: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_suspicious: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+    )
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.pop("_allow_system_managed_assignment", False)

@@ -108,7 +108,14 @@
 		reverse_proxy imgproxy:8080
 	}
 
-	# MinIO presigned URLs (optional direct access)
+	# Private chat/event blobs must never be exposed through the optional direct
+	# MinIO proxy.  Keep the deny-first matcher in the compose-mounted edge
+	# config in lockstep with services/caddy/Caddyfile; authorization belongs to
+	# the authenticated backend download routes.
+	@private_storage path /storage/chat_uploads/* /storage/event_files/*
+	respond @private_storage 404
+
+	# MinIO presigned URLs (optional direct access for public objects only)
 	handle /storage/* {
 		uri strip_prefix /storage
 		reverse_proxy minio:9000
@@ -136,6 +143,17 @@
 			# single healthy upstream is transiently evicted and the next route gets
 			# a synthetic 503 even though Node completes the render successfully.
 			health_timeout 20s
+		}
+	}
+
+	# Access logging is opt-in in this development edge config. If an operator
+	# enables it, redact the short-lived WebSocket ticket before it reaches any
+	# log sink; the query parameter is a bearer credential during its TTL.
+	log {
+		format filter {
+			request>uri query {
+				replace ticket REDACTED
+			}
 		}
 	}
 }

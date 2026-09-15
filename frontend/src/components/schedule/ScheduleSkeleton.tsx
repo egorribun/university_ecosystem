@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/ui"
+import { Skeleton } from "@/components/ui/Skeleton"
 import { cn } from "@/utils/cn"
 
 /** Shimmer skeleton block — uses CSS animation instead of static gray (FIX-68-16) */

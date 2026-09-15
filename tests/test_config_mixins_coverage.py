@@ -37,7 +37,10 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.core.config.security import SecuritySettings
+from app.core.config.security import (
+    SecuritySettings,
+    _validate_internal_hmac_secret_strength,
+)
 
 
 @pytest.fixture
@@ -52,10 +55,27 @@ def prod_env(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("AUDIT_LOG_SECRET", "a" * 32)  # pragma: allowlist secret
     monkeypatch.setenv("SECRET_KEY", "p" * 48)  # pragma: allowlist secret
-    monkeypatch.setenv("INTERNAL_HMAC_SECRET", "i" * 48)  # pragma: allowlist secret
+    monkeypatch.setenv(
+        "INTERNAL_HMAC_SECRET",
+        "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!",  # pragma: allowlist secret
+    )
+    monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
+    monkeypatch.setenv(
+        "TOKEN_HMAC_SECRET", "token-hmac-closure-random-material-0123456789"
+    )  # pragma: allowlist secret
     monkeypatch.setenv("ALGORITHM", "RS256")
     monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", "")
     return monkeypatch
+
+
+def test_internal_hmac_secret_accepts_exactly_32_encoded_bytes() -> None:
+    value = "Aa1!Bb2@Cc3#Dd4$Ee5%Ff6^Gg7&Hh8*"
+
+    assert len(value.encode()) == 32
+    assert (
+        _validate_internal_hmac_secret_strength(value, label="INTERNAL_HMAC_SECRET")
+        == value
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

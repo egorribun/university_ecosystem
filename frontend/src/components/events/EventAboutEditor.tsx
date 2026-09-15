@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { Pencil as EditIcon, Save as SaveIcon, X as CloseIcon } from "lucide-react"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import { cn } from "@/utils/cn"
 import api from "@/api/client"
 import { logError } from "@/app/logger"

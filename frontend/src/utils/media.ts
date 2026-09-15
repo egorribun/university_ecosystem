@@ -27,7 +27,10 @@ export function resolveMediaUrl(
 
   const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`
   const needsPrefix =
-    withLeadingSlash.startsWith("/static/") || withLeadingSlash.startsWith("/media/")
+    withLeadingSlash.startsWith("/static/") ||
+    withLeadingSlash.startsWith("/media/") ||
+    withLeadingSlash.startsWith("/api/v1/chats/") ||
+    withLeadingSlash.startsWith("/api/v1/events/")
 
   if (!needsPrefix) {
     return trimmed

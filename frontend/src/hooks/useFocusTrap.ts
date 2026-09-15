@@ -70,7 +70,8 @@ export default function useFocusTrap<T extends HTMLElement>({
       ...options,
       onDeactivate: () => {
         if (skipDeactivateRef.current) return
-        deactivateRef.current?.()
+        const callback = deactivateRef.current
+        if (callback) callback()
       },
     })
 

@@ -4,11 +4,15 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 
 from app.api.validation import raise_http_error, raise_not_found
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.ratelimit import sensitive_route_limit
 from app.services.image_proxy import get_transformed_image
+from app.services.private_attachments import is_private_attachment_path
 from app.utils.files import _get_storage_backend
+from app.utils.images import ImagePixelLimitError
 
 router = APIRouter(tags=["images"])
+logger = get_logger(__name__)
 
 # LOW-W19: moved from inside the handler body to module level so the tuple is
 # constructed once at import time rather than on every image request.
@@ -63,12 +67,16 @@ async def proxy_image(
         elif "image/webp" in accept:
             format_pref = "webp"
 
+    normalized_path = path.lstrip("/")
+
+    # Private chat/event blobs must be downloaded through their parent
+    # resource's authorization boundary, never through this public image
+    # transformation endpoint.
+    if is_private_attachment_path(normalized_path):
+        raise_not_found("image", "en", resource_id=path)
+
     backend = _get_storage_backend()
     try:
-        # Path might have leading slash from URL capturing,
-        # strip it for backend compatibility
-        normalized_path = path.lstrip("/")
-
         data, mime = await get_transformed_image(
             backend, normalized_path, width=target_width, format_preference=format_pref
         )
@@ -97,13 +105,17 @@ async def proxy_image(
                 ),  # Simplified indication
             },
         )
+    except ImagePixelLimitError:
+        raise_http_error(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            "errors.files.too_large",
+            "en",
+        )
     except ValueError:
         # Often file not found in storage
         raise_not_found("image", "en", resource_id=path)
     except Exception:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts any proxy error to HTTP 500 (reviewed TD-27-04)
-        from logging import getLogger
-
-        getLogger(__name__).exception("Image proxy error for %s", path)
+        logger.exception("Image proxy error for %s", path)
         raise_http_error(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "errors.common.internal_error", "en"
         )

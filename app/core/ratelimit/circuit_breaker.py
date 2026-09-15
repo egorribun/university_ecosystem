@@ -12,7 +12,6 @@ import asyncio
 import enum
 import functools
 import inspect
-import logging
 import threading
 import time
 import typing
@@ -21,7 +20,9 @@ from typing import Any
 
 from prometheus_client import Counter, Gauge
 
-_log = logging.getLogger(__name__)
+from app.core.logging import get_logger
+
+_log = get_logger(__name__)
 _background_tasks: set[asyncio.Task[Any]] = set()
 
 # ---------------------------------------------------------------------------

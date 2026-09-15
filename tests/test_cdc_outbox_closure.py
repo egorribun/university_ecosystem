@@ -1,15 +1,121 @@
 from __future__ import annotations
 
+import ast
 import json
+import os
 import struct
 import time
 import uuid
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 import app.workers.cdc_outbox as cdc
 from app.core.events import UserCreated
+
+_CLOSE_REPLICATION_MUTANT_PREFIX = (
+    "xǁCdcOutboxWorkerǁ_close_replication_connection__mutmut_"
+)
+
+
+def _close_replication_function_node() -> ast.AsyncFunctionDef:
+    """Return the active close implementation from the imported source.
+
+    ``contextlib.suppress(*_REPLICATION_CLOSE_ERRORS)`` deliberately delegates
+    the complete exception contract to an immutable module-level tuple.
+    ``ConnectionError`` subclasses ``OSError``, so a runtime-only test cannot
+    distinguish removing the explicit class from the original implementation.
+    During mutmut runs, the generated module contains one sibling function per
+    mutation; selecting the active sibling makes this contract test fail for
+    that otherwise equivalent survivor without weakening production behavior.
+    """
+    source_path = Path(cdc.__file__)
+    tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+    mutation = os.environ.get("MUTANT_UNDER_TEST", "")
+    _, _, mutant_name = mutation.rpartition(".")
+    generated_original = f"{_CLOSE_REPLICATION_MUTANT_PREFIX}orig"
+    target_name = "_close_replication_connection"
+    generated_names = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith(_CLOSE_REPLICATION_MUTANT_PREFIX)
+    }
+    if generated_names:
+        target_name = (
+            mutant_name
+            if mutant_name.startswith(_CLOSE_REPLICATION_MUTANT_PREFIX)
+            else generated_original
+        )
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == target_name:
+            return node
+    raise AssertionError(f"{target_name} is missing from {source_path}")
+
+
+def test_replication_close_error_contract_is_explicit_and_module_level() -> None:
+    """The teardown exception tuple is explicit, immutable, and module-level."""
+    assert isinstance(cdc._REPLICATION_CLOSE_ERRORS, tuple)
+    assert cdc._REPLICATION_CLOSE_ERRORS == (
+        OSError,
+        ConnectionError,
+        cdc.asyncpg.PostgresError,
+        cdc.asyncpg.InterfaceError,
+    )
+    assert ConnectionError in cdc._REPLICATION_CLOSE_ERRORS
+
+
+def test_close_replication_connection_uses_explicit_module_error_contract() -> None:
+    """The close path must consume the complete module-level error tuple."""
+    function = _close_replication_function_node()
+    suppress_arguments: list[ast.expr] = []
+    for node in ast.walk(function):
+        if not isinstance(node, ast.With):
+            continue
+        for item in node.items:
+            context = item.context_expr
+            if not isinstance(context, ast.Call):
+                continue
+            if (
+                not isinstance(context.func, ast.Attribute)
+                or context.func.attr != "suppress"
+            ):
+                continue
+            suppress_arguments.extend(context.args)
+
+    assert any(
+        isinstance(argument, ast.Starred)
+        and isinstance(argument.value, ast.Name)
+        and argument.value.id == "_REPLICATION_CLOSE_ERRORS"
+        for argument in suppress_arguments
+    )
+
+
+def test_close_replication_function_falls_back_to_generated_original(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A stats run for another function must select mutmut's original sibling."""
+    generated_source = "\n".join(
+        (
+            "async def _close_replication_connection(self):",
+            "    pass",
+            "async def xǁCdcOutboxWorkerǁ_close_replication_connection__mutmut_orig(self):",
+            "    pass",
+            "async def xǁCdcOutboxWorkerǁ_close_replication_connection__mutmut_1(self):",
+            "    pass",
+        )
+    )
+    source_path = tmp_path / "cdc_outbox.py"
+    source_path.write_text(generated_source, encoding="utf-8")
+    monkeypatch.setattr(cdc, "__file__", str(source_path))
+    monkeypatch.setenv("MUTANT_UNDER_TEST", "xǁOtherWorkerǁother__mutmut_1")
+
+    function = _close_replication_function_node()
+
+    assert function.name == (
+        "xǁCdcOutboxWorkerǁ_close_replication_connection__mutmut_orig"
+    )
 
 
 def _relation_prefix(relation_id: int = 7, columns: int = 1) -> bytes:
@@ -185,6 +291,31 @@ async def test_provision_resources_owns_and_closes_its_connection() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "close_error",
+    [
+        OSError("socket closed"),
+        ConnectionError("connection reset"),
+        cdc.asyncpg.PostgresError("postgres closed"),
+        cdc.asyncpg.InterfaceError("interface closed"),
+    ],
+)
+async def test_close_replication_connection_suppresses_expected_teardown_errors(
+    close_error: Exception,
+) -> None:
+    """Teardown must be best-effort for every supported asyncpg close error."""
+    conn = AsyncMock()
+    conn.close.side_effect = close_error
+    worker = cdc.CdcOutboxWorker(nats_broker=AsyncMock())
+    worker._replication_connection = conn
+
+    await worker._close_replication_connection()
+
+    assert worker._replication_connection is None
+    conn.close.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
 async def test_dispatch_handles_missing_and_serialized_payload_variants() -> None:
     broker = AsyncMock()
     worker = cdc.CdcOutboxWorker(nats_broker=broker)
@@ -236,6 +367,35 @@ async def test_dispatch_handles_missing_and_serialized_payload_variants() -> Non
         4,
     )
     assert isinstance(await worker.dispatch_insert_record(no_metadata), UserCreated)
+
+
+@pytest.mark.asyncio
+async def test_missing_event_type_log_does_not_include_raw_cdc_payload() -> None:
+    worker = cdc.CdcOutboxWorker(nats_broker=AsyncMock())
+    record = cdc.CDCInsertRecord(
+        relation_id=7,
+        relation_name="stored_events",
+        data={
+            "email": "alice@example.edu",
+            "phone": "+7 999 123-45-67",
+            "payload": {"token": "secret-token"},
+        },
+        lsn=42,
+    )
+
+    with patch.object(cdc.logger, "warning") as warning:
+        assert await worker.dispatch_insert_record(record) is None
+
+    warning.assert_called_once()
+    template, *arguments = warning.call_args.args
+    rendered = " ".join(str(value) for value in arguments)
+    assert template == (
+        "CDC record missing event_type (relation=%s, lsn=%s, fields=%d)"
+    )
+    assert arguments == ["stored_events", 42, 3]
+    assert "alice@example.edu" not in rendered
+    assert "+7 999 123-45-67" not in rendered
+    assert "secret-token" not in rendered
 
 
 @pytest.mark.asyncio
@@ -320,6 +480,54 @@ async def test_run_forever_connects_and_processes_replication_stream() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_forever_logs_shutdown_provisioning_without_starting_fallback() -> (
+    None
+):
+    """A shutdown race must be observable and must not start the fallback worker."""
+    worker = cdc.CdcOutboxWorker(nats_broker=MagicMock(is_connected=True))
+
+    async def fail_after_shutdown() -> None:
+        worker._is_running = False
+        raise OSError("database unavailable")
+
+    worker.provision_replication_resources = AsyncMock(side_effect=fail_after_shutdown)
+    with (
+        patch.object(cdc.logger, "info") as info,
+        patch.object(worker, "_run_fallback_worker", new=AsyncMock()) as fallback,
+    ):
+        await worker.run_forever()
+
+    info.assert_any_call(
+        "CdcOutboxWorker: provisioning failed after shutdown; fallback skipped"
+    )
+    assert worker._fallback_worker is None
+    fallback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fallback_worker_clears_owned_reference_after_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fallback completion must release the lifecycle-owned worker reference."""
+    instances: list[object] = []
+
+    class FakeOutboxWorker:
+        def __init__(self) -> None:
+            instances.append(self)
+
+        async def run_forever(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.workers.outbox.OutboxWorker", FakeOutboxWorker)
+    worker = cdc.CdcOutboxWorker(nats_broker=AsyncMock())
+
+    await worker._run_fallback_worker()
+
+    assert len(instances) == 1
+    assert worker._fallback_worker is None
+
+
+@pytest.mark.asyncio
 async def test_replication_writer_ignores_data_after_stop() -> None:
     broker = MagicMock(is_connected=True)
     worker = cdc.CdcOutboxWorker(nats_broker=broker)
@@ -337,3 +545,18 @@ async def test_replication_writer_ignores_data_after_stop() -> None:
 
     worker.process_wal_message.assert_not_awaited()
     conn.close.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_stop_clears_fallback_reference_after_stopping_it() -> None:
+    fallback = AsyncMock()
+    worker = cdc.CdcOutboxWorker(nats_broker=AsyncMock())
+    worker._fallback_worker = fallback
+    worker._close_replication_connection = AsyncMock()
+
+    await worker.stop()
+
+    assert worker._is_running is False
+    fallback.stop.assert_awaited_once_with()
+    assert worker._fallback_worker is None
+    worker._close_replication_connection.assert_awaited_once_with()

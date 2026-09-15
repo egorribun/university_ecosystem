@@ -17,7 +17,7 @@ import { useForm } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
 
 import { Button, TextField, SectionCard, Alert } from "@/components/settings"
-import { ProgressBar } from "@/components/ui"
+import { ProgressBar } from "@/components/ui/ProgressBar"
 import AuthBackdrop from "@/components/auth/AuthBackdrop"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { newPasswordSchema, type NewPasswordValues } from "@/features/auth/schemas"

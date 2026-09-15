@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({
     open,
     onConfirm,
@@ -21,15 +21,10 @@ vi.mock("@/components/ui", () => ({
         </button>
       </div>
     ) : null,
-  Snackbar: ({
-    open,
-    message,
-    onClose,
-  }: {
-    open: boolean
-    message: string
-    onClose: () => void
-  }) =>
+}))
+
+vi.mock("@/components/ui/Snackbar", () => ({
+  default: ({ open, message, onClose }: { open: boolean; message: string; onClose: () => void }) =>
     open ? (
       <div role="status">
         <span>{message}</span>
@@ -162,9 +157,10 @@ afterEach(() => {
 })
 
 describe("NewsCardView — interactions and optional overlays", () => {
-  it("shows the bottom quick view near the viewport top and resets transitions", () => {
+  it("shows the bottom quick view near the viewport top and resets transitions", async () => {
     const props = createProps()
-    const { container } = render(<NewsCardView {...props} />)
+    const view = render(<NewsCardView {...props} />)
+    const { container } = view
     const article = screen.getByTestId("news-card")
 
     fireEvent.mouseMove(article)
@@ -183,29 +179,43 @@ describe("NewsCardView — interactions and optional overlays", () => {
     vi.spyOn(article, "getBoundingClientRect").mockReturnValue({ top: 400 } as DOMRect)
     fireEvent.mouseEnter(article)
     expect(screen.getByTestId("quick-view")).toHaveTextContent("quick:top")
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    view.unmount()
   })
 
-  it("does not open hover or transition interactions when disabled", () => {
+  it("does not open hover or transition interactions when disabled", async () => {
     const props = createProps()
     props.hoveringDisabled = true
-    render(<NewsCardView {...props} />)
+    const view = render(<NewsCardView {...props} />)
     const article = screen.getByTestId("news-card")
 
     fireEvent.mouseEnter(article)
     fireEvent.pointerDown(article)
     expect(screen.queryByTestId("quick-view")).not.toBeInTheDocument()
     expect(screen.getByTestId("hero")).toHaveAttribute("data-transitioning", "false")
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    view.unmount()
   })
 
   it("forwards content and admin callbacks and renders edit/delete/error overlays", async () => {
     const props = createProps()
     props.isAdmin = true
     props.error = "Save failed"
-    const { rerender } = render(<NewsCardView {...props} />)
+    const view = render(<NewsCardView {...props} />)
+    const { rerender } = view
 
     fireEvent.click(screen.getByRole("button", { name: "like card" }))
     fireEvent.click(screen.getByRole("button", { name: "bookmark card" }))
     fireEvent.click(await screen.findByRole("button", { name: "edit card" }))
+    await act(async () => {
+      await Promise.resolve()
+    })
     expect(props.onToggleLike).toHaveBeenCalledOnce()
     expect(props.onToggleBookmark).toHaveBeenCalledOnce()
     expect(props.onEditOpen).toHaveBeenCalledOnce()
@@ -226,5 +236,6 @@ describe("NewsCardView — interactions and optional overlays", () => {
     expect(props.onEditSuccess).toHaveBeenCalledOnce()
     expect(props.onEditClose).toHaveBeenCalledOnce()
     await waitFor(() => expect(screen.getByTestId("hero")).toHaveAttribute("data-priority", "true"))
+    view.unmount()
   })
 })

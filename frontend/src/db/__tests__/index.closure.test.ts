@@ -41,6 +41,11 @@ afterEach(async () => {
 })
 
 describe("RxDB database lifecycle", () => {
+  it("treats an empty cache as an idempotent reset", async () => {
+    await expect(resetDatabaseForTesting()).resolves.toBeUndefined()
+    expect(createRxDatabase).not.toHaveBeenCalled()
+  })
+
   it("does not register the noisy development plugin in the test runtime", async () => {
     vi.stubEnv("DEV", true)
     vi.stubEnv("MODE", "test")
@@ -128,6 +133,18 @@ describe("RxDB database lifecycle", () => {
     expect(close).toHaveBeenCalledOnce()
   })
 
+  it("clears the cache when a database exposes no cleanup method", async () => {
+    const database = makeDatabase()
+    createRxDatabase.mockResolvedValue(database)
+
+    await getDatabase()
+    await expect(resetDatabaseForTesting()).resolves.toBeUndefined()
+
+    const replacement = makeDatabase()
+    createRxDatabase.mockResolvedValueOnce(replacement)
+    await expect(getDatabase()).resolves.toBe(replacement)
+  })
+
   it("clears the cached promise when cleanup rejects", async () => {
     const remove = vi.fn().mockRejectedValue(new Error("cleanup failed"))
     const database = makeDatabase({ remove })
@@ -136,6 +153,17 @@ describe("RxDB database lifecycle", () => {
     await getDatabase()
     await expect(resetDatabaseForTesting()).resolves.toBeUndefined()
     expect(remove).toHaveBeenCalledOnce()
+
+    const replacement = makeDatabase()
+    createRxDatabase.mockResolvedValueOnce(replacement)
+    await expect(getDatabase()).resolves.toBe(replacement)
+  })
+
+  it("clears the cached promise when database initialization rejects", async () => {
+    createRxDatabase.mockRejectedValueOnce(new Error("initialization failed"))
+
+    await expect(getDatabase()).rejects.toThrow("initialization failed")
+    await expect(resetDatabaseForTesting()).resolves.toBeUndefined()
 
     const replacement = makeDatabase()
     createRxDatabase.mockResolvedValueOnce(replacement)

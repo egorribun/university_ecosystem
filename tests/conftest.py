@@ -1,6 +1,8 @@
 import atexit
 import base64
 import hashlib
+import json
+import math
 import os
 import shutil
 import sys
@@ -380,7 +382,7 @@ def minio_container() -> dict[str, str]:
 
     container = (
         DockerContainer(
-            "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+            "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
         )
         .with_env("MINIO_ROOT_USER", "minioadmin")
         .with_env("MINIO_ROOT_PASSWORD", "minioadminsecret")
@@ -518,10 +520,18 @@ async def clear_redis_between_tests(mock_global_redis):
     """
     await mock_global_redis.flushall()
     from app.core.ratelimit import clear_delay_memory, clear_memory_state
+    from app.core.ratelimit.circuit_breaker import get_circuit_breaker
 
     clear_memory_state()
     clear_delay_memory()
+    # The rate-limit circuit breaker is a process-wide singleton.  Mutation
+    # clean-test unions run many otherwise independent tests in one process;
+    # an earlier Redis-failure scenario must not force later memory/Redis
+    # contract tests through the stricter fallback path.
+    rate_limit_breaker = get_circuit_breaker()
+    rate_limit_breaker.reset_for_testing()
     yield
+    rate_limit_breaker.reset_for_testing()
 
 
 @pytest.fixture(autouse=True)
@@ -951,6 +961,66 @@ def pytest_runtest_setup(item):
         pytest.skip("skipping quarantined flaky test (use --run-quarantined to run)")
 
 
+def _duration_history_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    for key, value in pairs:
+        if key in payload:
+            raise ValueError(f"duplicate key {key!r}")
+        payload[key] = value
+    return payload
+
+
+def _load_historical_test_durations(path: Path) -> tuple[dict[str, float], float]:
+    """Load the shard planner's tracked timing input without silent fallback."""
+
+    try:
+        payload = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_duration_history_object,
+        )
+    except (OSError, UnicodeError, ValueError) as error:
+        raise pytest.UsageError(
+            f"Unable to read historical test durations: {error}"
+        ) from error
+    if not isinstance(payload, dict):
+        raise pytest.UsageError(
+            "Invalid historical test durations: root must be an object"
+        )
+
+    raw_durations = payload.get("durations", {})
+    if not isinstance(raw_durations, dict):
+        raise pytest.UsageError(
+            "Invalid historical test durations: durations must be an object"
+        )
+    raw_default = payload.get("default_duration_seconds", 1.0)
+    if (
+        isinstance(raw_default, bool)
+        or not isinstance(raw_default, int | float)
+        or not math.isfinite(float(raw_default))
+        or raw_default < 0
+    ):
+        raise pytest.UsageError(
+            "Invalid historical test durations: default duration must be finite and non-negative"
+        )
+
+    durations: dict[str, float] = {}
+    for test_path, raw_duration in raw_durations.items():
+        if (
+            not isinstance(test_path, str)
+            or not test_path
+            or isinstance(raw_duration, bool)
+            or not isinstance(raw_duration, int | float)
+            or not math.isfinite(float(raw_duration))
+            or raw_duration < 0
+        ):
+            raise pytest.UsageError(
+                "Invalid historical test durations: entries must map non-empty paths "
+                "to finite non-negative numbers"
+            )
+        durations[test_path] = float(raw_duration)
+    return durations, float(raw_default)
+
+
 def pytest_collection_modifyitems(config, items):
     shard_id = config.getoption("--shard-id")
     num_shards = config.getoption("--num-shards")
@@ -965,12 +1035,17 @@ def pytest_collection_modifyitems(config, items):
                 f"--shard-id must be between 0 and {num_shards - 1} inclusive."
             )
 
-        import json
         from collections import defaultdict
+
+        # Keep the complete collection before filtering so CI can prove that
+        # the four selected shard populations are a disjoint cover of the
+        # same test universe.  The manifest is opt-in through the environment
+        # and therefore does not create files during ordinary local runs.
+        all_items = list(items)
 
         # 1. Group items by file
         file_to_items = defaultdict(list)
-        for item in items:
+        for item in all_items:
             rel_path = os.path.relpath(item.fspath, PROJECT_ROOT).replace("\\", "/")
             file_to_items[rel_path].append(item)
 
@@ -979,12 +1054,7 @@ def pytest_collection_modifyitems(config, items):
         durations = {}
         default_dur = 1.0
         if durations_path.exists():
-            try:
-                data = json.loads(durations_path.read_text(encoding="utf-8"))
-                durations = data.get("durations", {})
-                default_dur = data.get("default_duration_seconds", 1.0)
-            except Exception:  # noqa: S110
-                pass
+            durations, default_dur = _load_historical_test_durations(durations_path)
 
         # 3. Estimate duration of each file
         file_durations = []
@@ -1010,9 +1080,29 @@ def pytest_collection_modifyitems(config, items):
         allowed_files = set(shards[shard_id])
         sharded_items = [
             item
-            for item in items
+            for item in all_items
             if os.path.relpath(item.fspath, PROJECT_ROOT).replace("\\", "/")
             in allowed_files
         ]
 
         items[:] = sharded_items
+
+        manifest_path = os.environ.get("PYTEST_SHARD_MANIFEST", "").strip()
+        if manifest_path:
+            from scripts.quality.pytest_shard_manifest import (
+                ManifestError,
+                write_manifest,
+            )
+
+            try:
+                write_manifest(
+                    Path(manifest_path),
+                    shard_id=shard_id,
+                    num_shards=num_shards,
+                    all_nodeids=[str(item.nodeid) for item in all_items],
+                    selected_nodeids=[str(item.nodeid) for item in sharded_items],
+                )
+            except (AttributeError, ManifestError) as error:
+                raise pytest.UsageError(
+                    f"Unable to write pytest shard manifest: {error}"
+                ) from error

@@ -18,6 +18,7 @@
     "services/": "@egorribun",
     "native/rust_ext/": "@egorribun",
     "crates/pyo3-sanitizer/": "@egorribun",
+    "gen/go/": "@egorribun",
     "frontend/wasm-sanitizer/": "@egorribun",
     "frontend/rust-crypto/": "@egorribun",
     "infra/": "@egorribun",

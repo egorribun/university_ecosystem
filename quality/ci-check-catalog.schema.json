@@ -1,0 +1,608 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/egorribun/university_ecosystem/quality/ci-check-catalog.schema.json",
+  "title": "University Ecosystem CI check catalog",
+  "description": "Fail-closed inventory and governance metadata for every GitHub Actions workflow/job plus protected provider and expansion contexts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "catalog_version",
+    "repository",
+    "default_runbook",
+    "profiles",
+    "external_checks",
+    "expansions",
+    "workflows"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "./ci-check-catalog.schema.json"
+    },
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "catalog_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    },
+    "default_runbook": {
+      "$ref": "#/$defs/repository_path"
+    },
+    "profiles": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/profile"
+      }
+    },
+    "external_checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/external_check"
+      }
+    },
+    "expansions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/expansion"
+      }
+    },
+    "workflows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/workflow"
+      }
+    }
+  },
+  "$defs": {
+    "repository_path": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(^|/)\\.{1,2}(/|$)).+$"
+    },
+    "owner": {
+      "type": "string",
+      "pattern": "^(@[A-Za-z0-9_.-]+|[^\\s@]+@[^\\s@]+)$"
+    },
+    "required_event": {
+      "type": "string",
+      "enum": [
+        "pull_request_main",
+        "push_main"
+      ]
+    },
+    "classification": {
+      "type": "string",
+      "enum": [
+        "required",
+        "advisory",
+        "nightly",
+        "manual",
+        "internal"
+      ]
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name_pattern",
+        "path_pattern",
+        "required",
+        "provenance"
+      ],
+      "properties": {
+        "name_pattern": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path_pattern": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "provenance": {
+          "type": "string",
+          "enum": [
+            "sha",
+            "run_id_attempt",
+            "input",
+            "none",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "retry_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "first_failure_preserved",
+        "classifier",
+        "review_required"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "none",
+            "transient-only",
+            "workflow-rerun-only",
+            "broad",
+            "review-required"
+          ]
+        },
+        "first_failure_preserved": {
+          "type": "boolean"
+        },
+        "classifier": {
+          "type": "string",
+          "minLength": 1
+        },
+        "review_required": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "required_events",
+        "owner",
+        "runbook",
+        "artifacts",
+        "retry_policy"
+      ],
+      "properties": {
+        "classification": {
+          "$ref": "#/$defs/classification"
+        },
+        "required_events": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/required_event"
+          }
+        },
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "runbook": {
+          "$ref": "#/$defs/repository_path"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "retry_policy": {
+          "$ref": "#/$defs/retry_policy"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "external_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "integration_id",
+        "context",
+        "profile",
+        "classification",
+        "owner",
+        "source_reference",
+        "runbook",
+        "externally_owned"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "integration_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "context": {
+          "type": "string",
+          "minLength": 1
+        },
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classification": {
+          "$ref": "#/$defs/classification"
+        },
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "source_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runbook": {
+          "$ref": "#/$defs/repository_path"
+        },
+        "externally_owned": {
+          "const": true
+        }
+      }
+    },
+    "expansion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "caller_workflow_path",
+        "caller_job_id",
+        "profile",
+        "classification",
+        "owner",
+        "runbook",
+        "source_reference"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "reusable_workflow",
+            "matrix"
+          ]
+        },
+        "caller_workflow_path": {
+          "$ref": "#/$defs/repository_path"
+        },
+        "caller_job_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reusable_workflow_path": {
+          "$ref": "#/$defs/repository_path"
+        },
+        "reusable_job_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reusable_job_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classification": {
+          "$ref": "#/$defs/classification"
+        },
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "runbook": {
+          "$ref": "#/$defs/repository_path"
+        },
+        "source_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context_template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "declared_contexts": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "context_template"
+          ],
+          "not": {
+            "required": [
+              "declared_contexts"
+            ]
+          }
+        },
+        {
+          "required": [
+            "declared_contexts"
+          ],
+          "not": {
+            "required": [
+              "context_template"
+            ]
+          }
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "reusable_workflow"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reusable_workflow_path"
+            ],
+            "oneOf": [
+              {
+                "required": [
+                  "reusable_job_id"
+                ],
+                "not": {
+                  "required": [
+                    "reusable_job_ids"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "reusable_job_ids"
+                ],
+                "not": {
+                  "required": [
+                    "reusable_job_id"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "matrix"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "reusable_workflow_path"
+                  ]
+                },
+                {
+                  "required": [
+                    "reusable_job_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "reusable_job_ids"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event",
+        "guard"
+      ],
+      "properties": {
+        "event": {
+          "type": "string",
+          "enum": [
+            "push",
+            "pull_request",
+            "schedule",
+            "workflow_dispatch",
+            "repository_dispatch",
+            "workflow_call"
+          ]
+        },
+        "guard": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "check_name_template",
+        "expected_timeout_minutes",
+        "expected_duration_seconds",
+        "guard"
+      ],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "check_name_template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected_timeout_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 360
+        },
+        "expected_duration_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 21600
+        },
+        "guard": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "runbook": {
+          "$ref": "#/$defs/repository_path"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "retry_policy": {
+          "$ref": "#/$defs/retry_policy"
+        },
+        "classification": {
+          "$ref": "#/$defs/classification"
+        },
+        "required_events": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/required_event"
+          }
+        },
+        "matrix_governance": {
+          "$ref": "#/$defs/matrix_governance"
+        }
+      }
+    },
+    "matrix_governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_parallel": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "unbounded_justification": {
+          "$ref": "#/$defs/unbounded_justification"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "max_parallel"
+          ],
+          "not": {
+            "required": [
+              "unbounded_justification"
+            ]
+          }
+        },
+        {
+          "required": [
+            "unbounded_justification"
+          ],
+          "not": {
+            "required": [
+              "max_parallel"
+            ]
+          }
+        }
+      ]
+    },
+    "unbounded_justification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "event_profile",
+        "rationale"
+      ],
+      "properties": {
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "event_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "name",
+        "owner",
+        "events",
+        "jobs"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/repository_path"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "$ref": "#/$defs/owner"
+        },
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/event"
+          }
+        },
+        "jobs": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/job"
+          }
+        }
+      }
+    }
+  }
+}

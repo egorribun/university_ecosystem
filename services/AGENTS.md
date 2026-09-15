@@ -14,6 +14,21 @@ This document defines the architectural invariants, concurrency models, error ha
 - **Telemetry**: All Go services must register the OpenTelemetry composite propagator combining `TraceContext` and `Baggage` (MOD-31-02).
 - **Coverage Baseline**: 100% statement coverage required per `quality/quality-contract.json`.
 
+### 1.1. Linux-equivalent tooling from a Windows host
+
+The Linux CI runner is authoritative for CGO-backed race evidence. When a
+Windows host has no C compiler, run the same checks in pinned containers rather
+than silently replacing `go test -race` with a non-race run:
+
+```powershell
+docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub docker.io/library/golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 bash -lc 'CGO_ENABLED=1 go test -race ./...'
+docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub golangci/golangci-lint:v2.13.2 golangci-lint run --config /workspace/.golangci.yml --timeout 5m
+```
+
+Repeat the commands with `services/gateway` and `services/file-processor` as
+the working directory. Container output is local diagnostic evidence; the
+required release gate still comes from the current-SHA Linux CI jobs.
+
 ---
 
 ## 2. Microservice Lifecycle & Concurrency Invariants
@@ -84,7 +99,11 @@ if exists {
 - **Configuration**:
   - `JWKS_ENDPOINT`: URL of backend RSA JWKS.
   - `JWKS_REFRESH_INTERVAL`: Default `300s` (5 minutes).
-  - Also listens for `keys.rotated` NATS subjects for instant key invalidation.
+  - The gateway is intentionally an HTTP-polling consumer and does not subscribe
+    to `keys.rotated` or `cache.invalidate`. The ws-hub owns those NATS
+    subscriptions; keeping a single consumer per subject avoids duplicate
+    invalidation and makes the trust boundary explicit. A key rotation is
+    therefore observed by the gateway on the next bounded JWKS poll.
 
 ### 4.5. Health Probe Auth Exemption
 - Selective auth interceptors (`selectiveUnaryAuth` and `selectiveStreamAuth`) must explicitly exempt `/grpc.health.v1.Health/` so that Kubernetes `grpc_health_probe` succeeds without receiving HTTP/gRPC 401 Unauthenticated.
@@ -92,7 +111,7 @@ if exists {
 ### 4.6. Handler Dispatching
 - `/api/v1/*` routes undergo JWT validation and request dispatch.
 - `ProxyOrFileHandler` intercepts `/files/process/sync` and forwards to gRPC file processor, while proxying general requests to backend.
-- Empty `room_id` NATS messages trigger `cache.invalidate` cache eviction.
+- The backend `WsHubClient` publishes verified cache-invalidation intent when a request requires it; the **ws-hub** owns the NATS listener and applies `cache.invalidate` eviction for empty-`room_id` messages. Keeping subscription ownership in ws-hub prevents duplicate consumers and makes the cache-invalidation trust boundary explicit.
 
 ---
 

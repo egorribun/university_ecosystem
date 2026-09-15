@@ -118,7 +118,9 @@ describe("MapFeature deferred MapLibre loading", () => {
     )
 
     const placeholder = screen.getByRole("button", { name: "campusMap.interactiveHint" })
-    placeholder.focus()
+    act(() => {
+      placeholder.focus()
+    })
 
     expect(await screen.findByTestId("map-component")).toBeInTheDocument()
     expect(screen.getByRole("region", { name: "campusMap.ariaLabel" })).toHaveFocus()

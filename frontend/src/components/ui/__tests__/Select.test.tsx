@@ -133,7 +133,11 @@ describe("Select — open / close", () => {
     fireEvent.click(trigger())
     expect(trigger()).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByRole("listbox")).toBeInTheDocument()
-    expect(screen.getAllByRole("option")).toHaveLength(OPTIONS.length)
+    const options = screen.getAllByRole("option")
+    expect(options).toHaveLength(OPTIONS.length)
+    for (const option of options) {
+      expect(option).toHaveClass("min-h-11")
+    }
   })
 
   it("focuses the first option when opening with no selection", () => {

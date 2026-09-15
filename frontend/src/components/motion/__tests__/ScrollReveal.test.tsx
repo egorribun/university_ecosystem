@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createElement, type ReactNode } from "react"
 
@@ -45,7 +45,7 @@ class MockIntersectionObserver {
 
 vi.stubGlobal("IntersectionObserver", MockIntersectionObserver)
 
-import { ScrollReveal } from "@/components/motion/ScrollReveal"
+import { ScrollReveal, shouldObserveScrollReveal } from "@/components/motion/ScrollReveal"
 
 function trigger(index: number, entries: IntersectionObserverEntry[]) {
   const observer = observers[index]!
@@ -53,6 +53,13 @@ function trigger(index: number, entries: IntersectionObserverEntry[]) {
 }
 
 describe("ScrollReveal", () => {
+  it("only observes a mounted element until it is visible", () => {
+    expect(shouldObserveScrollReveal(null, false)).toBe(false)
+    const element = document.createElement("div")
+    expect(shouldObserveScrollReveal(element, false)).toBe(true)
+    expect(shouldObserveScrollReveal(element, true)).toBe(false)
+  })
+
   beforeEach(() => {
     observers.length = 0
     motionState.props.length = 0
@@ -184,9 +191,11 @@ describe("ScrollReveal", () => {
     expect(observers[0]?.disconnect).toHaveBeenCalledOnce()
   })
 
-  it("stops observing after becoming visible", () => {
+  it("stops observing after becoming visible", async () => {
     const { rerender } = render(<ScrollReveal>once</ScrollReveal>)
     trigger(0, [{ isIntersecting: true } as IntersectionObserverEntry])
+    await waitFor(() => expect(motionState.props.at(-1)?.animate).toBe("visible"))
+    expect(observers).toHaveLength(1)
     const count = observers.length
 
     rerender(<ScrollReveal>still visible</ScrollReveal>)

@@ -172,7 +172,7 @@ describe("EventDetailEditDialog", () => {
     )
   })
 
-  it("preserves non-null optional description and type values while normalizing nulls", () => {
+  it("preserves non-null optional description and type values while normalizing nulls", async () => {
     const localizedEvent = {
       ...baseEvent,
       description: "Russian description",
@@ -184,6 +184,17 @@ describe("EventDetailEditDialog", () => {
 
     expect(screen.getByLabelText("events:form.description_en")).toHaveValue("English description")
     expect(screen.getByLabelText("events:form.type_en")).toHaveValue("Lecture")
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledOnce())
+    expect(mocks.patch).toHaveBeenCalledWith(
+      "/events/evt-1",
+      expect.objectContaining({
+        description: "Russian description",
+        event_type: "lecture",
+      })
+    )
   })
 
   it("fires onClose when the cancel button is clicked", async () => {
@@ -249,6 +260,13 @@ describe("EventDetailEditDialog", () => {
 
   it("exposes image upload pending state and clears it after the upload resolves", async () => {
     let resolveUpload!: (url: string) => void
+    let resolvePatch!: (value: unknown) => void
+    mocks.patch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePatch = resolve
+        })
+    )
     mocks.uploadEventImage.mockReturnValueOnce(
       new Promise<string>((resolve) => {
         resolveUpload = resolve
@@ -274,6 +292,11 @@ describe("EventDetailEditDialog", () => {
         expect.objectContaining({ image_url: "https://cdn.example/pending.png" })
       )
       expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", "blob:pending")
+
+      resolvePatch({ data: {} })
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+      )
     } finally {
       createObjectUrl.mockRestore()
       revokeObjectUrl.mockRestore()

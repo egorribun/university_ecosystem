@@ -38,7 +38,7 @@ vi.mock("@/components/ui/WeatherWidget", () => ({
   default: () => <div data-testid="weather-widget" />,
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Badge", () => ({
   Badge: ({
     children,
     "aria-label": ariaLabel,

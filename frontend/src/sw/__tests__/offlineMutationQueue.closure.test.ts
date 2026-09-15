@@ -71,6 +71,24 @@ describe("offline mutation queue — retry and sync branches", () => {
     expect(record?.idempotencyKey).toBe("1234.2")
   })
 
+  it("uses deterministic fallback identifiers when crypto is unavailable entirely", async () => {
+    vi.stubGlobal("crypto", undefined)
+    vi.spyOn(Date, "now").mockReturnValue(5678)
+    vi.spyOn(Math, "random").mockReturnValueOnce(0.3).mockReturnValueOnce(0.4)
+
+    await storePendingMutation({
+      url: "http://localhost/api/no-crypto",
+      method: "POST",
+      payload: { value: 1 },
+      mutationId: undefined,
+      idempotencyKey: undefined,
+    })
+
+    const [record] = await readPendingMutations()
+    expect(record?.mutationId).toBe("5678.3")
+    expect(record?.idempotencyKey).toBe("5678.4")
+  })
+
   it("syncs success and tolerates BroadcastChannel postMessage failures", async () => {
     const closeMock = vi.fn()
     class ThrowingBroadcastChannel {
@@ -155,5 +173,50 @@ describe("offline mutation queue — retry and sync branches", () => {
     expect(remaining.map((record) => record.mutationId)).toEqual(["server-error", "network-error"])
     expect(remaining.map((record) => record.retryCount)).toEqual([1, 1])
     expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it.each([
+    { status: 404, retained: false },
+    { status: 429, retained: true },
+    { status: 500, retained: true },
+  ])(
+    "treats mutation status $status according to its retry contract",
+    async ({ status, retained }) => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: false, status })
+      vi.stubGlobal("fetch", fetchMock)
+      await enqueue({ mutationId: `status-${status}`, idempotencyKey: `key-${status}` })
+
+      await processPendingMutations()
+
+      const remaining = await readPendingMutations()
+      expect(remaining).toHaveLength(retained ? 1 : 0)
+      if (retained) expect(remaining[0]).toMatchObject({ retryCount: 1 })
+    }
+  )
+
+  it("replays a mutation with its idempotency key, custom headers, and JSON payload", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    vi.stubGlobal("fetch", fetchMock)
+    await enqueue({
+      mutationId: "headers",
+      idempotencyKey: "key-headers",
+      payload: { value: "payload" },
+      headers: { Authorization: "Bearer test" },
+    })
+
+    await processPendingMutations()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost/api/mutation",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ value: "payload" }),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": "key-headers",
+          Authorization: "Bearer test",
+        },
+      })
+    )
   })
 })

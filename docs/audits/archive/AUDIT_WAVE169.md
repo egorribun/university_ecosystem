@@ -77,7 +77,7 @@ User confirmed canonical post-W167 pattern. ONE mechanism allowed; within-iter s
 
 ### Phase 1 Explore agent report (W141 anti-pattern #3 36th vindication candidate)
 
-Phase 1 agent thoroughly researched [AdminAuditFeature.tsx:1-370](frontend/src/features/admin/AdminAuditFeature.tsx) + sub-components + utilities. Agent's PRIMARY hypothesis: `useReducedMotion()` ungated at `AdminAuditFeature.tsx:26 + :223` is the source of the text-content mismatch.
+Phase 1 agent thoroughly researched [AdminAuditFeature.tsx:1-370](../../../frontend/src/features/admin/AdminAuditFeature.tsx) + sub-components + utilities. Agent's PRIMARY hypothesis: `useReducedMotion()` ungated at `AdminAuditFeature.tsx:26 + :223` is the source of the text-content mismatch.
 
 ### Phase 3 Review caught structural inconsistency (W141 anti-pattern #3 36th vindication)
 
@@ -526,7 +526,7 @@ User issued canonical «безупречно?» probe post-polish-v1: "wave 169 
 
 ### A2 — Defensive timezone fix in `frontend/src/utils/date.ts` (REAL PROD CODE CHANGE)
 
-Phase 3 Review during W169 surfaced a concrete latent issue: `presets.auditTime` + `presets.auditDate` at [date.ts:36-42](frontend/src/utils/date.ts) specified NO `timeZone` option. `Intl.DateTimeFormat` defaults to host's local timezone:
+Phase 3 Review during W169 surfaced a concrete latent issue: `presets.auditTime` + `presets.auditDate` at [date.ts:36-42](../../../frontend/src/utils/date.ts) specified NO `timeZone` option. `Intl.DateTimeFormat` defaults to host's local timezone:
 - Server SSR (Docker UTC) renders `formatDate(log.created_at, presets.auditTime)` → produces UTC time string
 - Client CSR (browser, OS timezone — likely MSK/UTC+3 for Russian user) renders SAME function → produces MSK time string
 - Every AdminAudit Row's time cell would produce different text SSR vs CSR → text-content mismatch on every audit log row

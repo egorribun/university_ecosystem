@@ -63,6 +63,31 @@ describe("Badge", () => {
     )
     expect(screen.getByText("link").closest("a")).toBeInTheDocument()
   })
+
+  it("adds 44px floors only to explicit interactive polymorphic variants", () => {
+    const { container, rerender } = render(
+      <Badge data-testid="badge" size="xs">
+        status
+      </Badge>
+    )
+    const decorative = container.firstElementChild
+    expect(decorative).toHaveClass("min-h-6")
+    expect(decorative).not.toHaveClass("min-h-11", "min-w-11")
+
+    rerender(
+      <Badge as="button" data-testid="badge" size="xs">
+        action
+      </Badge>
+    )
+    expect(screen.getByTestId("badge")).toHaveClass("min-h-11", "min-w-11")
+
+    rerender(
+      <Badge as="a" data-testid="badge" size="xs" href="/target">
+        link
+      </Badge>
+    )
+    expect(screen.getByTestId("badge")).toHaveClass("min-h-11", "min-w-11")
+  })
 })
 
 // --------------------------------------------------------------------------- #

@@ -153,7 +153,7 @@ GitHub admin bypass on the main-branch ruleset is intentionally left enabled for
   - Tempo / Loki: HTTP health endpoints
   - Temporal dev server: binds `0.0.0.0` bridge network
 - **Kubernetes Variable Interpolation**:
-  - `${FRONTEND_HOST}`, `${API_HOST}`, `${TLS_SECRET_NAME}`, `${VAULT_URL}` must be processed with `envsubst` before executing `kubectl apply` (TD-31-02, TD-31-03).
+  - `${FRONTEND_HOST}`, `${API_HOST}`, `${TLS_SECRET_NAME}`, `${VAULT_URL}`, `${IMAGE_REGISTRY}` and `${IMAGE_TAG}` must be processed with `envsubst` through `scripts/apply_raw_k8s.sh` before executing `kubectl apply` (TD-31-02, TD-31-03). The wrapper allowlists supporting manifests, requires all variables, validates the registry path, and accepts `IMAGE_TAG` only as a 40-character commit SHA or semantic version. Direct raw `envsubst | kubectl apply` is forbidden.
 - **Kyverno Security Policies**:
   - **Policy 9**: Rejects any deployment with empty or `:latest` image tags. All image references must use semantic versions or immutable image digests.
 - **Helm Configuration**:
@@ -170,7 +170,7 @@ GitHub admin bypass on the main-branch ruleset is intentionally left enabled for
   - Grafana Loki + Fluent Bit aggregation.
   - Structlog processor `_redact_pii` automatically masks email addresses (>=2-char TLD) and phone numbers across all backend logs.
 - **Path Traversal Defense**:
-  - Backend: `StaticFSStorage._validate_resolved_path()` checks symlinks and `is_relative_to(base_dir)`.
+  - Backend: `StaticFSStorage._resolve_validated_path()` checks symlinks and `is_relative_to(base_dir)`.
   - Frontend SSR: `server-prod.mjs` validates `filePath.startsWith(staticRoot)`.
   - Go File Processor: `sourceKey` and `destKey` sanitized against directory traversal.
 - **Cross-Service Identity Assertion**:

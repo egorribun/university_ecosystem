@@ -398,4 +398,99 @@ describe("StepUpDialog closure", () => {
 
     expect(screen.queryByText("late failure")).not.toBeInTheDocument()
   })
+
+  it("does not request an MFA challenge while closed", async () => {
+    auth.value.requireMfa.mockResolvedValue(makePending())
+
+    render(<StepUpDialog open={false} onClose={vi.fn()} />)
+    await Promise.resolve()
+
+    expect(auth.value.requireMfa).not.toHaveBeenCalled()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("clears a stale request error after closing and reopening successfully", async () => {
+    auth.value.requireMfa
+      .mockRejectedValueOnce(new Error("first request failed"))
+      .mockResolvedValueOnce(makePending())
+    const { rerender } = render(<StepUpDialog open onClose={vi.fn()} />)
+
+    expect(await screen.findByText("first request failed")).toBeInTheDocument()
+    rerender(<StepUpDialog open={false} onClose={vi.fn()} />)
+    rerender(<StepUpDialog open onClose={vi.fn()} />)
+
+    expect(await screen.findByTestId("otp-entry")).toBeInTheDocument()
+    expect(screen.queryByText("first request failed")).not.toBeInTheDocument()
+  })
+
+  it("marks the OTP control busy until verification settles", async () => {
+    const user = userEvent.setup()
+    let resolveSubmit!: () => void
+    auth.value.requireMfa.mockResolvedValue(makePending())
+    auth.value.submitMfaChallenge.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveSubmit = resolve
+      })
+    )
+    const onClose = vi.fn()
+    renderDialog({ onClose })
+
+    const submit = await screen.findByRole("button", { name: "otp-submit" })
+    await user.click(submit)
+    expect(submit).toBeDisabled()
+
+    resolveSubmit()
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    expect(submit).not.toBeDisabled()
+  })
+
+  it("rejects non-numeric attempt metadata instead of displaying misleading counts", async () => {
+    auth.value.requireMfa.mockResolvedValue(
+      makePending({ attempt_limit: "5" as never, remaining_attempts: 2 })
+    )
+    const first = renderDialog()
+    await waitFor(() => expect(screen.getByTestId("otp-entry")).toBeInTheDocument())
+    expect(screen.queryByText(/attempts remaining/)).not.toBeInTheDocument()
+    first.unmount()
+
+    auth.value.requireMfa.mockReset()
+    auth.value.requireMfa.mockResolvedValue(
+      makePending({ attempt_limit: 5, remaining_attempts: "2" as never })
+    )
+    renderDialog()
+    await waitFor(() => expect(screen.getByTestId("otp-entry")).toBeInTheDocument())
+    expect(screen.queryByText(/attempts remaining/)).not.toBeInTheDocument()
+  })
+
+  it("does not display attempts when the limit is zero or absent", async () => {
+    auth.value.requireMfa.mockResolvedValue(
+      makePending({ attempt_limit: 0, remaining_attempts: 2 })
+    )
+    const first = renderDialog()
+    await waitFor(() => expect(screen.getByTestId("otp-entry")).toBeInTheDocument())
+    expect(screen.queryByText(/attempts remaining/)).not.toBeInTheDocument()
+    first.unmount()
+
+    auth.value.requireMfa.mockReset()
+    auth.value.requireMfa.mockResolvedValue(
+      makePending({ attempt_limit: null, remaining_attempts: 2 })
+    )
+    renderDialog()
+    await waitFor(() => expect(screen.getByTestId("otp-entry")).toBeInTheDocument())
+    expect(screen.queryByText(/attempts remaining/)).not.toBeInTheDocument()
+  })
+
+  it("exposes keyboard-safe backdrop and panel semantics", async () => {
+    auth.value.requireMfa.mockResolvedValue(makePending())
+    renderDialog()
+    await screen.findByTestId("otp-entry")
+
+    const backdrop = screen.getByTestId("step-up-backdrop")
+    expect(backdrop).toHaveAttribute("aria-label", "common:buttons.close")
+    expect(backdrop).toHaveAttribute("tabindex", "-1")
+    const dialog = screen.getByRole("dialog")
+    expect(dialog).toHaveAttribute("aria-labelledby", "step-up-dialog-title")
+    expect(dialog.firstElementChild).toHaveAttribute("tabindex", "-1")
+    expect(screen.getByRole("button", { name: "common:buttons.cancel" })).toBeInTheDocument()
+  })
 })

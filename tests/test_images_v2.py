@@ -190,6 +190,88 @@ def test_optimize_image_vips_failure_fallback():
         mock_vips_opt.assert_called_once()
 
 
+def test_optimize_image_passes_default_pixel_budget_to_vips():
+    """The fast path must enforce the default budget when callers omit it."""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    image = PILImage.new("RGB", (2, 2), color="blue")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    mock_vips_opt = MagicMock(return_value=(b"optimized", "image/webp"))
+
+    with (
+        patch("app.utils.images.VIPS_AVAILABLE", True),
+        patch("app.utils.images.optimize_image_vips", mock_vips_opt),
+    ):
+        img_mod.optimize_image(buffer.getvalue())
+
+    assert (
+        mock_vips_opt.call_args.kwargs["max_pixels"] == img_mod.DEFAULT_MAX_IMAGE_PIXELS
+    )
+
+
+@pytest.mark.parametrize(
+    "pixel_budget", [0, -1, img_mod.MAX_CONFIGURED_IMAGE_PIXELS + 1]
+)
+def test_optimize_image_rejects_out_of_range_pixel_budget(pixel_budget):
+    with pytest.raises(ValueError, match="Image pixel budget must be between"):
+        img_mod.optimize_image(b"not-an-image-payload", max_pixels=pixel_budget)
+
+
+def test_optimize_image_does_not_swallow_vips_pixel_limit_error():
+    pixel_error = img_mod.ImagePixelLimitError(10, 10, 3)
+    with (
+        patch("app.utils.images.VIPS_AVAILABLE", True),
+        patch(
+            "app.utils.images.optimize_image_vips", MagicMock(side_effect=pixel_error)
+        ),
+    ):
+        with pytest.raises(img_mod.ImagePixelLimitError, match="pixel budget"):
+            img_mod.optimize_image(b"not-an-image-payload")
+
+
+def test_image_pixel_limit_error_messages_distinguish_decoder_and_dimensions():
+    dimension_error = img_mod.ImagePixelLimitError(10, 20, 100)
+    decoder_error = img_mod.ImagePixelLimitError(None, None, 100)
+
+    assert (
+        dimension_error.width,
+        dimension_error.height,
+        dimension_error.max_pixels,
+    ) == (
+        10,
+        20,
+        100,
+    )
+    assert (decoder_error.width, decoder_error.height, decoder_error.max_pixels) == (
+        None,
+        None,
+        100,
+    )
+    assert str(dimension_error) == ("image dimensions 10x20 exceed pixel budget of 100")
+    assert str(decoder_error) == "image exceeds pixel budget of 100"
+
+
+def test_optimize_image_normalizes_pillow_decompression_bomb_error():
+    """Pillow's decoder-level bomb exception must use the 413 domain contract."""
+    from PIL import Image as PILImage
+
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        with patch.object(
+            img_mod.Image,
+            "open",
+            side_effect=PILImage.DecompressionBombError("decoder bomb"),
+        ):
+            with pytest.raises(img_mod.ImagePixelLimitError, match="pixel budget"):
+                img_mod.optimize_image(b"decoder-bomb", max_pixels=3)
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
+
+
 def test_optimize_image_invalid_data():
     """Test optimize_image raises ValueError on invalid image bytes."""
     with patch("app.utils.images.VIPS_AVAILABLE", False):
@@ -249,3 +331,61 @@ def test_optimize_image_exif_transpose_none_coverage():
             assert mime == "image/webp"
     finally:
         img_mod.VIPS_AVAILABLE = old_vips
+
+
+def test_optimize_image_enforces_pixel_budget_before_decode():
+    """Reject images above the configured pixel budget before EXIF processing."""
+    from io import BytesIO
+    from unittest.mock import patch
+
+    from PIL import Image as PILImage
+
+    img = PILImage.new("RGB", (2, 2), color="green")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    png_data = buf.getvalue()
+
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        with patch("app.utils.images.ImageOps.exif_transpose") as transpose:
+            with pytest.raises(img_mod.ImagePixelLimitError, match="pixel budget"):
+                img_mod.optimize_image(png_data, max_pixels=3)
+        transpose.assert_not_called()
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
+
+
+def test_optimize_image_accepts_exact_pixel_budget():
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    img = PILImage.new("RGB", (2, 2), color="green")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        _optimized, mime = img_mod.optimize_image(buf.getvalue(), max_pixels=4)
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
+
+    assert mime == "image/webp"
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "budget", "message"),
+    [
+        (0, 1, 4, "positive"),
+        (1, 0, 4, "positive"),
+        (1, 1, 0, "positive"),
+        ("bad", 1, 4, "finite integers"),
+    ],
+)
+def test_validate_image_dimensions_rejects_invalid_values(
+    width, height, budget, message
+):
+    with pytest.raises(ValueError, match=message):
+        img_mod.validate_image_dimensions(width, height, max_pixels=budget)

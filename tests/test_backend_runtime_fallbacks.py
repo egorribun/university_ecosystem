@@ -56,8 +56,8 @@ async def test_mfa_delete_pending_totp_enrollment_errors():
     # 1. Enrollment not found
     db.get = AsyncMock(return_value=None)
     with pytest.raises(HTTPException) as exc:
-        await mfa_api.delete_pending_totp_enrollment(
-            enrollment_id=uuid.uuid4(), request=request, db=db, user=user
+        await mfa_api.delete_pending_totp_enrollment.__dishka_orig_func__(
+            enrollment_id=uuid.uuid4(), request=request, db=db, audit=audit, user=user
         )
     assert exc.value.status_code == 404
 
@@ -66,8 +66,8 @@ async def test_mfa_delete_pending_totp_enrollment_errors():
     other_enrollment.user_id = uuid.uuid4()
     db.get = AsyncMock(return_value=other_enrollment)
     with pytest.raises(HTTPException) as exc:
-        await mfa_api.delete_pending_totp_enrollment(
-            enrollment_id=uuid.uuid4(), request=request, db=db, user=user
+        await mfa_api.delete_pending_totp_enrollment.__dishka_orig_func__(
+            enrollment_id=uuid.uuid4(), request=request, db=db, audit=audit, user=user
         )
     assert exc.value.status_code == 404
 
@@ -78,8 +78,8 @@ async def test_mfa_delete_pending_totp_enrollment_errors():
     confirmed_enrollment.revoked_at = None
     db.get = AsyncMock(return_value=confirmed_enrollment)
     with pytest.raises(HTTPException) as exc:
-        await mfa_api.delete_pending_totp_enrollment(
-            enrollment_id=uuid.uuid4(), request=request, db=db, user=user
+        await mfa_api.delete_pending_totp_enrollment.__dishka_orig_func__(
+            enrollment_id=uuid.uuid4(), request=request, db=db, audit=audit, user=user
         )
     assert exc.value.status_code == 400
 
@@ -110,8 +110,8 @@ async def test_mfa_confirm_totp_enrollment_failure():
         side_effect=HTTPException(400, "invalid_code"),
     ):
         with pytest.raises(HTTPException) as exc:
-            await mfa_api.confirm_totp_enrollment(
-                payload=payload, request=request, db=db, user=user
+            await mfa_api.confirm_totp_enrollment.__dishka_orig_func__(
+                payload=payload, request=request, db=db, audit=audit, user=user
             )
         assert exc.value.status_code == 400
         audit.log.assert_called_once()
@@ -145,8 +145,8 @@ async def test_mfa_start_totp_enrollment_endpoint():
             AsyncMock(return_value=(enrollment, "secret", "url")),
         ),
     ):
-        res = await mfa_api.start_totp_enrollment_endpoint(
-            request=request, db=db, payload=payload, user=user
+        res = await mfa_api.start_totp_enrollment_endpoint.__dishka_orig_func__(
+            request=request, db=db, audit=audit, payload=payload, user=user
         )
         assert res.secret == "secret"  # pragma: allowlist secret
         assert res.otpauth_url == "url"

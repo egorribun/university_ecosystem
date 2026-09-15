@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
+from app.schemas import schemas
 from app.schemas.validators import (
     CleanStr,
     LongSanitizedStr,
@@ -32,6 +33,35 @@ from app.schemas.validators import (
     _truncate_1000,
     _truncate_5000,
 )
+
+
+def test_news_translation_content_uses_rich_text_sanitizer() -> None:
+    """Localized news content must use the same rich-text boundary as primary content."""
+
+    payload = schemas.NewsCreate(
+        title="Campus update",
+        content="<p>Русский текст</p>",
+        content_en=(
+            "<p>English <strong>edition</strong></p>"
+            '<svg><a xlink:href="javascript:alert(1)">active</a></svg>'
+        ),
+    )
+
+    assert payload.content_en == "<p>English <strong>edition</strong></p>"
+
+
+def test_news_update_translation_content_uses_rich_text_sanitizer() -> None:
+    """Partial news updates must protect localized rich text as well."""
+
+    payload = schemas.NewsUpdate(
+        content_en=(
+            "<p>English <em>update</em></p>"
+            '<math><maction xlink:href="javascript:alert(1)">active</maction></math>'
+        )
+    )
+
+    assert payload.content_en == "<p>English <em>update</em></p>"
+
 
 # ---------------------------------------------------------------------------
 # _sanitize_html_validator

@@ -132,7 +132,9 @@ async function fetchRemoteRobots(previewUrl) {
       signal: AbortSignal.timeout(10_000),
     })
   } catch (error) {
-    throw new Error(`Unable to fetch preview robots.txt ${robotsUrl}: ${error.message}`)
+    throw new Error(`Unable to fetch preview robots.txt ${robotsUrl}: ${error.message}`, {
+      cause: error,
+    })
   }
   if (!response.ok) {
     throw new Error(`Preview robots.txt returned HTTP ${response.status}`)

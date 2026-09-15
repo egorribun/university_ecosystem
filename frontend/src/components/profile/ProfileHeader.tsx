@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next"
 import { Mail as EmailIcon, Send as TelegramIcon, QrCode as QrCodeIcon } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import { SectionCard } from "@/components/settings"
 import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"

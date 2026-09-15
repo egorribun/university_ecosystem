@@ -54,3 +54,14 @@ def test_image_proxy_widths_are_sorted_and_static_path_handles_both_forms(tmp_pa
 
     absolute = StorageSettings(_allow_missing=True, static_dir=str(tmp_path))
     assert absolute.static_dir_path == tmp_path
+
+
+def test_image_pixel_budget_is_bounded_and_configurable():
+    settings = StorageSettings(_allow_missing=True)
+    assert settings.image_max_pixels == 25_000_000
+    assert (
+        StorageSettings(_allow_missing=True, image_max_pixels=4).image_max_pixels == 4
+    )
+
+    with pytest.raises(ValidationError, match="less than or equal to 100000000"):
+        StorageSettings(_allow_missing=True, image_max_pixels=100_000_001)

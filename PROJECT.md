@@ -1,4 +1,4 @@
-# Project: University Ecosystem Platform — PR #1249 CI/CD Remediation & Zero-Debt Foundation
+# Project: University Ecosystem Platform — CI/CD Remediation & Quality Foundation
 
 ## Architecture
 The University Ecosystem Platform is an enterprise, multi-stack ecosystem spanning:
@@ -36,7 +36,7 @@ university_ecosystem/
 | F7 | Documentation Parity & Link Accuracy | Synchronize `README.ru.md` with `README.md`, fix operational paths in `docs/DEPLOY*.md`, `ADR-008` | M3 | survey_frontend |
 | F8 | WS-Hub Concurrency & Benchmark Tuning | Optimize memory allocations and locks in `services/ws-hub` to eliminate benchmark regression | M4 | survey_backend_ci |
 | F9 | Playwright E2E Matrix Stabilization | Resolve timeouts across Chromium, Firefox, WebKit, and Mobile WebKit test shards | M5 | survey_backend_ci |
-| F10 | Full PR #1249 CI/CD Green Gate & Audit | Verify all required CI/CD check runs for the current head, `verify_harness.py`, git commit & push to `egorribun` | M6 | ORIGINAL_REQUEST |
+| F10 | Current-Head CI/CD Green Gate & Audit | Verify all required CI/CD check runs for the exact head under review, `verify_harness.py`, and the associated audit evidence | M6 | QUALITY_CLOSURE |
 
 ---
 
@@ -49,7 +49,7 @@ university_ecosystem/
 | M3 | Documentation Synchronization & Audit | F7: `README.ru.md` parity, `docs/DEPLOY*.md`, `ADR-008`, `k8s/README.md`, `API_EXAMPLES.md` | none | DONE |
 | M4 | WS-Hub Performance Optimization | F8: `services/ws-hub` memory & lock optimization to satisfy benchmark gate ratio < 1.10 | none | DONE |
 | M5 | Frontend Playwright E2E Stabilization | F9: Playwright test timeout adjustments, mockApi reliability, SSR cold-start stabilization | M1 | DONE |
-| M6 | Final Verification, Commit & PR Delivery | F10: `verify_harness.py`, all required CI/CD checks green, forensic audit, git commit to `egorribun` | M1, M2, M3, M4, M5 | IN PROGRESS |
+| M6 | Final Verification & Delivery | F10: `verify_harness.py`, all required CI/CD checks green for the exact reviewed head, forensic audit, and documented delivery handoff | M1, M2, M3, M4, M5 | IN PROGRESS |
 
 > Status is evidence-based: this milestone remains open until the current PR
 > head has a fresh green required-check set and the full local verification

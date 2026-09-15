@@ -48,7 +48,7 @@
 
 2. **Tier 1 #1 Axe coverage A2 pivot — HONEST DEFER to W145+ via NEW (z) #21**.
    
-   W143 SW1 Path A (CDN script tag) disproved via 14-min hang. W144 Phase 1 Agent 1 verified CSP-block hypothesis via source code chain ([csp.py:39](../../app/core/policies/csp.py:39) + [security_headers.py:76](../../app/core/security_headers.py:76) + [post-build-shell.mjs:67-79](../../frontend/scripts/post-build-shell.mjs:67)). W144 SW1 iter 1 added `page.on("requestfailed")` diagnostic listener; CI run `25738766194` was invalidated by **(z) #15** Windows-side MSYS path-mangle of `gh -f routes=/login` outgoing CLI arg (`/login` → `C:/Program Files/Git/login`).
+   W143 SW1 Path A (CDN script tag) disproved via 14-min hang. W144 Phase 1 Agent 1 verified CSP-block hypothesis via source code chain ([csp.py:39](../../../app/core/policies/csp.py:39) + [security_headers.py:76](../../../app/core/security_headers.py:76) + [post-build-shell.mjs:67-79](../../../frontend/scripts/post-build-shell.mjs:67)). W144 SW1 iter 1 added `page.on("requestfailed")` diagnostic listener; CI run `25738766194` was invalidated by **(z) #15** Windows-side MSYS path-mangle of `gh -f routes=/login` outgoing CLI arg (`/login` → `C:/Program Files/Git/login`).
 
    **SW1 iter 2 (`37466b00f`) lands A2 pivot**: ~550 KB axe.min.js read once via top-level `await readFile()` + `page.evaluate((src) => eval(src), AXE_SOURCE)` injects window.axe global → no `<script>` tag → CSP-agnostic. Heavy routes (/dashboard, /map, /activity) get 90s timeout vs 60s compact.
 

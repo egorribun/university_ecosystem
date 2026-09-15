@@ -29,8 +29,12 @@ SHA = "a" * 40
 DIGEST = "sha256:" + "b" * 64
 SECRET = "cwv-signing-secret-with-at-least-32-bytes"  # pragma: allowlist secret
 INTERNAL_HMAC_SECRET = (
-    "internal-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret
+    "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!"  # pragma: allowlist secret
 )
+TOKEN_HMAC_SECRET = (
+    "token-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret
+)
+INTERNAL_AUTH_TOKEN = "internal-route-token-for-test"  # pragma: allowlist secret
 TESTER_IDS = [f"00000000-0000-0000-0000-{index:012d}" for index in range(1, 26)]
 
 
@@ -551,9 +555,18 @@ def _settings_values() -> dict[str, object]:
     return {
         "_allow_missing": True,
         "environment": "staging",
+        "event_file_scanner_enabled": True,
         "database_url": "sqlite+aiosqlite:///:memory:",
         "algorithm": "RS256",
+        "revocation_redis_url": "redis://revocation.internal:6380/0",
+        # Keep the independent audit-signing guard valid so each case below
+        # reaches the CWV validator it is intended to exercise.
+        # Deterministic low-entropy fixture; production validators still check
+        # the length and placeholder rules while detect-secrets ignores it.
+        "audit_log_secret": "auditlog-" + "a" * 56,  # pragma: allowlist secret
         "internal_hmac_secret": INTERNAL_HMAC_SECRET,
+        "token_hmac_secret": TOKEN_HMAC_SECRET,
+        "internal_auth_token": INTERNAL_AUTH_TOKEN,
         "cwv_rum_enabled": True,
         "cwv_rum_signing_secret": SECRET,
         "cwv_release_sha": SHA,

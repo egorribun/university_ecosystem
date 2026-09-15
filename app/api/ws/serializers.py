@@ -11,6 +11,7 @@ from typing import Any
 
 from app.models.chat import Message
 from app.schemas.chat import ChatParticipant, PresenceStatus, ReplyPreview
+from app.services.private_attachments import private_attachment_url
 
 
 def serialize_message(
@@ -73,7 +74,7 @@ def serialize_message(
         "attachments": [
             {
                 "id": att.id,
-                "url": att.url,
+                "url": private_attachment_url("chat", message.chat_id, att.url),
                 "file_type": att.file_type,
                 "filename": att.filename,
                 "size": att.size,

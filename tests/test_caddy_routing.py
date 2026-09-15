@@ -94,6 +94,32 @@ def test_general_ws_block_routes_to_ws_hub() -> None:
     ), "General /ws/* must route to ws-hub:8081"
 
 
+def test_private_storage_prefixes_are_denied_before_minio_proxy() -> None:
+    """Private attachment prefixes must not fall through to public MinIO."""
+    for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
+        content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        deny = _line_of(
+            content,
+            r"@private_storage\s+path\s+/storage/chat_uploads/\*\s+/storage/event_files/\*",
+        )
+        response = _line_of(content, r"respond\s+@private_storage\s+404")
+        storage = _line_of(content, r"handle\s+/storage/\*")
+        assert deny < response < storage, (
+            f"Private storage deny route must precede the general MinIO proxy in {relative_path}"
+        )
+
+
+def test_websocket_ticket_is_redacted_from_access_logs() -> None:
+    """One-time WS tickets must never be persisted as raw bearer credentials."""
+    for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
+        content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        assert re.search(
+            r"format\s+filter\s*\{[^}]*request>uri\s+query\s*\{[^}]*replace\s+ticket\s+REDACTED",
+            content,
+            re.DOTALL,
+        ), f"Caddy access-log URI must redact ticket query values in {relative_path}"
+
+
 def test_ws_ticket_precedes_general_ws_block() -> None:
     """W173 SW1 critical invariant: /ws/ticket exception MUST appear BEFORE /ws/*.
 

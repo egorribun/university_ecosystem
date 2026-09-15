@@ -927,6 +927,12 @@ class EventBus:
                 raise chain_task.exception()  # type: ignore[misc]
         except asyncio.CancelledError:
             chain_task.cancel()
+            try:
+                # Await the chain so gather can finish cancelling its owned
+                # handler tasks before the caller observes cancellation.
+                await chain_task
+            except (asyncio.CancelledError, Exception):  # noqa: S110  # RZ-27-01  # RZ-22-01-JUSTIFIED: suppress cleanup exception after cancelling externally-cancelled event handler chain
+                pass
             raise
 
     async def _safe_handle(self, handler: EventHandler, event: DomainEvent) -> None:

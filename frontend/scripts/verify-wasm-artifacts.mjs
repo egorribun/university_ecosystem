@@ -3,6 +3,8 @@ import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
+import { validateSourceProvenance } from "./wasm-source-provenance.mjs"
+
 const WASM_MAGIC = Buffer.from([0x00, 0x61, 0x73, 0x6d])
 const MINIMUM_WASM_BYTES = 32
 
@@ -110,7 +112,8 @@ async function readPackageArtifact(root, artifact) {
   assertGeneratedExports(source, artifact)
 }
 
-export async function validateWasmArtifacts(root) {
+export async function validateWasmArtifacts(root, { requireSourceProvenance = false } = {}) {
+  if (requireSourceProvenance) await validateSourceProvenance(root)
   await Promise.all(ARTIFACTS.map((artifact) => readPackageArtifact(root, artifact)))
 }
 
@@ -119,7 +122,7 @@ const invokedFile = process.argv[1] ? path.resolve(process.argv[1]) : ""
 
 if (currentFile === invokedFile) {
   const frontendRoot = path.dirname(path.dirname(currentFile))
-  validateWasmArtifacts(frontendRoot)
+  validateWasmArtifacts(frontendRoot, { requireSourceProvenance: true })
     .then(() => {
       console.log("WASM artifacts are valid.")
     })

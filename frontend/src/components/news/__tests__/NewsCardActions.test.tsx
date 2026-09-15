@@ -1,13 +1,19 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, it, expect, vi } from "vitest"
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 
-const translationState = vi.hoisted(() => ({ returnUndefined: false }))
+const translationState = vi.hoisted(() => ({
+  returnUndefined: false,
+  namespaces: [] as unknown[],
+}))
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => (translationState.returnUndefined ? undefined : key),
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: (namespaces?: unknown) => {
+    translationState.namespaces.push(namespaces)
+    return {
+      t: (key: string) => (translationState.returnUndefined ? undefined : key),
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    }
+  },
 }))
 
 import { NewsCardActions } from "@/components/news/NewsCardActions"
@@ -19,13 +25,25 @@ function setup(overrides: Partial<Parameters<typeof NewsCardActions>[0]> = {}) {
   return { onEdit, onDelete }
 }
 
+beforeEach(() => {
+  translationState.returnUndefined = false
+  translationState.namespaces.length = 0
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 describe("NewsCardActions", () => {
   it("renders the menu trigger closed by default", () => {
     setup()
     const trigger = screen.getByRole("button", { name: "news:aria.cardActions" })
     expect(trigger).toBeInTheDocument()
-    expect(trigger).toHaveAttribute("aria-haspopup", "true")
-    expect(trigger).not.toHaveAttribute("aria-expanded")
+    expect(trigger).toHaveAttribute("aria-haspopup", "menu")
+    expect(trigger).toHaveAttribute("aria-expanded", "false")
+    expect(trigger).not.toHaveAttribute("aria-controls")
+    expect(trigger).toHaveClass("h-11", "w-11")
+    expect(translationState.namespaces).toContainEqual(["news", "common"])
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
   })
 
@@ -36,10 +54,18 @@ describe("NewsCardActions", () => {
     expect(screen.getByRole("menu")).toBeInTheDocument()
     expect(screen.getByText("common:buttons.edit")).toBeInTheDocument()
     expect(screen.getByText("common:buttons.delete")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "news:aria.cardActions" })).toHaveAttribute(
-      "aria-expanded",
-      "true"
+    const trigger = screen.getByRole("button", { name: "news:aria.cardActions" })
+    expect(trigger).toHaveAttribute("aria-expanded", "true")
+    expect(trigger).toHaveAttribute("aria-controls", "news-card-menu-article-7")
+    expect(screen.getByRole("menu")).toHaveAttribute(
+      "aria-labelledby",
+      "news-card-menu-article-7-button"
     )
+    expect(screen.getByRole("menu")).toHaveAttribute("data-news-card-menu")
+    for (const item of screen.getAllByRole("menuitem")) {
+      expect(item).toHaveClass("min-h-11")
+    }
+    expect(screen.getByText("common:buttons.edit")).toHaveFocus()
   })
 
   it("invokes onEdit and closes the menu when Edit is clicked", async () => {
@@ -69,6 +95,18 @@ describe("NewsCardActions", () => {
     expect(screen.getByRole("menu")).toBeInTheDocument()
     await user.keyboard("{Escape}")
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "news:aria.cardActions" })).toHaveFocus()
+  })
+
+  it("removes the outside-pointer listener when the menu closes", async () => {
+    const user = userEvent.setup()
+    const removeEventListenerSpy = vi.spyOn(document, "removeEventListener")
+    setup()
+
+    await user.click(screen.getByRole("button", { name: "news:aria.cardActions" }))
+    await user.keyboard("{Escape}")
+
+    expect(removeEventListenerSpy).toHaveBeenCalledWith("mousedown", expect.any(Function))
   })
 
   it("keeps the menu open for unrelated keys", async () => {

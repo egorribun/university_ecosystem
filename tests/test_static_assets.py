@@ -20,3 +20,19 @@ async def test_static_file_served_with_cache_control(root_client):
 
     file_path.unlink(missing_ok=True)
     # Leave directories in place for other tests.
+
+
+@pytest.mark.asyncio
+async def test_private_attachment_static_paths_are_not_public(root_client):
+    private_dir = settings.static_dir_path / "chat_uploads" / "chat_test"
+    private_dir.mkdir(parents=True, exist_ok=True)
+    file_path = private_dir / "secret.txt"
+    file_path.write_text("secret", encoding="utf-8")
+    try:
+        response = await root_client.get("/static/chat_uploads/chat_test/secret.txt")
+        head = await root_client.head("/static/chat_uploads/chat_test/secret.txt")
+        assert response.status_code == 404
+        assert head.status_code == 404
+        assert "public" not in response.headers.get("cache-control", "").lower()
+    finally:
+        file_path.unlink(missing_ok=True)

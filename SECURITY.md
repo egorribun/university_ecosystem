@@ -68,7 +68,7 @@ If you discover a vulnerability, please report it privately so we can address it
 
 - **PII Redaction**: All log events pass through `_redact_pii` structlog processor (`app/core/logging.py`) stripping emails and phone numbers.
 - **Authentication Audit Trail**: Authentication events emit structured JSON payloads (`event`, `user_id`, `ip`, `request_id`). Sensitive credentials (passwords, tokens) are strictly excluded.
-- **Sanitized Static Storage**: `StaticFSStorage._validate_resolved_path()` verifies `is_relative_to(base_dir)` and rejects symlinks (RZ-30-02).
+- **Sanitized Static Storage**: `StaticFSStorage._resolve_validated_path()` verifies `is_relative_to(base_dir)` and rejects symlinks (RZ-30-02).
 
 ---
 

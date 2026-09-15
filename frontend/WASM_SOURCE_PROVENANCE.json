@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "source_files": [
+    {
+      "path": "rust-crypto/Cargo.lock",
+      "size": 22506,
+      "sha256": "1f03d9d8cf574b4d25eb24f46aa30cbb382dcda6e54630e874228617f5e0c431"
+    },
+    {
+      "path": "rust-crypto/Cargo.toml",
+      "size": 999,
+      "sha256": "cabe81b651b5d1a1971f1decb3c5b3d16cb7a8d1f6f2d6efee0ad249d9fc2caa"
+    },
+    {
+      "path": "rust-crypto/src/lib.rs",
+      "size": 4552,
+      "sha256": "da44d0d060d373ac58f3cc888f76f0da2ac472d0daf5e383e2b657e3158be992"
+    },
+    {
+      "path": "wasm-sanitizer/Cargo.lock",
+      "size": 29793,
+      "sha256": "31c9991d15d228e6c09744f0dea4e54126dfdd5ee26cf94c5568c1a521aaa2b6"
+    },
+    {
+      "path": "wasm-sanitizer/Cargo.toml",
+      "size": 518,
+      "sha256": "7dae93a4a0159fd71e099f58e97354e75c03b4bf4d386b5b03f8c77c0fe5cf4d"
+    },
+    {
+      "path": "wasm-sanitizer/src/lib.rs",
+      "size": 12534,
+      "sha256": "91eb2a042d5495b52b6537ee0cad8ef258afe421316f9309f650f0b63d6c4293"
+    }
+  ],
+  "source_tree_sha256": "d3dbe4efbb9b43bc051af583c0f1dd2f6560196ad745dc3cadb9db260c772699",
+  "packages": {
+    "rust-crypto/pkg/package.json": {
+      "size": 305,
+      "sha256": "b6fa8ca6bd52b940bb55338299b80968082b5fc90e8607b3cdb0304a0a030d4c"
+    },
+    "rust-crypto/pkg/uni_wasm_crypto.d.ts": {
+      "size": 2154,
+      "sha256": "ee248b85c086e004641bcdd6eab3e495d78ef08e73e666422e285ac135684d91"
+    },
+    "rust-crypto/pkg/uni_wasm_crypto.js": {
+      "size": 9279,
+      "sha256": "df36f7227ea418af16af0c6d3bcfdb787e366e10da010f528f48fdae6439f3a0"
+    },
+    "rust-crypto/pkg/uni_wasm_crypto_bg.wasm": {
+      "size": 45424,
+      "sha256": "98e6d43877ef0ac02b4f80859e097d1a24836311a749d75968ac63fa213a59ab"
+    },
+    "wasm-sanitizer/pkg/package.json": {
+      "size": 337,
+      "sha256": "0a5c58be5f999e3b441e7f18476d10f182b0fadf4c5dd8da5f8ab34993eddb1c"
+    },
+    "wasm-sanitizer/pkg/wasm_sanitizer.d.ts": {
+      "size": 2021,
+      "sha256": "a417f6beebf9caac5bce607eeb8067b4875d25f83024866bbe49d37f5e5edac1"
+    },
+    "wasm-sanitizer/pkg/wasm_sanitizer.js": {
+      "size": 8607,
+      "sha256": "df1ba6e6fd517f42b9a6358b3101e747a6460add85ccc11af7fbfb9a3ef8d266"
+    },
+    "wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm": {
+      "size": 782296,
+      "sha256": "4e20e0537cdf3b1f3c78ad2685cd6a31a112b872a6796cc1178d89efc1dd6396"
+    }
+  }
+}

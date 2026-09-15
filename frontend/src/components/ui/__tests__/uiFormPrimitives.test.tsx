@@ -26,8 +26,8 @@ const renderMotion = (ui: React.ReactElement) =>
 
 describe("Button", () => {
   it("keeps compact and icon controls at least 44px tall and wide", () => {
-    const { rerender } = render(<Button size="sm">Compact</Button>)
-    expect(screen.getByRole("button", { name: "Compact" })).toHaveClass("min-h-11")
+    const { rerender } = render(<Button size="sm">I</Button>)
+    expect(screen.getByRole("button", { name: "I" })).toHaveClass("min-h-11", "min-w-11")
 
     rerender(
       <Button size="icon" aria-label="Icon action">
@@ -96,6 +96,10 @@ describe("Button", () => {
     expect(screen.getByRole("button")).toHaveAttribute("data-haptic", "light")
     rerender(<Button haptics={false}>c</Button>)
     expect(screen.getByRole("button")).not.toHaveAttribute("data-haptic")
+  })
+
+  it("preserves the diagnostic display name", () => {
+    expect((Button as { displayName?: string }).displayName).toBe("Button")
   })
 })
 

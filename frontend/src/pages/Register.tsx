@@ -18,6 +18,7 @@ import { suggestEmailDomain } from "@/utils/authUtils"
 import { cn } from "@/utils/cn"
 import { registerSchema, type RegisterValues } from "@/features/auth/schemas"
 import { analyzePasswordStrength } from "@/utils/passwordStrength"
+import { easeOutExpo } from "@/utils/animations"
 import {
   captureActiveTelemetryContext,
   type CapturedTelemetryContext,
@@ -183,7 +184,7 @@ const Register = () => {
         <m.div
           initial={prefersReducedMotion ? false : { x: -8 }}
           animate={{ x: 0 }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
+          transition={{ duration: 0.2, ease: easeOutExpo }}
           className="auth-card-matte flex w-full min-w-0 flex-col justify-center border-glass-border-subtle p-8 lg:p-12"
         >
           <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-text-primary/(--opacity-strong)">
@@ -215,7 +216,7 @@ const Register = () => {
         <m.div
           initial={prefersReducedMotion ? false : { y: 8 }}
           animate={{ y: 0 }}
-          transition={{ duration: 0.2, ease: "easeOut", delay: 0.05 }}
+          transition={{ duration: 0.2, ease: easeOutExpo, delay: 0.05 }}
           className="auth-card-matte flex w-full min-w-0 flex-col justify-center border-glass-border-subtle bg-surface/(--opacity-hover) p-6 sm:p-10"
         >
           <form

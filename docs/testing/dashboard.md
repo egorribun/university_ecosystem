@@ -2,6 +2,12 @@
 
 This file is generated from normalized quality manifests. A `—` means evidence was not observed; it is never interpreted as a passing score.
 
+No certified quality snapshot is currently published (`quality-history/` has
+no normalized manifest). The empty trend row is therefore intentional and
+must not be read as a pass. Historical CI-capacity observations are retained
+in the [supplemental audit](../audits/CI_CAPACITY_AUDIT_2026-09-08.md); they
+are diagnostic context only and are not current release evidence.
+
 Last rendered: `2026-07-23`
 Required patch coverage: **100%**
 Required viable mutation score: **100%**

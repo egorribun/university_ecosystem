@@ -50,7 +50,12 @@ from app.schemas.dtos import EventFileDTO
 from app.services.event_service import EventService
 from app.services.file_scanner import scan_for_malware
 from app.services.notification_service import NotificationService
-from app.utils.files import delete_static_file, save_attachment
+from app.services.private_attachments import (
+    private_attachment_filename,
+    private_attachment_response,
+    private_attachment_storage_key,
+)
+from app.utils.files import _get_storage_backend, delete_static_file, save_attachment
 
 logger = get_logger(__name__)
 
@@ -299,11 +304,91 @@ async def upload_event_file(
 
 @router.get("/{event_id}/files", response_model=list[schemas.EventFileOut])
 async def get_event_files(
-    event_id: uuid.UUID | int, db: AsyncSession = Depends(get_read_db)
+    event_id: uuid.UUID | int,
+    *,
+    request: Request,
+    # Event visibility is revocation-sensitive; authorize against the primary
+    # database so a lagging replica cannot keep a removed viewer authorized.
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+    checker: PermissionChecker = Depends(get_permission_checker),
 ) -> list[models.EventFile]:
     _validate_id_type(event_id)
+    locale = resolve_locale(request=request, user=user)
+
+    # Authorize against the parent event before touching its attachments.  The
+    # file rows contain private storage URLs and must never become an oracle for
+    # callers who lack event visibility.  Keep the existence check separate so
+    # missing ids retain the standard event 404 contract and cannot trigger an
+    # unnecessary SpiceDB lookup.
+    event = await db.get(models.Event, event_id)
+    ensure_exists(event, "events", locale)
+    assert event is not None  # noqa: S101
+    if not await checker.check_permission(
+        resource_type="event",
+        resource_id=str(event.id),
+        permission="view",
+        user_id=str(user.id),
+    ):
+        raise_forbidden(locale)
+
     repo = EventRepository(db)
     return await repo.get_event_files(event_id)
+
+
+@router.get(
+    "/{event_id}/files/{filename:path}",
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_static))
+    ],
+)
+async def download_event_file(
+    event_id: uuid.UUID | int,
+    filename: str,
+    *,
+    request: Request,
+    # File authorization is revocation-sensitive; use the primary database
+    # rather than a potentially lagging read replica.
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+    checker: PermissionChecker = Depends(get_permission_checker),
+) -> Response:
+    """Download an event file after checking the event's view permission."""
+
+    _validate_id_type(event_id)
+    locale = resolve_locale(request=request, user=user)
+    try:
+        private_attachment_storage_key("event", event_id, filename)
+    except ValueError:
+        raise_not_found("attachment", locale, exact_key="errors.not_found")
+
+    event = await db.get(models.Event, event_id)
+    ensure_exists(event, "events", locale)
+    assert event is not None  # noqa: S101
+    if not await checker.check_permission(
+        resource_type="event",
+        resource_id=str(event.id),
+        permission="view",
+        user_id=str(user.id),
+    ):
+        raise_forbidden(locale)
+
+    files = await EventRepository(db).get_event_files(event_id)
+    event_file = next(
+        (
+            item
+            for item in files
+            if private_attachment_filename(item.file_url, "event") == filename
+        ),
+        None,
+    )
+    if event_file is None:
+        raise_not_found("attachment", locale, exact_key="errors.not_found")
+    try:
+        data = await _get_storage_backend().read_file(event_file.file_url)
+    except (FileNotFoundError, ValueError):
+        raise_not_found("attachment", locale, exact_key="errors.not_found")
+    return private_attachment_response(data, filename)
 
 
 @router.post(

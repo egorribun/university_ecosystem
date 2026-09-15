@@ -1,203 +1,67 @@
-# University Ecosystem API Documentation
+# University Ecosystem API
 
-## Overview
+The FastAPI application exposes the versioned REST surface under
+`/api/v1`. The checked-in [OpenAPI 3.1 schema](../../frontend/openapi.json) is
+the route and request/response source of truth; this page is an orientation,
+not a second schema.
 
-The University Ecosystem API provides RESTful endpoints for managing university platform features including events, news, schedules, messaging, and notifications.
+## Runtime documentation
 
-**Base URL**: `/api/v1`
+In development, testing, or local environments the application serves:
 
-**Authentication**: Bearer token (JWT) required for most endpoints.
+- Swagger UI: `/api/docs`
+- ReDoc: `/api/redoc`
+- Raw schema: `/api/openapi.json`
 
----
+Interactive documentation is disabled in other environments. Health probes are
+available at `GET /health/live`, `GET /health/ready`, `GET /healthz`, and
+`GET /ready`. The root endpoint is `GET /`.
 
-## API Sections
+## Authentication and cookies
 
-### Public Endpoints
+Most `/api/v1` operations require the authenticated session established by
+`POST /api/v1/auth/login/json` or the form-compatible
+`POST /api/v1/auth/login`. Successful authentication sets the HttpOnly
+`access_token_v2` cookie; the token is not returned in the JSON response.
+Clients should send requests with their cookie jar enabled and must not copy
+the token into local storage or an API payload.
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/public/news` | GET | Public news feed |
+The login/MFA flow may also set the short-lived `mfa_pre_auth_v1` cookie while
+an MFA challenge is pending, and `trusted_device` when the user explicitly
+chooses a trusted device. `GET /api/v1/auth/csrf-cookie` establishes the
+browser-readable CSRF cookie used by state-changing cookie-authenticated
+requests. Cookie flags and lifetimes are environment configuration; consult
+the OpenAPI responses and deployment configuration rather than assuming a
+fixed domain or `Secure` setting in local development.
 
-### Authentication
+## Route index
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/auth/login` | POST | User login |
-| `/auth/register` | POST | User registration |
-| `/auth/logout` | POST | Session logout |
-| `/auth/refresh` | POST | Token refresh |
-| `/auth/forgot-password` | POST | Password reset request |
+The following route families are present in the current OpenAPI schema. Use
+the schema for exact parameters, security requirements, status codes, and
+models.
 
-### Events
+| Area | Paths and operations |
+| --- | --- |
+| Auth and MFA | `/api/v1/auth/login`, `/api/v1/auth/login/json`, `/api/v1/auth/logout`, `/api/v1/auth/register`, `/api/v1/auth/csrf-cookie`; MFA enrollment/verification under `/api/v1/auth/mfa/{email,totp,recovery-codes,step-up}`; sessions under `/api/v1/auth/sessions` |
+| Password | `POST /api/v1/password/forgot`, `POST /api/v1/password/reset` |
+| Users and groups | `/api/v1/users`, `/api/v1/users/me`, `/api/v1/groups`, including profile, avatar/cover, email, password, export, and deletion operations |
+| Events | `/api/v1/events`, `/api/v1/events/{event_id}`, `/api/v1/events/my`, `/api/v1/events/search/semantic`, `/api/v1/events/attendance`, and event file/image operations |
+| News | `/api/v1/news`, `/api/v1/news/{id}`, comments, likes, interactions, semantic search, and image upload operations |
+| Stories | `/api/v1/stories`, `/api/v1/stories/{story_id}`, and cover upload |
+| Schedule | `/api/v1/schedule`, `/api/v1/schedule/{id}`, and `/api/v1/schedule/ics` |
+| Chats | `/api/v1/chats`, `/api/v1/chats/{chat_id}`, messages, participants, reactions, read/typing, clear, forward, and group-chat operations |
+| Notifications | `/api/v1/notifications`, read/delete operations, `/api/v1/notifications/read-all`, and notification dead-letter operations |
+| Push | `/api/v1/push/subscribe`, `/api/v1/push/unsubscribe`, `/api/v1/push/topics`, VAPID key, broadcast/test, and admin topic operations |
+| Search, statistics, integrations | `/api/v1/search`, `/api/v1/stats/{summary,attendance,grades,participation}`, `/api/v1/spotify/*` |
+| Performance and media | `/api/v1/cwv/*`, `POST /api/v1/csp-report`, and `GET /api/v1/img/{path}` |
+| WebSocket bootstrap | `POST /ws/ticket` issues a short-lived upgrade ticket; the WebSocket endpoint is `/ws` |
+| Admin (non-versioned) | `GET /admin/audit`, `GET /admin/audit/time-travel`, and `GET /admin/feature-flags` |
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/events` | GET | List events (cursor pagination) |
-| `/events/{id}` | GET | Get event details |
-| `/events` | POST | Create event (admin) |
-| `/events/{id}` | PUT | Update event (admin) |
-| `/events/{id}` | DELETE | Delete event (admin) |
-| `/events/{id}/attend` | POST | Register attendance |
-| `/events/{id}/unattend` | POST | Cancel attendance |
+Internal `/api/v1` routes and GraphQL are mounted with `include_in_schema=False`
+and are intentionally absent from the public OpenAPI route index.
 
-### News
+## Request examples
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/news` | GET | List news articles |
-| `/news/{id}` | GET | Get news article |
-| `/news` | POST | Create news (admin) |
-| `/news/{id}` | PUT | Update news (admin) |
-| `/news/{id}` | DELETE | Delete news (admin) |
-
-### Schedule
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/schedule` | GET | Get user schedule |
-| `/schedule/group/{group_id}` | GET | Get group schedule |
-
-### Chat / Messaging
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/chats` | GET | List user chats |
-| `/chats` | POST | Create new chat |
-| `/chats/{id}` | GET | Get chat details |
-| `/chats/{id}/messages` | GET | List messages (cursor pagination) |
-| `/chats/{id}/messages` | POST | Send message |
-
-### Notifications
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/notifications` | GET | List user notifications |
-| `/notifications/{id}/read` | POST | Mark as read |
-| `/notifications/read-all` | POST | Mark all as read |
-
-### User Profile
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/users/me` | GET | Current user profile |
-| `/users/me` | PATCH | Update profile |
-| `/users/me/avatar` | POST | Upload avatar |
-
----
-
-## Admin Endpoints
-
-### User Management
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/users` | GET | List all users |
-| `/users/{id}` | DELETE | Delete user |
-
-### Dead Letter Queue (Internal)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/admin/dlq/stats` | GET | DLQ statistics |
-| `/admin/dlq/jobs` | GET | List DLQ jobs |
-| `/admin/dlq/retry/{id}` | POST | Retry failed job |
-| `/admin/dlq/cleanup` | DELETE | Cleanup old jobs |
-
----
-
-## Pagination
-
-The API uses **cursor-based pagination** for large collections:
-
-```json
-{
-  "items": [...],
-  "total": 150,
-  "limit": 20,
-  "cursor": "abc123",
-  "next_cursor": "def456",
-  "has_more": true
-}
-```
-
-**Parameters**:
-- `limit`: Number of items per page (default: 20, max: 100)
-- `cursor`: Cursor from previous response for next page
-
----
-
-## Error Responses
-
-All errors follow this format:
-
-```json
-{
-  "detail": "Error message description"
-}
-```
-
-**HTTP Status Codes**:
-- `400` - Bad Request (validation error)
-- `401` - Unauthorized (missing/invalid token)
-- `403` - Forbidden (insufficient permissions)
-- `404` - Not Found
-- `422` - Unprocessable Entity
-- `500` - Internal Server Error
-
----
-
-## Localization
-
-The API supports multiple languages via the `Accept-Language` header:
-
-```
-Accept-Language: ru
-Accept-Language: en
-Accept-Language: ar
-```
-
-Response will include translated content where available.
-
----
-
-## Rate Limiting
-
-API requests are rate-limited to protect service stability:
-- **Authenticated requests**: 100 requests/minute
-- **Unauthenticated requests**: 20 requests/minute
-
-Rate limit headers are included in responses:
-- `X-RateLimit-Limit`
-- `X-RateLimit-Remaining`
-- `X-RateLimit-Reset`
-
----
-
-## WebSocket
-
-Real-time updates are available via WebSocket:
-
-**Endpoint**: `wss://{host}/ws/chat`
-
-**Authentication**:
-- `Sec-WebSocket-Protocol: access_token, <JWT>`
-- `Authorization: Bearer <JWT>`
-- Cookie-based auth (`access_token_v2`)
-
-Query-param tokens are supported only when the `websocket_query_param_compat`
-feature flag is enabled.
-
-**Events**:
-- `chat.message` - New message in chat
-- `notification` - New notification
-- `presence` - User online status change
-
----
-
-## OpenAPI Schema
-
-Full OpenAPI schema available at:
-- `/docs` - Swagger UI
-- `/redoc` - ReDoc
-- `/openapi.json` - Raw JSON schema
+See [API examples](../API_EXAMPLES.md) for cookie-aware login, MFA, event,
+notification, and WebSocket-ticket requests. Examples use placeholders and
+never contain real credentials or tokens.

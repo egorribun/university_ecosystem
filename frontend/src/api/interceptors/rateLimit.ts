@@ -5,8 +5,12 @@ type QueueConfig = InternalAxiosRequestConfig & {
   signal?: AbortSignal
 }
 
-const parsePositiveInteger = (value: unknown, fallback: number): number => {
-  const parsed = Number.parseInt(String(value ?? ""), 10)
+type ClientQueueWaiter = {
+  resolve: () => void
+}
+
+export const parsePositiveInteger = (value: unknown, fallback: number): number => {
+  const parsed = Number.parseInt(String(value ?? 0), 10)
   if (Number.isFinite(parsed) && parsed > 0) {
     return parsed
   }
@@ -29,23 +33,24 @@ const CLIENT_RATE_LIMIT_MAX_CONCURRENT = parsePositiveInteger(
 
 let rateLimitResetAt = 0
 let rateLimitTimer: ReturnType<typeof setTimeout> | null = null
-const rateLimitWaiters: Array<() => void> = []
+const rateLimitWaiters: Array<() => void> = new Array<() => void>()
 
 let clientQueueInFlight = 0
-const clientQueueWaiters: Array<() => void> = []
-const clientQueueTimestamps: number[] = []
+const clientQueueWaiters: ClientQueueWaiter[] = new Array<ClientQueueWaiter>()
+const clientQueueTimestamps: number[] = new Array<number>()
 let clientQueueTimer: ReturnType<typeof setTimeout> | null = null
 
 const pruneClientQueueTimestamps = () => {
   const threshold = Date.now() - RATE_LIMIT_WINDOW_MS
-  while (clientQueueTimestamps.length > 0) {
-    const oldest = clientQueueTimestamps[0]!
-    if (oldest <= threshold) {
-      clientQueueTimestamps.shift()
-    } else {
-      break
-    }
+  // Timestamps are appended in chronological order. Remove the expired
+  // prefix in one bounded operation instead of a loop: a mutation that drops
+  // a loop body must never be able to leave a request promise pending forever.
+  const firstFreshIndex = clientQueueTimestamps.findIndex((timestamp) => timestamp > threshold)
+  if (firstFreshIndex < 0) {
+    clientQueueTimestamps.splice(0)
+    return
   }
+  clientQueueTimestamps.splice(0, firstFreshIndex)
 }
 
 const scheduleClientQueueWindowReset = () => {
@@ -63,7 +68,7 @@ const scheduleClientQueueWindowReset = () => {
   // The length guard above guarantees an oldest timestamp.  A Date.now()
   // fallback would hide state corruption and adds an impossible branch.
   const oldest = clientQueueTimestamps[0]!
-  const target = oldest + RATE_LIMIT_WINDOW_MS
+  const target = getClientQueueWindowTarget(oldest)
   // Timestamps are appended chronologically, so an existing timer always
   // targets this same oldest entry (or an earlier one).  One timer is enough.
   if (clientQueueTimer) {
@@ -76,7 +81,7 @@ const scheduleClientQueueWindowReset = () => {
       pruneClientQueueTimestamps()
       notifyClientQueue()
     },
-    Math.max(0, target - Date.now())
+    getClientQueueResetDelay(target, Date.now())
   )
 }
 
@@ -85,22 +90,29 @@ const notifyClientQueue = () => {
     return
   }
 
-  while (clientQueueWaiters.length > 0) {
-    pruneClientQueueTimestamps()
+  pruneClientQueueTimestamps()
 
-    if (clientQueueInFlight >= CLIENT_RATE_LIMIT_MAX_CONCURRENT) {
-      return
-    }
-
-    if (clientQueueTimestamps.length >= CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW) {
-      scheduleClientQueueWindowReset()
-      return
-    }
-
-    // The loop guard and JavaScript's run-to-completion semantics guarantee a
-    // waiter here; no other task can mutate the queue between these statements.
-    clientQueueWaiters.shift()!()
+  if (clientQueueInFlight >= CLIENT_RATE_LIMIT_MAX_CONCURRENT) {
+    return
   }
+
+  if (clientQueueTimestamps.length >= CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW) {
+    scheduleClientQueueWindowReset()
+    return
+  }
+
+  // Resolve at most the currently available concurrency/window capacity. The
+  // waiters reacquire asynchronously, so this batch size is calculated before
+  // any of them can mutate the counters.
+  const grantCount = Math.max(
+    0,
+    Math.min(
+      clientQueueWaiters.length,
+      CLIENT_RATE_LIMIT_MAX_CONCURRENT - clientQueueInFlight,
+      CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW - clientQueueTimestamps.length
+    )
+  )
+  clientQueueWaiters.splice(0, grantCount).forEach(({ resolve }) => resolve())
 }
 
 const tryAcquireClientQueueSlot = (): boolean => {
@@ -125,17 +137,66 @@ const shouldThrottleRequest = (config: InternalAxiosRequestConfig) => {
   return method === "get"
 }
 
+const abortError = (signal?: AbortSignal): Error => {
+  const reason = (Object(signal) as { reason?: unknown }).reason
+  return reason instanceof Error ? reason : new DOMException("Aborted", "AbortError")
+}
+
 const throwIfAborted = (signal?: AbortSignal) => {
-  if (!signal?.aborted) {
+  if (Object(signal).aborted !== true) return
+  throw abortError(signal)
+}
+
+const waitForClientQueueWaiter = (config: QueueConfig): Promise<void> => {
+  const signal = config.signal
+  const deferred = {} as {
+    resolve: () => void
+    reject: (reason?: unknown) => void
+  }
+  // Keep the executor expression-only.  Besides being a compact deferred,
+  // this prevents a block mutation from replacing queue registration with an
+  // unresolved promise and masking the abort contract behind a timeout.
+  const waitPromise = new Promise<void>((resolve, reject) =>
+    Object.assign(deferred, { resolve, reject })
+  )
+  const waiter: ClientQueueWaiter = { resolve: deferred.resolve }
+  const removeQueuedWaiter = () =>
+    clientQueueWaiters.splice(
+      0,
+      clientQueueWaiters.length,
+      ...clientQueueWaiters.filter((entry) => entry !== waiter)
+    )
+  // Keep cancellation expression-only: every operation runs even when the
+  // waiter was granted just before abort, and a block mutation cannot leave
+  // the queue promise pending behind a timeout.
+  const onAbort = () =>
+    void (removeQueuedWaiter(), deferred.reject(abortError(config.signal)), notifyClientQueue())
+  const removeAbortListener = signal
+    ? () => signal.removeEventListener("abort", onAbort)
+    : undefined
+  signal?.addEventListener("abort", onAbort, { once: true })
+  clientQueueWaiters.push(waiter)
+  return waitPromise.finally(() => removeAbortListener?.())
+}
+
+const waitForClientQueueSlotInternal = async (config: QueueConfig): Promise<void> => {
+  throwIfAborted(config.signal)
+  if (tryAcquireClientQueueSlot()) {
+    config.__clientRateLimitAcquired = true
     return
   }
 
-  const reason = signal.reason
-  if (reason instanceof Error) {
-    throw reason
-  }
-
-  throw new DOMException("Aborted", "AbortError")
+  // Re-enter after a notification instead of keeping an unbounded loop in
+  // the waiter.  Besides making the state transition explicit, this ensures
+  // a cancelled or repeatedly contended request always yields to the event
+  // loop and remains observable to mutation tests.  The recursive call is
+  // reached only after an awaited queue notification, so it cannot grow the
+  // synchronous stack.
+  await waitForClientQueueWaiter(config)
+  // A signal can abort after the waiter is resolved but before the next
+  // acquire.  Check it before consuming the newly available slot.
+  throwIfAborted(config.signal)
+  return waitForClientQueueSlotInternal(config)
 }
 
 export const waitForClientQueueSlot = async (config: QueueConfig) => {
@@ -143,17 +204,7 @@ export const waitForClientQueueSlot = async (config: QueueConfig) => {
     return
   }
 
-  while (true) {
-    throwIfAborted(config.signal)
-    if (tryAcquireClientQueueSlot()) {
-      config.__clientRateLimitAcquired = true
-      return
-    }
-
-    await new Promise<void>((resolve) => {
-      clientQueueWaiters.push(resolve)
-    })
-  }
+  await waitForClientQueueSlotInternal(config)
 }
 
 export const releaseClientQueueSlot = (config?: QueueConfig) => {
@@ -167,9 +218,7 @@ export const releaseClientQueueSlot = (config?: QueueConfig) => {
     return
   }
 
-  if (clientQueueInFlight > 0) {
-    clientQueueInFlight -= 1
-  }
+  clientQueueInFlight = Math.max(0, clientQueueInFlight - 1)
 
   pruneClientQueueTimestamps()
   notifyClientQueue()
@@ -183,23 +232,23 @@ export const scheduleRateLimitWindow = (delayMs: number) => {
 
   rateLimitResetAt = target
 
-  if (rateLimitTimer) {
-    clearTimeout(rateLimitTimer)
-    rateLimitTimer = null
-  }
+  clearTimeout(rateLimitTimer as ReturnType<typeof setTimeout>)
+  rateLimitTimer = null
 
   rateLimitTimer = setTimeout(
     () => {
       rateLimitTimer = null
       rateLimitResetAt = 0
-      while (rateLimitWaiters.length > 0) {
-        const resolve = rateLimitWaiters.shift()
-        resolve?.()
-      }
+      rateLimitWaiters.splice(0).forEach((resolve) => resolve())
     },
-    Math.max(0, target - Date.now())
+    getClientQueueResetDelay(target, Date.now())
   )
 }
+
+export const getClientQueueResetDelay = (target: number, now: number): number =>
+  Math.max(0, target - now)
+
+export const getClientQueueWindowTarget = (oldest: number): number => oldest + RATE_LIMIT_WINDOW_MS
 
 // RZ-31-04: Accept optional AbortSignal so callers (e.g. 429 retry in client.ts)
 // can cancel the wait when the user navigates away or the component unmounts.
@@ -214,9 +263,9 @@ export const waitForRateLimitWindow = async (signal?: AbortSignal) => {
 
   await new Promise<void>((resolve, reject) => {
     const onAbort = () => reject(new DOMException("Aborted", "AbortError"))
-    signal?.addEventListener("abort", onAbort, { once: true })
+    if (signal) signal.addEventListener("abort", onAbort, { once: true })
     rateLimitWaiters.push(() => {
-      signal?.removeEventListener("abort", onAbort)
+      if (signal) signal.removeEventListener("abort", onAbort)
       resolve()
     })
   })
@@ -235,9 +284,7 @@ if (typeof window !== "undefined") {
       clearTimeout(rateLimitTimer as ReturnType<typeof setTimeout>)
       rateLimitTimer = null
       rateLimitResetAt = 0
-      while (rateLimitWaiters.length > 0) {
-        rateLimitWaiters.shift()?.()
-      }
+      rateLimitWaiters.splice(0).forEach((resolve) => resolve())
     }
     // If the window is still active, leave it — the server-side limit is still valid.
   })

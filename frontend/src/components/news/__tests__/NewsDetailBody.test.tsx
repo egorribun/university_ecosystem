@@ -190,6 +190,26 @@ Inline ---
     expect(container.querySelector("chips")).not.toBeInTheDocument()
   })
 
+  it("does not render active SVG/MathML or unknown elements from article markup", () => {
+    const { container } = render(
+      <NewsDetailBody
+        content={
+          "# Campus update\n\n" +
+          "Approved **editorial** markup.\n\n" +
+          '<svg><a xlink:href="javascript:alert(1)">svg payload</a></svg>\n\n' +
+          '<math><maction xlink:href="javascript:alert(2)">math payload</maction></math>\n\n' +
+          '<custom-active data-action="javascript:alert(3)">custom payload</custom-active>'
+        }
+      />
+    )
+
+    const body = container.querySelector(".news-article-body")
+    expect(body).toBeInTheDocument()
+    expect(body?.querySelector("svg, math, maction, custom-active")).not.toBeInTheDocument()
+    expect(body?.innerHTML).not.toMatch(/xlink:href|javascript:/i)
+    expect(body?.querySelector("strong")).toHaveTextContent("editorial")
+  })
+
   it("renders nothing in the body for empty content without throwing", () => {
     expect(() => render(<NewsDetailBody content="" />)).not.toThrow()
     expect(screen.queryByText("news:toc.title")).not.toBeInTheDocument()

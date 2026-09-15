@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, act } from "@testing-library/react"
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mocks = vi.hoisted(() => {
@@ -330,7 +330,7 @@ describe("EventFileManager branches", () => {
     expect(document.querySelector("[data-file-id^='optimistic-']")).not.toBeInTheDocument()
   })
 
-  it("completes an upload safely after the file input unmounts", async () => {
+  it("completes an upload before the manager unmounts", async () => {
     let resolveUpload!: (value: { data: Record<string, never> }) => void
     mocks.post.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -346,11 +346,18 @@ describe("EventFileManager branches", () => {
       submitForm()
       await flushAction()
       expect(mocks.post).toHaveBeenCalledOnce()
-      view.unmount()
-      resolveUpload({ data: {} })
-      await flushAction()
+      await act(async () => {
+        resolveUpload({ data: {} })
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      await waitFor(() => {
+        expect(document.querySelector("form")).toHaveAttribute("data-upload-state", "success")
+      })
       expect(props.onSuccess).toHaveBeenCalled()
       expect(props.onUpdate).toHaveBeenCalledOnce()
+      view.unmount()
     })
 
     expect(props.onError).not.toHaveBeenCalled()
@@ -572,7 +579,13 @@ describe("EventFileManager branches", () => {
       const row = document.querySelector("[data-file-id^='optimistic-']")
       expect(row).toHaveAttribute("data-file-url", "")
       expect(row).toHaveAttribute("data-file-pending", "true")
-      resolveUpload({ data: {} })
+      await act(async () => {
+        resolveUpload({ data: {} })
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      await flushAction()
     })
   })
 
@@ -591,12 +604,13 @@ describe("EventFileManager branches", () => {
     await withFormFile(file, async () => {
       selectFileViaInput(file)
       submitForm()
-      await flushAction()
-      expect(mocks.post).toHaveBeenCalledOnce()
-      expect(mocks.post).toHaveBeenCalledWith("/events/evt-1/upload_file", expect.any(FormData))
+      await waitFor(() => {
+        expect(mocks.post).toHaveBeenCalledOnce()
+        expect(mocks.post).toHaveBeenCalledWith("/events/evt-1/upload_file", expect.any(FormData))
+        expect(valueSetter).toHaveBeenCalledWith("")
+      })
     })
 
-    expect(valueSetter).toHaveBeenCalledWith("")
     valueSetter.mockRestore()
   })
 

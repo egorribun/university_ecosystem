@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
@@ -87,7 +87,7 @@ describe("NewsDetailHero", () => {
     await user.click(screen.getByRole("button", { name: "news:actions.zoomImage" }))
     const dialog = screen.getByRole("dialog")
     expect(dialog).toBeInTheDocument()
-    focusTrapState.onDeactivate?.()
+    act(() => focusTrapState.onDeactivate?.())
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
 
     await user.click(screen.getByRole("button", { name: "news:actions.zoomImage" }))
