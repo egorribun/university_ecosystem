@@ -5727,6 +5727,31 @@ then perform the external merge/release gates. User-owned WASM changes,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
 
+## 103. pyvips option-string survivor closure (2026-09-15; pending push)
+
+Stale run `34923631288` completed mutmut execution group 69 with survivor
+`10389583209` (job `104249728523`):
+`app.utils.images_vips.x_optimize_image_vips__mutmut_14` changed the options
+string in `pyvips.Image.new_from_buffer(data, "")` to `"XXXX"`. Non-empty
+options would alter decoder behavior and could bypass or change dimension
+metadata inspection. The exact call assertion introduced for groups 65 and 67
+(`new_from_buffer.assert_called_once_with(b"raw", "")`) kills this mutation
+without changing production code or reducing the inventory.
+
+    uv run pytest -q -p no:cacheprovider tests/test_images_vips_full.py
+    # 19 passed
+    uv run ruff check tests/test_images_vips_full.py
+    uv run ruff format --check tests/test_images_vips_full.py
+    git diff --check
+    # all passed
+
+The stale artifact is bound to `2774de52`; fresh current-SHA mutation evidence
+remains mandatory. At the latest poll 27 completed failures were recorded,
+all mutmut survivors, with the rest of the mutation matrix still queued or
+running and no non-mutmut failure. User-owned WASM edits, temporary
+directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
+
 ## 102. pyvips dropped-payload survivor closure (2026-09-15; pending push)
 
 Stale run `34923631288` completed mutmut execution group 67 with survivor
