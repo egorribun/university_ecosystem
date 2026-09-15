@@ -6487,7 +6487,7 @@ def test_benchmark_go_cache_covers_every_workspace_dependency_file() -> None:
         "services/ws-hub/go.sum",
         "services/cmd/uni-cli/go.sum",
         "services/pkg/spiffe/go.sum",
-        "services/pkg/spicedb/go.sum",
+        "services/pkg/spicedb/go.mod",
         "services/pkg/logging/go.mod",
         "gen/go/go.sum",
         "go.sum",

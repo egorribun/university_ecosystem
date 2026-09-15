@@ -5727,6 +5727,37 @@ then perform the external merge/release gates. User-owned WASM changes,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
 
+## 106. Benchmark Go cache-key correctness (2026-09-15; pending push)
+
+The benchmark workflow previously enabled `actions/setup-go` caching without a
+`cache-dependency-path`. In this multi-module repository that falls back to the
+empty root `go.mod`, so changes in service module lockfiles could reuse a stale
+cache or miss a reusable cache entry. The reusable Go workflow already defines
+the authoritative module inventory; `benchmark.yml` now binds the same
+workspace modules (`services/*`, `gen/go/go.sum` and the root `go.sum`, with
+`services/pkg/logging/go.mod` and `services/pkg/spicedb/go.mod` because those
+modules have no `go.sum`).
+
+`tests/test_quality_workflow_contract.py::test_benchmark_go_cache_covers_every_workspace_dependency_file`
+asserts the exact ordered path contract, preventing silent omission when a Go
+module is added. This is a cache-correctness change only: it does not alter
+test/source/mutant inventory, concurrency, timeout, retry or release-gate
+semantics, and the three-green-run requirement for capacity experiments remains
+in force.
+
+    uv run pytest -q -p no:cacheprovider tests/test_quality_workflow_contract.py
+    # 177 passed in 84.70s
+    uv run ruff check tests/test_quality_workflow_contract.py
+    uv run ruff format --check tests/test_quality_workflow_contract.py
+    git diff --check
+    # all passed (actionlint is authoritative in the hosted hook environment)
+
+The implementation and contract test are committed as
+`96e8e806b4b73c39ff510ea21213d6296ca491b9`; fresh hosted validation remains
+required after pushing the current branch. User-owned WASM edits, temporary
+directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
+
 ## 105. WebP quality-parameter survivor closure (2026-09-15; pending push)
 
 Stale run `34923631288` completed mutmut execution group 74 in job
