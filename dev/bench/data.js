@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789486615357,
+  "lastUpdate": 1789486618331,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -11797,6 +11797,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 87054,
             "range": "± 983",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "93add6c3c57a350868225321f80969d8d6b7831a",
+          "message": "build(deps): merge pip dependency updates\n\nAdministrative bypass authorized by repository owner on 2026-09-15: merge requested despite historical dependency-PR CI failures. No status was altered; the bypass is intentionally recorded for follow-up validation.",
+          "timestamp": "2026-09-15T17:50:31+03:00",
+          "tree_id": "537d5f26b35fca40f19c6647f42d3d62b3c56c68",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/93add6c3c57a350868225321f80969d8d6b7831a"
+        },
+        "date": 1789486617341,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6160,
+            "range": "± 88",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 7143,
+            "range": "± 38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9875,
+            "range": "± 53",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10510,
+            "range": "± 72",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 93757,
+            "range": "± 383",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5558,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6545,
+            "range": "± 88",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9096,
+            "range": "± 41",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9380,
+            "range": "± 30",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 87379,
+            "range": "± 276",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5518,
+            "range": "± 66",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6412,
+            "range": "± 26",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8894,
+            "range": "± 16",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9252,
+            "range": "± 26",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 86262,
+            "range": "± 418",
             "unit": "ns/iter"
           }
         ]
