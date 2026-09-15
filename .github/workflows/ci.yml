@@ -5262,6 +5262,19 @@ jobs:
             mutation_expected_result=skipped
           fi
 
+          # These two resilience jobs are dependency-gated. GitHub reports a
+          # dependent job as skipped when its direct prerequisite failed or
+          # was itself skipped. Model only those explicit states as an
+          # expected skip; cancellations and unrelated skips remain failures.
+          chaos_expected_result=success
+          if [[ "$BACKEND_TESTS_RESULT" == "failure" || "$BACKEND_TESTS_RESULT" == "skipped" ]]; then
+            chaos_expected_result=skipped
+          fi
+          chaos_loadtest_expected_result=success
+          if [[ "$PRE_COMMIT_RESULT" == "failure" || "$PRE_COMMIT_RESULT" == "skipped" ]]; then
+            chaos_loadtest_expected_result=skipped
+          fi
+
           failed=0
           for entry in "${required_results[@]}"; do
             IFS='|' read -r job result <<< "$entry"
@@ -5270,6 +5283,10 @@ jobs:
               expected_result="$coverage_expected_result"
             elif [[ "$job" == mutation-tests-* ]]; then
               expected_result="$mutation_expected_result"
+            elif [[ "$job" == "chaos-tests" ]]; then
+              expected_result="$chaos_expected_result"
+            elif [[ "$job" == "chaos-loadtest-orchestrator" ]]; then
+              expected_result="$chaos_loadtest_expected_result"
             fi
             if [[ "$result" != "$expected_result" ]]; then
               echo "::error::Required CI job '$job' concluded '$result'; expected '$expected_result'."

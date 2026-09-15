@@ -985,6 +985,34 @@ def test_ci_success_allows_coverage_skip_only_after_producer_failure() -> None:
     assert 'if [[ "$prerequisite" == "cancelled"' not in gate
 
 
+def test_ci_success_models_dependency_gated_chaos_results_fail_closed() -> None:
+    """Only known dependency skips may satisfy the chaos result contract.
+
+    ``chaos-tests`` is gated by ``backend-tests`` and the loadtest orchestrator
+    is gated by ``pre-commit-check``.  When those prerequisites fail or are
+    skipped, GitHub reports the dependent job as skipped; a cancellation or an
+    unrelated skip must remain a hard failure.
+    """
+
+    job = _workflow(CI)["jobs"]["ci-success"]
+    gate = _step(job, "Check all jobs passed")["run"]
+
+    assert "chaos_expected_result=success" in gate
+    assert "chaos_loadtest_expected_result=success" in gate
+    assert (
+        'if [[ "$BACKEND_TESTS_RESULT" == "failure" || '
+        '"$BACKEND_TESTS_RESULT" == "skipped" ]]; then' in gate
+    )
+    assert (
+        'if [[ "$PRE_COMMIT_RESULT" == "failure" || '
+        '"$PRE_COMMIT_RESULT" == "skipped" ]]; then' in gate
+    )
+    assert 'if [[ "$BACKEND_TESTS_RESULT" == "cancelled"' not in gate
+    assert 'if [[ "$PRE_COMMIT_RESULT" == "cancelled"' not in gate
+    assert 'expected_result="$chaos_expected_result"' in gate
+    assert 'expected_result="$chaos_loadtest_expected_result"' in gate
+
+
 def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
     jobs = _workflow(CI)["jobs"]
     producer = jobs["stryker-preflight"]
