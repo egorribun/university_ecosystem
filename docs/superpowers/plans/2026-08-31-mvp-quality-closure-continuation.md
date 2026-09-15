@@ -5678,3 +5678,51 @@ as current mutation evidence until a fresh SHA-bound mutmut universe executes
 the complete inventory. User-owned WASM edits, temporary directories,
 `docs/audits/AUDIT_PLATFORM_FULL.md` and the service capability marker remain
 unstaged.
+
+## 96. Stale-run capacity and security-evidence checkpoint (2026-09-15; pending push)
+
+The latest authoritative job poll for run `34923631288` still reports the
+run-level API state as `queued` with no conclusion, even though job records are
+progressing. The run is bound to the stale source SHA
+`2774de52d158cf0b7611b331586014a8420a1df2`, not the current checkout. At this
+checkpoint the job inventory is 311 total: 226 completed, 22 failed, 12
+skipped, 6 in progress and 79 queued. Every completed failure is a mutmut
+survivor in groups 10, 11, 16, 19, 22, 23, 26, 29, 30, 31, 33, 34, 37, 38,
+43, 44, 45, 46, 47, 48, 49 or 61; no non-mutation failure has appeared. The
+inventory is therefore not yet terminal and cannot certify the current SHA.
+
+The API-only diagnostic ledger
+`C:\\Temp\\ci349236-critical-path-current.json` records a diagnostic-only
+lower-bound report (SHA-256
+`04c51e37b4d734f3ea691debd515b5cbcae14ebd6033cf06981939d560fbe7b1`):
+
+- 311 jobs, observed peak concurrency 18/20 and a lower-bound wall clock of
+  18,781 seconds;
+- queue p50 259 seconds, p95 11,715 seconds, maximum 14,607 seconds;
+- setup p50 40 seconds, p95 76 seconds; test p50 726 seconds, p95 1,823
+  seconds, maximum 6,630 seconds; artifact handling p95 3 seconds;
+- repeated checkout/install/setup work is visible across mutation and content
+  shards, but this report does not prove the dependency DAG, archive bytes,
+  runner RSS/CPU, billed minutes or a strict release artifact.
+
+These measurements support retaining the current inventory and caps until
+three comparable green runs provide the missing queue/runtime/RSS/CPU/billed
+evidence. They do not justify increasing concurrency, changing timeouts or
+adding retries now.
+
+The Codex Security standard scan completed against snapshot SHA
+`faef16c2a715d52e98fcc136e015f92e3247a140` (before the two latest
+test/documentation commits) with zero reportable findings across the reviewed
+authentication, gateway identity, private-attachment, CI provenance,
+secrets/logging/WASM and live-infrastructure surfaces. Its coverage is
+explicitly `partial`; live release/Kubernetes/observability/device evidence
+and a fresh current-SHA mutation run remain deferred. The sealed report is
+outside the repository at
+`C:\\Temp\\codex-security-scans-UsDczy\\university_ecosystem\\faef16c2a715d52e98fcc136e015f92e3247a140_20260915T080600Z_ibo04b2k\\report.md` and is not a current-SHA release certificate.
+
+Next safe actions remain: wait for the stale job records to become terminal,
+append the final complete inventory, re-run local gates, push the current
+branch non-force, obtain a fresh current-SHA PR matrix and security evidence,
+then perform the external merge/release gates. User-owned WASM changes,
+temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
