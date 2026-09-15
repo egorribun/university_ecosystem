@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789488935710,
+  "lastUpdate": 1789488938172,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -12079,6 +12079,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 86262,
             "range": "± 418",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "481dba81ec78d7d2a33873a3a661470b0ecdd512",
+          "message": "build(deps): bump the npm-dependencies group across 1 directory with 6 updates (#1288)\n\nBumps the npm-dependencies group with 6 updates in the /frontend directory:\n\n| Package | From | To |\n| --- | --- | --- |\n| [@tanstack/react-virtual](https://github.com/TanStack/virtual/tree/HEAD/packages/react-virtual) | `3.14.10` | `3.14.11` |\n| [lucide-react](https://github.com/lucide-icons/lucide/tree/HEAD/packages/lucide-react) | `1.41.0` | `1.43.0` |\n| [marked](https://github.com/markedjs/marked) | `18.0.11` | `18.0.12` |\n| [@rolldown/plugin-babel](https://github.com/rolldown/plugins/tree/HEAD/packages/babel) | `0.2.3` | `0.2.4` |\n| [@types/node](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/HEAD/types/node) | `26.4.1` | `26.5.0` |\n| [typescript-eslint](https://github.com/typescript-eslint/typescript-eslint/tree/HEAD/packages/typescript-eslint) | `8.69.0` | `8.70.0` |\n\n\n\nUpdates `@tanstack/react-virtual` from 3.14.10 to 3.14.11\n- [Release notes](https://github.com/TanStack/virtual/releases)\n- [Changelog](https://github.com/TanStack/virtual/blob/main/packages/react-virtual/CHANGELOG.md)\n- [Commits](https://github.com/TanStack/virtual/commits/@tanstack/react-virtual@3.14.11/packages/react-virtual)\n\nUpdates `lucide-react` from 1.41.0 to 1.43.0\n- [Release notes](https://github.com/lucide-icons/lucide/releases)\n- [Commits](https://github.com/lucide-icons/lucide/commits/1.43.0/packages/lucide-react)\n\nUpdates `marked` from 18.0.11 to 18.0.12\n- [Release notes](https://github.com/markedjs/marked/releases)\n- [Commits](https://github.com/markedjs/marked/compare/v18.0.11...v18.0.12)\n\nUpdates `@rolldown/plugin-babel` from 0.2.3 to 0.2.4\n- [Release notes](https://github.com/rolldown/plugins/releases)\n- [Changelog](https://github.com/rolldown/plugins/blob/main/packages/babel/CHANGELOG.md)\n- [Commits](https://github.com/rolldown/plugins/commits/plugin-babel@0.2.4/packages/babel)\n\nUpdates `@types/node` from 26.4.1 to 26.5.0\n- [Release notes](https://github.com/DefinitelyTyped/DefinitelyTyped/releases)\n- [Commits](https://github.com/DefinitelyTyped/DefinitelyTyped/commits/HEAD/types/node)\n\nUpdates `typescript-eslint` from 8.69.0 to 8.70.0\n- [Release notes](https://github.com/typescript-eslint/typescript-eslint/releases)\n- [Changelog](https://github.com/typescript-eslint/typescript-eslint/blob/main/packages/typescript-eslint/CHANGELOG.md)\n- [Commits](https://github.com/typescript-eslint/typescript-eslint/commits/v8.70.0/packages/typescript-eslint)\n\n---\nupdated-dependencies:\n- dependency-name: \"@tanstack/react-virtual\"\n  dependency-version: 3.14.11\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: npm-dependencies\n- dependency-name: lucide-react\n  dependency-version: 1.43.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: npm-dependencies\n- dependency-name: marked\n  dependency-version: 18.0.12\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: npm-dependencies\n- dependency-name: \"@rolldown/plugin-babel\"\n  dependency-version: 0.2.4\n  dependency-type: direct:development\n  update-type: version-update:semver-patch\n  dependency-group: npm-dependencies\n- dependency-name: \"@types/node\"\n  dependency-version: 26.5.0\n  dependency-type: direct:development\n  update-type: version-update:semver-minor\n  dependency-group: npm-dependencies\n- dependency-name: typescript-eslint\n  dependency-version: 8.70.0\n  dependency-type: direct:development\n  update-type: version-update:semver-minor\n  dependency-group: npm-dependencies\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-09-15T20:36:22+05:00",
+          "tree_id": "188543b753a644dabc8ee2143585bcc00957889a",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/481dba81ec78d7d2a33873a3a661470b0ecdd512"
+        },
+        "date": 1789488937482,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6004,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6973,
+            "range": "± 25",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 10020,
+            "range": "± 60",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10896,
+            "range": "± 40",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 99376,
+            "range": "± 1098",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5380,
+            "range": "± 42",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6269,
+            "range": "± 25",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9102,
+            "range": "± 108",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9469,
+            "range": "± 162",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 91544,
+            "range": "± 469",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5162,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6121,
+            "range": "± 23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8720,
+            "range": "± 29",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9208,
+            "range": "± 164",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 89737,
+            "range": "± 328",
             "unit": "ns/iter"
           }
         ]
