@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.api.ws.serializers import serialize_message
+from app.core import static as static_module
 from app.core.static import PublicStaticFiles, is_private_static_path
 from app.schemas.chat import AttachmentResponse, MessageResponse
 from app.schemas.schemas import EventFileOut
@@ -175,6 +176,50 @@ def test_static_private_path_selector_and_blocked_response() -> None:
     assert response.status_code == 404
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_private_static_response_uses_canonical_security_header_names(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_response(*, status_code: int, headers: dict[str, str]):
+        captured["status_code"] = status_code
+        captured["headers"] = headers
+        return object()
+
+    monkeypatch.setattr(static_module, "Response", fake_response)
+    response = __import__("asyncio").run(
+        PublicStaticFiles(directory=".").get_response(
+            "chat_uploads/chat_x/file.txt", {"type": "http"}
+        )
+    )
+
+    assert response is not None
+    assert captured == {
+        "status_code": 404,
+        "headers": {
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    }
+
+
+def test_public_static_files_delegate_to_starlette(tmp_path) -> None:
+    public_file = tmp_path / "public.txt"
+    public_file.write_text("public", encoding="utf-8")
+    static = PublicStaticFiles(directory=str(tmp_path))
+
+    response = __import__("asyncio").run(
+        static.get_response(
+            "public.txt",
+            {"type": "http", "method": "GET", "path": "/public.txt", "headers": []},
+        )
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-length"] == "6"
+    assert response.path == str(public_file)
 
 
 def test_uuid_type_is_supported_without_string_coercion() -> None:

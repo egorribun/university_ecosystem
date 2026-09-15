@@ -91,3 +91,12 @@ def test_development_internal_hmac_secret_keeps_compatibility_with_short_values(
 def test_internal_hmac_strength_rejects_short_material_before_entropy_checks() -> None:
     with pytest.raises(ValueError, match="at least 32 bytes of entropy"):
         _validate_internal_hmac_secret_strength("short", label="INTERNAL_HMAC_SECRET")
+
+
+def test_internal_hmac_strength_rejects_repeated_multi_byte_patterns() -> None:
+    # Four distinct bytes bypass the diversity guard, so the repeated-pattern
+    # regex must still reject a deterministic key made from a repeated block.
+    with pytest.raises(ValueError, match="placeholder or repeated values"):
+        _validate_internal_hmac_secret_strength(
+            "abcd" * 8, label="INTERNAL_HMAC_SECRET"
+        )
