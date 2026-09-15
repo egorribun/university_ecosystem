@@ -2496,7 +2496,7 @@ finding был проверяемым.
 | Finding | Current disposition | Evidence / follow-up |
 |---|---|---|
 | BE-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Migration 148642dd1207 больше не импортирует runtime encryption/config и использует native SQLAlchemy types; проверить `alembic upgrade/downgrade`, offline SQL и PostgreSQL в fresh CI. |
-| BE-02 | `DECISION-RECORDED / MIGRATION-EVIDENCE-PENDING` | ADR-036 заменяет устаревшие 92 на текущий measured inventory (45 tables; 134 effective defaults: 26 dual, 91 Python-only and 17 server-only; one `Computed` expression is tracked separately; source AST 65 Python-only and 17 server-only). Candidate selection still requires PostgreSQL catalog preflight plus phased migrations; no blanket rewrite. Live schema/upgrade/downgrade evidence remains required. |
+| BE-02 | `DECISION-RECORDED / MIGRATION-EVIDENCE-PENDING` | ADR-036 заменяет устаревшие 92 на текущий measured inventory (45 tables; 134 effective defaults: 36 dual, 81 Python-only and 17 server-only; one `Computed` expression is tracked separately; source AST 55 Python-only and 17 server-only). Candidate selection still requires PostgreSQL catalog preflight plus phased migrations; no blanket rewrite. Live schema/upgrade/downgrade evidence remains required. |
 | BE-03 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `User.chats` и `Chat.participants` получили явные `back_populates`/`lazy="noload"`; прогнать async serialization/MissingGreenlet suite. |
 | BE-04 | `BACKLOG / ARCHITECTURE` | Dishka и legacy `Depends` coexistence требует отдельного ADR и постепенной миграции, не меняется в quality-closure commit. |
 | BE-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Backend call sites используют central logger/ProcessorFormatter; совместимый stdlib bridge оставлен для AuditService. Проверить full log redaction и отсутствие PII в aggregate. |
@@ -3352,7 +3352,7 @@ this snapshot.
   and gitleaks contracts are green (**16/16 combined**), and `uv lock --check`
   passes.
 - ADR-036 records the measured BE-02 defaults inventory (45 tables; 134
-  effective defaults: 26 dual, 91 Python-only and 17 server-only, with source AST
+  effective defaults: 36 dual, 81 Python-only and 17 server-only, with source AST
   cross-checks) and a PostgreSQL catalog/preflight migration policy; no unsafe
   blanket DDL rewrite was attempted.
 - `app/AGENTS.md` now uses the same scoped invariant: applicable defaults are
@@ -4134,7 +4134,7 @@ the required mutation denominator or CI runner caps:
   now fail until the ledger is deliberately reviewed.
 
 The effective BE-02 metadata inventory is synchronized with ADR-036 and the
-backend rules: 134 applicable defaults (26 dual, 91 Python-only, 17
+backend rules: 134 applicable defaults (36 dual, 81 Python-only, 17
 server-only) plus one separately tracked `Computed` expression. PostgreSQL
 catalog, phased migration and full legacy-DI migration evidence remain
 external follow-ups; neither item is being falsely marked release-complete.
@@ -7139,14 +7139,12 @@ asserts that no unreviewed package line is added. `--require-hashes`,
 security gate are unchanged; no skip, suppression, downgrade or retry was
 introduced. Focused verification is green:
 
-```text
-uv run pytest -q tests/test_security_hardening_workflow_contract.py
-7 passed in 3.52s
-uv run ruff check tests/test_security_hardening_workflow_contract.py
-All checks passed!
-uv run ruff format --check tests/test_security_hardening_workflow_contract.py
-1 file already formatted
-```
+    uv run pytest -q tests/test_security_hardening_workflow_contract.py
+    7 passed in 3.52s
+    uv run ruff check tests/test_security_hardening_workflow_contract.py
+    All checks passed!
+    uv run ruff format --check tests/test_security_hardening_workflow_contract.py
+    1 file already formatted
 
 Because this fix changes the tested source, the `49a00de7` matrix (including
 its otherwise-green jobs) is diagnostic and must not be promoted. Commit and
