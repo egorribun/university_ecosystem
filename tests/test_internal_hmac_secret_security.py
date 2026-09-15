@@ -20,6 +20,7 @@ def _production_settings(**overrides: str) -> SecuritySettings:
         "audit_log_secret": "audit-log-material-0123456789abcdef",  # pragma: allowlist secret
         "token_hmac_secret": "token-recovery-material-0123456789abcdef",  # pragma: allowlist secret
         "internal_hmac_secret": "internal-gateway-material-0123456789abcdef",  # pragma: allowlist secret
+        "internal_auth_token": "internal-route-token-0123456789abcdef",  # pragma: allowlist secret
     }
     values.update(overrides)
     return SecuritySettings(**values)

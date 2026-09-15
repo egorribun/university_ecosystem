@@ -6533,3 +6533,36 @@ Verification:
 
 The change is intentionally limited to the machine-readable catalog and is
 pending inclusion in the next remediation commit and current-SHA CI run.
+
+## 118. Production security fixture alignment (2026-09-15; pending push)
+
+The first post-SEC-04 mutation audit reproduced a test-only failure in
+`tests/test_internal_hmac_secret_security.py`: its production `SecuritySettings`
+helper supplied the HMAC material but omitted the now-mandatory
+`INTERNAL_AUTH_TOKEN`. The application fail-closed behavior was correct; the
+fixture was incomplete and caused valid HMAC assertions to stop before reaching
+their intended contract.
+
+The helper now supplies an explicitly allowlisted, non-production test token.
+No runtime validation was relaxed and no secret value is emitted by the
+application.
+
+Evidence:
+
+    # RED:
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_internal_hmac_secret_security.py --disable-warnings --maxfail=1
+    # 1 failed, 5 passed: missing INTERNAL_AUTH_TOKEN in production helper
+
+    # GREEN:
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_internal_hmac_secret_security.py --disable-warnings --maxfail=1
+    # 9 passed (1 warning from the existing test environment)
+
+    uv run ruff check tests/test_internal_hmac_secret_security.py
+    uv run ruff format --check tests/test_internal_hmac_secret_security.py
+    git diff --check
+    # all passed
+
+The correction is pending its test-only commit and fresh current-SHA mutation
+evidence; the historical remote run remains non-authoritative.
