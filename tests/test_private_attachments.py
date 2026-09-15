@@ -163,6 +163,9 @@ def test_static_private_path_selector_and_blocked_response() -> None:
     assert is_private_static_path("/static/%2563hat_uploads/chat_x/file.txt")
     assert is_private_static_path("foo/../chat_uploads/chat_x/file.txt")
     assert is_private_static_path("/static/foo/%252e%252e/event_files/event_x/file.txt")
+    # Only leading slashes are ignored; arbitrary leading ``X`` characters
+    # must not be stripped as a side effect of path normalization.
+    assert not is_private_static_path("Xchat_uploads/chat_x/file.txt")
     assert not is_private_static_path("/static/avatars/avatar.png")
 
     static = PublicStaticFiles(directory=".")
