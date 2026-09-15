@@ -2716,7 +2716,8 @@ The live run has not yet reached the mutation phase. Its first 90 observed
 jobs show `0` failures, `18` successes and `11` intentional skips; completed
 non-skipped jobs have a median duration near `0.9` minutes and a p90 near
 `4.0` minutes, while the current queue-start delay is a measured consequence of
-the 20-runner ceiling and concurrent standalone security/fuzzing workflows.
+the observed 20-runner account ceiling and concurrent standalone security/fuzzing
+workflows; this was an observation, not a repository-enforced global semaphore.
 Historical comparable runs are either failed or cancelled, so the three-green
 rebalancing threshold is not met.
 
@@ -3060,7 +3061,7 @@ older PR runs or from the still-running remote matrix.
   `34287653082` and companion workflows were created at the same SHA. At the
   time of writing they are non-terminal, so no remote test, mutation,
   coverage, security or performance result is accepted as current evidence.
-- The matrix currently shows the repository-wide hosted-runner ceiling in
+- The matrix currently shows the observed account-wide hosted-runner ceiling in
   action: companion workflows occupy the active slots while the 59-job CI
   matrix waits. This is an observed queue snapshot, not yet the required
   three-comparable-green-run proof for changing fan-out. Continue collecting
@@ -3233,7 +3234,8 @@ excluded from source commits.
 
 1. Preserve all 64 shards, full mutant/source/test inventory,
    `vitest.related`, per-test coverage analysis, non-incremental release
-   evidence and the 20-runner account ceiling.
+   evidence and the observed 20-runner account ceiling (not enforced by this
+   repository's workflow files).
 2. Do not increase fan-out on this stale run. After **three comparable green
    current-SHA runs**, use the recorded queue time, per-shard duration,
    tests-per-mutant and reserved mutmut/aggregation capacity to trial
@@ -3683,8 +3685,8 @@ excluded from all source commits.
   Stryker 6 and mutmut 10 unchanged until three comparable green current-SHA
   runs provide queue, timeout, resource and billed-minute evidence. Only then
   trial a cap or shared dependency artifact; any optimization must retain
-  checksum/provenance validation, exact shard ledgers and the under-20-runner
-  budget. Never solve latency by raising timeouts, disabling `vitest.related`,
+  checksum/provenance validation, exact shard ledgers and the workflow-local
+  under-20-job budget. Never solve latency by raising timeouts, disabling `vitest.related`,
   changing coverage/mutation thresholds or adding exclusions.
 
 ### 47.4 Acceptance boundary
@@ -5120,3 +5122,40 @@ Focused local contract/manifest tests pass after the update. The fix is
 committed separately and must be validated by a fresh Linux CI run; the failed
 run `34882790312` remains historical evidence only. No matrix cap, exclusion,
 quarantine, threshold, or mutation/security gate was changed.
+
+## 77. CI timing, retry, and capacity-claim audit (2026-09-15)
+
+The current workflow and contract tests were audited for timing-ledger scope,
+failed-job rerun behavior, watchdog/retry semantics, and the documented runner
+budget. This is a source-level audit; it is not current-SHA CI evidence.
+
+- The value `20` is a repository-local operational planning budget, not a
+  GitHub account-wide hosted-runner cap and not a cross-workflow semaphore.
+  `strategy.max-parallel` is workflow-local, so companion workflows may still
+  overlap. CI comments and the mutation-matrix step summary now say this
+  explicitly; no matrix cap or quality gate changed.
+- `scripts/quality/analyze_ci_critical_path.py` provides API-only queue/setup/
+  test/artifact timing, concurrency, and explicit retry/timeout classifications
+  in `diagnostic-lower-bound` mode. It does not prove the dependency DAG,
+  archive bytes, runner RSS/CPU, billed minutes, or a strict release artifact.
+  The `ci-success` report remains diagnostic-only until those independent
+  evidence requirements are supplied.
+- Mutmut and Stryker mutation consumers use attempt-bound selectors and choose
+  only validated current-or-earlier candidates. Coverage shard aggregates are
+  intentionally stricter: backend coverage in `ci.yml` and frontend unit
+  coverage in `reusable-frontend-tests.yml` download only the current attempt.
+  A GitHub failed-job rerun does not rerun successful shard producers, so those
+  aggregates cannot silently mix attempts; a complete same-attempt producer
+  set (or a full workflow rerun) is required. The existing contract test keeps
+  this fail-closed boundary explicit. No unsafe all-attempt wildcard merge was
+  introduced.
+- Watchdog and retry behavior remains bounded: mutmut charges setup and
+  evidence headroom and materializes incomplete evidence on failure, while
+  network retries are limited to known transient transport failures. There is
+  still no repository-wide transient classifier or generic cross-job heartbeat,
+  and no claim of one was added.
+
+The focused workflow, analyzer, renderer, and artifact-selector tests remain
+the acceptance evidence for these source-level contracts. Fresh Linux CI,
+three comparable green runs before any capacity experiment, and complete
+current-SHA mutation/coverage provenance remain release-blocking.

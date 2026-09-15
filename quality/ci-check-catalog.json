@@ -1068,7 +1068,7 @@
           "check_name_template": "Frontend Mutation Preflight Universe",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
-          "guard": "${{ github.event_name == 'pull_request' && needs.pre-commit-check.result == 'success' }}",
+          "guard": "${{ github.event_name == 'pull_request' && needs.pre-commit-check.result == 'success' && needs.e2e-wasm-build.result == 'success' && needs.frontend-tests.result == 'success' }}",
           "artifacts": [
             {
               "name_pattern": "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
@@ -1813,11 +1813,11 @@
       "events": [
         {
           "event": "push",
-          "guard": "{\"branches\":[\"main\"],\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_files_process_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/schemas.py\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/schemas.py\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
         },
         {
           "event": "pull_request",
-          "guard": "{\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_files_process_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/schemas.py\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
+          "guard": "{\"paths\":[\"app/services/ws_hub_client.py\",\"app/api/health.py\",\"app/main.py\",\"services/ws-hub/pkg/hub/hub.go\",\"tests/contracts/test_ws_hub_contract.py\",\"tests/contracts/test_gateway_rest_contract.py\",\"tests/contracts/test_file_processor_grpc_contract.py\",\"tests/contracts/test_nats_message_contract.py\",\"tests/contracts/test_payload_migrations.py\",\"app/schemas/schemas.py\",\"services/ws-hub/internal/contract/**\",\"services/file-processor/internal/contract/**\",\"services/file-processor/internal/service/**\",\"services/file-processor/go.mod\",\"services/file-processor/go.sum\",\"services/gateway/internal/contracts/**\",\"scripts/quality/verify_pact_provider.py\",\".github/workflows/contract-tests.yml\"]}"
         },
         {
           "event": "workflow_dispatch",
@@ -3266,7 +3266,7 @@
             },
             {
               "name_pattern": "backend-coverage-data-${{ inputs.test-group-name }}-attempt-${{ github.run_attempt }}",
-              "path_pattern": "artifacts/coverage/python/producer/.coverage.shard-${{ inputs.shard-id }}\nartifacts/coverage/python/producer/coverage-provenance-shard-${{ inputs.shard-id }}.json\n",
+              "path_pattern": "artifacts/coverage/python/producer/.coverage.shard-${{ inputs.shard-id }}\nartifacts/coverage/python/producer/pytest-shard-${{ inputs.shard-id }}.json\nartifacts/coverage/python/producer/coverage-provenance-shard-${{ inputs.shard-id }}.json\n",
               "required": false,
               "provenance": "run_id_attempt"
             },

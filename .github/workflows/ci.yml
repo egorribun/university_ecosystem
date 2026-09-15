@@ -768,18 +768,21 @@ jobs:
       contents: read
     uses: ./.github/workflows/reusable-e2e-wasm-build.yml
 
-  # Generate the expensive instrumenter universe once after the fast pre-commit
-  # readiness gate. This producer overlaps frontend qualification, but execution remains
-  # coverage-gated below. The artifact is named for an exact immutable GitHub
-  # workflow attempt and commit; every consumer validates all bound metadata
-  # before it can select a logical shard.
+  # Generate the expensive instrumenter universe only after all frontend
+  # qualification has passed. This keeps mutation work fail-closed: a broken
+  # WASM build, unit suite, lint/build, or frontend audit cannot spend a full
+  # producer run before the required product checks have completed. The artifact
+  # is named for an exact immutable GitHub workflow attempt and commit; every
+  # consumer validates all bound metadata before it can select a logical shard.
   stryker-preflight:
     name: Frontend Mutation Preflight Universe
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs:
       - pre-commit-check
-    if: ${{ github.event_name == 'pull_request' && needs.pre-commit-check.result == 'success' }}
+      - e2e-wasm-build
+      - frontend-tests
+    if: ${{ github.event_name == 'pull_request' && needs.pre-commit-check.result == 'success' && needs.e2e-wasm-build.result == 'success' && needs.frontend-tests.result == 'success' }}
     permissions:
       contents: read
       actions: read
@@ -907,11 +910,13 @@ jobs:
       # legs averaging 27.6m; 10 completed mutmut legs averaging 18.5m)
       # estimates total work at roughly 1,764 versus 2,368 runner-minutes
       # for the 64 versus 128 legs. Keep the initial six-runner Stryker lane
-      # alongside the ten-runner mutmut lane: together they use at most 16 of
-      # the hosted repository's 20-runner ceiling during the mutation phase.
-      # The four reserved slots keep required diagnostics and aggregation
-      # schedulable. Rebalance only after three comparable green runs with
-      # queue, timeout and billed-minute evidence.
+      # alongside the ten-runner mutmut lane: together they use at most 16
+      # concurrent mutation jobs in this workflow's documented 20-job
+      # operational budget. This is not a GitHub account-wide cap or a
+      # cross-workflow semaphore; companion workflows can still overlap.
+      # The four reserved slots are only an in-workflow planning guard. Rebalance
+      # after three comparable green runs with queue, timeout and billed-minute
+      # evidence.
       max-parallel: 6
       matrix:
         shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
@@ -1044,11 +1049,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: [stryker-preflight, stryker-shards, coverage-policy-gate, pre-commit-security-and-types]
-    # The preflight is intentionally independent of frontend readiness and may
-    # overlap it. Coverage and security/type qualification are explicit
-    # prerequisites for both shard execution and aggregation: a preflight
-    # artifact may exist while coverage is still running, but a failed/
-    # cancelled qualification gate must never produce mutation evidence.
+    # The preflight has already passed frontend/WASM qualification before this
+    # aggregate can start. Coverage and security/type qualification are also
+    # explicit prerequisites for both shard execution and aggregation: a
+    # failed/cancelled qualification gate must never produce mutation evidence.
     # Once preflight started, keep the aggregate fail-closed for failed/
     # cancelled shard producers.
     if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-preflight.result != 'skipped' && needs.coverage-policy-gate.result == 'success' && needs.pre-commit-security-and-types.result == 'success' }}
@@ -2227,8 +2231,9 @@ jobs:
     strategy:
       fail-fast: false
       # Eight operation shards remain mandatory; four concurrent runners keep
-      # the property-based lane bounded under the repository-wide 20-runner
-      # limit and prevent mutation fan-out starvation.
+      # the property-based lane bounded under this workflow's operational
+      # budget and prevent mutation fan-out starvation. The budget is not a
+      # GitHub account-wide cap or a cross-workflow semaphore.
       max-parallel: 4
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
@@ -2974,8 +2979,9 @@ jobs:
       - coverage-policy-gate
     strategy:
       fail-fast: false
-      # Reserve four of the repository's 20 hosted-runner slots for required
-      # non-mutation diagnostics and aggregation.
+      # Reserve four slots in this workflow's documented 20-job operational
+      # budget for required non-mutation diagnostics and aggregation. This is
+      # not a GitHub account-wide cap or a cross-workflow semaphore.
       max-parallel: 8
       # mutmut 3.7.0 collects the complete pytest-to-mutant mapping before it
       # applies positional mutant filters.  Collect disjoint test populations
@@ -3604,7 +3610,7 @@ jobs:
             echo "- $descriptor_summary"
             echo "- Mutmut producer max concurrency: 10"
             echo "- Stryker producer max concurrency: 6"
-            echo "- GitHub global hosted-runner cap: 20 (10 mutmut + 6 Stryker after the coverage phase barrier; 4 reserved)."
+            echo "- Repository mutation concurrency budget: 20 (10 mutmut + 6 Stryker after the coverage phase barrier; 4 reserved; not globally enforced)."
             echo "- The coverage phase barrier prevents mutation fan-out when foundational evidence is red."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -3665,9 +3671,11 @@ jobs:
       fail-fast: false
       # Coverage is a deliberate phase barrier for both mutation families, so
       # expensive runners are not allocated when the foundational quality gate
-      # is already red. Once that gate is green, use at most 16 hosted runners:
-      # six Stryker workers plus ten mutmut workers, reserving four slots for
-      # required diagnostics and aggregation. The bounded inner mutmut worker count,
+      # is already red. Once that gate is green, use at most 16 mutation jobs
+      # in this workflow's operational budget: six Stryker workers plus ten
+      # mutmut workers, reserving four slots for required diagnostics and
+      # aggregation. This is not a GitHub account-wide cap or semaphore. The
+      # bounded inner mutmut worker count,
       # complete 128-assignment evidence plan, and at-most-128 physical groups
       # remain fail-closed.
       max-parallel: 10
@@ -4502,8 +4510,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(find artifacts/coverage/python/shards -name '.coverage.shard-*' -type f | wc -l)" -eq 4
+          test "$(find artifacts/coverage/python/shards -name 'pytest-shard-*.json' -type f | wc -l)" -eq 4
           test "$(find artifacts/coverage/python/shards -name 'coverage-provenance-shard-*.json' -type f | wc -l)" -eq 4
-          test "$(find artifacts/coverage/python/shards -type f | wc -l)" -eq 8
+          test "$(find artifacts/coverage/python/shards -type f | wc -l)" -eq 12
           for shard in 0 1 2 3; do
             metadata="artifacts/coverage/python/shards/coverage-provenance-shard-${shard}.json"
             artifact="backend-coverage-data-All-Python 3.14-shard-${shard}-attempt-${RUN_ATTEMPT}"
@@ -4520,6 +4529,21 @@ jobs:
               --expected-artifact "$artifact" \
               --metadata "$metadata"
           done
+
+      - name: Verify backend test-universe manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t manifests < <(
+            find artifacts/coverage/python/shards \
+              -name 'pytest-shard-*.json' -type f -print | sort
+          )
+          test "${#manifests[@]}" -eq 4
+          verify_args=(--expected-shards 4)
+          for manifest in "${manifests[@]}"; do
+            verify_args+=(--manifest "$manifest")
+          done
+          python scripts/quality/pytest_shard_manifest.py "${verify_args[@]}"
 
       - name: Verify downloaded coverage artifacts
         shell: bash
@@ -5314,18 +5338,18 @@ jobs:
           }
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            # The preflight is intentionally independent from frontend
-            # qualification so its immutable universe can overlap Lighthouse.
-            # Coverage and security/type gates authorize execution/aggregation;
-            # any started producer is still required to conclude successfully.
+            # The preflight is qualification-gated, so a started producer has
+            # already observed successful frontend/WASM checks. Coverage and
+            # security/type gates still authorize execution and aggregation;
+            # any started producer is required to conclude successfully.
             if [[ "$PRE_COMMIT_RESULT" == "success" && "$PRE_COMMIT_SECURITY_RESULT" == "success" && "$COVERAGE_RESULT" == "success" ]]; then
               assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
               assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "success"
               assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "success"
               assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "success"
             elif [[ "$PRE_COMMIT_RESULT" == "success" && "${{ needs.stryker-preflight.result }}" == "success" ]]; then
-              # Preflight is safe to overlap with coverage, but no execution or
-              # aggregate lane may start on a failed/cancelled coverage gate.
+              # No execution or aggregate lane may start on a
+              # failed/cancelled coverage gate.
               assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
               assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "skipped"
               assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "skipped"

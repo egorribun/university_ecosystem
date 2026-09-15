@@ -385,7 +385,8 @@
             "storageBackend": {"type": "string", "enum": ["static", "s3", "minio"]},
             "storageS3Bucket": {"type": "string"}, "storageS3Region": {"type": "string"},
             "storageS3EndpointURL": {"type": "string"}, "storageS3BaseURL": {"type": "string"},
-            "minioSecure": {"type": "boolean"}, "flagdHost": {"type": "string"},
+            "minioSecure": {"type": "boolean"}, "eventFileScannerEnabled": {"type": "boolean"},
+            "flagdHost": {"type": "string"},
             "flagdPort": {"type": "integer", "minimum": 1, "maximum": 65535}
           }
         }

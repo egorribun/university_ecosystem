@@ -58,6 +58,7 @@ def test_config_security_invariants():
     """Test Spotify and NATS security validation in production."""
     settings = Settings(_allow_missing=True)
     settings.environment = "production"
+    settings.event_file_scanner_enabled = True
 
     # Missing spotify token
     settings.spotify_token_secret = ""
@@ -94,6 +95,7 @@ def test_config_dependent_settings_warnings():
     """Test low pool size and identical read replica warnings in production."""
     settings = Settings(_allow_missing=True)
     settings.environment = "production"
+    settings.event_file_scanner_enabled = True
     # Production authentication-capable settings must always use an explicit
     # dedicated revocation store; the loopback URL is reserved for local runs.
     settings.revocation_redis_url = "redis://revocation.internal:6379/0"
@@ -119,6 +121,20 @@ def test_config_dependent_settings_warnings():
         "database_read_replica_url is identical to database_url" in str(call.args[0])
         for call in mock_logger.warning.call_args_list
     )
+
+
+def test_staging_requires_file_scanner():
+    settings = Settings(_allow_missing=True)
+    settings.environment = "staging"
+    settings.event_file_scanner_enabled = False
+    with pytest.raises(ValueError, match="EVENT_FILE_SCANNER_ENABLED"):
+        settings._validate_dependent_settings()
+
+    settings.app_process_role = "outbox-worker"
+    settings.revocation_redis_access_enabled = False
+    settings.event_file_scanner_enabled = True
+    assert settings.event_file_scanner_enabled is True
+    assert settings._validate_dependent_settings() is settings
 
 
 def test_app_base_url_clean():

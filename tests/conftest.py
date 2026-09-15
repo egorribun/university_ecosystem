@@ -1037,9 +1037,15 @@ def pytest_collection_modifyitems(config, items):
 
         from collections import defaultdict
 
+        # Keep the complete collection before filtering so CI can prove that
+        # the four selected shard populations are a disjoint cover of the
+        # same test universe.  The manifest is opt-in through the environment
+        # and therefore does not create files during ordinary local runs.
+        all_items = list(items)
+
         # 1. Group items by file
         file_to_items = defaultdict(list)
-        for item in items:
+        for item in all_items:
             rel_path = os.path.relpath(item.fspath, PROJECT_ROOT).replace("\\", "/")
             file_to_items[rel_path].append(item)
 
@@ -1074,9 +1080,29 @@ def pytest_collection_modifyitems(config, items):
         allowed_files = set(shards[shard_id])
         sharded_items = [
             item
-            for item in items
+            for item in all_items
             if os.path.relpath(item.fspath, PROJECT_ROOT).replace("\\", "/")
             in allowed_files
         ]
 
         items[:] = sharded_items
+
+        manifest_path = os.environ.get("PYTEST_SHARD_MANIFEST", "").strip()
+        if manifest_path:
+            from scripts.quality.pytest_shard_manifest import (
+                ManifestError,
+                write_manifest,
+            )
+
+            try:
+                write_manifest(
+                    Path(manifest_path),
+                    shard_id=shard_id,
+                    num_shards=num_shards,
+                    all_nodeids=[str(item.nodeid) for item in all_items],
+                    selected_nodeids=[str(item.nodeid) for item in sharded_items],
+                )
+            except (AttributeError, ManifestError) as error:
+                raise pytest.UsageError(
+                    f"Unable to write pytest shard manifest: {error}"
+                ) from error

@@ -411,7 +411,9 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     assert "coverage phase barrier" in matrix_step["run"]
     assert 'echo "- Mutmut producer max concurrency: 10"' in matrix_step["run"]
     assert 'echo "- Stryker producer max concurrency: 6"' in matrix_step["run"]
-    assert "global hosted-runner cap: 20" in matrix_step["run"]
+    assert "Repository mutation concurrency budget: 20" in matrix_step["run"]
+    assert "not globally enforced" in matrix_step["run"]
+    assert "global hosted-runner cap" not in matrix_step["run"]
 
     # After the coverage phase barrier, the two producer lanes consume the
     # Keep four hosted runners reserved for required diagnostics/aggregation.

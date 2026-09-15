@@ -99,6 +99,26 @@ def test_private_attachment_helpers_fail_closed_for_invalid_paths() -> None:
         )
         is None
     )
+    # A flat key under the protected prefix must match the generated-key
+    # contract; otherwise it must not be exposed as a downloadable filename.
+    assert (
+        private_attachment_filename(
+            "/static/chat_uploads/not-a-valid-flat-name.pdf", "chat"
+        )
+        is None
+    )
+    # The hierarchical compatibility path must reject an invalid resource id
+    # instead of treating a user-controlled key as a valid private attachment.
+    assert (
+        private_attachment_filename("/static/chat_uploads/chat_bad!id/file.pdf", "chat")
+        is None
+    )
+    assert (
+        private_attachment_filename(
+            f"/static/chat_uploads/chat_{attachment_id}/bad file.pdf", "chat"
+        )
+        is None
+    )
     assert (
         private_attachment_url(
             "event", attachment_id, "/static/event_files/event_id/../../secret"

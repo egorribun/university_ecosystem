@@ -203,6 +203,9 @@ backend:
     storageS3EndpointURL: ""
     storageS3BaseURL: ""
     minioSecure: false
+    # Malware scanning is opt-in for local development and mandatory in
+    # staging/production (validated by the chart and backend at startup).
+    eventFileScannerEnabled: false
     # OpenFeature RPC provider endpoint. The flagd Service is deployed from
     # k8s/flagd/ in the same namespace by the GitOps stack.
     flagdHost: "flagd"

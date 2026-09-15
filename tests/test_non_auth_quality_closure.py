@@ -554,6 +554,7 @@ def _settings_values() -> dict[str, object]:
     return {
         "_allow_missing": True,
         "environment": "staging",
+        "event_file_scanner_enabled": True,
         "database_url": "sqlite+aiosqlite:///:memory:",
         "algorithm": "RS256",
         "revocation_redis_url": "redis://revocation.internal:6380/0",

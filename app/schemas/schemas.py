@@ -456,7 +456,7 @@ class NewsCreate(BaseModel):
     title: SanitizedStr
     content: SafeRichText
     title_en: SanitizedInput = None
-    content_en: SanitizedInput = None
+    content_en: SafeRichText | None = None
     image_url: str | None = None
 
 
@@ -464,7 +464,7 @@ class NewsUpdate(BaseModel):
     title: SanitizedStr | None = None
     content: SafeRichText | None = None
     title_en: SanitizedInput = None
-    content_en: SanitizedInput = None
+    content_en: SafeRichText | None = None
     image_url: str | None = None
 
 

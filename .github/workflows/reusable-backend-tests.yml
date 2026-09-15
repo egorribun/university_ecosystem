@@ -164,6 +164,7 @@ jobs:
                   SHARD_ID: ${{ inputs.shard-id }}
                   NUM_SHARDS: ${{ inputs.num-shards }}
                   COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
+                  PYTEST_SHARD_MANIFEST: artifacts/coverage/python/pytest-shard-${{ inputs.shard-id }}.json
               run: |
                   # Keep all caller-controlled values in the step environment.
                   # Interpolating them into PowerShell source would turn a
@@ -280,13 +281,17 @@ jobs:
               run: |
                   set -euo pipefail
                   source_report=".coverage.$SHARD_ID"
+                  source_manifest="artifacts/coverage/python/pytest-shard-$SHARD_ID.json"
                   producer_root="artifacts/coverage/python/producer"
                   staged_report="$producer_root/.coverage.shard-$SHARD_ID"
+                  staged_manifest="$producer_root/pytest-shard-$SHARD_ID.json"
                   metadata="$producer_root/coverage-provenance-shard-$SHARD_ID.json"
                   test -s "$source_report"
+                  test -s "$source_manifest"
                   rm -rf -- "$producer_root"
                   mkdir -p "$producer_root"
                   cp "$source_report" "$staged_report"
+                  cp "$source_manifest" "$staged_manifest"
                   python_version="$(python3 -c 'import platform; print(platform.python_version())')"
                   coverage_version="$(uv run coverage --version | awk 'NR == 1 {print $2}')"
                   python3 scripts/quality/coverage_provenance.py write \
@@ -306,7 +311,8 @@ jobs:
                     --tool-version "python=$python_version" \
                     --tool-version "coverage.py=$coverage_version" \
                     --tool-version quality-provenance=2.0.0 \
-                    --report "python-shard|coverage-py-data|$staged_report|artifacts/coverage/python/shards/.coverage.shard-$SHARD_ID"
+                    --report "python-shard|coverage-py-data|$staged_report|artifacts/coverage/python/shards/.coverage.shard-$SHARD_ID" \
+                    --report "python-shard|pytest-node-manifest|$staged_manifest|artifacts/coverage/python/shards/pytest-shard-$SHARD_ID.json"
 
             - name: Upload raw coverage data for aggregation
               if: ${{ inputs.num-shards > 1 }}
@@ -315,6 +321,7 @@ jobs:
                   name: backend-coverage-data-${{ inputs.test-group-name }}-attempt-${{ github.run_attempt }}
                   path: |
                       artifacts/coverage/python/producer/.coverage.shard-${{ inputs.shard-id }}
+                      artifacts/coverage/python/producer/pytest-shard-${{ inputs.shard-id }}.json
                       artifacts/coverage/python/producer/coverage-provenance-shard-${{ inputs.shard-id }}.json
                   include-hidden-files: true
                   if-no-files-found: error

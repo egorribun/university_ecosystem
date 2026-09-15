@@ -205,6 +205,9 @@
   {{- if not .Values.backend.config.minioSecure -}}
     {{- fail "backend.config.minioSecure=true is required in staging/production" -}}
   {{- end -}}
+  {{- if not .Values.backend.config.eventFileScannerEnabled -}}
+    {{- fail "backend.config.eventFileScannerEnabled=true is required in staging/production" -}}
+  {{- end -}}
   {{- if not (has .Values.backend.config.storageBackend (list "s3" "minio")) -}}
     {{- fail "backend.config.storageBackend must be s3 or minio in staging/production" -}}
   {{- end -}}

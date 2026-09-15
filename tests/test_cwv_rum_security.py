@@ -707,6 +707,7 @@ def test_staging_settings_redact_secret_and_reject_partial_oidc_policy() -> None
     values = {
         "_allow_missing": True,
         "environment": "staging",
+        "event_file_scanner_enabled": True,
         "database_url": "sqlite+aiosqlite:///:memory:",
         "revocation_redis_url": "redis://revocation.internal:6379/0",
         "algorithm": "RS256",
@@ -742,6 +743,7 @@ def test_staging_settings_reject_invalid_ttl_origin_and_tester_cohort() -> None:
     base = {
         "_allow_missing": True,
         "environment": "staging",
+        "event_file_scanner_enabled": True,
         "database_url": "sqlite+aiosqlite:///:memory:",
         "revocation_redis_url": "redis://revocation.internal:6379/0",
         "algorithm": "RS256",

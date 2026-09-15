@@ -144,6 +144,56 @@ async def test_save_image_success_writes_optimized_payload():
 
 
 @pytest.mark.asyncio
+async def test_save_image_maps_pixel_budget_to_payload_too_large():
+    from app.utils.images import ImagePixelLimitError
+
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(b"raw"),
+        headers={"content-type": "image/png"},
+    )
+    with (
+        patch.object(files_module, "_read_limited", new=AsyncMock(return_value=b"raw")),
+        patch.object(files_module, "_detect_image_mime", return_value="image/png"),
+        patch.object(files_module, "_looks_like_polyglot", return_value=False),
+        patch.object(
+            files_module,
+            "optimize_image",
+            side_effect=ImagePixelLimitError(10_000, 10_000, 25_000_000),
+        ),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await save_image(upload, "avatars", "user")
+
+    assert exc_info.value.status_code == 413
+
+
+@pytest.mark.asyncio
+async def test_save_image_maps_pillow_decompression_bomb_to_payload_too_large():
+    from PIL import Image as PILImage
+
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(b"raw"),
+        headers={"content-type": "image/png"},
+    )
+    with (
+        patch.object(files_module, "_read_limited", new=AsyncMock(return_value=b"raw")),
+        patch.object(files_module, "_detect_image_mime", return_value="image/png"),
+        patch.object(files_module, "_looks_like_polyglot", return_value=False),
+        patch("app.utils.images.VIPS_AVAILABLE", False),
+        patch(
+            "app.utils.images.Image.open",
+            side_effect=PILImage.DecompressionBombError("decoder bomb"),
+        ),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await save_image(upload, "avatars", "user")
+
+    assert exc_info.value.status_code == 413
+
+
+@pytest.mark.asyncio
 async def test_save_image_rejects_polyglot_after_mime_detection():
     upload = UploadFile(
         filename="avatar.png",

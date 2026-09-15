@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -34,17 +33,20 @@ else:
     Pact = pact_lib.Pact
     match = pact_lib.match
 
-PACT_DIR = Path(__file__).parent / "pacts"
 CONSUMER_NAME = "file-processor"
 PROVIDER_NAME = "university-backend"
 
 
 @pytest.fixture(scope="module")
 def pact() -> Pact:
-    PACT_DIR.mkdir(parents=True, exist_ok=True)
+    """Consumer-only schema Pact; backend provider replay is not available.
+
+    The file-processor subscriber is covered here as a local schema sentinel,
+    while no backend Pact provider handler publishes ``files.process`` yet.
+    Do not emit an orphan artifact that cannot be replayed in CI.
+    """
     p = Pact(CONSUMER_NAME, PROVIDER_NAME)
     yield p.with_specification("V4")
-    p.write_file(PACT_DIR, overwrite=True)
 
 
 def _files_process_handler(

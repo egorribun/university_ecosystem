@@ -206,3 +206,34 @@ async def test_event_file_download_missing_parent_file_storage_and_id() -> None:
                 checker=checker,
             )
     assert missing_file.value.status_code == 404
+
+    # A matching private key whose backing object disappeared must map to the
+    # same non-enumerating 404 contract as an unknown attachment.
+    matching_name = f"event_{event_id}_0123456789abcdef0123456789abcdef.pdf"
+    matching_url = f"/static/event_files/{matching_name}"
+    db.execute = AsyncMock()
+    with (
+        patch.object(events_api, "resolve_locale", return_value="en"),
+        patch.object(
+            events_api.EventRepository,
+            "get_event_files",
+            new=AsyncMock(return_value=[SimpleNamespace(file_url=matching_url)]),
+        ),
+        patch.object(
+            events_api,
+            "_get_storage_backend",
+            return_value=SimpleNamespace(
+                read_file=AsyncMock(side_effect=FileNotFoundError)
+            ),
+        ),
+    ):
+        with pytest.raises(HTTPException) as storage_missing:
+            await events_api.download_event_file(
+                event_id,
+                matching_name,
+                request=SimpleNamespace(),
+                db=db,
+                user=user,
+                checker=checker,
+            )
+    assert storage_missing.value.status_code == 404

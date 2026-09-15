@@ -193,6 +193,8 @@ def test_default_nats_values_use_upstream_jetstream_and_persistence_tree() -> No
 def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
     values = _values(STAGING_VALUES)
 
+    assert values["backend"]["config"]["eventFileScannerEnabled"] is True
+
     assert values["global"] == {
         "environment": "staging",
         "imageRegistry": "",
@@ -543,6 +545,30 @@ def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
 
     assert result.returncode != 0
     assert "unresolved REQUIRED_ marker" in result.stderr
+
+
+def test_validate_config_requires_file_scanning_in_release_environments() -> None:
+    template = (CHART / "templates" / "validate-config.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "backend.config.eventFileScannerEnabled" in template
+
+
+def test_outbox_worker_receives_release_file_scanner_guard() -> None:
+    resources = _render_staging(release_name="outbox-scanner-contract")
+    outbox = _component_resource(resources, "Deployment", "outbox-worker")
+    scanner_values = [
+        item.get("value")
+        for item in outbox["spec"]["template"]["spec"]["containers"][0]["env"]
+        if item.get("name") == "EVENT_FILE_SCANNER_ENABLED"
+    ]
+    assert scanner_values == ["true"]
+
+    template = (CHART / "templates" / "outbox-worker-deployment.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "EVENT_FILE_SCANNER_ENABLED" in template
+    assert "backend.config.eventFileScannerEnabled" in template
 
 
 def test_staging_render_rejects_a_missing_first_party_digest() -> None:

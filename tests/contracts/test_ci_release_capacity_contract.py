@@ -186,11 +186,17 @@ def test_mutmut_artifact_producers_use_explicit_read_only_permissions() -> None:
         assert jobs[job_name]["permissions"] == expected_permissions
 
 
-def test_stryker_preflight_does_not_wait_for_frontend_lighthouse() -> None:
+def test_stryker_preflight_waits_for_frontend_qualification() -> None:
     jobs = _workflow(CI)["jobs"]
     preflight = jobs["stryker-preflight"]
-    assert preflight["needs"] == ["pre-commit-check"]
-    assert "needs.frontend-tests.result" not in str(preflight.get("if", ""))
+    assert preflight["needs"] == [
+        "pre-commit-check",
+        "e2e-wasm-build",
+        "frontend-tests",
+    ]
+    preflight_condition = str(preflight.get("if", ""))
+    assert "needs.frontend-tests.result == 'success'" in preflight_condition
+    assert "needs.e2e-wasm-build.result == 'success'" in preflight_condition
     assert jobs["stryker-shards"]["needs"] == [
         "stryker-preflight",
         "coverage-policy-gate",

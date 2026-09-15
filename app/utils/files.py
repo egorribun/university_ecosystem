@@ -352,9 +352,19 @@ async def save_image(
             data,
             max_width=getattr(settings, "image_max_width", 0),
             max_height=getattr(settings, "image_max_height", 0),
+            max_pixels=getattr(settings, "image_max_pixels", 0),
             content_type=detected_type,
         )
     except ValueError as exc:
+        # Keep the Pillow dependency lazy while mapping the explicit resource
+        # policy to 413 instead of treating it as an unsupported media type.
+        from app.utils.images import ImagePixelLimitError
+
+        if isinstance(exc, ImagePixelLimitError):
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=translate("errors.files.too_large", locale=locale),
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=(

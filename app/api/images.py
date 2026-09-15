@@ -9,6 +9,7 @@ from app.core.ratelimit import sensitive_route_limit
 from app.services.image_proxy import get_transformed_image
 from app.services.private_attachments import is_private_attachment_path
 from app.utils.files import _get_storage_backend
+from app.utils.images import ImagePixelLimitError
 
 router = APIRouter(tags=["images"])
 logger = get_logger(__name__)
@@ -103,6 +104,12 @@ async def proxy_image(
                     "HIT" if target_width else "MISS"
                 ),  # Simplified indication
             },
+        )
+    except ImagePixelLimitError:
+        raise_http_error(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            "errors.files.too_large",
+            "en",
         )
     except ValueError:
         # Often file not found in storage

@@ -766,11 +766,29 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
     assert "test_ws_hub_contract.py" in consumer_text
     assert "test_gateway_rest_contract.py" in consumer_text
     assert "test_file_processor_grpc_contract.py" in consumer_text
-    assert "test_files_process_contract.py" in consumer_text
+    # These two schemas currently have no independently replayable provider:
+    # the callback sender is not implemented in file-processor, and the
+    # files.process producer is not exposed as a backend provider handler.
+    # Keep them in the consumer-side CI contract suite, but do not let the
+    # cross-process artifact job publish an unverified/orphan Pact file.
+    assert "test_file_processor_contract.py" not in consumer_text
+    assert "test_files_process_contract.py" not in consumer_text
+    consumer_only_ci = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "uv run pytest tests/contracts/" in consumer_only_ci
+    assert '-k "not integration"' in consumer_only_ci
+    assert (
+        "--ignore=tests/contracts/test_file_processor_contract.py"
+        not in consumer_only_ci
+    )
+    assert (
+        "--ignore=tests/contracts/test_files_process_contract.py"
+        not in consumer_only_ci
+    )
     assert "test_nats_message_contract.py" in consumer_text
     assert "ws-hub-university-backend.json" in artifact_path
     assert "gateway-university-backend.json" in artifact_path
     assert "university-backend-file-processor.json" in artifact_path
+    assert "file-processor-university-backend.json" not in artifact_path
 
     message_provider_text = "\n".join(
         str(step.get("run", ""))
@@ -786,6 +804,25 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
     assert "go test -tags contract" in message_provider_text
     assert "scripts/quality/verify_pact_provider.py" in http_provider_text
     assert "uvicorn app.main:app" in http_provider_text
+
+
+def test_unreplayed_file_processor_pacts_remain_consumer_only() -> None:
+    """Unreplayed schemas must not create artifacts consumed as provider pacts."""
+
+    for filename in (
+        "test_file_processor_contract.py",
+        "test_files_process_contract.py",
+    ):
+        source = (REPOSITORY_ROOT / "tests" / "contracts" / filename).read_text(
+            encoding="utf-8"
+        )
+        assert ".write_file(" not in source
+
+    workflow = yaml.safe_load(PACT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    consumer = workflow["jobs"]["consumer"]
+    artifact_path = str(consumer["steps"][-1]["with"]["path"])
+    assert "file-processor-university-backend.json" not in artifact_path
+    assert "university-backend-file-processor.json" in artifact_path
 
 
 def test_pact_privileged_install_preserves_configured_go_toolchain() -> None:
@@ -2366,7 +2403,17 @@ def test_mutation_lanes_are_readiness_gated_and_use_the_runner_budget() -> None:
 
     assert jobs["frontend-tests"]["needs"] == ["e2e-wasm-build"]
     assert "pre-commit-check" not in jobs["frontend-tests"]["needs"]
-    assert jobs["stryker-preflight"]["needs"] == ["pre-commit-check"]
+    assert jobs["stryker-preflight"]["needs"] == [
+        "pre-commit-check",
+        "e2e-wasm-build",
+        "frontend-tests",
+    ]
+    assert jobs["stryker-preflight"]["if"] == (
+        "${{ github.event_name == 'pull_request' && "
+        "needs.pre-commit-check.result == 'success' && "
+        "needs.e2e-wasm-build.result == 'success' && "
+        "needs.frontend-tests.result == 'success' }}"
+    )
     assert jobs["stryker-shards"]["needs"] == [
         "stryker-preflight",
         "coverage-policy-gate",
@@ -2574,9 +2621,10 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
 def test_mutation_jobs_cache_only_lock_bound_uv_packages() -> None:
     """Mutation fan-out must reuse immutable packages, never execution evidence.
 
-    A PR mutation run starts up to eight stats workers and permits up to twenty
-    exact-mutant workers per execution family; GitHub's global hosted-runner cap
-    owns aggregate admission when families overlap.  The package cache is keyed
+    A PR mutation run starts up to eight stats workers and permits up to ten
+    exact-mutant workers in the mutmut execution family (plus six Stryker
+    workers).  These are workflow-local operational budgets; no GitHub-global
+    semaphore owns admission when companion workflows overlap.  The package cache is keyed
     by the locked dependency graph; the per-run mutmut universe and execution
     proofs remain attempt-scoped artifacts and are deliberately not part of that
     cache.
@@ -3224,6 +3272,7 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
         "SHARD_ID": "${{ inputs.shard-id }}",
         "NUM_SHARDS": "${{ inputs.num-shards }}",
         "COVERAGE_THRESHOLD": "${{ inputs.coverage-threshold }}",
+        "PYTEST_SHARD_MANIFEST": "artifacts/coverage/python/pytest-shard-${{ inputs.shard-id }}.json",
     }
     integration_run_step = next(
         step
@@ -4586,8 +4635,17 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     )
     jobs = ci_workflow["jobs"]
     mutation_preflight = jobs["stryker-preflight"]
-    assert mutation_preflight["needs"] == ["pre-commit-check"]
-    assert "github.event_name == 'pull_request'" in mutation_preflight["if"]
+    assert mutation_preflight["needs"] == [
+        "pre-commit-check",
+        "e2e-wasm-build",
+        "frontend-tests",
+    ]
+    assert mutation_preflight["if"] == (
+        "${{ github.event_name == 'pull_request' && "
+        "needs.pre-commit-check.result == 'success' && "
+        "needs.e2e-wasm-build.result == 'success' && "
+        "needs.frontend-tests.result == 'success' }}"
+    )
     assert mutation_preflight["permissions"] == {
         "contents": "read",
         "actions": "read",
@@ -6804,6 +6862,14 @@ def test_coverage_aggregate_uses_scoped_current_run_artifacts_only() -> None:
         in str(backend_verify["run"])
     )
     assert (
+        "test \"$(find artifacts/coverage/python/shards -name 'pytest-shard-*.json' -type f | wc -l)\" -eq 4"
+        in str(backend_verify["run"])
+    )
+    assert (
+        'test "$(find artifacts/coverage/python/shards -type f | wc -l)" -eq 12'
+        in str(backend_verify["run"])
+    )
+    assert (
         "test \"$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)\" -eq 4"
         in verify_run
     )
@@ -7463,10 +7529,12 @@ def test_backend_shards_publish_and_aggregate_current_attempt_lineage() -> None:
         "-attempt-${{ github.run_attempt }}"
     )
     assert "python-shard|coverage-py-data" in provenance_run
+    assert "python-shard|pytest-node-manifest" in provenance_run
     upload = _provenance_step(unit_job, "Upload raw coverage data for aggregation")
     assert upload["with"]["name"].endswith("-attempt-${{ github.run_attempt }}")
     assert set(str(upload["with"]["path"]).splitlines()) == {
         "artifacts/coverage/python/producer/.coverage.shard-${{ inputs.shard-id }}",
+        "artifacts/coverage/python/producer/pytest-shard-${{ inputs.shard-id }}.json",
         "artifacts/coverage/python/producer/coverage-provenance-shard-${{ inputs.shard-id }}.json",
     }
 

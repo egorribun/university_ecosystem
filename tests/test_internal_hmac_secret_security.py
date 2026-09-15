@@ -5,7 +5,10 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.core.config.security import SecuritySettings
+from app.core.config.security import (
+    SecuritySettings,
+    _validate_internal_hmac_secret_strength,
+)
 
 
 def _production_settings(**overrides: str) -> SecuritySettings:
@@ -67,3 +70,8 @@ def test_development_internal_hmac_secret_keeps_compatibility_with_short_values(
     settings = SecuritySettings(internal_hmac_secret="dev-secret")
 
     assert settings.internal_hmac_secret == "dev-secret"  # pragma: allowlist secret
+
+
+def test_internal_hmac_strength_rejects_short_material_before_entropy_checks() -> None:
+    with pytest.raises(ValueError, match="at least 32 bytes of entropy"):
+        _validate_internal_hmac_secret_strength("short", label="INTERNAL_HMAC_SECRET")
