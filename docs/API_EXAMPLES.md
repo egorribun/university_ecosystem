@@ -16,8 +16,8 @@ Content-Type: application/json
 ```
 
 The successful response contains the user/session payload and sets the
-HttpOnly `access_token_v2` cookie. It does not return an `access_token` in the
-JSON body. Keep the response cookie in the client cookie jar.
+HttpOnly `access_token_v2` cookie. It does not return a bearer token field in
+the JSON body. Keep the response cookie in the client cookie jar.
 
 If another factor is required, the endpoint returns `202 Accepted` with a
 challenge envelope similar to:
