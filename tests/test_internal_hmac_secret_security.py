@@ -65,6 +65,18 @@ def test_production_internal_hmac_secret_accepts_random_material(
     assert settings.internal_hmac_secret == configured
 
 
+def test_production_internal_hmac_secret_accepts_exactly_four_distinct_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Four distinct bytes are the lower boundary of the diversity guard."""
+    monkeypatch.setenv("ENVIRONMENT", "production")
+
+    configured = "A" * 29 + "BCD"  # pragma: allowlist secret
+    settings = _production_settings(internal_hmac_secret=configured)
+
+    assert settings.internal_hmac_secret == configured
+
+
 def test_development_internal_hmac_secret_keeps_compatibility_with_short_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
