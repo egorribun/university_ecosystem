@@ -12,6 +12,7 @@ identifiers and tokens below are placeholders.
 POST /api/v1/auth/login/json
 Content-Type: application/json
 
+# pragma: allowlist nextline secret -- documentation-only placeholder; never use as a credential
 {"email":"student@example.test","password":"replace-me","trust_device":false}
 ```
 
@@ -69,6 +70,7 @@ contract. Do not log or persist cookie values.
 POST /api/v1/auth/register
 Content-Type: application/json
 
+# pragma: allowlist nextline secret -- documentation-only placeholder; never use as a credential
 {"email":"new@example.test","password":"replace-me","full_name":"Jane Smith"}
 ```
 
