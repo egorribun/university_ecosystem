@@ -7117,3 +7117,40 @@ run evidence is diagnostic and must not be promoted. A subsequent non-force
 push is required, followed by terminal inspection of every required matrix
 job, current coverage/mutation manifest and all external release gates. The
 roadmap remains `EVIDENCE-BLOCKED / EXTERNAL-ONLY`.
+
+## 129. Current-SHA security requirements contract drift (2026-09-15)
+
+The fresh matrix for source SHA `49a00de712760f4db140454184063bd91a057df8`
+(`35005059789`) exposed one deterministic contract failure in backend unit
+shard `104504553148`. The shard completed `2822 passed, 24 skipped` before
+`tests/test_security_hardening_workflow_contract.py::test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked`
+failed. The failure was not a scanner finding: Dependabot commit `93add6c3c`
+had updated the hash-locked security runtime from `requests==2.33.1`,
+`certifi==2026.4.22`, `charset-normalizer==3.4.7`, and `idna==3.18` to the
+current locked versions `requests==2.34.2`, `certifi==2026.7.22`,
+`charset-normalizer==3.5.1`, and `idna==3.19`, with multiple platform wheel
+hashes where the test still expected one old digest.
+
+The RED/GREEN fix updates the contract to the exact current locked versions
+and representative digests, parses every non-comment requirement line, and
+requires each listed wheel hash to be a strict 64-hex SHA-256 token. It also
+asserts that no unreviewed package line is added. `--require-hashes`,
+`--only-binary=:all:`, the immutable workflow install and the dependency
+security gate are unchanged; no skip, suppression, downgrade or retry was
+introduced. Focused verification is green:
+
+```text
+uv run pytest -q tests/test_security_hardening_workflow_contract.py
+7 passed in 3.52s
+uv run ruff check tests/test_security_hardening_workflow_contract.py
+All checks passed!
+uv run ruff format --check tests/test_security_hardening_workflow_contract.py
+1 file already formatted
+```
+
+Because this fix changes the tested source, the `49a00de7` matrix (including
+its otherwise-green jobs) is diagnostic and must not be promoted. Commit and
+push the corrected test plus this checkpoint non-force, then require a new
+exact-SHA matrix and re-audit every current failure, mutation/coverage
+artifact, security result and release boundary. The roadmap remains
+`EVIDENCE-BLOCKED / EXTERNAL-ONLY` until that terminal evidence exists.

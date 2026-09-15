@@ -104,17 +104,24 @@ def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_lock
     expected = {
         "detect-secrets==1.5.0": "e24e7b9b5a35048c313e983f76c4bd09dad89f045ff059e354f9943bf45aa060",  # pragma: allowlist secret -- wheel checksum
         "PyYAML==6.0.3": "c458b6d084f9b935061bc36216e8a69a7e293a2f1e68bf956dcd9e6cbcd143f5",  # pragma: allowlist secret -- wheel checksum
-        "requests==2.33.1": "4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a",  # pragma: allowlist secret -- wheel checksum
-        "certifi==2026.4.22": "3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a",  # pragma: allowlist secret -- wheel checksum
-        "charset-normalizer==3.4.7": "bd6c2a1c7573c64738d716488d2cdd3c00e340e4835707d8fdb8dc1a66ef164e",  # pragma: allowlist secret -- wheel checksum
-        "idna==3.18": "7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2",  # pragma: allowlist secret -- wheel checksum
+        "requests==2.34.2": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",  # pragma: allowlist secret -- wheel checksum
+        "certifi==2026.7.22": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",  # pragma: allowlist secret -- wheel checksum
+        "charset-normalizer==3.5.1": "00668ebb0609751758682eb0b5857e7c35b9f00e84dfdef062e103244ec94d45",  # pragma: allowlist secret -- wheel checksum
+        "idna==3.19": "5e0811a4383b21dc5838069f801c4fb62113b7447663d2530d2bd6e77b49bf15",  # pragma: allowlist secret -- wheel checksum
         "urllib3==2.7.0": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",  # pragma: allowlist secret -- wheel checksum
     }
+    requirement_lines = {
+        line.split(maxsplit=1)[0]: line
+        for line in requirements.splitlines()
+        if line and not line.startswith("#") and not line.startswith("--")
+    }
+    assert set(requirement_lines) == set(expected)
     for requirement, digest in expected.items():
-        assert re.search(
-            rf"(?m)^{re.escape(requirement)}\s+--hash=sha256:{digest}\s*$",
-            requirements,
-        )
+        line = requirement_lines[requirement]
+        hashes = re.findall(r"--hash=sha256:([0-9a-f]{64})", line)
+        assert hashes
+        assert digest in hashes
+        assert len(line.split()) == 1 + len(hashes)
 
 
 def test_security_audit_trivy_bootstrap_is_immutable_and_checksum_verified() -> None:
