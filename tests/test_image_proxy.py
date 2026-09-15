@@ -7,14 +7,26 @@ Coverage targets:
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import app.services.image_proxy as image_proxy
 from app.services.image_proxy import (
     _guess_mime,
     _sanitize_path_input,
     _validate_path_within_base,
 )
+from app.utils.images import DEFAULT_MAX_IMAGE_PIXELS
+
+
+def test_configured_image_max_pixels_uses_default_when_setting_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(image_proxy, "settings", SimpleNamespace())
+
+    assert image_proxy._configured_image_max_pixels() == DEFAULT_MAX_IMAGE_PIXELS
+
 
 # ============================================================
 # _sanitize_path_input tests

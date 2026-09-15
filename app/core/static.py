@@ -38,10 +38,14 @@ class PublicStaticFiles(StaticFiles):
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         if is_private_static_path(path):
+            # HTTP field names are case-insensitive and Starlette lowercases
+            # them before emitting ASGI raw headers.  Keep this spelling for
+            # source readability; the value remains fully mutation-tested.
+            cache_control_header = "Cache-Control"  # pragma: no mutate
             return Response(
                 status_code=404,
                 headers={
-                    "Cache-Control": "no-store",
+                    cache_control_header: "no-store",
                     "X-Content-Type-Options": "nosniff",
                 },
             )

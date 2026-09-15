@@ -52,13 +52,17 @@ logger = get_logger(__name__)
 
 # Redis cache TTL for transformed images (7 days)
 _CACHE_TTL = 7 * 24 * 60 * 60
+_MISSING_IMAGE_MAX_PIXELS = object()
 
 
 def _configured_image_max_pixels() -> int:
     """Return the bounded image pixel budget used by proxy transformations."""
     from app.utils.images import DEFAULT_MAX_IMAGE_PIXELS
 
-    return int(getattr(settings, "image_max_pixels", 0) or DEFAULT_MAX_IMAGE_PIXELS)
+    configured = getattr(settings, "image_max_pixels", _MISSING_IMAGE_MAX_PIXELS)
+    if configured is _MISSING_IMAGE_MAX_PIXELS:
+        return DEFAULT_MAX_IMAGE_PIXELS
+    return int(cast(int | None, configured) or DEFAULT_MAX_IMAGE_PIXELS)
 
 
 def _validate_image_payload(data: bytes, *, max_pixels: int) -> None:

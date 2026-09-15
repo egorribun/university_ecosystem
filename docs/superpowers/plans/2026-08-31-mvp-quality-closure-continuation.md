@@ -5211,3 +5211,46 @@ the pending changes require a small commit, push, and a new SHA-bound full
 matrix. No mutation inventory, coverage threshold, retry gate, or skip was
 weakened. The staged `.secrets.baseline` refresh and all user-owned untracked
 paths remain preserved and must be rechecked before commit.
+
+## 79. Equivalent-mutant closure for static headers and image limits (2026-09-15; pending push)
+
+The same stale-source matrix later exposed two additional mutmut survivors that
+were proven equivalent under the actual runtime contracts:
+
+- group 19 (`104249723545`) changed only the `Cache-Control` field-name casing
+  in `PublicStaticFiles.get_response`. Starlette lowercases response field
+  names before ASGI emission and HTTP field names are case-insensitive, so no
+  consumer-visible behavior can distinguish the mutation. The source now keeps
+  the readable spelling behind a narrow, documented `# pragma: no mutate` on
+  the key binding; security values (`no-store` and `nosniff`) remain fully
+  mutation-tested by the response contract.
+- group 16 (`104249723409`) changed the `getattr` default for
+  `settings.image_max_pixels` from `0` to `None`. The validated settings model
+  always supplies a positive integer, making both defaults equivalent for a
+  normal deployment. The implementation now uses an explicit unique sentinel
+  for a genuinely absent setting, preserving the existing zero/falsey fallback
+  while making the missing-attribute behavior observable and fail-closed; a
+  focused test covers that compatibility path.
+
+The local regression evidence is:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_image_proxy.py tests/test_private_attachments.py
+    # 41 passed
+
+    uv run ruff check app/core/static.py app/services/image_proxy.py \
+      tests/test_image_proxy.py tests/test_private_attachments.py
+    uv run ruff format --check app/core/static.py app/services/image_proxy.py \
+      tests/test_image_proxy.py tests/test_private_attachments.py
+    uv run mypy --config-file pyproject.toml \
+      app/core/static.py app/services/image_proxy.py
+    git diff --check
+    # all passed
+
+The raw-header experiment was discarded because Starlette intentionally emits
+lower-case ASGI names; the final contract tests therefore assert the required
+case-insensitive security values rather than an invalid wire casing. This is a
+targeted, evidence-backed mutation pragma for an external semantic equivalence,
+not a quality threshold, inventory, or test exclusion. Fresh current-SHA
+mutation evidence is still required before considering either stale survivor
+closed.
