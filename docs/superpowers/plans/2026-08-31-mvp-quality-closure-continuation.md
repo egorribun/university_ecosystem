@@ -6651,3 +6651,87 @@ Until these artifacts exist, the plan status remains
 is permitted. The stale run `34923631288` may be archived as diagnostic
 history after it reaches a terminal state, but it must not be rerun or
 promoted to evidence for this source.
+
+## 120. Current-SHA fixture remediation and authoritative CI boundary (2026-09-15)
+
+This checkpoint supersedes the stale source-identification details in §119
+without rewriting their historical record. It records the next two local
+remediation commits and the last completed hosted run before the next push.
+
+### 120.1 Local source and worktree identity
+
+| Field | Observed value | Interpretation |
+|---|---|---|
+| Active branch | `egorribun` | requested implementation branch; no merge or force-push performed |
+| Local source `HEAD` | `2c20168c31ae76b9d680c29fb31051cd8e89f543` | exact local source after route-summary and staging-fixture fixes |
+| `origin/egorribun` | `bd2354fa7085163d4c1f5a2abec2273d88cb1c8e` | last remote source; does not contain the two local commits |
+| Ahead/behind | `2` commits ahead, `0` behind | push is intentionally deferred until local focused gates and plan checkpoint are complete |
+| User-owned tracked dirty paths | `frontend/WASM_SOURCE_PROVENANCE.json`, `frontend/rust-crypto/pkg/uni_wasm_crypto_bg.wasm`, `frontend/wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm` | generated/provenance artifacts; not logs and not part of either remediation commit |
+| Untracked path | `docs/audits/AUDIT_PLATFORM_FULL.md` | externally supplied audit; preserved and never staged automatically |
+| Archived temporary artifacts | `C:\Temp\university_ecosystem-untracked-archive-20260915` | six old non-audit files moved recoverably; source paths are absent and audit remains in place |
+
+The hash above was captured with `git rev-parse HEAD` after the fixture commit;
+it is the immutable source boundary for the next non-force push. `git diff
+--check` is clean.
+
+### 120.2 Backend shard-2 root cause and fix
+
+Matrix run `34971079773` for source `bd2354fa7085163d4c1f5a2abec2273d88cb1c8e`
+was terminal failure: 118 jobs, 92 success, 24 expected skips, and two
+failures. The only product-relevant failure was backend Python 3.14 shard-2
+job `104394473812`, with 15 staging/CWV tests failing before their intended
+assertions because the test `Settings` fixtures omitted the mandatory
+`INTERNAL_AUTH_TOKEN`. The aggregate `CI Success` job correctly propagated
+that backend failure; it was not an independent defect. Runtime fail-closed
+validation in `app/core/config/mixins/cors_settings.py` remains unchanged.
+
+Commit `2c20168c3` adds one deterministic, explicitly allowlisted
+non-production token fixture to the two affected test modules and passes it
+to every staging settings construction. The independent `.env`-disabled RED →
+GREEN reproduction passed `15` tests after the fix. Broader local evidence:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_cwv_rum_security.py tests/test_non_auth_quality_closure.py \
+      tests/test_jwt_settings_closure.py tests/test_auth_reset_foundation.py \
+      tests/test_route_dependency_inventory.py \
+      tests/test_workflow_fail_closed_contracts.py \
+      tests/test_quality_workflow_contract.py --disable-warnings
+    # 344 passed in 173.71s (0:02:53)
+
+    uv run ruff check tests/test_cwv_rum_security.py \
+      tests/test_non_auth_quality_closure.py
+    uv run ruff format --check tests/test_cwv_rum_security.py \
+      tests/test_non_auth_quality_closure.py
+    git diff --check
+    # all passed
+
+The first commit in this local boundary is `6a65e3177`, which makes route
+dependency inventory validation fail closed on summary drift and regenerates
+the canonical 150-route inventory (`25` Dishka, `112` approved legacy,
+`13` public/worker, mixed ownership `0`). Its focused suite was `5 passed`,
+the route/workflow/quality group was `221 passed`, and the repository harness
+was `29/29`.
+
+### 120.3 Hosted evidence boundary and next action
+
+The same-SHA performance workflow `34971079536` was green (all four jobs),
+and the remaining security, contract, supply-chain, dark unauthenticated
+smoke, browser, Rust, Go, Lighthouse, and Schemathesis workflows for
+`bd2354fa` were green or conditionally skipped. These results are historical
+diagnostics only: they cannot certify local `2c20168c3`.
+
+The next immutable action is a non-force `git push origin egorribun` after the
+plan checkpoint is committed. The resulting SHA-bound matrix must reach a
+terminal state and be paginated from the Actions API; every mutation,
+coverage, manifest, provenance, security, browser, and CI-Success result must
+be classified for that exact SHA. The 24 skips in run `34971079773` remain
+expected guard/dependency skips, not failures, but their guards must be
+rechecked in the new run.
+
+No mutation cap, retry policy, timeout, exclusion, quarantine, suppression,
+coverage floor, or security gate has been weakened. Do not promote the old
+run, the old coverage artifacts, or the currently running Codex Security scan
+(`224f2ae5-d93b-495f-80f7-6c8e5fe29cb1`, owned by another continuation) to
+current-SHA evidence. The plan remains
+`EVIDENCE-BLOCKED / EXTERNAL-ONLY` until the new source has terminal fresh CI,
+current manifests, and the remaining staging/release evidence.
