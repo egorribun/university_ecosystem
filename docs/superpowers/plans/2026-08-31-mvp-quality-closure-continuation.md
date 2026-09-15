@@ -5727,6 +5727,29 @@ then perform the external merge/release gates. User-owned WASM changes,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
 
+## 101. Local contract recertification after g65/g64 closures (2026-09-15; pending push)
+
+After the image-limit and pyvips focused tests, the local quality-contract and
+CI-governance lanes were re-run against the current worktree. Results:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_ci_critical_path_analysis.py \
+      tests/test_ci_health_report.py \
+      tests/test_quality_workflow_contract.py
+    # 236 passed in 82.90s
+
+    uv run python scripts/quality/validate_ci_check_catalog.py
+    # CI check catalog: OK (55 workflows, 182 jobs)
+
+The earlier repository harness remains 29/29, and the focused image suites
+remain 28/28 (`tests/test_images_v2.py`) and 19/19
+(`tests/test_images_vips_full.py`). These are local current-checkout results,
+not substitutes for fresh hosted mutation, coverage, race or release evidence.
+The stale run `34923631288` remains non-terminal and is still bound to
+`2774de52`; its completed failures are mutation-only. User-owned WASM edits,
+temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
+
 ## 100. pyvips input-forwarding survivor closure (2026-09-15; pending push)
 
 Stale run `34923631288` completed mutmut execution group 65 with survivor
