@@ -156,6 +156,84 @@ def test_go_mutation_diagnostic_failure_is_visible_and_target_ledger_is_complete
     assert "FINALIZER_OUTCOME" in reassert
 
 
+def test_go_mutation_failure_artifact_retains_complete_provenance() -> None:
+    """Failure finalization must not drop the identity needed for audit."""
+
+    workflow = _load_workflow()
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    diagnostic = jobs["mutation-diagnostic"]
+    assert isinstance(diagnostic, dict)
+
+    initialize = _step(diagnostic, "Initialize mutation diagnostic evidence")
+    finalize = _step(diagnostic, "Finalize diagnostic failure evidence")
+    reassert = _step(diagnostic, "Re-assert diagnostic outcome")
+    initialize_env = initialize["env"]
+    finalize_env = finalize["env"]
+    assert isinstance(initialize_env, dict)
+    assert isinstance(finalize_env, dict)
+
+    # The checked-out merge commit is a distinct, explicit identity.  Keep
+    # tested_commit_sha as the compatibility alias used by other evidence, but
+    # never infer it from the source-head field.
+    assert initialize_env["TESTED_MERGE_SHA"] == "${{ github.sha }}"
+    assert finalize_env["TESTED_MERGE_SHA"] == "${{ github.sha }}"
+    initialize_run = initialize["run"]
+    assert '"tested_merge_sha": os.environ["TESTED_MERGE_SHA"]' in initialize_run
+    assert '"tested_commit_sha": os.environ["TESTED_MERGE_SHA"]' in initialize_run
+    assert "git rev-parse --verify HEAD" in initialize_run
+
+    # The always-run finalizer must carry every provenance input even when
+    # setup/initialization failed before the normal summary was written.
+    provenance_env = {
+        "SOURCE_HEAD_SHA",
+        "BASE_REF_NAME",
+        "BASE_SHA",
+        "WORKFLOW_REPOSITORY",
+        "WORKFLOW_REF",
+        "WORKFLOW_SHA",
+        "TOOL_VERSION",
+        "GO_VERSION",
+        "CONFIG_SHA256",
+        "RUN_ID",
+        "RUN_ATTEMPT",
+        "EVENT_NAME",
+    }
+    assert provenance_env <= set(finalize_env)
+    finalize_run = finalize["run"]
+    for marker in (
+        '"workflow_repository"',
+        '"workflow_ref"',
+        '"workflow_sha"',
+        '"tool_version"',
+        '"go_version"',
+        '"config_sha256"',
+        '"tested_merge_sha"',
+        "key not in payload",
+        "target_inventory_status",
+    ):
+        assert marker in finalize_run
+
+    # A failed setup still publishes an explicit empty/unavailable inventory;
+    # it must never look like a successful zero-target diagnostic.
+    assert "expected_targets_path.write_text" in finalize_run
+    assert "provenance_status" in finalize_run
+
+    # A successful/no-change summary is accepted only after the final shell
+    # assertion verifies the same identity fields that the finalizer emits.
+    reassert_run = reassert["run"]
+    for marker in (
+        "provenance_status",
+        "resolved",
+        "source_head_sha",
+        "tested_merge_sha",
+        "base_sha",
+        "workflow_sha",
+        "run_attempt",
+    ):
+        assert marker in reassert_run
+
+
 def test_go_mutation_diagnostic_is_explicitly_scheduled_or_manual() -> None:
     workflow = yaml.safe_load(DIAGNOSTIC_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert isinstance(workflow, dict)

@@ -338,7 +338,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
           EVENT_NAME: ${{ github.event_name }}
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
-          EXPECTED_SHA: ${{ github.sha }}
+          TESTED_MERGE_SHA: ${{ github.sha }}
           SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -351,6 +351,27 @@ jobs:
           mkdir -p -- artifacts/go-mutation-diagnostic
           printf '%s\n' none > artifacts/go-mutation-diagnostic/diagnostic-failure.txt
           GO_VERSION="$(go env GOVERSION)"
+          validate_sha() {
+            local value="$1"
+            local label="$2"
+            if [[ ! "$value" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Go mutation provenance $label is not an exact lowercase 40-character SHA."
+              exit 1
+            fi
+          }
+          validate_sha "$TESTED_MERGE_SHA" "tested merge SHA"
+          validate_sha "$SOURCE_HEAD_SHA" "source head SHA"
+          validate_sha "$BASE_SHA" "event base SHA"
+          validate_sha "$WORKFLOW_SHA" "workflow SHA"
+          if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]] || [[ ! "$RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
+            echo "::error::Go mutation provenance workflow run identity is invalid."
+            exit 1
+          fi
+          CHECKED_OUT_SHA="$(git rev-parse --verify HEAD)"
+          if [ "$CHECKED_OUT_SHA" != "$TESTED_MERGE_SHA" ]; then
+            echo "::error::Checked-out Go mutation source does not match the tested merge SHA."
+            exit 1
+          fi
           CONFIG_PATHS=(
             "$SERVICE_DIRECTORY/go.mod"
             "$SERVICE_DIRECTORY/go.sum"
@@ -400,11 +421,13 @@ jobs:
               "status": "diagnostic-only",
               "event": os.environ["EVENT_NAME"],
               "service_directory": os.environ["SERVICE_DIRECTORY"],
-              "commit_sha": os.environ["EXPECTED_SHA"],
-              "tested_commit_sha": os.environ["EXPECTED_SHA"],
+              "commit_sha": os.environ["TESTED_MERGE_SHA"],
+              "tested_commit_sha": os.environ["TESTED_MERGE_SHA"],
+              "tested_merge_sha": os.environ["TESTED_MERGE_SHA"],
               "source_head_sha": os.environ["SOURCE_HEAD_SHA"],
               "base_ref": os.environ["BASE_REF_NAME"],
               "base_sha": os.environ["BASE_SHA"],
+              "provenance_status": "event-input",
               "workflow_repository": os.environ["WORKFLOW_REPOSITORY"],
               "workflow_ref": os.environ["WORKFLOW_REF"],
               "workflow_sha": os.environ["WORKFLOW_SHA"],
@@ -455,7 +478,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
           EVENT_NAME: ${{ github.event_name }}
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
-          EXPECTED_SHA: ${{ github.sha }}
+          TESTED_MERGE_SHA: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
@@ -495,6 +518,7 @@ jobs:
           payload = json.loads(path.read_text(encoding="utf-8"))
           payload["base_sha"] = sys.argv[1]
           payload["base_ref"] = sys.argv[2]
+          payload["provenance_status"] = "resolved"
           payload["updated_at"] = (
               datetime.now(timezone.utc)
               .replace(microsecond=0)
@@ -790,11 +814,18 @@ jobs:
         if: always()
         env:
           DIAGNOSTIC_OUTCOME: ${{ steps.go-mutation.outcome }}
+          EVENT_NAME: ${{ github.event_name }}
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
-          EXPECTED_SHA: ${{ github.sha }}
+          TESTED_MERGE_SHA: ${{ github.sha }}
           SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           BASE_REF_NAME: ${{ github.event.pull_request.base.ref || 'main' }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          TOOL_VERSION: github.com/avito-tech/go-mutesting@v0.0.0-20251226130216-48d0401f00fb
+          GO_VERSION: unavailable
+          CONFIG_SHA256: unavailable
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
@@ -827,6 +858,33 @@ jobs:
           except (FileNotFoundError, json.JSONDecodeError):
               payload = {}
 
+          fallback_provenance = {
+              "event": os.environ["EVENT_NAME"],
+              "workflow_repository": os.environ["WORKFLOW_REPOSITORY"],
+              "workflow_ref": os.environ["WORKFLOW_REF"],
+              "workflow_sha": os.environ["WORKFLOW_SHA"],
+              "tool_version": os.environ["TOOL_VERSION"],
+              "go_version": os.environ["GO_VERSION"],
+              "config_sha256": os.environ["CONFIG_SHA256"],
+              "commit_sha": os.environ["TESTED_MERGE_SHA"],
+              "tested_commit_sha": os.environ["TESTED_MERGE_SHA"],
+              "tested_merge_sha": os.environ["TESTED_MERGE_SHA"],
+              "source_head_sha": os.environ["SOURCE_HEAD_SHA"],
+              "base_ref": os.environ["BASE_REF_NAME"],
+              "base_sha": os.environ["BASE_SHA"],
+              "run_id": os.environ["RUN_ID"],
+              "run_attempt": os.environ["RUN_ATTEMPT"],
+          }
+          for key, value in fallback_provenance.items():
+              if key not in payload or payload[key] in (None, ""):
+                  payload[key] = value
+          if payload.get("provenance_status") != "resolved":
+              payload["provenance_status"] = "fallback"
+              payload["provenance_note"] = (
+                  "Base revision or diagnostic setup was not fully resolved; "
+                  "this artifact is failure evidence only."
+              )
+
           status = payload.get("status")
           if diagnostic_outcome != "success" and status != "failed":
               reason = (
@@ -841,8 +899,9 @@ jobs:
                       "status": "failed",
                       "failure_reason": reason,
                       "service_directory": os.environ["SERVICE_DIRECTORY"],
-                      "commit_sha": os.environ["EXPECTED_SHA"],
-                      "tested_commit_sha": os.environ["EXPECTED_SHA"],
+                      "commit_sha": os.environ["TESTED_MERGE_SHA"],
+                      "tested_commit_sha": os.environ["TESTED_MERGE_SHA"],
+                      "tested_merge_sha": os.environ["TESTED_MERGE_SHA"],
                       "source_head_sha": os.environ["SOURCE_HEAD_SHA"],
                       "base_ref": os.environ["BASE_REF_NAME"],
                       "base_sha": os.environ["BASE_SHA"],
@@ -868,6 +927,10 @@ jobs:
               raise SystemExit("mutation diagnostic summary is missing or invalid")
 
           expected_targets_path = evidence_root / "expected-targets.txt"
+          inventory_available = expected_targets_path.is_file()
+          if not inventory_available:
+              expected_targets_path.parent.mkdir(parents=True, exist_ok=True)
+              expected_targets_path.write_text("", encoding="utf-8")
           expected_targets = (
               [
                   line.strip()
@@ -930,6 +993,9 @@ jobs:
           payload["expected_targets"] = expected_targets
           payload["expected_target_count"] = len(expected_targets)
           payload["unreported_targets"] = unreported_targets
+          payload["target_inventory_status"] = (
+              "complete" if inventory_available else "unavailable"
+          )
           if payload.get("status") == "complete" and (
               unreported_targets
               or any(outcome["status"] != "success" for outcome in outcomes)
@@ -970,6 +1036,47 @@ jobs:
           from pathlib import Path
 
           payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          required_provenance = (
+              "event",
+              "source_head_sha",
+              "tested_merge_sha",
+              "tested_commit_sha",
+              "base_sha",
+              "base_ref",
+              "workflow_repository",
+              "workflow_ref",
+              "workflow_sha",
+              "run_id",
+              "run_attempt",
+              "tool_version",
+              "go_version",
+              "config_sha256",
+              "provenance_status",
+          )
+          missing_provenance = [
+              field
+              for field in required_provenance
+              if not isinstance(payload.get(field), str) or not payload[field]
+          ]
+          if missing_provenance:
+              raise SystemExit(
+                  "mutation diagnostic summary has incomplete provenance: "
+                  + ", ".join(missing_provenance)
+              )
+          if payload["provenance_status"] != "resolved":
+              raise SystemExit("mutation diagnostic provenance is not resolved")
+          if not (
+              payload["commit_sha"]
+              == payload["tested_commit_sha"]
+              == payload["tested_merge_sha"]
+          ):
+              raise SystemExit("mutation diagnostic commit identities do not agree")
+          if payload["event"] != "pull_request" and (
+              payload["source_head_sha"] != payload["tested_merge_sha"]
+          ):
+              raise SystemExit(
+                  "non-pull-request mutation diagnostic source/tested identities differ"
+              )
           status = payload.get("status")
           expected_count = payload.get("expected_target_count")
           outcome_count = payload.get("outcome_count")

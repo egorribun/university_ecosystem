@@ -46,6 +46,17 @@ All summaries and per-target reports carry the commit, base, workflow/run,
 configuration, source and report hashes needed to audit the result. Artifacts
 are uploaded with `if: always()` after fail-closed finalization.
 
+The summary names the checked-out commit explicitly as `tested_merge_sha` and
+retains `tested_commit_sha` as its compatibility alias; neither is inferred
+from `source_head_sha`. Initialization validates the exact checked-out `HEAD`
+against that identity. The always-run failure finalizer receives the complete
+workflow, run, source/base and tool context independently of initialization. If
+setup fails before the target ledger exists, it writes an explicit empty ledger
+with `target_inventory_status: unavailable` and marks the summary
+`provenance_status: fallback`; this is failure evidence and cannot be accepted
+as a zero-target success. Successful/no-change evidence is re-asserted only
+with resolved provenance and mutually consistent commit identities.
+
 The per-target timeout remains bounded at 1,800 seconds and the diagnostic
 job retains an explicit outer deadline. Increasing that deadline alone is not
 considered a fix; future changes must preserve complete-target accounting and
@@ -77,7 +88,8 @@ be justified by measured duration/cost evidence.
 
 - `tests/test_go_mutation_governance_contract.py` checks the standalone
   schedule/manual boundary, independence from the required Go coverage job,
-  provenance fields, expected-target ledger and unconditional artifact upload.
+  success/failure provenance fields, expected-target ledger and unconditional
+  artifact upload.
 - `tests/test_workflow_fail_closed_contracts.py` checks that diagnostic
   command errors are not converted into successful workflow paths.
 - `quality/quality-contract.json` remains the authority for Go coverage metric
