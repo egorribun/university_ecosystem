@@ -5334,3 +5334,29 @@ Focused local evidence:
 
 Fresh current-SHA mutation evidence remains required; this old-run finding is
 not a release result.
+
+## 82. CI capacity audit and evidence-gated speed policy (2026-09-15)
+
+The read-only capacity audit of workflow sources and stale run `34923631288`
+confirms that the current topology is already bounded and must not be tuned by
+intuition:
+
+- the repository uses per-ref cancellation (`ci-matrix-${{ github.ref }}`) and
+  current caps of Stryker 6, mutmut 10, backend/Go 2, E2E 2 and Schemathesis 4;
+- the diagnostic run reached 18 concurrent jobs against the documented 20-job
+  operational budget, while the long pole was test execution rather than
+  dependency setup or artifact upload;
+- Stryker duration is materially skewed (p50 about 16.7 minutes, p95 about
+  46.3 minutes), whereas mutmut groups are comparatively balanced (p50 about
+  25.5 minutes, p95 about 29.2 minutes);
+- the referenced prior capacity baseline was cancelled and therefore is not a
+  qualifying green comparison. No current topology has three comparable
+  terminal green runs.
+
+Accordingly, no `max-parallel`, shard count, timeout, retry policy, cache
+scope, inventory, or quality threshold is changed in this checkpoint. After
+three comparable current-topology green runs, remeasure queue p50/p95, setup,
+test, artifact, retry/timeout, RSS/CPU and billed-minute data before an
+isolated A/B change (Stryker duration-aware balancing first). Any increase
+must be reverted on queue starvation, timeout, RSS, provenance, or reliability
+regression. This preserves the speed goal without weakening release gates.
