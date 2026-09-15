@@ -13,9 +13,11 @@ import pytest
 from PIL import Image
 
 from app.services.image_proxy import (
+    _cache_encode,
     _fetch_source_bytes,
     _process_image,
     _sanitize_path_input,
+    get_transformed_image,
 )
 from app.services.storage import StorageBackend
 
@@ -29,6 +31,29 @@ async def test_fetch_source_bytes_reraises_missing_file_without_space_fallback()
         await _fetch_source_bytes(backend, "/static/avatar.png")
 
     backend.read_file.assert_awaited_once_with("/static/avatar.png")
+
+
+@pytest.mark.anyio
+async def test_get_transformed_image_cache_hit_validates_decoded_payload():
+    """Cache hits must apply the image safety boundary to decoded bytes."""
+    cached_data = b"cached-webp-bytes"
+    redis = AsyncMock()
+    redis.get.return_value = _cache_encode(cached_data, "image/webp")
+    backend = AsyncMock(spec=StorageBackend)
+
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=redis),
+        patch("app.services.image_proxy.settings.image_max_pixels", 1234),
+        patch("app.services.image_proxy._validate_image_payload") as validate_payload,
+    ):
+        data, mime = await get_transformed_image(
+            backend, "/static/avatar.webp", width=200, format_preference="webp"
+        )
+
+    validate_payload.assert_called_once_with(cached_data, max_pixels=1234)
+    assert data == cached_data
+    assert mime == "image/webp"
+    backend.read_file.assert_not_called()
 
 
 def test_sanitize_path_input_decodes_multiple_layers():

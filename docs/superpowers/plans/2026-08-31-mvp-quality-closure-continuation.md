@@ -5727,6 +5727,54 @@ then perform the external merge/release gates. User-owned WASM changes,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
 
+## 108. Cache-payload and stale attachment survivor closure (2026-09-15; pending push)
+
+Stale run `34923631288` completed mutmut execution group 78 in job
+`104249729464`; artifact `10391971684` recorded two survivors. The real
+cache-path survivor `app.services.image_proxy.x_get_transformed_image__mutmut_11`
+replaced the cache-hit safety call
+`_validate_image_payload(data, max_pixels=...)` with
+`_validate_image_payload(None, max_pixels=...)`. That would skip validation of
+the exact bytes decoded from Redis. The new regression test
+`test_get_transformed_image_cache_hit_validates_decoded_payload` builds a
+cache hit, patches the validator and asserts the exact decoded payload and
+pixel budget while proving the storage backend is not read.
+
+The same artifact's `app.services.private_attachments.x_private_attachment_storage_key__mutmut_10`
+changed the historical explicit backslash guard to a sentinel-only check.
+This is stale-source-equivalent rather than a current defect: the current
+`_safe_filename` anchored allow-list rejects every path separator before the
+storage-key builder, and the current builder correctly relies on that single
+validation gate. No redundant guard or mutation exclusion is introduced.
+
+The preceding group 77 artifact `10391592423` (job `104249729301`) changed
+`format="WEBP"` to lowercase `format="webp"`; the g74 exact WebP kwargs test
+already rejects that sibling mutation, so it requires no additional source.
+
+The cache contract was first demonstrated RED against the g78 equivalent
+(`_validate_image_payload(None, max_pixels=1234)` produced an assertion
+mismatch), then GREEN on the current source:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_image_proxy_closure.py::test_get_transformed_image_cache_hit_validates_decoded_payload
+    # 1 passed
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_image_proxy_closure.py tests/test_image_proxy.py
+    # 44 passed
+    uv run pytest -q -p no:cacheprovider tests/test_private_attachments.py
+    # 6 passed
+    uv run ruff check tests/test_image_proxy_closure.py app/services/image_proxy.py
+    uv run ruff format --check tests/test_image_proxy_closure.py app/services/image_proxy.py
+    git diff --check
+    # all passed
+
+No production behavior, mutation inventory or threshold was weakened. Both
+stale artifacts are bound to source SHA
+`2774de52d158cf0b7611b331586014a8420a1df2`; fresh current-SHA mutation
+evidence remains mandatory before certification. User-owned WASM edits,
+temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
+
 ## 107. WebP encoder-method survivor closure (2026-09-15; pending push)
 
 Stale run `34923631288` completed mutmut execution group 75 in job
