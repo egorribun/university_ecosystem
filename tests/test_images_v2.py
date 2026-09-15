@@ -1,6 +1,6 @@
 import sys
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, sentinel
 
 import pytest
 
@@ -167,6 +167,38 @@ def test_optimize_image_pillow_resize_and_bounds():
         assert mime_defaults == "image/webp"
     finally:
         img_mod.VIPS_AVAILABLE = old_vips
+
+
+def test_optimize_image_pillow_uses_selected_resample_filter():
+    """Pass the quality filter into Pillow's thumbnail operation."""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    image = PILImage.new("RGB", (10, 10), color="green")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        with (
+            patch.object(
+                img_mod,
+                "_resolve_resample_filter",
+                return_value=sentinel.resample,
+            ),
+            patch.object(PILImage.Image, "thumbnail") as thumbnail,
+        ):
+            optimized, mime = img_mod.optimize_image(
+                buffer.getvalue(), max_width=5, max_height=5
+            )
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
+
+    assert mime == "image/webp"
+    assert optimized
+    thumbnail.assert_called_once_with((5, 5), resample=sentinel.resample)
 
 
 def test_optimize_image_vips_failure_fallback():
