@@ -59,6 +59,7 @@ def prod_env(monkeypatch):
         "INTERNAL_HMAC_SECRET",
         "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!",  # pragma: allowlist secret
     )
+    monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
     monkeypatch.setenv(
         "TOKEN_HMAC_SECRET", "token-hmac-closure-random-material-0123456789"
     )  # pragma: allowlist secret
