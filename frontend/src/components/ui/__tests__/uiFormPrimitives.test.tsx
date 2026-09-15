@@ -163,6 +163,35 @@ describe("Card", () => {
 // --------------------------------------------------------------------------- #
 
 describe("TextField", () => {
+  it("keeps the documented defaults and wrapper contract", () => {
+    const { container, rerender } = render(
+      <TextField value="value" onChange={() => {}} data-testid="default-field" />
+    )
+    const wrapper = container.firstElementChild
+    const input = screen.getByTestId("default-field")
+
+    expect(TextField.displayName).toBe("TextField")
+    expect(wrapper).toHaveClass("flex", "flex-col", "gap-1.5")
+    expect(wrapper).not.toHaveClass("w-full")
+    expect(wrapper).not.toHaveClass("Stryker", "was", "here!")
+    expect(input).toHaveAttribute("type", "text")
+    expect(input).toHaveClass("w-auto", "min-h-12", "text-base")
+    expect(input).not.toHaveClass("Stryker", "was", "here!")
+
+    rerender(
+      <TextField
+        value="value"
+        onChange={() => {}}
+        fullWidth={false}
+        className="custom-field"
+        data-testid="default-field"
+      />
+    )
+    expect(container.firstElementChild).toHaveClass("custom-field")
+    expect(container.firstElementChild).not.toHaveClass("w-full")
+    expect(screen.getByTestId("default-field")).toHaveClass("w-auto")
+  })
+
   it("generates a control id when a labelled field does not receive one", () => {
     render(<TextField label="Generated label" value="" onChange={() => {}} />)
     const input = screen.getByLabelText("Generated label")
@@ -200,12 +229,19 @@ describe("TextField", () => {
     )
     const area = screen.getByRole("textbox")
     expect(area.tagName).toBe("TEXTAREA")
+    expect(area).toHaveClass("resize-none", "pl-11", "pr-11")
     fireEvent.change(area, { target: { value: "m2" } })
     expect(onChange).toHaveBeenCalled()
     expect(screen.getByTestId("lead")).toBeInTheDocument()
     expect(screen.getByTestId("tr")).toBeInTheDocument()
-    fireEvent.blur(area)
+    expect(() => fireEvent.blur(area)).not.toThrow()
     expect(area).not.toHaveAttribute("aria-describedby")
+  })
+
+  it("does not render absent leading or trailing icon containers", () => {
+    const { container } = render(<TextField value="plain" onChange={() => {}} multiline />)
+    expect(container.querySelector(".left-4")).not.toBeInTheDocument()
+    expect(container.querySelector(".right-4")).not.toBeInTheDocument()
   })
 
   it("wires multiline helper text and an optional blur handler", () => {
@@ -224,6 +260,28 @@ describe("TextField", () => {
     expect(area).toHaveAttribute("aria-describedby")
     fireEvent.blur(area)
     expect(onBlur).toHaveBeenCalledOnce()
+  })
+
+  it("applies distinct helper classes for valid and invalid feedback", () => {
+    const { rerender } = render(
+      <TextField value="value" onChange={() => {}} helperText="Helpful hint" />
+    )
+    expect(screen.getByText("Helpful hint")).toHaveClass(
+      "px-1",
+      "text-xs",
+      "font-medium",
+      "leading-tight",
+      "text-(--text-tertiary)/(--opacity-strong)"
+    )
+
+    rerender(<TextField value="value" onChange={() => {}} error helperText="Invalid value" />)
+    expect(screen.getByRole("alert")).toHaveClass(
+      "px-1",
+      "text-xs",
+      "font-medium",
+      "leading-tight",
+      "text-(--error-text)"
+    )
   })
 })
 

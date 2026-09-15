@@ -13,13 +13,17 @@ const mockState = vi.hoisted(() => ({
     Promise.resolve({ data: { url: "https://accounts.spotify.com/authorize?x=1" } })
   ),
   apiPost: vi.fn((..._args: unknown[]) => Promise.resolve({ data: {} })),
+  translationArgs: [] as unknown[],
 }))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: (...args: unknown[]) => {
+    mockState.translationArgs = args
+    return {
+      t: (key: string) => key,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    }
+  },
 }))
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -63,6 +67,7 @@ describe("SpotifyConnect", () => {
     mockState.invalidateQueries.mockClear()
     mockState.apiGet.mockClear()
     mockState.apiPost.mockClear()
+    mockState.translationArgs = []
   })
 
   it("renders nothing when there is no user", () => {
@@ -73,8 +78,30 @@ describe("SpotifyConnect", () => {
   it("shows the connect button when Spotify is not connected", () => {
     mockState.user = { spotify_connected: false }
     render(<SpotifyConnect />)
+    expect(mockState.translationArgs).toEqual([["settings", "common"]])
     expect(screen.getByText("settings:integrations.spotify.title")).toBeInTheDocument()
-    expect(screen.getByText("settings:integrations.spotify.connect")).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "settings:integrations.spotify.connect" })
+    ).toBeEnabled()
+  })
+
+  it("disables connect while the authorization request is pending", async () => {
+    const user = userEvent.setup()
+    let resolveRequest!: (value: { data: { url: string } }) => void
+    mockState.user = { spotify_connected: false }
+    mockState.apiGet.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRequest = resolve
+      })
+    )
+    render(<SpotifyConnect />)
+    const button = screen.getByRole("button", { name: "settings:integrations.spotify.connect" })
+
+    const click = user.click(button)
+    await waitFor(() => expect(button).toBeDisabled())
+    resolveRequest({ data: { url: "" } })
+    await click
+    await waitFor(() => expect(button).toBeEnabled())
   })
 
   it("shows the connected controls + display name when connected", () => {
@@ -128,7 +155,10 @@ describe("SpotifyConnect", () => {
     await user.click(screen.getByText("settings:integrations.spotify.disconnect"))
     expect(mockState.apiPost).toHaveBeenCalledWith("/spotify/disconnect")
     expect(mockState.setUser).toHaveBeenCalled()
-    expect(mockState.invalidateQueries).toHaveBeenCalled()
+    expect(mockState.invalidateQueries).toHaveBeenNthCalledWith(1, { queryKey: ["users", "me"] })
+    expect(mockState.invalidateQueries).toHaveBeenNthCalledWith(2, {
+      queryKey: ["spotify", "now-playing"],
+    })
 
     const updater = mockState.setUser.mock.calls[0]?.[0] as (
       previous: Record<string, unknown>
@@ -139,6 +169,30 @@ describe("SpotifyConnect", () => {
       spotify_display_name: null,
     })
     expect(updater(null as never)).toBeNull()
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "settings:integrations.spotify.disconnect" })
+      ).toBeEnabled()
+    )
+  })
+
+  it("disables disconnect while the disconnect request is pending", async () => {
+    const user = userEvent.setup()
+    let resolveRequest!: (value: { data: Record<string, never> }) => void
+    mockState.user = { spotify_connected: true }
+    mockState.apiPost.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRequest = resolve
+      })
+    )
+    render(<SpotifyConnect />)
+    const button = screen.getByRole("button", { name: "settings:integrations.spotify.disconnect" })
+
+    const click = user.click(button)
+    await waitFor(() => expect(button).toBeDisabled())
+    resolveRequest({ data: {} })
+    await click
+    await waitFor(() => expect(button).toBeEnabled())
   })
 
   it("refreshes now-playing via the refresh button", async () => {
@@ -157,7 +211,7 @@ describe("SpotifyConnect", () => {
 
     const refreshButton = screen.getByText("common:buttons.refresh").closest("button")
     expect(refreshButton).toBeDisabled()
-    expect(refreshButton?.querySelector("svg")).toHaveClass("animate-spin")
+    expect(refreshButton?.querySelector("svg")).toHaveClass("h-4", "w-4", "animate-spin")
   })
 
   it("requests the authorization URL and follows a safe hash redirect", async () => {
@@ -180,11 +234,29 @@ describe("SpotifyConnect", () => {
     mockState.apiGet.mockResolvedValueOnce({ data: { url: "" } })
     window.history.replaceState({}, "", "/settings")
     render(<SpotifyConnect />)
-    const connectButton = screen.getByText("settings:integrations.spotify.connect")
+    const connectButton = screen.getByRole("button", {
+      name: "settings:integrations.spotify.connect",
+    })
 
     await user.click(connectButton)
 
     await waitFor(() => expect(connectButton).not.toBeDisabled())
+    expect(window.location.pathname).toBe("/settings")
+    window.history.replaceState({}, "", "/")
+  })
+
+  it("handles an authorization response without a data object", async () => {
+    const user = userEvent.setup()
+    mockState.user = { spotify_connected: false }
+    mockState.apiGet.mockResolvedValueOnce({ data: undefined })
+    window.history.replaceState({}, "", "/settings")
+    render(<SpotifyConnect />)
+    const connectButton = screen.getByRole("button", {
+      name: "settings:integrations.spotify.connect",
+    })
+
+    await user.click(connectButton)
+    await waitFor(() => expect(connectButton).toBeEnabled())
     expect(window.location.pathname).toBe("/settings")
     window.history.replaceState({}, "", "/")
   })
@@ -196,6 +268,16 @@ describe("SpotifyConnect", () => {
     render(<SpotifyConnect />)
 
     expect(mockState.refetch).toHaveBeenCalled()
+    window.history.replaceState({}, "", "/")
+  })
+
+  it("does not refetch when no Spotify callback query is present", () => {
+    mockState.user = { spotify_connected: true }
+    window.history.replaceState({}, "", "/settings")
+
+    render(<SpotifyConnect />)
+
+    expect(mockState.refetch).not.toHaveBeenCalled()
     window.history.replaceState({}, "", "/")
   })
 
@@ -211,5 +293,32 @@ describe("SpotifyConnect", () => {
 
     expect(mockState.refetch).toHaveBeenCalledOnce()
     window.history.replaceState({}, "", "/")
+  })
+
+  it("reruns the callback effect when the refetch function identity changes", () => {
+    const originalRefetch = mockState.refetch
+    const replacementRefetch = vi.fn(() => Promise.resolve({ data: null }))
+    mockState.user = { spotify_connected: true }
+    window.history.replaceState({}, "", "/settings?spotify=connected")
+
+    const { rerender } = render(<SpotifyConnect />)
+    expect(originalRefetch).toHaveBeenCalledOnce()
+
+    mockState.refetch = replacementRefetch
+    rerender(<SpotifyConnect />)
+    expect(replacementRefetch).toHaveBeenCalledOnce()
+
+    mockState.refetch = originalRefetch
+    window.history.replaceState({}, "", "/")
+  })
+
+  it("renders an empty artist list without inventing artist text", () => {
+    mockState.user = { spotify_connected: true }
+    mockState.nowPlaying = { track_name: "Track", artists: undefined }
+
+    render(<SpotifyConnect />)
+
+    expect(screen.getByText("Track")).toBeInTheDocument()
+    expect(screen.queryByText("Stryker was here")).not.toBeInTheDocument()
   })
 })

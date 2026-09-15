@@ -70,9 +70,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
           transition={{ type: "spring", stiffness: 500, damping: 30 }}
           className={cn(
             "relative z-deep ml-0.5 block h-5.5 w-5.5 rounded-full bg-surface shadow-surface",
-            "border border-glass-border-subtle",
-            "bg-surface",
-            checked && "bg-surface"
+            "border border-glass-border-subtle"
           )}
           style={{
             transformOrigin: checked ? "left center" : "right center",
