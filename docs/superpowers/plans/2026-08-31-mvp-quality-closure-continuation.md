@@ -7053,3 +7053,39 @@ verified from its own exact SHA, and every required job/artifact—including
 detect-secrets, coverage/manifest, mutation, browser, Schemathesis, security,
 and infrastructure—must reach a terminal state before any release claim.
 The roadmap remains `EVIDENCE-BLOCKED / EXTERNAL-ONLY`.
+
+## 127. Detect-secrets documentation placeholder closure (2026-09-15; current-SHA remediation)
+
+The fresh matrix for exact source SHA `fea7a00d378db17ba3d53358bac35595f286869e`
+(`35001692650`) exposed one genuine content/allowlist drift, not a runtime
+credential. The `Security Audit / detect-secrets Baseline Integrity` job
+`104491981082` reported `docs/API_EXAMPLES.md:15 (Secret Keyword)`: the
+documentation JSON request intentionally contains the API's required
+`password` field with the non-secret `replace-me` placeholder. The same
+finding caused the parallel `Pre-commit Security & Types (Read-only)` job
+`104491981134` to fail; mutation and downstream lanes were only cascaded
+after those prerequisite failures. The trusted-base baseline already marks
+the previous wording as a reviewed false positive, so refreshing the baseline
+would incorrectly add a new PR suppression.
+
+The RED/GREEN fix keeps the request contract and removes the detector hit by
+placing an immediate `allowlist nextline secret` comment in the HTTP example,
+with an explicit documentation-only/never-reuse rationale. No detector,
+baseline, exclusion, quarantine, or quality floor was changed. Both login and
+registration examples are covered because each carries the same placeholder.
+The focused scan of `docs/API_EXAMPLES.md` now returns an empty result set;
+running `scripts/verify_secrets_baseline.py` against the scan and the trusted
+base exits `0` (the committed baseline has only stale historical entries,
+which remain informational). Existing Markdown-link tests and the offline
+checker remain green.
+
+The fix is intentionally a new exact-SHA push and therefore invalidates all
+`fea7a00d` run evidence. A new matrix must reach terminal state before any
+promotion. The already terminal companion runs for `fea7a00d` were green:
+CodeQL `35001691857`, Rust fuzzing `35001691876`, Python fuzzing
+`35001692128`, benchmark `35001691964`, dark unauthenticated smoke
+`35001691982`, SBOM `35001692062`, SQLMap `35001692116`, and the other
+security/contract/DB gates. They remain diagnostic only after this source
+change. The roadmap stays `EVIDENCE-BLOCKED / EXTERNAL-ONLY` pending the new
+current-SHA matrix, complete mutation/coverage/manifest evidence, and the
+Docker/Kubernetes/release boundary in §122.5.
