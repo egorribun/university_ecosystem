@@ -6566,3 +6566,88 @@ Evidence:
 
 The correction is pending its test-only commit and fresh current-SHA mutation
 evidence; the historical remote run remains non-authoritative.
+
+## 119. Current source identity and post-remediation evidence boundary (2026-09-15)
+
+This checkpoint supersedes the identity statements in earlier historical
+sections without rewriting their causal record. It is deliberately recorded
+after the security, chart-policy, CI-catalog, and production-fixture commits,
+but before pushing them and before a new hosted matrix is created.
+
+### 119.1 Immutable local identity
+
+| Field | Observed value | Interpretation |
+|---|---|---|
+| Active branch | `egorribun` | requested implementation branch; no merge or force-push performed |
+| Local source `HEAD` | `a7121e969a102a9898d5a017029a2c75c23415d8` | exact source revision containing §§115–118 |
+| `origin/egorribun` | `2774de52d158cf0b7611b331586014a8420a1df2` | stale remote revision used by PR #1266's historical run |
+| Ahead/behind | `0 46` (`origin/egorribun...HEAD`) | 46 local commits are not yet available to hosted CI |
+| Current-SHA hosted runs | `gh run list --commit HEAD` → `[]` | no release evidence exists for `a7121e969` |
+| Historical PR | `#1266`, Matrix run `34923631288` | source head `2774de52`; diagnostic only, never current-SHA evidence |
+| Historical coverage artifact | `quality-evidence-30c449...` | schema-valid but bound to merge ref `30c449`, source head `2774de52`, and run `34923631288`; not reusable |
+
+The tracked worktree has no uncommitted implementation changes. The only
+remaining dirty paths are preserved user-owned or externally supplied files:
+
+    frontend/WASM_SOURCE_PROVENANCE.json
+    frontend/rust-crypto/pkg/uni_wasm_crypto_bg.wasm
+    frontend/wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm
+    .tmp_preflight/
+    .tmp_stryker_18/
+    .tmp_stryker_22/
+    docs/audits/AUDIT_PLATFORM_FULL.md
+    services/file-processor/coverage_capability
+
+These paths are intentionally neither staged nor removed. `git diff --check`
+passes, and `uv run python scripts/quality/validate_ci_check_catalog.py` passes
+with `55 workflows, 182 jobs`.
+
+### 119.2 Commits included in this source identity
+
+1. `281d0729fff70cd48e6c3a12b64ede4d68dce470` — fail-closed internal-route
+   token boundary and production `INTERNAL_AUTH_TOKEN` validation (SEC-04).
+2. `47600e14ae335865c6c04d70438d38ffd176c58f` — exact `weekly-cleanup`
+   main-branch guard in the CI check catalog.
+3. `a7121e969a102a9898d5a017029a2c75c23415d8` — production security fixture
+   supplies the explicitly allowlisted test token; runtime validation remains
+   strict.
+
+Sections §§115–118 are implementation/evidence notes for these commits. They
+do not imply that any hosted, Linux, browser, mutation, manifest, Docker,
+staging, or release gate has passed on `a7121e969`.
+
+### 119.3 Evidence status and next immutable boundary
+
+Class-C local evidence currently available after the remediation commits:
+
+* security/middleware regression suite: `124 passed`;
+* Helm staging contract suite: `217 passed` and Helm lint green;
+* production security fixture suite: `9 passed` (one pre-existing warning);
+* CI catalog validator: `55 workflows, 182 jobs`;
+* supported Compose configuration checks and WASM provenance hash check:
+  green, without starting the project stack.
+
+The following remain release-blocking and must be generated after the
+non-force push of this exact source (and after any subsequent code/docs
+commit, with the identity updated again):
+
+1. terminal PR workflows for the exact source SHA, including all mutation
+   shards, Go race/security jobs, browser/Lighthouse matrix, Schemathesis,
+   dark unauthenticated smoke, and CI Success;
+2. complete current-SHA coverage/mutation manifests with report hashes,
+   source roots, tool versions, run/attempt provenance, and no missing or
+   stale artifacts;
+3. current standard security scan and independent review of privileged
+   workflow changes;
+4. three comparable green runs before any evidence-based change to mutation
+   parallelism or runner scheduling;
+5. external-only merge/main recertification, exact-six immutable images,
+   SBOM/signatures/attestations, digest Docker smoke, Kubernetes staging with
+   TLS/ExternalSecrets/observability, CWV/browser-device matrix, chaos,
+   rollback, and production release evidence.
+
+Until these artifacts exist, the plan status remains
+`EVIDENCE-BLOCKED / EXTERNAL-ONLY`; no `100%`, `green`, or release-ready claim
+is permitted. The stale run `34923631288` may be archived as diagnostic
+history after it reaches a terminal state, but it must not be rerun or
+promoted to evidence for this source.
