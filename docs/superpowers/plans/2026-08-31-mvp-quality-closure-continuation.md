@@ -5298,3 +5298,39 @@ Local focused evidence on the pending tree:
 These fixes are pending a small commit and fresh current-SHA mutation run;
 the old run remains diagnostic evidence only and may reveal further survivors
 until its matrix reaches a terminal state.
+
+## 81. Security-length and attachment-validation survivor closure (2026-09-15; pending push)
+
+Stale run `34923631288` then exposed group 30 (`104249724496`) with two
+survivors:
+
+- `app.core.config.security._validate_internal_hmac_secret_strength__mutmut_6`
+  changed the minimum-length comparison from `< 32` to `<= 32`. The boundary
+  is intentional: exactly 32 encoded bytes is the documented minimum. A
+  focused test now supplies a non-repeating 32-byte value and asserts it is
+  accepted, so the boundary mutation is killed.
+- `app.services.private_attachments.private_attachment_storage_key__mutmut_5`
+  changed the filename guard from a disjunction to a conjunction. The
+  `_FILENAME_RE` allow-list is anchored and already rejects both `/` and `\\`,
+  making the extra separator checks redundant and semantically equivalent.
+  The production guard is simplified to the single `safe_filename is None`
+  sentinel, eliminating that duplicate boolean surface without a suppression;
+  existing traversal/separator cases remain covered.
+
+Focused local evidence:
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_config_mixins_coverage.py tests/test_private_attachments.py
+    # 74 passed
+
+    uv run ruff check app/core/config/security.py \
+      app/services/private_attachments.py \
+      tests/test_config_mixins_coverage.py tests/test_private_attachments.py
+    uv run ruff format --check app/core/config/security.py \
+      app/services/private_attachments.py \
+      tests/test_config_mixins_coverage.py tests/test_private_attachments.py
+    git diff --check
+    # all passed
+
+Fresh current-SHA mutation evidence remains required; this old-run finding is
+not a release result.

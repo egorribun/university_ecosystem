@@ -125,7 +125,9 @@ def private_attachment_storage_key(
 
     safe_id = _safe_resource_id(resource_id)
     safe_filename = _safe_filename(filename)
-    if safe_filename is None or "/" in filename or "\\" in filename:
+    # ``_safe_filename`` rejects path separators through its anchored
+    # allow-list, so a single sentinel check is the complete validation gate.
+    if safe_filename is None:
         raise ValueError("Invalid attachment filename")
     return f"{_PREFIXES[kind]}/{kind}_{safe_id}/{safe_filename}"
 
