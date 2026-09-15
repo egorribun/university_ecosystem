@@ -5549,3 +5549,19 @@ duplicate external producers only after the required-check catalog and branch
 protection are updated together. Any candidate must preserve first-failure
 artifacts, provenance and all required contexts, and must be reverted on
 queue starvation, timeout, RSS/CPU, or reliability regression.
+
+## 92. HMAC entropy-diversity survivor closure (2026-09-15; pending push)
+
+Stale run `34923631288` exposed group 43 (`104249726174`) with a viable
+survivor in `_validate_internal_hmac_secret_strength`: replacing the
+low-diversity/repeated predicate's `or` with `and` allowed a 32-byte value
+containing 31 `A` bytes and one `B`. This is below the minimum diversity
+contract even though it meets the length boundary and does not match the
+repeated-block regular expression.
+
+`tests/test_internal_hmac_secret_security.py` now includes that exact
+boundary and asserts the production validator raises `ValidationError`.
+The focused suite (`4 passed` for the weak/32-byte contract), Ruff,
+format-check and pre-commit all pass in commit `ae53f1f27`. The production
+predicate and thresholds were not weakened; fresh current-SHA mutmut evidence
+must still prove the complete inventory.
