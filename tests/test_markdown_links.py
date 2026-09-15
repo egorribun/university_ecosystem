@@ -32,3 +32,25 @@ def test_find_missing_handles_reference_links(tmp_path: Path) -> None:
     document.write_text("[contributing]: CONTRIBUTING.md\n", encoding="utf-8")
 
     assert find_missing(tmp_path, [document]) == []
+
+
+def test_find_missing_can_include_archived_documents(tmp_path: Path) -> None:
+    target = tmp_path / "frontend" / "src" / "main.tsx"
+    target.parent.mkdir(parents=True)
+    target.write_text("export {};\n", encoding="utf-8")
+    document = tmp_path / "docs" / "audits" / "archive" / "AUDIT.md"
+    document.parent.mkdir(parents=True)
+    document.write_text("[source](../../../frontend/src/main.tsx)\n", encoding="utf-8")
+
+    assert find_missing(tmp_path, [document], include_archives=True) == []
+
+
+def test_find_missing_ignores_links_in_code_spans(tmp_path: Path) -> None:
+    document = tmp_path / "README.md"
+    document.write_text(
+        "The prose mentions `[link](missing-in-example.md)` as syntax.\n"
+        "The real link is [missing](missing.md).\n",
+        encoding="utf-8",
+    )
+
+    assert find_missing(tmp_path, [document]) == ["README.md:2 -> missing.md"]

@@ -11,6 +11,28 @@ must not be treated as current configuration or current quality evidence.
   plan, not an audit certificate; its historical checkpoints still require
   exact-SHA re-verification.
 
+## Archive link audit (2026-09-15)
+
+The deterministic checker can include archived reports with
+`uv run python scripts/docs/check_markdown_links.py --include-archives`.
+It found 123 historical link targets that were not valid from the archive
+directory. 104 links whose intended repository-root targets still exist were
+normalized in place; the report remains intentionally non-zero for these 12
+historical-only references:
+
+- `AUDIT_WAVE120.md:463` → `memory/wave121_backlog.md` (memory artifact no
+  longer present)
+- `AUDIT_WAVE140.md:382,581` → `docs/plans/2026-05-11-wave140-tier123-design.md`
+  (superseded plan is not in the repository)
+- `AUDIT_WAVE143.md:38,124,317` → old test/visual-audit files no longer present
+- `AUDIT_WAVE145.md:15,260` → old visual-audit/design files no longer present
+- `AUDIT_WAVE163.md:28` → a machine-local `.claude` memory path
+- `AUDIT_WAVE192.md:272-274` → `.claude profile` placeholders
+
+These entries are retained as historical text and are not release or current
+documentation references. They must not be converted into guessed links or
+removed without a separate archival-retention decision.
+
 ## Current reference set
 
 - [PR #1249 Audit](AUDIT_PR1249.md) — multi-stack quality & architectural release certification
