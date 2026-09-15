@@ -875,8 +875,31 @@ def test_smoke_script_is_printable_in_the_windows_launcher_console() -> None:
     _read("scripts/smoke_test.py").encode("cp1251")
 
 
-def test_local_temporal_and_spicedb_opt_out_of_external_auth_telemetry_noise() -> None:
-    assert "--allow-no-auth" in _read("services/temporal/entrypoint.sh")
+def test_production_temporal_entrypoint_never_enables_no_auth() -> None:
+    """The shared Compose entrypoint must not opt Temporal out of auth.
+
+    Both supported Compose stacks mount this same entrypoint, so a flag that
+    enables the no-authorizer mode here would also be active in the
+    production-like stack.  Local development can use an explicit override
+    when needed; the production-capable path must remain fail-closed.
+    """
+    entrypoint = _read("services/temporal/entrypoint.sh")
+    assert "--allow-no-auth" not in entrypoint
+    assert "TEMPORAL_ALLOW_NO_AUTH" not in entrypoint
+
+    temporal_config = yaml.safe_load(_read("services/temporal/config.yaml"))
+    authorization = temporal_config["global"]["authorization"]
+    assert authorization["claimMapper"] == "default"
+    assert authorization["jwtKeyProvider"]["keySourceURIs"]
+
+    for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
+        temporal = _compose(relative_path)["services"]["temporal"]
+        assert temporal["entrypoint"] == [
+            "/bin/sh",
+            "/etc/temporal/wave144-entrypoint.sh",
+        ]
+        assert "TEMPORAL_ALLOW_NO_AUTH" not in temporal.get("environment", {})
+
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
         command = _compose(relative_path)["services"]["spicedb"]["command"]
         assert "--telemetry-endpoint=" in command

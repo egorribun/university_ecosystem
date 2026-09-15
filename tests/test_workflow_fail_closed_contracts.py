@@ -684,6 +684,24 @@ def test_privileged_manual_workflows_are_main_bound_and_immutable() -> None:
     }
     assert "git fetch origin" in weekly_guard["run"]
 
+    cleanup_workflow = _workflow(WORKFLOWS / "weekly-cleanup.yml")
+    cleanup = cleanup_workflow["jobs"]["cleanup"]
+    assert cleanup["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    cleanup_checkout = _step(cleanup, "Checkout repository")
+    assert cleanup_checkout["with"] == {
+        "fetch-depth": 0,
+        "persist-credentials": False,
+        "ref": "main",
+    }
+    cleanup_guard = _step(cleanup, "Verify trusted main source")
+    assert cleanup_guard["env"] == {
+        "EVENT_SHA": "${{ github.sha }}",
+        "WORKFLOW_SHA": "${{ github.workflow_sha }}",
+    }
+    assert "refs/heads/main" in cleanup_guard["run"]
+    assert "git rev-parse refs/remotes/origin/main" in cleanup_guard["run"]
+    assert "git rev-parse HEAD" in cleanup_guard["run"]
+
     nightly_workflow = _workflow(WORKFLOWS / "nightly-full-gate.yml")
     for job_name, job in nightly_workflow["jobs"].items():
         assert "github.ref == 'refs/heads/main'" in str(job.get("if", "")), job_name

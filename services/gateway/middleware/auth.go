@@ -80,6 +80,11 @@ type rsaKeySet map[string]*rsa.PublicKey
 type JWTMiddleware struct {
 	secret   []byte
 	audience string
+	// jwksConfigured records that the deployment selected JWKS-backed RS256
+	// verification, even before the first successful refresh.  It must be set
+	// synchronously when the refresher starts so a transient JWKS outage cannot
+	// make the parser fall back to HS256 while the key cache is empty.
+	jwksConfigured atomic.Bool
 	// rsaKeys retains every JWKS key by its JOSE kid for dual-key rotation.
 	rsaKeys atomic.Pointer[rsaKeySet]
 	// rsaPublicKey is a compatibility fallback for callers/tests that configure
@@ -207,7 +212,7 @@ func (m *JWTMiddleware) storeRSAKeys(keys rsaKeySet) {
 }
 
 func (m *JWTMiddleware) rsaConfigured() bool {
-	return m.rsaKeys.Load() != nil || m.rsaPublicKey.Load() != nil
+	return m.jwksConfigured.Load() || m.rsaKeys.Load() != nil || m.rsaPublicKey.Load() != nil
 }
 
 func rsaKeySetsEqual(left, right rsaKeySet) bool {
@@ -300,6 +305,11 @@ var (
 // the JWKS from endpoint and atomically swaps the RSA public key.  The caller
 // must cancel ctx to stop the goroutine on shutdown.
 func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string, interval time.Duration, logger *slog.Logger) {
+	// Mark RS256 mode before starting any asynchronous work.  If the initial
+	// fetch fails, authentication must remain fail-closed until a valid JWKS
+	// snapshot is available; HS256 is never an outage fallback in JWKS mode.
+	m.jwksConfigured.Store(true)
+
 	jwksMetricsOnce.Do(func() {
 		prometheus.MustRegister(jwksRefreshes, jwksRefreshErrors, jwksKeyRotations)
 	})

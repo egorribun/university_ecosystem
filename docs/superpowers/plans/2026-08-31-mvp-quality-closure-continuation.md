@@ -6255,3 +6255,135 @@ changed. The stale run remains bound to source SHA
 evidence remains mandatory. User-owned WASM edits, temporary directories,
 `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
+
+## 113. Weekly cleanup privileged-source boundary (2026-09-15; pending push)
+
+The independent current-SHA security review reported `CI-SEC-001` (HIGH,
+CWE-94/CWE-522) in `.github/workflows/weekly-cleanup.yml`: a manually
+dispatchable job injected `DATABASE_URL` and `SECRET_KEY`, checked out the
+default ref with persisted credentials, and then installed and executed
+repository-controlled Python code. A caller able to dispatch a workflow could
+therefore select a malicious ref and execute it with application secrets.
+
+The remediation is fail-closed and keeps the cleanup operation available only
+from protected `main`:
+
+* the cleanup job is guarded by
+  `github.ref == 'refs/heads/main'`;
+* checkout explicitly uses `ref: main`, `fetch-depth: 0`, and
+  `persist-credentials: false`;
+* before dependency setup, a bash guard fetches `origin/main`, requires a
+  full 40-character commit SHA, and requires the checked-out `HEAD`, event
+  `github.sha`, and workflow `github.workflow_sha` to equal that exact
+  protected-main SHA;
+* the contract suite now asserts the job guard, immutable checkout settings,
+  and every source-integrity check.
+
+TDD and static evidence on the current checkout:
+
+    # RED before the workflow guard existed:
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_workflow_fail_closed_contracts.py::test_privileged_manual_workflows_are_main_bound_and_immutable \
+      --disable-warnings --maxfail=1
+    # 1 failed: weekly-cleanup job had no `if` guard
+
+    # GREEN after the fail-closed workflow change:
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_workflow_fail_closed_contracts.py::test_privileged_manual_workflows_are_main_bound_and_immutable \
+      --disable-warnings --maxfail=1
+    # 1 passed in 1.34s
+    PRE_COMMIT_HOME=C:\\Temp\\precommit-g88-20260915 \
+      pre-commit run actionlint --files .github/workflows/weekly-cleanup.yml --verbose
+    # Passed
+    PRE_COMMIT_HOME=C:\\Temp\\precommit-g88-20260915 \
+      pre-commit run semgrep-docker --files .github/workflows/weekly-cleanup.yml --verbose
+    # Passed; 0 findings
+    git diff --check
+    # passed
+
+The finding is considered fixed in the working tree but remains unsealed in
+the security-scan workbench until the remediation commit and current-SHA
+verification are complete. No permissions, coverage floor, mutation threshold,
+exclusion, quarantine, or timeout was weakened. The separate user-owned WASM
+artifacts, temporary directories, external audit, and coverage capability
+marker remain unstaged.
+
+## 114. Gateway JWT algorithm downgrade and Temporal auth closure (2026-09-15; pending push)
+
+The independent security baseline identified two medium-risk authentication
+gaps at the audited source SHA 6d2056272f777ad72e5ef96707bf1149da5d20ae:
+
+* SEC-01 (CWE-347/CWE-327): JWTMiddleware.rsaConfigured() was false until
+  the first successful asynchronous JWKS refresh. During a transient startup
+  or JWKS outage that allowed HS256 to remain in the parser's accepted-method
+  set, creating a conditional algorithm downgrade if the verifier's HMAC
+  secret were compromised.
+* SEC-02 (CWE-306/CWE-284): the shared Temporal Compose entrypoint passed
+  --allow-no-auth. Because the same entrypoint is mounted by both base and
+  full production-like Compose stacks, that flag disabled the configured JWT
+  authorizer for in-network callers.
+
+Both fixes preserve the intended trust boundary and are covered by focused
+regressions:
+
+* JWTMiddleware now records jwksConfigured synchronously before starting
+  the refresh goroutine. rsaConfigured() treats configured JWKS mode as
+  RS256-only even when the key cache is empty, so HS256 is rejected until a
+  valid RSA key set is loaded. The regression serves a temporary 503 JWKS
+  endpoint and verifies the HS256 token is rejected before the first successful
+  fetch.
+* services/temporal/entrypoint.sh no longer passes --allow-no-auth (and
+  does not support an environment escape hatch). The Docker contract verifies
+  the JWT claim mapper remains configured and both Compose stacks mount the
+  hardened entrypoint without a no-auth override.
+
+TDD and verification evidence:
+
+    # SEC-01 RED before the atomic mode marker:
+    # the pre-refresh HS256 token was accepted (nil error)
+    # GREEN after the marker and regression test:
+    gofmt -w middleware/auth.go middleware/auth_extra_test.go
+    go test ./... -count=1
+    # all gateway packages passed; middleware included the new regression
+
+    # SEC-02 RED before removing the flag:
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_docker_startup_contracts.py::test_production_temporal_entrypoint_never_enables_no_auth \
+      --disable-warnings --maxfail=1
+    # failed because --allow-no-auth was present
+    # GREEN:
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_docker_startup_contracts.py::test_production_temporal_entrypoint_never_enables_no_auth \
+      --disable-warnings --maxfail=1
+    # 1 passed
+
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_docker_startup_contracts.py::test_production_temporal_entrypoint_never_enables_no_auth \
+      tests/test_workflow_fail_closed_contracts.py::test_privileged_manual_workflows_are_main_bound_and_immutable \
+      tests/test_image_proxy_closure.py tests/test_images_v2.py \
+      --disable-warnings --maxfail=1
+    # 39 passed in 11.78s
+    uv run ruff check tests/test_docker_startup_contracts.py \
+      tests/test_workflow_fail_closed_contracts.py tests/test_image_proxy_closure.py
+    # All checks passed
+    uv run ruff format --check tests/test_docker_startup_contracts.py \
+      tests/test_workflow_fail_closed_contracts.py tests/test_image_proxy_closure.py
+    # 3 files already formatted
+    docker compose -f docker-compose.yml config --quiet
+    docker compose -f docker-compose.full.yml config --quiet
+    # both passed
+    PRE_COMMIT_HOME=C:\Temp\precommit-g88-20260915 \
+      pre-commit run actionlint --files .github/workflows/weekly-cleanup.yml --verbose
+    # Passed
+    PRE_COMMIT_HOME=C:\Temp\precommit-g88-20260915 \
+      pre-commit run semgrep-docker --files .github/workflows/weekly-cleanup.yml --verbose
+    # Passed; 0 findings
+    git diff --check
+    # passed
+
+No accepted algorithm was broadened, no authentication gate was bypassed, and
+no coverage/mutation threshold, exclusion, quarantine, or timeout policy was
+changed. Linux go test -race remains the authoritative concurrency gate and
+must be re-run in fresh hosted CI. The remaining SEC-03/SEC-04 items are
+configuration hardening candidates and remain explicitly tracked until their
+production-mode behavior is validated; they are not silently marked fixed.
