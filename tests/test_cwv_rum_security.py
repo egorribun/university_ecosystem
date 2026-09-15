@@ -42,6 +42,7 @@ INTERNAL_HMAC_SECRET = (
 TOKEN_HMAC_SECRET = (
     "token-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret
 )
+INTERNAL_AUTH_TOKEN = "internal-route-token-for-test"  # pragma: allowlist secret
 # Keep the independent audit-signing guard valid so the settings tests exercise
 # the CWV validator they target rather than the production placeholder guard.
 # The deterministic low-entropy fixture is intentionally not a real secret.
@@ -714,6 +715,7 @@ def test_staging_settings_redact_secret_and_reject_partial_oidc_policy() -> None
         "audit_log_secret": AUDIT_LOG_SECRET,
         "internal_hmac_secret": INTERNAL_HMAC_SECRET,
         "token_hmac_secret": TOKEN_HMAC_SECRET,
+        "internal_auth_token": INTERNAL_AUTH_TOKEN,
         "cwv_rum_enabled": True,
         "cwv_rum_signing_secret": SECRET,
         "cwv_release_sha": SHA,
@@ -750,6 +752,7 @@ def test_staging_settings_reject_invalid_ttl_origin_and_tester_cohort() -> None:
         "audit_log_secret": AUDIT_LOG_SECRET,
         "internal_hmac_secret": INTERNAL_HMAC_SECRET,
         "token_hmac_secret": TOKEN_HMAC_SECRET,
+        "internal_auth_token": INTERNAL_AUTH_TOKEN,
         "cwv_rum_enabled": True,
         "cwv_rum_signing_secret": SECRET,
         "cwv_release_sha": SHA,
