@@ -87,7 +87,11 @@ class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
         String(128), nullable=False, default=_generate_session_signing_key
     )
     mfa_required: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, index=True
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+        index=True,
     )
     mfa_completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -122,7 +126,11 @@ class MfaTotpEnrollment(Base, UUID7PrimaryKeyMixin, UserFK):
     secret: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
     label: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, index=True
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        index=True,
     )
     confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -318,7 +326,11 @@ class PasswordResetToken(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), nullable=False, index=True
     )
     used: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, index=True
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -348,7 +360,11 @@ class EmailChangeToken(Base, UUID7PrimaryKeyMixin, UserFK):
         DateTime(timezone=True), nullable=False, index=True
     )
     used: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, index=True
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -485,7 +501,11 @@ class RecoveryCode(Base, UUID7PrimaryKeyMixin, UserFK):
         String(255), nullable=False
     )  # Argon2 hash of the code
     is_used: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, index=True
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -522,7 +542,12 @@ class LoginHistory(Base, UUID7PrimaryKeyMixin, UserFK):
         nullable=False,
         index=True,
     )
-    is_suspicious: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_suspicious: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+    )
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.pop("_allow_system_managed_assignment", False)

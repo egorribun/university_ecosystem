@@ -25,22 +25,23 @@ pretend that source metadata alone proves the DDL of every deployed database.
 
 ## Inventory
 
-The current SQLAlchemy metadata (measured 2026-09-13) contains 45 tables and
+The current SQLAlchemy metadata (measured 2026-09-15) contains 45 tables and
 134 effective defaulted columns (computed expressions and `default=None`
 excluded):
 
-- 26 declarations have both an ORM and server default;
-- 91 effective declarations are Python-only;
+- 36 declarations have both an ORM and server default;
+- 81 effective declarations are Python-only;
 - 17 declarations are server-only.
 
 The source-level AST inventory contains 108 `mapped_column` calls with a
-`default` or `server_default` keyword: 26 both, 65 Python-only and 17
+`default` or `server_default` keyword: 36 both, 55 Python-only and 17
 server-only. The effective/source difference includes UUIDv7 primary-key
 defaults inherited from the mixin and explicit `default=None` declarations;
 the candidate list must therefore be generated from both metadata and the
 PostgreSQL catalog rather than inferred by subtracting totals. These figures
 supersede the external audit's stale 92-column number and must be regenerated
-after model changes.
+after model changes. Phase one intentionally leaves the remaining owner-scoped
+candidates pending their own catalog-backed migrations.
 
 ## Decision
 
@@ -76,6 +77,34 @@ downgrade, ORM and direct-write evidence.
 7. **Operational bounds.** Every migration documents lock/statement timeouts,
    idempotent preflight output, rollback behavior and downgrade policy. A
    migration warning must be eliminated by its construction, not ignored.
+
+### Phase one: authentication and registration boolean flags
+
+Revision `202609150001` covers the following ten non-secret scalar columns:
+
+```text
+active_sessions.mfa_required
+mfa_totp_enrollments.is_active
+password_reset_tokens.used
+email_change_tokens.used
+recovery_codes.is_used
+login_history.is_suspicious
+users.is_active
+users.mfa_required
+invite_codes.is_active
+invite_codes.is_used
+```
+
+Before changing any column, the revision checks that the live PostgreSQL
+catalog reports a boolean type and either no default or the exact reviewed
+literal. NULL rows are updated in `ctid` batches of 1,000 under a 60-second
+statement timeout. A nullable column receives a `CHECK (column IS NOT NULL)
+NOT VALID`, the check is validated, and only then is `SET NOT NULL` issued;
+the server default is installed last. Every identifier is validated and
+quoted, and an advisory transaction lock serializes concurrent applications.
+The downgrade is deliberately contract-preserving: it verifies the same
+catalog invariants and retains matching defaults/constraints because Alembic
+cannot prove ownership of equivalent objects that pre-date this revision.
 
 ## Exceptions
 

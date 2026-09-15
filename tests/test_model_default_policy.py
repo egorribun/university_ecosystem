@@ -24,11 +24,11 @@ def test_dual_defaults_inventory_and_exceptions_are_recorded() -> None:
         "## exceptions",
     ):
         assert heading in adr
-    assert "26 declarations have both" in adr
-    assert "91 effective declarations are python-only" in adr
+    assert "36 declarations have both" in adr
+    assert "81 effective declarations are python-only" in adr
     assert "17 declarations are server-only" in adr
     assert "108 `mapped_column` calls" in adr
-    assert re.search(r"26 both,\s+65 python-only and 17\s+server-only", adr)
+    assert re.search(r"36 both,\s+55 python-only and 17\s+server-only", adr)
     assert "uuidv7 primary-key" in adr
     assert "54 explicit python-only" not in adr
     assert "postgresql catalog preflight" in adr
@@ -62,4 +62,4 @@ def test_effective_metadata_inventory_matches_adr_snapshot() -> None:
 
     assert len(Base.metadata.tables) == 45
     assert computed_columns == ["events.search_vector"]
-    assert counts == {"both": 26, "python_only": 91, "server_only": 17}
+    assert counts == {"both": 36, "python_only": 81, "server_only": 17}
