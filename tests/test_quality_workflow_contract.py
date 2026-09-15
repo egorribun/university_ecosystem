@@ -287,6 +287,18 @@ def test_pr_workflows_cancel_superseded_runs_without_cancelling_main() -> None:
         assert concurrency.get("cancel-in-progress") == expected_cancel, filename
 
 
+def test_sbom_cancels_superseded_pr_and_main_push_runs_only() -> None:
+    """SBOM must release stale PR runners without cancelling manual evidence."""
+
+    workflow = yaml.safe_load(SBOM_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert isinstance(workflow, dict)
+    concurrency = workflow.get("concurrency")
+    assert concurrency == {
+        "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+        "cancel-in-progress": "${{ github.event_name == 'pull_request' || github.event_name == 'push' }}",
+    }
+
+
 def test_dockerfile_lint_excludes_companion_dockerignore_files() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     hadolint_step = next(
