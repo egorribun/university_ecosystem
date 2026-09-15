@@ -6137,3 +6137,68 @@ also covers status and `Cache-Control` safety values. No product source,
 mutation inventory or threshold was changed, and no suppression or
 exclusion is appropriate. A fresh current-SHA mutmut universe remains
 mandatory before certification.
+
+## 111. CDC replication teardown exception-contract survivor closure (2026-09-15; pending push)
+
+Stale PR run `34923631288` completed mutmut execution group 83 in job
+`104249730010`; artifact `10392471238` (`mutmut-exact-evidence-34923631288-1-group-83`)
+selected five mutants from a 54,141-mutant universe. Four were killed and the
+one survivor was
+`app.workers.cdc_outbox.xǁCdcOutboxWorkerǁ_close_replication_connection__mutmut_9`.
+The artifact's selected result records `exit_code: 0` and `status: survived`,
+with selection manifest SHA-256
+`49e8578ecfef1894af80cc8916f74577245851843bf34e082a72aa098222c0bb` and
+universe SHA-256
+`2af0d764ca6e63eeafbec21028013ef7485211e2121145ead74e8013966324a2`.
+
+The stale generated source at lines 54547-54549 changed
+`contextlib.suppress(OSError, ConnectionError, asyncpg.PostgresError,
+asyncpg.InterfaceError)` to omit the explicit `ConnectionError`. This is a
+real contract-observability gap, although runtime behavior is equivalent for
+this pair because Python's `ConnectionError` subclasses `OSError`. The
+implementation now keeps the complete immutable exception tuple at module
+level:
+
+    _REPLICATION_CLOSE_ERRORS = (
+        OSError,
+        ConnectionError,
+        asyncpg.PostgresError,
+        asyncpg.InterfaceError,
+    )
+
+and calls `contextlib.suppress(*_REPLICATION_CLOSE_ERRORS)`. The focused AST
+contract asserts that the worker method expands this module-level tuple, while
+the existing parameterized runtime contract continues to exercise all four
+supported teardown error classes. Keeping the explicit `ConnectionError`
+member outside the mutated method makes the documented lifecycle contract
+structural rather than dependent on a runtime-equivalent superclass.
+
+TDD evidence on the current checkout:
+
+    # RED before the production change:
+    uv run pytest -q -p no:cacheprovider tests/test_cdc_outbox_closure.py \
+      -k "replication_close_error_contract or close_replication_connection_uses"
+    # 2 failed: module-level tuple absent and suppress() did not expand it
+
+    # GREEN after the production change:
+    uv run pytest -q -p no:cacheprovider \
+      tests/test_cdc_outbox_closure.py tests/test_cdc_outbox.py
+    # 52 passed in 18.61s
+    uv run ruff check app/workers/cdc_outbox.py \
+      tests/test_cdc_outbox_closure.py tests/test_cdc_outbox.py
+    # All checks passed!
+    uv run ruff format --check app/workers/cdc_outbox.py \
+      tests/test_cdc_outbox_closure.py tests/test_cdc_outbox.py
+    # 3 files already formatted
+    uv run python -m mypy --config-file pyproject.toml \
+      app/workers/cdc_outbox.py
+    # Success: no issues found in 1 source file
+    git diff --check
+    # passed
+
+No mutation threshold, exclusion, quarantine or timeout policy was changed.
+The stale run remains bound to source SHA
+`2774de52d158cf0b7611b331586014a8420a1df2`; fresh current-SHA mutation
+evidence remains mandatory. User-owned WASM edits, temporary directories,
+`docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.

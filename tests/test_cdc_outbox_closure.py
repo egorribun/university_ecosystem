@@ -22,13 +22,13 @@ _CLOSE_REPLICATION_MUTANT_PREFIX = (
 def _close_replication_function_node() -> ast.AsyncFunctionDef:
     """Return the active close implementation from the imported source.
 
-    ``contextlib.suppress(OSError, ConnectionError, ...)`` deliberately names
-    both exception classes as part of the teardown contract.  ``ConnectionError``
-    subclasses ``OSError``, so a runtime-only test cannot distinguish removing
-    the explicit class from the original implementation.  During mutmut runs,
-    the generated module contains one sibling function per mutation; selecting
-    the active sibling makes this contract test fail for that otherwise
-    equivalent survivor without weakening the production behavior.
+    ``contextlib.suppress(*_REPLICATION_CLOSE_ERRORS)`` deliberately delegates
+    the complete exception contract to an immutable module-level tuple.
+    ``ConnectionError`` subclasses ``OSError``, so a runtime-only test cannot
+    distinguish removing the explicit class from the original implementation.
+    During mutmut runs, the generated module contains one sibling function per
+    mutation; selecting the active sibling makes this contract test fail for
+    that otherwise equivalent survivor without weakening production behavior.
     """
     source_path = Path(cdc.__file__)
     tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
@@ -54,12 +54,22 @@ def _close_replication_function_node() -> ast.AsyncFunctionDef:
     raise AssertionError(f"{target_name} is missing from {source_path}")
 
 
-def test_close_replication_connection_keeps_explicit_connection_error_contract() -> (
-    None
-):
-    """The best-effort close path must explicitly retain ConnectionError."""
+def test_replication_close_error_contract_is_explicit_and_module_level() -> None:
+    """The teardown exception tuple is explicit, immutable, and module-level."""
+    assert isinstance(cdc._REPLICATION_CLOSE_ERRORS, tuple)
+    assert cdc._REPLICATION_CLOSE_ERRORS == (
+        OSError,
+        ConnectionError,
+        cdc.asyncpg.PostgresError,
+        cdc.asyncpg.InterfaceError,
+    )
+    assert ConnectionError in cdc._REPLICATION_CLOSE_ERRORS
+
+
+def test_close_replication_connection_uses_explicit_module_error_contract() -> None:
+    """The close path must consume the complete module-level error tuple."""
     function = _close_replication_function_node()
-    suppressed: set[str] = set()
+    suppress_arguments: list[ast.expr] = []
     for node in ast.walk(function):
         if not isinstance(node, ast.With):
             continue
@@ -72,13 +82,14 @@ def test_close_replication_connection_keeps_explicit_connection_error_contract()
                 or context.func.attr != "suppress"
             ):
                 continue
-            suppressed.update(
-                child.id
-                for argument in context.args
-                for child in ast.walk(argument)
-                if isinstance(child, ast.Name)
-            )
-    assert "ConnectionError" in suppressed
+            suppress_arguments.extend(context.args)
+
+    assert any(
+        isinstance(argument, ast.Starred)
+        and isinstance(argument.value, ast.Name)
+        and argument.value.id == "_REPLICATION_CLOSE_ERRORS"
+        for argument in suppress_arguments
+    )
 
 
 def test_close_replication_function_falls_back_to_generated_original(

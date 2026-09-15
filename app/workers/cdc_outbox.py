@@ -25,6 +25,17 @@ from app.core.nats_broker import broker as global_nats_broker
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
+# Keep the complete teardown contract outside the worker method so mutation
+# testing cannot silently remove an explicitly supported error class.  The
+# tuple is immutable and retains ``ConnectionError`` even though it subclasses
+# ``OSError``; the explicit name documents the public lifecycle contract.
+_REPLICATION_CLOSE_ERRORS: tuple[type[BaseException], ...] = (
+    OSError,
+    ConnectionError,
+    asyncpg.PostgresError,
+    asyncpg.InterfaceError,
+)
+
 # ── Prometheus Metrics for CDC Outbox Observability ───────────────────────────
 
 
@@ -470,7 +481,7 @@ class CdcOutboxWorker:
         if conn is None:
             return
         with contextlib.suppress(
-            OSError, ConnectionError, asyncpg.PostgresError, asyncpg.InterfaceError
+            *_REPLICATION_CLOSE_ERRORS
         ):  # RZ-20-04: replication connection teardown is best effort
             await conn.close()
 
