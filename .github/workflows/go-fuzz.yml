@@ -27,20 +27,18 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          # Pin the toolchain containing the fix for golang/go#75804, which
+          # could misreport an exact fuzztime deadline as a test failure.
+          go-version: "1.27.1"
           cache: true
 
       - name: Run Fuzz Test
         run: |
           cd services/file-processor
           # Keep one fuzz worker: the default GOMAXPROCS-sized pool can OOM
-          # the runner. Reserve five seconds from the previous 25-second smoke
-          # budget:
-          # Go 1.26.6 still has golang/go#75804, where an exact fuzztime
-          # deadline can escape as a false `context deadline exceeded` failure.
-          # A 20-second fuzz budget plus the five-second shutdown margin keeps
-          # the smoke bounded without treating the toolchain race as a product
-          # failure.
+          # the runner. Go 1.27.1 contains the upstream fix for
+          # golang/go#75804, so retain the full bounded smoke budget without
+          # masking or ignoring failures.
           go test -v -fuzz=FuzzEstimateQueryDepth -fuzztime=20s -parallel=1 ./internal/middleware
 
       - name: Run gateway JWT fuzz test

@@ -1669,7 +1669,12 @@ def test_cargo_audit_validator_has_no_runtime_pyyaml_dependency() -> None:
 
 
 def test_active_go_toolchain_pins_use_current_security_patch() -> None:
-    """All executable Go surfaces must use the same patched toolchain."""
+    """Executable Go surfaces use a pinned security-patched toolchain.
+
+    The bounded fuzz workflows intentionally use Go 1.27.1 because it carries
+    the upstream fix for the fuzz deadline race; all other Go surfaces remain
+    on the repository-wide 1.26.6 security patch.
+    """
 
     expected_version = "1.26.6"
     manifest_expected_version = "1.26.4"
@@ -1711,7 +1716,11 @@ def test_active_go_toolchain_pins_use_current_security_patch() -> None:
         ).read_text(encoding="utf-8")
         assert '"1.26.4"' not in workflow_text, workflow_name
         assert '"1.26.5"' not in workflow_text, workflow_name
-        assert f'"{expected_version}"' in workflow_text, workflow_name
+        if workflow_name == "go-fuzz.yml":
+            assert '"1.26.6"' not in workflow_text, workflow_name
+            assert '"1.27.1"' in workflow_text, workflow_name
+        else:
+            assert f'"{expected_version}"' in workflow_text, workflow_name
 
     assert BENCHMARK_GO_IMAGE == (
         "docker.io/library/golang:1.26.6-bookworm@"
@@ -3894,6 +3903,12 @@ def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
     workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "go-fuzz.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     assert workflow["jobs"]["fuzz"]["timeout-minutes"] == 15
+    setup_go = next(
+        step
+        for step in workflow["jobs"]["fuzz"]["steps"]
+        if step.get("name") == "Set up Go"
+    )
+    assert setup_go["with"]["go-version"] == "1.27.1"
     text = "\n".join(
         step.get("run", "")
         for step in workflow["jobs"]["fuzz"]["steps"]
@@ -3909,9 +3924,8 @@ def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
         if line.strip().startswith("go test") and "-fuzz=" in line
     ]
     assert len(fuzz_commands) == 4
-    # Go 1.26.6 has golang/go#75804: an exact fuzztime deadline can escape
-    # as a false context-deadline failure. Reserve five seconds from the
-    # previous 25-second smoke budget until the patched toolchain is adopted.
+    # Go 1.27.1 includes the upstream fix for golang/go#75804, so retain the
+    # full bounded smoke budget without relying on retries or ignored failures.
     assert all("-fuzztime=20s" in command for command in fuzz_commands)
     assert all("-parallel=1" in command for command in fuzz_commands)
 
@@ -3920,6 +3934,12 @@ def test_ci_ws_hub_fuzz_uses_deadline_margin() -> None:
     workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     job = workflow["jobs"]["go-fuzz"]
+    setup_go = next(
+        step
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/setup-go@")
+    )
+    assert setup_go["with"]["go-version"] == "1.27.1"
     text = "\n".join(
         step.get("run", "") for step in job["steps"] if isinstance(step, dict)
     )

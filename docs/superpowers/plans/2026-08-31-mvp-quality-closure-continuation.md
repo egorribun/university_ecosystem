@@ -6652,6 +6652,76 @@ is permitted. The stale run `34923631288` may be archived as diagnostic
 history after it reaches a terminal state, but it must not be rerun or
 promoted to evidence for this source.
 
+## 121. Go fuzz deadline-race remediation (2026-09-15)
+
+This checkpoint records the first focused fix after the current-SHA matrix
+identified a nondeterministic Go toolchain failure. It preserves the full
+bounded fuzz budget and does not change the fuzz corpus, target inventory,
+parallelism policy, timeout, or any quality floor.
+
+### 121.1 Root cause and RED evidence
+
+The fresh Matrix run `34977524588` for source
+`fd42bd15762a589d68269dfa844f5693adbe6516` expanded to 93 jobs. At the time
+of triage, 76 jobs were successful, 9 were expected skips, 10 were still in
+progress, 3 were queued, and the only terminal failure was
+`Go Fuzz Tests (ws-hub)` job `104411136940`. Its exact log ended with:
+
+    --- FAIL: FuzzExtractAlgFromHeader (20.08s)
+        context deadline exceeded
+    FAIL
+    exit status 1
+
+`FuzzParseMessage` passed in the same job. The failing target exercises the
+pure `extractAlgFromHeader` parser and has no blocking or concurrent behavior.
+The dedicated external Go Fuzzing run `34977523804` passed the same SHA and
+target, and both targets passed locally under Go 1.26.5 with the existing
+20-second command. This is therefore a toolchain deadline race, not a
+product defect. It matches the upstream Go issue #75804, where an exact
+`fuzztime` deadline can be reported as a false `context deadline exceeded`.
+
+### 121.2 GREEN fix and contract
+
+Both bounded fuzz workflows now pin the official patched toolchain `Go 1.27.1`:
+
+* `.github/workflows/ci.yml::go-fuzz` uses `go-version: "1.27.1"` and keeps
+  both ws-hub targets at `-fuzztime=20s -parallel=1 -timeout=3m`;
+* `.github/workflows/go-fuzz.yml::fuzz` uses `go-version: "1.27.1"` and keeps
+  all four service targets at `-fuzztime=20s -parallel=1`.
+
+The workflow contract tests now assert the patched toolchain, complete four-
+target inventory, serialized workers, and unchanged bounded duration. The
+catalog validator remains source-bound and reports `55 workflows, 182 jobs`.
+No retry, ignored failure, exclusion, quarantine, suppression, or reduced
+fuzz budget was introduced.
+
+Focused verification after the patch:
+
+    uv run pytest -q -p no:cacheprovider tests/test_quality_workflow_contract.py \
+      -k 'go_fuzz_workflow_executes_all_service_fuzz_targets or ci_ws_hub_fuzz_uses_deadline_margin' \
+      --disable-warnings
+    # 2 passed, 175 deselected
+
+    actionlint .github/workflows/ci.yml .github/workflows/go-fuzz.yml
+    # passed
+
+    uv run python scripts/quality/validate_ci_check_catalog.py
+    # CI check catalog: OK (55 workflows, 182 jobs)
+
+    # local auto-downloaded Go 1.27.1 toolchain
+    # PowerShell: `$env:GOTOOLCHAIN='go1.27.1'; go version`
+    # go version go1.27.1 windows/amd64
+    go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=20s -parallel=1 -timeout=3m
+    go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=20s -parallel=1 -timeout=3m
+    # both PASS (ws-hub/pkg/hub; 26.523s and 26.658s including setup)
+
+The source changes are intentionally still uncommitted at this checkpoint;
+the next commit must include only the two workflow edits, their contract tests,
+and this plan evidence. After that commit is pushed non-force, the next
+authoritative boundary is the full terminal Matrix for its exact SHA, including
+the Go fuzz job and aggregate CI Success. The current failed run remains
+diagnostic and cannot be promoted to evidence.
+
 ## 120. Current-SHA fixture remediation and authoritative CI boundary (2026-09-15)
 
 This checkpoint supersedes the stale source-identification details in §119

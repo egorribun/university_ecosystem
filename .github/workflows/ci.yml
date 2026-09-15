@@ -697,17 +697,18 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          # Go 1.27.1 contains the upstream fix for golang/go#75804.  Pin the
+          # patched toolchain so the bounded fuzz smoke cannot report a false
+          # context-deadline failure during normal deadline shutdown.
+          go-version: "1.27.1"
           cache-dependency-path: services/ws-hub/go.sum
 
       - name: Run fuzz tests (bounded smoke)
         run: |
           cd services/ws-hub
-          # Serialize fuzz workers to bound runner memory. Go 1.26.6 still
-          # has golang/go#75804, where an exact fuzztime deadline can escape
-          # as a false context-deadline failure. Reserve five seconds from
-          # the previous 25-second smoke budget so both targets retain a
-          # bounded shutdown margin.
+          # Serialize fuzz workers to bound runner memory. Go 1.27.1 contains
+          # the upstream fix for golang/go#75804, so the full bounded smoke
+          # budget is retained without masking or ignoring failures.
           go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=20s -parallel=1 -timeout=3m
           go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=20s -parallel=1 -timeout=3m
 
