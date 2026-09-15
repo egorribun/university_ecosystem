@@ -6805,3 +6805,110 @@ run, the old coverage artifacts, or the currently running Codex Security scan
 current-SHA evidence. The plan remains
 `EVIDENCE-BLOCKED / EXTERNAL-ONLY` until the new source has terminal fresh CI,
 current manifests, and the remaining staging/release evidence.
+
+## 122. Main integration, BE-02 and evidence-governance checkpoint (2026-09-15)
+
+This checkpoint records the bounded changes integrated after the previous
+current-SHA boundary. It does not promote any old hosted run: every hosted
+result cited below is diagnostic until a terminal run for the final pushed SHA
+has been paginated and its artifacts have been independently validated.
+
+### 122.1 Source and integration identity
+
+The isolated integration worktree `C:\Temp\university-merge-20260915` merged
+the then-current `origin/main` (`913a2e6726666eb1873897c310dae937fb4e0c92`)
+without touching the user-owned primary checkout. Dependency changes were
+resolved with the current security pins and compatibility constraints:
+
+* frontend Vitest, browser and coverage packages are exactly `4.1.11`, the
+  supported line for the checked-in Storybook Vitest adapter and matcher type
+  declarations;
+* `js-yaml` remains `^4.3.2`, with package-lock regenerated and no high or
+  critical npm advisory;
+* Go module sums and Python lock metadata were regenerated after the main
+  dependency merge; local logging/spiffe replacements and quality upper bounds
+  were retained;
+* only immutable action-reference updates from `origin/main` were carried
+  into the integration commit; the privileged release workflow continues to
+  check out `github.sha`, validates it against `main`, and never executes a
+  dispatch-selected SHA.
+
+The merge and follow-up commits are:
+
+| Commit | Purpose |
+|---|---|
+| `acaf2064ddc5c79c9b301b9224309bcb91e8f4c2` | merge current main dependency/action baseline |
+| `1a14bbe30` | machine-readable CI health ledger reasons and unsupported resource telemetry |
+| `fb17f685a51bbf3fa72988cc7f1c26ec937e2fe4` | phased BE-02 authentication boolean-default migration |
+| `1c6f6cf8fa63c1b06119bd6459e9029196e0eee3` | fail-closed Go mutation diagnostic provenance |
+
+### 122.2 BE-02 phased migration
+
+`202609150001_phase_auth_boolean_defaults.py` adds dual Python/PostgreSQL
+defaults for the bounded authentication/registration boolean set. The
+upgrade is fail-closed and idempotent: it inventories column types and
+conflicting defaults, takes an advisory lock, uses bounded `ctid` backfill,
+adds `CHECK ... NOT VALID`, validates it, then applies `SET NOT NULL` under
+bounded lock and statement timeouts. Offline execution aborts before writing
+a revision without schema changes, and downgrade restores the prior contract.
+
+The focused migration/default suites passed (`10`, `5`, and `8` tests in their
+respective groups), including a real PostgreSQL upgrade/idempotency/conflict/
+downgrade run. Remaining non-auth owner-scoped defaults are intentionally not
+claimed closed by this bounded migration and remain tracked by BE-02 policy.
+
+### 122.3 Go mutation diagnostic provenance
+
+The diagnostic workflow now names the tested merge revision explicitly as
+`tested_merge_sha`, checks the checked-out `HEAD`, validates all SHA/run
+identities, and carries source-head, base, workflow, tool, configuration and
+run provenance into both success and failure evidence. If initialization fails
+before a target inventory exists, the finalizer writes an explicit unavailable
+inventory and marks the artifact as failure evidence; it cannot become a
+zero-target success. The re-assertion step rejects fallback provenance,
+missing fields, inconsistent commit identities, incomplete targets and any
+non-success summary. ADR-038 and the contract suite were updated accordingly.
+
+### 122.4 CI observability and local evidence
+
+The CI health renderer/analyzer now emits machine-readable retry, timeout and
+skip reasons plus an explicit `resource_usage.status: unsupported` when the
+GitHub Jobs API cannot provide CPU/RSS. Renderer validation is fail-closed and
+the runbook documents the API limitation rather than inventing measurements.
+
+Local evidence on the integrated source:
+
+    frontend full unit: 673 files, 7,119 tests, 100% statements/branches/functions/lines
+    frontend WASM/quality node suite: 261 passed
+    frontend architecture suite: 10 passed
+    CI/migration/default/go governance focused suite: 206 passed
+    repository harness: 29/29 passed
+    Go gateway/file-processor/ws-hub tests: exit 0
+    npm audit --audit-level=high: high 0, critical 0 (7 low dev advisories)
+    uv lock --check: success
+
+The complete frontend unit run took 1,718 seconds on this Windows host. This
+is evidence for correctness, not a justification to increase hosted mutation
+parallelism: the lane caps remain unchanged until three comparable green runs
+with queue, timeout, memory and billed-minute evidence exist.
+
+### 122.5 Hosted boundary and remaining release blockers
+
+The first post-integration push was
+`fb17f685a51bbf3fa72988cc7f1c26ec937e2fe4`; its matrix run was
+`34994184640` and its companion security/contract runs were in the
+`349941839xx`–`349941843xx` range. Those runs were still in progress while
+this checkpoint was written; early security/static results were green, but
+they are diagnostic and predate the Go governance commit. The next non-force
+push contains the Go provenance fix and this checkpoint. Only its exact final
+SHA may supply release evidence.
+
+The following remain explicitly open until terminal current-SHA evidence or
+external execution closes them: all Stryker/mutmut inventories and viable
+scores, current coverage manifest/report hashes, browser and Lighthouse
+matrix, Schemathesis, dark unauthenticated smoke, Go/Rust race/fuzz and
+benchmarks, full security/supply-chain scans, Docker immutable-digest smoke,
+Kubernetes staging/TLS/observability/CWV/chaos/rollback, three comparable
+parallelism experiments, and resulting-main/release certification. The plan
+therefore remains `EVIDENCE-BLOCKED / EXTERNAL-ONLY`; no release-ready or
+full-plan completion claim is permitted from these local results.
