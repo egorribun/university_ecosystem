@@ -7,6 +7,7 @@ unprotected ``/static`` mount must never serve those storage prefixes.
 
 from __future__ import annotations
 
+import posixpath
 from urllib.parse import unquote
 
 from fastapi.staticfiles import StaticFiles
@@ -26,6 +27,11 @@ def is_private_static_path(path: str) -> bool:
         normalized = unquote(normalized)
         if normalized == previous:
             break
+    # ``StaticFiles.lookup_path`` resolves dot-segments with
+    # ``os.path.realpath`` before serving a file.  Normalize the same URL
+    # shape here so an attachment prefix cannot be hidden behind a harmless
+    # looking parent-directory segment (for example ``foo/../chat_uploads``).
+    normalized = posixpath.normpath(normalized)
     if normalized.startswith("static/"):
         normalized = normalized[len("static/") :]
     return any(

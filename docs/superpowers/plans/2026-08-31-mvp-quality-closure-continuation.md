@@ -5385,3 +5385,32 @@ test, artifact, retry/timeout, RSS/CPU and billed-minute data before an
 isolated A/B change (Stryker duration-aware balancing first). Any increase
 must be reverted on queue starvation, timeout, RSS, provenance, or reliability
 regression. This preserves the speed goal without weakening release gates.
+
+## 85. Static attachment-path dot-segment hardening (2026-09-15; pending push)
+
+The independent security audit found that `is_private_static_path` decoded
+percent-encoding and normalized separators but did not collapse `..` path
+segments before checking the private attachment prefixes. Starlette's static
+file resolver canonicalizes those segments with `realpath`, so a path such as
+`foo/../chat_uploads/...` could reach a private attachment while the guard
+classified it as public. This was a pre-existing security boundary, not a
+regression introduced by the mutation-closure commits.
+
+The guard now applies POSIX dot-segment normalization after the existing
+repeated URL-decoding and separator normalization, while retaining the
+existing `/static/` mount-prefix handling. Focused tests cover direct and
+double-encoded parent segments for both attachment prefixes and retain the
+public-avatar control case. The change is fail-closed and does not alter
+authorization or the static resolver itself.
+
+Focused evidence:
+
+    uv run pytest -q -p no:cacheprovider tests/test_private_attachments.py
+    # 6 passed
+
+    uv run ruff check app/core/static.py tests/test_private_attachments.py
+    uv run ruff format --check app/core/static.py tests/test_private_attachments.py
+    git diff --check
+    # all passed
+
+Fresh current-SHA security and E2E evidence remains required after push.
