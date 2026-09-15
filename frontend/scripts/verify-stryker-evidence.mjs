@@ -945,10 +945,12 @@ async function git(args) {
   return stdout.trim()
 }
 
-function resolveEvidencePath(relativePath) {
+export function resolveEvidencePath(relativePath, root = repositoryRoot) {
   const canonical = assertCanonicalRelativePath(relativePath)
-  const resolved = path.resolve(repositoryRoot, canonical)
-  if (!resolved.startsWith(`${repositoryRoot}${path.sep}`)) {
+  const resolvedRoot = path.resolve(root)
+  const resolved = path.resolve(resolvedRoot, canonical)
+  const relative = path.relative(resolvedRoot, resolved)
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error(`Evidence path escapes the repository: ${relativePath}`)
   }
   return resolved
