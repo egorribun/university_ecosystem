@@ -29,6 +29,9 @@ def _production_settings(**overrides: str) -> SecuritySettings:
     "weak_secret",
     [
         "a" * 32,
+        # Exactly 32 bytes but only two distinct bytes must still fail the
+        # diversity guard; this kills the mutmut ``or`` -> ``and`` survivor.
+        "A" * 31 + "B",
         "internal-hmac-secret-012345678901",
         "change-me-internal-hmac-secret-012345",
     ],
