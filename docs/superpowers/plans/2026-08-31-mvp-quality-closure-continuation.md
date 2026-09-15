@@ -5646,3 +5646,35 @@ Race-enabled Go evidence remains Linux/container-gated because this host has
 no C compiler (`go test -race` exits with the documented CGO requirement).
 Non-race `go test ./...` passed for gateway, ws-hub and file-processor; the
 release gate still requires the pinned Linux race jobs.
+
+## 95. Static-path normalization survivor closure (2026-09-15; pending push)
+
+The stale diagnostic run `34923631288` later completed mutmut execution group
+61 with one additional survivor (`10387415971`):
+`app.core.static.x_is_private_static_path__mutmut_8` changed
+`path.lstrip("/")` to `path.lstrip("XX/XX")`. That mutation strips arbitrary
+leading `X` characters and can falsely classify a public path such as
+`Xchat_uploads/...` as a private attachment prefix. It is a real
+normalization contract defect, not a scheduler or timeout failure.
+
+The current implementation remains deliberately strict and unchanged. Commit
+`ab520d4df` adds a focused regression assertion that
+`is_private_static_path("Xchat_uploads/chat_x/file.txt")` is false, while the
+existing encoded, dot-segment, private-prefix and blocked-response assertions
+remain intact. Focused evidence:
+
+    uv run pytest -q -p no:cacheprovider tests/test_private_attachments.py
+    # 6 passed
+    uv run ruff check tests/test_private_attachments.py
+    uv run ruff format --check tests/test_private_attachments.py
+    git diff --check
+    # all passed
+    PRE_COMMIT_HOME=C:\\Temp\\pre-commit-cache-mvp \
+      pre-commit run --files tests/test_private_attachments.py
+    # all configured applicable hooks passed
+
+The stale artifact is bound to pre-fix SHA `2774de52`; this test is not claimed
+as current mutation evidence until a fresh SHA-bound mutmut universe executes
+the complete inventory. User-owned WASM edits, temporary directories,
+`docs/audits/AUDIT_PLATFORM_FULL.md` and the service capability marker remain
+unstaged.
