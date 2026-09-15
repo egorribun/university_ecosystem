@@ -234,6 +234,20 @@ def test_image_pixel_limit_error_messages_distinguish_decoder_and_dimensions():
     dimension_error = img_mod.ImagePixelLimitError(10, 20, 100)
     decoder_error = img_mod.ImagePixelLimitError(None, None, 100)
 
+    assert (
+        dimension_error.width,
+        dimension_error.height,
+        dimension_error.max_pixels,
+    ) == (
+        10,
+        20,
+        100,
+    )
+    assert (decoder_error.width, decoder_error.height, decoder_error.max_pixels) == (
+        None,
+        None,
+        100,
+    )
     assert str(dimension_error) == ("image dimensions 10x20 exceed pixel budget of 100")
     assert str(decoder_error) == "image exceeds pixel budget of 100"
 

@@ -5726,3 +5726,31 @@ branch non-force, obtain a fresh current-SHA PR matrix and security evidence,
 then perform the external merge/release gates. User-owned WASM changes,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
+
+## 97. Image pixel-limit attribute survivor closure (2026-09-15; pending push)
+
+The still-running stale run `34923631288` completed mutmut execution group 62
+with one real survivor (`10387787759`):
+`app.utils.images.xǁImagePixelLimitErrorǁ__init____mutmut_1` replaced
+`self.width = width` with `self.width = None`. The public exception contract
+includes structured dimensions and the configured budget, not only its human
+readable message; losing those attributes would break callers that need to
+render or audit the rejected dimensions.
+
+The existing message regression was extended with exact assertions for both a
+dimension error and a decoder error (`width`, `height` and `max_pixels`). No
+production behavior or mutation inventory was weakened. Focused evidence:
+
+    uv run pytest -q -p no:cacheprovider tests/test_images_v2.py
+    # 28 passed
+    uv run ruff check tests/test_images_v2.py
+    uv run ruff format --check tests/test_images_v2.py
+    git diff --check
+    # all passed
+
+The artifact and mutant are bound to stale source SHA `2774de52`; current-SHA
+mutation certification remains pending a fresh complete universe. The stale
+run now has 23 completed failures (all mutmut), 5 in-progress jobs and 79
+queued jobs; no non-mutmut failure has been observed. User-owned WASM edits,
+temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
