@@ -90,6 +90,34 @@ def test_process_image_resize_preserves_aspect_ratio():
     assert mime == "image/jpeg"
 
 
+def test_process_image_resize_uses_resolved_high_quality_filter():
+    """Resizing must pass the configured Pillow filter through unchanged."""
+    image = MagicMock()
+    image.size = (100, 50)
+    image.format = "PNG"
+    image.__enter__.return_value = image
+    resized = MagicMock()
+    resized.format = "PNG"
+    image.resize.return_value = resized
+    resized.save.side_effect = lambda buffer, *, format, **_kwargs: (
+        buffer.write(b"resized-png") if format == "PNG" else None
+    )
+    expected_filter = object()
+
+    with (
+        patch("app.services.image_proxy.Image.open", return_value=image),
+        patch(
+            "app.services.image_proxy._resolve_resample_filter",
+            return_value=expected_filter,
+        ),
+    ):
+        data, mime = _process_image(b"source", 50, "original")
+
+    image.resize.assert_called_once_with((50, 25), resample=expected_filter)
+    assert data == b"resized-png"
+    assert mime == "image/png"
+
+
 def test_image_proxy_cache_and_avif_import_branches():
     msgspec_package = types.ModuleType("msgspec")
     msgpack_module = types.ModuleType("msgspec.msgpack")
