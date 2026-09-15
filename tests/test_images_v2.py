@@ -421,3 +421,11 @@ def test_validate_image_dimensions_rejects_invalid_values(
 ):
     with pytest.raises(ValueError, match=message):
         img_mod.validate_image_dimensions(width, height, max_pixels=budget)
+
+
+def test_validate_image_dimensions_reports_non_numeric_values_consistently():
+    """Keep the stable domain error for values that cannot be coerced."""
+    with pytest.raises(ValueError) as exc_info:
+        img_mod.validate_image_dimensions("bad", 1, max_pixels=4)
+
+    assert str(exc_info.value) == "Image dimensions must be finite integers"
