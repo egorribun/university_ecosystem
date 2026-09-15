@@ -5727,6 +5727,40 @@ then perform the external merge/release gates. User-owned WASM changes,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
 
+## 104. External-audit triage against current ancestry (2026-09-15; evidence pending)
+
+The independent review of the untracked external audit
+`docs/audits/AUDIT_PLATFORM_FULL.md` against the current plan and quality
+contract found no new safe P0/P1 code patch. The audit's P0 findings SEC-01
+(GraphQL gateway identity trust) and INFRA-01 (revocation Redis wiring) are
+already CODE-FIXED in current ancestry and remain FRESH-EVIDENCE-PENDING:
+`app/graphql/schema.py` verifies the gateway `X-Internal-Signature` before
+trusting identity, while the Kubernetes ExternalSecret/backend wiring supplies
+`REVOCATION_REDIS_URL`. The audited P1 items BE-01/03/05, FE-01, GO-01/02/03,
+RUST-P1-01/02, INFRA-04/05/06 and SEC-02/03/04 have the same
+CODE-FIXED/FRESH-EVIDENCE-PENDING disposition in the plan.
+
+INFRA-03 is implemented by `scripts/apply_raw_k8s.sh` (registry/tag
+validation, unresolved-variable and `latest` rejection) but still needs fresh
+Helm/Kyverno render evidence. INFRA-02 is an intentional
+DECISION-RECORDED architecture choice: ADR-034 and `k8s/README.md` make Helm
+the sole canonical producer, so raw-manifest omission of Go services is not a
+new defect.
+
+The only unresolved architecture dispositions in the P0/P1 set are BE-02
+(ADR-036 measured defaults inventory requiring PostgreSQL catalog preflight and
+phased migration design) and BE-04 (Dishka/legacy `Depends` coexistence,
+requiring a separate ADR and phased migration). They are not safe opportunistic
+patches for this closure run. Remaining SEC-07/SEC-08/GO-07 items and all
+current-SHA Linux race/fuzz, coverage/mutation, Helm/Kyverno, staging, image,
+observability and rollback checks are evidence/tooling or external-only gates.
+
+The external audit is preserved untracked as user-owned input. This triage
+does not promote the stale run `34923631288` or the partial security scans to
+release evidence; current-SHA hosted artifacts remain mandatory. User-owned
+WASM edits, temporary directories and `services/file-processor/coverage_capability`
+remain unstaged.
+
 ## 103. pyvips option-string survivor closure (2026-09-15; pending push)
 
 Stale run `34923631288` completed mutmut execution group 69 with survivor
