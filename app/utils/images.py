@@ -161,7 +161,12 @@ def optimize_image(
         max_w = 1920
     if max_h <= 0:
         max_h = 1920
-    pixel_budget = int(max_pixels or DEFAULT_MAX_IMAGE_PIXELS)
+    # ``0`` is an explicitly invalid policy value, not an instruction to use
+    # the default.  Preserve ``None`` as the only sentinel so callers cannot
+    # accidentally bypass the lower bound before the guard below runs.
+    pixel_budget = int(
+        max_pixels if max_pixels is not None else DEFAULT_MAX_IMAGE_PIXELS
+    )
     if pixel_budget <= 0 or pixel_budget > MAX_CONFIGURED_IMAGE_PIXELS:
         raise ValueError(
             f"Image pixel budget must be between 1 and {MAX_CONFIGURED_IMAGE_PIXELS}"

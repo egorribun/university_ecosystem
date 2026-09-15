@@ -212,7 +212,9 @@ def test_optimize_image_passes_default_pixel_budget_to_vips():
     )
 
 
-@pytest.mark.parametrize("pixel_budget", [-1, img_mod.MAX_CONFIGURED_IMAGE_PIXELS + 1])
+@pytest.mark.parametrize(
+    "pixel_budget", [0, -1, img_mod.MAX_CONFIGURED_IMAGE_PIXELS + 1]
+)
 def test_optimize_image_rejects_out_of_range_pixel_budget(pixel_budget):
     with pytest.raises(ValueError, match="Image pixel budget must be between"):
         img_mod.optimize_image(b"not-an-image-payload", max_pixels=pixel_budget)
