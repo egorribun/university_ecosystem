@@ -7089,3 +7089,31 @@ security/contract/DB gates. They remain diagnostic only after this source
 change. The roadmap stays `EVIDENCE-BLOCKED / EXTERNAL-ONLY` pending the new
 current-SHA matrix, complete mutation/coverage/manifest evidence, and the
 Docker/Kubernetes/release boundary in §122.5.
+
+## 128. Detect-secrets stale-entry artifact closure (2026-09-15; current-SHA remediation)
+
+The next exact-SHA matrix (`3c42ae6381b05e98a5e96328ff71f34ef7eb8a94`, run
+`35003978650`) confirmed that the documentation placeholder itself was no
+longer a finding, but the pre-commit hook still had to reconcile the
+repository artifact. On the full tracked-file scan it removed the stale
+`docs/API_EXAMPLES.md` entry and refreshed `generated_at`; the hook correctly
+returned exit `3` until the changed baseline was staged. The parallel mypy
+portion passed, and the independent baseline-integrity job passed, so this was
+an artifact synchronization failure rather than a security or type failure.
+
+The committed `.secrets.baseline` now contains the exact deterministic
+post-scan state (the stale documentation entry removed and a fresh UTC
+timestamp). The file was staged immediately after the detector run as required
+by repository policy. A bounded local hook invocation with the staged baseline
+exits `0`; the focused scan of `docs/API_EXAMPLES.md` is empty and the
+fail-closed verifier against both the current scan and trusted-base baseline
+exits `0`. No new finding, baseline suppression, exclusion, or quarantine was
+introduced. The full local pre-commit launcher remains environment-blocked
+only by the Windows global cache permission error already documented in §125;
+hosted Linux pre-commit is the authoritative check.
+
+Because this baseline artifact is a new source change, all `fea7` and `3c42`
+run evidence is diagnostic and must not be promoted. A subsequent non-force
+push is required, followed by terminal inspection of every required matrix
+job, current coverage/mutation manifest and all external release gates. The
+roadmap remains `EVIDENCE-BLOCKED / EXTERNAL-ONLY`.
