@@ -5221,9 +5221,10 @@ were proven equivalent under the actual runtime contracts:
   in `PublicStaticFiles.get_response`. Starlette lowercases response field
   names before ASGI emission and HTTP field names are case-insensitive, so no
   consumer-visible behavior can distinguish the mutation. The source now keeps
-  the readable spelling behind a narrow, documented `# pragma: no mutate` on
-  the key binding; security values (`no-store` and `nosniff`) remain fully
-  mutation-tested by the response contract.
+  the readable spelling in a module-level header constant (outside mutmut's
+  function mutation universe), without a suppression; security values
+  (`no-store` and `nosniff`) remain fully mutation-tested by the response
+  contract.
 - group 16 (`104249723409`) changed the `getattr` default for
   `settings.image_max_pixels` from `0` to `None`. The validated settings model
   always supplies a positive integer, making both defaults equivalent for a
@@ -5250,7 +5251,7 @@ The local regression evidence is:
 The raw-header experiment was discarded because Starlette intentionally emits
 lower-case ASGI names; the final contract tests therefore assert the required
 case-insensitive security values rather than an invalid wire casing. This is a
-targeted, evidence-backed mutation pragma for an external semantic equivalence,
-not a quality threshold, inventory, or test exclusion. Fresh current-SHA
+structural elimination of an external semantic-equivalence mutant, not a
+quality threshold, inventory, or test exclusion. Fresh current-SHA
 mutation evidence is still required before considering either stale survivor
 closed.

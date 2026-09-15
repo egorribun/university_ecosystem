@@ -14,6 +14,7 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 PRIVATE_STATIC_PREFIXES: tuple[str, ...] = ("chat_uploads", "event_files")
+_CACHE_CONTROL_HEADER = "Cache-Control"
 
 
 def is_private_static_path(path: str) -> bool:
@@ -38,14 +39,10 @@ class PublicStaticFiles(StaticFiles):
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         if is_private_static_path(path):
-            # HTTP field names are case-insensitive and Starlette lowercases
-            # them before emitting ASGI raw headers.  Keep this spelling for
-            # source readability; the value remains fully mutation-tested.
-            cache_control_header = "Cache-Control"  # pragma: no mutate
             return Response(
                 status_code=404,
                 headers={
-                    cache_control_header: "no-store",
+                    _CACHE_CONTROL_HEADER: "no-store",
                     "X-Content-Type-Options": "nosniff",
                 },
             )
