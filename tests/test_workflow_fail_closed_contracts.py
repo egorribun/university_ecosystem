@@ -19,7 +19,7 @@ CI = WORKFLOWS / "ci.yml"
 PRE_COMMIT_CONFIG = ROOT / ".pre-commit-config.yaml"
 PYPROJECT = ROOT / "pyproject.toml"
 UV_LOCK = ROOT / "uv.lock"
-LOCKED_PRE_COMMIT_VERSION = "4.6.0"
+LOCKED_PRE_COMMIT_VERSION = "4.6.2"
 HELM_3_17_0_LINUX_AMD64_SHA256 = "fb5d12662fde6eeff36ac4ccacbf3abed96b0ee2de07afdde4edb14e613aee24"  # pragma: allowlist secret -- public Helm release checksum
 DEPLOY_SMOKE_REQUIREMENTS = {
     "requests==2.33.1": "4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a",  # pragma: allowlist secret -- public PyPI wheel checksum
