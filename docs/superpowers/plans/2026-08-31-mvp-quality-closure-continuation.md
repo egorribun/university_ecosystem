@@ -5335,6 +5335,20 @@ Focused local evidence:
 Fresh current-SHA mutation evidence remains required; this old-run finding is
 not a release result.
 
+## 83. Exact minimum-length mutation boundary (2026-09-15; pending push)
+
+Stale run `34923631288` exposed group 31 (`104249725112`) with survivor
+`app.core.config.security._validate_internal_hmac_secret_strength__mutmut_7`,
+which changed `< 32` to `< 33`. This is the same security boundary represented
+by group 30's `<= 32` mutant, not an equivalent behavior: exactly 32 encoded
+bytes is valid and must remain accepted. The focused non-repeating 32-byte
+secret test added for group 30 kills both boundary mutations while preserving
+the documented minimum entropy contract.
+
+No production threshold was changed and no test was weakened. The old run is
+still diagnostic; fresh current-SHA mutation evidence must prove the complete
+inventory at 100% viable score after push.
+
 ## 82. CI capacity audit and evidence-gated speed policy (2026-09-15)
 
 The read-only capacity audit of workflow sources and stale run `34923631288`
