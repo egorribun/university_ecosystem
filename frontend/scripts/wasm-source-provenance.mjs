@@ -179,7 +179,9 @@ export async function validateSourceProvenance(root, options = {}) {
   try {
     metadata = JSON.parse(await readFile(metadataPath, "utf8"))
   } catch (error) {
-    throw new Error(`${PROVENANCE_FILENAME} is not valid JSON: ${error.message}`)
+    throw new Error(`${PROVENANCE_FILENAME} is not valid JSON: ${error.message}`, {
+      cause: error,
+    })
   }
   assertMetadataShape(metadata)
 

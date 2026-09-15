@@ -8,7 +8,7 @@ const RESET_PASSWORD_TOKEN = /^(\/reset-password\/)[^/]+/iu
  * must retain route-level diagnostics without persisting either value.
  */
 export function sanitizeRequestTarget(requestTarget) {
-  let pathname = "/"
+  let pathname
   try {
     pathname = new URL(requestTarget ?? "/", "http://request.local").pathname
   } catch {

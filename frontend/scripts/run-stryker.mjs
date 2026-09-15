@@ -1464,7 +1464,9 @@ export async function acquireRunLock(lockPath, runId) {
     handle = await open(lockPath, "wx")
   } catch (error) {
     if (error && typeof error === "object" && error.code === "EEXIST") {
-      throw new Error(`Another Stryker evidence run is already active (${lockPath})`)
+      throw new Error(`Another Stryker evidence run is already active (${lockPath})`, {
+        cause: error,
+      })
     }
     throw error
   }
@@ -1881,7 +1883,9 @@ export function parseWindowsProcessHostStatus(text) {
   try {
     status = JSON.parse(text)
   } catch (error) {
-    throw new Error(`Windows process-host status is not valid JSON: ${error.message}`)
+    throw new Error(`Windows process-host status is not valid JSON: ${error.message}`, {
+      cause: error,
+    })
   }
   assertExactObjectKeys(status, windowsProcessHostStatusKeys, "Windows process-host status")
   if (status.schemaVersion !== 1 || status.protocolVersion !== windowsProcessHostProtocolVersion) {
@@ -2801,7 +2805,9 @@ async function readCanonicalPreflightCandidates({ candidateRoot, workflow }) {
     rootEntries = await readdir(candidateRoot, { withFileTypes: true })
   } catch (error) {
     if (error && typeof error === "object" && error.code === "ENOENT") {
-      throw new Error("Required immutable Stryker preflight candidate root is missing")
+      throw new Error("Required immutable Stryker preflight candidate root is missing", {
+        cause: error,
+      })
     }
     throw error
   }
@@ -3103,7 +3109,7 @@ async function readRegularHistoricalCostArtifact({ candidateRoot, relativePath }
     rootStats = await lstat(root)
   } catch (error) {
     if (error && typeof error === "object" && error.code === "ENOENT") {
-      throw new Error("Historical Stryker cost candidate root is missing")
+      throw new Error("Historical Stryker cost candidate root is missing", { cause: error })
     }
     throw error
   }
@@ -3119,7 +3125,7 @@ async function readRegularHistoricalCostArtifact({ candidateRoot, relativePath }
       stats = await lstat(currentPath)
     } catch (error) {
       if (error && typeof error === "object" && error.code === "ENOENT") {
-        throw new Error("Historical Stryker cost artifact is missing")
+        throw new Error("Historical Stryker cost artifact is missing", { cause: error })
       }
       throw error
     }
@@ -3684,7 +3690,6 @@ async function main() {
   const runId = randomUUID()
   let lock
   let runPaths
-  let focusedMutationRun = false
   let temporaryRoot
   let primaryError
   try {
@@ -3693,7 +3698,7 @@ async function main() {
     const policy = JSON.parse(await readFile(sourcePolicyPath, "utf8"))
     const policySourceFiles = await listPolicyFiles(policy)
     const sourceSelection = resolveMutationSourceSelection(policySourceFiles)
-    focusedMutationRun = sourceSelection.focused
+    const focusedMutationRun = sourceSelection.focused
     const sourceFiles = sourceSelection.sourceFiles
     runPaths = mutationRunPaths(sourceSelection)
     throwIfCancellationRequested(cancellation.signal)

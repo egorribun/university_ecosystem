@@ -298,7 +298,7 @@ async function readValidatedEvidenceCandidates({ candidateRoot, expectedWorkflow
     rootEntries = await readdir(candidateRoot, { withFileTypes: true })
   } catch (error) {
     if (error && typeof error === "object" && error.code === "ENOENT") {
-      throw new Error("Required validated artifact candidate root is missing")
+      throw new Error("Required validated artifact candidate root is missing", { cause: error })
     }
     throw error
   }

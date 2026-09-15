@@ -224,7 +224,7 @@ describe("NavbarLogo", () => {
     expect(link().querySelector(".navbar-brand-name")).toHaveClass("max-w-0", "opacity-0")
 
     view.unmount()
-    view = await renderWithRouter({
+    await renderWithRouter({
       ui: () => (
         <NavbarLogo
           t={t}
