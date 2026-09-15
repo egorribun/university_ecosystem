@@ -5727,6 +5727,30 @@ then perform the external merge/release gates. User-owned WASM changes,
 temporary directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
 `services/file-processor/coverage_capability` remain unstaged.
 
+## 98. Current-head supplemental security scan (2026-09-15; pending push)
+
+A new Codex Security standard scan was run against the exact current committed
+checkout `bbe28d86de25bd327ff54836f9bd3ce1cf3c3918` (scan
+`51f66f40-6198-46cd-8649-571eebd51d78`). The configuration preflight was
+`ready`; the scan reviewed six declared surfaces and completed with zero
+reportable findings. Local source review covered authentication/CSRF and
+JWT/JWKS, gateway identity assertions, private attachments/image processing,
+CI workflow and artifact provenance, secrets/logging/Rust/WASM, and static
+infrastructure/release controls.
+
+The scan is deliberately marked `partial`, not complete release assurance:
+fresh current-SHA hosted mutation/coverage artifacts, Linux race/fuzz jobs,
+registry attestations, live Kubernetes/TLS/ExternalSecrets/observability,
+real browser/device performance and rollback evidence remain deferred. The
+sealed artifacts are outside the repository under
+`C:\\Temp\\codex-security-scans-UsDczy\\university_ecosystem\\bbe28d86de25bd327ff54836f9bd3ce1cf3c3918_20260915T083923Z_qbrf62hi\\` (`report.md`, `findings.json`, `coverage.json`, `scan-manifest.json` and `exports\\results.sarif`). The tool reported a non-blocking `token_record_invalid` usage warning; it did not alter findings or repository state.
+
+This evidence is supplemental pre-push assurance. After the stale run is
+terminal and the branch is pushed, a new scan and current-SHA CI artifacts are
+still mandatory before any release claim. User-owned WASM edits, temporary
+directories, `docs/audits/AUDIT_PLATFORM_FULL.md` and
+`services/file-processor/coverage_capability` remain unstaged.
+
 ## 97. Image pixel-limit attribute survivor closure (2026-09-15; pending push)
 
 The still-running stale run `34923631288` completed mutmut execution group 62
