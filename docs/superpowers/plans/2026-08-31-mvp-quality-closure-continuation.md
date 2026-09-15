@@ -2582,7 +2582,7 @@ finding был проверяемым.
 | SEC-09 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | ADR-035 and the fail-closed dependency policy add upper bounds to all 32 previously unbounded external production requirements; current-SHA frozen install, vulnerability, SBOM and compatibility evidence remain required. |
 | SEC-10 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Same cursor-SCAN fix as GO-05. |
 | SEC-11 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Same readiness healthcheck fix as INFRA-07. |
-| SEC-12 | `BACKLOG / TOOLING REVIEW` | Expand mypy hook only after measuring generated/model scope and preserving strict config; current CI mypy remains required. |
+| SEC-12 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Pre-commit mypy now uses the complete anchored `^app/` scope and declares the locked CLI imports required by that scope; the hook and 351-file run are green. Fresh current-SHA pre-commit/security aggregate remains required. |
 
 ### 33.8 Current local evidence and next required gates
 
@@ -5528,3 +5528,24 @@ mass-marked `is_verified=true`. SEC-07 is therefore `CODE-COMPLETE /
 FRESH-EVIDENCE-PENDING`: the only remaining proof is a current-SHA Linux
 all-files scan plus trusted-base comparison in CI. A new finding, malformed
 artifact, or new trusted-base suppression must still fail closed.
+
+## 91. Cross-workflow runner contention evidence (2026-09-15; policy pending)
+
+The expanded CI audit measured the real hosted-runner boundary rather than
+the per-workflow strategy values. While the historical PR matrix was still
+draining, a scheduled Nightly Full Quality Gate occupied nine runners and
+three unrelated Dependabot PR runs occupied three more; the old PR run had
+seven active jobs. The observed combined peak was 19/20 runners, so the
+historical run's `max-parallel: 10` mutmut lane could not obtain its nominal
+capacity. The run-level API continued to report `queued` while jobs were
+active; paginated job records remain the source of truth.
+
+This is an operational scheduling constraint, not evidence to lower a gate.
+No other user's run is cancelled automatically and no matrix cardinality,
+timeout or retry policy is changed in this checkpoint. Safe follow-up after
+three comparable green PR runs is to evaluate a tested admission policy for
+scheduled heavy matrices (or a separate runner pool) and to consolidate
+duplicate external producers only after the required-check catalog and branch
+protection are updated together. Any candidate must preserve first-failure
+artifacts, provenance and all required contexts, and must be reverted on
+queue starvation, timeout, RSS/CPU, or reliability regression.
