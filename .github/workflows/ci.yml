@@ -1945,7 +1945,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         id: trivy_scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           # Prefer the canonical GHCR database. The public mirror can be
           # transiently unavailable from GitHub-hosted runners; changing the
