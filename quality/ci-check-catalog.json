@@ -4196,7 +4196,7 @@
       "events": [
         {
           "event": "pull_request_target",
-          "guard": "{\"branches\":[\"main\"],\"types\":[\"opened\",\"synchronize\",\"reopened\",\"ready_for_review\"]}"
+          "guard": "{\"branches\":[\"main\"],\"types\":[\"opened\",\"synchronize\",\"reopened\",\"ready_for_review\",\"edited\"]}"
         }
       ],
       "jobs": {

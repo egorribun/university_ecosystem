@@ -27,6 +27,7 @@ def test_policy_integrity_runs_from_trusted_base_without_pr_code_execution() -> 
         "synchronize",
         "reopened",
         "ready_for_review",
+        "edited",
     }
     assert workflow["permissions"] == {"contents": "read", "pull-requests": "read"}
     assert workflow["concurrency"] == {
@@ -56,6 +57,20 @@ def test_policy_integrity_runs_from_trusted_base_without_pr_code_execution() -> 
     assert "git checkout" not in source
     assert "actions/checkout" not in source
     assert "pull_request_target" in source
+
+
+def test_policy_integrity_rechecks_when_pull_request_metadata_is_edited() -> None:
+    workflow = _workflow()
+    triggers = workflow.get("on", workflow.get(True))
+    assert isinstance(triggers, dict)
+    target = triggers["pull_request_target"]
+    assert set(target["types"]) == {
+        "opened",
+        "synchronize",
+        "reopened",
+        "ready_for_review",
+        "edited",
+    }
 
 
 def test_policy_integrity_protects_workflows_and_scanner_adapters() -> None:

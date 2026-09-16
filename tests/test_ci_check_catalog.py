@@ -363,7 +363,7 @@ def test_catalog_declares_base_branch_policy_integrity_gate() -> None:
             "event": "pull_request_target",
             "guard": (
                 '{"branches":["main"],"types":'
-                '["opened","synchronize","reopened","ready_for_review"]}'
+                '["opened","synchronize","reopened","ready_for_review","edited"]}'
             ),
         }
     ]
