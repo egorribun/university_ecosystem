@@ -193,7 +193,9 @@ def test_restore_rejects_symlinked_destination_parent(
     try:
         destination_parent.symlink_to(tmp_path / "outside", target_is_directory=True)
     except (OSError, NotImplementedError) as error:
-        pytest.skip(f"symlinks unavailable: {error}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"symlinks unavailable: {error}"
+        )
 
     with pytest.raises(MODULE.ArtifactValidationError, match="destination"):
         MODULE.restore_artifact_archives(
@@ -327,7 +329,9 @@ def test_validate_rejects_symlinked_archive(tmp_path: Path) -> None:
     try:
         target.symlink_to(tmp_path / "charts" / "redis-20.13.4.tgz")
     except (OSError, NotImplementedError) as error:
-        pytest.skip(f"symlinks unavailable: {error}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"symlinks unavailable: {error}"
+        )
 
     with pytest.raises(MODULE.ArtifactValidationError, match="unsafe"):
         MODULE.validate_artifact_manifest(
