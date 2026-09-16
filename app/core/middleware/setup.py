@@ -29,6 +29,9 @@ if TYPE_CHECKING:
     from app.core.config import Settings
 
 
+_MISSING_DEVELOPMENT_SETTING = object()
+
+
 def _configure_security_core(app: FastAPI, settings: Settings) -> None:
     # D-04 (audit 2026-03-08): Registered first so the correlation ID is
     # available to every downstream middleware and route handler.
@@ -46,7 +49,9 @@ def _configure_security_core(app: FastAPI, settings: Settings) -> None:
         header_name=settings.internal_auth_header,
         header_token=settings.internal_auth_token,
         internal_prefixes=INTERNAL_ROUTE_PREFIXES,
-        allow_ip_fallback=getattr(settings, "is_development", False) is True,
+        allow_ip_fallback=(
+            getattr(settings, "is_development", _MISSING_DEVELOPMENT_SETTING) is True
+        ),
     )
 
 
