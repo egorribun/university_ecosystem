@@ -1451,16 +1451,16 @@
           "guard": "github.event_name == 'push' ||\ngithub.event_name == 'pull_request'\n",
           "artifacts": [
             {
-              "name_pattern": "rust-coverage",
+              "name_pattern": "rust-coverage-attempt-${{ github.run_attempt }}",
               "path_pattern": "artifacts/coverage/rust/rust-native/llvm.json\nartifacts/coverage/rust/rust-native/branch-llvm.json\nartifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json\nartifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json\nartifacts/coverage/rust/rust-crypto/llvm.json\nartifacts/coverage/rust/rust-crypto/branch-llvm.json\nartifacts/coverage/rust/coverage-provenance.json\n",
               "required": false,
-              "provenance": "none"
+              "provenance": "run_id_attempt"
             },
             {
-              "name_pattern": "rust-codecov-reports",
+              "name_pattern": "rust-codecov-reports-attempt-${{ github.run_attempt }}",
               "path_pattern": "artifacts/coverage/rust/rust-native/codecov.json\nartifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json\nartifacts/coverage/rust/rust-wasm-sanitizer/codecov.json\nartifacts/coverage/rust/rust-crypto/codecov.json\n",
               "required": false,
-              "provenance": "none"
+              "provenance": "run_id_attempt"
             }
           ],
           "retry_policy": {
@@ -3538,10 +3538,10 @@
           "guard": "workflow trigger",
           "artifacts": [
             {
-              "name_pattern": "frontend-vitest-report-shard-${{ matrix.shard }}",
+              "name_pattern": "frontend-vitest-report-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}",
               "path_pattern": "${{ inputs.working-directory }}/vitest-report.xml",
               "required": false,
-              "provenance": "none"
+              "provenance": "run_id_attempt"
             },
             {
               "name_pattern": "frontend-coverage-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}",
@@ -3565,10 +3565,10 @@
           "guard": "${{ always() }}",
           "artifacts": [
             {
-              "name_pattern": "frontend-vitest-report",
+              "name_pattern": "frontend-vitest-report-attempt-${{ github.run_attempt }}",
               "path_pattern": "${{ inputs.working-directory }}/.vitest-reports/",
               "required": false,
-              "provenance": "none"
+              "provenance": "run_id_attempt"
             },
             {
               "name_pattern": "frontend-coverage-attempt-${{ github.run_attempt }}",

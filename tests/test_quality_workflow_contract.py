@@ -1990,7 +1990,10 @@ def test_go_coverage_artifacts_are_staged_for_trusted_codecov_upload() -> None:
     artifact_name = next(
         step for step in steps if step.get("name") == "Generate artifact name"
     )
-    assert "go-coverage-$SANITIZED" in artifact_name["run"]
+    assert (
+        "go-coverage-$SANITIZED-attempt-${{ github.run_attempt }}"
+        in artifact_name["run"]
+    )
 
     ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     go_matrix = ci["jobs"]["go-tests"]["strategy"]["matrix"]["include"]
@@ -2128,7 +2131,11 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     mutation_job = jobs["mutation-tests-incremental"]
 
     assert "workflow_dispatch" not in _workflow_triggers(workflow)
-    assert workflow["concurrency"]["group"] == "ci-matrix-${{ github.ref }}"
+    assert " ".join(str(workflow["concurrency"]["group"]).split()) == (
+        "${{ github.event_name == 'pull_request' "
+        "&& format('quality-heavy-pr-{0}', github.repository) "
+        "|| format('ci-matrix-{0}', github.ref) }}"
+    )
     assert jobs["ci-success"]["name"] == "CI Success"
 
     assert base_job["timeout-minutes"] == 20
@@ -3601,6 +3608,28 @@ def test_frontend_unit_aggregate_publishes_hidden_junit_reports() -> None:
         if step.get("name") == "Upload Vitest shard report"
     )
     assert shard_upload["with"]["if-no-files-found"] == "error"
+    assert (
+        shard_upload["with"]["name"]
+        == "frontend-vitest-report-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}"
+    )
+    aggregate_download = next(
+        step
+        for step in frontend["jobs"]["unit-tests"]["steps"]
+        if step.get("name") == "Download Vitest shard reports"
+    )
+    assert (
+        aggregate_download["with"]["pattern"]
+        == "frontend-vitest-report-shard-*-attempt-${{ github.run_attempt }}"
+    )
+    aggregate_upload = next(
+        step
+        for step in frontend["jobs"]["unit-tests"]["steps"]
+        if step.get("name") == "Upload Vitest report"
+    )
+    assert (
+        aggregate_upload["with"]["name"]
+        == "frontend-vitest-report-attempt-${{ github.run_attempt }}"
+    )
 
 
 def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
@@ -6545,6 +6574,30 @@ def test_benchmark_go_cache_covers_every_workspace_dependency_file() -> None:
     ]
 
 
+def test_reusable_go_cache_covers_every_workspace_dependency_file() -> None:
+    """Reusable Go callers must invalidate the shared cache for every module."""
+
+    workflow = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    setup_go = next(
+        step
+        for step in workflow["jobs"]["test"]["steps"]
+        if isinstance(step, dict)
+        and str(step.get("uses", "")).startswith("actions/setup-go")
+    )
+    assert setup_go["with"]["cache"] is True
+    assert setup_go["with"]["cache-dependency-path"].splitlines() == [
+        "services/gateway/go.sum",
+        "services/file-processor/go.sum",
+        "services/ws-hub/go.sum",
+        "services/cmd/uni-cli/go.sum",
+        "services/pkg/spiffe/go.sum",
+        "services/pkg/spicedb/go.mod",
+        "services/pkg/logging/go.mod",
+        "gen/go/go.sum",
+        "go.sum",
+    ]
+
+
 def test_performance_history_is_main_only_and_advisory() -> None:
     """Historical charts cannot supply a PR decision or receive PR credentials."""
 
@@ -6868,6 +6921,7 @@ def test_coverage_producers_publish_closed_v2_sidecars() -> None:
     assert go_upload["if"] == "${{ success() }}"
     assert go_upload["with"]["if-no-files-found"] == "error"
     assert "coverage-provenance.json" in str(go_upload["with"]["path"])
+    assert go_upload["with"]["name"] == "${{ steps.artifact-name.outputs.name }}"
 
     rust_job = ci["jobs"]["rust-tests"]
     rust_steps = rust_job["steps"]
@@ -6876,6 +6930,7 @@ def test_coverage_producers_publish_closed_v2_sidecars() -> None:
     assert rust_steps.index(rust_cleanup) < rust_steps.index(rust_create)
     rust_provenance = _provenance_step(rust_job, "Write Rust coverage provenance")
     rust_run = str(rust_provenance["run"])
+    assert '--artifact "rust-coverage-attempt-${RUN_ATTEMPT}"' in rust_run
     assert rust_run.count("|llvm-cov-json|") == 4
     assert rust_run.count("|llvm-cov-branch-json|") == 4
     assert (
@@ -6888,6 +6943,9 @@ def test_coverage_producers_publish_closed_v2_sidecars() -> None:
     )
     rust_upload = _provenance_step(rust_job, "Upload Rust coverage artifacts")
     assert rust_upload["with"]["if-no-files-found"] == "error"
+    assert (
+        rust_upload["with"]["name"] == "rust-coverage-attempt-${{ github.run_attempt }}"
+    )
     assert "artifacts/coverage/rust/coverage-provenance.json" in str(
         rust_upload["with"]["path"]
     )
@@ -6923,6 +6981,24 @@ def test_coverage_aggregate_uses_scoped_current_run_artifacts_only() -> None:
     }
     for download in downloads:
         _assert_current_run_download(download)
+
+    download_names = {
+        str(step.get("with", {}).get("name", ""))
+        for step in downloads
+        if isinstance(step.get("with"), dict)
+    }
+    expected_attempt_scoped = {
+        "go-coverage-services-gateway-attempt-${{ github.run_attempt }}",
+        "go-coverage-services-ws-hub-attempt-${{ github.run_attempt }}",
+        "go-coverage-services-file-processor-attempt-${{ github.run_attempt }}",
+        "go-coverage-services-cmd-uni-cli-attempt-${{ github.run_attempt }}",
+        "go-coverage-services-pkg-spiffe-attempt-${{ github.run_attempt }}",
+        "go-coverage-services-pkg-logging-attempt-${{ github.run_attempt }}",
+        "go-coverage-services-pkg-spicedb-attempt-${{ github.run_attempt }}",
+        "rust-coverage-attempt-${{ github.run_attempt }}",
+        "rust-codecov-reports-attempt-${{ github.run_attempt }}",
+    }
+    assert expected_attempt_scoped <= download_names
 
     verify = _provenance_step(job, "Verify downloaded coverage artifacts")
     verify_run = str(verify["run"])

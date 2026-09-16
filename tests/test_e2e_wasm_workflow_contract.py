@@ -137,7 +137,7 @@ def test_shared_e2e_wasm_producer_is_immutable_and_fail_closed() -> None:
         ),
         "if-no-files-found": "error",
         "overwrite": False,
-        "retention-days": 1,
+        "retention-days": 30,
         "compression-level": 0,
         "include-hidden-files": True,
     }

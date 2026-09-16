@@ -59,7 +59,11 @@ jobs:
             services/gateway/go.sum
             services/file-processor/go.sum
             services/ws-hub/go.sum
+            services/cmd/uni-cli/go.sum
+            services/pkg/spiffe/go.sum
+            services/pkg/spicedb/go.mod
             services/pkg/logging/go.mod
+            gen/go/go.sum
             go.sum
 
       - name: Install dependencies
@@ -241,7 +245,11 @@ jobs:
           # expression that older ShellCheck releases flag as SC1003.
           SANITIZED="${SERVICE_DIRECTORY//\//-}"
           SANITIZED="${SANITIZED//\\/-}"
-          echo "name=go-coverage-$SANITIZED" >> "$GITHUB_OUTPUT"
+          # Artifact names are scoped to the workflow run, but a rerun keeps
+          # the same run id and can otherwise leave a previous attempt's
+          # report selectable by a broad consumer. Include the attempt in the
+          # canonical name so every retry has a distinct producer identity.
+          echo "name=go-coverage-$SANITIZED-attempt-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
 
       - name: Write Go coverage provenance
         shell: bash

@@ -217,7 +217,10 @@ jobs:
             frontend/WASM_INVENTORY.json
           if-no-files-found: error
           overwrite: false
-          retention-days: 1
+          # GitHub's failed-job rerun window is 30 days. Keep the immutable
+          # producer artifact for that entire window so consumers can retry
+          # without rebuilding or losing SHA-bound provenance.
+          retention-days: 30
           compression-level: 0
           include-hidden-files: true
 
