@@ -100,3 +100,16 @@ def test_internal_hmac_strength_rejects_repeated_multi_byte_patterns() -> None:
         _validate_internal_hmac_secret_strength(
             "abcd" * 8, label="INTERNAL_HMAC_SECRET"
         )
+
+
+def test_internal_hmac_strength_uses_stable_repeated_value_error() -> None:
+    """Keep the security validator's operator-facing error contract exact."""
+    with pytest.raises(ValueError) as exc_info:
+        _validate_internal_hmac_secret_strength(
+            "abcd" * 8, label="INTERNAL_HMAC_SECRET"
+        )
+
+    assert str(exc_info.value) == (
+        "INTERNAL_HMAC_SECRET must contain at least 32 bytes of entropy; "
+        "placeholder or repeated values are not allowed"
+    )

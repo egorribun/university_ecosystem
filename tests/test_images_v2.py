@@ -201,6 +201,62 @@ def test_optimize_image_pillow_uses_selected_resample_filter():
     thumbnail.assert_called_once_with((5, 5), resample=sentinel.resample)
 
 
+def test_optimize_image_pillow_uses_bounded_webp_save_options():
+    """Keep Pillow's output policy explicit when encoding the fallback payload."""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    image = PILImage.new("RGB", (2, 2), color="green")
+    source = BytesIO()
+    image.save(source, format="PNG")
+
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        with patch.object(
+            PILImage.Image, "save", autospec=True, wraps=PILImage.Image.save
+        ) as save:
+            optimized, mime = img_mod.optimize_image(source.getvalue())
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
+
+    assert optimized.startswith(b"RIFF")
+    assert mime == "image/webp"
+    assert save.call_count == 1
+    assert save.call_args.kwargs == {
+        "format": "WEBP",
+        "method": 6,
+        "quality": 85,
+        "lossless": False,
+    }
+
+
+def test_optimize_image_pillow_uses_canonical_webp_format_name():
+    """Keep Pillow's format selector canonical for deterministic encoding."""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    image = PILImage.new("RGB", (2, 2), color="green")
+    source = BytesIO()
+    image.save(source, format="PNG")
+
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        with patch.object(
+            PILImage.Image, "save", autospec=True, wraps=PILImage.Image.save
+        ) as save:
+            optimized, mime = img_mod.optimize_image(source.getvalue())
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
+
+    assert optimized.startswith(b"RIFF")
+    assert mime == "image/webp"
+    assert save.call_args.kwargs["format"] == "WEBP"
+
+
 def test_optimize_image_pillow_resizes_when_only_width_exceeds_bound():
     """Both dimensions are bounds: exceeding either one must trigger resize."""
     from io import BytesIO
