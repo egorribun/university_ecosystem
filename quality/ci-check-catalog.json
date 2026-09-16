@@ -1493,7 +1493,7 @@
           "artifacts": [
             {
               "name_pattern": "mutmut-generation-base-${{ github.run_id }}-${{ github.run_attempt }}",
-              "path_pattern": "mutmut-universe-artifact.json\nmutants/\n",
+              "path_pattern": "mutmut-universe-artifact.json\nmutants/\ncharts/university-ecosystem/charts/redis-20.13.4.tgz\ncharts/university-ecosystem/charts/nats-8.5.4.tgz\n",
               "required": false,
               "provenance": "run_id_attempt"
             }
@@ -1538,6 +1538,12 @@
           "expected_duration_seconds": 2100,
           "guard": "workflow trigger",
           "artifacts": [
+            {
+              "name_pattern": "mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "mutmut-universe-artifact.json\nmutants/\ncharts/university-ecosystem/charts/redis-20.13.4.tgz\ncharts/university-ecosystem/charts/nats-8.5.4.tgz\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            },
             {
               "name_pattern": "mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}",
               "path_pattern": "mutmut-universe-artifact.json\nmutants/\n",
