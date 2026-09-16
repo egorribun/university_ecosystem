@@ -7288,8 +7288,24 @@ completed as a failure at `2026-09-16T03:29:41Z`: its immutable preflight
 validated successfully, then the initial related-test run hit the configured
 15-minute `DryRunExecutor` deadline and produced no shard artifact. This is a
 late failure of the pre-hardening SHA, not evidence against the isolated
-StoryViewer candidate; the remaining active shards must still be collected
-before recording the run's terminal totals.
+StoryViewer candidate. The final Jobs API inventory at
+`2026-09-16T04:15:45Z` is terminal: all `315` jobs completed (`275` success,
+`27` failure, `13` skipped, no cancelled/timed-out jobs). Shard `63/64`
+completed successfully as job `104579490263`; its retained artifact is
+`10430400961`, digest
+`sha256:8973da0f17f0e92fca21404c6436d7e1f270ce34ffa31c873020b91280f607b8`.
+
+The `24` independent failures are exactly the two initial Stryker dry-run
+timeouts (shards `25/64` and `62/64`, both without final shard artifacts) and
+the `22` mutmut survivor groups listed above. Three later failures are
+fail-closed cascades, not new root causes: `Frontend Mutation Evidence (100%)`
+(`104662669664`) rejected the incomplete `62/64` set; `Incremental Mutation
+Tests (frontend)` (`104662852262`) propagated that aggregate failure; and
+`CI Success` (`104662873287`) rejected the required mutation contexts. The
+run's health artifact is `10430386953` (digest
+`sha256:b412ac2a1f64fbb476a46f69c0e61cff0bedd1c1eff50d4047ae4be1ca693ddf`,
+34,767 bytes). This terminal record is diagnostic evidence for the old SHA
+only; it does not alter the current-SHA release boundary.
 
 This checkpoint is diagnostic only. It does not promote the stale run, does
 not claim a current-SHA mutation score, and does not alter the user's three
