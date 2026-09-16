@@ -17,7 +17,17 @@ on:
 permissions: read-all
 
 concurrency:
-  group: ci-matrix-${{ github.ref }}
+  # PR mutation lanes share one admission group with the advisory nightly
+  # matrix.  A PR therefore gets priority over a queued/in-flight nightly run,
+  # while pushes to protected branches retain independent per-ref isolation.
+  # This is an account-wide runner-pool guard, not a reduction of the logical
+  # matrix or its per-lane max-parallel contracts.
+  group: >-
+    ${{ github.event_name == 'pull_request'
+      && format('quality-heavy-pr-{0}', github.repository)
+      || format('ci-matrix-{0}', github.ref) }}
+  # Preserve the existing stale-push cancellation behavior while the shared
+  # PR key allows a new required PR run to pre-empt advisory nightly work.
   cancel-in-progress: true
 
 env:

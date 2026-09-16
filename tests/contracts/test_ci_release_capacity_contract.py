@@ -178,6 +178,35 @@ def test_manual_and_active_scan_workflows_serialize_duplicate_dispatches() -> No
         }
 
 
+def test_required_pr_and_advisory_nightly_share_runner_admission_contract() -> None:
+    """PR quality work must pre-empt advisory nightly fan-out without changing gates."""
+
+    ci_concurrency = _workflow(CI)["concurrency"]
+    assert ci_concurrency == {
+        "group": (
+            "${{ github.event_name == 'pull_request'\n"
+            "  && format('quality-heavy-pr-{0}', github.repository)\n"
+            "  || format('ci-matrix-{0}', github.ref) }}"
+        ),
+        "cancel-in-progress": True,
+    }
+
+    nightly_concurrency = _workflow(NIGHTLY)["concurrency"]
+    assert nightly_concurrency == {
+        "group": "quality-heavy-pr-${{ github.repository }}",
+        "cancel-in-progress": False,
+    }
+
+    # Only the required PR matrix and advisory nightly matrix participate in
+    # this shared group; release/manual evidence workflows stay isolated.
+    for path in WORKFLOWS.glob("*.yml"):
+        workflow = _workflow(path)
+        concurrency = workflow.get("concurrency")
+        if path in {CI, NIGHTLY}:
+            continue
+        assert "quality-heavy-pr-" not in str(concurrency)
+
+
 def test_mutmut_artifact_producers_use_explicit_read_only_permissions() -> None:
     jobs = _workflow(CI)["jobs"]
     expected_permissions = {"contents": "read", "actions": "read"}
