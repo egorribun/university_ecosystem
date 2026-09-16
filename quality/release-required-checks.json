@@ -120,13 +120,6 @@
           "rationale": "Every pull request targeting main must satisfy the canonical fail-closed CI aggregate before merge."
         },
         {
-          "name": "Security Policy Integrity",
-          "workflow_path": ".github/workflows/security-policy-integrity.yml",
-          "category": "security",
-          "allowed_conclusions": ["success"],
-          "rationale": "A base-branch-only, read-only checker must approve protected workflow, scanner-policy, dependency, and adapter changes before PR-controlled security jobs are trusted."
-        },
-        {
           "name": "Gitleaks scan",
           "workflow_path": ".github/workflows/gitleaks.yml",
           "category": "security",
@@ -209,6 +202,20 @@
           "category": "security",
           "allowed_conclusions": ["success"],
           "rationale": "Pull requests must pass the read-only cross-ecosystem Python, Go, and Rust vulnerability gate."
+        }
+      ]
+    },
+    "pull_request_target_main": {
+      "github_event": "pull_request_target",
+      "github_ref": "refs/heads/main",
+      "github_repository": "egorribun/university_ecosystem",
+      "required_checks": [
+        {
+          "name": "Security Policy Integrity",
+          "workflow_path": ".github/workflows/security-policy-integrity.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "A base-branch-only, read-only checker must approve protected workflow, scanner-policy, dependency, and adapter changes before PR-controlled security jobs are trusted."
         }
       ]
     }

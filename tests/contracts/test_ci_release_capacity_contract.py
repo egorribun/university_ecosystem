@@ -333,3 +333,19 @@ def test_release_policy_declares_a_pr_event_without_removing_push_policy() -> No
     assert "Vulnerability gate (CRITICAL/HIGH)" in pr_names
     assert "Trusted Codecov Upload" not in pr_names
     assert push_names - {"Trusted Codecov Upload"} <= pr_names
+
+
+def test_base_branch_policy_uses_the_pull_request_target_event_alias() -> None:
+    policy = json.loads(POLICY.read_text(encoding="utf-8"))
+
+    target_event = policy["events"]["pull_request_target_main"]
+    assert target_event["github_event"] == "pull_request_target"
+    assert target_event["github_ref"] == "refs/heads/main"
+    target_checks = target_event["required_checks"]
+    assert [check["name"] for check in target_checks] == ["Security Policy Integrity"]
+
+    pull_request_names = {
+        check["name"]
+        for check in policy["events"]["pull_request_main"]["required_checks"]
+    }
+    assert "Security Policy Integrity" not in pull_request_names

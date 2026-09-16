@@ -7741,3 +7741,59 @@ contains the exact policy-integrity context after that workflow can be merged.
 Only afterward may exact-six image provenance, immutable digest Docker smoke,
 Kubernetes/TLS/observability staging, CWV/device and rollback gates, final
 current-SHA manifest and release audit proceed.
+
+## 139. Superseded-run cleanup and current queue boundary (2026-09-16)
+
+Immediately after the documentation checkpoint was pushed, GitHub created the
+replacement PR matrix `35126659277` for the exact head
+`2cd4553766d033f5163f0e101774107c43af2a35`. The previous `b67efff10` matrix
+`35124840925` was superseded by the new SHA through its per-PR concurrency
+group; its remaining work is intentionally not evidence for the replacement.
+The older diagnostic run `35112489178` (SHA `8097614be…`) still held
+`16` in-progress and `130` queued jobs after its result was already known to be
+stale. It was explicitly cancelled through the GitHub Actions API to release
+runner capacity; cancellation does not alter source, artifacts or the current
+run. The API acknowledged the cancellation request and its in-progress legs
+are being drained.
+
+At the first replacement snapshot, run `35126659277` was pending before matrix
+expansion, while three independent auxiliary scans (SQLMap, Nilaway and Go
+fuzz) had started and no failure had appeared. This is a provisioning/queue
+interval, not a test result. Continue measuring queue/setup/test/upload times
+from terminal replacement runs; do not raise mutation caps or rerun a whole
+workflow while the exact-SHA run is active.
+
+Required next actions remain fail-closed: wait for `35126659277` to expand and
+reach terminal state, preserve every first-failure log and artifact, rerun only
+proven transient jobs, and record the cancellation and queue evidence in the
+final SHA-bound audit. The Codex Security scan and independent review remain
+separate evidence streams and must not be inferred from CI cancellation status.
+
+## 140. Independent security review remediation (2026-09-16)
+
+The independent review of the candidate identified and reproduced one P1 trust
+boundary defect: the reusable Node dependency-audit job executed PR-controlled
+`preinstall`, `prepare` and `postinstall` hooks before scanning. Commit
+`dc00cce7b4772f04d3dd6f3523366b9a4e0c6691` closes that path with
+`npm ci --ignore-scripts` and protects `frontend/package.json`, `.npmrc` and
+all referenced lifecycle scripts in both policy-integrity inventories. The
+review agent's RED/GREEN and post-commit security contracts passed (`37` then
+`2` tests), together with Ruff, pinned actionlint, Semgrep, detect-secrets and
+`git diff --check`; no user-owned WASM or external audit files were staged.
+
+Two defense-in-depth P2 findings were addressed in the pending candidate
+changes. The base-branch API-only policy checker now re-reads PR metadata after
+complete file pagination, compares the immutable base/head/count snapshot and
+rejects duplicate changed paths. A focused regression contract is RED before
+the guard and GREEN after it (`2 passed`). The release check policy now keeps
+ordinary PR checks under `pull_request_main` and registers the base-only
+`Security Policy Integrity` context under the matching
+`pull_request_target_main` alias; release-policy and catalog contracts pass.
+
+The hosted exact-SHA run `35126659277` (head `2cd4553…`) continued with no
+failures while these local fixes were prepared; the earlier `35112489178`
+diagnostic run was cancelled after it was proven stale and holding runner
+capacity. Do not treat either superseded result as evidence for the final
+candidate. The next release boundary is one combined push after the current
+run is terminal, followed by a fresh exact-SHA matrix and a new security scan
+against the final clean revision.

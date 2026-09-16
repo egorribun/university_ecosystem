@@ -62,8 +62,9 @@ jobs:
           # The API response is the only candidate input and is validated as a
           # complete array of filename strings before any policy decision.
           pr_metadata="$(mktemp)"
+          pr_metadata_after="$(mktemp)"
           changed_pages="$(mktemp)"
-          trap 'rm -f -- "$pr_metadata" "$changed_pages"' EXIT
+          trap 'rm -f -- "$pr_metadata" "$pr_metadata_after" "$changed_pages"' EXIT
           gh api --fail-with-body \
             -H 'Accept: application/vnd.github+json' \
             -H 'X-GitHub-Api-Version: 2022-11-28' \
@@ -100,6 +101,49 @@ jobs:
           enumerated_changed_files="$(jq -er '[.[][] | .filename] | length' "$changed_pages")"
           if ((enumerated_changed_files != expected_changed_files)); then
             echo "::error::changed-file API pagination is incomplete" >&2
+            exit 1
+          fi
+
+          # Re-read the PR metadata after pagination.  GitHub does not provide
+          # an atomic snapshot across the metadata and files endpoints, so a
+          # PR update during enumeration must fail closed instead of allowing a
+          # stale policy decision to be trusted.
+          gh api --fail-with-body \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+            > "$pr_metadata_after"
+          jq -e \
+            --argjson pr_number "$PR_NUMBER" \
+            --arg base_sha "$BASE_SHA" \
+            --arg base_ref "$BASE_REF" \
+            --arg base_repository "$BASE_REPOSITORY" \
+            --arg head_sha "$HEAD_SHA" \
+            --argjson expected_changed_files "$expected_changed_files" \
+            'type == "object" and .number == $pr_number and
+             .base.sha == $base_sha and .base.ref == $base_ref and
+             .base.repo.full_name == $base_repository and
+             .head.sha == $head_sha and
+             .changed_files == $expected_changed_files' \
+            "$pr_metadata_after" >/dev/null
+          before_snapshot="$(jq -c \
+            '{number, base_sha: .base.sha, base_ref: .base.ref,
+              base_repository: .base.repo.full_name, head_sha: .head.sha,
+              changed_files}' "$pr_metadata")"
+          after_snapshot="$(jq -c \
+            '{number, base_sha: .base.sha, base_ref: .base.ref,
+              base_repository: .base.repo.full_name, head_sha: .head.sha,
+              changed_files}' "$pr_metadata_after")"
+          if [[ "$before_snapshot" != "$after_snapshot" ]]; then
+            echo "::error::pull-request metadata changed while enumerating files" >&2
+            exit 1
+          fi
+
+          duplicate_changed_paths="$(jq -r \
+            '[.[][] | .filename] | sort | group_by(.) |
+             map(select(length > 1) | .[0]) | .[]' "$changed_pages")"
+          if [[ -n "$duplicate_changed_paths" ]]; then
+            echo "::error::duplicate changed-file path returned by GitHub API: $duplicate_changed_paths" >&2
             exit 1
           fi
 
