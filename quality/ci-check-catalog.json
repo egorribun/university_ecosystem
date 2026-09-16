@@ -2690,6 +2690,28 @@
         }
       ],
       "jobs": {
+        "nightly-helm-dependencies": {
+          "profile": "nightly",
+          "check_name_template": "Produce verified nightly Helm dependencies",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "artifacts": [
+            {
+              "name_pattern": "nightly-helm-dependencies-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "nightly-helm-dependencies/",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Source YAML contains retry-like behavior; prove transient-only classification before relaxing this entry."
+          }
+        },
         "mutation-tests-full-stats": {
           "profile": "nightly",
           "matrix_governance": {
