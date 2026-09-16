@@ -68,7 +68,7 @@ def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:
     assert "mutants/mutmut-stats-full.json" in reduction
     assert "mutants/mutmut-stats-reduction.json" in reduction
     assert plan_job["needs"] == "mutation-tests-full-stats"
-    assert job["needs"] == "mutation-tests-full-plan"
+    assert job["needs"] == ["mutation-tests-full-plan", "nightly-helm-dependencies"]
     assert "--output-directory mutants/mutmut-full-plan" in preflight
     assert "for shard in $(seq 1 128)" in preflight
     assert "scripts/mutmut_shard_budget.py" in preflight

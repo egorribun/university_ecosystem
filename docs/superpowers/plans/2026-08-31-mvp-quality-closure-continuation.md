@@ -7344,3 +7344,29 @@ so the current run is not cancelled and can expose any additional root
 failures. Once the run reaches a useful terminal/near-terminal boundary, push
 `46f0361` non-force and require a new exact-SHA matrix; this old run remains
 diagnostic and cannot satisfy release or mutation gates.
+
+## 133. Nightly mutation dependency contract correction (2026-09-16)
+
+Late in diagnostic run `35055100899` (source SHA
+`0d88caeff4b61909167e752490b2f2ded1504231`), Backend Python 3.14 shard-1
+job `104664138522` exposed a second independent contract failure after
+`2,501` passed tests and `33` skips (`858.67s`).
+`tests/test_scheduled_workflow_regressions.py::test_nightly_full_mutation_uses_audited_monotonic_test_reduction`
+still asserted the pre-Helm-reuse scalar dependency
+`mutation-tests-full-plan`, while the hardened workflow correctly declares
+both `mutation-tests-full-plan` and `nightly-helm-dependencies` in its
+`needs` list. The failure was therefore a stale test contract, not a runtime
+mutation defect. The test now asserts the exact two-job dependency list.
+
+RED/GREEN evidence on the integration worktree:
+
+* the focused test reproduced the CI assertion failure before the edit;
+* after the minimal assertion update, the focused test is `1 passed` and the
+  complete `tests/test_scheduled_workflow_regressions.py` file is `4 passed`;
+* no workflow gate, timeout, retry policy, mutation inventory or denominator
+  was changed.
+
+This correction is intentionally kept separate from the inventory-skip fix
+and is queued for the next non-force push. The pending fresh run for
+`21bff9e75cb26e380e2ba4b7483d43b8adf73aae` must be superseded by the new
+candidate so that all checks execute against one exact SHA.
