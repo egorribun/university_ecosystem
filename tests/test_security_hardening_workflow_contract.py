@@ -224,6 +224,10 @@ def test_standalone_security_scanners_verify_trusted_base_before_consuming_polic
         workflow = _workflow(WORKFLOWS / workflow_name)
         job = workflow["jobs"][job_name]
         steps = job["steps"]
+        checkout = next(
+            step for step in steps if "actions/checkout@" in step.get("uses", "")
+        )
+        assert checkout.get("with", {}).get("persist-credentials") is False
         verify_index = next(
             index
             for index, step in enumerate(steps)
