@@ -16,6 +16,10 @@ FRONTEND_WORKFLOW_PATH = (
 WORKFLOW_DIRECTORY = REPOSITORY_ROOT / ".github" / "workflows"
 NPM_CI_COMMAND = re.compile(r"(?<![\w-])npm\s+ci(?:\s|$)")
 SHELL_OPERATOR = re.compile(r"&&|\|\||[;&|]")
+# Keep the contract literal across Bash, PowerShell and cmd.exe.  In
+# particular, brace/array expansion and percent variables can synthesize
+# contradictory npm flags after this source-level check has run.
+SHELL_EXPANSION_OR_REDIRECTION = re.compile(r"[$`<>{}()@+%*?\[\]\\!^~]")
 
 
 def _run_scripts(node: object) -> list[str]:
@@ -53,9 +57,12 @@ def _npm_ci_options(line: str) -> set[str] | None:
     lines are rejected instead of accidentally treating those tokens as npm
     options.
     """
-    if SHELL_OPERATOR.search(line):
+    if SHELL_OPERATOR.search(line) or SHELL_EXPANSION_OR_REDIRECTION.search(line):
         return None
-    tokens = shlex.split(line, comments=True, posix=True)
+    try:
+        tokens = shlex.split(line, comments=True, posix=True)
+    except ValueError:
+        return None
     ci_index = next(
         (
             index
@@ -82,7 +89,15 @@ def _npm_ci_flags_are_network_minimal(line: str) -> bool:
     if options is None:
         return False
     required = {"--no-audit", "--no-fund"}
-    contradictory = {"--audit", "--fund", "--audit=true", "--fund=true"}
+    contradictory = {
+        option
+        for option in options
+        if option in {"--audit", "--fund"}
+        or option.startswith("--audit=")
+        or option.startswith("--fund=")
+        or option.startswith("--no-audit=")
+        or option.startswith("--no-fund=")
+    }
     return required.issubset(options) and not contradictory.intersection(options)
 
 
@@ -151,6 +166,28 @@ def test_npm_ci_skips_duplicate_audit_and_funding_network_work() -> None:
 )
 def test_npm_ci_contract_rejects_shell_chaining(line: str) -> None:
     """Flags from a later shell command must not satisfy the install contract."""
+    assert not _npm_ci_flags_are_network_minimal(line)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "npm ci --no-audit --no-fund --audit=1",
+        "npm ci --no-audit --no-fund --fund=yes",
+        "npm ci --no-audit --no-fund --no-audit=false",
+        "npm ci --no-audit --no-fund $AUDIT_FLAG",
+        "npm ci --no-audit --no-fund $(echo --audit)",
+        "npm ci --no-audit --no-fund `echo --audit`",
+        "npm ci --no-audit --no-fund > install.log",
+        "npm ci --no-audit --no-fund {--audit,--fund}",
+        'npm ci --no-audit --no-fund @("--audit")',
+        'npm ci --no-audit --no-fund ("--" + "audit")',
+        "npm ci --no-audit --no-fund %AUDIT_FLAG%",
+        "npm ci --no-audit --no-fund *.json",
+    ],
+)
+def test_npm_ci_contract_rejects_dynamic_or_ambiguous_flags(line: str) -> None:
+    """Only literal, unambiguous npm flags may satisfy the security contract."""
     assert not _npm_ci_flags_are_network_minimal(line)
 
 
