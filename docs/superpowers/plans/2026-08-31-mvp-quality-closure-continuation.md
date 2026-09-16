@@ -7696,3 +7696,48 @@ external branch-protection state.
    chaos/restart/rollback, final current-SHA quality manifest and the
    SHA-bound audit. The master goal remains active and release is still blocked
    until those gates and security reviews are evidenced.
+
+## 138. Fresh exact-SHA matrix and dependency-alert boundary (2026-09-16)
+
+The candidate was pushed non-force to `origin/egorribun` at
+`b67efff1045f6c670be1b867d94f7a81ae41c2d5` and PR `#1266` immediately created
+fresh run `35124840925`, attempt `1`, at `2026-09-16T16:54:20Z`. The run is
+still non-terminal. The latest paginated snapshot contains `76` expanded jobs:
+`25` success, `0` failure, `4` intentional skips and `47` queued/in-progress;
+Stryker and mutmut remain under the governed `6 + 10` lane caps. The new
+reusable `Security Audit / Security policy integrity` job completed successfully
+(`104891219626`), as did Checkov, Gitleaks, Zizmor, TruffleHog, Spectral,
+OpenAPI drift/backward-compatibility, dependency review, WASM build and the
+other early producers. No failed job, cancellation or retry has appeared in
+this fresh run; downstream mutation/coverage/release conclusions remain
+unknown until the matrix reaches terminal state.
+
+GitHub's push response reports nine open Dependabot alerts on the current
+default `main` branch (`5` high, `4` moderate). A read-only alert inventory
+shows they are the already-addressed floors for `httpx2/httpcore2` in `uv.lock`,
+`google.golang.org/grpc` in Go modules and `js-yaml` in the frontend lockfile;
+the candidate branch contains patched versions (`httpx2/httpcore2 2.12.0`, gRPC
+`1.83.2`, and `js-yaml 4.3.2`) and its dependency policy tests pass. Alerts
+remain open only because default `main` has not yet incorporated this candidate;
+they are not evidence that the candidate lockfiles are vulnerable. The
+release blocker is therefore the resulting main SHA and a post-merge
+Dependabot re-query, not an unsafe suppression or a direct mutation of `main`.
+
+Additional local evidence on the exact candidate includes `verify_harness.py
+--repo-only`: `29/29` passed in `57.329s`; frontend lint and the orchestrated
+SSR/client build passed (the intentional Vite kill-after-artifacts step exits
+with code `1` internally while the orchestrator returns success); quality,
+workflow and dependency/security scopes remain green. The primary user
+checkout is intentionally untouched and remains at its own branch pointer with
+only the three user-owned WASM/provenance edits plus the untracked external
+audit; the integration worktree is the published candidate.
+
+Required next actions are unchanged and fail-closed: finish the independent
+security review and the Codex Security scan (the fresh standard scan is still
+running on clean worktree `b67efff10`), wait for all required jobs in run
+`35124840925` to become terminal, inventory every failure/skip/artifact and
+re-run only proven transient failures, then verify the protected `main` ruleset
+contains the exact policy-integrity context after that workflow can be merged.
+Only afterward may exact-six image provenance, immutable digest Docker smoke,
+Kubernetes/TLS/observability staging, CWV/device and rollback gates, final
+current-SHA manifest and release audit proceed.
