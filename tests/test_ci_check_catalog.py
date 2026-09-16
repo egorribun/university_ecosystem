@@ -11,6 +11,7 @@ import yaml
 from scripts.quality.validate_ci_check_catalog import (
     DEFAULT_CATALOG,
     DEFAULT_SCHEMA,
+    _artifact_inventory,
     _read_json,
     main,
     validate_catalog,
@@ -112,6 +113,36 @@ def test_catalog_cli_reports_current_inventory() -> None:
     assert (
         main(["--catalog", str(DEFAULT_CATALOG), "--schema", str(DEFAULT_SCHEMA)]) == 0
     )
+
+
+def test_attempt_bound_sha_artifact_uses_attempt_provenance() -> None:
+    artifacts = _artifact_inventory(
+        {
+            "steps": [
+                {
+                    "uses": "actions/upload-artifact@v7",
+                    "with": {
+                        "name": (
+                            "quality-evidence-${{ github.sha }}-attempt-"
+                            "${{ github.run_attempt }}"
+                        ),
+                        "path": "artifacts/coverage/quality-manifest.json",
+                    },
+                }
+            ]
+        }
+    )
+
+    assert artifacts == [
+        {
+            "name_pattern": (
+                "quality-evidence-${{ github.sha }}-attempt-${{ github.run_attempt }}"
+            ),
+            "path_pattern": "artifacts/coverage/quality-manifest.json",
+            "required": False,
+            "provenance": "run_id_attempt",
+        }
+    ]
 
 
 def test_workflow_and_job_additions_or_removals_fail_closed() -> None:

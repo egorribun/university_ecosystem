@@ -1656,10 +1656,10 @@
               "provenance": "none"
             },
             {
-              "name_pattern": "quality-evidence-${{ github.sha }}",
+              "name_pattern": "quality-evidence-${{ github.sha }}-attempt-${{ github.run_attempt }}",
               "path_pattern": "coverage.xml\nartifacts/coverage/python/coverage.json\nfrontend/coverage/lcov.info\nfrontend/coverage/coverage-final.json\nartifacts/coverage/go/gateway/coverage.out\nartifacts/coverage/go/ws-hub/coverage.out\nartifacts/coverage/go/file-processor/coverage.out\nartifacts/coverage/go/shared/coverage.out\nartifacts/coverage/go/shared-inputs/logging/coverage.out\nartifacts/coverage/rust/rust-native/llvm.json\nartifacts/coverage/rust/rust-native/branch-llvm.json\nartifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json\nartifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/llvm.json\nartifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json\nartifacts/coverage/rust/rust-crypto/llvm.json\nartifacts/coverage/rust/rust-crypto/branch-llvm.json\nartifacts/coverage/provenance/python.json\nartifacts/coverage/provenance/go-shared.json\nartifacts/coverage/provenance/aggregate.json\nfrontend/coverage/coverage-provenance.json\nartifacts/coverage/rust/coverage-provenance.json\nartifacts/coverage/go/gateway/coverage-provenance.json\nartifacts/coverage/go/ws-hub/coverage-provenance.json\nartifacts/coverage/go/file-processor/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/logging/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json\nartifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json\nartifacts/coverage/quality-manifest.json\nartifacts/coverage/quality-manifest.json.sha256\n",
               "required": false,
-              "provenance": "sha"
+              "provenance": "run_id_attempt"
             }
           ],
           "retry_policy": {

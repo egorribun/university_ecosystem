@@ -7091,7 +7091,7 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
     assert "coverage_provenance.py merge" in merge_run
     assert merge_run.count("--metadata ") == 7
     assert "--contract quality/quality-contract.json" in merge_run
-    assert "quality-evidence-${{ github.sha }}" in merge_run
+    assert "quality-evidence-${{ github.sha }}-attempt-${RUN_ATTEMPT}" in merge_run
 
     validator = _provenance_step(
         job, "Validate quality policy, mutation registry, and Tier0 manifest"
@@ -7133,7 +7133,9 @@ def test_quality_evidence_bundle_is_hashed_after_validation_and_required() -> No
     assert "sha256sum artifacts/coverage/quality-manifest.json" in hash_run
     assert "quality-manifest.json.sha256" in hash_run
     assert "sha256sum --check" in hash_run
-    assert upload["with"]["name"] == "quality-evidence-${{ github.sha }}"
+    assert upload["with"]["name"] == (
+        "quality-evidence-${{ github.sha }}-attempt-${{ github.run_attempt }}"
+    )
     assert upload["with"]["if-no-files-found"] == "error"
     upload_paths = str(upload["with"]["path"])
     for required in (
@@ -7190,7 +7192,7 @@ def test_release_and_deploy_require_the_same_sha_bound_quality_bundle() -> None:
             "certify" if workflow_path == producer_path else "validate"
         ]
         text = _run_text(gate)
-        assert "quality-evidence-$RELEASE_SHA" in text
+        assert "quality-evidence-$RELEASE_SHA-attempt-$run_attempt" in text
         assert "quality-manifest.json.sha256" in text
         assert "sha256sum --check" in text
         assert 'test "$(git rev-parse HEAD)" = "$RELEASE_SHA"' in text
@@ -7199,7 +7201,10 @@ def test_release_and_deploy_require_the_same_sha_bound_quality_bundle() -> None:
         assert "find " not in text
 
         download = _provenance_step(gate, "Download SHA-bound quality evidence")
-        assert download["with"]["name"] == "quality-evidence-${{ inputs.release-sha }}"
+        assert download["with"]["name"] == (
+            "quality-evidence-${{ inputs.release-sha }}-attempt-"
+            "${{ steps.quality-run.outputs.run-attempt }}"
+        )
         assert download["with"]["run-id"] == "${{ inputs.quality-run-id }}"
         assert download["with"]["github-token"] == "${{ github.token }}"
         assert download["with"]["path"] == "."
@@ -7756,7 +7761,7 @@ def test_quality_history_revalidates_exact_sha_bound_run_evidence() -> None:
     assert "actions/runs/$run_id" in text
     assert "actions/runs/$run_id/artifacts?per_page=100" in text
     assert "--paginate --slurp" in text
-    assert "quality-evidence-$head_sha" in text
+    assert "quality-evidence-$head_sha-attempt-$run_attempt" in text
     assert ".expired == false" in text
     assert "[.[].artifacts[]" in text
     assert "| length'" in text

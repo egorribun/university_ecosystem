@@ -172,7 +172,9 @@ def _artifact_inventory(job: dict[str, Any]) -> list[dict[str, Any]]:
             raise CatalogError("upload-artifact step has no non-empty artifact name")
         if not isinstance(path, str) or not path.strip():
             raise CatalogError(f"artifact {name!r} has no non-empty path")
-        if "github.sha" in name:
+        if "quality-evidence-" in name and "run_attempt" in name:
+            provenance = "run_id_attempt"
+        elif "github.sha" in name:
             provenance = "sha"
         elif "run_attempt" in name or "run_id" in name:
             provenance = "run_id_attempt"

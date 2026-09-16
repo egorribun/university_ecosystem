@@ -181,12 +181,14 @@ def test_release_collects_and_validates_every_quality_artifact_page() -> None:
     assert "actions/runs/$QUALITY_RUN_ID/artifacts?per_page=100" in script
     assert "quality-artifact-pages.json" in script
     assert "scripts/quality/validate_release_artifact_evidence.py" in script
-    assert '--expected-name "quality-evidence-$RELEASE_SHA"' in script
+    assert (
+        '--expected-name "quality-evidence-$RELEASE_SHA-attempt-$run_attempt"' in script
+    )
 
 
 def test_artifact_inventory_accepts_complete_multi_page_response() -> None:
     module = _load_artifact_collection_module()
-    target = "quality-evidence-" + "a" * 40
+    target = "quality-evidence-" + "a" * 40 + "-attempt-1"
     first_page = {
         "total_count": 101,
         "artifacts": [
@@ -227,13 +229,13 @@ def test_artifact_inventory_rejects_malformed_or_incomplete_pagination(
 
     with pytest.raises(ValueError, match=message):
         module.validate_artifact_pages(
-            pages, expected_name="quality-evidence-" + "a" * 40
+            pages, expected_name="quality-evidence-" + "a" * 40 + "-attempt-1"
         )
 
 
 def test_artifact_inventory_rejects_duplicate_expected_name() -> None:
     module = _load_artifact_collection_module()
-    target = "quality-evidence-" + "a" * 40
+    target = "quality-evidence-" + "a" * 40 + "-attempt-1"
     pages = [
         {
             "total_count": 2,
@@ -246,6 +248,26 @@ def test_artifact_inventory_rejects_duplicate_expected_name() -> None:
 
     with pytest.raises(ValueError, match="duplicate"):
         module.validate_artifact_pages(pages, expected_name=target)
+
+
+def test_artifact_inventory_rejects_wrong_attempt_artifact() -> None:
+    module = _load_artifact_collection_module()
+    expected = "quality-evidence-" + "a" * 40 + "-attempt-2"
+    pages = [
+        {
+            "total_count": 1,
+            "artifacts": [
+                {
+                    "id": 7,
+                    "name": "quality-evidence-" + "a" * 40 + "-attempt-1",
+                    "expired": False,
+                }
+            ],
+        }
+    ]
+
+    with pytest.raises(ValueError, match="is missing"):
+        module.validate_artifact_pages(pages, expected_name=expected)
 
 
 def _release_image_artifact(
@@ -521,7 +543,7 @@ def test_aggregate_records_and_validates_each_selected_producer_attempt(
                 "quality": {
                     "run_id": 99,
                     "run_attempt": 1,
-                    "evidence_artifact_name": f"quality-evidence-{sha}",
+                    "evidence_artifact_name": (f"quality-evidence-{sha}-attempt-1"),
                     "contract_sha256": hashlib.sha256(
                         quality_contract.read_bytes()
                     ).hexdigest(),

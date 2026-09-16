@@ -28,7 +28,7 @@ def test_quality_history_is_sha_addressed_tracked_and_idempotent() -> None:
     )
 
     assert 'history_path="docs/testing/quality-history/${head_sha}.json"' in scripts
-    assert 'artifact_name="quality-evidence-$head_sha"' in scripts
+    assert 'artifact_name="quality-evidence-$head_sha-attempt-$run_attempt"' in scripts
     assert '--expected-commit-sha "$head_sha"' in scripts
     assert "cmp --silent" in scripts
     assert 'echo "available=false" >> "$GITHUB_OUTPUT"' in scripts

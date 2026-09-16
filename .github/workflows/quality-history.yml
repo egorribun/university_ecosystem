@@ -99,7 +99,7 @@ jobs:
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" \
             > "$artifact_metadata"
-          artifact_name="quality-evidence-$head_sha"
+          artifact_name="quality-evidence-$head_sha-attempt-$run_attempt"
           test "$(jq --arg name "$artifact_name" '[.[].artifacts[] | select(.name == $name and .expired == false)] | length' "$artifact_metadata")" -eq 1
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           evidence_root="$RUNNER_TEMP/quality-source"
