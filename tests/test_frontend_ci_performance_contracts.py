@@ -5,6 +5,7 @@ import re
 import shlex
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +15,7 @@ FRONTEND_WORKFLOW_PATH = (
 )
 WORKFLOW_DIRECTORY = REPOSITORY_ROOT / ".github" / "workflows"
 NPM_CI_COMMAND = re.compile(r"(?<![\w-])npm\s+ci(?:\s|$)")
+SHELL_OPERATOR = re.compile(r"&&|\|\||[;&|]")
 
 
 def _run_scripts(node: object) -> list[str]:
@@ -43,15 +45,16 @@ def _step(job: dict[str, object], name: str) -> dict[str, object]:
     )
 
 
-def _npm_ci_flags_are_network_minimal(line: str) -> bool:
-    """Return whether an ``npm ci`` command disables duplicate network work.
+def _npm_ci_options(line: str) -> set[str] | None:
+    """Extract options from one standalone ``npm ci`` command.
 
-    Most workflows use the short deterministic install command directly.  The
-    security-audit workflow additionally passes ``--ignore-scripts`` so an
-    untrusted lifecycle hook cannot execute before the dedicated audit gate.
-    The performance contract is about the two network-heavy flags, not the
-    ordering or presence of that security hardening option.
+    Workflow contracts must inspect the command that receives the flags.  A
+    shell operator would make later tokens belong to another command, so such
+    lines are rejected instead of accidentally treating those tokens as npm
+    options.
     """
+    if SHELL_OPERATOR.search(line):
+        return None
     tokens = shlex.split(line, comments=True, posix=True)
     ci_index = next(
         (
@@ -62,9 +65,25 @@ def _npm_ci_flags_are_network_minimal(line: str) -> bool:
         None,
     )
     if ci_index is None:
+        return None
+    return set(tokens[ci_index + 2 :])
+
+
+def _npm_ci_flags_are_network_minimal(line: str) -> bool:
+    """Return whether an ``npm ci`` command disables duplicate network work.
+
+    Most workflows use the short deterministic install command directly.  The
+    security-audit workflow additionally passes ``--ignore-scripts`` so an
+    untrusted lifecycle hook cannot execute before the dedicated audit gate.
+    The performance contract is about the two network-heavy flags, not the
+    ordering or presence of that security hardening option.
+    """
+    options = _npm_ci_options(line)
+    if options is None:
         return False
-    options = set(tokens[ci_index + 2 :])
-    return {"--no-audit", "--no-fund"}.issubset(options)
+    required = {"--no-audit", "--no-fund"}
+    contradictory = {"--audit", "--fund", "--audit=true", "--fund=true"}
+    return required.issubset(options) and not contradictory.intersection(options)
 
 
 def test_npm_ci_skips_duplicate_audit_and_funding_network_work() -> None:
@@ -92,12 +111,47 @@ def test_npm_ci_skips_duplicate_audit_and_funding_network_work() -> None:
             f"{workflow_path} contains an unoptimized npm ci invocation"
         )
 
-    security_workflow = (
+    security_workflow_path = (
         REPOSITORY_ROOT / ".github" / "workflows" / "reusable-security-audit.yml"
-    ).read_text(encoding="utf-8")
+    )
+    security_workflow = security_workflow_path.read_text(encoding="utf-8")
     assert "Run npm audit with allowlist" in security_workflow
     assert "scripts/audit_dependencies.py" in security_workflow
-    assert "npm ci --ignore-scripts --no-audit --no-fund" in security_workflow
+
+    # Bind the lifecycle-hook hardening to the actual npm-audit install step;
+    # a comment or an unrelated workflow step must not satisfy this contract.
+    security_document = _load(security_workflow_path)
+    security_jobs = security_document.get("jobs")
+    assert isinstance(security_jobs, dict)
+    npm_audit_job = security_jobs.get("npm-audit")
+    assert isinstance(npm_audit_job, dict)
+    install_step = _step(npm_audit_job, "Install dependencies")
+    install_script = install_step.get("run")
+    assert isinstance(install_script, str)
+    security_install_lines = [
+        line.strip()
+        for line in install_script.splitlines()
+        if NPM_CI_COMMAND.search(line) and not line.lstrip().startswith("#")
+    ]
+    assert len(security_install_lines) == 1
+    security_options = _npm_ci_options(security_install_lines[0])
+    assert security_options is not None
+    assert {"--ignore-scripts", "--no-audit", "--no-fund"}.issubset(security_options)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "npm ci && echo --no-audit --no-fund",
+        "npm ci --no-audit --no-fund && echo done",
+        "npm ci | tee install.log --no-audit --no-fund",
+        "npm ci --no-audit --no-fund; echo done",
+        "npm ci --no-audit --no-fund & echo done",
+    ],
+)
+def test_npm_ci_contract_rejects_shell_chaining(line: str) -> None:
+    """Flags from a later shell command must not satisfy the install contract."""
+    assert not _npm_ci_flags_are_network_minimal(line)
 
 
 def test_frontend_suite_is_not_serialized_behind_pre_commit() -> None:
