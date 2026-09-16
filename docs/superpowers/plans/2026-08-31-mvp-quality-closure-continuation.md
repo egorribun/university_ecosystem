@@ -7797,3 +7797,63 @@ capacity. Do not treat either superseded result as evidence for the final
 candidate. The next release boundary is one combined push after the current
 run is terminal, followed by a fresh exact-SHA matrix and a new security scan
 against the final clean revision.
+
+## 141. Terminal coverage blocker, policy recheck and documentation closure (2026-09-16)
+
+Run `35126659277` is now terminal for the previously published head
+`2cd4553766d033f5163f0e101774107c43af2a35` (the merge checkout was
+`779451ca70fb735d8316caa9756f60d693f1945d`). It produced `119` jobs: `97`
+successes, `20` expected skips and `2` failures. The only substantive failure
+was `Coverage & Quality Policy Gate` (`104911247087`): after combining the
+four backend coverage artifacts, coverage.py reported `Coverage failure: total
+of 99 is less than fail-under=100`. `CI Success` (`104911854488`) merely
+propagated that failure. The mutation fan-out was correctly blocked by the
+coverage prerequisite and therefore provides no mutation-runtime evidence.
+The twenty skips are explained by main-only/advisory guards, non-integration
+Go diagnostics, the shard-0-only integration guard, and the downstream
+mutation barrier; none is an unexpected release bypass.
+
+The preserved aggregate artifact was replayed without altering application
+source. Its exact missing inventory was four Pydantic field-declaration lines
+in `app/services/schedule_optimizer.py`, five defensive Web Push lines in
+`app/services/webpush.py`, and six missing branches (proxy, hostname,
+malformed/credential endpoint, IPv6 formatting, and the no-session cleanup
+guard). Commit `f4e924885` adds only focused tests for those executable paths
+and performs no exclusions or suppressions. The focused tests are `7/7`
+green; replaying them against the preserved CI `.coverage` database reaches
+`31,202/31,202` lines and `7,560/7,560` branches (`100.00%`). The pre-commit
+hook initially exposed only a Windows permission error in the user-level
+cache and a literal test Basic-Auth string; the test fixture was changed to a
+user-only URL, and the complete isolated-cache hook then passed Ruff,
+detect-secrets, hardcoded-secret, Python-2 syntax and all configured checks.
+
+The independent security review is now split into coherent commits:
+`8bb695582` adds an `edited` pull-request trigger and regression contract so
+the immutable policy gate re-runs after metadata edits; `c7d92993d` refreshes
+governance, README evidence wording, ADR numbering, MCP recipe provenance and
+historical audit references. The earlier `dc00cce7b` dependency-audit fix and
+`04a89d2d0` snapshot-race fix remain in the candidate. Docs checks cover all
+`891` Markdown files with no broken local links, `41` markdown/quality tests,
+catalog `56` workflows/`185` jobs, and zero `git diff --check` findings.
+
+The terminal CI timing ledger confirms the current `20`-job governance is
+near saturation (peak `19/20`) but queueing and test execution dominate:
+lower-bound wall time is about `37m43s`, queue p50/p95/max `62/402/1161s`,
+setup `38/100/440s`, test `52/735/1053s`, artifact upload p95/max `4/40s`,
+average slot utilization `43.4%`. Playwright browser caches hit across
+Chromium, Firefox, WebKit and mobile WebKit. Do not raise mutation caps or
+claim a speed regression fix until three comparable terminal green runs exist.
+
+Required next actions are fail-closed: run the local full gate matrix and
+current-SHA manifest checks; review the final security scan on a clean tree;
+verify live main ruleset contexts read-only; push the five candidate commits
+non-force to `origin/egorribun`; evaluate only the resulting exact-SHA CI;
+rerun only proven transient terminal failures; and preserve first-failure
+logs/artifacts. After a fresh green matrix, complete the still external-only
+release gates (exact-six immutable image producer/attestations and digest
+Docker smoke, Kubernetes/TLS/ExternalSecrets/observability staging, CWV and
+real browser/device checks, chaos/restart/rollback, resulting-main
+Dependabot/ruleset verification, current-SHA quality manifest and
+`AUDIT_QUALITY_CLOSURE_<sha>.md`). The primary checkout's three user-owned
+WASM/provenance edits and the untracked external audit remain out of the
+candidate and must not be staged.
