@@ -2082,6 +2082,48 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     assert "grep '^app/core/tenant\\.py$'" not in job_text
 
 
+def test_mutmut_producer_validator_and_consumer_budget_contracts_are_bound() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    producer_job = workflow["jobs"]["mutation-tests-universe"]
+    consumer_job = workflow["jobs"]["mutation-tests-incremental"]
+    producer_step = _step_named(producer_job, "Merge and plan central mutmut universe")
+    validator_step = _step_named(
+        producer_job, "Build validated mutmut execution matrix"
+    )
+    consumer_step = _step_named(
+        consumer_job, "Run incremental mutmut (blocking, stats-derived budget)"
+    )
+
+    def contract(script: str) -> dict[str, int]:
+        values: dict[str, int] = {}
+        for flag in (
+            "max-children",
+            "control-cycle-reserve-seconds",
+            "metadata-startup-reserve-seconds",
+            "max-timeout-seconds",
+        ):
+            matches = re.findall(rf"--{flag}\s+(\d+)", script)
+            assert matches, f"missing --{flag} in workflow command"
+            assert len(set(matches)) == 1, f"drifting --{flag} values: {matches}"
+            values[flag] = int(matches[0])
+        return values
+
+    producer = contract(producer_step["run"])
+    validator = contract(validator_step["run"])
+    consumer = contract(consumer_step["run"])
+    assert producer == validator
+    assert consumer["max-children"] == producer["max-children"]
+    assert (
+        consumer["control-cycle-reserve-seconds"]
+        == producer["control-cycle-reserve-seconds"]
+    )
+    assert (
+        consumer["metadata-startup-reserve-seconds"]
+        == producer["metadata-startup-reserve-seconds"]
+    )
+    assert consumer["max-timeout-seconds"] >= producer["max-timeout-seconds"]
+
+
 def test_mutmut_execution_disables_periodic_otel_exporter_thread() -> None:
     """Mutation subprocesses must not register a fork-unsafe OTEL callback."""
 

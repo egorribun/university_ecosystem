@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import itertools
 import json
 import math
 import re
@@ -372,6 +373,240 @@ def _add_budget_mutant(
     )
 
 
+def _budget_bin_from_mutants(
+    mutants: Iterable[_BudgetMutant],
+    durations: Mapping[str, float | int],
+) -> _BudgetBin:
+    """Rebuild a budget bin from an ordered mutant assignment."""
+
+    bucket = _BudgetBin(
+        names=[],
+        mutants=[],
+        test_names=set(),
+        union_exact_seconds=Fraction(),
+        union_fsum_seconds=0.0,
+        forced_fail_cap_seconds=0,
+    )
+    for mutant in mutants:
+        _add_budget_mutant(bucket, mutant, durations)
+    return bucket
+
+
+def _rebalance_for_budget_candidate(
+    buckets: Sequence[_BudgetBin],
+    candidate: _BudgetMutant,
+    *,
+    durations: Mapping[str, float | int],
+    max_children: int,
+    control_cycle_reserve_seconds: int,
+    metadata_and_startup_reserve_seconds: int,
+    max_timeout_seconds: int,
+    max_evictions: int = 2,
+    max_search_nodes: int = 20_000,
+) -> list[list[_BudgetMutant]] | None:
+    """Find a bounded deterministic move that makes ``candidate`` fit.
+
+    Greedy bin packing is intentionally retained as the fast path.  When a
+    candidate has no direct destination, this bounded repair searches for a
+    small set of mutants to evict from one bin and places those mutants into
+    the remaining bins. Every prospective state is evaluated with the same
+    conservative budget bound as the fast path; the caller performs the
+    canonical exact validation before publishing a plan. The finite node
+    limit keeps a pathological input from turning planning into an unbounded
+    knapsack search.
+    """
+
+    if max_evictions < 1 or max_search_nodes < 1:
+        return None
+
+    assignments = [list(bucket.mutants) for bucket in buckets]
+    search_nodes = 0
+
+    def projected(
+        mutants: Sequence[_BudgetMutant],
+        item: _BudgetMutant,
+    ) -> int:
+        bucket = _budget_bin_from_mutants(mutants, durations)
+        return _budget_bin_upper_bound(
+            bucket,
+            item,
+            durations=durations,
+            max_children=max_children,
+            control_cycle_reserve_seconds=control_cycle_reserve_seconds,
+            metadata_and_startup_reserve_seconds=metadata_and_startup_reserve_seconds,
+        )
+
+    def place_pending(
+        state: list[list[_BudgetMutant]],
+        pending: list[_BudgetMutant],
+        remaining_evictions: int,
+        *,
+        allow_eviction: bool,
+    ) -> list[list[_BudgetMutant]] | None:
+        nonlocal search_nodes
+        if not pending:
+            return state
+        if search_nodes >= max_search_nodes:
+            return None
+
+        item = pending[0]
+        direct: list[tuple[int, int, int]] = []
+        for index, mutants in enumerate(state):
+            search_nodes += 1
+            if search_nodes > max_search_nodes:
+                return None
+            budget = projected(mutants, item)
+            if budget <= max_timeout_seconds:
+                direct.append((budget, len(mutants), index))
+        for _, _, index in sorted(direct):
+            trial = [list(mutants) for mutants in state]
+            trial[index].append(item)
+            result = place_pending(
+                trial,
+                pending[1:],
+                remaining_evictions,
+                allow_eviction=False,
+            )
+            if result is not None:
+                return result
+
+        if not allow_eviction or remaining_evictions < 1:
+            return None
+
+        # Start with the largest mutants. This makes the common one-move
+        # repair cheap and keeps the search reproducible.
+        for target_index, mutants in enumerate(state):
+            ordered_existing = sorted(
+                mutants,
+                key=lambda mutant: (-mutant.estimate_exact_seconds, mutant.name),
+            )
+            for count in range(1, min(remaining_evictions, len(ordered_existing)) + 1):
+                for evicted in itertools.combinations(ordered_existing, count):
+                    search_nodes += 1
+                    if search_nodes > max_search_nodes:
+                        return None
+                    evicted_set = set(evicted)
+                    remaining = [
+                        mutant for mutant in mutants if mutant not in evicted_set
+                    ]
+                    if projected(remaining, item) > max_timeout_seconds:
+                        continue
+                    trial = [list(current) for current in state]
+                    trial[target_index] = [*remaining, item]
+                    # Reinsert evicted items without opening another eviction
+                    # branch; this bounded frontier cannot cycle.
+                    result = place_pending(
+                        trial,
+                        [*evicted, *pending[1:]],
+                        remaining_evictions - count,
+                        allow_eviction=False,
+                    )
+                    if result is not None:
+                        return result
+        return None
+
+    return place_pending(
+        assignments,
+        [candidate],
+        max_evictions,
+        allow_eviction=True,
+    )
+
+
+def _repack_budget_frontier(
+    buckets: Sequence[_BudgetBin],
+    candidate: _BudgetMutant,
+    *,
+    durations: Mapping[str, float | int],
+    max_children: int,
+    control_cycle_reserve_seconds: int,
+    metadata_and_startup_reserve_seconds: int,
+    max_timeout_seconds: int,
+    max_frontier_items: int = 48,
+    max_search_nodes: int = 100_000,
+) -> list[list[_BudgetMutant]] | None:
+    """Repack a bounded recent frontier when local repair is insufficient.
+
+    The complete bin-packing problem is deliberately not attempted for a
+    production-sized mutation universe. Instead, a bounded round-robin
+    frontier of the most recently assigned mutants is removed from otherwise
+    valid bins and solved with deterministic depth-first search. This catches
+    multi-bin greedy dead ends (including the small adversarial fixture) while
+    retaining a strict node limit for pathological inputs.
+    """
+
+    if max_frontier_items < 2 or max_search_nodes < 1:
+        return None
+
+    frontier_limit = max_frontier_items - 1
+    selected: list[_BudgetMutant] = []
+    remaining = [list(bucket.mutants) for bucket in buckets]
+    # Select the newest item from each bin in round-robin order. The stable
+    # index tie-breaker keeps the frontier independent of set/hash ordering.
+    cursors = [len(mutants) - 1 for mutants in remaining]
+    while len(selected) < frontier_limit:
+        progressed = False
+        for index, cursor in enumerate(cursors):
+            if cursor < 0 or len(selected) >= frontier_limit:
+                continue
+            selected.append(remaining[index][cursor])
+            cursors[index] -= 1
+            progressed = True
+        if not progressed:
+            break
+    selected.append(candidate)
+    selected_set = set(selected)
+    for index, mutants in enumerate(remaining):
+        remaining[index] = [mutant for mutant in mutants if mutant not in selected_set]
+
+    items = sorted(
+        selected,
+        key=lambda mutant: (-mutant.estimate_exact_seconds, mutant.name),
+    )
+    nodes = 0
+
+    def search(
+        state: list[list[_BudgetMutant]],
+        position: int,
+    ) -> list[list[_BudgetMutant]] | None:
+        nonlocal nodes
+        if position == len(items):
+            return state
+        nodes += 1
+        if nodes > max_search_nodes:
+            return None
+        item = items[position]
+        candidates: list[tuple[int, int, int]] = []
+        seen_signatures: set[tuple[str, ...]] = set()
+        for index, mutants in enumerate(state):
+            signature = tuple(sorted(mutant.name for mutant in mutants))
+            if signature in seen_signatures:
+                continue
+            seen_signatures.add(signature)
+            bucket = _budget_bin_from_mutants(mutants, durations)
+            projected = _budget_bin_upper_bound(
+                bucket,
+                item,
+                durations=durations,
+                max_children=max_children,
+                control_cycle_reserve_seconds=control_cycle_reserve_seconds,
+                metadata_and_startup_reserve_seconds=(
+                    metadata_and_startup_reserve_seconds
+                ),
+            )
+            if projected <= max_timeout_seconds:
+                candidates.append((projected, len(mutants), index))
+        for _, _, index in sorted(candidates):
+            trial = [list(mutants) for mutants in state]
+            trial[index].append(item)
+            result = search(trial, position + 1)
+            if result is not None:
+                return result
+        return None
+
+    return search(remaining, 0)
+
+
 def plan_mutant_shards_with_budget(
     estimates: Sequence[MutantEstimate],
     tests_by_mangled_function_name: Mapping[str, Sequence[str]],
@@ -391,7 +626,9 @@ def plan_mutant_shards_with_budget(
     the same per-mutant watchdog costs and reserve semantics as
     :func:`scripts.mutmut_shard_budget.calculate_shard_budget`, rejects a
     candidate that cannot fit, and performs an exact final validation before
-    returning the fixed-width logical plan.
+    returning the fixed-width logical plan. A bounded deterministic
+    rebalancing pass repairs small greedy dead ends without turning the normal
+    planning path into an unbounded bin-packing search.
     """
 
     if (
@@ -485,10 +722,39 @@ def plan_mutant_shards_with_budget(
             if projected <= max_timeout_seconds:
                 candidates.append((projected, len(bucket.mutants), index))
         if not candidates:
-            raise ValueError(
-                "mutant cannot fit within configured timeout: "
-                f"{mutant.name} requires a new logical shard"
+            repaired = _rebalance_for_budget_candidate(
+                buckets,
+                mutant,
+                durations=duration_by_test,
+                max_children=max_children,
+                control_cycle_reserve_seconds=control_cycle_reserve_seconds,
+                metadata_and_startup_reserve_seconds=(
+                    metadata_and_startup_reserve_seconds
+                ),
+                max_timeout_seconds=max_timeout_seconds,
             )
+            if repaired is None:
+                repaired = _repack_budget_frontier(
+                    buckets,
+                    mutant,
+                    durations=duration_by_test,
+                    max_children=max_children,
+                    control_cycle_reserve_seconds=control_cycle_reserve_seconds,
+                    metadata_and_startup_reserve_seconds=(
+                        metadata_and_startup_reserve_seconds
+                    ),
+                    max_timeout_seconds=max_timeout_seconds,
+                )
+            if repaired is None:
+                raise ValueError(
+                    "mutant cannot fit within configured timeout: "
+                    f"{mutant.name} requires a new logical shard"
+                )
+            buckets = [
+                _budget_bin_from_mutants(mutants, duration_by_test)
+                for mutants in repaired
+            ]
+            continue
         _, _, selected_index = min(candidates)
         _add_budget_mutant(buckets[selected_index], mutant, duration_by_test)
 

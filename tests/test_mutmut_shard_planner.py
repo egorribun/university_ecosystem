@@ -197,6 +197,55 @@ def test_budget_aware_planner_rejects_a_mutant_that_cannot_fit() -> None:
         )
 
 
+def test_budget_aware_planner_rebalances_when_greedy_seed_blocks_feasible_plan() -> (
+    None
+):
+    # The initial largest-first seeding can leave a late mutant without a
+    # direct destination even though a one-mutant move yields a valid plan.
+    durations = {
+        f"tests/test_{index}.py::test_case": duration
+        for index, duration in enumerate([32, 33, 40, 13, 20, 10, 23])
+    }
+    tests_by_function = {
+        f"app.module_{index}.run": [test_name]
+        for index, test_name in enumerate(durations)
+    }
+    names = [f"app.module_{index}.run__mutmut_1" for index in range(len(durations))]
+    estimates = [
+        MutantEstimate(name, durations[test_name])
+        for name, test_name in zip(names, durations, strict=True)
+    ]
+
+    shards = plan_mutant_shards_with_budget(
+        estimates,
+        tests_by_function,
+        durations,
+        num_shards=3,
+        max_children=1,
+        control_cycle_reserve_seconds=1,
+        metadata_and_startup_reserve_seconds=0,
+        max_timeout_seconds=1_312,
+    )
+
+    assert {name for shard in shards for name in shard} == set(names)
+    assert all(shard for shard in shards)
+
+    from scripts.mutmut_shard_budget import calculate_shard_budget
+
+    assert all(
+        calculate_shard_budget(
+            shard,
+            tests_by_function,
+            durations,
+            max_children=1,
+            control_cycle_reserve_seconds=1,
+            metadata_and_startup_reserve_seconds=0,
+        ).outer_timeout_seconds
+        <= 1_312
+        for shard in shards
+    )
+
+
 def test_write_shard_plan_bundle_persists_exact_audited_population(
     tmp_path: Path,
 ) -> None:
