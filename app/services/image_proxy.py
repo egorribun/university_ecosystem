@@ -52,15 +52,14 @@ logger = get_logger(__name__)
 
 # Redis cache TTL for transformed images (7 days)
 _CACHE_TTL = 7 * 24 * 60 * 60
-_MISSING_IMAGE_MAX_PIXELS = object()
 
 
 def _configured_image_max_pixels() -> int:
     """Return the bounded image pixel budget used by proxy transformations."""
     from app.utils.images import DEFAULT_MAX_IMAGE_PIXELS
 
-    configured = getattr(settings, "image_max_pixels", _MISSING_IMAGE_MAX_PIXELS)
-    if configured is _MISSING_IMAGE_MAX_PIXELS:
+    configured = getattr(settings, "image_max_pixels", None)
+    if configured is None:
         return DEFAULT_MAX_IMAGE_PIXELS
     # ``StorageSettings`` validates this field as an integer.  Keep the
     # defensive fallback for lightweight test/config objects without using a

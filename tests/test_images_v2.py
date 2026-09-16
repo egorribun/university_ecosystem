@@ -554,5 +554,7 @@ def test_validate_image_dimensions_rejects_large_integer_overflow_boundary():
     budget = 9_007_199_254_740_995
     width = 4_503_599_627_370_498
 
-    with pytest.raises(img_mod.ImagePixelLimitError):
+    with pytest.raises(img_mod.ImagePixelLimitError) as exc_info:
         img_mod.validate_image_dimensions(width, 2, max_pixels=budget)
+
+    assert exc_info.value.max_pixels == budget
