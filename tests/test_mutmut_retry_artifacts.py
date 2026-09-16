@@ -76,6 +76,13 @@ def _retry_context(root: Path, *, run_attempt: str, artifact: str) -> dict[str, 
     )
 
 
+def _write_helm_archives(root: Path) -> None:
+    chart_dir = root / "charts/university-ecosystem/charts"
+    chart_dir.mkdir(parents=True, exist_ok=True)
+    for archive in retry_artifacts.HELM_DEPENDENCY_ARCHIVES:
+        (chart_dir / archive).write_bytes(f"{archive}\n".encode())
+
+
 def _write_stats_candidate(
     root: Path,
     *,
@@ -476,3 +483,165 @@ def test_generation_selector_binds_distinct_provenance_and_mode(
         (consumer / "mutmut-generation-selection.json").read_text(encoding="utf-8")
     )
     assert evidence["artifact"] == retry_artifacts.GENERATION_ARTIFACT
+
+
+def test_generation_artifact_transports_verified_helm_dependencies(
+    repository: Path,
+) -> None:
+    candidate = repository / "generation-with-helm"
+    (candidate / "mutants/app").mkdir(parents=True)
+    (candidate / "mutants/app/example.py").write_text(
+        "def example() -> bool:\n    return True\n", encoding="utf-8"
+    )
+    (candidate / "mutants/app/example.py.meta").write_text(
+        '{"exit_code_by_key": {"example__mutmut_1": null}}\n', encoding="utf-8"
+    )
+    (candidate / "mutants/mutmut-generation.json").write_text(
+        '{"schema_version": 1, "mutant_count": 1}\n', encoding="utf-8"
+    )
+    _write_helm_archives(candidate)
+
+    payload = retry_artifacts.create_universe_artifact(
+        root=candidate,
+        output=Path("mutmut-universe-artifact.json"),
+        mode="generation",
+        include_helm_dependencies=True,
+        commit_sha=_head(repository),
+        run_id=RUN_ID,
+        run_attempt="1",
+        workflow=WORKFLOW,
+        retry_provenance=_retry_context(
+            repository,
+            run_attempt="1",
+            artifact=retry_artifacts.GENERATION_ARTIFACT,
+        ),
+    )
+
+    expected = {
+        f"charts/university-ecosystem/charts/{archive}"
+        for archive in retry_artifacts.HELM_DEPENDENCY_ARCHIVES
+    }
+    assert expected <= set(payload["files"])
+
+    consumer = repository / "generation-with-helm-consumer"
+    consumer.mkdir()
+    retry_artifacts.select_universe_candidate(
+        candidate_roots=[candidate],
+        output_root=consumer,
+        selection_evidence=Path("mutmut-generation-selection.json"),
+        commit_sha=_head(repository),
+        run_id=RUN_ID,
+        run_attempt="2",
+        workflow=WORKFLOW,
+        expected_mode="generation",
+        consumer_retry_context=_retry_context(
+            repository,
+            run_attempt="2",
+            artifact=retry_artifacts.GENERATION_ARTIFACT,
+        ),
+    )
+    for archive in retry_artifacts.HELM_DEPENDENCY_ARCHIVES:
+        assert (
+            consumer / "charts/university-ecosystem/charts" / archive
+        ).read_bytes() == (
+            candidate / "charts/university-ecosystem/charts" / archive
+        ).read_bytes()
+
+
+def test_generation_artifact_rejects_missing_helm_dependency(
+    repository: Path,
+) -> None:
+    candidate = repository / "generation-without-helm"
+    (candidate / "mutants/app").mkdir(parents=True)
+    (candidate / "mutants/mutmut-generation.json").write_text(
+        '{"schema_version": 1, "mutant_count": 1}\n', encoding="utf-8"
+    )
+
+    with pytest.raises(retry_artifacts.RetryArtifactError, match="missing"):
+        retry_artifacts.create_universe_artifact(
+            root=candidate,
+            output=Path("mutmut-universe-artifact.json"),
+            mode="generation",
+            include_helm_dependencies=True,
+            commit_sha=_head(repository),
+            run_id=RUN_ID,
+            run_attempt="1",
+            workflow=WORKFLOW,
+            retry_provenance=_retry_context(
+                repository,
+                run_attempt="1",
+                artifact=retry_artifacts.GENERATION_ARTIFACT,
+            ),
+        )
+
+
+def test_generation_selector_rejects_tampered_helm_dependency(
+    repository: Path,
+) -> None:
+    candidate = repository / "generation-tampered-helm"
+    (candidate / "mutants/app").mkdir(parents=True)
+    (candidate / "mutants/mutmut-generation.json").write_text(
+        '{"schema_version": 1, "mutant_count": 1}\n', encoding="utf-8"
+    )
+    _write_helm_archives(candidate)
+    retry_artifacts.create_universe_artifact(
+        root=candidate,
+        output=Path("mutmut-universe-artifact.json"),
+        mode="generation",
+        include_helm_dependencies=True,
+        commit_sha=_head(repository),
+        run_id=RUN_ID,
+        run_attempt="1",
+        workflow=WORKFLOW,
+        retry_provenance=_retry_context(
+            repository,
+            run_attempt="1",
+            artifact=retry_artifacts.GENERATION_ARTIFACT,
+        ),
+    )
+    archive = (
+        candidate
+        / "charts/university-ecosystem/charts"
+        / retry_artifacts.HELM_DEPENDENCY_ARCHIVES[0]
+    )
+    archive.write_bytes(b"tampered\n")
+    consumer = repository / "tampered-consumer"
+    consumer.mkdir()
+
+    with pytest.raises(retry_artifacts.RetryArtifactError, match="hash"):
+        retry_artifacts.select_universe_candidate(
+            candidate_roots=[candidate],
+            output_root=consumer,
+            selection_evidence=Path("mutmut-generation-selection.json"),
+            commit_sha=_head(repository),
+            run_id=RUN_ID,
+            run_attempt="2",
+            workflow=WORKFLOW,
+            expected_mode="generation",
+            consumer_retry_context=_retry_context(
+                repository,
+                run_attempt="2",
+                artifact=retry_artifacts.GENERATION_ARTIFACT,
+            ),
+        )
+
+
+def test_empty_universe_does_not_require_helm_dependencies(repository: Path) -> None:
+    payload = retry_artifacts.create_universe_artifact(
+        root=repository,
+        output=Path("mutmut-universe-artifact.json"),
+        mode="empty",
+        include_helm_dependencies=True,
+        commit_sha=_head(repository),
+        run_id=RUN_ID,
+        run_attempt="1",
+        workflow=WORKFLOW,
+        retry_provenance=_retry_context(
+            repository,
+            run_attempt="1",
+            artifact=retry_artifacts.UNIVERSE_ARTIFACT,
+        ),
+    )
+
+    assert payload["mode"] == "empty"
+    assert payload["files"] == {}

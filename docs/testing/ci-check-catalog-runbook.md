@@ -132,6 +132,18 @@ in the continuation plan.  A missing or malformed report fails the existing
 finalizer after the authoritative result table has been evaluated, preserving
 the required fail-closed behavior without adding a fan-out job.
 
+### Mutmut Helm dependency reuse
+
+The primary `ci.yml` mutmut producer resolves the locked Redis and NATS Helm
+archives once.  It publishes those regular files in the same-run,
+provenance-bound generation and final-universe artifacts; the stats, planner,
+and execution consumers select and validate the artifact before running
+`helm_dependency_build.py --skip-refresh`.  The helper still checks that both
+archives exist and are non-empty, while the artifact manifest checks their
+SHA-256 inventory and source/run identity.  A missing, symlinked, or modified
+archive must fail closed.  The producer remains the only step allowed to
+perform the narrow transport retry against the registry.
+
 ## Updating safely
 
 When adding, removing, or renaming a workflow/job:

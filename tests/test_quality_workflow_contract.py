@@ -2154,6 +2154,14 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert base_upload["with"]["name"] == (
         "mutmut-generation-base-${{ github.run_id }}-${{ github.run_attempt }}"
     )
+    assert (
+        "charts/university-ecosystem/charts/redis-20.13.4.tgz"
+        in base_upload["with"]["path"]
+    )
+    assert (
+        "charts/university-ecosystem/charts/nats-8.5.4.tgz"
+        in base_upload["with"]["path"]
+    )
     base_envelope = next(
         step
         for step in base_job["steps"]
@@ -2161,6 +2169,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     )
     assert "--mode generation" in base_envelope["run"]
     assert "mutmut-universe-artifact.json" in base_envelope["run"]
+    assert "--include-helm-dependencies" in base_envelope["run"]
 
     assert stats_job["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-scope.outputs.stats_matrix) }}"
@@ -2255,14 +2264,21 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     mutation_text = "\n".join(
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
-    for job in (stats_job, mutation_job):
+    for job in (stats_job, universe_job, mutation_job):
         helm_step = next(
             step
             for step in job["steps"]
             if step.get("name") == "Resolve Helm chart dependencies"
         )
         assert helm_step["shell"] == "bash"
-        _assert_helm_dependency_helper_invocation(helm_step["run"])
+        _assert_helm_dependency_helper_invocation(helm_step["run"], skip_refresh=True)
+    universe_generation_selection = _step_named(
+        universe_job, "Select retry-safe mutmut generation base"
+    )
+    universe_helm_step = _step_named(universe_job, "Resolve Helm chart dependencies")
+    assert universe_job["steps"].index(universe_generation_selection) < universe_job[
+        "steps"
+    ].index(universe_helm_step)
     universe_selector = next(
         step
         for step in mutation_job["steps"]
@@ -2328,6 +2344,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert "--allow-empty-shards" in producer_text
     assert "python -m scripts.mutmut_retry_artifacts select-stats" in producer_text
     assert "python -m scripts.mutmut_retry_artifacts create-universe" in producer_text
+    assert "--include-helm-dependencies" in producer_text
     assert "--reuse-generated-universe" in producer_text
     universe_generation_selector = next(
         step
@@ -2354,10 +2371,26 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         for step in universe_job["steps"]
         if step.get("name") == "Upload central mutmut universe"
     )
+    assert universe_upload["if"] == "steps.mutation_scope.outputs.has_python == 'true'"
     assert universe_upload["with"]["name"] == (
         "mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}"
     )
     assert "mutmut-universe-artifact.json" in universe_upload["with"]["path"]
+    assert (
+        "charts/university-ecosystem/charts/redis-20.13.4.tgz"
+        in universe_upload["with"]["path"]
+    )
+    assert (
+        "charts/university-ecosystem/charts/nats-8.5.4.tgz"
+        in universe_upload["with"]["path"]
+    )
+    empty_upload = next(
+        step
+        for step in universe_job["steps"]
+        if step.get("name") == "Upload empty central mutmut universe"
+    )
+    assert empty_upload["if"] == "steps.mutation_scope.outputs.has_python != 'true'"
+    assert "charts/university-ecosystem/charts" not in empty_upload["with"]["path"]
     assert universe_upload["with"]["include-hidden-files"] is True
     assert universe_upload["with"]["retention-days"] == 30
     assert "mutation-tests-stats" in jobs["ci-success"]["needs"]

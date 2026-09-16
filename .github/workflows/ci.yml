@@ -2865,6 +2865,7 @@ jobs:
             --root . \
             --manifest mutmut-universe-artifact.json \
             --mode generation \
+            --include-helm-dependencies \
             --commit-sha "$COMMIT_SHA" \
             --run-id "$RUN_ID" \
             --run-attempt "$RUN_ATTEMPT" \
@@ -2884,6 +2885,8 @@ jobs:
           path: |
             mutmut-universe-artifact.json
             mutants/
+            charts/university-ecosystem/charts/redis-20.13.4.tgz
+            charts/university-ecosystem/charts/nats-8.5.4.tgz
           include-hidden-files: true
           retention-days: 30
           if-no-files-found: error
@@ -3023,6 +3026,10 @@ jobs:
           test -f "$root/mutmut-universe-artifact.json" && test ! -L "$root/mutmut-universe-artifact.json"
           test -d "$root/mutants" && test ! -L "$root/mutants"
           test -f "$root/mutants/mutmut-generation.json" && test ! -L "$root/mutants/mutmut-generation.json"
+          for archive in redis-20.13.4.tgz nats-8.5.4.tgz; do
+            archive_path="$root/charts/university-ecosystem/charts/$archive"
+            test -f "$archive_path" && test ! -L "$archive_path"
+          done
           test "$(stat --format='%h' "$root/mutmut-universe-artifact.json")" = "1"
 
       - name: Select retry-safe mutmut generation base
@@ -3087,6 +3094,7 @@ jobs:
         shell: bash
         run: |
           python3 scripts/ci/helm_dependency_build.py \
+            --skip-refresh \
             charts/university-ecosystem \
             redis-20.13.4.tgz nats-8.5.4.tgz
 
@@ -3255,14 +3263,6 @@ jobs:
         with:
           version: v3.17.0
 
-      - name: Resolve Helm chart dependencies
-        if: steps.mutation_scope.outputs.has_python == 'true'
-        shell: bash
-        run: |
-          python3 scripts/ci/helm_dependency_build.py \
-            charts/university-ecosystem \
-            redis-20.13.4.tgz nats-8.5.4.tgz
-
       - name: Download same-run mutmut stats candidates
         if: steps.mutation_scope.outputs.has_python == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -3313,6 +3313,10 @@ jobs:
           test -f "$root/mutmut-universe-artifact.json" && test ! -L "$root/mutmut-universe-artifact.json"
           test -d "$root/mutants" && test ! -L "$root/mutants"
           test -f "$root/mutants/mutmut-generation.json" && test ! -L "$root/mutants/mutmut-generation.json"
+          for archive in redis-20.13.4.tgz nats-8.5.4.tgz; do
+            archive_path="$root/charts/university-ecosystem/charts/$archive"
+            test -f "$archive_path" && test ! -L "$archive_path"
+          done
           test "$(stat --format='%h' "$root/mutmut-universe-artifact.json")" = "1"
 
       - name: Select retry-safe mutmut generation base
@@ -3351,6 +3355,15 @@ jobs:
           test -s mutmut-generation-selection.json
           test -s mutants/mutmut-generation.json
           echo "Selected retry-safe mutmut generation base: $selection"
+
+      - name: Resolve Helm chart dependencies
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        shell: bash
+        run: |
+          python3 scripts/ci/helm_dependency_build.py \
+            --skip-refresh \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
 
       - name: Select complete retry-safe mutmut stats cohort
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -3543,6 +3556,7 @@ jobs:
             --root . \
             --manifest mutmut-universe-artifact.json \
             --mode "$mode" \
+            --include-helm-dependencies \
             --commit-sha "$COMMIT_SHA" \
             --run-id "$RUN_ID" \
             --run-attempt "$RUN_ATTEMPT" \
@@ -3555,16 +3569,31 @@ jobs:
           test -s mutmut-universe-artifact.json
 
       - name: Upload central mutmut universe
+        if: steps.mutation_scope.outputs.has_python == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             mutmut-universe-artifact.json
             mutants/
+            charts/university-ecosystem/charts/redis-20.13.4.tgz
+            charts/university-ecosystem/charts/nats-8.5.4.tgz
           # The mutmut sandbox intentionally carries dotfiles such as
           # .secrets.baseline. Preserve the producer's exact inventory during
           # transport; silently dropping hidden members would make the
           # consumer's isolated-test contract depend on artifact defaults.
+          include-hidden-files: true
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload empty central mutmut universe
+        if: steps.mutation_scope.outputs.has_python != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            mutmut-universe-artifact.json
+            mutants/
           include-hidden-files: true
           retention-days: 30
           if-no-files-found: error
@@ -3690,6 +3719,7 @@ jobs:
           path: mutmut-universe-candidates/${{ steps.select_mutmut_universe.outputs.artifact_name }}
 
       - name: Verify selected mutmut universe payload
+        if: steps.mutation_scope.outputs.has_python == 'true'
         shell: bash
         env:
           ARTIFACT_NAME: ${{ steps.select_mutmut_universe.outputs.artifact_name }}
@@ -3699,6 +3729,10 @@ jobs:
           test -d "$root" && test ! -L "$root"
           test -f "$root/mutmut-universe-artifact.json" && test ! -L "$root/mutmut-universe-artifact.json"
           test -d "$root/mutants" && test ! -L "$root/mutants"
+          for archive in redis-20.13.4.tgz nats-8.5.4.tgz; do
+            archive_path="$root/charts/university-ecosystem/charts/$archive"
+            test -f "$archive_path" && test ! -L "$archive_path"
+          done
           test "$(stat --format='%h' "$root/mutmut-universe-artifact.json")" = "1"
 
       - name: Select retry-safe central mutmut universe
@@ -3844,6 +3878,7 @@ jobs:
         shell: bash
         run: |
           python3 scripts/ci/helm_dependency_build.py \
+            --skip-refresh \
             charts/university-ecosystem \
             redis-20.13.4.tgz nats-8.5.4.tgz
 
