@@ -1,6 +1,6 @@
 import sys
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, sentinel
+from unittest.mock import MagicMock, call, patch, sentinel
 
 import pytest
 
@@ -230,6 +230,32 @@ def test_optimize_image_pillow_uses_bounded_webp_save_options():
         "quality": 85,
         "lossless": False,
     }
+
+
+def test_optimize_image_pillow_rechecks_transposed_dimensions_with_budget():
+    """The post-EXIF validation must retain the caller's pixel budget."""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    image = PILImage.new("RGB", (2, 2), color="green")
+    source = BytesIO()
+    image.save(source, format="PNG")
+
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        with patch.object(img_mod, "validate_image_dimensions") as validate:
+            optimized, mime = img_mod.optimize_image(source.getvalue(), max_pixels=3)
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
+
+    assert optimized
+    assert mime == "image/webp"
+    assert validate.call_args_list == [
+        call(2, 2, max_pixels=3),
+        call(2, 2, max_pixels=3),
+    ]
 
 
 def test_optimize_image_pillow_uses_canonical_webp_format_name():
