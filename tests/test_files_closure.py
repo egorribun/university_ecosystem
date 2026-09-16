@@ -208,6 +208,36 @@ async def test_save_image_maps_pixel_budget_to_payload_too_large():
 
 
 @pytest.mark.asyncio
+async def test_save_image_pixel_limit_error_preserves_requested_locale():
+    from app.utils.images import ImagePixelLimitError
+
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(b"raw"),
+        headers={"content-type": "image/png"},
+    )
+    with (
+        patch.object(files_module, "_read_limited", new=AsyncMock(return_value=b"raw")),
+        patch.object(files_module, "_detect_image_mime", return_value="image/png"),
+        patch.object(files_module, "_looks_like_polyglot", return_value=False),
+        patch.object(
+            files_module,
+            "optimize_image",
+            side_effect=ImagePixelLimitError(10_000, 10_000, 25_000_000),
+        ),
+        patch.object(
+            files_module, "translate", return_value="localized-too-large"
+        ) as translate_mock,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await save_image(upload, "avatars", "user", locale="ru")
+
+    assert exc_info.value.status_code == 413
+    assert exc_info.value.detail == "localized-too-large"
+    translate_mock.assert_any_call("errors.files.too_large", locale="ru")
+
+
+@pytest.mark.asyncio
 async def test_save_image_maps_pillow_decompression_bomb_to_payload_too_large():
     from PIL import Image as PILImage
 
