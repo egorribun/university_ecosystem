@@ -17,7 +17,8 @@ The deterministic checker can include archived reports with
 `uv run python scripts/docs/check_markdown_links.py --include-archives`.
 It found 123 historical link targets that were not valid from the archive
 directory. 104 links whose intended repository-root targets still exist were
-normalized in place; the report remains intentionally non-zero for these 12
+normalized in place. The original 123/104 counts are retained as provenance;
+the current report remains intentionally non-zero only for these 12
 historical-only references:
 
 - `AUDIT_WAVE120.md:463` → `memory/wave121_backlog.md` (memory artifact no
@@ -39,9 +40,10 @@ removed without a separate archival-retention decision.
 - [Wave 211](AUDIT_WAVE211.md) — forwarding and group-chat completion
 - [Wave 210](AUDIT_WAVE210.md) — group-message backend foundation
 
-The active reference set is deliberately limited to the three most recent
-reports. New audit reports must move the oldest active report into `archive/`
-in the same change.
+The active reference set is deliberately limited to three active
+wave/product reports (not necessarily the three newest supplemental audits).
+New audit reports must move the oldest active report into `archive/` in the
+same change; supplemental reports remain explicitly historical evidence.
 
 ## Supplemental historical evidence
 

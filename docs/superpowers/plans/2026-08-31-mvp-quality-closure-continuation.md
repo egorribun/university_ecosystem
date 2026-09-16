@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** продолжить работу на ветке `egorribun` от исторической контрольной точки `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, сохранить уже реализованные основные вертикали MVP, закрыть подтверждённые инфраструктурные и mutation-дефекты текущего PR, получить полный current-SHA набор quality/mutation/security evidence и довести тот же immutable build через Docker и production-like staging до доказуемо готового к релизу состояния. Исторические SHA/run из baseline ниже не являются текущей сертификацией; authoritative overlay находится в §134.
+**Goal:** продолжить работу на ветке `egorribun` от исторической контрольной точки `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, сохранить уже реализованные основные вертикали MVP, закрыть подтверждённые инфраструктурные и mutation-дефекты текущего PR, получить полный current-SHA набор quality/mutation/security evidence и довести тот же immutable build через Docker и production-like staging до доказуемо готового к релизу состояния. Исторические SHA/run из baseline ниже не являются текущей сертификацией; authoritative overlay находится в §136.
 
 **Architecture:** репозиторий рассматривается как единая fail-closed система качества. Каждая технологическая область формирует нативные отчёты, а SHA-bound агрегатор принимает только полные, свежие и хешированные артефакты одного workflow run/attempt, отдельно фиксируя source head SHA и tested merge SHA. Уже реализованные продуктовые вертикали проходят evidence-first gap-аудит и меняются только при воспроизведённом дефекте; CI закрывается root-cause группами через RED → GREEN → REFACTOR и оптимизируется по измеренному критическому пути при лимите 20 одновременно исполняемых jobs без ослабления coverage, mutation, security или browser matrix.
 
 **Tech Stack:** Python 3.14, FastAPI, SQLAlchemy 2 async, Dishka, PostgreSQL, Redis/Valkey, NATS, transactional outbox, pytest/coverage.py/mutmut; React 19, TypeScript 7, TanStack Router/Query, Zustand, Valibot, Vite 8/Rolldown, Vitest/Stryker, Playwright, Storybook, Lighthouse; Go 1.26 modules, race detector, golangci-lint; Rust, cargo-llvm-cov, WASM, PyO3; Docker Compose, Caddy, Helm/Kubernetes, Kyverno, ExternalSecrets, Prometheus/Grafana/Tempo/Loki; GitHub Actions, CodeQL, Semgrep, Bandit, detect-secrets, gitleaks, Trivy, SBOM и provenance.
 
-**Historical audit refresh:** `2026-08-31T13:37:11+03:00`; live PR `#1257`, source head `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, matrix run `33349026009`. Это superseded baseline, сохранённый для причинного и regression-аудита. Текущий identity/status snapshot находится в §32 и должен обновляться через paginated GitHub Jobs API перед каждым утверждением о закрытии.
+**Historical audit refresh:** `2026-08-31T13:37:11+03:00`; live PR `#1257`, source head `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, matrix run `33349026009`. Это superseded baseline, сохранённый для причинного и regression-аудита. §32 и последующие ранние разделы являются историческими snapshots; текущий identity/status snapshot и authoritative overlay находятся в §135 и должны обновляться через paginated GitHub Jobs API перед каждым утверждением о закрытии.
 
 **Spec:** [`AGENTS.md`](../../../AGENTS.md), [`app/AGENTS.md`](../../../app/AGENTS.md), [`frontend/AGENTS.md`](../../../frontend/AGENTS.md), [`services/AGENTS.md`](../../../services/AGENTS.md), [`quality/quality-contract.json`](../../../quality/quality-contract.json), [`University_Ecosystem_MVP.md`](University_Ecosystem_MVP.md), [`2026-08-25-quality-closure-foundation.md`](2026-08-25-quality-closure-foundation.md), [`prompt.md`](prompt.md), PR [#1257](https://github.com/egorribun/university_ecosystem/pull/1257).
 
@@ -7218,6 +7218,11 @@ its fail-closed `CI Success` aggregate, and the expected downstream skips.
 
 ## 131. Historical mutation evidence and CI-speed hardening checkpoint (2026-09-16)
 
+> **Historical snapshot (superseded):** this section records the state observed
+> before the terminal inventory in §135. Its “still active/non-terminal”
+> wording is intentionally retained as an audit trail and is not a current
+> run-status assertion.
+
 The previously launched matrix for source SHA
 `f9a9f0a2392ee7d2c048388b5fb6f9d3ef947b93` (`35023906328`) is historical and
 must not be used as evidence for the newer integration candidate. The
@@ -7318,6 +7323,10 @@ Docker/Kubernetes/staging evidence and SHA-bound audit are terminal and green.
 
 ## 132. Fresh current-SHA inventory-skip correction (2026-09-16)
 
+> **Historical snapshot (superseded by §135):** run `35055100899` later
+> reached a terminal state; the pending/running language below describes only
+> the earlier observation that motivated the correction.
+
 The fresh PR matrix `35055100899` was created for source SHA
 `0d88caeff4b61909167e752490b2f2ded1504231`. At the authoritative snapshot
 `2026-09-16T04:31:58Z`, Jobs API pagination reported `95` jobs: `78` completed
@@ -7347,6 +7356,10 @@ diagnostic and cannot satisfy release or mutation gates.
 
 ## 133. Nightly mutation dependency contract correction (2026-09-16)
 
+> **Historical snapshot (superseded by §135):** the pending-run language below
+> refers to the pre-push diagnostic state and must not be used as current CI
+> status.
+
 Late in diagnostic run `35055100899` (source SHA
 `0d88caeff4b61909167e752490b2f2ded1504231`), Backend Python 3.14 shard-1
 job `104664138522` exposed a second independent contract failure after
@@ -7372,6 +7385,10 @@ and is queued for the next non-force push. The pending fresh run for
 candidate so that all checks execute against one exact SHA.
 
 ## 134. Current CI evidence attempt isolation and cache/retry hardening (2026-09-16)
+
+> **Historical snapshot (superseded by §135):** the candidate identity and
+> non-terminal-run wording below describe the checkpoint before the terminal
+> `35056817940` inventory and the later `0eb779b262...` documentation update.
 
 The current integration candidate is `60fbcce20` (`fix(quality): scope CI
 evidence to workflow attempts`), fifteen commits ahead of the preserved
@@ -7436,3 +7453,158 @@ immutable exact-six image publication, digest Docker smoke, Kubernetes/TLS/
 ExternalSecrets/observability staging, device/browser CWV, chaos/restart/
 rollback, production release and the final SHA-bound audit. No stale artifact,
 partial retry, fixed-name report or advisory diagnostic may be reused.
+
+## 135. Terminal inventory of pre-isolation matrix (2026-09-16)
+
+The diagnostic PR matrix `35056817940` is now terminal and is permanently
+non-authoritative for the current candidate. It tested source head
+`5e40fb523c98422f6a02ab0dc87d5dd2cec8d38a1`, pull-request event, branch
+`egorribun`, run number `8750`, attempt `1`; it started at
+`2026-09-16T04:45:12Z` and reached terminal state at
+`2026-09-16T13:36:13Z`. Paginated Jobs API evidence reconciles exactly `315`
+jobs: `289` success, `12` failure, `1` cancelled, `13` skipped, with no
+queued, pending, in-progress or timed-out jobs. All `260` run artifacts were
+present and unexpired, but they remain bound to the stale source SHA and must
+not be promoted into a current-SHA manifest.
+
+The independent root failures were:
+
+* mutmut execution groups `27`, `39`, `47`, `51`, `57`, `72`, `108`, `118`
+  and `126` (jobs `104682856606`, `104682857605`, `104682858421`,
+  `104682858814`, `104682859487`, `104682861057`, `104682864241`,
+  `104682865079` and `104682865985`). Their retained evidence is digest-bound:
+  group 27 `10436614024`
+  (`sha256:ff440ffccb2730ee1419a30c416f44adf0ad32af2f5a0dcf4f0ec473f8d74060`),
+  group 39 `10438474060`
+  (`sha256:2a74fc86b924ab3a7ca334b31b5e12bc7de0bcb877fe49b03272a2a53fbf51d8`),
+  group 47 `10439557987`
+  (`sha256:0ccc73f36c203d78365d3cc26e8d409797d311e20dcf23110c4899b262999c29`),
+  group 51 `10439113905`
+  (`sha256:60a139f948ce0407d1e5b5300a73fa7c2cce0197a71b9f8ca8ee56f7983a5aff`),
+  group 57 `10441056151`
+  (`sha256:4690573fd51de51730f7971cc0d08eee59abb4781a7b996134c94790fca63d55`),
+  group 72 `10441347531`
+  (`sha256:513d2282a5342d10e925744c8df4d6e8e283c39a2c9b63a9a9c1d1f1c20767cc`),
+  group 108 `10444494482`
+  (`sha256:3b10b1fb13807cf7b6e7e5ab7218bbcc5289282d70b6ca5f49ea123eb0e65602`),
+  group 118 `10445093166`
+  (`sha256:a0124b29ccf2b14b34e21c64a9a2df4d186eee9679beaa64f06eacdaa197129e`),
+  and group 126 `10446305644`
+  (`sha256:c6f34540aa7be854fedd3a5fe7407d9abb477b08832d82e50c41bfcd42595856`).
+  The current integration branch closes these survivors with the exact image
+  pixel-budget, validation-boundary and fallback-behaviour tests recorded in
+  §§123–134; no survivor is excluded or quarantined.
+* frontend Stryker shard `30/64`, job `104676364753`, was cancelled after the
+  pre-isolation runtime ceiling and produced no final shard artifact. The
+  aggregate job `104816238579` consequently found only `63/64` shard reports
+  and failed closed; `Incremental Mutation Tests (frontend)`
+  (`104816598736`) and `CI Success` (`104816634739`) are downstream failures,
+  not new mutation survivors. The frontend evidence preflight artifact is
+  `10431855604`
+  (`sha256:d194a8c4f92286a2be0bcef52aecc3c59d88c45faf311e68fb5ac8935de522f8`).
+
+The `13` skipped jobs reconcile by guard and are not silently treated as
+passed quality evidence:
+
+1. `WebSocket 10k Scenario Validation (advisory)`
+   (`104669012808`) is push-to-main-only (`event == push` and `ref ==
+   refs/heads/main`) and is intentionally advisory for a PR.
+2. Seven Go mutation-diagnostic legs (`104669146395`, `104669146585`,
+   `104669467626`, `104669806259`, `104669944190`, `104670458122`,
+   `104670467498`) are workflow-dispatch/schedule-only;
+   the PR caller leaves `run-mutation-diagnostic` false. (The list contains
+   seven Go service/package legs; the API also reports the two package legs
+   with one-second timestamp inversion, which is retained as raw evidence.)
+3. Backend integration legs for Python shards 1–3
+   (`104669146473`, `104672658273`, `104672939009`) are disabled by the
+   matrix's `run-integration=false`; shard 0 is
+   the single required integration producer, preventing duplicate work.
+4. `Trusted Codecov Upload` (`104676363242`) is guarded to non-PR pushes on
+   `refs/heads/main`, so the PR correctly has no OIDC upload.
+5. `Frontend Mutation Artifact Round-trip` (`104816600534`) was skipped by
+   GitHub's implicit `success(needs)` after the aggregate failure. It is a
+   cascade, not an intentional quality skip, and remains unsatisfied for the
+   stale run.
+
+The run's independent security, dependency, SBOM, CodeQL, fuzzing, contract,
+performance and infrastructure workflows completed successfully; the only
+other workflow-conditioned skips were Chromatic and Dependabot auto-merge.
+This terminal inventory is retained for root-cause history only. The current
+candidate is `0eb779b26256457e5e83cc56cc7ac199204209ba`; its latest local
+contract suite is `258 passed`, while the complete backend regression and the
+fresh hosted matrix remain required. The next promotion step is a non-force
+push of the current branch only after local regression/security evidence is
+final, followed by a fresh exact-SHA matrix. No artifact from run
+`35056817940` may satisfy coverage, mutation, release or current-SHA audit
+gates.
+
+## 136. Current local regression, security and documentation closure checkpoint (2026-09-16)
+
+The working tree is based on commit `0eb779b26256457e5e83cc56cc7ac199204209ba`
+and now contains the reviewed attempt-addressing and documentation hardening
+changes described below. The three user-owned WASM/provenance paths remain
+unstaged and outside this candidate. Until the changes are committed and
+published, no hosted evidence is release-valid.
+
+### Evidence completed
+
+* The complete backend collection executed with `uv run pytest -q
+  -p no:cacheprovider --tb=short` and produced `10431 passed, 108 skipped,
+  2 deselected, 2 failures` in `2:30:12`. Both failures were stale test
+  snapshots collected before the concurrent contract edits (WASM retention
+  expected `1` instead of the intentional `30`, and the pre-change CI
+  concurrency expression). Re-running the exact two tests against the current
+  tree is green: `2 passed in 1.67s`. The skipped items are capability/event
+  guards already documented by the test suite; they are not exclusions or
+  quarantines.
+* The expanded quality/workflow/provenance suite is green: `324 passed in
+  206.71s`; the CI catalog validator reports `OK (55 workflows, 183 jobs)`.
+  This includes the new attempt-scoped final quality artifact contract and
+  the focused release/deploy/history fixture updates. Ruff, ruff-format,
+  actionlint, YAML/JSON parsing, `py_compile` and `git diff --check` are
+  green for the changed files.
+* The final quality artifact is now named
+  `quality-evidence-${SHA}-attempt-${RUN_ATTEMPT}`. CI provenance, release
+  certification, deployment, quality-history archival, catalog metadata and
+  validators all require that exact name and `run_id_attempt` provenance;
+  fixed-name retry collisions are therefore impossible within an artifact
+  namespace and wrong-attempt selection fails closed.
+* `.github/CODEOWNERS` now protects itself, CodeQL/Dependency Review/Checkov/
+  Trivy policy files and the Python dependency allowlist. This closes the
+  review-boundary portion of the independent SEC-CI-02/03 hardening review.
+  Real-secret setup scoping (SEC-CI-04) remains defense-in-depth for trusted
+  main-only jobs and is not an untrusted PR path; any future tightening must
+  preserve the cleanup job's fail-closed configuration checks.
+* The current Codex Security standard scan for SHA `0eb779b262...` is sealed
+  with zero validated reportable findings. Its report is a read-only snapshot
+  with partial coverage, Daybreak unavailable, and explicit limitations for
+  hosted branch protection, external signer/AWS/EKS, Docker/Kubernetes,
+  browser/CWV and final-release evidence. It must be rerun after the pending
+  attempt-scoping commit so the final scan revision matches the final SHA.
+
+### Remaining fail-closed work
+
+1. Finish the complete local gate matrix after the attempt-scoped changes:
+   full backend regression (current tree), strict mypy/Ruff/AST, frontend
+   typecheck/lint/build/unit/WASM/SSR/E2E, Go/Rust tests and coverage, API
+   contracts, security scans, infrastructure validators and `verify_harness`
+   (`29/29`). Record every command, exit code, duration and artifact hash.
+2. Commit the coherent attempt-scoping/security/documentation changes without
+   staging the three user-owned WASM/provenance paths or untracked external
+   audit. Preserve the no-wave testing/quality commit rule and omit
+   `Co-Authored-By`.
+3. Push non-force to `origin/egorribun` only after the local matrix is green,
+   then require a fresh exact-SHA PR matrix. The terminal old run
+   `35056817940` is diagnostic only; its nine mutmut survivors and cancelled
+   Stryker shard remain historical root-cause evidence and cannot satisfy the
+   new matrix.
+4. Close the remaining organizational timing-ledger requirement only after
+   three comparable terminal runs provide non-empty queue/setup/test/upload
+   p50/p95, peak concurrency, retry/timeout classification and skip reasons;
+   do not replace timeout-based catalog budgets prematurely.
+5. Validate external-only gates: exact-six immutable images and attestations,
+   digest Docker smoke, production-like Kubernetes/TLS/ExternalSecrets/
+   observability staging, CWV/browser/device matrix, chaos/restart/rollback,
+   current-SHA manifest and final SHA-bound audit. Release remains blocked
+   until all required contexts are terminal green and no P0/P1/high/critical
+   findings remain.

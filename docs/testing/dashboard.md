@@ -8,7 +8,7 @@ must not be read as a pass. Historical CI-capacity observations are retained
 in the [supplemental audit](../audits/CI_CAPACITY_AUDIT_2026-09-08.md); they
 are diagnostic context only and are not current release evidence.
 
-Last rendered: `2026-07-23`
+Last rendered: **not available — no normalized `quality-history/` manifest exists**
 Required patch coverage: **100%**
 Required viable mutation score: **100%**
 

@@ -31,7 +31,16 @@ override any profile field when its artifact or retry behavior differs.
 `expected_duration_seconds` is currently an explicit upper-budget placeholder
 (`expected_timeout_minutes * 60`) until the CI timing ledger has enough history
 to replace it with measured p50/p95 data.  The distinction is intentional and
-must remain visible in reviews.
+must remain visible in reviews.  This is an open observability task, not a
+claim that CI speed is already fully optimized: the accountable owner is
+`@egorribun`, the source artifact is the run/attempt-bound `ci-health-report`
+JSON emitted by `ci-success` and rendered by
+`scripts/quality/render_ci_health_report.py`, and acceptance requires three
+comparable terminal runs on the same workflow topology with non-empty
+queue/setup/test/upload p50/p95, observed peak concurrency, retry/timeout
+classification and a recorded reason for every skip.  Only then may
+`expected_duration_seconds` be replaced with measured values through a
+reviewed catalog change.
 
 Retry metadata uses `review-required` for source jobs whose current YAML has
 retry-like behavior that has not yet been proven to be transient-only.  Do not
