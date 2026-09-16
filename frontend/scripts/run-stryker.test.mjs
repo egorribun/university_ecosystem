@@ -3521,6 +3521,67 @@ test("keeps related source domains local in a large first-attempt shard plan", a
   }
 })
 
+test("bounds the lexical utility tail across a dedicated first-attempt lane", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+  const tailFiles = [
+    ["src/utils/animations.ts", 1_200],
+    ["src/utils/sanitizeArticleHtml.ts", 900],
+    ["src/workers/crypto.worker.ts", 700],
+  ]
+  const regularFiles = Array.from({ length: 12 }, (_, index) => {
+    const file = `src/aaa-regular-tail-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    ...tailFiles.map(([file, count]) => [file, { mutants: makeMutants(file, count) }]),
+    ...regularFiles,
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  const expectedMutants = [...preflight.values()].reduce(
+    (total, entry) => total + entry.mutants.length,
+    0
+  )
+  const isTailPattern = (pattern) =>
+    pattern.startsWith("src/utils/") || pattern.startsWith("src/workers/")
+  const tailShardIndexes = plan.flatMap((shard, shardIndex) =>
+    shard.files.some(isTailPattern) ? [shardIndex] : []
+  )
+
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    expectedMutants
+  )
+  assert.equal(
+    new Set(plan.flatMap(({ files }) => files)).size,
+    plan.flatMap(({ files }) => files).length
+  )
+  assert.equal(
+    new Set(tailShardIndexes).size,
+    4,
+    "utility and worker related-test graphs must use the bounded tail lane"
+  )
+  assert.ok(
+    tailShardIndexes.every((shardIndex) => plan[shardIndex].files.every(isTailPattern)),
+    "tail-lane shards must not inherit unrelated source graphs"
+  )
+  assert.ok(
+    Math.max(...tailShardIndexes.map((shardIndex) => plan[shardIndex].mutantCount)) < 1_000,
+    "tail-lane shards must remain below the observed two-shard overload"
+  )
+})
+
 test("reconstructs locations and canonical signatures from serialized preflight entries", async () => {
   const { mutationPatternCoversMutant, mutationSignature, planMutationShards } = await import(
     runnerUrl

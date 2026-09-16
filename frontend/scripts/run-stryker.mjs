@@ -707,6 +707,20 @@ function mutationPatternSource(pattern) {
   return pattern.split(":", 1)[0]
 }
 
+// Utility and worker modules form the lexical tail of the canonical source
+// inventory.  On a first attempt without historical timings, locality packing
+// can otherwise leave that entire related-test domain on the last two logical
+// shards.  Keep the domain bounded to a small, deterministic lane so a broad
+// Vitest related graph cannot consume the whole initial-run deadline.  This is
+// placement-only: every source range and mutant remains in the denominator.
+const firstAttemptTailDomainPrefixes = ["src/utils/", "src/workers/"]
+const firstAttemptTailDomainShardCount = 4
+
+function isFirstAttemptTailDomainPattern(pattern) {
+  const source = mutationPatternSource(pattern)
+  return firstAttemptTailDomainPrefixes.some((prefix) => source.startsWith(prefix))
+}
+
 function firstAttemptSourceCostWeight(file) {
   return firstAttemptSourceCostWeights.get(file) ?? 1
 }
@@ -777,10 +791,41 @@ function assignWeightedMutationUnits(weightedUnits, shards) {
   }
 }
 
+function assignFirstAttemptRegularUnits(regularUnits, regularShards) {
+  const tailDomainUnits = regularUnits.filter((entry) =>
+    isFirstAttemptTailDomainPattern(entry.pattern)
+  )
+  const nonTailRegularUnits = regularUnits.filter(
+    (entry) => !isFirstAttemptTailDomainPattern(entry.pattern)
+  )
+  if (tailDomainUnits.length === 0) {
+    assignLocalityAwareMutationUnits(regularUnits, regularShards)
+    return
+  }
+
+  // Reserve enough runners for the tail domain to match the observed utility
+  // split while leaving at least one runner for the rest of the inventory.
+  // When no non-tail unit exists, use the complete remaining lane so no
+  // logical shard is stranded by the reservation.
+  const tailShardCount = Math.min(
+    firstAttemptTailDomainShardCount,
+    tailDomainUnits.length,
+    Math.max(1, regularShards.length - (nonTailRegularUnits.length > 0 ? 1 : 0))
+  )
+  const tailShards =
+    nonTailRegularUnits.length > 0 ? regularShards.slice(0, tailShardCount) : regularShards
+  assignLocalityAwareMutationUnits(tailDomainUnits, tailShards)
+
+  const nonTailShards = regularShards.slice(tailShards.length)
+  if (nonTailRegularUnits.length > 0) {
+    assignLocalityAwareMutationUnits(nonTailRegularUnits, nonTailShards)
+  }
+}
+
 function assignFirstAttemptMutationUnits(weightedUnits, shards) {
   const expensiveUnits = weightedUnits.filter((entry) => entry.costWeight > 1)
   if (expensiveUnits.length === 0) {
-    assignLocalityAwareMutationUnits(weightedUnits, shards)
+    assignFirstAttemptRegularUnits(weightedUnits, shards)
     return
   }
 
@@ -878,7 +923,7 @@ function assignFirstAttemptMutationUnits(weightedUnits, shards) {
     [...remainingExpensiveUnits, ...spilledDedicatedUnits],
     expensiveShards
   )
-  assignLocalityAwareMutationUnits(regularUnits, regularShards)
+  assignFirstAttemptRegularUnits(regularUnits, regularShards)
 }
 
 function assignLocalityAwareMutationUnits(weightedUnits, shards) {
