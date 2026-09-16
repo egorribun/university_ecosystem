@@ -72,6 +72,7 @@ dependencies = [
   "python-multipart>=0.0.26,<1",                       # SEC-09: cap multipart parser major upgrades
   "pyvips>=3.1.1,<4 ; sys_platform != 'win32'",        # SEC-09: cap image wrapper major upgrades
   "pywebpush>=2.3.0,<3",                               # SEC-09: cap VAPID client major upgrades
+  "requests>=2.33.1,<3",                               # SEC-BASE-01: pinned Web Push transport adapter API
   "redis>=7.4.0,<9",  # FIX-41-03: redis 5.x recursion bug w/ Py3.14 (>=7.4.0). W210: cap <9 (resolved stays 7.4.0; aligns MOD-W5-03 gate across uv edges)
   "sentry-sdk[opentelemetry]>=2.57.0,<3",
   "sqlalchemy[asyncio]>=2.0.49,<3",

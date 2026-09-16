@@ -13,6 +13,8 @@ from datetime import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import requests
+from requests import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -65,6 +67,134 @@ class TestSendWebPush:
             "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
         }
 
+    def test_pinned_transport_uses_validated_ip_and_original_tls_hostname(self):
+        """The push transport must pin TCP to the validated address."""
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://push.example.test:8443/push"
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 8443))
+        try:
+            request = session.prepare_request(Request("POST", endpoint))
+            adapter = session.get_adapter(endpoint)
+            adapter.add_headers(request)
+            pool = adapter.get_connection_with_tls_context(
+                request, verify=True, proxies={}, cert=None
+            )
+
+            assert request.headers["Host"] == "push.example.test:8443"
+            assert pool.host == "203.0.113.7"
+            assert pool.port == 8443
+            assert pool.assert_hostname == "push.example.test"
+            assert pool.conn_kw["server_hostname"] == "push.example.test"
+            with patch(
+                "urllib3.connection.connection.create_connection",
+                return_value=MagicMock(),
+            ) as create_connection:
+                pool._new_conn()._new_conn()
+            assert create_connection.call_args.args[0] == ("203.0.113.7", 8443)
+        finally:
+            session.close()
+
+    def test_send_pins_first_validated_address_and_closes_session(
+        self, mock_pywebpush, monkeypatch
+    ):
+        """The validated address is passed to pywebpush and cleaned up."""
+        import app.services.webpush as webpush_module
+
+        sub = self._make_sub("https://push.example.test/push")
+        validated = [("203.0.113.8", 443), ("203.0.113.9", 443)]
+        resolver = MagicMock(return_value=validated)
+        monkeypatch.setattr(webpush_module, "validate_and_resolve", resolver)
+        sessions = []
+
+        original_factory = webpush_module._create_pinned_webpush_session
+
+        def factory(endpoint, address):
+            session = original_factory(endpoint, address)
+            session.close = MagicMock(wraps=session.close)
+            sessions.append(session)
+            return session
+
+        monkeypatch.setattr(webpush_module, "_create_pinned_webpush_session", factory)
+
+        observed = {}
+
+        def capture_transport(**kwargs):
+            session = kwargs["requests_session"]
+            request = session.prepare_request(Request("POST", sub.endpoint))
+            adapter = session.get_adapter(sub.endpoint)
+            adapter.add_headers(request)
+            pool = adapter.get_connection_with_tls_context(
+                request, verify=True, proxies={}, cert=None
+            )
+            observed["host"] = pool.host
+            observed["port"] = pool.port
+            observed["server_hostname"] = pool.conn_kw["server_hostname"]
+            observed["host_header"] = request.headers["Host"]
+
+        mock_pywebpush.side_effect = capture_transport
+
+        result = send_web_push(sub, {"title": "Hello"})
+
+        assert result.status == "sent"
+        resolver.assert_called_once_with(sub.endpoint)
+        assert observed == {
+            "host": "203.0.113.8",
+            "port": 443,
+            "server_hostname": "push.example.test",
+            "host_header": "push.example.test",
+        }
+        assert len(sessions) == 1
+        sessions[0].close.assert_called_once_with()
+
+    def test_pinned_session_disables_redirects(self):
+        """A provider redirect must be returned, never followed."""
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://push.example.test/push"
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        try:
+            with patch.object(
+                requests.Session,
+                "send",
+                return_value=MagicMock(status_code=301),
+            ) as send:
+                session.post(endpoint, data=b"payload", allow_redirects=True)
+
+            assert send.call_args.kwargs["allow_redirects"] is False
+        finally:
+            session.close()
+
+    def test_send_closes_pinned_session_when_provider_raises(
+        self, mock_pywebpush, monkeypatch
+    ):
+        """Transport resources are released when pywebpush raises."""
+        import app.services.webpush as webpush_module
+
+        sub = self._make_sub("https://push.example.test/push")
+        monkeypatch.setattr(
+            webpush_module,
+            "validate_and_resolve",
+            MagicMock(return_value=[("203.0.113.8", 443)]),
+        )
+        sessions = []
+        original_factory = webpush_module._create_pinned_webpush_session
+
+        def factory(endpoint, address):
+            session = original_factory(endpoint, address)
+            session.close = MagicMock(wraps=session.close)
+            sessions.append(session)
+            return session
+
+        monkeypatch.setattr(webpush_module, "_create_pinned_webpush_session", factory)
+        mock_pywebpush.side_effect = ConnectionError("provider unavailable")
+
+        result = send_web_push(sub, {"title": "Hello"})
+
+        assert result.status == "error"
+        assert len(sessions) == 1
+        sessions[0].close.assert_called_once_with()
+
     def test_dns_failure_is_not_bypassed_outside_development(
         self, mock_pywebpush, monkeypatch
     ):
@@ -80,7 +210,7 @@ class TestSendWebPush:
             ),
         )
         monkeypatch.setattr(
-            "app.services.webpush.validate_url_not_internal",
+            "app.services.webpush.validate_and_resolve",
             MagicMock(side_effect=ValueError("DNS resolution failed")),
         )
 
@@ -104,7 +234,7 @@ class TestSendWebPush:
             ),
         )
         monkeypatch.setattr(
-            "app.services.webpush.validate_url_not_internal",
+            "app.services.webpush.validate_and_resolve",
             MagicMock(side_effect=ValueError("DNS resolution failed")),
         )
 
@@ -127,7 +257,7 @@ class TestSendWebPush:
             ),
         )
         monkeypatch.setattr(
-            "app.services.webpush.validate_url_not_internal",
+            "app.services.webpush.validate_and_resolve",
             MagicMock(side_effect=ValueError("DNS resolution failed")),
         )
 
