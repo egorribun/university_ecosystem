@@ -95,6 +95,72 @@ class TestSendWebPush:
         finally:
             session.close()
 
+    def test_pinned_transport_rejects_proxy(self):
+        """Pinned delivery must not route through an unvalidated proxy."""
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://push.example.test/push"
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        try:
+            request = session.prepare_request(Request("POST", endpoint))
+            adapter = session.get_adapter(endpoint)
+            with pytest.raises(requests.exceptions.InvalidProxyURL):
+                adapter.get_connection_with_tls_context(
+                    request,
+                    verify=True,
+                    proxies={"https": "http://proxy.example.test"},
+                    cert=None,
+                )
+        finally:
+            session.close()
+
+    def test_pinned_transport_rejects_hostname_mismatch(self):
+        """The pinned pool must validate the request hostname before connect."""
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://push.example.test/push"
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        try:
+            request = session.prepare_request(
+                Request("POST", "https://other.example.test/push")
+            )
+            adapter = session.get_adapter(endpoint)
+            with pytest.raises(requests.exceptions.InvalidURL):
+                adapter.get_connection_with_tls_context(
+                    request, verify=True, proxies={}, cert=None
+                )
+        finally:
+            session.close()
+
+    @pytest.mark.parametrize(
+        ("endpoint", "message"),
+        [
+            ("https:///push", "URL has no hostname"),
+            (
+                "http://user@push.example.test/push",
+                "URL must use https scheme and no credentials",
+            ),
+        ],
+    )
+    def test_pinned_session_rejects_malformed_endpoint(self, endpoint, message):
+        from app.services.webpush import _create_pinned_webpush_session
+
+        with pytest.raises(ValueError, match=message):
+            _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+
+    def test_pinned_session_formats_ipv6_host_header(self):
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://[2001:db8::1]/push"
+        session = _create_pinned_webpush_session(endpoint, ("2001:db8::2", 443))
+        try:
+            request = session.prepare_request(Request("POST", endpoint))
+            adapter = session.get_adapter(endpoint)
+            adapter.add_headers(request)
+            assert request.headers["Host"] == "[2001:db8::1]"
+        finally:
+            session.close()
+
     def test_send_pins_first_validated_address_and_closes_session(
         self, mock_pywebpush, monkeypatch
     ):
@@ -146,6 +212,20 @@ class TestSendWebPush:
         }
         assert len(sessions) == 1
         sessions[0].close.assert_called_once_with()
+
+    def test_send_success_without_transport_still_returns_sent(
+        self, mock_pywebpush, monkeypatch
+    ):
+        """The cleanup guard also covers a transport factory returning None."""
+        import app.services.webpush as webpush_module
+
+        monkeypatch.setattr(webpush_module, "validate_and_resolve", lambda _: [])
+        monkeypatch.setattr(webpush_module, "_NoRedirectWebPushSession", lambda: None)
+
+        result = send_web_push(self._make_sub(), {"title": "Hello"})
+
+        assert result.status == "sent"
+        assert mock_pywebpush.call_args.kwargs["requests_session"] is None
 
     def test_pinned_session_disables_redirects(self):
         """A provider redirect must be returned, never followed."""
