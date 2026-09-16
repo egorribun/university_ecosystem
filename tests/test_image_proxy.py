@@ -522,10 +522,8 @@ async def test_get_transformed_image_avif_fallback_webp():
                 )
                 assert mime == "image/webp"
                 assert data.startswith(b"RIFF")
-                mock_warn.assert_called_once()
-                assert (
+                mock_warn.assert_called_once_with(
                     "AVIF encoding failed, falling back to WebP"
-                    in mock_warn.call_args[0][0]
                 )
 
 
