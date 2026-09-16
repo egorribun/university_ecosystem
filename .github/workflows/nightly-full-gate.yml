@@ -19,11 +19,10 @@ env:
   REVOCATION_REDIS_URL: redis://localhost:6380/0
 
 concurrency:
-  # Keep advisory nightly evidence serialized, but let a required PR run
-  # pre-empt it through the shared quality-heavy admission group.  The PR
-  # workflow uses cancel-in-progress only for pull_request events; scheduled
-  # and dispatch runs never cancel one another.
-  group: quality-heavy-pr-${{ github.repository }}
+  # Keep advisory nightly evidence serialized in its own queue. GitHub keeps
+  # only one running and one pending run per group; sharing the PR group would
+  # allow a nightly dispatch to replace a pending required PR run.
+  group: quality-heavy-nightly-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:

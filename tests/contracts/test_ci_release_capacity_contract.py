@@ -178,8 +178,8 @@ def test_manual_and_active_scan_workflows_serialize_duplicate_dispatches() -> No
         }
 
 
-def test_required_pr_and_advisory_nightly_share_runner_admission_contract() -> None:
-    """PR quality work must pre-empt advisory nightly fan-out without changing gates."""
+def test_required_pr_and_advisory_nightly_have_independent_admission_contract() -> None:
+    """PR and nightly queues must not evict one another's pending run."""
 
     ci_concurrency = _workflow(CI)["concurrency"]
     assert ci_concurrency == {
@@ -193,18 +193,22 @@ def test_required_pr_and_advisory_nightly_share_runner_admission_contract() -> N
 
     nightly_concurrency = _workflow(NIGHTLY)["concurrency"]
     assert nightly_concurrency == {
-        "group": "quality-heavy-pr-${{ github.repository }}",
+        "group": "quality-heavy-nightly-${{ github.repository }}",
         "cancel-in-progress": False,
     }
 
-    # Only the required PR matrix and advisory nightly matrix participate in
-    # this shared group; release/manual evidence workflows stay isolated.
+    # GitHub keeps only one running and one pending run per concurrency group;
+    # separate groups prevent an advisory nightly dispatch from replacing a
+    # pending required PR run (or vice versa).
+    assert ci_concurrency["group"] != nightly_concurrency["group"]
     for path in WORKFLOWS.glob("*.yml"):
         workflow = _workflow(path)
         concurrency = workflow.get("concurrency")
         if path in {CI, NIGHTLY}:
             continue
-        assert "quality-heavy-pr-" not in str(concurrency)
+        serialized = str(concurrency)
+        assert "quality-heavy-pr-" not in serialized
+        assert "quality-heavy-nightly-" not in serialized
 
 
 def test_mutmut_artifact_producers_use_explicit_read_only_permissions() -> None:
