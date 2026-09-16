@@ -62,7 +62,12 @@ def _configured_image_max_pixels() -> int:
     configured = getattr(settings, "image_max_pixels", _MISSING_IMAGE_MAX_PIXELS)
     if configured is _MISSING_IMAGE_MAX_PIXELS:
         return DEFAULT_MAX_IMAGE_PIXELS
-    return int(cast(int | None, configured) or DEFAULT_MAX_IMAGE_PIXELS)
+    # ``StorageSettings`` validates this field as an integer.  Keep the
+    # defensive fallback for lightweight test/config objects without using a
+    # runtime-no-op typing cast that can hide invalid values.
+    if not isinstance(configured, int) or configured == 0:
+        return DEFAULT_MAX_IMAGE_PIXELS
+    return configured
 
 
 def _validate_image_payload(data: bytes, *, max_pixels: int) -> None:

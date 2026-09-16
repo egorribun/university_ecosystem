@@ -286,6 +286,14 @@ def test_image_pixel_limit_error_messages_distinguish_decoder_and_dimensions():
     assert str(decoder_error) == "image exceeds pixel budget of 100"
 
 
+def test_decompression_bomb_factory_preserves_policy_budget():
+    error = img_mod.ImagePixelLimitError.from_decompression_bomb(123)
+
+    assert error.width is None
+    assert error.height is None
+    assert error.max_pixels == 123
+
+
 def test_optimize_image_normalizes_pillow_decompression_bomb_error():
     """Pillow's decoder-level bomb exception must use the 413 domain contract."""
     from PIL import Image as PILImage
@@ -410,16 +418,16 @@ def test_optimize_image_accepts_exact_pixel_budget():
 @pytest.mark.parametrize(
     ("width", "height", "budget", "message"),
     [
-        (0, 1, 4, "positive"),
-        (1, 0, 4, "positive"),
-        (1, 1, 0, "positive"),
-        ("bad", 1, 4, "finite integers"),
+        (0, 1, 4, "Image dimensions must be positive"),
+        (1, 0, 4, "Image dimensions must be positive"),
+        (1, 1, 0, "Image pixel budget must be positive"),
+        ("bad", 1, 4, "Image dimensions must be finite integers"),
     ],
 )
 def test_validate_image_dimensions_rejects_invalid_values(
     width, height, budget, message
 ):
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(ValueError, match=f"^{message}$"):
         img_mod.validate_image_dimensions(width, height, max_pixels=budget)
 
 

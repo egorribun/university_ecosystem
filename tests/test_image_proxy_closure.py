@@ -17,9 +17,11 @@ from app.services.image_proxy import (
     _fetch_source_bytes,
     _process_image,
     _sanitize_path_input,
+    _validate_image_payload,
     get_transformed_image,
 )
 from app.services.storage import StorageBackend
+from app.utils.images import ImagePixelLimitError
 
 
 @pytest.mark.asyncio
@@ -115,6 +117,40 @@ def test_process_image_resize_preserves_aspect_ratio():
     # Pillow's resized image has no source ``format`` metadata, so the
     # existing original-mode fallback intentionally encodes it as JPEG.
     assert mime == "image/jpeg"
+
+
+def test_process_image_original_without_format_uses_canonical_jpeg_encoder_name():
+    """A format-less Pillow image must use the canonical encoder spelling."""
+    image = MagicMock()
+    image.size = (10, 10)
+    image.format = None
+    image.__enter__.return_value = image
+
+    def save(buffer, *, format, **_kwargs):
+        assert format == "JPEG"
+        buffer.write(b"jpeg-data")
+
+    image.save.side_effect = save
+
+    with patch("app.services.image_proxy.Image.open", return_value=image):
+        data, mime = _process_image(b"source", None, "original")
+
+    assert data == b"jpeg-data"
+    assert mime == "image/jpeg"
+
+
+def test_validate_image_payload_preserves_pixel_budget_on_decoder_bomb():
+    """Decoder failures retain the caller's policy budget in the domain error."""
+    from PIL import Image as PILImage
+
+    with patch(
+        "app.services.image_proxy.Image.open",
+        side_effect=PILImage.DecompressionBombError("decoder bomb"),
+    ):
+        with pytest.raises(ImagePixelLimitError) as exc_info:
+            _validate_image_payload(b"bomb", max_pixels=123)
+
+    assert exc_info.value.max_pixels == 123
 
 
 def test_process_image_resize_uses_resolved_high_quality_filter():

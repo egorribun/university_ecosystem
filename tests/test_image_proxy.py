@@ -28,6 +28,21 @@ def test_configured_image_max_pixels_uses_default_when_setting_is_absent(
     assert image_proxy._configured_image_max_pixels() == DEFAULT_MAX_IMAGE_PIXELS
 
 
+@pytest.mark.parametrize("configured", [None, 0, 12_345])
+def test_configured_image_max_pixels_preserves_explicit_budget_contract(
+    monkeypatch: pytest.MonkeyPatch, configured: int | None
+) -> None:
+    """Configured values resolve without relying on a typing-only cast."""
+    monkeypatch.setattr(
+        image_proxy,
+        "settings",
+        SimpleNamespace(image_max_pixels=configured),
+    )
+
+    expected = DEFAULT_MAX_IMAGE_PIXELS if not configured else configured
+    assert image_proxy._configured_image_max_pixels() == expected
+
+
 # ============================================================
 # _sanitize_path_input tests
 # ============================================================
