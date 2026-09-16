@@ -39,7 +39,7 @@ The historical Antigravity/Gemini setup used `~/.gemini/config/mcp_config.json` 
 
 ---
 
-## 2. Optional MCP Server Catalog (13 Recipes + 1 Alias)
+## 2. Master MCP Server Catalog (Optional Historical Recipes: 13 + 1 Alias)
 
 The following table describes the historical recipes for the 13 MCP servers plus the `s3` alias, including transport type, execution command, endpoints, authentication mechanisms, and intended repository responsibilities. It is not a claim of current installation or availability.
 
