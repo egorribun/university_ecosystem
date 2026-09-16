@@ -58,6 +58,31 @@ async def test_get_transformed_image_cache_hit_validates_decoded_payload():
     backend.read_file.assert_not_called()
 
 
+@pytest.mark.anyio
+async def test_get_transformed_image_passes_policy_snapshot_to_worker():
+    """Transform workers receive the resolved pixel budget explicitly."""
+    redis = AsyncMock()
+    redis.get.return_value = None
+    backend = AsyncMock(spec=StorageBackend)
+    backend.read_file.return_value = b"source-bytes"
+
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=redis),
+        patch("app.services.image_proxy.settings.image_max_pixels", 1234),
+        patch(
+            "app.services.image_proxy._process_image",
+            return_value=(b"converted", "image/webp"),
+        ) as process_image,
+    ):
+        data, mime = await get_transformed_image(
+            backend, "/static/avatar.png", width=200, format_preference="webp"
+        )
+
+    process_image.assert_called_once_with(b"source-bytes", 200, "webp", 1234)
+    assert data == b"converted"
+    assert mime == "image/webp"
+
+
 def test_sanitize_path_input_decodes_multiple_layers():
     assert _sanitize_path_input("%2573tatic%252Fimage.jpg") == "static/image.jpg"
 
