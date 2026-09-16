@@ -11,6 +11,7 @@ import pytest
 from fastapi import HTTPException, UploadFile
 
 import app.utils.files as files_module
+from app.core.localization import translate
 from app.utils.files import detect_mime_type, save_attachment, save_image
 
 
@@ -203,6 +204,7 @@ async def test_save_image_maps_pixel_budget_to_payload_too_large():
             await save_image(upload, "avatars", "user")
 
     assert exc_info.value.status_code == 413
+    assert exc_info.value.detail == translate("errors.files.too_large")
 
 
 @pytest.mark.asyncio
