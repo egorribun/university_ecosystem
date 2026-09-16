@@ -7215,3 +7215,87 @@ attempt-bound CI health artifact is `ci-health-35009187334-1` (artifact ID
 The live main ruleset's `92` required contexts were all present on PR `#1266`
 (`missing_count = 0`); merge was blocked only by the backend shard failure,
 its fail-closed `CI Success` aggregate, and the expected downstream skips.
+
+## 131. Historical mutation evidence and CI-speed hardening checkpoint (2026-09-16)
+
+The previously launched matrix for source SHA
+`f9a9f0a2392ee7d2c048388b5fb6f9d3ef947b93` (`35023906328`) is historical and
+must not be used as evidence for the newer integration candidate. The
+authoritative Jobs API snapshot at `2026-09-16T06:24:59+03:00` contained `311`
+jobs: `306` completed (`271` success, `23` failure, `12` skipped), `5`
+in-progress, and no queued/cancelled/timed-out jobs. The only active jobs were
+the legacy Stryker shards `55/64` (`104579489068`), `60/64`
+(`104579490084`), `61/64` (`104579490199`), `62/64` (`104579490202`) and
+`63/64` (`104579490263`). Their completion is required before the run can be
+closed, but their long runtime is expected from the pre-isolation source and
+does not block local work on the corrected candidate.
+
+At that snapshot, the `23` historical failures were one Stryker initial
+dry-run timeout (shard
+`25/64`, job `104579484877`, no final shard artifact) and `22` mutmut survivor
+groups `11, 13, 21, 23, 31, 32, 33, 34, 35, 36, 40, 42, 50, 55, 65, 71, 76,
+115, 117, 118, 121, 124`. Every mutmut failure has a retained artifact and
+SHA-256 digest in the run log. Groups `115`, `117` and `118` were closed by
+the exact Pillow save/canonical-WebP and HMAC error-message contracts in
+`be6e3b1aa`; group `121` and `124` were independently re-RED-confirmed as
+killed by existing canonical header and image-policy snapshot tests. The
+remaining historical survivors are closed by the preceding commits listed in
+§§123–130. No survivor is being marked as a quarantine or exclusion.
+
+The current integration candidate is `ebcf6c5f0` (parent
+`961ff919e0dd09c911c67c58b6886a0ff0eb57b0`)
+and contains the following source-bound changes after the stale run:
+
+* `1c70a5519` adds a single same-run, SHA/run/attempt/workflow-bound nightly
+  Helm dependency producer; all mutmut stats/execution consumers validate and
+  reuse the immutable archives with no network refresh and preserved
+  parallelism caps.
+* `839d044b6` synchronizes the canonical CI check catalog (`55` workflows,
+  `183` jobs); schema and cross-check validation is green.
+* `be6e3b1aa` closes four newly observed viable mutation variants with exact
+  behavior tests; focused image/security verification is `104 passed, 1
+  warning`.
+* `d4ea087f7` keeps the new Helm reuse contract strictly typed under mypy.
+* `44f083d8f` hardens the same helper with canonical path resolution,
+  traversal rejection, symlink/junction-safe restore destinations and
+  post-copy hash verification; focused verification is `11 passed, 2 skipped`
+  on Windows where symlink creation requires unavailable privileges.
+* `961ff919e` fixes the first-attempt Stryker planner's lexical utility/worker
+  tail overload without raising any timeout or weakening mutation policy. The
+  deterministic lane reserves four isolated shards for `src/utils/**` and
+  `src/workers/**`; replaying the immutable stale preflight produced all `64`
+  shards and all `42,942` mutants, with tail counts `625/651/696/605` and no
+  mixed tail/non-tail shard. The initial planner regression suite was `99/99` and the
+  targeted ESLint check is green.
+* `ebcf6c5f0` closes the small-plan edge case found in independent review:
+  when a two-shard cap leaves only one regular lane, the planner now falls
+  back to complete locality assignment instead of reserving the sole lane and
+  dropping non-tail ranges. The complete planner suite is `100/100` after the
+  new regression contract; ESLint and pre-commit security hooks remain green.
+
+Local evidence on this candidate is green: frontend typecheck, lint and build;
+`verify_harness.py --repo-only` (`29 passed`); strict backend mypy and Ruff;
+Rust tests/format; focused artifact, Helm/catalog, image/security and
+mutation-contract suites; and the six-check fast preflight. The standalone
+security review found no blocking issue: consumers have read-only permissions,
+artifact selection binds repository/head/event/workflow/attempt, and only the
+producer performs Helm network resolution. The remaining reviewer suggestions
+were closed in `44f083d8f` with focused tests; no gate, timeout, retry policy
+or mutation denominator was weakened.
+
+After the snapshot, legacy Stryker shard `62/64` (`104579490202`) also
+completed as a failure at `2026-09-16T03:29:41Z`: its immutable preflight
+validated successfully, then the initial related-test run hit the configured
+15-minute `DryRunExecutor` deadline and produced no shard artifact. This is a
+late failure of the pre-hardening SHA, not evidence against the isolated
+StoryViewer candidate; the remaining active shards must still be collected
+before recording the run's terminal totals.
+
+This checkpoint is diagnostic only. It does not promote the stale run, does
+not claim a current-SHA mutation score, and does not alter the user's three
+WASM/provenance worktree files. After the historical run reaches terminal
+state, record its final totals and any late failures, commit this documentation
+checkpoint separately, then push the candidate non-force to `egorribun` and
+require a fresh exact-SHA matrix. Release remains `EVIDENCE-BLOCKED` until the
+fresh matrix, current manifest, required-context reconciliation, immutable
+Docker/Kubernetes/staging evidence and SHA-bound audit are terminal and green.
