@@ -201,6 +201,30 @@ def test_optimize_image_pillow_uses_selected_resample_filter():
     thumbnail.assert_called_once_with((5, 5), resample=sentinel.resample)
 
 
+def test_optimize_image_pillow_resizes_when_only_width_exceeds_bound():
+    """Both dimensions are bounds: exceeding either one must trigger resize."""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    image = PILImage.new("RGB", (10, 4), color="purple")
+    source = BytesIO()
+    image.save(source, format="PNG")
+
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        optimized, mime = img_mod.optimize_image(
+            source.getvalue(), max_width=5, max_height=5
+        )
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
+
+    assert mime == "image/webp"
+    with PILImage.open(BytesIO(optimized)) as resized:
+        assert resized.size == (5, 2)
+
+
 def test_optimize_image_vips_failure_fallback():
     """Test fallback to Pillow if VIPS optimization raises an exception."""
     from io import BytesIO
