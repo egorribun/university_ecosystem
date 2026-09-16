@@ -124,6 +124,78 @@ def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_lock
         assert len(line.split()) == 1 + len(hashes)
 
 
+def test_every_security_scanner_waits_for_the_shared_policy_integrity_gate() -> None:
+    """PR-controlled scanner inputs are checked before any consumer runs."""
+
+    jobs = _workflow(SECURITY_AUDIT)["jobs"]
+    integrity = jobs["policy-integrity"]
+    assert integrity["name"] == "Security policy integrity"
+    assert integrity["permissions"] == {"contents": "read"}
+    verify = _step(integrity, "Verify security policy inputs against protected base")
+    assert verify["if"] == "${{ github.event_name == 'pull_request' }}"
+    run = verify["run"]
+    assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in run
+    assert 'git diff --quiet "$BASE_SHA" -- "$path"' in run
+    assert "BASE_REPOSITORY" in run
+    assert 'BASE_REPOSITORY" != "$GITHUB_REPOSITORY"' in run
+    assert 'PR_AUTHOR" != "egorribun"' in run
+
+    consumers = (
+        "pip-audit",
+        "npm-audit",
+        "docker-security",
+        "govulncheck",
+        "sbom",
+        "detect-secrets-baseline",
+        "semgrep",
+    )
+    for consumer in consumers:
+        needs = jobs[consumer].get("needs", [])
+        if isinstance(needs, str):
+            needs = [needs]
+        assert "policy-integrity" in needs, consumer
+
+
+def test_weekly_cleanup_scopes_credentials_to_operation_steps() -> None:
+    """Cleanup credentials must not leak into checkout or dependency setup."""
+
+    cleanup = _workflow(WORKFLOWS / "weekly-cleanup.yml")["jobs"]["cleanup"]
+    assert "DATABASE_URL" not in cleanup.get("env", {})
+    assert "SECRET_KEY" not in cleanup.get("env", {})
+
+    steps = cleanup["steps"]
+    source_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Verify trusted main source"
+    )
+    validate_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Validate cleanup configuration"
+    )
+    run_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Run weekly cleanup"
+    )
+    assert source_index < validate_index < run_index
+
+    secret_steps = {
+        step.get("name")
+        for step in steps
+        if {"DATABASE_URL", "SECRET_KEY"}.intersection(step.get("env", {}))
+    }
+    assert secret_steps == {"Validate cleanup configuration", "Run weekly cleanup"}
+    validation = steps[validate_index]
+    assert validation["env"] == {
+        "DATABASE_URL": "${{ secrets.DATABASE_URL }}",
+        "SECRET_KEY": "${{ secrets.SECRET_KEY }}",
+    }
+    assert "set -euo pipefail" in validation["run"]
+    assert '[[ -z "$DATABASE_URL" || -z "$SECRET_KEY" ]]' in validation["run"]
+
+
 def test_security_audit_trivy_bootstrap_is_immutable_and_checksum_verified() -> None:
     """The security gate must verify Trivy before the scanner can execute."""
 

@@ -647,7 +647,7 @@ def test_scheduled_workflows_reject_missing_required_inputs() -> None:
         "group": "weekly-cleanup",
         "cancel-in-progress": False,
     }
-    missing = _step(cleanup, "Fail when required cleanup configuration is missing")
+    missing = _step(cleanup, "Validate cleanup configuration")
     assert "::error::" in missing["run"]
     assert "exit 1" in missing["run"]
 

@@ -21,8 +21,6 @@ jobs:
     timeout-minutes: 30
     env:
       OTEL_SDK_DISABLED: "true"
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,9 +57,17 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Generate CI secret key if not configured (RZ-14-06)
-        if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+      - name: Validate cleanup configuration
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$DATABASE_URL" || -z "$SECRET_KEY" ]]; then
+            echo "::error::Required cleanup configuration DATABASE_URL or SECRET_KEY is not available." >&2
+            exit 1
+          fi
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -74,12 +80,8 @@ jobs:
           uv sync --frozen
 
       - name: Run weekly cleanup
-        if: ${{ env.DATABASE_URL != '' && env.SECRET_KEY != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
         run: |
           uv run python -m app.management.weekly_cleanup
-
-      - name: Fail when required cleanup configuration is missing
-        if: ${{ env.DATABASE_URL == '' || env.SECRET_KEY == '' }}
-        run: |
-          echo "::error::Required cleanup configuration DATABASE_URL or SECRET_KEY is not available."
-          exit 1

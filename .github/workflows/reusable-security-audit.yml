@@ -29,8 +29,89 @@ on:
         default: true
 
 jobs:
+  # Scanner configuration, ignore lists and release-quality policies are
+  # executable security inputs.  Keep their integrity check as a separate
+  # prerequisite so every consumer waits for the same fail-closed decision;
+  # checking only one scanner leaves the parallel consumers exposed to a
+  # policy change in the pull-request checkout.
+  policy-integrity:
+    name: Security policy integrity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify security policy inputs against protected base
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::pull-request base SHA is not an immutable 40-hex commit" >&2
+            exit 1
+          fi
+          if [[ "$BASE_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
+            echo "::error::security policy check refuses a cross-repository pull request" >&2
+            exit 1
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          policy_paths=(
+            ".github/CODEOWNERS"
+            ".github/actionlint.yaml"
+            ".github/codeql/codeql-config.yml"
+            ".github/dependency-review-config.yml"
+            ".checkov.yml"
+            ".gitleaks.toml"
+            ".semgrep.yml"
+            ".semgrepignore"
+            ".trivyignore"
+            ".trivyignore.yaml"
+            ".zap/rules.tsv"
+            "budget.json"
+            "quality/quality-contract.json"
+            "quality/release-required-checks.json"
+            "quality/ci-check-catalog.json"
+            "quality/coverage-source-policy.json"
+            "quality/mutation-exclusions.json"
+            "security/audit-allowlist.yaml"
+            "security/semgrep-suppression-policy.json"
+            "security/trivy-university-config.yaml"
+            "security/trivy-revocation-config.yaml"
+            "security/trivy-revocation-values.yaml"
+            "zizmor.yml"
+            "trivy.yaml"
+            ".pre-commit-config.yaml"
+            "pyproject.toml"
+            "frontend/scripts/lhci-route-policy.mjs"
+            "frontend/scripts/lhci-route-policy-config.cjs"
+          )
+          changed=()
+          for path in "${policy_paths[@]}"; do
+            if ! git diff --quiet "$BASE_SHA" -- "$path"; then
+              changed+=("$path")
+            fi
+          done
+          if ((${#changed[@]} > 0)); then
+            if [[ "$PR_AUTHOR" != "egorribun" ]]; then
+              printf '::error::security policy changes require an owner-authored PR: %s\n' "${changed[*]}" >&2
+              exit 1
+            fi
+            printf '::notice::owner-authored policy update accepted for review: %s\n' "${changed[*]}"
+          fi
+
   pip-audit:
     name: Python Dependency Audit
+    needs: policy-integrity
     if: ${{ inputs.run-pip-audit }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -140,6 +221,7 @@ jobs:
 
   npm-audit:
     name: Node.js Dependency Audit
+    needs: policy-integrity
     if: ${{ inputs.run-npm-audit }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -187,6 +269,7 @@ jobs:
 
   docker-security:
     name: Container Security Scan
+    needs: policy-integrity
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -388,6 +471,7 @@ jobs:
   # ── Go vulnerability scanning ──────────────────────────────────────────────
   govulncheck:
     name: Go Vulnerability Scan
+    needs: policy-integrity
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -423,6 +507,7 @@ jobs:
   # ── SBOM generation ────────────────────────────────────────────────────────
   sbom:
     name: Generate SBOM
+    needs: policy-integrity
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -456,6 +541,7 @@ jobs:
   # security-team approval.
   detect-secrets-baseline:
     name: detect-secrets Baseline Integrity
+    needs: policy-integrity
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -532,6 +618,7 @@ jobs:
   # (MOD-5: audit 2026-02-24)
   semgrep:
     name: Semgrep SAST
+    needs: policy-integrity
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     if: github.actor != 'dependabot[bot]'

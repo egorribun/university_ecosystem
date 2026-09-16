@@ -28,6 +28,15 @@ required/advisory/nightly/manual/internal classification, required event
 aliases, owner, runbook, artifact contract, and retry policy.  A job may
 override any profile field when its artifact or retry behavior differs.
 
+The reusable security workflow starts with the required `Security policy
+integrity` job. On pull requests it compares every scanner configuration,
+ignore list, suppression ledger, and release-quality policy against the
+immutable base commit; all dependency, container, SBOM, secrets, and Semgrep
+consumers declare that job in `needs` before reading the checkout. Owner-authored
+policy changes remain visible for review, while external policy changes fail
+closed. Non-pull-request invocations pass this prerequisite without a base
+comparison because no untrusted merge ref is involved.
+
 `expected_duration_seconds` is currently an explicit upper-budget placeholder
 (`expected_timeout_minutes * 60`) until the CI timing ledger has enough history
 to replace it with measured p50/p95 data.  The distinction is intentional and

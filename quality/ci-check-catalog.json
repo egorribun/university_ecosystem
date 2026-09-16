@@ -287,6 +287,7 @@
       "caller_job_id": "security-audit",
       "reusable_workflow_path": ".github/workflows/reusable-security-audit.yml",
       "reusable_job_ids": [
+        "policy-integrity",
         "pip-audit",
         "npm-audit",
         "docker-security",
@@ -299,8 +300,9 @@
       "classification": "required",
       "owner": "@egorribun",
       "runbook": "docs/testing/ci-check-catalog-runbook.md",
-      "source_reference": ".github/workflows/ci.yml#jobs.security-audit -> reusable-security-audit.yml#jobs.{pip-audit,npm-audit,docker-security,govulncheck,sbom,detect-secrets-baseline,semgrep}",
+      "source_reference": ".github/workflows/ci.yml#jobs.security-audit -> reusable-security-audit.yml#jobs.{policy-integrity,pip-audit,npm-audit,docker-security,govulncheck,sbom,detect-secrets-baseline,semgrep}",
       "declared_contexts": [
+        "Security Audit / Security policy integrity",
         "Security Audit / Python Dependency Audit",
         "Security Audit / Node.js Dependency Audit",
         "Security Audit / Container Security Scan",
@@ -3809,6 +3811,20 @@
         }
       ],
       "jobs": {
+        "policy-integrity": {
+          "profile": "internal",
+          "check_name_template": "Security policy integrity",
+          "expected_timeout_minutes": 10,
+          "expected_duration_seconds": 600,
+          "guard": "workflow trigger",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
         "pip-audit": {
           "profile": "internal",
           "check_name_template": "Python Dependency Audit",
