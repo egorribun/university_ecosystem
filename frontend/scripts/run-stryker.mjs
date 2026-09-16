@@ -802,6 +802,13 @@ function assignFirstAttemptRegularUnits(regularUnits, regularShards) {
     assignLocalityAwareMutationUnits(regularUnits, regularShards)
     return
   }
+  if (nonTailRegularUnits.length > 0 && regularShards.length < 2) {
+    // There is no safe isolation boundary when only one regular shard remains.
+    // Preserve the complete denominator rather than reserving the sole shard
+    // for the tail and silently dropping unrelated units on small local caps.
+    assignLocalityAwareMutationUnits(regularUnits, regularShards)
+    return
+  }
 
   // Reserve enough runners for the tail domain to match the observed utility
   // split while leaving at least one runner for the rest of the inventory.

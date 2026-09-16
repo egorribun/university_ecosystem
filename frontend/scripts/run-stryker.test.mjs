@@ -3582,6 +3582,43 @@ test("bounds the lexical utility tail across a dedicated first-attempt lane", as
   )
 })
 
+test("preserves non-tail work when a small plan has one regular shard", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+  const expensiveFile = "src/hooks/useMediaQuery.ts"
+  const tailFile = "src/utils/animations.ts"
+  const regularFiles = Array.from({ length: 8 }, (_, index) => {
+    const file = `src/regular-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    [expensiveFile, { mutants: makeMutants(expensiveFile, 1_000) }],
+    [tailFile, { mutants: makeMutants(tailFile, 1_000) }],
+    ...regularFiles,
+  ])
+
+  const plan = planMutationShards(preflight, 750, 2)
+  const expectedPatterns = [...preflight.keys()]
+  const assignedPatterns = plan.flatMap(({ files }) => files)
+  const assignedSources = assignedPatterns.map((pattern) => pattern.split(":", 1)[0])
+
+  assert.equal(plan.length, 2)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    10_000
+  )
+  assert.deepEqual([...new Set(assignedSources)].sort(), expectedPatterns.sort())
+})
+
 test("reconstructs locations and canonical signatures from serialized preflight entries", async () => {
   const { mutationPatternCoversMutant, mutationSignature, planMutationShards } = await import(
     runnerUrl
