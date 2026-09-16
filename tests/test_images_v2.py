@@ -543,3 +543,16 @@ def test_validate_image_dimensions_reports_non_numeric_values_consistently():
         img_mod.validate_image_dimensions("bad", 1, max_pixels=4)
 
     assert str(exc_info.value) == "Image dimensions must be finite integers"
+
+
+def test_validate_image_dimensions_rejects_large_integer_overflow_boundary():
+    """Keep the pixel-budget comparison exact beyond IEEE-754 precision."""
+    # At this magnitude, converting ``budget / height`` to float rounds the
+    # exact half-unit quotient up to the next representable integer.  The
+    # implementation must retain integer floor-division semantics so an area
+    # that exceeds the inclusive budget cannot be accepted.
+    budget = 9_007_199_254_740_995
+    width = 4_503_599_627_370_498
+
+    with pytest.raises(img_mod.ImagePixelLimitError):
+        img_mod.validate_image_dimensions(width, 2, max_pixels=budget)
