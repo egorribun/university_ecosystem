@@ -212,6 +212,9 @@ jobs:
             --shard-id "${{ matrix.shard }}" \
             --num-shards 128 \
             --max-children 3 \
+            --control-cycle-reserve-seconds 5 \
+            --metadata-startup-reserve-seconds 120 \
+            --max-timeout-seconds 20970 \
             --output /tmp/mutmut-shard.txt
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then

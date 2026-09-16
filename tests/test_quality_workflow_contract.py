@@ -2618,7 +2618,6 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
     )
     assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
     assert mutation_job["strategy"]["max-parallel"] == 10
-
     selection_step = _step_named(
         mutation_job, "Validate selected mutmut execution matrix entry"
     )
@@ -2675,6 +2674,21 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
         "Run incremental mutmut (blocking, stats-derived budget)",
     ):
         assert _step_named(mutation_job, name)["if"] == required_nonempty
+
+
+def test_incremental_mutmut_planner_and_validator_share_budget_contract() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    universe_job = workflow["jobs"]["mutation-tests-universe"]
+    plan_step = _step_named(universe_job, "Merge and plan central mutmut universe")
+    script = plan_step["run"]
+
+    assert "scripts/plan_mutmut_shards.py" in script
+    assert "--num-shards 128" in script
+    assert "--max-children 3" in script
+    assert "--control-cycle-reserve-seconds 5" in script
+    assert "--metadata-startup-reserve-seconds 120" in script
+    assert "--max-timeout-seconds 20880" in script
+    assert "--reuse-generated-universe" in script
 
 
 def test_mutation_jobs_cache_only_lock_bound_uv_packages() -> None:

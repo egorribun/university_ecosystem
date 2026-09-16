@@ -437,6 +437,22 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     )
 
 
+def test_incremental_mutmut_planner_uses_validator_budget_contract() -> None:
+    jobs = _workflow(CI)["jobs"]
+    plan_step = _step(
+        jobs["mutation-tests-universe"], "Merge and plan central mutmut universe"
+    )
+    script = plan_step["run"]
+
+    assert "scripts/plan_mutmut_shards.py" in script
+    assert "--num-shards 128" in script
+    assert "--max-children 3" in script
+    assert "--control-cycle-reserve-seconds 5" in script
+    assert "--metadata-startup-reserve-seconds 120" in script
+    assert "--max-timeout-seconds 20880" in script
+    assert "--reuse-generated-universe" in script
+
+
 def test_precommit_cache_cannot_cross_into_privileged_workflows() -> None:
     """Cache only hook environments in unprivileged PR CI execution."""
 

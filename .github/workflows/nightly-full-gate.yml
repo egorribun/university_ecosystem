@@ -264,6 +264,9 @@ jobs:
             --changed-files /tmp/all_py.txt \
             --num-shards 128 \
             --max-children 8 \
+            --control-cycle-reserve-seconds 1 \
+            --metadata-startup-reserve-seconds 120 \
+            --max-timeout-seconds 20970 \
             --output-directory mutants/mutmut-full-plan
           for shard in $(seq 1 128); do
             printf -v shard_file 'shard-%02d.txt' "$shard"
@@ -422,6 +425,9 @@ jobs:
             --shard-id "${{ matrix.shard }}" \
             --num-shards 128 \
             --max-children 8 \
+            --control-cycle-reserve-seconds 1 \
+            --metadata-startup-reserve-seconds 120 \
+            --max-timeout-seconds 20970 \
             --output /tmp/mutmut-shard.txt
           printf -v preflight_shard_file 'shard-%02d.txt' "${{ matrix.shard }}"
           test -s "mutants/mutmut-full-plan/$preflight_shard_file"

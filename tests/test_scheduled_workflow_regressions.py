@@ -72,10 +72,16 @@ def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:
     assert "--output-directory mutants/mutmut-full-plan" in preflight
     assert "for shard in $(seq 1 128)" in preflight
     assert "scripts/mutmut_shard_budget.py" in preflight
+    assert "--max-children 8" in preflight
+    assert "--control-cycle-reserve-seconds 1" in preflight
     assert "--max-timeout-seconds 20970" in preflight
     assert "--metadata-startup-reserve-seconds 120" in preflight
     assert "plan-manifest.json" in preflight
     assert "cmp --silent" in run_script
+    assert "scripts/plan_mutmut_shards.py" in run_script
+    assert "--control-cycle-reserve-seconds 1" in run_script
+    assert "--metadata-startup-reserve-seconds 120" in run_script
+    assert "--max-timeout-seconds 20970" in run_script
     assert "--max-children 8" in run_script
     assert "--control-cycle-reserve-seconds 1" in run_script
     assert "--metadata-startup-reserve-seconds 120" in run_script
