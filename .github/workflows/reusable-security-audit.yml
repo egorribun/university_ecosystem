@@ -66,6 +66,7 @@ jobs:
           fi
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           policy_paths=(
+            ".github/workflows"
             ".github/CODEOWNERS"
             ".github/actionlint.yaml"
             ".github/codeql/codeql-config.yml"
@@ -94,6 +95,14 @@ jobs:
             "pyproject.toml"
             "frontend/scripts/lhci-route-policy.mjs"
             "frontend/scripts/lhci-route-policy-config.cjs"
+            "scripts/osv_batch_audit.py"
+            "scripts/check_dependency_audit_report.py"
+            "scripts/audit_dependencies.py"
+            "scripts/ci/helm_dependency_build.py"
+            "scripts/quality/filter_checkov_sarif.py"
+            "scripts/verify_secrets_baseline.py"
+            "scripts/quality/validate_semgrep_sarif.py"
+            "security/detect-secrets-requirements.txt"
           )
           changed=()
           for path in "${policy_paths[@]}"; do
@@ -142,6 +151,7 @@ jobs:
           fi
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           policy_paths=(
+            ".github/workflows"
             ".github/CODEOWNERS"
             ".github/actionlint.yaml"
             ".github/codeql/codeql-config.yml"
@@ -165,6 +175,14 @@ jobs:
             "security/trivy-revocation-values.yaml"
             "frontend/scripts/lhci-route-policy.mjs"
             "frontend/scripts/lhci-route-policy-config.cjs"
+            "scripts/osv_batch_audit.py"
+            "scripts/check_dependency_audit_report.py"
+            "scripts/audit_dependencies.py"
+            "scripts/ci/helm_dependency_build.py"
+            "scripts/quality/filter_checkov_sarif.py"
+            "scripts/verify_secrets_baseline.py"
+            "scripts/quality/validate_semgrep_sarif.py"
+            "security/detect-secrets-requirements.txt"
           )
           changed=()
           for path in "${policy_paths[@]}"; do

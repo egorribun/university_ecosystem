@@ -12,6 +12,13 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 CI = WORKFLOWS / "ci.yml"
 SECURITY_AUDIT = WORKFLOWS / "reusable-security-audit.yml"
+STANDALONE_SECURITY_WORKFLOWS = {
+    "checkov.yml": "checkov",
+    "codeql.yml": "analyze",
+    "dependency-review.yml": "dependency-review",
+    "gitleaks.yml": "gitleaks",
+    "zizmor.yml": "zizmor",
+}
 DETECT_SECRETS_REQUIREMENTS = ROOT / "security" / "detect-secrets-requirements.txt"
 DETECT_SECRETS_SCAN_EXCLUSION = (
     r"^(?:\.secrets\.baseline|frontend/WASM_SOURCE_PROVENANCE\.json)$"
@@ -139,6 +146,18 @@ def test_every_security_scanner_waits_for_the_shared_policy_integrity_gate() -> 
     assert "BASE_REPOSITORY" in run
     assert 'BASE_REPOSITORY" != "$GITHUB_REPOSITORY"' in run
     assert 'PR_AUTHOR" != "egorribun"' in run
+    for protected_input in (
+        ".github/workflows",
+        "scripts/osv_batch_audit.py",
+        "scripts/check_dependency_audit_report.py",
+        "scripts/audit_dependencies.py",
+        "scripts/ci/helm_dependency_build.py",
+        "scripts/quality/filter_checkov_sarif.py",
+        "scripts/verify_secrets_baseline.py",
+        "scripts/quality/validate_semgrep_sarif.py",
+        "security/detect-secrets-requirements.txt",
+    ):
+        assert f'"{protected_input}"' in run
 
     consumers = (
         "pip-audit",
@@ -194,6 +213,50 @@ def test_weekly_cleanup_scopes_credentials_to_operation_steps() -> None:
     }
     assert "set -euo pipefail" in validation["run"]
     assert '[[ -z "$DATABASE_URL" || -z "$SECRET_KEY" ]]' in validation["run"]
+
+
+def test_standalone_security_scanners_verify_trusted_base_before_consuming_policy() -> (
+    None
+):
+    """Standalone scanners must fail closed before reading PR-controlled config."""
+
+    for workflow_name, job_name in STANDALONE_SECURITY_WORKFLOWS.items():
+        workflow = _workflow(WORKFLOWS / workflow_name)
+        job = workflow["jobs"][job_name]
+        steps = job["steps"]
+        verify_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name")
+            == "Verify security policy inputs against protected base"
+        )
+        verify = steps[verify_index]
+        assert verify["if"] == "${{ github.event_name == 'pull_request' }}"
+        assert verify["env"] == {
+            "BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+            "BASE_REPOSITORY": "${{ github.event.pull_request.base.repo.full_name }}",
+            "PR_AUTHOR": "${{ github.event.pull_request.user.login }}",
+        }
+        run = verify["run"]
+        assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in run
+        assert 'git diff --quiet "$BASE_SHA" -- "$path"' in run
+        assert 'BASE_REPOSITORY" != "$GITHUB_REPOSITORY"' in run
+        assert 'PR_AUTHOR" != "egorribun"' in run
+
+        scanner_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name", "").startswith(
+                (
+                    "Run Checkov",
+                    "Initialize CodeQL",
+                    "Dependency Review",
+                    "Run Gitleaks",
+                    "Run zizmor",
+                )
+            )
+        )
+        assert verify_index < scanner_index, workflow_name
 
 
 def test_security_audit_trivy_bootstrap_is_immutable_and_checksum_verified() -> None:

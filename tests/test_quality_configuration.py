@@ -328,7 +328,12 @@ def test_governance_quality_configuration_matches_contract() -> None:
     assert codecov["comment"]["layout"] == "condensed_header, diff, flags, files"
 
     checkov = yaml.safe_load(_read_text(".github/workflows/checkov.yml"))
-    checkov_with = checkov["jobs"]["checkov"]["steps"][1]["with"]
+    checkov_step = next(
+        step
+        for step in checkov["jobs"]["checkov"]["steps"]
+        if step.get("name") == "Run Checkov"
+    )
+    checkov_with = checkov_step["with"]
     assert checkov_with.get("soft_fail") is not True
     assert checkov["jobs"]["checkov"]["timeout-minutes"] == 20
 
