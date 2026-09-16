@@ -7614,3 +7614,85 @@ published, no hosted evidence is release-valid.
    current-SHA manifest and final SHA-bound audit. Release remains blocked
    until all required contexts are terminal green and no P0/P1/high/critical
    findings remain.
+
+## 137. Immutable policy and Web Push security integration checkpoint (2026-09-16)
+
+The integration candidate now contains two independently reviewed security
+hardening changes. The branch is `codex/integrate-main-20260915`, currently
+ahead of the preserved remote `origin/egorribun` by six commits, with HEAD
+`553f900e7692edb01cd0ad9e7021c3399fbf2a00`. The remote branch still points at
+`8097614be798c21bab7fad282494a154e5917919`; no hosted result for this
+candidate exists yet. The three user-owned WASM/provenance paths remain
+unstaged and the external audit remains outside the candidate.
+
+### Security and CI changes
+
+* `74ec75687` adds the immutable base-branch `Security Policy Integrity`
+  workflow. It runs from `pull_request_target` on `main`, has read-only
+  permissions, performs no checkout and executes no pull-request code. It
+  validates the workflow/base/head SHAs and base repository/ref, re-reads PR
+  metadata through the GitHub API, verifies the API-reported changed-file
+  count against complete pagination, inspects both `filename` and
+  `previous_filename`, and fails closed for protected workflow, quality,
+  security, dependency, scanner and Rust policy paths. Owner-authored changes
+  are an explicit, documented review exception; external authors are denied.
+  Catalog/schema/release-required-check metadata is synchronized at `56`
+  workflows and `185` source jobs, and the normal quality-heavy concurrency
+  group is now isolated per PR number rather than shared by the repository.
+* Earlier commits `fa36e56f2`, `0bfbecd78` and `83a1a3a8a` retain trusted-base
+  policy checks, protect standalone scanner policy inputs, include
+  `native/rust_ext/deny.toml`, and disable checkout credentials for scanner
+  workflows. These changes do not reduce any required source, test, coverage,
+  mutation or security inventory.
+* `553f900e7` closes the Web Push DNS TOCTOU boundary. Immediately before
+  delivery, `validate_and_resolve()` supplies the address used by a pinned
+  HTTPS adapter; TLS SNI/certificate and HTTP Host remain bound to the provider
+  hostname, environment proxies and redirects are disabled, and every
+  short-lived session is closed in `finally`. The direct `requests` dependency
+  and lockfile are synchronized.
+
+### Fresh local evidence
+
+* Immutable-policy, security-hardening, catalog and capacity contracts:
+  `47 passed in 104.43s`.
+* Web Push focused contracts: `54 passed in 22.20s`.
+* Complete Web Push/SSRF/push regression set: `352 passed in 176.41s`.
+* Ruff check/format, targeted mypy, `py_compile`, custom AST linter, Bandit,
+  `uv lock --check` and `git diff --check`: all exit `0`.
+* Commit pre-flight with an isolated `PRE_COMMIT_HOME` passed Ruff,
+  detect-secrets, Python-2 syntax, actionlint and Semgrep hooks. The first
+  attempt against the user cache failed only with a Windows cache
+  `PermissionError`; it did not alter the staged source set.
+
+The independent timing monitor reports the currently hosted diagnostic run
+`35112489178` (source SHA `8097614be798c21bab7fad282494a154e5917919`) still
+processing under the governed caps (`Stryker 6`, mutmut `10`), with the known
+historical MD028 failure and no new failures. Its artifacts and results are
+stale for this candidate and cannot be reused. The immutable workflow is
+declarative until the exact `Security Policy Integrity` context is verified in
+the protected `main` ruleset; repository files alone cannot prove that
+external branch-protection state.
+
+### Required next actions
+
+1. Obtain the independent security review of `553f900e7` and re-run the
+   standard security scan against a clean worktree at the final candidate SHA.
+2. Run the remaining local gate matrix (full backend current-tree regression,
+   strict Python/frontend/Go/Rust/API/infrastructure/security gates,
+   `verify_harness` and current-SHA manifest checks) without staging the
+   user-owned WASM/provenance files or external audit.
+3. Verify the live `main` ruleset/required status contexts read-only, then
+   push this branch non-force to `origin/egorribun` and evaluate only the fresh
+   exact-SHA matrix. Rerun only terminal transient failures while preserving
+   first-failure logs and all artifacts; an incomplete producer matrix must be
+   rerun as a complete workflow.
+4. Keep mutation concurrency at the current caps until three comparable green
+   runs provide the timing-ledger evidence required by the plan. Record queue,
+   setup, test, upload, retry/timeout and skip-reason p50/p95 data before any
+   cap change.
+5. After fresh CI is terminal green, complete the external-only release gates:
+   immutable exact-six image provenance and digest Docker smoke,
+   Kubernetes/TLS/ExternalSecrets/observability staging, browser/device CWV,
+   chaos/restart/rollback, final current-SHA quality manifest and the
+   SHA-bound audit. The master goal remains active and release is still blocked
+   until those gates and security reviews are evidenced.
