@@ -508,7 +508,18 @@ def _bounded_request_transport(request: RequestTransport) -> RequestTransport:
 
 
 def _is_link_or_junction(path: Path) -> bool:
-    if path.is_symlink():
+    # Inspect the filesystem directly instead of delegating to
+    # ``Path.is_symlink``.  The latter may perform additional ``lstat`` calls
+    # while resolving Windows paths, which makes the parent identity checks in
+    # ``_append_output`` observe a different snapshot than the one they are
+    # meant to validate.  A missing path is not a link; the caller's strict
+    # resolution check reports it as unavailable.  Other inspection failures
+    # remain fail-closed and are handled by the caller.
+    try:
+        metadata = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    if stat.S_ISLNK(metadata.st_mode):
         return True
     isjunction = getattr(os.path, "isjunction", None)
     return bool(isjunction is not None and isjunction(path))
