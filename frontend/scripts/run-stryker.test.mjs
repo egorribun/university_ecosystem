@@ -3182,6 +3182,66 @@ test("keeps static reload hotspots within bounded first-attempt assignments", as
   )
 })
 
+test("does not mix independent static hotspot sources when the first-attempt lane has capacity", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 5, column: 0 },
+        end: { line: index * 5, column: 4 },
+      },
+    }))
+  const staticHotspots = [
+    ["src/contexts/LanguageContext.tsx", 64],
+    ["src/db/index.ts", 36],
+    ["src/components/ui/table.tsx", 48],
+    ["src/components/ui/Snackbar.tsx", 32],
+  ]
+  const apiHotspot = [
+    "src/api/interceptors/etagCache.ts",
+    { mutants: makeMutants("src/api/interceptors/etagCache.ts", 239) },
+  ]
+  const regularFiles = Array.from({ length: 12 }, (_, index) => {
+    const file = `src/static-isolation-regular-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    ...staticHotspots.map(([file, count]) => [file, { mutants: makeMutants(file, count) }]),
+    apiHotspot,
+    ...regularFiles,
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  assert.equal(plan.length, 64)
+  assert.ok(
+    plan.every(({ files }) => files.length > 0),
+    "first-attempt shards must not be empty"
+  )
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    12_419
+  )
+
+  const staticSources = new Set(staticHotspots.map(([file]) => file))
+  const sourceOf = (pattern) => pattern.split(":", 1)[0]
+  const staticShardIndexes = []
+  for (const [index, shard] of plan.entries()) {
+    const sources = new Set(shard.files.map(sourceOf).filter((source) => staticSources.has(source)))
+    if (sources.size > 0) {
+      staticShardIndexes.push(index)
+      assert.equal(
+        sources.size,
+        1,
+        `independent static sources must not share shard ${shard.id}: ${shard.files.join(", ")}`
+      )
+    }
+  }
+  assert.ok(staticShardIndexes.length >= staticHotspots.length)
+})
+
 test("isolates the unsplittable Select AST hotspot without changing the 64-way denominator", async () => {
   const { mutationPatternCoversMutant, planMutationShards } = await import(runnerUrl)
   const makeMutants = (file, count) =>

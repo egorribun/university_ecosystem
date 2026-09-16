@@ -715,6 +715,12 @@ function mutationPatternSource(pattern) {
 // placement-only: every source range and mutant remains in the denominator.
 const firstAttemptTailDomainPrefixes = ["src/utils/", "src/workers/"]
 const firstAttemptTailDomainShardCount = 4
+// Keep enough first-attempt regular lanes for locality packing to retain a
+// bounded per-runner mutant count after dedicated API/auth/static lanes have
+// been reserved. One regular lane should carry no more than roughly 64
+// fine-grained source units (the observed first-attempt ranges are smaller),
+// while the tail domain still receives its four-lane isolation contract.
+const firstAttemptRegularUnitsPerShard = 64
 
 function isFirstAttemptTailDomainPattern(pattern) {
   const source = mutationPatternSource(pattern)
@@ -732,6 +738,7 @@ function assignWeightedMutationUnits(weightedUnits, shards) {
       right.mutantCount - left.mutantCount ||
       left.pattern.localeCompare(right.pattern)
   )
+  if (orderedUnits.length === 0 || shards.length === 0) return
   let cursor = 0
 
   const candidateShardsFor = (entry) => {
@@ -771,7 +778,7 @@ function assignWeightedMutationUnits(weightedUnits, shards) {
   // Seed each shard before choosing the lightest target.  This preserves the
   // planner's invariant that every requested logical shard has an assignment
   // whenever there are at least as many units as shards.
-  for (const target of shards) {
+  for (const target of shards.slice(0, Math.min(shards.length, orderedUnits.length))) {
     const entry = orderedUnits[cursor]
     const selected = firstAttemptStaticHotspotFiles.has(mutationPatternSource(entry.pattern))
       ? chooseLightest(entry)
@@ -826,6 +833,95 @@ function assignFirstAttemptRegularUnits(regularUnits, regularShards) {
   const nonTailShards = regularShards.slice(tailShards.length)
   if (nonTailRegularUnits.length > 0) {
     assignLocalityAwareMutationUnits(nonTailRegularUnits, nonTailShards)
+  }
+}
+
+function groupStaticHotspotUnits(units) {
+  const groups = new Map()
+  for (const entry of units) {
+    const source = mutationPatternSource(entry.pattern)
+    const group = groups.get(source) ?? {
+      source,
+      units: [],
+      estimatedCost: 0,
+      mutantCount: 0,
+    }
+    group.units.push(entry)
+    group.estimatedCost += entry.estimatedCost
+    group.mutantCount += entry.mutantCount
+    groups.set(source, group)
+  }
+  return [...groups.values()].sort(
+    (left, right) =>
+      right.estimatedCost - left.estimatedCost ||
+      right.mutantCount - left.mutantCount ||
+      left.source.localeCompare(right.source)
+  )
+}
+
+function staticHotspotLaneRequirements(units, unitBudget) {
+  return groupStaticHotspotUnits(units).reduce(
+    (total, group) =>
+      Math.min(group.units.length, Math.max(1, Math.ceil(group.mutantCount / unitBudget))) + total,
+    0
+  )
+}
+
+function assignStaticHotspotUnitsBySource(units, shards, unitBudget) {
+  const groups = groupStaticHotspotUnits(units)
+  if (groups.length === 0) return
+  if (shards.length === 0) {
+    throw new Error(`Stryker static hotspot lane has no available shard (groups=${groups.length})`)
+  }
+  let cursor = 0
+  for (const group of groups) {
+    // A lane can only be populated by a distinct source range.  Cap the
+    // requested lane count by the number of units in the source so a tiny or
+    // unsplittable hotspot can never reserve empty logical shards (empty
+    // assignments are rejected by aggregation and would waste CI capacity).
+    const requiredLanes = Math.min(
+      group.units.length,
+      Math.max(1, Math.ceil(group.mutantCount / unitBudget))
+    )
+    const laneCount = Math.min(requiredLanes, shards.length - cursor)
+    const lanes = shards.slice(cursor, cursor + laneCount)
+    if (lanes.length === 0) {
+      // Tiny local plans may not have enough isolation boundaries for every
+      // source. Preserve the complete denominator by placing the remaining
+      // ranges in the lightest already-assigned static lane.
+      const fallback = shards.reduce((lightest, shard) =>
+        shard.mutantCount < lightest.mutantCount ||
+        (shard.mutantCount === lightest.mutantCount && shard.id < lightest.id)
+          ? shard
+          : lightest
+      )
+      for (const entry of group.units) {
+        fallback.files.push(entry.pattern)
+        fallback.mutantCount += entry.mutantCount
+        fallback.estimatedCost += entry.estimatedCost
+      }
+      continue
+    }
+    for (const entry of group.units.sort(
+      (left, right) =>
+        right.estimatedCost - left.estimatedCost ||
+        right.mutantCount - left.mutantCount ||
+        left.pattern.localeCompare(right.pattern)
+    )) {
+      const candidates = lanes.filter(
+        (shard) => shard.mutantCount + entry.mutantCount <= unitBudget
+      )
+      const target = (candidates.length > 0 ? candidates : lanes).reduce((lightest, shard) =>
+        shard.mutantCount < lightest.mutantCount ||
+        (shard.mutantCount === lightest.mutantCount && shard.id < lightest.id)
+          ? shard
+          : lightest
+      )
+      target.files.push(entry.pattern)
+      target.mutantCount += entry.mutantCount
+      target.estimatedCost += entry.estimatedCost
+    }
+    cursor += laneCount
   }
 }
 
@@ -900,35 +996,111 @@ function assignFirstAttemptMutationUnits(weightedUnits, shards) {
     )
     return
   }
-  // Keep the expensive related-test graphs in a bounded group of dedicated shards.  The
-  // lower bound guarantees that the regular units can still seed every
-  // remaining shard when the inventory is small or unusually fragmented.
+  // Keep the expensive related-test graphs in bounded, non-overlapping lanes.
+  // API/core ranges retain the historical cost-aware prefix, while static
+  // hotspot sources receive enough lanes to keep their own ranges within the
+  // conservative first-attempt unit budget whenever capacity permits. A
+  // static mutant can force a full related-test reload; independent sources
+  // must not be packed into one runner when the requested plan can separate
+  // them.
   const minimumExpensiveShards = Math.max(1, remainingShards.length - regularUnits.length)
-  const maximumExpensiveShards =
-    regularUnits.length > 0 ? remainingShards.length - 1 : remainingShards.length
-  const staticHotspotUnitCount = remainingExpensiveUnits.filter((entry) =>
+  const staticHotspotUnits = remainingExpensiveUnits.filter((entry) =>
     firstAttemptStaticHotspotFiles.has(mutationPatternSource(entry.pattern))
-  ).length
-  const expensiveShardCount = Math.min(
-    remainingExpensiveUnits.length,
-    maximumExpensiveShards,
-    Math.max(
-      minimumExpensiveShards,
-      Math.min(firstAttemptCostAwareShardCount, remainingShards.length),
-      // Do not reserve one logical shard for every range of a hotspot. A
-      // large inventory can emit dozens of ranges; reserving all of them
-      // would strand the regular source universe on only a handful of
-      // runners. The bounded cost-aware lane still spreads each hotspot over
-      // every available shard before sharing a shard with another range.
-      Math.min(staticHotspotUnitCount, firstAttemptCostAwareShardCount)
+  )
+  const nonStaticExpensiveUnits = remainingExpensiveUnits.filter(
+    (entry) => !firstAttemptStaticHotspotFiles.has(mutationPatternSource(entry.pattern))
+  )
+  const regularShardReserve =
+    regularUnits.length > 0
+      ? Math.min(
+          remainingShards.length - 1,
+          // Preserve the historical one-shard isolation contract for a
+          // compact non-static plan.  Additional regular lanes are reserved
+          // only when static or tail domains need a bounded first attempt;
+          // otherwise all regular ranges stay in the final locality lane.
+          staticHotspotUnits.length > 0 ||
+            regularUnits.some((entry) => isFirstAttemptTailDomainPattern(entry.pattern))
+            ? Math.max(
+                firstAttemptTailDomainShardCount + 1,
+                Math.ceil(regularUnits.length / firstAttemptRegularUnitsPerShard),
+                // Serialized preflight entries from CI intentionally carry
+                // signatures without locations, so a large source remains a
+                // single unsplittable unit.  Size the regular lane from its
+                // mutant volume as well as unit count; otherwise hundreds of
+                // whole files collapse into a handful of multi-thousand
+                // mutant runners and recreate the observed timeout pressure.
+                Math.ceil(
+                  regularUnits.reduce((total, entry) => total + entry.mutantCount, 0) /
+                    Math.max(
+                      1_024,
+                      Math.ceil(
+                        (weightedUnits.reduce((total, entry) => total + entry.mutantCount, 0) /
+                          shards.length) *
+                          2
+                      )
+                    )
+                )
+              )
+            : 1
+        )
+      : 0
+  const maximumExpensiveShards = remainingShards.length - regularShardReserve
+  const firstAttemptStaticUnitBudget = Math.max(
+    1,
+    Math.ceil(
+      Math.ceil(
+        weightedUnits.reduce((total, entry) => total + entry.mutantCount, 0) / shards.length
+      ) / firstAttemptUnitSplitFactor
     )
   )
-  const expensiveShards = remainingShards.slice(0, expensiveShardCount)
-  const regularShards = remainingShards.slice(expensiveShardCount)
-
+  const staticLaneRequirement = staticHotspotLaneRequirements(
+    staticHotspotUnits,
+    firstAttemptStaticUnitBudget
+  )
+  const preferredNonStaticShardCount = Math.min(
+    nonStaticExpensiveUnits.length,
+    maximumExpensiveShards,
+    firstAttemptCostAwareShardCount
+  )
+  const minimumNonStaticShardCount = nonStaticExpensiveUnits.length
+    ? Math.min(maximumExpensiveShards, minimumExpensiveShards)
+    : 0
+  let nonStaticShardCount = Math.min(
+    nonStaticExpensiveUnits.length,
+    maximumExpensiveShards,
+    Math.max(preferredNonStaticShardCount, minimumNonStaticShardCount)
+  )
+  let staticShardCount = Math.min(
+    staticLaneRequirement,
+    Math.max(0, maximumExpensiveShards - nonStaticShardCount)
+  )
+  if (staticLaneRequirement > 0 && staticShardCount === 0) {
+    // When dedicated AST ranges consume almost the whole requested plan,
+    // preserve a static lane rather than silently mixing static sources into
+    // regular locality work. Residual non-static expensive units can share
+    // that bounded lane; the complete mutant denominator remains intact.
+    staticShardCount = Math.min(staticLaneRequirement, maximumExpensiveShards)
+    nonStaticShardCount = Math.min(
+      nonStaticExpensiveUnits.length,
+      Math.max(0, maximumExpensiveShards - staticShardCount)
+    )
+  }
+  const expensiveShards = remainingShards.slice(0, nonStaticShardCount)
+  const staticShards = remainingShards.slice(
+    nonStaticShardCount,
+    nonStaticShardCount + staticShardCount
+  )
+  const regularShards = remainingShards.slice(nonStaticShardCount + staticShardCount)
+  assignStaticHotspotUnitsBySource(staticHotspotUnits, staticShards, firstAttemptStaticUnitBudget)
+  const nonStaticTargets =
+    expensiveShards.length > 0
+      ? expensiveShards
+      : staticShards.length > 0
+        ? staticShards
+        : regularShards.slice(0, 1)
   assignWeightedMutationUnits(
-    [...remainingExpensiveUnits, ...spilledDedicatedUnits],
-    expensiveShards
+    [...nonStaticExpensiveUnits, ...spilledDedicatedUnits],
+    nonStaticTargets
   )
   assignFirstAttemptRegularUnits(regularUnits, regularShards)
 }
