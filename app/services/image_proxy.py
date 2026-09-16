@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 from io import BytesIO
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal, cast
+from typing import Literal
 from urllib.parse import unquote
 
 from app.core.logging import get_logger
@@ -283,24 +283,24 @@ def _process_image(
             validate_image_dimensions(*img.size, max_pixels=resolved_max_pixels)
             # Preserve aspect ratio
             w, h = img.size
+            output_img: Image.Image = img
 
             if width and width < w:
                 new_h = int(h * (width / w))
-                # LOW-W19: img.resize() returns a new Image object.  Reassigning
-                # `img` inside a `with` block means the context manager's __exit__
-                # will call .close() on the *new* object, not the original one
-                # opened above — the original is closed here explicitly before the
-                # reassignment to avoid leaking the file handle.
+                # LOW-W19: img.resize() returns a new Image object.  Keep the
+                # source image bound to the context manager and close it before
+                # switching the output reference so the resized object is not
+                # accidentally closed by the source context manager.
                 _resized = img.resize(
                     (width, new_h), resample=_resolve_resample_filter()
                 )
                 img.close()
-                img = cast(Any, _resized)
+                output_img = _resized
 
             buffer = BytesIO()
             if format_pref == "avif":
                 try:
-                    img.save(buffer, format="AVIF", quality=60)
+                    output_img.save(buffer, format="AVIF", quality=60)
                     return buffer.getvalue(), "image/avif"
                 except (OSError, ValueError):
                     # RZ-20-04: Narrowed — AVIF plugin missing or encoding error.
@@ -308,12 +308,12 @@ def _process_image(
                     format_pref = "webp"
 
             if format_pref == "webp":
-                img.save(buffer, format="WEBP", quality=80, method=6)
+                output_img.save(buffer, format="WEBP", quality=80, method=6)
                 return buffer.getvalue(), "image/webp"
 
             # If original or fallback
-            original_format = img.format or "JPEG"
-            img.save(buffer, format=original_format)
+            original_format = output_img.format or "JPEG"
+            output_img.save(buffer, format=original_format)
             return buffer.getvalue(), f"image/{str(original_format).lower()}"
     except Image.DecompressionBombError as exc:
         raise ImagePixelLimitError.from_decompression_bomb(resolved_max_pixels) from exc
