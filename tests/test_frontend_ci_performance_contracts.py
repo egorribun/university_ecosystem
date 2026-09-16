@@ -19,7 +19,7 @@ SHELL_OPERATOR = re.compile(r"&&|\|\||[;&|]")
 # Keep the contract literal across Bash, PowerShell and cmd.exe.  In
 # particular, brace/array expansion and percent variables can synthesize
 # contradictory npm flags after this source-level check has run.
-SHELL_EXPANSION_OR_REDIRECTION = re.compile(r"[$`<>{}()@+%*?\[\]\\!^~]")
+SHELL_EXPANSION_OR_REDIRECTION = re.compile(r"[$`<>{}()@+%,*?\[\]\\!^~]")
 
 
 def _run_scripts(node: object) -> list[str]:
@@ -182,6 +182,7 @@ def test_npm_ci_contract_rejects_shell_chaining(line: str) -> None:
         "npm ci --no-audit --no-fund {--audit,--fund}",
         'npm ci --no-audit --no-fund @("--audit")',
         'npm ci --no-audit --no-fund ("--" + "audit")',
+        'npm ci --no-audit --no-fund "--audit","--fund"',
         "npm ci --no-audit --no-fund %AUDIT_FLAG%",
         "npm ci --no-audit --no-fund *.json",
     ],
