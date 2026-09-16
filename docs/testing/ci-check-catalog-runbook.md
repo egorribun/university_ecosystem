@@ -7,10 +7,10 @@ protection, or retry a GitHub run.
 
 ## Validate the catalog
 
-From the repository root run:
+From the repository root run the locked-toolchain command:
 
 ```bash
-python scripts/quality/validate_ci_check_catalog.py
+uv run python scripts/quality/validate_ci_check_catalog.py
 ```
 
 The validator is fail-closed.  It compares the catalog with every

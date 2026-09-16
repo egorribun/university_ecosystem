@@ -2,13 +2,20 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status ledger convention:** the checkbox lists below are an immutable
+> acceptance template retained for traceability; they are intentionally not
+> bulk-ticked after implementation. Current truth is recorded only in the
+> latest dated overlay section (currently §136), which classifies each item as
+> `DONE`, `OPEN`, `EVIDENCE-BLOCKED` or `EXTERNAL-ONLY` and links to the exact
+> command, SHA and artifact required for promotion.
+
 **Goal:** продолжить работу на ветке `egorribun` от исторической контрольной точки `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, сохранить уже реализованные основные вертикали MVP, закрыть подтверждённые инфраструктурные и mutation-дефекты текущего PR, получить полный current-SHA набор quality/mutation/security evidence и довести тот же immutable build через Docker и production-like staging до доказуемо готового к релизу состояния. Исторические SHA/run из baseline ниже не являются текущей сертификацией; authoritative overlay находится в §136.
 
 **Architecture:** репозиторий рассматривается как единая fail-closed система качества. Каждая технологическая область формирует нативные отчёты, а SHA-bound агрегатор принимает только полные, свежие и хешированные артефакты одного workflow run/attempt, отдельно фиксируя source head SHA и tested merge SHA. Уже реализованные продуктовые вертикали проходят evidence-first gap-аудит и меняются только при воспроизведённом дефекте; CI закрывается root-cause группами через RED → GREEN → REFACTOR и оптимизируется по измеренному критическому пути при лимите 20 одновременно исполняемых jobs без ослабления coverage, mutation, security или browser matrix.
 
 **Tech Stack:** Python 3.14, FastAPI, SQLAlchemy 2 async, Dishka, PostgreSQL, Redis/Valkey, NATS, transactional outbox, pytest/coverage.py/mutmut; React 19, TypeScript 7, TanStack Router/Query, Zustand, Valibot, Vite 8/Rolldown, Vitest/Stryker, Playwright, Storybook, Lighthouse; Go 1.26 modules, race detector, golangci-lint; Rust, cargo-llvm-cov, WASM, PyO3; Docker Compose, Caddy, Helm/Kubernetes, Kyverno, ExternalSecrets, Prometheus/Grafana/Tempo/Loki; GitHub Actions, CodeQL, Semgrep, Bandit, detect-secrets, gitleaks, Trivy, SBOM и provenance.
 
-**Historical audit refresh:** `2026-08-31T13:37:11+03:00`; live PR `#1257`, source head `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, matrix run `33349026009`. Это superseded baseline, сохранённый для причинного и regression-аудита. §32 и последующие ранние разделы являются историческими snapshots; текущий identity/status snapshot и authoritative overlay находятся в §135 и должны обновляться через paginated GitHub Jobs API перед каждым утверждением о закрытии.
+**Historical audit refresh:** `2026-08-31T13:37:11+03:00`; live PR `#1257`, source head `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, matrix run `33349026009`. Это superseded baseline, сохранённый для причинного и regression-аудита. §32 и последующие ранние разделы являются историческими snapshots; текущий identity/status snapshot и authoritative overlay находятся в §136 и должны обновляться через paginated GitHub Jobs API перед каждым утверждением о закрытии.
 
 **Spec:** [`AGENTS.md`](../../../AGENTS.md), [`app/AGENTS.md`](../../../app/AGENTS.md), [`frontend/AGENTS.md`](../../../frontend/AGENTS.md), [`services/AGENTS.md`](../../../services/AGENTS.md), [`quality/quality-contract.json`](../../../quality/quality-contract.json), [`University_Ecosystem_MVP.md`](University_Ecosystem_MVP.md), [`2026-08-25-quality-closure-foundation.md`](2026-08-25-quality-closure-foundation.md), [`prompt.md`](prompt.md), PR [#1257](https://github.com/egorribun/university_ecosystem/pull/1257).
 
