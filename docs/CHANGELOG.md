@@ -4,6 +4,12 @@ All notable changes to the API will be documented in this file.
 
 ## [Unreleased]
 
+> The entries below aggregate a development snapshot through 2026-05-04; they
+> are not a current quality certificate. Current test, coverage, and release
+> evidence belongs in [`TESTING.md`](../TESTING.md), the [quality dashboard](testing/dashboard.md),
+> and exact-SHA CI artifacts. Version and benchmark claims in this section
+> should be read with the dates and provenance recorded beside them.
+
 ### Added
 - Unit tests for Go `InternalAPIAuthClient` in `ws-hub` service (Pkg/Hub).
 - Unit tests for `MaxQueryDepthMiddleware` and query depth estimation in `file-processor`.

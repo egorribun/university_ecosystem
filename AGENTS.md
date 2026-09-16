@@ -100,6 +100,10 @@ python verify_harness.py
   - `feat(waveXX): description`
   - `fix(waveXX): description`
   - `refactor(waveXX): description`
+- Quality, security, CI, documentation, and testing maintenance are explicit
+  non-wave scopes. Use a scope such as `fix(quality):`, `fix(security):`,
+  `test(contracts):`, or `docs(quality):`; the `waveXX` form is reserved for
+  core business-feature work.
 - **STRICT PROHIBITION**: NEVER include `Co-Authored-By` trailers under any circumstances.
 - **Testing & Waves Association**: Testing coverage and roadmaps do **NOT** belong to waves (waves are strictly reserved for main business features). Do not associate testing work with waves in commit messages, branch names, or logs.
 - **Clean Git State**: After running `detect-secrets` or pre-commit hooks, always re-stage `.secrets.baseline` via `git add .secrets.baseline`.

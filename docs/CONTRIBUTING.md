@@ -11,6 +11,9 @@ Welcome to the **University Ecosystem Platform** contribution guide. Please foll
 - **Commit Trailer Rules**:
   - **CRITICAL**: Do **NOT** include `Co-Authored-By: Antigravity <antigravity@google.com>` or any Antigravity trailers under any circumstances.
   - Do **NOT** associate testing coverage or testing roadmaps with waves in logs, comments, or commit messages (waves are strictly reserved for core business features).
+  - Quality, security, CI, and documentation maintenance are non-wave scopes:
+    use `fix(quality):`, `fix(security):`, `test(contracts):`, or
+    `docs(quality):` without a business `waveXX` label.
 - **Pre-commit Baseline**: After `detect-secrets` hook runs, always re-stage `.secrets.baseline` (`git add .secrets.baseline`) before retrying commit.
 
 ---
