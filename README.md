@@ -194,15 +194,15 @@ sequenceDiagram
 
 ## 🛠️ Technological Stack
 
-| Layer | Technologies | Primary Role | Coverage Gate |
+| Layer | Technologies | Primary Role | Policy target / current evidence |
 | :--- | :--- | :--- | :---: |
-| **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, accessibility (WCAG 2.2 AA), PWA | **100%** |
-| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Core business logic, REST & GraphQL APIs | **100%** |
-| **Microservices** | Go 1.26, NATS, gRPC, Temporal Go SDK | High-concurrency WebSockets & media orchestration | **100%** |
-| **Native Performance**| Rust, PyO3, Rayon, Maturin | Microsecond-speed schedule conflict solver & HMAC | **100%** |
-| **Auth & Security** | Argon2id, SpiceDB, TOTP/email OTP, recovery codes, Kyverno, CSRF nonces | Zero-trust ReBAC, step-up MFA & policy enforcement | Verified |
-| **Data & Cache** | PostgreSQL 17, pgvector, cache Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Relational/vector data, probabilistic L1/L2 caching, and isolated durable auth revocation | Verified |
-| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Complete 360° tracing, metrics, profiling & logging | Verified |
+| **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, accessibility (WCAG 2.2 AA), PWA | Policy target: 100%; fresh-SHA evidence required |
+| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Core business logic, REST & GraphQL APIs | Policy target: 100%; fresh-SHA evidence required |
+| **Microservices** | Go 1.26, NATS, gRPC, Temporal Go SDK | High-concurrency WebSockets & media orchestration | Policy target: 100%; fresh-SHA evidence required |
+| **Native Performance**| Rust, PyO3, Rayon, Maturin | Microsecond-speed schedule conflict solver & HMAC | Policy target: 100%; fresh-SHA evidence required |
+| **Auth & Security** | Argon2id, SpiceDB, TOTP/email OTP, recovery codes, Kyverno, CSRF nonces | Zero-trust ReBAC, step-up MFA & policy enforcement | Implemented; fresh-SHA evidence required |
+| **Data & Cache** | PostgreSQL 17, pgvector, cache Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Relational/vector data, probabilistic L1/L2 caching, and isolated durable auth revocation | Implemented; fresh-SHA evidence required |
+| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Complete 360° tracing, metrics, profiling & logging | Implemented; fresh-SHA evidence required |
 
 ## 🚀 Rapid Onboarding
 

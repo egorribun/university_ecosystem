@@ -194,15 +194,15 @@ sequenceDiagram
 
 ## 🛠️ Технологический стек
 
-| Слой | Технологии | Роль | Гейт покрытия |
+| Слой | Технологии | Роль | Целевой порог / текущие доказательства |
 | :--- | :--- | :--- | :---: |
-| **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, доступность (WCAG 2.2 AA), PWA | **100%** |
-| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Основная бизнес-логика, REST и GraphQL API | **100%** |
-| **Микросервисы** | Go 1.26, NATS, gRPC, Temporal Go SDK | Высоконагруженный чат и обработка медиа | **100%** |
-| **Производительность**| Rust, PyO3, Rayon, Maturin | Нативное вычисление расписания и HMAC | **100%** |
-| **Авторизация и безопасность** | Argon2id, SpiceDB, TOTP/email OTP, recovery-коды, Kyverno, CSRF nonces | Zero-Trust ReBAC, step-up MFA и политики | Подтверждено |
-| **Данные и Кэш** | PostgreSQL 17, pgvector, кэш Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Реляционные/векторные данные, вероятностный L1/L2 кэш и изолированный отзыв сессий | Подтверждено |
-| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Полный 360° мониторинг, трассы и логи | Подтверждено |
+| **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, доступность (WCAG 2.2 AA), PWA | Цель политики: 100%; нужны свежие SHA-доказательства |
+| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Основная бизнес-логика, REST и GraphQL API | Цель политики: 100%; нужны свежие SHA-доказательства |
+| **Микросервисы** | Go 1.26, NATS, gRPC, Temporal Go SDK | Высоконагруженный чат и обработка медиа | Цель политики: 100%; нужны свежие SHA-доказательства |
+| **Производительность**| Rust, PyO3, Rayon, Maturin | Нативное вычисление расписания и HMAC | Цель политики: 100%; нужны свежие SHA-доказательства |
+| **Авторизация и безопасность** | Argon2id, SpiceDB, TOTP/email OTP, recovery-коды, Kyverno, CSRF nonces | Zero-Trust ReBAC, step-up MFA и политики | Реализовано; нужны свежие SHA-доказательства |
+| **Данные и Кэш** | PostgreSQL 17, pgvector, кэш Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Реляционные/векторные данные, вероятностный L1/L2 кэш и изолированный отзыв сессий | Реализовано; нужны свежие SHA-доказательства |
+| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Полный 360° мониторинг, трассы и логи | Реализовано; нужны свежие SHA-доказательства |
 
 ## 🚀 Быстрый старт
 

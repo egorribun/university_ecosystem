@@ -4,17 +4,17 @@
 > **Status ledger convention:** the checkbox lists below are an immutable
 > acceptance template retained for traceability; they are intentionally not
 > bulk-ticked after implementation. Current truth is recorded only in the
-> latest dated overlay section (currently §136), which classifies each item as
+> latest dated overlay section (currently §142), which classifies each item as
 > `DONE`, `OPEN`, `EVIDENCE-BLOCKED` or `EXTERNAL-ONLY` and links to the exact
 > command, SHA and artifact required for promotion.
 
-**Goal:** продолжить работу на ветке `egorribun` от исторической контрольной точки `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, сохранить уже реализованные основные вертикали MVP, закрыть подтверждённые инфраструктурные и mutation-дефекты текущего PR, получить полный current-SHA набор quality/mutation/security evidence и довести тот же immutable build через Docker и production-like staging до доказуемо готового к релизу состояния. Исторические SHA/run из baseline ниже не являются текущей сертификацией; authoritative overlay находится в §136.
+**Goal:** продолжить работу на ветке `egorribun` от исторической контрольной точки `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, сохранить уже реализованные основные вертикали MVP, закрыть подтверждённые инфраструктурные и mutation-дефекты текущего PR, получить полный current-SHA набор quality/mutation/security evidence и довести тот же immutable build через Docker и production-like staging до доказуемо готового к релизу состояния. Исторические SHA/run из baseline ниже не являются текущей сертификацией; authoritative overlay находится в §142.
 
 **Architecture:** репозиторий рассматривается как единая fail-closed система качества. Каждая технологическая область формирует нативные отчёты, а SHA-bound агрегатор принимает только полные, свежие и хешированные артефакты одного workflow run/attempt, отдельно фиксируя source head SHA и tested merge SHA. Уже реализованные продуктовые вертикали проходят evidence-first gap-аудит и меняются только при воспроизведённом дефекте; CI закрывается root-cause группами через RED → GREEN → REFACTOR и оптимизируется по измеренному критическому пути при лимите 20 одновременно исполняемых jobs без ослабления coverage, mutation, security или browser matrix.
 
 **Tech Stack:** Python 3.14, FastAPI, SQLAlchemy 2 async, Dishka, PostgreSQL, Redis/Valkey, NATS, transactional outbox, pytest/coverage.py/mutmut; React 19, TypeScript 7, TanStack Router/Query, Zustand, Valibot, Vite 8/Rolldown, Vitest/Stryker, Playwright, Storybook, Lighthouse; Go 1.26 modules, race detector, golangci-lint; Rust, cargo-llvm-cov, WASM, PyO3; Docker Compose, Caddy, Helm/Kubernetes, Kyverno, ExternalSecrets, Prometheus/Grafana/Tempo/Loki; GitHub Actions, CodeQL, Semgrep, Bandit, detect-secrets, gitleaks, Trivy, SBOM и provenance.
 
-**Historical audit refresh:** `2026-08-31T13:37:11+03:00`; live PR `#1257`, source head `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, matrix run `33349026009`. Это superseded baseline, сохранённый для причинного и regression-аудита. §32 и последующие ранние разделы являются историческими snapshots; текущий identity/status snapshot и authoritative overlay находятся в §136 и должны обновляться через paginated GitHub Jobs API перед каждым утверждением о закрытии.
+**Historical audit refresh:** `2026-08-31T13:37:11+03:00`; live PR `#1257`, source head `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, matrix run `33349026009`. Это superseded baseline, сохранённый для причинного и regression-аудита. §32 и последующие ранние разделы являются историческими snapshots; текущий identity/status snapshot и authoritative overlay находятся в §142 и должны обновляться через paginated GitHub Jobs API перед каждым утверждением о закрытии.
 
 **Spec:** [`AGENTS.md`](../../../AGENTS.md), [`app/AGENTS.md`](../../../app/AGENTS.md), [`frontend/AGENTS.md`](../../../frontend/AGENTS.md), [`services/AGENTS.md`](../../../services/AGENTS.md), [`quality/quality-contract.json`](../../../quality/quality-contract.json), [`University_Ecosystem_MVP.md`](University_Ecosystem_MVP.md), [`2026-08-25-quality-closure-foundation.md`](2026-08-25-quality-closure-foundation.md), [`prompt.md`](prompt.md), PR [#1257](https://github.com/egorribun/university_ecosystem/pull/1257).
 
@@ -7857,3 +7857,70 @@ Dependabot/ruleset verification, current-SHA quality manifest and
 `AUDIT_QUALITY_CLOSURE_<sha>.md`). The primary checkout's three user-owned
 WASM/provenance edits and the untracked external audit remain out of the
 candidate and must not be staged.
+
+## 142. Current candidate overlay and final verification boundary (2026-09-16)
+
+This overlay supersedes the current-status pointers in earlier sections while
+leaving every historical snapshot immutable. The integration checkout is
+`C:\Temp\university-merge-20260915`, branch
+`codex/integrate-main-20260915`, at `63a64208b01cdcb2ffebdc4b375cb70a664da4db`;
+at evidence capture it was seven commits ahead of `origin/egorribun`
+(`2cd4553766d033f5163f0e101774107c43af2a35`). The implementation commits in
+that captured range, in order, are `dc00cce7b`, `04a89d2d0`, `8bb695582`,
+`c7d92993d`, `f4e924885`, `33dcbd6fd` and `63a64208b`. Recompute the range
+with `git rev-list --count origin/egorribun..HEAD` before pushing, because this
+overlay and any subsequent docs-only corrections are also candidate commits.
+The previous §141 instruction to push five commits was a stale count and is
+not an execution instruction.
+
+Local evidence completed on this candidate:
+
+- frontend `npm run typecheck`, `npm run lint`, `npm run build` and
+  `npm run i18n:check` are green; i18n scanner found `2,097` static and `68`
+  dynamic references with `18/18` RU/EN parity;
+- the complete frontend unit gate is green: `674` test files and `7,133`
+  tests, with statements, branches, functions and lines all `100%` (Vitest
+  duration `1,403.02s`);
+- backend Ruff, strict mypy (`351` source files), custom AST checks,
+  Python-2-exception check and `uv lock --check` are green;
+- quality/security/catalog contract suite is green (`53` tests), CI catalog is
+  valid (`56` workflows, `185` jobs), repository harness is `29/29`, and
+  Markdown/quality tests are `41` passed across `891` Markdown files with no
+  broken local links;
+- all workflow YAML files parse successfully and the capacity contract is
+  `13/13`; mutation/unit caps remain unchanged until three comparable hosted
+  green runs provide queue and billed-runtime evidence;
+- the independent security review found no confirmed P0/P1/high/critical
+  issue and reports zero findings for the candidate diff. Release workflow
+  trust-boundary checks, policy metadata recheck, and lifecycle-isolated npm
+  audit are covered by focused contracts;
+- `git diff --check` is clean. The only dirty paths are the three paired,
+  user-owned generated WASM/provenance files in the integration checkout;
+  they are mutually consistent, intentionally excluded from the candidate,
+  and the primary checkout's corresponding edits plus the untracked external
+  audit remain untouched.
+
+The current local candidate has no hosted CI run of its own. The terminal run
+`35126659277` is historical for `2cd4553…`; it had only the expected aggregate
+coverage failure, which is covered locally by the focused replay reaching
+`31,202/31,202` lines and `7,560/7,560` branches. Therefore the release status
+remains `EVIDENCE-BLOCKED`, not certified. Before any completion claim:
+
+1. finish the remaining local changed-file hooks and final clean-tree security
+   scan, then push the fully reviewed non-generated candidate range
+   (recompute `git rev-list --count origin/egorribun..HEAD`) non-force to
+   `origin/egorribun` without staging generated WASM;
+2. inspect the new exact-head GitHub run to terminal, classify every job and
+   preserve first-failure logs/artifacts; rerun only reproducibly transient
+   failures and never substitute historical evidence;
+3. verify the live main ruleset requires the canonical security-policy
+   context, and record the result in the audit;
+4. only after a fresh green matrix, produce the current-SHA manifest and
+   `AUDIT_QUALITY_CLOSURE_<sha>.md`, then execute the still external-only
+   exact-six immutable image/attestation, digest Docker smoke, Kubernetes/TLS/
+   ExternalSecrets/observability, CWV/browser/device, chaos/restart/rollback
+   and resulting-main verification gates.
+
+README coverage/security table labels now explicitly distinguish policy targets
+and implemented code from fresh exact-SHA certification; this prevents a
+historical badge or local run from being mistaken for a release attestation.
