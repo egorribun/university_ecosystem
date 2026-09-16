@@ -9,7 +9,7 @@ const mockState = vi.hoisted(() => ({
   refetch: vi.fn(() => Promise.resolve({ data: null })),
   setUser: vi.fn(),
   invalidateQueries: vi.fn(() => Promise.resolve()),
-  apiGet: vi.fn((..._args: unknown[]) =>
+  apiGet: vi.fn<(..._args: unknown[]) => Promise<{ data?: { url: string } }>>(() =>
     Promise.resolve({ data: { url: "https://accounts.spotify.com/authorize?x=1" } })
   ),
   apiPost: vi.fn((..._args: unknown[]) => Promise.resolve({ data: {} })),
