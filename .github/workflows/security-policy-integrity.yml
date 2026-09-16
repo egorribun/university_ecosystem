@@ -112,6 +112,10 @@ jobs:
               .semgrep.yml|.semgrepignore|.trivyignore|.trivyignore.yaml|\
               .zap/rules.tsv|zizmor.yml|trivy.yaml|.pre-commit-config.yaml|\
               pyproject.toml|uv.lock|frontend/package-lock.json|budget.json|\
+              frontend/package.json|frontend/.npmrc|\
+              frontend/scripts/ensure-wasm.mjs|\
+              frontend/scripts/setup-husky.cjs|\
+              frontend/scripts/setup-lhci-binaries.cjs|\
               native/rust_ext/deny.toml|\
               quality/*|security/*|frontend/scripts/lhci-route-policy.mjs|\
               frontend/scripts/lhci-route-policy-config.cjs|\

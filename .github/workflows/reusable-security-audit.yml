@@ -104,6 +104,11 @@ jobs:
             "scripts/quality/validate_semgrep_sarif.py"
             "security/detect-secrets-requirements.txt"
             "native/rust_ext/deny.toml"
+            "frontend/package.json"
+            "frontend/.npmrc"
+            "frontend/scripts/ensure-wasm.mjs"
+            "frontend/scripts/setup-husky.cjs"
+            "frontend/scripts/setup-lhci-binaries.cjs"
           )
           changed=()
           for path in "${policy_paths[@]}"; do
@@ -275,7 +280,7 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: |
-          npm ci --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           Set-Location ..
           uv sync --frozen
 

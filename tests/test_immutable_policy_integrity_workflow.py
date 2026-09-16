@@ -74,3 +74,17 @@ def test_policy_integrity_protects_workflows_and_scanner_adapters() -> None:
         assert protected_path in source
     assert '"$PR_AUTHOR" != "egorribun"' in source
     assert "owner-authored" in source
+
+
+def test_policy_integrity_protects_npm_lifecycle_inputs() -> None:
+    """Package manifests and referenced install hooks are trusted inputs."""
+
+    source = WORKFLOW_PATH.read_text(encoding="utf-8")
+    for protected_path in (
+        "frontend/package.json",
+        "frontend/.npmrc",
+        "frontend/scripts/ensure-wasm.mjs",
+        "frontend/scripts/setup-husky.cjs",
+        "frontend/scripts/setup-lhci-binaries.cjs",
+    ):
+        assert protected_path in source

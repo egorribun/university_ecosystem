@@ -157,6 +157,11 @@ def test_every_security_scanner_waits_for_the_shared_policy_integrity_gate() -> 
         "scripts/quality/validate_semgrep_sarif.py",
         "security/detect-secrets-requirements.txt",
         "native/rust_ext/deny.toml",
+        "frontend/package.json",
+        "frontend/.npmrc",
+        "frontend/scripts/ensure-wasm.mjs",
+        "frontend/scripts/setup-husky.cjs",
+        "frontend/scripts/setup-lhci-binaries.cjs",
     ):
         assert f'"{protected_input}"' in run
 
@@ -174,6 +179,14 @@ def test_every_security_scanner_waits_for_the_shared_policy_integrity_gate() -> 
         if isinstance(needs, str):
             needs = [needs]
         assert "policy-integrity" in needs, consumer
+
+
+def test_npm_audit_install_disables_pr_lifecycle_scripts() -> None:
+    """The dependency audit must not execute package lifecycle hooks."""
+
+    job = _workflow(SECURITY_AUDIT)["jobs"]["npm-audit"]
+    install = _step(job, "Install dependencies")["run"]
+    assert "npm ci --ignore-scripts --no-audit --no-fund" in install
 
 
 def test_weekly_cleanup_scopes_credentials_to_operation_steps() -> None:
