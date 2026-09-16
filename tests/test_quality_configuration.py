@@ -266,6 +266,33 @@ def test_governance_quality_configuration_matches_contract() -> None:
     ):
         assert f"{protected_path} @egorribun" in codeowners
 
+    # Every scanner input and release-quality policy must remain owner-reviewed
+    # and is checked against the immutable pull-request base before execution.
+    for protected_path in (
+        ".github/CODEOWNERS",
+        ".github/actionlint.yaml",
+        ".github/codeql/",
+        ".github/dependency-review-config.yml",
+        ".checkov.yml",
+        ".semgrep.yml",
+        ".semgrepignore",
+        ".trivyignore",
+        ".trivyignore.yaml",
+        ".zap/rules.tsv",
+        "budget.json",
+        "quality/",
+        "security/audit-allowlist.yaml",
+        "security/trivy-*.yaml",
+        "security/semgrep-suppression-policy.json",
+    ):
+        assert f"{protected_path} @egorribun" in codeowners
+
+    security_workflow = _read_text(".github/workflows/reusable-security-audit.yml")
+    assert "Verify security policy inputs against protected base" in security_workflow
+    assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in security_workflow
+    assert 'git diff --quiet "$BASE_SHA" -- "$path"' in security_workflow
+    assert '"$PR_AUTHOR" != "egorribun"' in security_workflow
+
     codecov = yaml.safe_load(_read_text("codecov.yml"))
     expected_flags = {
         "python": ["app/"],
