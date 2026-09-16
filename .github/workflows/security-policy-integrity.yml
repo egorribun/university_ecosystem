@@ -1,0 +1,142 @@
+name: Security Policy Integrity
+
+# This workflow intentionally uses pull_request_target.  GitHub resolves the
+# workflow definition from the protected base branch for this event, so a pull
+# request cannot replace the checker before it inspects its own changes.  The
+# job never checks out or executes pull-request code; it only reads the changed
+# file list through the read-only GitHub API.
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: security-policy-integrity-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  security-policy-integrity:
+    name: Security Policy Integrity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Verify immutable trusted workflow source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          sha_pattern='^[0-9a-f]{40}$'
+          [[ "$EVENT_NAME" == "pull_request_target" ]]
+          [[ "$BASE_SHA" =~ $sha_pattern ]]
+          [[ "$WORKFLOW_SHA" =~ $sha_pattern ]]
+          [[ "$HEAD_SHA" =~ $sha_pattern ]]
+          [[ "$BASE_REPOSITORY" == "$GITHUB_REPOSITORY" ]]
+          [[ "$BASE_REF" == "main" ]]
+          [[ "$WORKFLOW_SHA" == "$BASE_SHA" ]]
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+
+          # Do not run git, jq filters, or repository scripts from the PR.
+          # The API response is the only candidate input and is validated as a
+          # complete array of filename strings before any policy decision.
+          pr_metadata="$(mktemp)"
+          changed_pages="$(mktemp)"
+          trap 'rm -f -- "$pr_metadata" "$changed_pages"' EXIT
+          gh api --fail-with-body \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+            > "$pr_metadata"
+          jq -e \
+            --argjson pr_number "$PR_NUMBER" \
+            --arg base_sha "$BASE_SHA" \
+            --arg base_ref "$BASE_REF" \
+            --arg base_repository "$BASE_REPOSITORY" \
+            --arg head_sha "$HEAD_SHA" \
+            'type == "object" and .number == $pr_number and
+             .base.sha == $base_sha and .base.ref == $base_ref and
+             .base.repo.full_name == $base_repository and .head.sha == $head_sha' \
+            "$pr_metadata" >/dev/null
+          expected_changed_files="$(jq -er \
+            '.changed_files | select(type == "number" and floor == . and . >= 0)' \
+            "$pr_metadata")"
+          [[ "$expected_changed_files" =~ ^[0-9]+$ ]]
+          if ((expected_changed_files > 3000)); then
+            echo "::error::pull-request changed-file count exceeds the GitHub API safety limit" >&2
+            exit 1
+          fi
+          gh api --paginate --slurp \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
+            > "$changed_pages"
+          jq -e '
+            type == "array" and
+            all(.[]; type == "array") and
+            all(.[][]; (.filename | type) == "string")
+          ' "$changed_pages" >/dev/null
+          enumerated_changed_files="$(jq -er '[.[][] | .filename] | length' "$changed_pages")"
+          if ((enumerated_changed_files != expected_changed_files)); then
+            echo "::error::changed-file API pagination is incomplete" >&2
+            exit 1
+          fi
+
+          protected_paths=()
+          while IFS= read -r path; do
+            case "$path" in
+              .github/workflows/*|\
+              .github/CODEOWNERS|.github/actionlint.yaml|.github/codeql/*|\
+              .github/dependency-review-config.yml|.checkov.yml|.gitleaks.toml|\
+              .semgrep.yml|.semgrepignore|.trivyignore|.trivyignore.yaml|\
+              .zap/rules.tsv|zizmor.yml|trivy.yaml|.pre-commit-config.yaml|\
+              pyproject.toml|uv.lock|frontend/package-lock.json|budget.json|\
+              native/rust_ext/deny.toml|\
+              quality/*|security/*|frontend/scripts/lhci-route-policy.mjs|\
+              frontend/scripts/lhci-route-policy-config.cjs|\
+              scripts/osv_batch_audit.py|scripts/check_dependency_audit_report.py|\
+              scripts/audit_dependencies.py|scripts/ci/helm_dependency_build.py|\
+              scripts/quality/filter_checkov_sarif.py|\
+              scripts/verify_secrets_baseline.py|\
+              scripts/quality/validate_semgrep_sarif.py)
+                protected_paths+=("$path")
+                ;;
+            esac
+          done < <(
+            jq -r '.[][] | [.filename, .previous_filename][] |
+              select(type == "string" and length > 0)' "$changed_pages"
+          )
+
+          if ((${#protected_paths[@]} > 0)); then
+            if [[ "$PR_AUTHOR" != "egorribun" ]]; then
+              printf '::error::protected security inputs changed by external PR %s (%s); owner-authored review is required\n' \
+                "$HEAD_REPOSITORY" "${protected_paths[*]}" >&2
+              exit 1
+            fi
+            printf '::notice::owner-authored protected-input change accepted for review: %s\n' \
+              "${protected_paths[*]}"
+          fi
+
+          printf 'Security policy integrity verified for base %s and PR #%s (%s changed files).\n' \
+            "$BASE_SHA" "$PR_NUMBER" "$enumerated_changed_files"

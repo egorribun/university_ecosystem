@@ -2133,7 +2133,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert "workflow_dispatch" not in _workflow_triggers(workflow)
     assert " ".join(str(workflow["concurrency"]["group"]).split()) == (
         "${{ github.event_name == 'pull_request' "
-        "&& format('quality-heavy-pr-{0}', github.repository) "
+        "&& format('quality-heavy-pr-{0}', github.event.pull_request.number) "
         "|| format('ci-matrix-{0}', github.ref) }}"
     )
     assert jobs["ci-success"]["name"] == "CI Success"

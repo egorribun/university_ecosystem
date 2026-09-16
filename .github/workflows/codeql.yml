@@ -95,6 +95,7 @@ jobs:
         policy_paths=(
           ".github/workflows"
           ".github/codeql"
+          "native/rust_ext/deny.toml"
           "quality/ci-check-catalog.json"
           "security/audit-allowlist.yaml"
         )

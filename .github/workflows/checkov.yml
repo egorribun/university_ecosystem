@@ -48,6 +48,7 @@ jobs:
           policy_paths=(
             ".github/workflows"
             ".checkov.yml"
+            "native/rust_ext/deny.toml"
             "scripts/quality/filter_checkov_sarif.py"
             "quality/ci-check-catalog.json"
             "security/audit-allowlist.yaml"

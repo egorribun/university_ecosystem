@@ -27,13 +27,16 @@ WORKFLOW_EVENTS = frozenset(
     {
         "push",
         "pull_request",
+        "pull_request_target",
         "schedule",
         "workflow_dispatch",
         "repository_dispatch",
         "workflow_call",
     }
 )
-POLICY_EVENTS = frozenset({"pull_request_main", "push_main"})
+POLICY_EVENTS = frozenset(
+    {"pull_request_main", "pull_request_target_main", "push_main"}
+)
 RETRY_MARKERS = (
     "retry",
     "for attempt",
@@ -791,6 +794,13 @@ def validate_catalog(
                 ):
                     errors.append(
                         f"{job_location}: pull_request_main is not a source event"
+                    )
+                elif (
+                    "pull_request_target_main" in required_events
+                    and "pull_request_target" not in source_events
+                ):
+                    errors.append(
+                        f"{job_location}: pull_request_target_main is not a source event"
                     )
                 elif "push_main" in required_events and "push" not in source_events:
                     errors.append(f"{job_location}: push_main is not a source event")

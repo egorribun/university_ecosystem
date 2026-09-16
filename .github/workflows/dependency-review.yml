@@ -48,6 +48,7 @@ jobs:
                   policy_paths=(
                       ".github/workflows"
                       ".github/dependency-review-config.yml"
+                      "native/rust_ext/deny.toml"
                       "quality/ci-check-catalog.json"
                       "security/audit-allowlist.yaml"
                   )

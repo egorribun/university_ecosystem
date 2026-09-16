@@ -46,6 +46,7 @@ jobs:
           policy_paths=(
             ".github/workflows"
             ".gitleaks.toml"
+            "native/rust_ext/deny.toml"
             "quality/ci-check-catalog.json"
             "security/audit-allowlist.yaml"
           )

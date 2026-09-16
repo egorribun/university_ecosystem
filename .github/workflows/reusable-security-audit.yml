@@ -103,6 +103,7 @@ jobs:
             "scripts/verify_secrets_baseline.py"
             "scripts/quality/validate_semgrep_sarif.py"
             "security/detect-secrets-requirements.txt"
+            "native/rust_ext/deny.toml"
           )
           changed=()
           for path in "${policy_paths[@]}"; do
@@ -183,6 +184,7 @@ jobs:
             "scripts/verify_secrets_baseline.py"
             "scripts/quality/validate_semgrep_sarif.py"
             "security/detect-secrets-requirements.txt"
+            "native/rust_ext/deny.toml"
           )
           changed=()
           for path in "${policy_paths[@]}"; do

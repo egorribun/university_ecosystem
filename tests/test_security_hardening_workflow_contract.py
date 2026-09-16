@@ -156,6 +156,7 @@ def test_every_security_scanner_waits_for_the_shared_policy_integrity_gate() -> 
         "scripts/verify_secrets_baseline.py",
         "scripts/quality/validate_semgrep_sarif.py",
         "security/detect-secrets-requirements.txt",
+        "native/rust_ext/deny.toml",
     ):
         assert f'"{protected_input}"' in run
 

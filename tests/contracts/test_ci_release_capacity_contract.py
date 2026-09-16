@@ -185,7 +185,7 @@ def test_required_pr_and_advisory_nightly_have_independent_admission_contract() 
     assert ci_concurrency == {
         "group": (
             "${{ github.event_name == 'pull_request'\n"
-            "  && format('quality-heavy-pr-{0}', github.repository)\n"
+            "  && format('quality-heavy-pr-{0}', github.event.pull_request.number)\n"
             "  || format('ci-matrix-{0}', github.ref) }}"
         ),
         "cancel-in-progress": True,

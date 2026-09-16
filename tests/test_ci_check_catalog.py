@@ -349,6 +349,32 @@ def test_catalog_declares_protected_reusable_and_matrix_expansions() -> None:
     assert len(by_id["rust-fuzz-additional"]["declared_contexts"]) == 2
 
 
+def test_catalog_declares_base_branch_policy_integrity_gate() -> None:
+    value = _catalog()
+    workflows = value["workflows"]
+    assert isinstance(workflows, list)
+    workflow = next(
+        item
+        for item in workflows
+        if item["path"] == ".github/workflows/security-policy-integrity.yml"
+    )
+    assert workflow["events"] == [
+        {
+            "event": "pull_request_target",
+            "guard": (
+                '{"branches":["main"],"types":'
+                '["opened","synchronize","reopened","ready_for_review"]}'
+            ),
+        }
+    ]
+    job = workflow["jobs"]["security-policy-integrity"]
+    assert job["profile"] == "required-pr-target-main"
+    assert value["profiles"]["required-pr-target-main"]["required_events"] == [
+        "pull_request_target_main"
+    ]
+    assert _errors(value) == []
+
+
 def test_sonarcloud_advisory_classification_matches_workflow_contract() -> None:
     value = _catalog()
     workflows = value["workflows"]

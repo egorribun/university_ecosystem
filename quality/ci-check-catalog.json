@@ -125,6 +125,22 @@
         "review_required": false
       },
       "notes": "Provider-managed required context; live ruleset ownership and current conclusion are refreshed separately."
+    },
+    "required-pr-target-main": {
+      "classification": "required",
+      "required_events": [
+        "pull_request_target_main"
+      ],
+      "owner": "@egorribun",
+      "runbook": "docs/testing/ci-check-catalog-runbook.md",
+      "artifacts": [],
+      "retry_policy": {
+        "mode": "none",
+        "first_failure_preserved": true,
+        "classifier": "not_applicable",
+        "review_required": false
+      },
+      "notes": "Base-branch-only policy integrity gate; it never executes pull-request code and must remain required for pull requests targeting main."
     }
   },
   "external_checks": [
@@ -4163,6 +4179,33 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.event_name == 'pull_request' }}",
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/security-policy-integrity.yml",
+      "name": "Security Policy Integrity",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request_target",
+          "guard": "{\"branches\":[\"main\"],\"types\":[\"opened\",\"synchronize\",\"reopened\",\"ready_for_review\"]}"
+        }
+      ],
+      "jobs": {
+        "security-policy-integrity": {
+          "profile": "required-pr-target-main",
+          "check_name_template": "Security Policy Integrity",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "workflow trigger",
           "artifacts": [],
           "retry_policy": {
             "mode": "none",

@@ -47,6 +47,7 @@ jobs:
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           policy_paths=(
             ".github/workflows"
+            "native/rust_ext/deny.toml"
             "zizmor.yml"
             "quality/ci-check-catalog.json"
             "security/audit-allowlist.yaml"

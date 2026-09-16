@@ -78,6 +78,7 @@
       "type": "string",
       "enum": [
         "pull_request_main",
+        "pull_request_target_main",
         "push_main"
       ]
     },
@@ -434,6 +435,7 @@
           "enum": [
             "push",
             "pull_request",
+            "pull_request_target",
             "schedule",
             "workflow_dispatch",
             "repository_dispatch",

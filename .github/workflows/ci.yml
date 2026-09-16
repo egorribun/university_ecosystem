@@ -18,16 +18,17 @@ on:
 permissions: read-all
 
 concurrency:
-  # Required PR runs share one admission group so a newer commit cancels stale
-  # PR work, while pushes to protected branches retain independent per-ref
-  # isolation. The advisory nightly workflow deliberately uses a separate
+  # Required PR runs share an admission group per PR so a newer commit cancels
+  # stale work for that PR without evicting another PR's required run, while
+  # pushes to protected branches retain independent per-ref isolation. The
+  # advisory nightly workflow deliberately uses a separate
   # group because GitHub retains only one pending run per group and does not
   # provide priority ordering between workflow events.
   # This is an account-wide runner-pool guard, not a reduction of the logical
   # matrix or its per-lane max-parallel contracts.
   group: >-
     ${{ github.event_name == 'pull_request'
-      && format('quality-heavy-pr-{0}', github.repository)
+      && format('quality-heavy-pr-{0}', github.event.pull_request.number)
       || format('ci-matrix-{0}', github.ref) }}
   # Preserve stale-run cancellation for required PRs and protected-branch
   # pushes without allowing an advisory run to evict a required pending run.
