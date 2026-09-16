@@ -479,13 +479,14 @@ async def test_get_transformed_image_normalizes_pillow_bomb_during_transform():
         ),
         patch("app.services.image_proxy.settings.image_max_pixels", 3),
     ):
-        with pytest.raises(ImagePixelLimitError, match="pixel budget"):
+        with pytest.raises(ImagePixelLimitError, match="pixel budget") as exc_info:
             await get_transformed_image(
                 mock_backend,
                 "/static/avatar.png",
                 width=200,
                 format_preference="webp",
             )
+    assert exc_info.value.max_pixels == 3
 
 
 @pytest.mark.anyio
