@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** продолжить работу на ветке `egorribun` от исторической контрольной точки `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, сохранить уже реализованные основные вертикали MVP, закрыть подтверждённые инфраструктурные и mutation-дефекты текущего PR, получить полный current-SHA набор quality/mutation/security evidence и довести тот же immutable build через Docker и production-like staging до доказуемо готового к релизу состояния. Исторические SHA/run из baseline ниже не являются текущей сертификацией; authoritative overlay находится в §32.
+**Goal:** продолжить работу на ветке `egorribun` от исторической контрольной точки `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, сохранить уже реализованные основные вертикали MVP, закрыть подтверждённые инфраструктурные и mutation-дефекты текущего PR, получить полный current-SHA набор quality/mutation/security evidence и довести тот же immutable build через Docker и production-like staging до доказуемо готового к релизу состояния. Исторические SHA/run из baseline ниже не являются текущей сертификацией; authoritative overlay находится в §134.
 
 **Architecture:** репозиторий рассматривается как единая fail-closed система качества. Каждая технологическая область формирует нативные отчёты, а SHA-bound агрегатор принимает только полные, свежие и хешированные артефакты одного workflow run/attempt, отдельно фиксируя source head SHA и tested merge SHA. Уже реализованные продуктовые вертикали проходят evidence-first gap-аудит и меняются только при воспроизведённом дефекте; CI закрывается root-cause группами через RED → GREEN → REFACTOR и оптимизируется по измеренному критическому пути при лимите 20 одновременно исполняемых jobs без ослабления coverage, mutation, security или browser matrix.
 
@@ -7370,3 +7370,69 @@ This correction is intentionally kept separate from the inventory-skip fix
 and is queued for the next non-force push. The pending fresh run for
 `21bff9e75cb26e380e2ba4b7483d43b8adf73aae` must be superseded by the new
 candidate so that all checks execute against one exact SHA.
+
+## 134. Current CI evidence attempt isolation and cache/retry hardening (2026-09-16)
+
+The current integration candidate is `60fbcce20` (`fix(quality): scope CI
+evidence to workflow attempts`), fifteen commits ahead of the preserved
+remote `egorribun` branch at the time of this checkpoint. This source
+checkpoint is not yet pushed and therefore has no release-valid hosted
+evidence. The three user-owned WASM/provenance paths remain unstaged and are
+not part of the commit.
+
+The change set closes three independently reviewed reliability gaps without
+reducing any source, test, coverage, mutation, security or browser inventory:
+
+* Go reusable coverage producers append
+  `-attempt-${{ github.run_attempt }}` to every canonical artifact name. The
+  Rust coverage and Codecov diagnostic artifacts and every coverage-policy-gate
+  download, producer verification and aggregate expectation use the same
+  attempt-scoped identity. Provenance now records the exact name that was
+  uploaded, so a same-run retry cannot select a prior attempt by a fixed name.
+* Frontend Vitest shard JUnit reports and the aggregate hidden-report artifact
+  use attempt-scoped names and a matching download pattern. Coverage artifacts
+  retain their existing SHA/run/attempt contract. The CI catalog is synchronized
+  and remains schema-valid at `55` workflows / `183` source jobs.
+* The shared immutable E2E WASM artifact is retained for `30` days, matching
+  the documented same-run retry window; server-issued artifact ID, immutable
+  name, digest and provenance checks are unchanged. Reusable Go cache
+  invalidation now includes every workspace module dependency file used by the
+  benchmark inventory, preventing stale module caches after changes outside
+  the three service directories.
+
+RED/GREEN verification for this checkpoint is local and reproducible:
+
+    uv run pytest -q tests/test_quality_workflow_contract.py \
+      tests/test_e2e_wasm_workflow_contract.py tests/test_ci_check_catalog.py \
+      tests/test_workflow_fail_closed_contracts.py \
+      tests/test_frontend_ci_performance_contracts.py \
+      tests/test_go_mutation_governance_contract.py
+    257 passed, 1 stale concurrency assertion identified; the assertion was
+    corrected and its focused rerun passed
+    uv run pytest -q tests/test_quality_workflow_contract.py -k \
+      'go_cache_covers_every_workspace_dependency_file'
+    2 passed
+    uv run python scripts/quality/validate_ci_check_catalog.py
+    CI check catalog: OK (55 workflows, 183 jobs)
+    pre-commit (fresh isolated cache)
+    ruff, detect-secrets, gitleaks, Python 2 syntax, actionlint, Semgrep: passed
+    git diff --check
+    passed
+
+The full backend regression was running independently during this checkpoint
+and must be recorded with its final exit code and complete failure list before
+promotion. The older hosted run `35056817940` remains non-terminal and is
+strictly diagnostic for source SHA `5e40fb523c98422f6a02ab0dc87d5dd2cec8d38a`;
+its known mutation survivors/cancellation cannot satisfy this candidate.
+
+Required next actions are fail-closed: wait for that run to reach a terminal
+state and record every job/failure/skip/cancellation exactly once; finish the
+full local regression and refresh the current-SHA security scan if the source
+changes; then push `60fbcce20` non-force and evaluate only its fresh matrix.
+The fresh matrix must prove all attempt-scoped producers, complete coverage and
+mutation evidence, current manifest hashes and required-context reconciliation.
+Only after terminal green evidence may the remaining external gates proceed:
+immutable exact-six image publication, digest Docker smoke, Kubernetes/TLS/
+ExternalSecrets/observability staging, device/browser CWV, chaos/restart/
+rollback, production release and the final SHA-bound audit. No stale artifact,
+partial retry, fixed-name report or advisory diagnostic may be reused.
