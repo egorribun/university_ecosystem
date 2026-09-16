@@ -4241,9 +4241,10 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     plan_job = nightly_workflow["jobs"]["mutation-tests-full-plan"]
     plan_steps = plan_job["steps"]
     mutation_steps = nightly_workflow["jobs"]["mutation-tests-full"]["steps"]
-    assert nightly_workflow["jobs"]["mutation-tests-full"]["needs"] == (
-        "mutation-tests-full-plan"
-    )
+    assert nightly_workflow["jobs"]["mutation-tests-full"]["needs"] == [
+        "mutation-tests-full-plan",
+        "nightly-helm-dependencies",
+    ]
     assert plan_job["needs"] == "mutation-tests-full-stats"
     assert nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["matrix"][
         "shard"
@@ -4294,7 +4295,9 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
 
     assert stats_helm["uses"].startswith("azure/setup-helm@")
     assert stats_helm["with"] == {"version": "v3.17.0"}
-    _assert_helm_dependency_helper_invocation(stats_dependencies["run"])
+    _assert_helm_dependency_helper_invocation(
+        stats_dependencies["run"], skip_refresh=True
+    )
     assert stats_steps.index(stats_dependencies) < stats_steps.index(stats_step)
 
     mutation_helm = next(
@@ -4307,7 +4310,9 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     )
     assert mutation_helm["uses"].startswith("azure/setup-helm@")
     assert mutation_helm["with"] == {"version": "v3.17.0"}
-    _assert_helm_dependency_helper_invocation(mutation_dependencies["run"])
+    _assert_helm_dependency_helper_invocation(
+        mutation_dependencies["run"], skip_refresh=True
+    )
     assert mutation_steps.index(mutation_dependencies) < run_step_index
 
     assert "rm -rf mutants" in stats_script

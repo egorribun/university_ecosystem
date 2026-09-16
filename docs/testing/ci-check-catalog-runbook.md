@@ -144,6 +144,14 @@ SHA-256 inventory and source/run identity.  A missing, symlinked, or modified
 archive must fail closed.  The producer remains the only step allowed to
 perform the narrow transport retry against the registry.
 
+The scheduled `nightly-full-gate.yml` applies the same boundary to its eight
+stats legs and 128 execution legs: `nightly-helm-dependencies` resolves the
+archives once, publishes an attempt-scoped artifact, and each consumer selects
+the server-issued same-run artifact ID before validating and restoring the
+archives. Consumers then use `--skip-refresh`; a current-or-earlier selector
+keeps failed-job retries safe without permitting a future attempt or a foreign
+commit/workflow artifact.
+
 ## Updating safely
 
 When adding, removing, or renaming a workflow/job:
