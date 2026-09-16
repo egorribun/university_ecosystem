@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -38,6 +39,44 @@ def _canonical_json(value: Any) -> str:
 
 def _digest(value: Any) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _is_link_or_junction(path: Path) -> bool:
+    try:
+        if path.is_symlink():
+            return True
+        is_junction = getattr(path, "is_junction", None)
+        return callable(is_junction) and bool(is_junction())
+    except OSError as error:
+        raise ArtifactValidationError(
+            f"unable to inspect path component: {path}"
+        ) from error
+
+
+def _safe_child(root: Path, value: Path, *, label: str) -> Path:
+    """Resolve a caller-supplied path and require it to remain below root."""
+
+    root = root.resolve(strict=True)
+    target = value if value.is_absolute() else root / value
+    try:
+        lexical_relative = target.relative_to(root)
+    except ValueError:
+        lexical_relative = None
+    if lexical_relative is not None:
+        current = root
+        for component in lexical_relative.parts:
+            current /= component
+            if _is_link_or_junction(current):
+                raise ArtifactValidationError(
+                    f"{label} contains a symlink or junction: {current}"
+                )
+    try:
+        resolved = target.resolve(strict=False)
+    except (OSError, RuntimeError) as error:
+        raise ArtifactValidationError(f"unable to resolve {label}") from error
+    if resolved == root or not resolved.is_relative_to(root):
+        raise ArtifactValidationError(f"{label} must be below artifact root")
+    return target
 
 
 def _sha256_file(path: Path) -> str:
@@ -130,11 +169,7 @@ def create_artifact_manifest(
         "archives": archives,
         "archives_sha256": _digest(archives),
     }
-    output = output if output.is_absolute() else root / output
-    try:
-        output.relative_to(root)
-    except ValueError as error:
-        raise ArtifactValidationError("manifest must be below artifact root") from error
+    output = _safe_child(root, output, label="manifest")
     if output.is_symlink():
         raise ArtifactValidationError("manifest must not be a symlink")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -177,13 +212,7 @@ def validate_artifact_manifest(
         workflow=workflow,
     )
     root = root.resolve(strict=True)
-    manifest_path = (
-        manifest_path if manifest_path.is_absolute() else root / manifest_path
-    )
-    try:
-        manifest_path.relative_to(root)
-    except ValueError as error:
-        raise ArtifactValidationError("manifest must be below artifact root") from error
+    manifest_path = _safe_child(root, manifest_path, label="manifest")
     payload = _read_manifest(manifest_path)
     if (
         payload.get("schema_version") != SCHEMA_VERSION
@@ -229,6 +258,67 @@ def validate_artifact_manifest(
     return dict(payload)
 
 
+def restore_artifact_archives(
+    *,
+    root: Path,
+    manifest_path: Path,
+    destination_root: Path,
+    destination: Path,
+    commit_sha: str,
+    run_id: str,
+    run_attempt: str,
+    workflow: str,
+    producer_attempt_policy: str = "exact",
+) -> dict[str, Any]:
+    """Validate archives and copy them into a link-safe checkout directory."""
+
+    payload = validate_artifact_manifest(
+        root=root,
+        manifest_path=manifest_path,
+        commit_sha=commit_sha,
+        run_id=run_id,
+        run_attempt=run_attempt,
+        workflow=workflow,
+        producer_attempt_policy=producer_attempt_policy,
+    )
+    destination_root = destination_root.resolve(strict=True)
+    destination_path = _safe_child(
+        destination_root, destination, label="restore destination"
+    )
+    try:
+        relative = destination_path.resolve(strict=False).relative_to(destination_root)
+    except (OSError, RuntimeError, ValueError) as error:
+        raise ArtifactValidationError(
+            "restore destination escapes workspace"
+        ) from error
+    current = destination_root
+    for component in relative.parts:
+        current /= component
+        if _is_link_or_junction(current):
+            raise ArtifactValidationError(
+                f"restore destination contains a symlink or junction: {current}"
+            )
+        if current.exists() and not current.is_dir():
+            raise ArtifactValidationError(
+                f"restore destination component is not a directory: {current}"
+            )
+    destination_path.mkdir(parents=True, exist_ok=True)
+    for relative_archive, expected_hash in payload["archives"].items():
+        source = _require_archive(root, relative_archive)
+        target = destination_path / Path(relative_archive).name
+        if _is_link_or_junction(target) or (target.exists() and not target.is_file()):
+            raise ArtifactValidationError(f"restore destination is unsafe: {target}")
+        try:
+            shutil.copyfile(source, target)
+        except OSError as error:
+            raise ArtifactValidationError(
+                f"unable to restore archive: {target}"
+            ) from error
+        if _sha256_file(target) != expected_hash:
+            raise ArtifactValidationError(f"restored archive hash mismatch: {target}")
+    return payload
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -243,6 +333,18 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--run-id", required=True)
         command.add_argument("--run-attempt", required=True)
         command.add_argument("--workflow", required=True)
+    restore = subparsers.add_parser("restore")
+    restore.add_argument("root", type=Path)
+    restore.add_argument("manifest", type=Path)
+    restore.add_argument("destination_root", type=Path)
+    restore.add_argument("destination", type=Path)
+    restore.add_argument("--commit-sha", required=True)
+    restore.add_argument("--run-id", required=True)
+    restore.add_argument("--run-attempt", required=True)
+    restore.add_argument("--workflow", required=True)
+    restore.add_argument(
+        "--producer-attempt-policy", choices=("exact", "at-or-before"), default="exact"
+    )
     validate.add_argument(
         "--producer-attempt-policy", choices=("exact", "at-or-before"), default="exact"
     )
@@ -257,10 +359,22 @@ def main(argv: list[str] | None = None) -> int:
                 run_attempt=args.run_attempt,
                 workflow=args.workflow,
             )
-        else:
+        elif args.command == "validate":
             validate_artifact_manifest(
                 root=args.root,
                 manifest_path=args.manifest,
+                commit_sha=args.commit_sha,
+                run_id=args.run_id,
+                run_attempt=args.run_attempt,
+                workflow=args.workflow,
+                producer_attempt_policy=args.producer_attempt_policy,
+            )
+        else:
+            restore_artifact_archives(
+                root=args.root,
+                manifest_path=args.manifest,
+                destination_root=args.destination_root,
+                destination=args.destination,
                 commit_sha=args.commit_sha,
                 run_id=args.run_id,
                 run_attempt=args.run_attempt,

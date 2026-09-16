@@ -151,6 +151,9 @@ the server-issued same-run artifact ID before validating and restoring the
 archives. Consumers then use `--skip-refresh`; a current-or-earlier selector
 keeps failed-job retries safe without permitting a future attempt or a foreign
 commit/workflow artifact.
+The restore helper also rejects destination traversal and symlinked or
+junction-backed destination components before copying into a consumer
+checkout.
 
 ## Updating safely
 

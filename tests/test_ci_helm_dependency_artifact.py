@@ -142,6 +142,130 @@ def test_validate_rejects_malformed_archive_inventory(tmp_path: Path) -> None:
         )
 
 
+def test_manifest_paths_must_stay_below_their_root(tmp_path: Path) -> None:
+    _stage_archives(tmp_path)
+    with pytest.raises(MODULE.ArtifactValidationError, match="below artifact root"):
+        MODULE.create_artifact_manifest(
+            root=tmp_path,
+            output=Path("..") / "outside.json",
+            commit_sha=COMMIT_SHA,
+            run_id="123",
+            run_attempt="1",
+            workflow=WORKFLOW,
+        )
+
+    manifest = tmp_path / "helm-dependencies.json"
+    MODULE.create_artifact_manifest(
+        root=tmp_path,
+        output=manifest,
+        commit_sha=COMMIT_SHA,
+        run_id="123",
+        run_attempt="1",
+        workflow=WORKFLOW,
+    )
+    with pytest.raises(MODULE.ArtifactValidationError, match="below artifact root"):
+        MODULE.validate_artifact_manifest(
+            root=tmp_path,
+            manifest_path=Path("..") / "helm-dependencies.json",
+            commit_sha=COMMIT_SHA,
+            run_id="123",
+            run_attempt="1",
+            workflow=WORKFLOW,
+        )
+
+
+def test_restore_rejects_symlinked_destination_parent(
+    tmp_path: Path,
+) -> None:
+    _stage_archives(tmp_path / "artifact")
+    manifest = tmp_path / "artifact" / "helm-dependencies.json"
+    MODULE.create_artifact_manifest(
+        root=tmp_path / "artifact",
+        output=manifest,
+        commit_sha=COMMIT_SHA,
+        run_id="123",
+        run_attempt="1",
+        workflow=WORKFLOW,
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    destination_parent = workspace / "charts"
+    try:
+        destination_parent.symlink_to(tmp_path / "outside", target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+
+    with pytest.raises(MODULE.ArtifactValidationError, match="destination"):
+        MODULE.restore_artifact_archives(
+            root=tmp_path / "artifact",
+            manifest_path=manifest,
+            destination_root=workspace,
+            destination=Path("charts"),
+            commit_sha=COMMIT_SHA,
+            run_id="123",
+            run_attempt="1",
+            workflow=WORKFLOW,
+        )
+
+
+def test_restore_rejects_destination_traversal(tmp_path: Path) -> None:
+    _stage_archives(tmp_path / "artifact")
+    artifact_root = tmp_path / "artifact"
+    manifest = artifact_root / "helm-dependencies.json"
+    MODULE.create_artifact_manifest(
+        root=artifact_root,
+        output=manifest,
+        commit_sha=COMMIT_SHA,
+        run_id="123",
+        run_attempt="1",
+        workflow=WORKFLOW,
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    with pytest.raises(MODULE.ArtifactValidationError, match="destination"):
+        MODULE.restore_artifact_archives(
+            root=artifact_root,
+            manifest_path=manifest,
+            destination_root=workspace,
+            destination=Path("..") / "outside",
+            commit_sha=COMMIT_SHA,
+            run_id="123",
+            run_attempt="1",
+            workflow=WORKFLOW,
+        )
+
+
+def test_restore_copies_only_validated_archives(tmp_path: Path) -> None:
+    _stage_archives(tmp_path / "artifact")
+    artifact_root = tmp_path / "artifact"
+    manifest = artifact_root / "helm-dependencies.json"
+    MODULE.create_artifact_manifest(
+        root=artifact_root,
+        output=manifest,
+        commit_sha=COMMIT_SHA,
+        run_id="123",
+        run_attempt="1",
+        workflow=WORKFLOW,
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    MODULE.restore_artifact_archives(
+        root=artifact_root,
+        manifest_path=manifest,
+        destination_root=workspace,
+        destination=Path("charts"),
+        commit_sha=COMMIT_SHA,
+        run_id="123",
+        run_attempt="1",
+        workflow=WORKFLOW,
+    )
+    assert sorted(path.name for path in (workspace / "charts").iterdir()) == sorted(
+        MODULE.ARCHIVE_NAMES
+    )
+
+
 def test_validate_at_or_before_accepts_earlier_attempt_but_rejects_future(
     tmp_path: Path,
 ) -> None:

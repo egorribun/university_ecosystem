@@ -53,9 +53,9 @@ def test_nightly_helm_archives_have_one_producer_and_hash_bound_consumers() -> N
         helm_index = job["steps"].index(_step(job, "Resolve Helm chart dependencies"))
         assert restore_index < helm_index
         restore = _step(job, "Restore verified Helm dependency archives")["run"]
-        assert "helm_dependency_artifact.py validate" in restore
+        assert "helm_dependency_artifact.py restore" in restore
         assert "--producer-attempt-policy at-or-before" in restore
-        assert "cp --no-preserve=mode,ownership" in restore
+        assert '"$GITHUB_WORKSPACE" charts/university-ecosystem/charts' in restore
         helm = _step(job, "Resolve Helm chart dependencies")["run"]
         assert "--skip-refresh" in helm
         assert "helm dependency build" not in helm

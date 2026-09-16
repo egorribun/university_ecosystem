@@ -155,19 +155,14 @@ jobs:
           WORKFLOW: .github/workflows/nightly-full-gate.yml
         run: |
           set -euo pipefail
-          uv run python scripts/ci/helm_dependency_artifact.py validate \
+          uv run python scripts/ci/helm_dependency_artifact.py restore \
             nightly-helm-dependencies helm-dependencies.json \
+            "$GITHUB_WORKSPACE" charts/university-ecosystem/charts \
             --commit-sha "$COMMIT_SHA" \
             --run-id "$RUN_ID" \
             --run-attempt "$RUN_ATTEMPT" \
             --workflow "$WORKFLOW" \
             --producer-attempt-policy at-or-before
-          mkdir -p charts/university-ecosystem/charts
-          for archive in redis-20.13.4.tgz nats-8.5.4.tgz; do
-            cp --no-preserve=mode,ownership \
-              "nightly-helm-dependencies/charts/$archive" \
-              "charts/university-ecosystem/charts/$archive"
-          done
 
       - name: Resolve Helm chart dependencies
         shell: bash
@@ -386,19 +381,14 @@ jobs:
           WORKFLOW: .github/workflows/nightly-full-gate.yml
         run: |
           set -euo pipefail
-          uv run python scripts/ci/helm_dependency_artifact.py validate \
+          uv run python scripts/ci/helm_dependency_artifact.py restore \
             nightly-helm-dependencies helm-dependencies.json \
+            "$GITHUB_WORKSPACE" charts/university-ecosystem/charts \
             --commit-sha "$COMMIT_SHA" \
             --run-id "$RUN_ID" \
             --run-attempt "$RUN_ATTEMPT" \
             --workflow "$WORKFLOW" \
             --producer-attempt-policy at-or-before
-          mkdir -p charts/university-ecosystem/charts
-          for archive in redis-20.13.4.tgz nats-8.5.4.tgz; do
-            cp --no-preserve=mode,ownership \
-              "nightly-helm-dependencies/charts/$archive" \
-              "charts/university-ecosystem/charts/$archive"
-          done
 
       - name: Resolve Helm chart dependencies
         shell: bash
