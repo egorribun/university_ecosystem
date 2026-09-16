@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from pathlib import Path
 
 import yaml
@@ -42,12 +43,37 @@ def _step(job: dict[str, object], name: str) -> dict[str, object]:
     )
 
 
+def _npm_ci_flags_are_network_minimal(line: str) -> bool:
+    """Return whether an ``npm ci`` command disables duplicate network work.
+
+    Most workflows use the short deterministic install command directly.  The
+    security-audit workflow additionally passes ``--ignore-scripts`` so an
+    untrusted lifecycle hook cannot execute before the dedicated audit gate.
+    The performance contract is about the two network-heavy flags, not the
+    ordering or presence of that security hardening option.
+    """
+    tokens = shlex.split(line, comments=True, posix=True)
+    ci_index = next(
+        (
+            index
+            for index in range(len(tokens) - 1)
+            if tokens[index : index + 2] == ["npm", "ci"]
+        ),
+        None,
+    )
+    if ci_index is None:
+        return False
+    options = set(tokens[ci_index + 2 :])
+    return {"--no-audit", "--no-fund"}.issubset(options)
+
+
 def test_npm_ci_skips_duplicate_audit_and_funding_network_work() -> None:
     """Dependency installation must stay deterministic while audit remains explicit.
 
     ``npm audit`` is a separate security gate in the reusable security workflow.
     Keeping it out of every ``npm ci`` invocation avoids repeating network work
-    on each matrix leg without disabling lifecycle scripts or the dedicated audit.
+    on each matrix leg.  The security-audit workflow also disables lifecycle
+    hooks for its untrusted checkout before running the dedicated audit.
     """
     workflow_paths = sorted(
         [*WORKFLOW_DIRECTORY.glob("*.yml"), *WORKFLOW_DIRECTORY.glob("*.yaml")]
@@ -62,15 +88,16 @@ def test_npm_ci_skips_duplicate_audit_and_funding_network_work() -> None:
         ]
         if not install_lines:
             continue
-        assert all(
-            line.endswith("npm ci --no-audit --no-fund") for line in install_lines
-        ), f"{workflow_path} contains an unoptimized npm ci invocation"
+        assert all(_npm_ci_flags_are_network_minimal(line) for line in install_lines), (
+            f"{workflow_path} contains an unoptimized npm ci invocation"
+        )
 
     security_workflow = (
         REPOSITORY_ROOT / ".github" / "workflows" / "reusable-security-audit.yml"
     ).read_text(encoding="utf-8")
     assert "Run npm audit with allowlist" in security_workflow
     assert "scripts/audit_dependencies.py" in security_workflow
+    assert "npm ci --ignore-scripts --no-audit --no-fund" in security_workflow
 
 
 def test_frontend_suite_is_not_serialized_behind_pre_commit() -> None:
