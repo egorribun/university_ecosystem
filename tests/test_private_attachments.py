@@ -160,6 +160,7 @@ def test_private_attachment_response_headers_cover_mime_fallback() -> None:
 
 def test_static_private_path_selector_and_blocked_response() -> None:
     assert is_private_static_path("/static/chat_uploads/chat_x/file.txt")
+    assert is_private_static_path(r"chat_uploads\chat_x\file.txt")
     assert is_private_static_path("event_files/event_x/file.txt")
     assert is_private_static_path("/static/%2563hat_uploads/chat_x/file.txt")
     assert is_private_static_path("foo/../chat_uploads/chat_x/file.txt")
