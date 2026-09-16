@@ -7315,3 +7315,32 @@ checkpoint separately, then push the candidate non-force to `egorribun` and
 require a fresh exact-SHA matrix. Release remains `EVIDENCE-BLOCKED` until the
 fresh matrix, current manifest, required-context reconciliation, immutable
 Docker/Kubernetes/staging evidence and SHA-bound audit are terminal and green.
+
+## 132. Fresh current-SHA inventory-skip correction (2026-09-16)
+
+The fresh PR matrix `35055100899` was created for source SHA
+`0d88caeff4b61909167e752490b2f2ded1504231`. At the authoritative snapshot
+`2026-09-16T04:31:58Z`, Jobs API pagination reported `95` jobs: `78` completed
+(`68` success, `9` skipped, `1` failure), `13` in progress and `4` queued.
+The sole completed failure was the independent `Source/Test Inventory &
+Anti-Pattern Check` job `104663516895`; no mutation, aggregate or release
+failure had been observed at that point.
+
+The exact job log identified two untracked dynamic-skip comments in
+`tests/test_ci_helm_dependency_artifact.py` (lines `196` and `330`). Both
+Windows symlink-capability skips now carry the repository's required
+`QUALITY-123 @egorribun` ownership/tracking annotation. The correction is
+committed as `46f0361` (`fix(quality): annotate capability-dependent skips`)
+with no user-owned WASM/provenance files staged or changed. Local RED/GREEN
+verification is green: `uv run python scripts/quality/generate_test_inventory.py
+--output artifacts/quality/inventory.json`, the inventory checker, and the
+focused Helm/catalog tests pass; the `uv run` fast-preflight also passes all
+`6/6` lanes. The initial direct-`python` preflight failure was only an
+incorrect interpreter invocation outside the locked `uv` environment and is
+not a source defect.
+
+The fix has not yet been pushed while the diagnostic matrix is still running,
+so the current run is not cancelled and can expose any additional root
+failures. Once the run reaches a useful terminal/near-terminal boundary, push
+`46f0361` non-force and require a new exact-SHA matrix; this old run remains
+diagnostic and cannot satisfy release or mutation gates.
