@@ -1,7 +1,6 @@
 # University Ecosystem MVP Quality Closure Continuation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 > **Status ledger convention:** the checkbox lists below are an immutable
 > acceptance template retained for traceability; they are intentionally not
 > bulk-ticked after implementation. Current truth is recorded only in the
