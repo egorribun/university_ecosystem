@@ -61,7 +61,7 @@ required so ownership is never inferred from a stale check run.
 matrix jobs.  Each expansion binds an existing caller workflow/job to an
 existing reusable workflow/job set (or a matrix strategy) and declares the
 finite, exact context names.  These entries supplement, but never replace, the
-complete 55-workflow/182-source-job inventory.  A context must not be duplicated
+complete 55-workflow/183-source-job inventory.  A context must not be duplicated
 between source jobs, provider checks, or expansions.
 
 ### Refresh live ruleset evidence

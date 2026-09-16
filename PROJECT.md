@@ -4,7 +4,7 @@
 The University Ecosystem Platform is an enterprise, multi-stack ecosystem spanning:
 - **Backend (`app/`)**: Python 3.14, FastAPI, SQLAlchemy 2.0 async (mandatory `lazy="noload"`), Dishka DI, Argon2id authentication, RS256 JWKS, outbox pattern, structlog PII redaction.
 - **Frontend (`frontend/`)**: React 19, TypeScript strict, Vite SSR, TanStack Router & Query, Zustand, Valibot-only schemas, ARIA accessibility, Playwright E2E testing.
-- **Go Microservices (`services/`)**: Go 1.22+, `gateway` (reverse proxy, JWT/JWKS, rate limiter, XFetch L1 cache), `ws-hub` (real-time WebSocket broadcasting), `file-processor` (gRPC/GraphQL file engine), `caddy` (edge proxy).
+- **Go Microservices (`services/`)**: Go 1.26.4+ (CI pins 1.26.6; fuzz jobs may use 1.27.1), `gateway` (reverse proxy, JWT/JWKS, rate limiter, XFetch L1 cache), `ws-hub` (real-time WebSocket broadcasting), `file-processor` (gRPC/GraphQL file engine), `caddy` (edge proxy).
 - **Native Optimizer (`native/rust_ext/`)**: Rust PyO3 FFI schedule conflict & HMAC acceleration.
 - **Harness & Infrastructure (`.agents/`, `charts/`, `k8s/`)**: Antigravity lifecycle hooks, safety gates, subagent profiles, Helm v3 charts, Kyverno policy compliance.
 
@@ -69,7 +69,7 @@ university_ecosystem/
 - `.gitignore`: Unignore `!.agents/hooks.json`, `!.agents/hooks/`, `!.agents/subagents.json`, `!.agents/subagents/`, `!.agents/skills/`, `!.agents/ORIGINAL_REQUEST.md`, `!verify_harness.py`, `!docs/mcp/`.
 
 ### 3. Documentation Parity Contract
-- `README.ru.md` MUST include Revocation Valkey topology node/edges, `start-docker.ps1` reference, port 80/8083 access points, and ADR-001—ADR-032 scope.
+- `README.ru.md` MUST include Revocation Valkey topology node/edges, `start-docker.ps1` reference, port 80/8083 access points, and a link to the current ADR inventory under `docs/adr/`.
 
 ---
 

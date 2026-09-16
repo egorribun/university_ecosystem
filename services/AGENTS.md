@@ -6,7 +6,7 @@ This document defines the architectural invariants, concurrency models, error ha
 
 ## 1. Go Runtime & Tooling Standards
 
-- **Go Version**: Standardized on **Go 1.22+**.
+- **Go Version**: Standardized on **Go 1.26.4+** (CI pins 1.26.6; fuzz jobs may use 1.27.1).
 - **Static Analysis & Linting**: `.golangci.yml` must enable:
   - `exhaustive` (with `default-signifies-exhaustive: true` to catch unhandled enum switch cases).
   - `govet`, `errcheck`, `staticcheck`, and `gosec` (SAST vulnerability scanner).

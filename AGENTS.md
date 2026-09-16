@@ -5,7 +5,7 @@ Welcome to the **University Ecosystem Platform** repository. This document defin
 Subsystem-specific rules are hierarchically partitioned into domain `AGENTS.md` files:
 - **Backend Domain (`app/`)**: [`app/AGENTS.md`](app/AGENTS.md) — Python 3.14, FastAPI, SQLAlchemy 2.0 async (`lazy="noload"`), Dishka DI, Argon2id, Outbox pattern.
 - **Frontend Domain (`frontend/`)**: [`frontend/AGENTS.md`](frontend/AGENTS.md) — React 19, TypeScript strict, TanStack Router/Query, Zustand, Valibot-only, SSR, ARIA standards.
-- **Go Microservices (`services/`)**: [`services/AGENTS.md`](services/AGENTS.md) — Go 1.22+, `ws-hub`, `gateway`, `file-processor`, `caddy` edge proxy.
+- **Go Microservices (`services/`)**: [`services/AGENTS.md`](services/AGENTS.md) — Go 1.26.4+ (CI pins 1.26.6; fuzz jobs may use 1.27.1), `ws-hub`, `gateway`, `file-processor`, `caddy` edge proxy.
 
 ---
 

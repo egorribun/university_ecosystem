@@ -66,7 +66,7 @@ university_ecosystem/
 ├── native/            # 🦀 Rust-расширения (PyO3/Rayon) - Высокоскоростные вычисления
 ├── k8s/               # ☸️ Манифесты Kubernetes, Kyverno-политики и Chaos Mesh
 ├── alembic/           # 🗄️ Миграции базы данных (SQLAlchemy 2.0 Async)
-└── docs/              # 📖 Архитектура и ADR (ADR-001 — ADR-032)
+└── docs/              # 📖 Архитектура и ADR (см. docs/adr/)
 ```
 
 ## 🧠 Архитектурная философия
