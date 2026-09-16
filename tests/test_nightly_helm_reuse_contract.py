@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -8,8 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
 
 
-def _step(job: dict[str, object], name: str) -> dict[str, object]:
-    return next(step for step in job["steps"] if step.get("name") == name)  # type: ignore[union-attr]
+def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
+    steps = cast(list[dict[str, Any]], job["steps"])
+    return next(step for step in steps if step.get("name") == name)
 
 
 def test_nightly_helm_archives_have_one_producer_and_hash_bound_consumers() -> None:
