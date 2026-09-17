@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
 import { renderToString } from "react-dom/server"
@@ -11,6 +11,8 @@ const mediaQueryMocks = vi.hoisted(() => ({ queries: [] as string[] }))
 const translationMocks = vi.hoisted(() => ({
   namespaces: [] as string[],
   keys: [] as string[],
+  dialogOptions: [] as Array<Record<string, unknown> | undefined>,
+  progressOptions: [] as Array<Record<string, unknown> | undefined>,
 }))
 const focusTrapMocks = vi.hoisted(() => ({
   active: [] as boolean[],
@@ -44,7 +46,14 @@ vi.mock("react-i18next", () => ({
     return {
       t: (key: string, options?: any) => {
         translationMocks.keys.push(key)
-        if (key === "stories.viewer.aria.dialog") return `Story Viewer: ${options?.title}`
+        if (key === "stories.viewer.aria.dialog") {
+          translationMocks.dialogOptions.push(options)
+          return `Story Viewer: ${options?.title}`
+        }
+        if (key === "stories.viewer.aria.progress") {
+          translationMocks.progressOptions.push(options)
+          return `Progress ${options?.index}/${options?.total}: ${options?.title}`
+        }
         if (key === "stories.viewer.aria.close") return "Close"
         if (key === "stories.viewer.aria.next") return "Next"
         if (key === "stories.viewer.aria.prev") return "Previous"
@@ -66,6 +75,8 @@ beforeEach(() => {
   mediaQueryMocks.queries.length = 0
   translationMocks.namespaces.length = 0
   translationMocks.keys.length = 0
+  translationMocks.dialogOptions.length = 0
+  translationMocks.progressOptions.length = 0
   focusTrapMocks.active.length = 0
   focusTrapMocks.initialFocus = undefined
   document.body.style.overflow = ""
@@ -110,6 +121,11 @@ describe("StoryViewer", () => {
     const merged = { ...defaultProps, ...props }
     const Wrapped = () => <StoryViewer {...merged} />
     return renderWithRouter({ ui: Wrapped })
+  }
+
+  const renderViewerDirect = (props = {}) => {
+    const merged = { ...defaultProps, ...props }
+    return render(<StoryViewer {...merged} />)
   }
 
   it("renders nothing when activeStoryIndex is null", async () => {
@@ -248,6 +264,54 @@ describe("StoryViewer", () => {
     )
   })
 
+  it("keeps internal CTA navigation inside the router and rejects non-URL prefixes", async () => {
+    const user = userEvent.setup()
+    const target = () => <div data-testid="events-target">Events target</div>
+    const { rerender } = await renderWithRouter({
+      ui: () => (
+        <StoryViewer
+          {...defaultProps}
+          stories={[{ ...mockStories[0]!, cta_url: "/events" }]}
+        />
+      ),
+      extraRoutes: [{ path: "/events", Component: target }],
+    })
+
+    await user.click(screen.getByRole("link", { name: "stories.viewer.openLink" }))
+    expect(await screen.findByTestId("events-target")).toBeInTheDocument()
+
+    rerender(
+      <StoryViewer
+        {...defaultProps}
+        stories={[{ ...mockStories[0]!, cta_url: "prefixhttps://example.com" }]}
+      />
+    )
+    const prefixedLink = screen.getByRole("link", { name: "stories.viewer.openLink" })
+    expect(prefixedLink).toHaveAttribute("href", "prefixhttps://example.com")
+    expect(prefixedLink).not.toHaveAttribute("target", "_blank")
+  })
+
+  it("distinguishes HTTP and HTTPS external CTAs while keeping relative links same-window", async () => {
+    const { rerender } = await renderViewer({
+      stories: [{ ...mockStories[0]!, cta_url: "http://example.com/story" }],
+    })
+    expect(screen.getByRole("link", { name: "stories.viewer.openLink" })).toHaveAttribute(
+      "target",
+      "_blank"
+    )
+
+    rerender(
+      <StoryViewer
+        {...defaultProps}
+        stories={[{ ...mockStories[0]!, cta_url: "relative/story" }]}
+      />
+    )
+    expect(screen.getByRole("link", { name: "stories.viewer.openLink" })).not.toHaveAttribute(
+      "target",
+      "_blank"
+    )
+  })
+
   it("uses an aria-label when the story has no title and ignores blank CTA urls", async () => {
     await renderViewer({
       stories: [
@@ -262,6 +326,22 @@ describe("StoryViewer", () => {
     expect(screen.getByRole("dialog", { name: "Story Viewer:" })).toBeInTheDocument()
     expect(screen.getByText("Story without a title")).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "stories.viewer.openLink" })).not.toBeInTheDocument()
+    expect(document.querySelector('a[href=""]')).not.toBeInTheDocument()
+  })
+
+  it("does not throw when an image story has an absent title", async () => {
+    await renderViewer({
+      stories: [
+        {
+          ...mockStories[0]!,
+          title: undefined as unknown as string,
+          cover_url: "https://cdn.example.com/story.jpg",
+          short_text: "Accessible fallback",
+        },
+      ],
+    })
+    expect(screen.getByRole("dialog", { name: "Story Viewer: undefined" })).toBeInTheDocument()
+    expect(screen.getByText("Accessible fallback")).toBeInTheDocument()
   })
 
   it("assigns completed, active, and pending progress values", async () => {
@@ -273,6 +353,17 @@ describe("StoryViewer", () => {
     await renderViewer({ stories, activeStoryIndex: 1, progress: 42 })
     const bars = screen.getAllByRole("progressbar")
     expect(bars.map((bar) => bar.getAttribute("aria-valuenow"))).toEqual(["100", "42", "0"])
+    expect(bars.map((bar) => bar.getAttribute("aria-label"))).toEqual([
+      "Progress 1/3: Story 1",
+      "Progress 2/3: Story 2",
+      "Progress 3/3: Story 3",
+    ])
+    expect(bars.map((bar) => bar.getAttribute("aria-live"))).toEqual([null, "polite", null])
+    expect(translationMocks.dialogOptions.at(-1)).toMatchObject({
+      index: 2,
+      total: 3,
+      title: "Story 2",
+    })
   })
 
   it("updates progress when the active story or progress changes", async () => {
@@ -294,6 +385,49 @@ describe("StoryViewer", () => {
     expect(
       screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow"))
     ).toEqual(["100", "65", "0"])
+  })
+
+  it("updates progress and scroll locking when the mounted viewer changes stories", async () => {
+    const view = renderViewerDirect({ progress: 10 })
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    expect(screen.getAllByRole("progressbar")[0]).toHaveAttribute("aria-valuenow", "10")
+
+    document.body.style.overflow = "scroll"
+    view.rerender(
+      <StoryViewer {...defaultProps} activeStoryIndex={1} progress={65} />
+    )
+
+    expect(document.body.style.overflow).toBe("hidden")
+    expect(screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow"))).toEqual([
+      "100",
+      "65",
+    ])
+  })
+
+  it("uses current interaction callbacks after props change", async () => {
+    const firstPause = vi.fn()
+    const secondPause = vi.fn()
+    const firstResume = vi.fn()
+    const secondResume = vi.fn()
+    const view = renderViewerDirect({ onPause: firstPause, onResume: firstResume })
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+
+    view.rerender(
+      <StoryViewer
+        {...defaultProps}
+        onPause={secondPause}
+        onResume={secondResume}
+      />
+    )
+    const stage = screen.getByRole("dialog").querySelector('[class*="aspect-9/16"]')!
+    fireEvent.pointerDown(stage)
+    fireEvent.pointerCancel(stage)
+    fireEvent.pointerLeave(stage)
+
+    expect(firstPause).not.toHaveBeenCalled()
+    expect(firstResume).not.toHaveBeenCalled()
+    expect(secondPause).toHaveBeenCalledTimes(1)
+    expect(secondResume).toHaveBeenCalledTimes(2)
   })
 
   it("pauses and resumes around pointer interactions and closes on backdrop", async () => {
@@ -324,7 +458,44 @@ describe("StoryViewer", () => {
     await renderViewer({ progress: 35 })
     const bar = screen.getAllByRole("progressbar")[0]!
     expect(bar.firstElementChild?.className).toContain("motion-reduce:transition-none")
+    expect(bar.firstElementChild).not.toHaveClass("transition-all")
     expect(bar).toHaveAttribute("aria-live", "polite")
+  })
+
+  it("exposes the progress styling, overlay spacing, and image backdrop contracts", async () => {
+    const firstRender = await renderViewer({
+      stories: [{ ...mockStories[0]!, cover_url: "https://cdn.example.com/story.jpg" }],
+    })
+    const imageStage = screen.getByRole("dialog").querySelector('[class*="aspect-9/16"]')!
+    const imageOverlay = imageStage.querySelector('[class*="absolute bottom-0"]')!
+    expect(imageOverlay).toHaveClass("gap-4", "p-(--fluid-card-p)", "pt-12", "sm:pt-16")
+    expect(imageOverlay).toHaveStyle({ backdropFilter: "blur(var(--blur-glass))" })
+    expect(screen.getAllByRole("progressbar")[0]!.firstElementChild).toHaveClass(
+      "bg-white",
+      "transition-all",
+      "duration-rapid",
+      "ease-linear"
+    )
+
+    firstRender.unmount()
+    await renderViewer({ stories: [{ ...mockStories[0]!, cta_url: "/events" }] })
+    const textOverlay = screen.getByRole("dialog").querySelector('[class*="absolute bottom-0"]')!
+    expect(textOverlay).toHaveClass("gap-5")
+  })
+
+  it("omits an empty short-text paragraph while retaining populated text", async () => {
+    const { rerender } = await renderViewer({
+      stories: [{ ...mockStories[0]!, short_text: "" }],
+    })
+    expect(screen.queryByText("Story 1", { selector: "p.text-base" })).not.toBeInTheDocument()
+
+    rerender(
+      <StoryViewer
+        {...defaultProps}
+        stories={[{ ...mockStories[0]!, short_text: "Details" }]}
+      />
+    )
+    expect(screen.getByText("Details", { selector: "p.text-base" })).toBeInTheDocument()
   })
 
   it("locks body scrolling and restores the previous value when closed", async () => {
