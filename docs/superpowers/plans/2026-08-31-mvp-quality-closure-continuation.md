@@ -7924,3 +7924,37 @@ remains `EVIDENCE-BLOCKED`, not certified. Before any completion claim:
 README coverage/security table labels now explicitly distinguish policy targets
 and implemented code from fresh exact-SHA certification; this prevents a
 historical badge or local run from being mistaken for a release attestation.
+
+## 143. Mutation-survivor closure and refreshed local candidate (2026-09-17)
+
+The integration checkout is `C:\Temp\university-merge-20260915`, branch
+`codex/integrate-main-20260915`, at `81a8e47fcb671d68c7e4f2fb96a6a2c84333cde9`.
+It is currently eight commits ahead of `origin/egorribun`; recompute the count
+and the exact range immediately before the non-force push. The current range
+adds the API/cache/rate-limit, UI primitive/table, Select, session-crypto and
+StoryViewer contracts already described above, plus `dc90c338d` (StoryViewer
+lifecycle survivors), `64ef188e5` (empty Select navigation), and
+`81a8e47fc` (ActionMenu/StoryViewer/SEO contracts and formatting). No workflow
+or quality-policy cap was changed, and no generated WASM/provenance path was
+staged.
+
+Fresh local evidence for this candidate:
+
+- ActionMenu focused Stryker: `144/144` viable mutants killed, `0` survived,
+  timeout or error; the canonical runner and policy staging were used.
+- Integrated frontend changed-file suite: `10` test files, `293/293` tests
+  passed; the StoryViewer/ActionMenu/SEO subset is `65/65`.
+- Frontend `npm run typecheck`, full `npm run lint`, `npm run format:check`
+  and the orchestrated SSR/client build all exit `0`. The build completed
+  WASM, token sync, SSR, prerender, service-worker and Workbox steps; its
+  intentional artifact-stability termination is handled by the orchestrator.
+- `git diff --check` is clean. The only dirty paths remain the three paired,
+  user-owned generated `frontend/WASM_SOURCE_PROVENANCE.json` and WASM binary
+  files; they must remain unstaged and out of the candidate push.
+
+The last hosted run remains historical and cannot certify this SHA. The next
+safe boundary is to push this reviewed range to `origin/egorribun`, then inspect
+the newly created exact-head CI matrix to terminal and preserve every first
+failure. Only after that fresh matrix is green may the current-SHA manifest,
+release audit, immutable image/attestation, digest Docker smoke, staging,
+browser/device, chaos/rollback and resulting-main gates be claimed.
