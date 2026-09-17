@@ -8068,11 +8068,19 @@ and strict mypy for the production selector pass. The implementation is
 committed as `6586b6025be4b2bf989c22c4fed152f12c1b8fab` with no
 `Co-Authored-By` trailer.
 
-The complete candidate range currently consists of three commits ahead of
+As defense in depth for the JSON-to-GitHub-expression boundary, candidate
+artifact IDs are also limited to the IEEE-754 safe-integer range. An ID above
+`2^53-1` is rejected instead of being silently rounded by `fromJSON(...)` and
+potentially selecting a different server-side artifact. The new regression
+test and implementation are committed as `165f90c2d`.
+
+The complete candidate range currently consists of four implementation
+commits ahead of
 `origin/egorribun`: `47709f357` (bounded Go module-download retry), `cc2a1f64f`
 (retry-safe coverage selection/receipt), and `6586b6025` (redirect-resistant
-REST transport). Recompute the range after this documentation checkpoint and
-before pushing; stage no generated WASM/provenance or external-audit files.
+REST transport), followed by `165f90c2d` (JSON-safe artifact ID bound).
+Recompute the range after this documentation checkpoint and before pushing;
+stage no generated WASM/provenance or external-audit files.
 The release remains `EVIDENCE-BLOCKED` until a fresh exact-head hosted matrix
 reaches terminal green and the external manifest, immutable-image,
 digest-Docker, staging, browser/device, chaos/rollback and resulting-main
