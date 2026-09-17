@@ -3182,6 +3182,85 @@ test("keeps static reload hotspots within bounded first-attempt assignments", as
   )
 })
 
+test("rebalances the observed shard-33 timeout graph without changing coverage denominator", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+  // These are the eleven sources assigned to shard 33 in run
+  // 35160102569 (505 mutants, 71 static). The static-heavy sources are
+  // intentionally checked as independent units; the remaining sources still
+  // use the weighted first-attempt lane.
+  const timeoutGraph = [
+    ["src/api/chat.ts", 75],
+    ["src/api/hooks/adminUsers.ts", 31],
+    ["src/api/hooks/events.ts", 63],
+    ["src/api/notifications.ts", 67],
+    ["src/app/hydration.ts", 40],
+    ["src/components/ui/Button.tsx", 45],
+    ["src/components/ui/NotificationRelevanceScore.tsx", 25],
+    ["src/components/ui/RadioGroup.tsx", 44],
+    ["src/components/ui/data-table/DataTable.tsx", 29],
+    ["src/components/ui/data-table/dataTableFeatures.ts", 8],
+    ["src/hooks/useMediaQuery.ts", 58],
+  ]
+  const regularFiles = Array.from({ length: 12 }, (_, index) => {
+    const file = `src/rebalance-regular-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    ...timeoutGraph.map(([file, count]) => [file, { mutants: makeMutants(file, count) }]),
+    ...regularFiles,
+  ])
+  const plan = planMutationShards(preflight, 750, 64)
+  const reversePlan = planMutationShards(new Map([...preflight].reverse()), 750, 64)
+  const expectedMutants = [...preflight.values()].reduce(
+    (total, entry) => total + entry.mutants.length,
+    0
+  )
+
+  assert.equal(plan.length, 64)
+  assert.deepEqual(plan, reversePlan)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    expectedMutants
+  )
+  const assignments = plan.flatMap(({ files }) => files)
+  assert.equal(new Set(assignments).size, assignments.length)
+  for (const [file] of timeoutGraph) {
+    assert.ok(
+      assignments.some((pattern) => pattern === file || pattern.startsWith(`${file}:`)),
+      `${file} is missing from the rebalanced inventory`
+    )
+  }
+
+  const staticSources = new Set([
+    "src/api/hooks/adminUsers.ts",
+    "src/api/notifications.ts",
+    "src/components/ui/Button.tsx",
+    "src/components/ui/NotificationRelevanceScore.tsx",
+  ])
+  const staticShardIndexes = plan.flatMap((shard, index) =>
+    shard.files.some((pattern) => staticSources.has(pattern.split(":", 1)[0])) ? [index] : []
+  )
+  assert.ok(new Set(staticShardIndexes).size >= staticSources.size)
+  assert.ok(
+    new Set(staticShardIndexes).size > 1,
+    "the formerly timed-out static graph must be spread across bounded runners"
+  )
+  assert.ok(
+    plan.some((shard) => shard.files.some((pattern) => pattern.startsWith("src/api/chat.ts:"))),
+    "the unsplittable chat range must remain in the complete inventory"
+  )
+})
+
 test("does not mix independent static hotspot sources when the first-attempt lane has capacity", async () => {
   const { planMutationShards } = await import(runnerUrl)
   const makeMutants = (file, count) =>

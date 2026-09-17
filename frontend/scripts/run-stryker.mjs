@@ -673,6 +673,20 @@ const firstAttemptDedicatedFiles = [
 // first-attempt ranges below the normal count budget before cost-aware
 // packing. This changes only placement granularity; no mutant is removed.
 const firstAttemptStaticHotspotFiles = new Set([
+  // Run 35160102569 shard 33 reported 71 static mutants in a 505-mutant
+  // mixed API/UI graph and reached the two-hour producer cap before writing
+  // an artifact. Keep these sources in the bounded static lane on the next
+  // first attempt; the source inventory and denominator stay unchanged.
+  "src/api/hooks/adminUsers.ts",
+  "src/api/chat.ts",
+  "src/api/notifications.ts",
+  "src/app/hydration.ts",
+  "src/components/ui/Button.tsx",
+  "src/components/ui/NotificationRelevanceScore.tsx",
+  "src/components/ui/RadioGroup.tsx",
+  "src/components/ui/data-table/DataTable.tsx",
+  "src/components/ui/data-table/dataTableFeatures.ts",
+  "src/hooks/useMediaQuery.ts",
   "src/contexts/LanguageContext.tsx",
   "src/db/index.ts",
   "src/components/stories/StoryViewer.tsx",
@@ -717,10 +731,14 @@ const firstAttemptTailDomainPrefixes = ["src/utils/", "src/workers/"]
 const firstAttemptTailDomainShardCount = 4
 // Keep enough first-attempt regular lanes for locality packing to retain a
 // bounded per-runner mutant count after dedicated API/auth/static lanes have
-// been reserved. One regular lane should carry no more than roughly 64
+// been reserved. One regular lane should carry no more than roughly 256
 // fine-grained source units (the observed first-attempt ranges are smaller),
 // while the tail domain still receives its four-lane isolation contract.
-const firstAttemptRegularUnitsPerShard = 64
+const firstAttemptRegularUnitsPerShard = 256
+// Regular mutants do not trigger a full test-environment reload. Reserve a
+// bounded number of regular lanes, but leave the reclaimed logical capacity
+// available for static reload lanes when the inventory proves a hotspot.
+const firstAttemptRegularMutantsPerShard = 2_048
 
 function isFirstAttemptTailDomainPattern(pattern) {
   const source = mutationPatternSource(pattern)
@@ -1031,14 +1049,7 @@ function assignFirstAttemptMutationUnits(weightedUnits, shards) {
                 // mutant runners and recreate the observed timeout pressure.
                 Math.ceil(
                   regularUnits.reduce((total, entry) => total + entry.mutantCount, 0) /
-                    Math.max(
-                      1_024,
-                      Math.ceil(
-                        (weightedUnits.reduce((total, entry) => total + entry.mutantCount, 0) /
-                          shards.length) *
-                          2
-                      )
-                    )
+                    Math.max(1_024, firstAttemptRegularMutantsPerShard)
                 )
               )
             : 1
