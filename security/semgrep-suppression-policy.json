@@ -119,15 +119,6 @@
       "reason": "The host, port, redirect policy, and bounded request target are validated before an explicit system-trust TLS context is passed to HTTPSConnection; transport tests cover the boundary."
     },
     {
-      "rule_id": "python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected",
-      "path": "scripts/quality/select_same_run_artifact_cli.py",
-      "start_line": 197,
-      "end_line": 201,
-      "owner": "security@university.example",
-      "expires": "2026-12-31",
-      "reason": "The URL uses the fixed api.github.com origin and a strict current-run path allowlist; the request uses an explicit verified TLS context and bounded response reader."
-    },
-    {
       "rule_id": "go.gorilla.security.audit.websocket-missing-origin-check.websocket-missing-origin-check",
       "path": "services/ws-hub/pkg/hub/handlers.go",
       "start_line": 202,
