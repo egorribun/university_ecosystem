@@ -7959,3 +7959,21 @@ the newly created exact-head CI matrix to terminal and preserve every first
 failure. Only after that fresh matrix is green may the current-SHA manifest,
 release audit, immutable image/attestation, digest Docker smoke, staging,
 browser/device, chaos/rollback and resulting-main gates be claimed.
+
+## 144. Full frontend regression after strict-console isolation (2026-09-17)
+
+The full Vitest gate was rerun after `3241cc2e7` fixed the legacy
+`sessionStorage.removeItem` contract test by mocking only the logger module in
+that test file and asserting the expected development warning. The production
+warning path and strict-console policy remain unchanged. The fresh run reports
+`675/675` test files and `7,217/7,217` tests passed (exit `0`). The earlier
+single failure was reproduced before the fix and is therefore not carried as a
+hidden or ignored test; no test exclusions, quarantines or coverage
+exceptions were introduced.
+
+The integration checkout still has only the three paired, user-owned generated
+WASM/provenance paths dirty. Recompute the current HEAD and ahead range before
+push, stage only reviewed source/tests/docs, and preserve those generated
+files exactly as supplied by the user. The next evidence boundary remains a
+fresh exact-SHA hosted matrix; historical CI results cannot certify this
+candidate.
