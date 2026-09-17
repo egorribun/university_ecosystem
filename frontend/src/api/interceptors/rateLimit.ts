@@ -33,11 +33,11 @@ const CLIENT_RATE_LIMIT_MAX_CONCURRENT = parsePositiveInteger(
 
 let rateLimitResetAt = 0
 let rateLimitTimer: ReturnType<typeof setTimeout> | null = null
-const rateLimitWaiters: Array<() => void> = new Array<() => void>()
+const rateLimitWaiters: Array<() => void> = []
 
 let clientQueueInFlight = 0
-const clientQueueWaiters: ClientQueueWaiter[] = new Array<ClientQueueWaiter>()
-const clientQueueTimestamps: number[] = new Array<number>()
+const clientQueueWaiters: ClientQueueWaiter[] = []
+const clientQueueTimestamps: number[] = []
 let clientQueueTimer: ReturnType<typeof setTimeout> | null = null
 
 const pruneClientQueueTimestamps = () => {
@@ -89,8 +89,6 @@ const notifyClientQueue = () => {
   if (clientQueueWaiters.length === 0) {
     return
   }
-
-  pruneClientQueueTimestamps()
 
   if (clientQueueInFlight >= CLIENT_RATE_LIMIT_MAX_CONCURRENT) {
     return
@@ -170,7 +168,10 @@ const waitForClientQueueWaiter = (config: QueueConfig): Promise<void> => {
   // waiter was granted just before abort, and a block mutation cannot leave
   // the queue promise pending behind a timeout.
   const onAbort = () =>
-    void (removeQueuedWaiter(), deferred.reject(abortError(config.signal)), notifyClientQueue())
+    void (removeQueuedWaiter(),
+    pruneClientQueueTimestamps(),
+    deferred.reject(abortError(config.signal)),
+    notifyClientQueue())
   const removeAbortListener = signal
     ? () => signal.removeEventListener("abort", onAbort)
     : undefined

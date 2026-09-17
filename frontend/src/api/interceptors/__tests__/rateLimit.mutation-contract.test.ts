@@ -224,6 +224,7 @@ describe("rateLimit mutation contracts", () => {
 
     expect(() => window.dispatchEvent(new Event("online"))).not.toThrow()
     expect(isRateLimited()).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it("keeps parser and timer arithmetic explicit at their boundaries", async () => {
@@ -485,6 +486,42 @@ describe("rateLimit mutation contracts", () => {
     releaseClientQueueSlot(activePeer)
     releaseClientQueueSlot(activeThird)
     releaseClientQueueSlot(second)
+  })
+
+  it("does not grant more queued requests than the remaining rolling-window capacity", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "2")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "4")
+    vi.setSystemTime(1_000_000)
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const firstActive = makeConfig()
+    const secondActive = makeConfig()
+    const firstQueued = makeConfig()
+    const secondQueued = makeConfig()
+
+    await waitForClientQueueSlot(firstActive)
+    vi.setSystemTime(1_030_000)
+    await waitForClientQueueSlot(secondActive)
+
+    const firstWait = waitForClientQueueSlot(firstQueued)
+    const secondWait = waitForClientQueueSlot(secondQueued)
+    await flushMicrotasks()
+
+    // At this point the first timestamp has expired, while the second one is
+    // still fresh. Releasing one concurrent slot leaves exactly one rolling-
+    // window slot, so only the first queued request may be granted.
+    vi.setSystemTime(1_060_001)
+    releaseClientQueueSlot(firstActive)
+    await firstWait
+    await flushMicrotasks()
+    expect(firstQueued.__clientRateLimitAcquired).toBe(true)
+    expect(secondQueued.__clientRateLimitAcquired).toBeUndefined()
+
+    releaseClientQueueSlot(firstQueued)
+    releaseClientQueueSlot(secondActive)
+    await vi.advanceTimersByTimeAsync(60_000)
+    await secondWait
+    expect(secondQueued.__clientRateLimitAcquired).toBe(true)
+    releaseClientQueueSlot(secondQueued)
   })
 
   it("rejects an aborted queued waiter and removes its listener after grant cleanup", async () => {
