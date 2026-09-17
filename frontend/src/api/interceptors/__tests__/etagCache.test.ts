@@ -653,6 +653,31 @@ describe("etagCache — handleEtagResponse", () => {
     signSpy.mockRestore()
   })
 
+  it("discards an in-flight payload when logout advances the session epoch", async () => {
+    const realSign = crypto.subtle.sign.bind(crypto.subtle)
+    const signSpy = vi
+      .spyOn(crypto.subtle, "sign")
+      .mockImplementation(async (...args: Parameters<typeof realSign>) => {
+        clearCachesOnLogout()
+        return realSign(...args)
+      })
+
+    try {
+      const response = makeResponse(
+        200,
+        { etag: '"logout-epoch-race"', "content-type": "application/json" },
+        { private: true }
+      )
+
+      await handleEtagResponse(response, "logout:epoch-race")
+
+      expect(etagCache.get("logout:epoch-race")).toBeUndefined()
+      expect(responseCache.get("logout:epoch-race")).toBeUndefined()
+    } finally {
+      signSpy.mockRestore()
+    }
+  })
+
   it("advances a fresh session epoch so an in-flight HMAC is discarded", async () => {
     vi.resetModules()
     const mod = await import("../etagCache")
@@ -821,6 +846,24 @@ describe("etagCache — debounced flush + visibilitychange", () => {
     const calls = setItemSpy.mock.calls.filter(([k]) => k.startsWith("ue:etag-cache"))
     expect(calls.length).toBe(1)
     expect(calls[0]![1]).toContain("flush:b")
+  })
+
+  it("persists deletion of an existing ETag after the debounce window", () => {
+    vi.useFakeTimers()
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
+
+    etagCache.set("flush:delete", '"tag"')
+    vi.advanceTimersByTime(30_000)
+    setItemSpy.mockClear()
+
+    etagCache.delete("flush:delete")
+    expect(vi.getTimerCount()).toBe(1)
+
+    vi.advanceTimersByTime(30_000)
+
+    const calls = setItemSpy.mock.calls.filter(([key]) => key.startsWith("ue:etag-cache"))
+    expect(calls).toHaveLength(1)
+    expect(calls[0]![1]).not.toContain("flush:delete")
   })
 
   it("visibilitychange to hidden flushes immediately (no timer wait)", () => {

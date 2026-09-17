@@ -211,6 +211,51 @@ describe("api/client — response interceptor: 401 skip-unauthorized", () => {
   })
 })
 
+describe("api/client — idempotency cleanup after failed responses", () => {
+  it("releases a key after an adapter error so a later retry is not suppressed", async () => {
+    const { default: api } = await loadClient()
+    const idempotencyKey = "survivor:error-cleanup"
+    let calls = 0
+
+    api.defaults.adapter = async (config): Promise<AxiosResponse> => {
+      calls += 1
+      if (calls === 1) {
+        throw Object.assign(new Error("upstream unavailable"), {
+          config,
+          response: {
+            status: 503,
+            statusText: "Service Unavailable",
+            headers: new AxiosHeaders(),
+            data: { detail: "retry" },
+            config,
+          },
+        })
+      }
+      return {
+        data: { retried: true },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        config,
+        request: {},
+      } as AxiosResponse
+    }
+
+    const requestConfig = {
+      headers: AxiosHeaders.from({ "Idempotency-Key": idempotencyKey }),
+    } as never
+
+    await expect(api.post("/events", { title: "retry" }, requestConfig)).rejects.toMatchObject({
+      response: { status: 503 },
+    })
+    await expect(api.post("/events", { title: "retry" }, requestConfig)).resolves.toMatchObject({
+      status: 200,
+      data: { retried: true },
+    })
+    expect(calls).toBe(2)
+  })
+})
+
 describe("api/client — defensive response cleanup", () => {
   it("invalidates a cached ETag after a failed response", async () => {
     const { default: api } = await loadClient()

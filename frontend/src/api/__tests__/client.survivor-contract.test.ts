@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
 import type { AxiosRequestConfig } from "axios"
 
-import { API_UNAUTHORIZED_EVENT, resolveRequestPath } from "@/api/client"
+import { API_UNAUTHORIZED_EVENT, resetEtagCache, resolveRequestPath } from "@/api/client"
+import { etagCache, responseCache } from "@/api/interceptors/etagCache"
 
 const requestPath = (config: AxiosRequestConfig) => resolveRequestPath(config)
 
@@ -33,5 +34,16 @@ describe("api/client survivor contracts", () => {
         url: "api/v1//users",
       })
     ).toBe("/gateway/api/v1//users")
+  })
+
+  it("clears signed response payloads together with ETag metadata", () => {
+    const key = "survivor:reset-etag-cache"
+    etagCache.set(key, '"stale-etag"')
+    responseCache.set(key, { data: { private: true }, hmac: "digest", ts: Date.now() })
+
+    resetEtagCache()
+
+    expect(etagCache.get(key)).toBeUndefined()
+    expect(responseCache.get(key)).toBeUndefined()
   })
 })
