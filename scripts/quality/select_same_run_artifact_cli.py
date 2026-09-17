@@ -22,7 +22,7 @@ import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TypeIs, cast
+from typing import Any, NoReturn, TypeIs, cast
 
 _ARTIFACT_PAGE_SIZE = 100
 _MAX_ARTIFACTS = 10_000
@@ -57,6 +57,22 @@ class SameRunArtifactError(ValueError):
 
 class _CatalogChanged(RuntimeError):
     """Signals a concurrent catalog update that requires a bounded retry."""
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject redirects before urllib can issue a second request."""
+
+    def redirect_request(
+        self,
+        request: urllib.request.Request,
+        file_pointer: object,
+        code: int,
+        message: str,
+        headers: object,
+        new_url: str,
+    ) -> NoReturn:
+        del request, file_pointer, code, message, headers, new_url
+        raise SameRunArtifactError("GitHub REST redirects are not allowed")
 
 
 @dataclass(frozen=True)
@@ -110,6 +126,21 @@ class SelectionResult:
 
 
 RequestTransport = Callable[[Request, int], HttpResponse]
+
+
+def _open_url(
+    request: urllib.request.Request,
+    *,
+    context: ssl.SSLContext,
+    timeout: float,
+) -> Any:
+    """Open one request with explicit TLS and no redirect following."""
+
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=context),
+        _NoRedirectHandler(),
+    )
+    return opener.open(request, timeout=timeout)
 
 
 def _is_int(value: object) -> TypeIs[int]:
@@ -192,13 +223,10 @@ def _default_request(request: Request, maximum_bytes: int) -> HttpResponse:
             headers=dict(request.headers),
         )
         context = ssl.create_default_context()
-        # The URL has a fixed HTTPS origin and the path was fullmatched above;
-        # the narrowly scoped suppressions document this audited false positive.
-        with urllib.request.urlopen(  # noqa: S310  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-            http_request,
-            context=context,
-            timeout=timeout,
-        ) as response:
+        # The URL has a fixed HTTPS origin and the path was fullmatched above.
+        # The explicit handler rejects redirects before urllib can forward the
+        # Authorization header or consume a response from another origin.
+        with _open_url(http_request, context=context, timeout=timeout) as response:
             status = response.status
             if not _is_int(status):
                 raise SameRunArtifactError("GitHub REST response has an invalid status")
