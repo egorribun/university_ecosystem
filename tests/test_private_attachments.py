@@ -140,6 +140,7 @@ def test_private_attachment_helpers_fail_closed_for_invalid_paths() -> None:
         private_attachment_storage_key("chat", "x", "../file.txt")
     for resource_id, filename in (
         ("../x", "file.txt"),
+        (".", "file.txt"),
         ("x", "../file.txt"),
         ("x", ""),
         ("x", "a/b"),

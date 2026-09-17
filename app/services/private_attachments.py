@@ -38,7 +38,7 @@ def _safe_filename(filename: str) -> str | None:
 
 def _safe_resource_id(resource_id: object) -> str:
     value = str(resource_id).strip()
-    if not _RESOURCE_ID_RE.fullmatch(value) or value in {".", ".."}:
+    if not _RESOURCE_ID_RE.fullmatch(value):
         raise ValueError("Invalid attachment resource id")
     return value
 

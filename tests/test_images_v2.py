@@ -307,6 +307,64 @@ def test_optimize_image_pillow_resizes_when_only_width_exceeds_bound():
         assert resized.size == (5, 2)
 
 
+def test_optimize_image_pillow_keeps_inclusive_height_bound():
+    """An image exactly at the height bound must not enter the resize path."""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    image = PILImage.new("RGB", (4, 5), color="purple")
+    source = BytesIO()
+    image.save(source, format="PNG")
+
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        with patch.object(
+            img_mod,
+            "_resolve_resample_filter",
+            side_effect=AssertionError("inclusive height bound must not resize"),
+        ):
+            optimized, mime = img_mod.optimize_image(
+                source.getvalue(), max_width=5, max_height=5
+            )
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
+
+    assert mime == "image/webp"
+    with PILImage.open(BytesIO(optimized)) as bounded:
+        assert bounded.size == (4, 5)
+
+
+def test_optimize_image_pillow_keeps_inclusive_width_bound():
+    """An image exactly at the width bound must not enter the resize path."""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    image = PILImage.new("RGB", (5, 4), color="purple")
+    source = BytesIO()
+    image.save(source, format="PNG")
+
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        with patch.object(
+            img_mod,
+            "_resolve_resample_filter",
+            side_effect=AssertionError("inclusive width bound must not resize"),
+        ):
+            optimized, mime = img_mod.optimize_image(
+                source.getvalue(), max_width=5, max_height=5
+            )
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
+
+    assert mime == "image/webp"
+    with PILImage.open(BytesIO(optimized)) as bounded:
+        assert bounded.size == (5, 4)
+
+
 def test_optimize_image_vips_failure_fallback():
     """Test fallback to Pillow if VIPS optimization raises an exception."""
     from io import BytesIO
@@ -356,6 +414,26 @@ def test_optimize_image_passes_default_pixel_budget_to_vips():
 def test_optimize_image_rejects_out_of_range_pixel_budget(pixel_budget):
     with pytest.raises(ValueError, match="Image pixel budget must be between"):
         img_mod.optimize_image(b"not-an-image-payload", max_pixels=pixel_budget)
+
+
+def test_optimize_image_accepts_configured_pixel_budget_upper_bound():
+    """The configured pixel budget is an inclusive safety boundary."""
+    mock_vips_opt = MagicMock(return_value=(b"optimized", "image/webp"))
+    with (
+        patch("app.utils.images.VIPS_AVAILABLE", True),
+        patch("app.utils.images.optimize_image_vips", mock_vips_opt),
+    ):
+        optimized, mime = img_mod.optimize_image(
+            b"not-an-image-payload",
+            max_pixels=img_mod.MAX_CONFIGURED_IMAGE_PIXELS,
+        )
+
+    assert optimized == b"optimized"
+    assert mime == "image/webp"
+    assert (
+        mock_vips_opt.call_args.kwargs["max_pixels"]
+        == img_mod.MAX_CONFIGURED_IMAGE_PIXELS
+    )
 
 
 def test_optimize_image_does_not_swallow_vips_pixel_limit_error():
