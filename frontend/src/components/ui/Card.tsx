@@ -1,30 +1,44 @@
 import { memo, type ComponentPropsWithoutRef, type ElementType } from "react"
-import { cva, type VariantProps } from "class-variance-authority"
+import { cva } from "class-variance-authority"
 import { cn } from "@/utils/cn"
 
-const cardVariants = cva(
-  "relative flex flex-col rounded-xl border border-border-subtle bg-(--bg-surface) text-text-primary shadow-surface transition-premium",
-  {
-    variants: {
-      padding: {
-        none: "p-0",
-        sm: "p-3",
-        md: "p-4",
-        lg: "p-6",
-      },
-      hoverable: {
-        true: "hover:-translate-y-1.5 hover:scale-hover-lift hover:shadow-premium-lift focus-ring-premium motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:transition-shadow",
-        false: "",
-      },
-    },
-    defaultVariants: {
-      padding: "md",
-      hoverable: false,
-    },
-  }
-)
+type CardVariantProps = {
+  padding?: "none" | "sm" | "md" | "lg" | null
+  hoverable?: boolean | null
+}
 
-type CardOwnProps = VariantProps<typeof cardVariants> & {
+type CardVariantFn = (props?: CardVariantProps) => string
+
+let cardVariantsCache: CardVariantFn | null = null
+
+function cardVariants(props?: CardVariantProps): string {
+  if (cardVariantsCache === null) {
+    cardVariantsCache = cva(
+      "relative flex flex-col rounded-xl border border-border-subtle bg-(--bg-surface) text-text-primary shadow-surface transition-premium",
+      {
+        variants: {
+          padding: {
+            none: "p-0",
+            sm: "p-3",
+            md: "p-4",
+            lg: "p-6",
+          },
+          hoverable: {
+            true: "hover:-translate-y-1.5 hover:scale-hover-lift hover:shadow-premium-lift focus-ring-premium motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:transition-shadow",
+            false: "",
+          },
+        },
+        defaultVariants: {
+          padding: "md",
+          hoverable: false,
+        },
+      }
+    ) as CardVariantFn
+  }
+  return cardVariantsCache(props)
+}
+
+type CardOwnProps = CardVariantProps & {
   as?: ElementType
 }
 

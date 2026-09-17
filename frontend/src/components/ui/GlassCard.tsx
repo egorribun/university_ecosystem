@@ -1,40 +1,55 @@
 import type { HTMLAttributes } from "react"
-import { cva, type VariantProps } from "class-variance-authority"
+import { cva } from "class-variance-authority"
 import { cn } from "@/utils/cn"
 
-const glassCardVariants = cva(
-  "glass-noise relative overflow-hidden rounded-xl border border-glass-border shadow-glass transition-all duration-premium",
-  {
-    variants: {
-      intensity: {
-        low: "bg-(--glass-bg-low) dark:bg-(--glass-bg-low-dark) backdrop-blur-md",
-        medium: "bg-glass backdrop-blur-xl",
-        high: "bg-(--glass-bg-high) backdrop-blur-2xl",
-        elevated: "bg-glass-elevated backdrop-blur-2xl shadow-premium",
-      },
-      interactive: {
-        true: "card-hover-lift hover:bg-glass-tint1 cursor-pointer",
-        false: "",
-      },
-      radius: {
-        none: "rounded-none",
-        sm: "rounded-sm",
-        md: "rounded-md",
-        lg: "rounded-lg",
-        xl: "rounded-xl",
-        "2xl": "rounded-2xl",
-        "3xl": "rounded-3xl",
-      },
-    },
-    defaultVariants: {
-      intensity: "medium",
-      radius: "xl",
-      interactive: false,
-    },
-  }
-)
+type GlassCardVariantProps = {
+  intensity?: "low" | "medium" | "high" | "elevated" | null
+  interactive?: boolean | null
+  radius?: "none" | "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | null
+}
 
-type GlassCardProps = VariantProps<typeof glassCardVariants> & HTMLAttributes<HTMLDivElement>
+type GlassCardVariantFn = (props?: GlassCardVariantProps) => string
+
+let glassCardVariantsCache: GlassCardVariantFn | null = null
+
+function glassCardVariants(props?: GlassCardVariantProps): string {
+  if (glassCardVariantsCache === null) {
+    glassCardVariantsCache = cva(
+      "glass-noise relative overflow-hidden rounded-xl border border-glass-border shadow-glass transition-all duration-premium",
+      {
+        variants: {
+          intensity: {
+            low: "bg-(--glass-bg-low) dark:bg-(--glass-bg-low-dark) backdrop-blur-md",
+            medium: "bg-glass backdrop-blur-xl",
+            high: "bg-(--glass-bg-high) backdrop-blur-2xl",
+            elevated: "bg-glass-elevated backdrop-blur-2xl shadow-premium",
+          },
+          interactive: {
+            true: "card-hover-lift hover:bg-glass-tint1 cursor-pointer",
+            false: "",
+          },
+          radius: {
+            none: "rounded-none",
+            sm: "rounded-sm",
+            md: "rounded-md",
+            lg: "rounded-lg",
+            xl: "rounded-xl",
+            "2xl": "rounded-2xl",
+            "3xl": "rounded-3xl",
+          },
+        },
+        defaultVariants: {
+          intensity: "medium",
+          radius: "xl",
+          interactive: false,
+        },
+      }
+    ) as GlassCardVariantFn
+  }
+  return glassCardVariantsCache(props)
+}
+
+type GlassCardProps = GlassCardVariantProps & HTMLAttributes<HTMLDivElement>
 
 export function GlassCard({
   intensity,
