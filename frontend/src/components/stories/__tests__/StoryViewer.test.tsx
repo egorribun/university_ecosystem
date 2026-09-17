@@ -17,6 +17,8 @@ const translationMocks = vi.hoisted(() => ({
 const focusTrapMocks = vi.hoisted(() => ({
   active: [] as boolean[],
   initialFocus: undefined as (() => unknown) | undefined,
+  invokeInitialFocusDuringRender: false,
+  initialFocusResults: [] as unknown[],
 }))
 const swipeMocks = vi.hoisted(() => ({
   onPointerDown: vi.fn(),
@@ -36,6 +38,9 @@ vi.mock("@/hooks/useFocusTrap", () => ({
   default: ({ active, initialFocus }: { active: boolean; initialFocus?: () => unknown }) => {
     focusTrapMocks.active.push(active)
     focusTrapMocks.initialFocus = initialFocus
+    if (focusTrapMocks.invokeInitialFocusDuringRender) {
+      focusTrapMocks.initialFocusResults.push(initialFocus?.())
+    }
     return { current: null }
   },
 }))
@@ -79,6 +84,8 @@ beforeEach(() => {
   translationMocks.progressOptions.length = 0
   focusTrapMocks.active.length = 0
   focusTrapMocks.initialFocus = undefined
+  focusTrapMocks.invokeInitialFocusDuringRender = false
+  focusTrapMocks.initialFocusResults.length = 0
   document.body.style.overflow = ""
 })
 
@@ -155,6 +162,14 @@ describe("StoryViewer", () => {
     expect(mediaQueryMocks.queries).toContain("(prefers-reduced-motion: reduce)")
     expect(focusTrapMocks.active.at(-1)).toBe(true)
     expect(focusTrapMocks.initialFocus?.()).toBe(screen.getByLabelText("Close"))
+  })
+
+  it("keeps initial focus resolution safe before the close button mounts", async () => {
+    focusTrapMocks.invokeInitialFocusDuringRender = true
+
+    await renderViewer()
+
+    expect(focusTrapMocks.initialFocusResults).toEqual([undefined])
   })
 
   it("renders the active story", async () => {

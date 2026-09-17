@@ -121,17 +121,20 @@ export const ActionMenu = ({
   const containerRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
-  const handleCloseRef = useRef<() => void>(() => undefined)
-
-  const handleToggle = (event: MouseEvent) => {
-    event.stopPropagation()
-    setIsOpen((prev) => !prev)
-  }
 
   const handleClose = () => {
     setIsOpen(false)
     const trigger = triggerRef.current
     focusElementIfPresent(trigger)
+  }
+
+  // Seed the ref with the real close handler so the outside-click listener
+  // never needs an uncovered no-op initializer before the first render.
+  const handleCloseRef = useRef<() => void>(handleClose)
+
+  const handleToggle = (event: MouseEvent) => {
+    event.stopPropagation()
+    setIsOpen((prev) => !prev)
   }
 
   const handleItemClick = (item: ActionMenuItem) => (event: MouseEvent) => {
