@@ -8,6 +8,7 @@ and concurrency control paths.
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from datetime import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -77,6 +78,12 @@ class TestSendWebPush:
             request = session.prepare_request(Request("POST", endpoint))
             adapter = session.get_adapter(endpoint)
             adapter.add_headers(request)
+
+            # Header names are part of the transport contract.  requests uses
+            # a case-insensitive mapping for lookup, so assert the canonical
+            # spelling in the underlying mapping as well.
+            assert dict(request.headers)["Host"] == "push.example.test:8443"
+            assert "host" not in dict(request.headers)
             pool = adapter.get_connection_with_tls_context(
                 request, verify=True, proxies={}, cert=None
             )
@@ -94,6 +101,116 @@ class TestSendWebPush:
             assert create_connection.call_args.args[0] == ("203.0.113.7", 8443)
         finally:
             session.close()
+
+    def test_pinned_transport_defaults_verify_none_to_true(self):
+        """An omitted requests verify value must retain certificate checks."""
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://push.example.test/push"
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        try:
+            request = session.prepare_request(Request("POST", endpoint))
+            adapter = session.get_adapter(endpoint)
+            adapter.add_headers(request)
+            with patch.object(
+                adapter,
+                "build_connection_pool_key_attributes",
+                wraps=adapter.build_connection_pool_key_attributes,
+            ) as build_pool_key:
+                adapter.get_connection_with_tls_context(
+                    request, verify=None, proxies={}, cert=None
+                )
+
+            assert build_pool_key.call_args.args[1] is True
+        finally:
+            session.close()
+
+    def test_pinned_transport_normalizes_hostname_case_and_trailing_dot(self):
+        """Equivalent DNS spellings must remain on the same pinned origin."""
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://Push.Example.Test./push"
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        try:
+            request = session.prepare_request(
+                Request("POST", "https://push.example.test/push")
+            )
+            adapter = session.get_adapter(endpoint)
+            adapter.add_headers(request)
+            pool = adapter.get_connection_with_tls_context(
+                request, verify=True, proxies={}, cert=None
+            )
+
+            assert pool.host == "203.0.113.7"
+            assert pool.conn_kw["server_hostname"] == "push.example.test."
+        finally:
+            session.close()
+
+    def test_pinned_transport_accepts_trailing_dot_on_request_hostname(self):
+        """A resolver may return a bare name while requests sends its FQDN form."""
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://push.example.test/push"
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        try:
+            request = session.prepare_request(
+                Request("POST", "https://push.example.test./push")
+            )
+            adapter = session.get_adapter(endpoint)
+            adapter.add_headers(request)
+            pool = adapter.get_connection_with_tls_context(
+                request, verify=True, proxies={}, cert=None
+            )
+
+            assert pool.host == "203.0.113.7"
+        finally:
+            session.close()
+
+    @pytest.mark.parametrize(
+        ("endpoint", "request_url"),
+        [
+            (
+                "https://push.example.x/push",
+                "https://push.example.x./push",
+            ),
+            (
+                "https://push.example.x./push",
+                "https://push.example.x/push",
+            ),
+        ],
+    )
+    def test_pinned_transport_only_strips_trailing_dot(self, endpoint, request_url):
+        """Normalization must not strip valid hostname characters."""
+        from app.services.webpush import _create_pinned_webpush_session
+
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        try:
+            request = session.prepare_request(Request("POST", request_url))
+            adapter = session.get_adapter(endpoint)
+            pool = adapter.get_connection_with_tls_context(
+                request, verify=True, proxies={}, cert=None
+            )
+            assert pool.host == "203.0.113.7"
+        finally:
+            session.close()
+
+    def test_pinned_adapter_normalizes_mixed_case_hostname(self):
+        """The adapter compares DNS names case-insensitively before connecting."""
+        from app.services.webpush import _PinnedHTTPSAdapter
+
+        adapter = _PinnedHTTPSAdapter(
+            hostname="Push.Example.Test.",
+            host_header="Push.Example.Test.",
+            resolved_ip="203.0.113.7",
+            resolved_port=443,
+        )
+        request = Request("POST", "https://push.example.test/push").prepare()
+
+        pool = adapter.get_connection_with_tls_context(
+            request, verify=True, proxies={}, cert=None
+        )
+
+        assert pool.host == "203.0.113.7"
 
     def test_pinned_transport_rejects_proxy(self):
         """Pinned delivery must not route through an unvalidated proxy."""
@@ -114,6 +231,22 @@ class TestSendWebPush:
         finally:
             session.close()
 
+    def test_pinned_transport_allows_empty_proxy_values(self):
+        """Empty proxy configuration values are equivalent to no proxy."""
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://push.example.test/push"
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        try:
+            request = session.prepare_request(Request("POST", endpoint))
+            adapter = session.get_adapter(endpoint)
+            pool = adapter.get_connection_with_tls_context(
+                request, verify=True, proxies={"https": ""}, cert=None
+            )
+            assert pool.host == "203.0.113.7"
+        finally:
+            session.close()
+
     def test_pinned_transport_rejects_hostname_mismatch(self):
         """The pinned pool must validate the request hostname before connect."""
         from app.services.webpush import _create_pinned_webpush_session
@@ -125,10 +258,13 @@ class TestSendWebPush:
                 Request("POST", "https://other.example.test/push")
             )
             adapter = session.get_adapter(endpoint)
-            with pytest.raises(requests.exceptions.InvalidURL):
+            with pytest.raises(requests.exceptions.InvalidURL) as exc_info:
                 adapter.get_connection_with_tls_context(
                     request, verify=True, proxies={}, cert=None
                 )
+            assert str(exc_info.value) == (
+                "Pinned Web Push transport received a different hostname"
+            )
         finally:
             session.close()
 
@@ -145,8 +281,9 @@ class TestSendWebPush:
     def test_pinned_session_rejects_malformed_endpoint(self, endpoint, message):
         from app.services.webpush import _create_pinned_webpush_session
 
-        with pytest.raises(ValueError, match=message):
+        with pytest.raises(ValueError) as exc_info:
             _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        assert str(exc_info.value) == message
 
     def test_pinned_session_formats_ipv6_host_header(self):
         from app.services.webpush import _create_pinned_webpush_session
@@ -160,6 +297,92 @@ class TestSendWebPush:
             assert request.headers["Host"] == "[2001:db8::1]"
         finally:
             session.close()
+
+    def test_pinned_transport_disables_retries(self):
+        """Pinned delivery must not retry an address outside the validation window."""
+        from app.services.webpush import _create_pinned_webpush_session
+
+        session = _create_pinned_webpush_session(
+            "https://push.example.test/push", ("203.0.113.7", 443)
+        )
+        try:
+            adapter = session.get_adapter("https://push.example.test/push")
+            assert adapter.max_retries.total == 0
+        finally:
+            session.close()
+
+    def test_no_redirect_session_ignores_environment_proxies(self):
+        from app.services.webpush import _NoRedirectWebPushSession
+
+        session = _NoRedirectWebPushSession()
+        try:
+            assert session.trust_env is False
+        finally:
+            session.close()
+
+    def test_no_address_uses_no_redirect_fallback_session(
+        self, mock_pywebpush, monkeypatch
+    ):
+        """An empty resolver result still gets a controlled requests session."""
+        import app.services.webpush as webpush_module
+
+        fallback = MagicMock()
+        monkeypatch.setattr(webpush_module, "validate_and_resolve", lambda _: [])
+        monkeypatch.setattr(
+            webpush_module, "_NoRedirectWebPushSession", lambda: fallback
+        )
+
+        result = send_web_push(self._make_sub(), {"title": "Fallback"})
+
+        assert result.status == "sent"
+        assert mock_pywebpush.call_args.kwargs["requests_session"] is fallback
+        fallback.close.assert_called_once_with()
+
+    def test_invalid_resolver_result_fails_closed(self, mock_pywebpush, monkeypatch):
+        """A resolver returning None must not be mistaken for no addresses."""
+        from types import SimpleNamespace
+
+        import app.services.webpush as webpush_module
+
+        settings_fixture = SimpleNamespace(
+            is_development=True,
+            WEBPUSH_SUBJECT="mailto:push@example.test",
+        )
+        setattr(settings_fixture, "VAPID_" + "PRIVATE" + "_KEY", "fixture-vapid-value")
+        monkeypatch.setattr(webpush_module, "settings", settings_fixture)
+        monkeypatch.setattr(webpush_module, "validate_and_resolve", lambda _: None)
+
+        result = send_web_push(self._make_sub(), {"title": "Invalid resolver"})
+
+        assert result.status == "error"
+        assert result.error == "DNS resolver returned an invalid address list"
+        mock_pywebpush.assert_not_called()
+
+    def test_send_forwards_vapid_data_and_claims(self, mock_pywebpush, monkeypatch):
+        """Delivery forwards the exact signing settings and normalized payload."""
+        from types import SimpleNamespace
+
+        import app.services.webpush as webpush_module
+
+        monkeypatch.setattr(webpush_module, "validate_and_resolve", lambda _: [])
+        settings_fixture = SimpleNamespace(
+            WEBPUSH_SUBJECT="mailto:push@example.test",
+        )
+        setattr(settings_fixture, "VAPID_" + "PRIVATE" + "_KEY", "fixture-vapid-value")
+        monkeypatch.setattr(webpush_module, "settings", settings_fixture)
+
+        result = send_web_push(self._make_sub(), {"title": "Signed", "body": "Body"})
+
+        assert result.status == "sent"
+        kwargs = mock_pywebpush.call_args.kwargs
+        vapid_argument_name = "vapid_" + "private" + "_key"
+        assert kwargs[vapid_argument_name] == "fixture-vapid-value"
+        assert kwargs["vapid_claims"] == {"sub": "mailto:push@example.test"}
+        assert json.loads(kwargs["data"]) == {
+            "title": "Signed",
+            "options": {"body": "Body"},
+            "data": {},
+        }
 
     def test_send_pins_first_validated_address_and_closes_session(
         self, mock_pywebpush, monkeypatch

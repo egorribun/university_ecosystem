@@ -116,8 +116,8 @@ class _PinnedHTTPSAdapter(HTTPAdapter):
         request_hostname = parsed.hostname
         if (
             not request_hostname
-            or request_hostname.rstrip(".").lower()
-            != self._hostname.rstrip(".").lower()
+            or request_hostname.removesuffix(".").lower()
+            != self._hostname.removesuffix(".").lower()
         ):
             raise requests.exceptions.InvalidURL(
                 "Pinned Web Push transport received a different hostname"
@@ -762,6 +762,11 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             # resolve.  Preserve that explicit local-only compatibility path,
             # while every resolvable endpoint uses the pinned transport below.
             resolved_addresses = []
+        if not isinstance(resolved_addresses, list):
+            # The resolver contract is a list.  Treat an invalid result as a
+            # failure rather than accidentally taking the unvalidated
+            # no-address fallback path.
+            raise ValueError("DNS resolver returned an invalid address list")
         if resolved_addresses:
             session = _create_pinned_webpush_session(endpoint, resolved_addresses[0])
         else:

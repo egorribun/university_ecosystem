@@ -412,8 +412,11 @@ def test_optimize_image_normalizes_pillow_decompression_bomb_error():
             "open",
             side_effect=PILImage.DecompressionBombError("decoder bomb"),
         ):
-            with pytest.raises(img_mod.ImagePixelLimitError, match="pixel budget"):
+            with pytest.raises(
+                img_mod.ImagePixelLimitError, match="pixel budget"
+            ) as exc_info:
                 img_mod.optimize_image(b"decoder-bomb", max_pixels=3)
+            assert exc_info.value.max_pixels == 3
     finally:
         img_mod.VIPS_AVAILABLE = old_vips
 
@@ -519,6 +522,31 @@ def test_optimize_image_accepts_exact_pixel_budget():
         img_mod.VIPS_AVAILABLE = old_vips
 
     assert mime == "image/webp"
+
+
+def test_optimize_image_accepts_the_minimum_inclusive_pixel_budget():
+    """The smallest configured budget remains inclusive for a 1x1 image."""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    image = PILImage.new("RGB", (1, 1), color="green")
+    source = BytesIO()
+    image.save(source, format="PNG")
+
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        _optimized, mime = img_mod.optimize_image(source.getvalue(), max_pixels=1)
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
+
+    assert mime == "image/webp"
+
+
+def test_validate_image_dimensions_accepts_one_pixel_budget():
+    """A 1x1 raster exactly consumes, but does not exceed, budget one."""
+    img_mod.validate_image_dimensions(1, 1, max_pixels=1)
 
 
 @pytest.mark.parametrize(
