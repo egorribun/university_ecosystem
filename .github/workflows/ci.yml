@@ -4373,12 +4373,61 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Select retry-safe same-run coverage producer artifacts
+        id: select_coverage_producers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -m scripts.quality.select_coverage_producer_artifacts \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --consumer-run-attempt "${{ github.run_attempt }}" \
+            --commit-sha "${{ github.sha }}" \
+            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --workflow-path ".github/workflows/ci.yml"
+
       - name: Download Python shard coverage data
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: backend-coverage-data-All-Python 3.14-shard-*-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).backend_shard_0.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/python/shards
-          merge-multiple: true
+          merge-multiple: false
+
+      - name: Download Python shard coverage data (shard 1)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).backend_shard_1.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/coverage/python/shards
+          merge-multiple: false
+
+      - name: Download Python shard coverage data (shard 2)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).backend_shard_2.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/coverage/python/shards
+          merge-multiple: false
+
+      - name: Download Python shard coverage data (shard 3)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).backend_shard_3.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/coverage/python/shards
+          merge-multiple: false
 
       - name: Set up uv for coverage aggregation
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -4389,62 +4438,102 @@ jobs:
       - name: Download Frontend coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: frontend-coverage-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).frontend.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: frontend/coverage
+          merge-multiple: false
 
       - name: Download Go gateway coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-gateway-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_gateway.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/gateway
+          merge-multiple: false
 
       - name: Download Go ws-hub coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-ws-hub-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_ws_hub.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/ws-hub
+          merge-multiple: false
 
       - name: Download Go file-processor coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-file-processor-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_file_processor.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/file-processor
+          merge-multiple: false
 
       - name: Download Go uni-cli coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-cmd-uni-cli-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_uni_cli.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/shared-inputs/uni-cli
+          merge-multiple: false
 
       - name: Download Go SPIFFE coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-pkg-spiffe-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_spiffe.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/shared-inputs/spiffe
+          merge-multiple: false
 
       - name: Download Go shared logging coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-pkg-logging-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_logging.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/shared-inputs/logging
+          merge-multiple: false
 
       - name: Download Go SpiceDB coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-pkg-spicedb-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_spicedb.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/shared-inputs/spicedb
+          merge-multiple: false
 
       - name: Download Rust coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: rust-coverage-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).rust_coverage.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/rust
+          merge-multiple: false
 
       - name: Download Rust Codecov diagnostics
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: rust-codecov-reports-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).rust_codecov.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/rust
+          merge-multiple: false
 
       - name: Verify backend shard provenance
         shell: bash
@@ -4456,21 +4545,36 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           WORKFLOW_EVENT: ${{ github.event_name }}
+          SELECTIONS_JSON: ${{ steps.select_coverage_producers.outputs.selections }}
         run: |
           set -euo pipefail
+          selection_value() {
+            python3 - "$SELECTIONS_JSON" "$1" "$2" <<'PY'
+          import json
+          import sys
+
+          selections = json.loads(sys.argv[1])
+          key, field = sys.argv[2], sys.argv[3]
+          value = selections.get(key, {}).get(field)
+          if not isinstance(value, (str, int)) or isinstance(value, bool):
+              raise SystemExit(f"missing or invalid coverage selection: {key}.{field}")
+          print(value)
+          PY
+          }
           test "$(find artifacts/coverage/python/shards -name '.coverage.shard-*' -type f | wc -l)" -eq 4
           test "$(find artifacts/coverage/python/shards -name 'pytest-shard-*.json' -type f | wc -l)" -eq 4
           test "$(find artifacts/coverage/python/shards -name 'coverage-provenance-shard-*.json' -type f | wc -l)" -eq 4
           test "$(find artifacts/coverage/python/shards -type f | wc -l)" -eq 12
           for shard in 0 1 2 3; do
             metadata="artifacts/coverage/python/shards/coverage-provenance-shard-${shard}.json"
-            artifact="backend-coverage-data-All-Python 3.14-shard-${shard}-attempt-${RUN_ATTEMPT}"
+            artifact="$(selection_value "backend_shard_${shard}" artifact_name)"
+            producer_attempt="$(selection_value "backend_shard_${shard}" producer_attempt)"
             python scripts/quality/coverage_provenance.py verify \
               --repository-root "$GITHUB_WORKSPACE" \
               --expected-sha "$EXPECTED_SHA" \
               --expected-repository "$WORKFLOW_REPOSITORY" \
               --expected-run-id "$RUN_ID" \
-              --expected-run-attempt "$RUN_ATTEMPT" \
+              --expected-run-attempt "$producer_attempt" \
               --expected-workflow-ref "$WORKFLOW_REF" \
               --expected-workflow-sha "$WORKFLOW_SHA" \
               --expected-event "$WORKFLOW_EVENT" \
@@ -4504,8 +4608,22 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           WORKFLOW_EVENT: ${{ github.event_name }}
+          SELECTIONS_JSON: ${{ steps.select_coverage_producers.outputs.selections }}
         run: |
           set -euo pipefail
+          selection_value() {
+            python3 - "$SELECTIONS_JSON" "$1" "$2" <<'PY'
+          import json
+          import sys
+
+          selections = json.loads(sys.argv[1])
+          key, field = sys.argv[2], sys.argv[3]
+          value = selections.get(key, {}).get(field)
+          if not isinstance(value, (str, int)) or isinstance(value, bool):
+              raise SystemExit(f"missing or invalid coverage selection: {key}.{field}")
+          print(value)
+          PY
+          }
           test "$(find artifacts/coverage/python/shards -name '.coverage.shard-*' -type f | wc -l)" -eq 4
           while IFS= read -r report; do test -s "$report"; done < <(
             find artifacts/coverage/python/shards -name '.coverage.shard-*' -type f -print
@@ -4522,13 +4640,17 @@ jobs:
           verify_producer() {
             local metadata="$1"
             local job="$2"
-            local artifact="$3"
+            local key="$3"
+            local artifact
+            local producer_attempt
+            artifact="$(selection_value "$key" artifact_name)"
+            producer_attempt="$(selection_value "$key" producer_attempt)"
             python scripts/quality/coverage_provenance.py verify \
               --repository-root "$GITHUB_WORKSPACE" \
               --expected-sha "$EXPECTED_SHA" \
               --expected-repository "$WORKFLOW_REPOSITORY" \
               --expected-run-id "$RUN_ID" \
-              --expected-run-attempt "$RUN_ATTEMPT" \
+              --expected-run-attempt "$producer_attempt" \
               --expected-workflow-ref "$WORKFLOW_REF" \
               --expected-workflow-sha "$WORKFLOW_SHA" \
               --expected-event "$WORKFLOW_EVENT" \
@@ -4536,15 +4658,15 @@ jobs:
               --expected-artifact "$artifact" \
               --metadata "$metadata"
           }
-          verify_producer frontend/coverage/coverage-provenance.json unit-tests "frontend-coverage-attempt-$RUN_ATTEMPT"
-          verify_producer artifacts/coverage/go/gateway/coverage-provenance.json test "go-coverage-services-gateway-attempt-$RUN_ATTEMPT"
-          verify_producer artifacts/coverage/go/ws-hub/coverage-provenance.json test "go-coverage-services-ws-hub-attempt-$RUN_ATTEMPT"
-          verify_producer artifacts/coverage/go/file-processor/coverage-provenance.json test "go-coverage-services-file-processor-attempt-$RUN_ATTEMPT"
-          verify_producer artifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json test "go-coverage-services-cmd-uni-cli-attempt-$RUN_ATTEMPT"
-          verify_producer artifacts/coverage/go/shared-inputs/logging/coverage-provenance.json test "go-coverage-services-pkg-logging-attempt-$RUN_ATTEMPT"
-          verify_producer artifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json test "go-coverage-services-pkg-spiffe-attempt-$RUN_ATTEMPT"
-          verify_producer artifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json test "go-coverage-services-pkg-spicedb-attempt-$RUN_ATTEMPT"
-          verify_producer artifacts/coverage/rust/coverage-provenance.json rust-tests "rust-coverage-attempt-$RUN_ATTEMPT"
+          verify_producer frontend/coverage/coverage-provenance.json unit-tests frontend
+          verify_producer artifacts/coverage/go/gateway/coverage-provenance.json test go_gateway
+          verify_producer artifacts/coverage/go/ws-hub/coverage-provenance.json test go_ws_hub
+          verify_producer artifacts/coverage/go/file-processor/coverage-provenance.json test go_file_processor
+          verify_producer artifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json test go_uni_cli
+          verify_producer artifacts/coverage/go/shared-inputs/logging/coverage-provenance.json test go_logging
+          verify_producer artifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json test go_spiffe
+          verify_producer artifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json test go_spicedb
+          verify_producer artifacts/coverage/rust/coverage-provenance.json rust-tests rust_coverage
 
       - name: Install coverage tooling
         run: uv sync --frozen
@@ -4642,6 +4764,69 @@ jobs:
             --tool-version quality-provenance=2.0.0 \
             --report "go-shared|go-coverprofile|artifacts/coverage/go/shared/coverage.out|artifacts/coverage/go/shared/coverage.out"
 
+      - name: Write API-bound coverage selection receipt
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+          SELECTIONS_JSON: ${{ steps.select_coverage_producers.outputs.selections }}
+        run: |
+          set -euo pipefail
+          selection_value() {
+            python3 - "$SELECTIONS_JSON" "$1" "$2" <<'PY'
+          import json
+          import sys
+
+          selections = json.loads(sys.argv[1])
+          key, field = sys.argv[2], sys.argv[3]
+          value = selections.get(key, {}).get(field)
+          if not isinstance(value, (str, int)) or isinstance(value, bool):
+              raise SystemExit(f"missing or invalid coverage selection: {key}.{field}")
+          print(value)
+          PY
+          }
+          frontend_attempt="$(selection_value frontend producer_attempt)"
+          frontend_id="$(selection_value frontend artifact_id)"
+          frontend_name="$(selection_value frontend artifact_name)"
+          frontend_digest="$(selection_value frontend artifact_digest)"
+          gateway_attempt="$(selection_value go_gateway producer_attempt)"
+          gateway_id="$(selection_value go_gateway artifact_id)"
+          gateway_name="$(selection_value go_gateway artifact_name)"
+          gateway_digest="$(selection_value go_gateway artifact_digest)"
+          ws_hub_attempt="$(selection_value go_ws_hub producer_attempt)"
+          ws_hub_id="$(selection_value go_ws_hub artifact_id)"
+          ws_hub_name="$(selection_value go_ws_hub artifact_name)"
+          ws_hub_digest="$(selection_value go_ws_hub artifact_digest)"
+          file_processor_attempt="$(selection_value go_file_processor producer_attempt)"
+          file_processor_id="$(selection_value go_file_processor artifact_id)"
+          file_processor_name="$(selection_value go_file_processor artifact_name)"
+          file_processor_digest="$(selection_value go_file_processor artifact_digest)"
+          rust_attempt="$(selection_value rust_coverage producer_attempt)"
+          rust_id="$(selection_value rust_coverage artifact_id)"
+          rust_name="$(selection_value rust_coverage artifact_name)"
+          rust_digest="$(selection_value rust_coverage artifact_digest)"
+          python3 scripts/quality/coverage_provenance.py write-api-receipt \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output artifacts/coverage/provenance/api-selection.json \
+            --expected-sha "$EXPECTED_SHA" \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job coverage-policy-gate \
+            --selection "frontend/coverage/coverage-provenance.json|unit-tests|$frontend_attempt|$frontend_id|$frontend_name|$frontend_digest" \
+            --selection "artifacts/coverage/go/gateway/coverage-provenance.json|test|$gateway_attempt|$gateway_id|$gateway_name|$gateway_digest" \
+            --selection "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|$ws_hub_attempt|$ws_hub_id|$ws_hub_name|$ws_hub_digest" \
+            --selection "artifacts/coverage/go/file-processor/coverage-provenance.json|test|$file_processor_attempt|$file_processor_id|$file_processor_name|$file_processor_digest" \
+            --selection "artifacts/coverage/rust/coverage-provenance.json|rust-tests|$rust_attempt|$rust_id|$rust_name|$rust_digest"
+
       - name: Merge canonical coverage provenance
         shell: bash
         env:
@@ -4652,8 +4837,27 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           WORKFLOW_EVENT: ${{ github.event_name }}
+          SELECTIONS_JSON: ${{ steps.select_coverage_producers.outputs.selections }}
         run: |
           set -euo pipefail
+          selection_value() {
+            python3 - "$SELECTIONS_JSON" "$1" "$2" <<'PY'
+          import json
+          import sys
+
+          selections = json.loads(sys.argv[1])
+          key, field = sys.argv[2], sys.argv[3]
+          value = selections.get(key, {}).get(field)
+          if not isinstance(value, (str, int)) or isinstance(value, bool):
+              raise SystemExit(f"missing or invalid coverage selection: {key}.{field}")
+          print(value)
+          PY
+          }
+          frontend_artifact="$(selection_value frontend artifact_name)"
+          gateway_artifact="$(selection_value go_gateway artifact_name)"
+          ws_hub_artifact="$(selection_value go_ws_hub artifact_name)"
+          file_processor_artifact="$(selection_value go_file_processor artifact_name)"
+          rust_artifact="$(selection_value rust_coverage artifact_name)"
           python scripts/quality/coverage_provenance.py merge \
             --repository-root "$GITHUB_WORKSPACE" \
             --contract quality/quality-contract.json \
@@ -4670,13 +4874,14 @@ jobs:
             --artifact "quality-evidence-${{ github.sha }}-attempt-${RUN_ATTEMPT}" \
             --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
             --tool-version quality-provenance=2.0.0 \
+            --retry-selection-receipt artifacts/coverage/provenance/api-selection.json \
             --producer-expectation "artifacts/coverage/provenance/python.json|coverage-policy-gate|python-coverage-aggregate" \
-            --producer-expectation "frontend/coverage/coverage-provenance.json|unit-tests|frontend-coverage-attempt-$RUN_ATTEMPT" \
-            --producer-expectation "artifacts/coverage/go/gateway/coverage-provenance.json|test|go-coverage-services-gateway-attempt-$RUN_ATTEMPT" \
-            --producer-expectation "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|go-coverage-services-ws-hub-attempt-$RUN_ATTEMPT" \
-            --producer-expectation "artifacts/coverage/go/file-processor/coverage-provenance.json|test|go-coverage-services-file-processor-attempt-$RUN_ATTEMPT" \
+            --producer-expectation "frontend/coverage/coverage-provenance.json|unit-tests|$frontend_artifact" \
+            --producer-expectation "artifacts/coverage/go/gateway/coverage-provenance.json|test|$gateway_artifact" \
+            --producer-expectation "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|$ws_hub_artifact" \
+            --producer-expectation "artifacts/coverage/go/file-processor/coverage-provenance.json|test|$file_processor_artifact" \
             --producer-expectation "artifacts/coverage/provenance/go-shared.json|coverage-policy-gate|go-shared-coverage-aggregate" \
-            --producer-expectation "artifacts/coverage/rust/coverage-provenance.json|rust-tests|rust-coverage-attempt-$RUN_ATTEMPT" \
+            --producer-expectation "artifacts/coverage/rust/coverage-provenance.json|rust-tests|$rust_artifact" \
             --metadata artifacts/coverage/provenance/python.json \
             --metadata frontend/coverage/coverage-provenance.json \
             --metadata artifacts/coverage/go/gateway/coverage-provenance.json \
@@ -4839,6 +5044,7 @@ jobs:
             artifacts/coverage/rust/rust-crypto/branch-llvm.json
             artifacts/coverage/provenance/python.json
             artifacts/coverage/provenance/go-shared.json
+            artifacts/coverage/provenance/api-selection.json
             artifacts/coverage/provenance/aggregate.json
             frontend/coverage/coverage-provenance.json
             artifacts/coverage/rust/coverage-provenance.json

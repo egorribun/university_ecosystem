@@ -3339,9 +3339,9 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
     python_download = next(
         step
         for step in download_steps
-        if "backend-coverage-data" in str(step.get("with", {}))
+        if "backend_shard_0.artifact_id" in str(step.get("with", {}))
     )
-    assert python_download["with"]["merge-multiple"] is True
+    assert python_download["with"]["merge-multiple"] is False
     assert "coverage combine" in policy_text
     assert "--python-xml coverage.xml" in policy_text
     assert (
@@ -6933,6 +6933,25 @@ def _assert_current_run_download(step: dict[str, object]) -> None:
     assert "repository" not in options
 
 
+def _assert_scoped_artifact_download(step: dict[str, object]) -> None:
+    """Require an aggregate download to use a validated server-issued ID."""
+
+    uses = str(step.get("uses", ""))
+    assert uses.startswith("actions/download-artifact@")
+    options = step.get("with", {})
+    assert isinstance(options, dict)
+    assert "artifact-ids" in options
+    assert "steps.select_coverage_producers.outputs.selections" in str(
+        options["artifact-ids"]
+    )
+    assert options.get("repository") == "${{ github.repository }}"
+    assert options.get("run-id") == "${{ github.run_id }}"
+    assert options.get("github-token") == "${{ github.token }}"
+    assert options.get("merge-multiple") is False
+    assert "name" not in options
+    assert "pattern" not in options
+
+
 def test_coverage_producers_publish_closed_v2_sidecars() -> None:
     ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     frontend = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
@@ -7035,33 +7054,24 @@ def test_coverage_aggregate_uses_scoped_current_run_artifacts_only() -> None:
     assert "rm -rf -- artifacts/coverage" not in {
         line.strip() for line in cleanup_run.splitlines()
     }
+    selector_step = _provenance_step(
+        job, "Select retry-safe same-run coverage producer artifacts"
+    )
+    assert selector_step["id"] == "select_coverage_producers"
+    assert "scripts.quality.select_coverage_producer_artifacts" in str(
+        selector_step["run"]
+    )
     for download in downloads:
-        _assert_current_run_download(download)
-
-    download_names = {
-        str(step.get("with", {}).get("name", ""))
-        for step in downloads
-        if isinstance(step.get("with"), dict)
-    }
-    expected_attempt_scoped = {
-        "go-coverage-services-gateway-attempt-${{ github.run_attempt }}",
-        "go-coverage-services-ws-hub-attempt-${{ github.run_attempt }}",
-        "go-coverage-services-file-processor-attempt-${{ github.run_attempt }}",
-        "go-coverage-services-cmd-uni-cli-attempt-${{ github.run_attempt }}",
-        "go-coverage-services-pkg-spiffe-attempt-${{ github.run_attempt }}",
-        "go-coverage-services-pkg-logging-attempt-${{ github.run_attempt }}",
-        "go-coverage-services-pkg-spicedb-attempt-${{ github.run_attempt }}",
-        "rust-coverage-attempt-${{ github.run_attempt }}",
-        "rust-codecov-reports-attempt-${{ github.run_attempt }}",
-    }
-    assert expected_attempt_scoped <= download_names
+        _assert_scoped_artifact_download(download)
 
     verify = _provenance_step(job, "Verify downloaded coverage artifacts")
     verify_run = str(verify["run"])
     assert "coverage_provenance.py verify" in verify_run
     assert '--expected-sha "$EXPECTED_SHA"' in verify_run
     assert '--expected-run-id "$RUN_ID"' in verify_run
-    assert '--expected-run-attempt "$RUN_ATTEMPT"' in verify_run
+    assert '--expected-run-attempt "$producer_attempt"' in verify_run
+    assert "SELECTIONS_JSON" in verify["env"]
+    assert "selection_value" in verify_run
     backend_verify = _provenance_step(job, "Verify backend shard provenance")
     assert (
         "test \"$(find artifacts/coverage/python/shards -name '.coverage.shard-*' -type f | wc -l)\" -eq 4"
@@ -7079,6 +7089,43 @@ def test_coverage_aggregate_uses_scoped_current_run_artifacts_only() -> None:
         "test \"$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)\" -eq 4"
         in verify_run
     )
+
+
+def test_coverage_api_selection_receipt_is_bound_before_canonical_merge() -> None:
+    """Keep retry-selected producer evidence bound to the aggregate merge."""
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["coverage-policy-gate"]
+    steps = job["steps"]
+
+    verify = _provenance_step(job, "Verify downloaded coverage artifacts")
+    receipt = _provenance_step(job, "Write API-bound coverage selection receipt")
+    merge = _provenance_step(job, "Merge canonical coverage provenance")
+    assert steps.index(verify) < steps.index(receipt) < steps.index(merge)
+
+    receipt_run = str(receipt["run"])
+    assert "coverage_provenance.py write-api-receipt" in receipt_run
+    assert "--output artifacts/coverage/provenance/api-selection.json" in receipt_run
+    assert receipt_run.count("--selection ") == 5
+    for expected_selection in (
+        "frontend/coverage/coverage-provenance.json|unit-tests|$frontend_attempt|$frontend_id|$frontend_name|$frontend_digest",
+        "artifacts/coverage/go/gateway/coverage-provenance.json|test|$gateway_attempt|$gateway_id|$gateway_name|$gateway_digest",
+        "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|$ws_hub_attempt|$ws_hub_id|$ws_hub_name|$ws_hub_digest",
+        "artifacts/coverage/go/file-processor/coverage-provenance.json|test|$file_processor_attempt|$file_processor_id|$file_processor_name|$file_processor_digest",
+        "artifacts/coverage/rust/coverage-provenance.json|rust-tests|$rust_attempt|$rust_id|$rust_name|$rust_digest",
+    ):
+        assert f'--selection "{expected_selection}"' in receipt_run
+
+    merge_run = str(merge["run"])
+    assert (
+        "--retry-selection-receipt artifacts/coverage/provenance/api-selection.json"
+        in merge_run
+    )
+
+    upload = _provenance_step(job, "Upload canonical quality evidence")
+    upload_paths = str(upload["with"]["path"])
+    assert "artifacts/coverage/provenance/api-selection.json" in upload_paths
+    assert steps.index(merge) < steps.index(upload)
 
 
 def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None:
@@ -7207,6 +7254,7 @@ def test_quality_evidence_bundle_is_hashed_after_validation_and_required() -> No
         "artifacts/coverage/quality-manifest.json",
         "artifacts/coverage/quality-manifest.json.sha256",
         "artifacts/coverage/provenance/aggregate.json",
+        "artifacts/coverage/provenance/api-selection.json",
     ):
         assert required in upload_paths
 
@@ -7752,13 +7800,15 @@ def test_backend_shards_publish_and_aggregate_current_attempt_lineage() -> None:
     ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     aggregate = ci["jobs"]["coverage-policy-gate"]
     download = _provenance_step(aggregate, "Download Python shard coverage data")
-    assert download["with"]["pattern"].endswith("-attempt-${{ github.run_attempt }}")
+    _assert_scoped_artifact_download(download)
     verify = _provenance_step(aggregate, "Verify backend shard provenance")
     verify_run = str(verify["run"])
     assert "for shard in 0 1 2 3" in verify_run
     assert "coverage_provenance.py verify" in verify_run
     assert "--expected-job unit-tests" in verify_run
     assert '--expected-artifact "$artifact"' in verify_run
+    assert '--expected-run-attempt "$producer_attempt"' in verify_run
+    assert "selection_value" in verify_run
     assert "coverage-provenance-shard-${shard}.json" in verify_run
     assert (
         "find artifacts/coverage/python/shards -name '.coverage.shard-*'" in verify_run

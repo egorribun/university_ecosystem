@@ -7977,3 +7977,70 @@ push, stage only reviewed source/tests/docs, and preserve those generated
 files exactly as supplied by the user. The next evidence boundary remains a
 fresh exact-SHA hosted matrix; historical CI results cannot certify this
 candidate.
+
+## 145. Retry-safe coverage aggregation and API-bound receipt (2026-09-17)
+
+The stale hosted rerun evidence exposed a deterministic CI contract defect:
+rerunning only `coverage-policy-gate` increments `github.run_attempt` without
+re-running successful producer jobs, so an exact-attempt artifact-name lookup
+could not find the already-valid producer reports. The failure was not a
+coverage regression. The previous run's gateway retry also demonstrated that
+blindly rerunning the aggregate job merely moves the failure to a missing
+producer artifact; no old run is treated as certification evidence.
+
+The candidate now contains a fail-closed, same-run REST selector and an
+API-bound receipt. The selector takes one complete bounded snapshot of the
+current workflow run, validates run id, PR head SHA/event/path/attempt,
+producer artifact IDs, names, sizes, expiry, workflow-run identity and
+server-issued SHA-256 digests, then selects the newest producer attempt not in
+the future for each fixed backend/frontend/Go/Rust slot. It rejects missing,
+ambiguous, foreign, expired, malformed or duplicate candidates and emits only
+compact JSON IDs through an atomic `GITHUB_OUTPUT` update. Each aggregate
+download uses the selected server-issued ID and the action's own digest check;
+no cross-run fallback or shell word-splitting is allowed.
+
+After download and sidecar verification, `write-api-receipt` records the
+consumer identity plus every selected producer's canonical metadata path,
+metadata SHA-256, complete report inventory (path/hash/size), producer job and
+attempt, artifact ID/name and artifact digest. Canonical merge accepts this
+receipt only for the selected producer subset and continues exact current-run
+verification for aggregate sidecars. It rechecks all hashes and producer
+identity, rejects duplicate/unknown/future selections and preserves backward
+compatibility with the prior v1 copied-evidence receipt. The receipt is
+uploaded with canonical quality evidence and is covered by workflow/catalog
+regression tests.
+
+The transient Go module-download failure path is also bounded and classified by
+`scripts/ci/go_mod_download.py`: only proven network/SumDB/HTTP 408/429/5xx
+failures retry with capped backoff; checksum/auth/version failures preserve the
+first error and fail immediately. All five raw Go module-download call sites
+use this helper. The helper change is committed as `47709f357` and remains
+local to the integration checkout until the combined candidate push.
+
+Local evidence for the pending combined candidate is green: selector and
+receipt tests (including negative identity, digest, path, duplicate and
+atomic-output cases), coverage provenance tests and workflow/catalog contracts
+pass (`81 passed, 1 skipped` for provenance/receipt plus `203 passed` for the
+workflow/catalog suite; the Windows directory-symlink fixture is the only
+environmental skip). The catalog validator reports `56 workflows, 185 jobs`;
+Ruff, strict mypy on both new scripts, `py_compile`, YAML/JSON parsing and
+`git diff --check` pass. The focused fail-closed workflow suite is `63/63`.
+The first isolated pre-commit run correctly caught a high-entropy test fixture
+literal and ruff formatting; the fixture is now constructed from a repeated
+character and the changed files are formatted. Re-run all hooks with the
+isolated cache before staging, and stage `.secrets.baseline` only if the hook
+actually changes it.
+
+The only intentionally dirty generated paths remain the paired user-owned
+frontend WASM/provenance files; they must not be staged, deleted or regenerated.
+The primary checkout's corresponding edits and untracked external audit remain
+untouched. Recompute `git rev-parse HEAD`, `git rev-list --count
+origin/egorribun..HEAD` and the exact staged path list, then create one small
+quality/CI commit (no wave identifier and no `Co-Authored-By`) and push
+non-force to `origin/egorribun`. A fresh exact-SHA matrix must reach terminal
+state before any completion claim. Preserve every first-failure log/artifact;
+rerun only a reproducibly transient terminal job. After a green matrix, still
+external release gates remain: current-SHA manifest/audit, live main ruleset,
+exact-six immutable image producer/attestations and digest Docker smoke,
+Kubernetes/TLS/ExternalSecrets/observability staging, CWV and real browser /
+device checks, chaos/restart/rollback and resulting-main verification.
