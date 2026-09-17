@@ -12,8 +12,6 @@ import { useSwipe } from "@/hooks/useSwipe"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import useMediaQuery from "@/hooks/useMediaQuery"
 
-const isBrowser = typeof document !== "undefined"
-
 interface StoryViewerProps {
   stories: StoryItem[]
   activeStoryIndex: number | null
@@ -50,7 +48,7 @@ export const StoryViewer = ({
   })
 
   useEffect(() => {
-    if (!isBrowser || activeStoryIndex === null) return undefined
+    if (activeStoryIndex === null) return undefined
     const { overflow } = document.body.style
     document.body.style.overflow = "hidden"
     return () => {

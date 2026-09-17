@@ -1,45 +1,75 @@
 import { fireEvent, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, it, expect, vi } from "vitest"
+import { beforeEach, describe, it, expect, vi } from "vitest"
+import { renderToString } from "react-dom/server"
 import { StoryViewer } from "../StoryViewer"
 import type { StoryItem } from "@/types/Story"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const motionMocks = vi.hoisted(() => ({ prefersReducedMotion: false }))
+const mediaQueryMocks = vi.hoisted(() => ({ queries: [] as string[] }))
+const translationMocks = vi.hoisted(() => ({
+  namespaces: [] as string[],
+  keys: [] as string[],
+}))
+const focusTrapMocks = vi.hoisted(() => ({
+  active: [] as boolean[],
+  initialFocus: undefined as (() => unknown) | undefined,
+}))
+const swipeMocks = vi.hoisted(() => ({
+  onPointerDown: vi.fn(),
+  onPointerUp: vi.fn(),
+  onPointerCancel: vi.fn(),
+  onPointerLeave: vi.fn(),
+}))
 
 vi.mock("@/hooks/useMediaQuery", () => ({
-  default: () => motionMocks.prefersReducedMotion,
+  default: (query: string) => {
+    mediaQueryMocks.queries.push(query)
+    return motionMocks.prefersReducedMotion
+  },
 }))
 
 vi.mock("@/hooks/useFocusTrap", () => ({
-  default: ({ initialFocus }: { initialFocus?: () => unknown }) => {
-    initialFocus?.()
+  default: ({ active, initialFocus }: { active: boolean; initialFocus?: () => unknown }) => {
+    focusTrapMocks.active.push(active)
+    focusTrapMocks.initialFocus = initialFocus
     return { current: null }
   },
 }))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: any) => {
-      if (key === "stories.viewer.aria.dialog") return `Story Viewer: ${options?.title}`
-      if (key === "stories.viewer.aria.close") return "Close"
-      if (key === "stories.viewer.aria.next") return "Next"
-      if (key === "stories.viewer.aria.prev") return "Previous"
-      return key
-    },
-  }),
+  useTranslation: (namespace: string) => {
+    translationMocks.namespaces.push(namespace)
+    return {
+      t: (key: string, options?: any) => {
+        translationMocks.keys.push(key)
+        if (key === "stories.viewer.aria.dialog") return `Story Viewer: ${options?.title}`
+        if (key === "stories.viewer.aria.close") return "Close"
+        if (key === "stories.viewer.aria.next") return "Next"
+        if (key === "stories.viewer.aria.prev") return "Previous"
+        return key
+      },
+    }
+  },
   I18nextProvider: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }))
 
 // Mock useSwipe
 vi.mock("@/hooks/useSwipe", () => ({
-  useSwipe: () => ({
-    onPointerDown: vi.fn(),
-    onPointerUp: vi.fn(),
-    onPointerCancel: vi.fn(),
-    onPointerLeave: vi.fn(),
-  }),
+  useSwipe: () => swipeMocks,
 }))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  motionMocks.prefersReducedMotion = false
+  mediaQueryMocks.queries.length = 0
+  translationMocks.namespaces.length = 0
+  translationMocks.keys.length = 0
+  focusTrapMocks.active.length = 0
+  focusTrapMocks.initialFocus = undefined
+  document.body.style.overflow = ""
+})
 
 const mockStories: StoryItem[] = [
   {
@@ -93,6 +123,22 @@ describe("StoryViewer", () => {
   it("renders nothing for an out-of-range active story index", async () => {
     const { container } = await renderViewer({ activeStoryIndex: 99 })
     expect(container.querySelector("[role='dialog']")).toBeNull()
+  })
+
+  it("is inert during server rendering and uses the browser integration contracts", async () => {
+    const serverDocument = globalThis.document
+    vi.stubGlobal("document", undefined)
+    try {
+      expect(renderToString(<StoryViewer {...defaultProps} />)).toBe("")
+    } finally {
+      vi.stubGlobal("document", serverDocument)
+    }
+
+    await renderViewer()
+    expect(translationMocks.namespaces).toContain("dashboard")
+    expect(mediaQueryMocks.queries).toContain("(prefers-reduced-motion: reduce)")
+    expect(focusTrapMocks.active.at(-1)).toBe(true)
+    expect(focusTrapMocks.initialFocus?.()).toBe(screen.getByLabelText("Close"))
   })
 
   it("renders the active story", async () => {
@@ -180,6 +226,28 @@ describe("StoryViewer", () => {
     )
   })
 
+  it("normalizes CTA URLs and preserves the next-story preload contract", async () => {
+    await renderViewer({
+      stories: [
+        { ...mockStories[0]!, cta_url: "  /events  " },
+        {
+          ...mockStories[1]!,
+          cover_url: "https://cdn.example.com/next.jpg",
+          cta_url: "HTTPS://example.com/next",
+        },
+      ],
+    })
+
+    expect(screen.getByRole("link", { name: "stories.viewer.openLink" })).toHaveAttribute(
+      "href",
+      "/events"
+    )
+    expect(document.querySelector('link[rel="preload"]')).toHaveAttribute(
+      "href",
+      "https://cdn.example.com/next.jpg"
+    )
+  })
+
   it("uses an aria-label when the story has no title and ignores blank CTA urls", async () => {
     await renderViewer({
       stories: [
@@ -207,6 +275,27 @@ describe("StoryViewer", () => {
     expect(bars.map((bar) => bar.getAttribute("aria-valuenow"))).toEqual(["100", "42", "0"])
   })
 
+  it("updates progress when the active story or progress changes", async () => {
+    const { rerender } = await renderViewer({ progress: 10 })
+    expect(screen.getAllByRole("progressbar")[0]).toHaveAttribute("aria-valuenow", "10")
+
+    rerender(
+      <StoryViewer
+        {...defaultProps}
+        activeStoryIndex={1}
+        progress={65}
+        stories={[
+          mockStories[0]!,
+          mockStories[1]!,
+          { ...mockStories[1]!, id: "3", title: "Story 3" },
+        ]}
+      />
+    )
+    expect(
+      screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow"))
+    ).toEqual(["100", "65", "0"])
+  })
+
   it("pauses and resumes around pointer interactions and closes on backdrop", async () => {
     const onClose = vi.fn()
     const onPause = vi.fn()
@@ -221,6 +310,10 @@ describe("StoryViewer", () => {
     fireEvent.pointerLeave(stage)
     expect(onPause).toHaveBeenCalledTimes(1)
     expect(onResume).toHaveBeenCalledTimes(3)
+    expect(swipeMocks.onPointerDown).toHaveBeenCalledTimes(1)
+    expect(swipeMocks.onPointerUp).toHaveBeenCalledTimes(1)
+    expect(swipeMocks.onPointerCancel).toHaveBeenCalledTimes(1)
+    expect(swipeMocks.onPointerLeave).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole("presentation"))
     expect(onClose).toHaveBeenCalledTimes(1)
@@ -231,6 +324,54 @@ describe("StoryViewer", () => {
     await renderViewer({ progress: 35 })
     const bar = screen.getAllByRole("progressbar")[0]!
     expect(bar.firstElementChild?.className).toContain("motion-reduce:transition-none")
+    expect(bar).toHaveAttribute("aria-live", "polite")
+  })
+
+  it("locks body scrolling and restores the previous value when closed", async () => {
+    document.body.style.overflow = "scroll"
+    const { rerender } = await renderViewer()
+    expect(document.body.style.overflow).toBe("hidden")
+
+    rerender(<StoryViewer {...defaultProps} activeStoryIndex={null} />)
+    expect(document.body.style.overflow).toBe("scroll")
+  })
+
+  it("renders the visual and accessibility variants for image and text stories", async () => {
+    const { rerender } = await renderViewer({
+      stories: [{ ...mockStories[0]!, cover_url: "https://cdn.example.com/story.jpg" }],
+    })
+    const imageDialog = screen.getByRole("dialog", { name: "Story 1" })
+    const imageStage = imageDialog.querySelector('[class*="aspect-9/16"]')!
+    expect(imageStage).toHaveClass("bg-page", "rounded-none")
+    const imageOverlay = imageStage.querySelector('[class*="absolute bottom-0"]')!
+    expect(imageOverlay).toHaveStyle({
+      backgroundImage:
+        "linear-gradient(180deg, transparent 0%, var(--primary-subtle-bg) 55%, var(--bg-page) 100%)",
+      backdropFilter: "blur(var(--blur-glass))",
+    })
+
+    rerender(
+      <StoryViewer
+        {...defaultProps}
+        stories={[{ ...mockStories[0]!, title: "Fallback", short_text: "", cover_url: null }]}
+      />
+    )
+    const textDialog = screen.getByRole("dialog", { name: "Fallback" })
+    const textStage = textDialog.querySelector('[class*="aspect-9/16"]')!
+    expect(textStage).toHaveClass("bg-brand", "rounded-md")
+    const textOverlay = textStage.querySelector('[class*="absolute bottom-0"]')!
+    expect(textOverlay).toHaveStyle({ backgroundImage: "var(--grad-story-fade)" })
+    expect(screen.getByText("FA")).toBeInTheDocument()
+  })
+
+  it("keeps the labelled-by fallback and overlay branches explicit", async () => {
+    await renderViewer({
+      stories: [{ ...mockStories[0]!, title: "   ", short_text: "Only body", cta_url: null }],
+    })
+    const dialog = screen.getByRole("dialog", { name: "Story Viewer:" })
+    expect(dialog).not.toHaveAttribute("aria-labelledby")
+    expect(dialog).toHaveAttribute("aria-label", "Story Viewer:    ")
+    expect(screen.getByText("Only body")).toBeInTheDocument()
   })
 
   it("omits the copy overlay when a story has no title, text, or CTA", async () => {
