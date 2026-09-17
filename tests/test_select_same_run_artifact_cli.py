@@ -342,6 +342,18 @@ def test_candidate_rejects_boolean_workflow_run_identity() -> None:
         selector._candidate_from_artifact(artifact, arguments)
 
 
+def test_candidate_rejects_artifact_ids_that_cannot_round_trip_through_json_number() -> (
+    None
+):
+    artifact = _artifact(
+        artifact_id=selector._MAX_JSON_SAFE_INTEGER + 1,
+        producer_attempt=1,
+    )
+
+    with pytest.raises(selector.SameRunArtifactError, match="artifact id"):
+        selector._candidate_from_artifact(artifact, _arguments())
+
+
 def test_default_rest_transport_is_single_host_bounded_and_redacts_network_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

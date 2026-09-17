@@ -32,6 +32,10 @@ _MAX_OUTPUT_BYTES = 1024 * 1024
 _MAX_TEXT_LENGTH = 512
 _MAX_TOKEN_LENGTH = 4096
 _MAX_DECIMAL_DIGITS = 20
+# Coverage downloads receive the selected id through a GitHub expression
+# (`fromJSON(...)`), whose number representation is an IEEE-754 double.  Do
+# not emit an id that could be rounded before the download action receives it.
+_MAX_JSON_SAFE_INTEGER = 9_007_199_254_740_991
 _MAX_REQUESTS_PER_SELECTION = 1 + _MAX_CATALOG_SNAPSHOT_ATTEMPTS * (
     (_MAX_ARTIFACTS // _ARTIFACT_PAGE_SIZE) + 1
 )
@@ -395,7 +399,11 @@ def _candidate_from_artifact(
     if match is None:
         raise SameRunArtifactError("artifact has foreign or malformed provenance")
     artifact_id = _required(artifact, "id")
-    if not _is_int(artifact_id) or artifact_id <= 0:
+    if (
+        not _is_int(artifact_id)
+        or artifact_id <= 0
+        or artifact_id > _MAX_JSON_SAFE_INTEGER
+    ):
         raise SameRunArtifactError("artifact id is invalid")
     size_in_bytes = _required(artifact, "size_in_bytes")
     if not _is_int(size_in_bytes) or size_in_bytes <= 0:
