@@ -18,7 +18,6 @@ import {
   useState,
   useRef,
   useEffect,
-  useCallback,
   useId,
   type ReactNode,
   type MouseEvent,
@@ -75,6 +74,30 @@ export interface ActionMenuProps {
   menuDataAttributes?: DataAttributes
 }
 
+const ENABLED_MENU_ITEM_SELECTOR = "button:not(:disabled)"
+
+/** Return the currently enabled menu controls, tolerating an unmounted menu. */
+export function getEnabledMenuItems(menu: HTMLDivElement | null): HTMLButtonElement[] {
+  return menu
+    ? Array.from(menu.querySelectorAll<HTMLButtonElement>(ENABLED_MENU_ITEM_SELECTOR))
+    : []
+}
+
+/** Focus an element only while it is mounted and focusable. */
+export function focusElementIfPresent(element: HTMLElement | null): void {
+  if (element !== null) element.focus()
+}
+
+/** Focus the first enabled control, or a supplied fallback when the menu is unavailable. */
+export function focusFirstEnabledMenuItem(
+  menu: HTMLDivElement | null,
+  fallback?: HTMLElement
+): void {
+  const firstItem = getEnabledMenuItems(menu)[0]
+  const focusTarget = firstItem ?? fallback ?? null
+  focusElementIfPresent(focusTarget)
+}
+
 export const ActionMenu = ({
   items,
   trigger,
@@ -90,7 +113,7 @@ export const ActionMenu = ({
   menuDataAttributes,
 }: ActionMenuProps) => {
   const { t } = useTranslation("navigation")
-  const resolvedAriaLabel = ariaLabel ?? t("navigation:aria.openMenu")
+  const resolvedAriaLabel = ariaLabel ?? t("aria.openMenu")
   const generatedId = useId()
   const resolvedMenuId = menuId ?? (triggerId ? `${triggerId}-menu` : `action-menu-${generatedId}`)
   const resolvedTriggerId = triggerId ?? (menuId ? `${menuId}-button` : `${resolvedMenuId}-button`)
@@ -98,69 +121,64 @@ export const ActionMenu = ({
   const containerRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const handleCloseRef = useRef<() => void>(() => undefined)
 
-  const handleToggle = useCallback((event: MouseEvent) => {
+  const handleToggle = (event: MouseEvent) => {
     event.stopPropagation()
     setIsOpen((prev) => !prev)
-  }, [])
+  }
 
-  const handleClose = useCallback(() => {
+  const handleClose = () => {
     setIsOpen(false)
-    triggerRef.current?.focus()
-  }, [])
+    const trigger = triggerRef.current
+    focusElementIfPresent(trigger)
+  }
 
-  const handleItemClick = useCallback(
-    (item: ActionMenuItem) => (event: MouseEvent) => {
+  const handleItemClick = (item: ActionMenuItem) => (event: MouseEvent) => {
+    event.stopPropagation()
+    item.onClick()
+    handleClose()
+  }
+
+  handleCloseRef.current = handleClose
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement | HTMLDivElement>) => {
+    if (event.key === "Escape" && isOpen) {
+      event.preventDefault()
       event.stopPropagation()
-      item.onClick()
       handleClose()
-    },
-    [handleClose]
-  )
+    } else if (event.key === "ArrowDown" && isOpen) {
+      event.preventDefault()
+      focusFirstEnabledMenuItem(menuRef.current, event.currentTarget)
+    }
+  }
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLButtonElement | HTMLDivElement>) => {
-      if (event.key === "Escape" && isOpen) {
-        event.preventDefault()
-        event.stopPropagation()
-        handleClose()
-      } else if (event.key === "ArrowDown" && isOpen) {
-        event.preventDefault()
-        const firstItem = menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")
-        firstItem?.focus()
-      }
-    },
-    [handleClose, isOpen]
-  )
+  const handleItemKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    const menuItems = getEnabledMenuItems(menuRef.current)
 
-  const handleItemKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLButtonElement>) => {
-      const menuItems =
-        menuRef.current!.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")
+    if (menuItems.length === 0) return
 
-      // `index` from the source items array is not safe here because disabled
-      // items are excluded from `menuItems`. Navigate relative to the actual
-      // enabled control that received the event instead.
-      const currentIndex = Array.from(menuItems).indexOf(event.currentTarget)
+    // `index` from the source items array is not safe here because disabled
+    // items are excluded from `menuItems`. Navigate relative to the actual
+    // enabled control that received the event instead.
+    const currentIndex = Array.from(menuItems).indexOf(event.currentTarget)
 
-      if (event.key === "ArrowDown") {
-        event.preventDefault()
-        event.stopPropagation()
-        const nextIndex = (currentIndex + 1) % menuItems.length
-        menuItems[nextIndex]?.focus()
-      } else if (event.key === "ArrowUp") {
-        event.preventDefault()
-        event.stopPropagation()
-        const prevIndex = (currentIndex - 1 + menuItems.length) % menuItems.length
-        menuItems[prevIndex]?.focus()
-      } else if (event.key === "Escape") {
-        event.preventDefault()
-        event.stopPropagation()
-        handleClose()
-      }
-    },
-    [handleClose]
-  )
+    if (event.key === "ArrowDown") {
+      event.preventDefault()
+      const nextIndex = (currentIndex + 1) % menuItems.length
+      // `menuItems.length > 0` and modulo arithmetic guarantee a mounted item.
+      menuItems[nextIndex]!.focus()
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault()
+      const prevIndex = (currentIndex - 1 + menuItems.length) % menuItems.length
+      // `menuItems.length > 0` and modulo arithmetic guarantee a mounted item.
+      menuItems[prevIndex]!.focus()
+    } else if (event.key === "Escape") {
+      event.preventDefault()
+      handleClose()
+    }
+  }
 
   // Click outside handler
   useEffect(() => {
@@ -168,19 +186,18 @@ export const ActionMenu = ({
 
     const handleClickOutside = (event: globalThis.MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        handleClose()
+        handleCloseRef.current()
       }
     }
 
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [isOpen, handleClose])
+  }, [isOpen])
 
   useEffect(() => {
     if (!isOpen || !autoFocusFirstItem) return
 
-    const firstItem = menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")
-    firstItem?.focus()
+    focusFirstEnabledMenuItem(menuRef.current)
   }, [autoFocusFirstItem, isOpen])
 
   useEffect(() => {

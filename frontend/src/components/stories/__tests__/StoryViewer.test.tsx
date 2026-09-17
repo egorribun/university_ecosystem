@@ -269,10 +269,7 @@ describe("StoryViewer", () => {
     const target = () => <div data-testid="events-target">Events target</div>
     const { rerender } = await renderWithRouter({
       ui: () => (
-        <StoryViewer
-          {...defaultProps}
-          stories={[{ ...mockStories[0]!, cta_url: "/events" }]}
-        />
+        <StoryViewer {...defaultProps} stories={[{ ...mockStories[0]!, cta_url: "/events" }]} />
       ),
       extraRoutes: [{ path: "/events", Component: target }],
     })
@@ -393,15 +390,12 @@ describe("StoryViewer", () => {
     expect(screen.getAllByRole("progressbar")[0]).toHaveAttribute("aria-valuenow", "10")
 
     document.body.style.overflow = "scroll"
-    view.rerender(
-      <StoryViewer {...defaultProps} activeStoryIndex={1} progress={65} />
-    )
+    view.rerender(<StoryViewer {...defaultProps} activeStoryIndex={1} progress={65} />)
 
     expect(document.body.style.overflow).toBe("hidden")
-    expect(screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow"))).toEqual([
-      "100",
-      "65",
-    ])
+    expect(
+      screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow"))
+    ).toEqual(["100", "65"])
   })
 
   it("uses current interaction callbacks after props change", async () => {
@@ -412,13 +406,7 @@ describe("StoryViewer", () => {
     const view = renderViewerDirect({ onPause: firstPause, onResume: firstResume })
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
 
-    view.rerender(
-      <StoryViewer
-        {...defaultProps}
-        onPause={secondPause}
-        onResume={secondResume}
-      />
-    )
+    view.rerender(<StoryViewer {...defaultProps} onPause={secondPause} onResume={secondResume} />)
     const stage = screen.getByRole("dialog").querySelector('[class*="aspect-9/16"]')!
     fireEvent.pointerDown(stage)
     fireEvent.pointerCancel(stage)
@@ -490,10 +478,7 @@ describe("StoryViewer", () => {
     expect(screen.queryByText("Story 1", { selector: "p.text-base" })).not.toBeInTheDocument()
 
     rerender(
-      <StoryViewer
-        {...defaultProps}
-        stories={[{ ...mockStories[0]!, short_text: "Details" }]}
-      />
+      <StoryViewer {...defaultProps} stories={[{ ...mockStories[0]!, short_text: "Details" }]} />
     )
     expect(screen.getByText("Details", { selector: "p.text-base" })).toBeInTheDocument()
   })

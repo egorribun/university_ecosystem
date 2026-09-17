@@ -31,9 +31,7 @@ const subscribeToClientReady = Function.prototype.bind.bind(noopSubscription) as
 const getClientReadySnapshot = Boolean.bind(null, true) as () => boolean
 const getServerReadySnapshot = Boolean.bind(null, false) as () => boolean
 
-const linkPropsFor = (
-  url: string
-): ButtonProps<typeof Link> | ButtonProps<"a"> | null => {
+const linkPropsFor = (url: string): ButtonProps<typeof Link> | ButtonProps<"a"> | null => {
   const trimmed = url.trim()
   if (!trimmed) return null
   if (trimmed.startsWith("/")) {
@@ -152,9 +150,7 @@ export const StoryViewer = ({
 
   if (!isClient || !viewerStory) return null
 
-  const overlayBackdropFilter = viewerStory.cover_url
-    ? "blur(var(--blur-glass))"
-    : undefined
+  const overlayBackdropFilter = viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined
 
   return createPortal(
     // Wave 54: css-scale-in entrance animation via @starting-style (DESIGN-54-04)
