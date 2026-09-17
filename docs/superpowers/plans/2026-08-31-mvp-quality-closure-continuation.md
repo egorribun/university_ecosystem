@@ -8044,3 +8044,36 @@ external release gates remain: current-SHA manifest/audit, live main ruleset,
 exact-six immutable image producer/attestations and digest Docker smoke,
 Kubernetes/TLS/ExternalSecrets/observability staging, CWV and real browser /
 device checks, chaos/restart/rollback and resulting-main verification.
+
+## 146. Redirect-resistant selector checkpoint (2026-09-17)
+
+The API-bound coverage selector was independently reviewed for a remaining
+trust-boundary risk: the standard `urllib` opener follows HTTP redirects by
+default. Even though the selector constructs a fixed `https://api.github.com`
+URL and validates the path, following a server-controlled redirect could send
+the bearer token or untrusted metadata request to another origin. The selector
+now creates a dedicated opener with an explicit TLS `HTTPSHandler` and a
+fail-closed `_NoRedirectHandler`; every redirect is rejected before a second
+request is issued. Bounded timeout/deadline, response-size limits, TLS context
+creation and redacted error normalization are unchanged.
+
+The focused transport contract was updated to inject the opener rather than
+the global `urlopen`, assert the dedicated HTTPS/TLS handlers, and exercise a
+cross-origin `Location` rejection. Stable local evidence is `98 passed, 4
+skipped` for `tests/test_select_same_run_artifact_cli.py`; the four skips are
+Windows symlink/hard-link privilege limitations already present in the suite,
+not test policy exceptions. Ruff, `py_compile`, `git diff --check`, isolated
+pre-commit (Ruff, detect-secrets, hardcoded-secret, Python-2 syntax, Semgrep)
+and strict mypy for the production selector pass. The implementation is
+committed as `6586b6025be4b2bf989c22c4fed152f12c1b8fab` with no
+`Co-Authored-By` trailer.
+
+The complete candidate range currently consists of three commits ahead of
+`origin/egorribun`: `47709f357` (bounded Go module-download retry), `cc2a1f64f`
+(retry-safe coverage selection/receipt), and `6586b6025` (redirect-resistant
+REST transport). Recompute the range after this documentation checkpoint and
+before pushing; stage no generated WASM/provenance or external-audit files.
+The release remains `EVIDENCE-BLOCKED` until a fresh exact-head hosted matrix
+reaches terminal green and the external manifest, immutable-image,
+digest-Docker, staging, browser/device, chaos/rollback and resulting-main
+gates are independently evidenced.
