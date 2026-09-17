@@ -7929,8 +7929,9 @@ historical badge or local run from being mistaken for a release attestation.
 
 The integration checkout is `C:\Temp\university-merge-20260915`, branch
 `codex/integrate-main-20260915`, at `81a8e47fcb671d68c7e4f2fb96a6a2c84333cde9`.
-It is currently eight commits ahead of `origin/egorribun`; recompute the count
-and the exact range immediately before the non-force push. The current range
+The documentation checkpoint below is subsequent to that implementation SHA;
+recompute the current HEAD, ahead count and exact range immediately before the
+non-force push. The current range
 adds the API/cache/rate-limit, UI primitive/table, Select, session-crypto and
 StoryViewer contracts already described above, plus `dc90c338d` (StoryViewer
 lifecycle survivors), `64ef188e5` (empty Select navigation), and
