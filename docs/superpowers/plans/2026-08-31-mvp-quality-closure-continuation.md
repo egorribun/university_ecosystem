@@ -8085,3 +8085,32 @@ The release remains `EVIDENCE-BLOCKED` until a fresh exact-head hosted matrix
 reaches terminal green and the external manifest, immutable-image,
 digest-Docker, staging, browser/device, chaos/rollback and resulting-main
 gates are independently evidenced.
+
+## 147. Fresh Semgrep evidence and stale suppression-ledger cleanup (2026-09-17)
+
+The first exact-head hosted matrix after the selector hardening was run as
+`35270489829` for pushed head `e52b202dda07530e317cc1db8dbb6fcb59806998`.
+At first-failure extraction, 37 jobs were successful, 18 were still running,
+and the only completed failure was `Security Audit / Semgrep SAST`
+(`105369248069`). Semgrep itself scanned 2,713 targets with 640 rules and
+reported 14 blocking findings, all matching the reviewed policy entries except
+for an old selector entry. The blocking validator error was solely:
+`select_same_run_artifact_cli.py:197` was present in the suppression policy but
+was no longer observed in SARIF after the redirect-resistant transport change.
+
+The stale line-bound entry was removed in `74547d8aa`. No Semgrep rule,
+severity, exclusion or quarantine was changed, and no finding was suppressed:
+the ledger now contains only findings observed by the current scan. The
+validator's exact observed-versus-allowed key contract therefore remains
+fail-closed. Focused Semgrep-validator, immutable-policy and security-workflow
+tests pass (`48 passed`), JSON parsing, Ruff, and `git diff --check` pass, and
+isolated pre-commit including Semgrep passes. The historical run remains
+non-green evidence; a new pushed SHA and fresh matrix are required.
+
+The docs-only record is intentionally separate from the security fix. Before
+the next push, recompute the exact commit range and staged paths, preserve the
+three user-owned generated WASM/provenance files as unstaged, and verify that
+the fresh run's first failure is not conflated with this historical Semgrep
+ledger issue. Do not claim release readiness until the new exact-SHA matrix is
+terminal green and all external image, Docker, staging, browser/device,
+chaos/rollback, manifest and resulting-main gates are independently evidenced.
