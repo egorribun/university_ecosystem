@@ -185,14 +185,14 @@ const Select = ({
       case "Home": {
         if (isOpen) {
           event.preventDefault()
-          setActiveIndex(0)
+          setActiveIndex(options.length > 0 ? 0 : undefined)
         }
         break
       }
       case "End": {
         if (isOpen) {
           event.preventDefault()
-          setActiveIndex(options.length - 1)
+          setActiveIndex(options.length > 0 ? options.length - 1 : undefined)
         }
         break
       }

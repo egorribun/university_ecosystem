@@ -638,6 +638,8 @@ describe("Select — empty options", () => {
 
     fireEvent.keyDown(btn, { key: "ArrowDown" })
     fireEvent.keyDown(btn, { key: "ArrowUp" })
+    fireEvent.keyDown(btn, { key: "End" })
+    fireEvent.keyDown(btn, { key: "Home" })
     expect(btn).not.toHaveAttribute("aria-activedescendant")
     expect(getElementById).not.toHaveBeenCalled()
   })
