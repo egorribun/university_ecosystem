@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { Select, type SelectOption } from "../Select"
 
+const translationNamespaceSpy = vi.hoisted(() => vi.fn())
+const motionPropsSpy = vi.hoisted(() => vi.fn())
+
 /**
  * Select — accessible WAI-ARIA listbox (pure props-driven, no API / context).
  *
@@ -22,6 +25,7 @@ vi.mock("framer-motion", () => {
       children,
       ...props
     }: React.ComponentProps<"div"> & { [key: string]: unknown }) => {
+      motionPropsSpy(props)
       const filtered = { ...props }
       for (const prop of [
         "initial",
@@ -57,9 +61,12 @@ vi.mock("framer-motion", () => {
 })
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => (key === "select.placeholder" ? "Select an option" : key),
-  }),
+  useTranslation: (namespace: string) => {
+    translationNamespaceSpy(namespace)
+    return {
+      t: (key: string) => (key === "select.placeholder" ? "Select an option" : key),
+    }
+  },
 }))
 
 const OPTIONS: SelectOption[] = [
@@ -77,12 +84,15 @@ const optionId = (index: number) => `sel-option-${index}`
 
 afterEach(() => {
   vi.restoreAllMocks()
+  translationNamespaceSpy.mockClear()
+  motionPropsSpy.mockClear()
 })
 
 describe("Select — rendering & ARIA", () => {
   it("renders the i18n default placeholder when no value or placeholder prop", () => {
     renderSelect()
     expect(trigger()).toHaveTextContent("Select an option")
+    expect(translationNamespaceSpy).toHaveBeenCalledWith("common")
   })
 
   it("renders an explicit placeholder over the i18n default", () => {
@@ -95,9 +105,16 @@ describe("Select — rendering & ARIA", () => {
     expect(trigger()).toHaveTextContent("Banana")
   })
 
+  it("uses the first selected option as the initial active descendant", () => {
+    renderSelect({ value: "apple" })
+    fireEvent.click(trigger())
+    expect(trigger()).toHaveAttribute("aria-activedescendant", optionId(0))
+  })
+
   it("exposes the closed-state combobox ARIA contract", () => {
     renderSelect()
     const btn = trigger()
+    expect(btn).toHaveAttribute("id", "sel-trigger")
     expect(btn).toHaveAttribute("aria-haspopup", "listbox")
     expect(btn).toHaveAttribute("aria-expanded", "false")
     expect(btn).toHaveAttribute("aria-controls", "sel-listbox")
@@ -124,6 +141,68 @@ describe("Select — rendering & ARIA", () => {
   it("applies the error variant styling", () => {
     renderSelect({ error: true })
     expect(trigger().className).toContain("border-error-text")
+  })
+
+  it("keeps trigger, listbox, and option identifiers stable across an id change", () => {
+    const view = renderSelect()
+    fireEvent.click(trigger())
+    expect(screen.getByRole("listbox")).toHaveAttribute("id", "sel-listbox")
+    expect(screen.getByRole("option", { name: "Apple" })).toHaveAttribute("id", optionId(0))
+
+    view.rerender(<Select id="next" options={OPTIONS} />)
+    expect(trigger()).toHaveAttribute("id", "next-trigger")
+    expect(screen.getByRole("listbox")).toHaveAttribute("id", "next-listbox")
+    expect(screen.getByRole("option", { name: "Apple" })).toHaveAttribute("id", "next-option-0")
+  })
+
+  it("renders every state and layout class used by the design contract", () => {
+    const view = renderSelect({ disabled: true })
+    const closed = trigger()
+    expect(closed.parentElement).toHaveClass("relative", "w-full")
+    expect(closed.className).toContain("flex min-h-12 w-full")
+    expect(closed.className).toContain("border-glass-border bg-glass-bg")
+    expect(closed.className).toContain("hover:border-brand/(--opacity-medium)")
+    expect(closed.className).toContain("focus:outline-none focus:ring-4")
+    expect(closed.className).toContain("cursor-not-allowed opacity-medium grayscale")
+    expect(closed.className).toContain("text-text-tertiary")
+    view.rerender(<Select id="sel" options={OPTIONS} error />)
+    expect(trigger().className).toContain("border-error-text bg-error-bg")
+
+    view.rerender(<Select id="sel" options={OPTIONS} value="apple" />)
+    fireEvent.click(trigger())
+    const opened = trigger()
+    expect(opened.className).toContain("border-brand ring-4 ring-brand/(--opacity-subtle)")
+    expect(opened.className).toContain("shadow-glow-primary")
+    expect(opened.querySelector("svg")).toHaveClass("h-4", "w-4", "rotate-180")
+    expect(screen.getByRole("listbox").className).toContain("absolute z-dropdown")
+    expect(screen.getByRole("listbox").className).toContain("p-1.5")
+    const options = screen.getAllByRole("option")
+    expect(options[0]!.className).toContain("bg-brand text-inverse-text shadow-sm")
+    fireEvent.mouseEnter(options[1]!)
+    expect(options[1]!.className).toContain("bg-brand/(--opacity-subtle) text-brand")
+    expect(options[2]!.className).toContain("text-text-primary hover:bg-brand/(--opacity-subtle)")
+
+    fireEvent.click(opened)
+    expect(opened.querySelector("svg")).not.toHaveClass("rotate-180")
+  })
+
+  it("preserves motion and keyboard-focus contracts for the listbox", () => {
+    renderSelect()
+    fireEvent.click(trigger())
+    const listbox = screen.getByRole("listbox")
+    expect(listbox).toHaveAttribute("tabindex", "-1")
+    for (const option of screen.getAllByRole("option")) {
+      expect(option).toHaveAttribute("tabindex", "-1")
+    }
+    const motionProps = motionPropsSpy.mock.calls.at(-1)?.[0] as Record<string, unknown>
+    expect(motionProps).toEqual(
+      expect.objectContaining({
+        initial: { opacity: 0, y: -10, scale: 0.98 },
+        animate: { opacity: 1, y: 4, scale: 1 },
+        exit: { opacity: 0, y: -10, scale: 0.98 },
+        transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] },
+      })
+    )
   })
 })
 
@@ -158,6 +237,7 @@ describe("Select — open / close", () => {
     fireEvent.click(btn)
     fireEvent.click(btn)
     expect(btn).toHaveAttribute("aria-expanded", "false")
+    expect(btn).not.toHaveAttribute("aria-activedescendant")
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
   })
 
@@ -167,6 +247,7 @@ describe("Select — open / close", () => {
     fireEvent.click(btn)
     fireEvent.keyDown(btn, { key: "Escape" })
     expect(btn).toHaveAttribute("aria-expanded", "false")
+    expect(btn).not.toHaveAttribute("aria-activedescendant")
   })
 
   it("closes on an outside mousedown", () => {
@@ -175,6 +256,15 @@ describe("Select — open / close", () => {
     expect(screen.getByRole("listbox")).toBeInTheDocument()
     fireEvent.mouseDown(document.body)
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+    expect(trigger()).not.toHaveAttribute("aria-activedescendant")
+  })
+
+  it("does not close on a mousedown inside the select container", () => {
+    renderSelect()
+    const btn = trigger()
+    fireEvent.click(btn)
+    fireEvent.mouseDown(screen.getByRole("listbox"))
+    expect(screen.getByRole("listbox")).toBeInTheDocument()
   })
 
   it("closes on Tab while open", () => {
@@ -183,6 +273,67 @@ describe("Select — open / close", () => {
     fireEvent.click(btn)
     fireEvent.keyDown(btn, { key: "Tab" })
     expect(btn).toHaveAttribute("aria-expanded", "false")
+    expect(btn).not.toHaveAttribute("aria-activedescendant")
+  })
+
+  it("does not prevent default for closed-only navigation keys", () => {
+    renderSelect()
+    const btn = trigger()
+    for (const key of ["Home", "End", "Escape", "Tab"]) {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
+      const preventDefault = vi.spyOn(event, "preventDefault")
+      fireEvent(btn, event)
+      expect(preventDefault).not.toHaveBeenCalled()
+    }
+  })
+
+  it("registers one outside listener and removes that exact listener on unmount", () => {
+    const add = vi.spyOn(document, "addEventListener")
+    const remove = vi.spyOn(document, "removeEventListener")
+    const view = renderSelect()
+    expect(add.mock.calls.filter(([event]) => event === "mousedown")).toHaveLength(0)
+    fireEvent.click(trigger())
+    const registration = add.mock.calls.find(([event]) => event === "mousedown")
+    expect(registration).toBeDefined()
+    expect(add.mock.calls.filter(([event]) => event === "mousedown")).toHaveLength(1)
+    view.rerender(<Select id="sel" options={OPTIONS} />)
+    expect(add.mock.calls.filter(([event]) => event === "mousedown")).toHaveLength(1)
+    view.unmount()
+    expect(remove).toHaveBeenCalledWith("mousedown", registration![1])
+  })
+
+  it("scrolls the active option with nearest-block behavior and follows id changes", () => {
+    const scrollIntoView = vi.fn()
+    const getElementById = vi.spyOn(document, "getElementById")
+    const original = HTMLElement.prototype.scrollIntoView
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    })
+    try {
+      const view = renderSelect()
+      expect(getElementById).not.toHaveBeenCalled()
+      fireEvent.click(trigger())
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" })
+      scrollIntoView.mockClear()
+      view.rerender(<Select id="next" options={OPTIONS} />)
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" })
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        value: original,
+      })
+    }
+  })
+
+  it("does not throw when the active option is no longer mounted", () => {
+    const getElementById = vi.spyOn(document, "getElementById").mockReturnValue(null)
+
+    expect(() => {
+      renderSelect()
+      fireEvent.click(trigger())
+    }).not.toThrow()
+    expect(getElementById).toHaveBeenCalledWith(optionId(0))
   })
 })
 
@@ -196,11 +347,62 @@ describe("Select — selection", () => {
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
   })
 
+  it("prevents the option mousedown from blurring the trigger", () => {
+    renderSelect()
+    fireEvent.click(trigger())
+    const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true })
+    const preventDefault = vi.spyOn(event, "preventDefault")
+    fireEvent(screen.getByText("Banana"), event)
+    expect(preventDefault).toHaveBeenCalledOnce()
+  })
+
   it("sets the active option on mouse enter", () => {
     renderSelect()
     fireEvent.click(trigger())
     fireEvent.mouseEnter(screen.getByText("Cherry"))
     expect(trigger()).toHaveAttribute("aria-activedescendant", optionId(2))
+  })
+
+  it("does not require a callback when selecting a valid option", () => {
+    renderSelect()
+    fireEvent.click(trigger())
+    expect(() => fireEvent.mouseDown(screen.getByText("Banana"))).not.toThrow()
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+  })
+
+  it("uses the latest options and callback after a rerender", () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    const nextOptions = [
+      { value: "kiwi", label: "Kiwi" },
+      { value: "mango", label: "Mango" },
+      { value: "pear", label: "Pear" },
+    ]
+    const view = renderSelect({ onValueChange: first })
+    view.rerender(<Select id="sel" options={nextOptions} value="mango" onValueChange={second} />)
+    fireEvent.click(trigger())
+    expect(trigger()).toHaveAttribute("aria-activedescendant", "sel-option-1")
+    fireEvent.mouseDown(screen.getByRole("option", { name: "Mango" }))
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledWith("mango")
+  })
+
+  it("does not select a stale active index after options are removed", () => {
+    const onValueChange = vi.fn()
+    const view = renderSelect({ onValueChange })
+    const btn = trigger()
+    fireEvent.click(btn)
+    fireEvent.keyDown(btn, { key: "ArrowDown" })
+    fireEvent.keyDown(btn, { key: "ArrowDown" })
+
+    expect(() => {
+      view.rerender(<Select id="sel" options={[]} onValueChange={onValueChange} />)
+    }).not.toThrow()
+    expect(btn).toHaveAttribute("aria-expanded", "true")
+
+    fireEvent.keyDown(btn, { key: "Enter" })
+    expect(onValueChange).not.toHaveBeenCalled()
+    expect(btn).toHaveAttribute("aria-expanded", "true")
   })
 })
 
@@ -214,6 +416,17 @@ describe("Select — keyboard", () => {
     // active is option 0 ("apple") on open with no selection
     fireEvent.keyDown(btn, { key: "Enter" })
     expect(onValueChange).toHaveBeenCalledWith("apple")
+  })
+
+  it("does not select while closed and prevents default for Enter", () => {
+    const onValueChange = vi.fn()
+    renderSelect({ onValueChange })
+    const btn = trigger()
+    const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })
+    const preventDefault = vi.spyOn(event, "preventDefault")
+    fireEvent(btn, event)
+    expect(preventDefault).toHaveBeenCalledOnce()
+    expect(onValueChange).not.toHaveBeenCalled()
   })
 
   it("opens on Space, then selects the active option on Space", () => {
@@ -233,6 +446,26 @@ describe("Select — keyboard", () => {
     expect(btn).toHaveAttribute("aria-expanded", "true")
   })
 
+  it("prevents default for every handled navigation key", () => {
+    renderSelect()
+    const btn = trigger()
+    fireEvent.click(btn)
+    for (const key of ["ArrowDown", "ArrowUp", "Home", "End"]) {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
+      const preventDefault = vi.spyOn(event, "preventDefault")
+      fireEvent(btn, event)
+      expect(preventDefault).toHaveBeenCalledOnce()
+    }
+    const escape = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    })
+    const preventEscape = vi.spyOn(escape, "preventDefault")
+    fireEvent(btn, escape)
+    expect(preventEscape).toHaveBeenCalledOnce()
+  })
+
   it("opens on ArrowUp when closed", () => {
     renderSelect()
     const btn = trigger()
@@ -249,6 +482,7 @@ describe("Select — keyboard", () => {
     fireEvent.keyDown(btn, { key: "ArrowDown" }) // clamp at 2 (last)
     expect(btn).toHaveAttribute("aria-activedescendant", optionId(2))
     fireEvent.keyDown(btn, { key: "ArrowUp" }) // 1
+    expect(btn).toHaveAttribute("aria-activedescendant", optionId(1))
     fireEvent.keyDown(btn, { key: "ArrowUp" }) // 0
     fireEvent.keyDown(btn, { key: "ArrowUp" }) // clamp at 0 (first)
     expect(btn).toHaveAttribute("aria-activedescendant", optionId(0))
@@ -272,6 +506,49 @@ describe("Select — keyboard", () => {
     expect(btn).toHaveAttribute("aria-activedescendant", optionId(1))
   })
 
+  it("moves to an index-zero type-ahead match from another active option", () => {
+    renderSelect({ value: "banana" })
+    const btn = trigger()
+    fireEvent.click(btn)
+    expect(btn).toHaveAttribute("aria-activedescendant", optionId(1))
+    fireEvent.keyDown(btn, { key: "a" })
+    expect(btn).toHaveAttribute("aria-activedescendant", optionId(0))
+  })
+
+  it("matches the first option at index zero", () => {
+    renderSelect()
+    const btn = trigger()
+    fireEvent.click(btn)
+    fireEvent.keyDown(btn, { key: "a" })
+    expect(btn).toHaveAttribute("aria-activedescendant", optionId(0))
+  })
+
+  it("does not retain type-ahead input received while closed", () => {
+    renderSelect()
+    const btn = trigger()
+    fireEvent.keyDown(btn, { key: "a" })
+    fireEvent.click(btn)
+    fireEvent.keyDown(btn, { key: "c" })
+    expect(btn).toHaveAttribute("aria-activedescendant", optionId(2))
+  })
+
+  it("cancels the prior type-ahead reset when typing within the debounce window", () => {
+    vi.useFakeTimers()
+    try {
+      renderSelect()
+      const btn = trigger()
+      fireEvent.click(btn)
+      fireEvent.keyDown(btn, { key: "b" })
+      vi.advanceTimersByTime(400)
+      fireEvent.keyDown(btn, { key: "a" })
+      vi.advanceTimersByTime(100)
+      fireEvent.keyDown(btn, { key: "c" })
+      expect(btn).toHaveAttribute("aria-activedescendant", optionId(1))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("ignores type-ahead characters while the listbox is closed", () => {
     renderSelect()
     const btn = trigger()
@@ -287,6 +564,21 @@ describe("Select — keyboard", () => {
     fireEvent.click(btn) // active 0
     fireEvent.keyDown(btn, { key: "z" })
     expect(btn).toHaveAttribute("aria-activedescendant", optionId(0))
+  })
+
+  it("ignores modified and multi-character type-ahead keys", () => {
+    const specialOptions = [
+      { value: "arrow", label: "Arrow" },
+      { value: "beta", label: "Beta" },
+    ]
+    render(<Select id="special" options={specialOptions} value="beta" />)
+    const btn = trigger()
+    fireEvent.click(btn)
+    expect(btn).toHaveAttribute("aria-activedescendant", "special-option-1")
+    fireEvent.keyDown(btn, { key: "Arrow" })
+    fireEvent.keyDown(btn, { key: "b", ctrlKey: true })
+    fireEvent.keyDown(btn, { key: "b", metaKey: true })
+    expect(btn).toHaveAttribute("aria-activedescendant", "special-option-1")
   })
 
   it("resets the type-ahead buffer after the 500ms timeout", () => {
@@ -335,6 +627,21 @@ describe("Select — disabled", () => {
 })
 
 describe("Select — empty options", () => {
+  it("keeps an empty listbox without an active descendant during navigation", () => {
+    const getElementById = vi.spyOn(document, "getElementById")
+    render(<Select id="empty" options={[]} />)
+    const btn = screen.getByRole("combobox")
+
+    fireEvent.click(btn)
+    expect(btn).not.toHaveAttribute("aria-activedescendant")
+    expect(getElementById).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(btn, { key: "ArrowDown" })
+    fireEvent.keyDown(btn, { key: "ArrowUp" })
+    expect(btn).not.toHaveAttribute("aria-activedescendant")
+    expect(getElementById).not.toHaveBeenCalled()
+  })
+
   it("ignores selection when no option exists at the active index", () => {
     const onValueChange = vi.fn()
     render(<Select id="empty" options={[]} onValueChange={onValueChange} />)
@@ -344,5 +651,32 @@ describe("Select — empty options", () => {
     fireEvent.keyDown(btn, { key: "Enter" })
 
     expect(onValueChange).not.toHaveBeenCalled()
+    expect(btn).not.toHaveAttribute("aria-activedescendant")
+    expect(btn).toHaveAttribute("aria-expanded", "false")
+  })
+
+  it("does not notify when selection resolves to no option", () => {
+    const onValueChange = vi.fn()
+    render(<Select id="empty" options={[]} onValueChange={onValueChange} />)
+    const btn = screen.getByRole("combobox")
+    fireEvent.click(btn)
+    fireEvent.keyDown(btn, { key: "Enter" })
+    expect(onValueChange).not.toHaveBeenCalled()
+  })
+
+  it("initializes a missing active index when options arrive while open", () => {
+    const firstView = render(<Select id="empty-down" options={[]} />)
+    const firstButton = screen.getByRole("combobox")
+    fireEvent.click(firstButton)
+    firstView.rerender(<Select id="empty-down" options={OPTIONS} />)
+    fireEvent.keyDown(firstButton, { key: "ArrowDown" })
+    expect(firstButton).toHaveAttribute("aria-activedescendant", "empty-down-option-0")
+
+    const secondView = render(<Select id="empty-up" options={[]} />)
+    const secondButton = screen.getAllByRole("combobox").at(-1)!
+    fireEvent.click(secondButton)
+    secondView.rerender(<Select id="empty-up" options={OPTIONS} />)
+    fireEvent.keyDown(secondButton, { key: "ArrowUp" })
+    expect(secondButton).toHaveAttribute("aria-activedescendant", "empty-up-option-0")
   })
 })

@@ -29,25 +29,23 @@ import { SessionSigningKeyOut } from "@/api/generated"
 import { logWarning } from "@/app/logger"
 
 /** Return whether session-key synchronization is running in a browser runtime. */
-export const isSessionCryptoBrowserRuntime = (): boolean =>
-  typeof window !== "undefined" &&
-  typeof window.document !== "undefined" &&
-  typeof window.location !== "undefined"
-
-const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
-// Kept for one-time migration: clear any key previously persisted in sessionStorage.
-const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
-
-type LegacySessionStorageRead = {
-  storage: Storage | null
+export function isSessionCryptoBrowserRuntime(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.document !== "undefined" &&
+    typeof window.location !== "undefined"
+  )
 }
 
 /** Read the legacy storage location through a total, shape-stable contract. */
-const readLegacySessionStorage = (): LegacySessionStorageRead => {
+const readLegacySessionStorage = (): Storage | null => {
   try {
-    return { storage: globalThis.sessionStorage ?? null }
-  } catch {
-    return { storage: null }
+    return globalThis.sessionStorage ?? null
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      logWarning("Failed to access legacy session storage", { error })
+    }
+    return null
   }
 }
 
@@ -56,12 +54,18 @@ const readLegacySessionStorage = (): LegacySessionStorageRead => {
  * cleanup behind an explicit function makes the security boundary directly
  * testable and avoids a slow module re-import for every mutation case. */
 export const clearLegacySessionSigningKey = (): void => {
-  const { storage } = readLegacySessionStorage()
-  if (!storage) return
+  const storage = readLegacySessionStorage()
   try {
-    storage.removeItem(SESSION_SIGNING_KEY_STORAGE_KEY)
+    // Keep the migration key at the call site: its value is part of the
+    // observable cleanup contract and must not be hidden in import-time state.
+    storage?.removeItem("ecosystem.profile.cache.sessionKey")
   } catch {
-    /* ignore */
+    // Storage APIs can fail even after the getter succeeds. Keep the cleanup
+    // non-fatal, but surface the failure in development without including the
+    // legacy key or any user data in telemetry.
+    if (import.meta.env.DEV) {
+      logWarning("Failed to remove legacy session signing key")
+    }
   }
 }
 
@@ -179,11 +183,6 @@ export const signSnapshot = async (
  */
 export function readStoredSessionSigningKey(): string | null {
   return null
-}
-
-const persistSessionSigningKey = (_value: string | null) => {
-  // Intentionally empty — signing key must not be written to any Web Storage.
-  // The key lives only in React state (useSessionCrypto hook) for the session duration.
 }
 
 /** Maximum consecutive failures before entering backoff (resets on success). */
@@ -316,7 +315,6 @@ export const useSessionCrypto = () => {
       sessionSigningKeyRef.current = value
       signingKeyRetryCountRef.current = 0 // reset circuit breaker on explicit update
       setSessionSigningKeyState(value)
-      persistSessionSigningKey(value)
       await sendSessionCacheUpdate(value, { purge: true })
     },
     [sendSessionCacheUpdate]

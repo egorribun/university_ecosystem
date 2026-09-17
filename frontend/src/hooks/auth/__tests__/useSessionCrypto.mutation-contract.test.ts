@@ -52,6 +52,21 @@ describe("useSessionCrypto mutation contracts", () => {
     }
   })
 
+  it("accepts a complete browser runtime", () => {
+    expect(isSessionCryptoBrowserRuntime()).toBe(true)
+  })
+
+  it("rejects a runtime with no window object", () => {
+    const originalWindow = globalThis.window
+    vi.stubGlobal("window", undefined)
+
+    try {
+      expect(isSessionCryptoBrowserRuntime()).toBe(false)
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
   it("clears the legacy session signing key through the explicit cleanup contract", () => {
     const removeItem = vi.fn()
     vi.stubGlobal("sessionStorage", { removeItem })
@@ -65,22 +80,85 @@ describe("useSessionCrypto mutation contracts", () => {
     const removeItem = vi.fn(() => {
       throw new Error("storage unavailable")
     })
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     vi.stubGlobal("sessionStorage", { removeItem })
 
     expect(() => clearLegacySessionSigningKey()).not.toThrow()
     expect(removeItem).toHaveBeenCalledWith("ecosystem.profile.cache.sessionKey")
+    expect(warningSpy).toHaveBeenCalledWith("Failed to remove legacy session signing key")
   })
 
   it("swallows an unavailable sessionStorage getter", () => {
+    vi.stubEnv("DEV", true)
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     const storageGetter = vi.spyOn(globalThis, "sessionStorage", "get").mockImplementation(() => {
       throw new Error("storage unavailable")
     })
 
     try {
       expect(() => clearLegacySessionSigningKey()).not.toThrow()
+      expect(warningSpy).toHaveBeenCalledWith("Failed to access legacy session storage", {
+        error: expect.any(Error),
+      })
     } finally {
       storageGetter.mockRestore()
     }
+  })
+
+  it("does not log an unavailable sessionStorage getter in production", () => {
+    vi.stubEnv("DEV", false)
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const storageGetter = vi.spyOn(globalThis, "sessionStorage", "get").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+
+    try {
+      expect(() => clearLegacySessionSigningKey()).not.toThrow()
+      expect(warningSpy).not.toHaveBeenCalled()
+    } finally {
+      storageGetter.mockRestore()
+    }
+  })
+
+  it("does nothing when the legacy storage location is unavailable", () => {
+    vi.stubGlobal("sessionStorage", null)
+
+    expect(() => clearLegacySessionSigningKey()).not.toThrow()
+  })
+
+  it("does not log when the legacy storage location is absent", () => {
+    vi.stubEnv("DEV", true)
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    vi.stubGlobal("sessionStorage", null)
+
+    clearLegacySessionSigningKey()
+
+    expect(warningSpy).not.toHaveBeenCalled()
+  })
+
+  it("does not log storage removal failures in production", () => {
+    vi.stubEnv("DEV", false)
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    vi.stubGlobal("sessionStorage", {
+      removeItem: () => {
+        throw new Error("storage unavailable")
+      },
+    })
+
+    expect(() => clearLegacySessionSigningKey()).not.toThrow()
+    expect(warningSpy).not.toHaveBeenCalled()
+  })
+
+  it("runs the legacy cleanup during module initialization", async () => {
+    const removeItem = vi.fn()
+    vi.stubGlobal("sessionStorage", { removeItem })
+
+    // The static import above exercises the public cleanup function. A query
+    // suffix loads a fresh module instance without resetting the test module
+    // registry (which would make every React hook in this file stale).
+    await import("@/hooks/auth/useSessionCrypto?module-init-contract")
+
+    expect(removeItem).toHaveBeenCalledWith("ecosystem.profile.cache.sessionKey")
   })
 
   it("never recovers a signing key from Web Storage", () => {
@@ -139,6 +217,19 @@ describe("useSessionCrypto mutation contracts", () => {
           plain: "kept",
         },
       }),
+      key: "session-key",
+    })
+  })
+
+  it("does not include inherited sensitive properties in a signed snapshot", async () => {
+    const inherited = Object.create({ mfa_required: "inherited-secret" }) as Record<string, unknown>
+    inherited.visible = "kept"
+
+    await signSnapshot(inherited, "session-key", "user-salt")
+
+    expect(cryptoWorker.scrypt).not.toHaveBeenCalled()
+    expect(cryptoWorker.hmacSha256).toHaveBeenCalledWith({
+      json: JSON.stringify({ visible: "kept" }),
       key: "session-key",
     })
   })
@@ -286,6 +377,59 @@ describe("useSessionCrypto mutation contracts", () => {
     ])
   })
 
+  it("updates the in-memory state and calls the signing-key endpoint exactly", async () => {
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await result.current.ensureSessionSigningKey()
+    })
+
+    expect(result.current.sessionSigningKey).toBe("sk-1")
+    expect(mocks.apiGet).toHaveBeenCalledWith(
+      "/auth/session/signing-key",
+      expect.objectContaining({ skipRateLimitQueue: true })
+    )
+  })
+
+  it("returns an already cached key without fetching again", async () => {
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await result.current.updateSessionSigningKey("cached-session-key")
+    })
+    mocks.apiGet.mockResolvedValue({ data: { signing_key: "network-session-key" } })
+    mocks.apiGet.mockClear()
+
+    await expect(result.current.ensureSessionSigningKey()).resolves.toBe("cached-session-key")
+    expect(mocks.apiGet).not.toHaveBeenCalled()
+  })
+
+  it("shares one in-flight signing-key request between concurrent callers", async () => {
+    let resolveRequest!: (value: { data: { signing_key: string } }) => void
+    mocks.apiGet.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRequest = resolve
+      })
+    )
+    const { result } = renderHook(() => useSessionCrypto())
+
+    let first!: Promise<string | null>
+    let second!: Promise<string | null>
+    await act(async () => {
+      first = result.current.ensureSessionSigningKey()
+      second = result.current.ensureSessionSigningKey()
+    })
+
+    expect(mocks.apiGet).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      resolveRequest({ data: { signing_key: "deduplicated-key" } })
+      await expect(Promise.all([first, second])).resolves.toEqual([
+        "deduplicated-key",
+        "deduplicated-key",
+      ])
+    })
+  })
+
   it("does not assume a service-worker ready registration or a callable then property", async () => {
     const postMessage = vi.fn()
     const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
@@ -319,6 +463,121 @@ describe("useSessionCrypto mutation contracts", () => {
     // warning instead of remaining a no-op.
     expect(warningSpy).not.toHaveBeenCalled()
     warningSpy.mockRestore()
+  })
+
+  it("delivers through the active service worker when no controller exists", async () => {
+    const postMessage = vi.fn()
+    vi.stubGlobal("navigator", {
+      serviceWorker: {
+        controller: null,
+        ready: Promise.resolve({ active: { postMessage } }),
+      },
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    postMessage.mockClear()
+
+    await act(async () => {
+      await result.current.sendSessionCacheUpdate("ready-session-key", { force: true })
+      await Promise.resolve()
+    })
+
+    expect(postMessage).toHaveBeenCalledWith({
+      type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+      sessionHash: "mock_pbkdf2",
+    })
+  })
+
+  it("treats a missing global navigator as a no-op", async () => {
+    const { result } = renderHook(() => useSessionCrypto())
+    vi.stubGlobal("navigator", undefined)
+
+    await expect(
+      act(async () => {
+        await result.current.sendSessionCacheUpdate("no-navigator-key", { force: true })
+      })
+    ).resolves.not.toThrow()
+  })
+
+  it("reports controller delivery failures only in development", async () => {
+    vi.stubEnv("DEV", true)
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const { result } = renderHook(() => useSessionCrypto())
+    const error = new Error("controller unavailable")
+    const postMessage = vi.fn(() => {
+      throw error
+    })
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: { postMessage }, ready: undefined },
+    })
+
+    await act(async () => {
+      await result.current.sendSessionCacheUpdate("controller-error-key", { force: true })
+    })
+
+    expect(warningSpy).toHaveBeenCalledWith("Failed to post message to service worker", { error })
+  })
+
+  it("does not log controller delivery failures in production", async () => {
+    vi.stubEnv("DEV", false)
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const { result } = renderHook(() => useSessionCrypto())
+    const postMessage = vi.fn(() => {
+      throw new Error("controller unavailable")
+    })
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: { postMessage }, ready: undefined },
+    })
+
+    await act(async () => {
+      await result.current.sendSessionCacheUpdate("controller-error-prod-key", { force: true })
+    })
+
+    expect(warningSpy).not.toHaveBeenCalled()
+  })
+
+  it("reports ready-registration delivery failures only in development", async () => {
+    vi.stubEnv("DEV", true)
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const { result } = renderHook(() => useSessionCrypto())
+    const error = new Error("registration unavailable")
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: null, ready: Promise.reject(error) },
+    })
+
+    await act(async () => {
+      await result.current.sendSessionCacheUpdate("ready-error-key", { force: true })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(warningSpy).toHaveBeenCalledWith("Failed to deliver message to service worker", {
+      error,
+    })
+  })
+
+  it("does not log ready-registration delivery failures in production", async () => {
+    vi.stubEnv("DEV", false)
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const { result } = renderHook(() => useSessionCrypto())
+    vi.stubGlobal("navigator", {
+      serviceWorker: {
+        controller: null,
+        ready: Promise.reject(new Error("registration unavailable")),
+      },
+    })
+
+    await act(async () => {
+      await result.current.sendSessionCacheUpdate("ready-error-prod-key", { force: true })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(warningSpy).not.toHaveBeenCalled()
   })
 
   it("deduplicates an unchanged cache hash unless force is requested", async () => {
@@ -417,6 +676,81 @@ describe("useSessionCrypto mutation contracts", () => {
       await vi.advanceTimersByTimeAsync(60_000)
     })
     expect(result.current.signingKeyRetryCountRef.current).toBe(0)
+  })
+
+  it("clears the previous circuit timer before opening a new backoff window", async () => {
+    vi.useFakeTimers()
+    vi.stubEnv("DEV", false)
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout").mockImplementation((handle) => {
+      if ((handle as unknown) === null) {
+        throw new Error("null timer handle must never be cleared")
+      }
+    })
+    mocks.apiGet.mockRejectedValue(new Error("service unavailable"))
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+    })
+    expect(clearTimeoutSpy).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await result.current.ensureSessionSigningKey()
+    })
+    expect(clearTimeoutSpy).toHaveBeenCalledTimes(1)
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(expect.anything())
+  })
+
+  it("clears the pending backoff timer when the hook unmounts", async () => {
+    vi.useFakeTimers()
+    vi.stubEnv("DEV", false)
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout")
+    mocks.apiGet.mockRejectedValue(new Error("service unavailable"))
+    const { result, unmount } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+    })
+    clearTimeoutSpy.mockClear()
+
+    unmount()
+
+    expect(clearTimeoutSpy).toHaveBeenCalledTimes(1)
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(expect.anything())
+  })
+
+  it("does not clear a nonexistent backoff timer on unmount", () => {
+    vi.useFakeTimers()
+    vi.stubEnv("DEV", false)
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout")
+    const { unmount } = renderHook(() => useSessionCrypto())
+
+    unmount()
+
+    expect(clearTimeoutSpy).not.toHaveBeenCalled()
+  })
+
+  it("logs the max-retry diagnostic in development", async () => {
+    vi.stubEnv("DEV", true)
+    const warningSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const error = new Error("service unavailable")
+    mocks.apiGet.mockRejectedValue(error)
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+    })
+
+    expect(warningSpy).toHaveBeenCalledWith(
+      "[SessionCrypto] Max retries reached for signing key fetch",
+      { err: error }
+    )
   })
 
   it("resets the retry circuit on an explicit key update", async () => {
