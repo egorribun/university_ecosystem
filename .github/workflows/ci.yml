@@ -24,8 +24,10 @@ concurrency:
   # advisory nightly workflow deliberately uses a separate
   # group because GitHub retains only one pending run per group and does not
   # provide priority ordering between workflow events.
-  # This is an account-wide runner-pool guard, not a reduction of the logical
-  # matrix or its per-lane max-parallel contracts.
+  # This is a workflow-scoped per-PR admission/cancellation guard, not an
+  # account-wide runner-pool semaphore or a reduction of logical matrix size
+  # and per-lane max-parallel contracts. Other workflows have independent
+  # concurrency groups and remain subject to the repository/host runner pool.
   group: >-
     ${{ github.event_name == 'pull_request'
       && format('quality-heavy-pr-{0}', github.event.pull_request.number)

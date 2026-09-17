@@ -71,7 +71,8 @@ jobs:
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
         run: |
           cd "$SERVICE_DIRECTORY"
-          go mod download
+          python3 "$GITHUB_WORKSPACE/scripts/ci/go_mod_download.py" \
+            --working-directory "$PWD"
 
       - name: Clean Go coverage outputs
         shell: bash
@@ -468,7 +469,8 @@ jobs:
         run: |
           set -euo pipefail
           cd "$SERVICE_DIRECTORY"
-          go mod download
+          python3 "$GITHUB_WORKSPACE/scripts/ci/go_mod_download.py" \
+            --working-directory "$PWD"
 
       - name: Install go-mutesting
         run: |
