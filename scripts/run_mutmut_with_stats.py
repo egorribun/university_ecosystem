@@ -168,17 +168,38 @@ def _configure_process_local_pytest_cache(runner: Any) -> Path | None:
 
     filtered_args: list[str] = []
     skip_next = False
-    for arg in pytest_args:
+    for index, arg in enumerate(pytest_args):
         if skip_next:
             skip_next = False
             continue
-        if arg == "--cache-dir":
-            skip_next = True
+        if arg in {"--cache-dir", "-o", "--override-ini"}:
+            # Remove the legacy unsupported flag and any stale cache_dir
+            # override.  ``-o``/``--override-ini`` may also configure other
+            # pytest options, which must remain untouched.
+            if arg == "--cache-dir":
+                skip_next = True
+                continue
+            next_index = index + 1
+            if next_index < len(pytest_args) and pytest_args[next_index].startswith(
+                "cache_dir="
+            ):
+                skip_next = True
+                continue
+            filtered_args.append(arg)
             continue
         if arg.startswith("--cache-dir="):
             continue
+        if arg.startswith("--override-ini=") and arg.removeprefix(
+            "--override-ini="
+        ).startswith("cache_dir="):
+            continue
         filtered_args.append(arg)
-    filtered_args.append(f"--cache-dir={cache_dir}")
+    # ``cache_dir`` is a pytest ini option, not a native CLI flag.  Passing
+    # ``--cache-dir`` makes pytest return exit code 4 (usage error), which
+    # mutmut reports as ``BadTestExecutionCommandsException`` before any
+    # mutation can start.  Use pytest's documented ``-o name=value`` override
+    # so every isolated process gets a private cache without invalid CLI args.
+    filtered_args.extend(["-o", f"cache_dir={cache_dir}"])
     runner._pytest_add_cli_args = filtered_args
     return cache_dir
 

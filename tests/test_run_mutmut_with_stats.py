@@ -195,7 +195,72 @@ def test_mutation_worker_assigns_process_local_pytest_cache(
     assert cache_dir.is_dir()
     assert runner._pytest_add_cli_args == [
         "--timeout=120",
-        f"--cache-dir={cache_dir}",
+        "-o",
+        f"cache_dir={cache_dir}",
+    ]
+
+
+def test_mutation_worker_cache_override_is_accepted_by_pytest(
+    tmp_path, monkeypatch
+) -> None:
+    """The isolation override must be valid pytest CLI syntax."""
+
+    cache_root = tmp_path / "automatic-db"
+    cache_root.mkdir()
+    monkeypatch.setenv(run_module._AUTO_DATABASE_DIR_ENV, str(cache_root))
+    runner = SimpleNamespace(_pytest_add_cli_args=[])
+
+    cache_dir = run_module._configure_process_local_pytest_cache(runner)
+
+    assert cache_dir is not None
+    result = subprocess.run(  # noqa: S603 - fixed interpreter and test node id
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--collect-only",
+            "-q",
+            "-o",
+            f"cache_dir={cache_dir}",
+            "tests/test_run_mutmut_with_stats.py::test_mutation_worker_cache_override_is_accepted_by_pytest",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_mutation_worker_replaces_stale_cache_overrides(tmp_path, monkeypatch) -> None:
+    """Repeated parent/child setup must leave one private cache override."""
+
+    cache_root = tmp_path / "automatic-db"
+    cache_root.mkdir()
+    monkeypatch.setenv(run_module._AUTO_DATABASE_DIR_ENV, str(cache_root))
+    runner = SimpleNamespace(
+        _pytest_add_cli_args=[
+            "-o",
+            "cache_dir=shared-cache",
+            "-o",
+            "console_output_style=classic",
+            "--override-ini",
+            "cache_dir=split-legacy-cache",
+            "--cache-dir=/tmp/inline-legacy-cache",
+            "--override-ini=cache_dir=legacy-cache",
+        ]
+    )
+
+    cache_dir = run_module._configure_process_local_pytest_cache(runner)
+
+    assert cache_dir is not None
+    assert runner._pytest_add_cli_args == [
+        "-o",
+        "console_output_style=classic",
+        "-o",
+        f"cache_dir={cache_dir}",
     ]
 
 
