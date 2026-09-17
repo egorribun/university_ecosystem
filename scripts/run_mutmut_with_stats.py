@@ -20,7 +20,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
+import tempfile
 import weakref
 from collections.abc import Sequence
 from contextlib import contextmanager
@@ -48,6 +50,19 @@ _REQUIRED_STATS_KEYS = frozenset(
 # while a callback whose weak target is gone is safely a no-op.
 _ATFORK_ORIGINAL: Any | None = None
 _ATFORK_GUARD_INSTALLED = False
+
+# ``mutmut`` forks each mutant after pytest has imported the application.  The
+# test bootstrap therefore has already selected one automatic SQLite file and
+# constructed a SQLAlchemy engine in the parent.  Forked children must never
+# reuse either object: SQLite's WAL/journal state and inherited async engine
+# pools are process-local resources.  These names intentionally mirror the
+# bootstrap's private contract; they are only consumed when the harness owns
+# the database (an explicit caller database is never rewritten here).
+_AUTO_DATABASE_URL_ENV = "UNIVERSITY_ECOSYSTEM_PYTEST_AUTO_DATABASE_URL"
+_AUTO_DATABASE_DIR_ENV = "UNIVERSITY_ECOSYSTEM_PYTEST_AUTO_DATABASE_DIR"
+_DATABASE_MODE_ENV = "UNIVERSITY_ECOSYSTEM_PYTEST_DATABASE_MODE"
+_MUTATION_CACHE_PREFIX = "mutmut-cache-"
+_MUTATION_CACHE_DIR_BY_PID: dict[int, Path] = {}
 
 
 def _callback_weak_references(callback: Any) -> tuple[weakref.ReferenceType[Any], ...]:
@@ -117,6 +132,127 @@ def restore_mutation_atfork_guard() -> None:
         os.register_at_fork = _ATFORK_ORIGINAL  # type: ignore[attr-defined]
     _ATFORK_ORIGINAL = None
     _ATFORK_GUARD_INSTALLED = False
+
+
+def _configure_process_local_pytest_cache(runner: Any) -> Path | None:
+    """Give this mutmut process a private pytest cache directory.
+
+    Pytest's default ``.pytest_cache`` lives below ``mutants/`` and is shared
+    by all forked mutant workers.  Most cache writes are harmless, but a
+    process-local path removes the race and makes a cache failure fail only the
+    owning worker.  The path is placed below the harness database directory so
+    the existing sentinel-protected cleanup owns both resources.
+    """
+
+    pytest_args = getattr(runner, "_pytest_add_cli_args", None)
+    if not isinstance(pytest_args, list):
+        # Lightweight fakes used by contract tests do not model mutmut's
+        # PytestRunner.  Do not alter their behavior or global test options.
+        return None
+
+    process_id = os.getpid()
+    cache_dir = _MUTATION_CACHE_DIR_BY_PID.get(process_id)
+    if cache_dir is None:
+        database_dir_value = os.environ.get(_AUTO_DATABASE_DIR_ENV)
+        if database_dir_value:
+            cache_dir = (
+                Path(database_dir_value).resolve()
+                / f"{_MUTATION_CACHE_PREFIX}{process_id}"
+            )
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            cache_dir = Path(
+                tempfile.mkdtemp(prefix=f"{_MUTATION_CACHE_PREFIX}{process_id}-")
+            ).resolve()
+        _MUTATION_CACHE_DIR_BY_PID[process_id] = cache_dir
+
+    filtered_args: list[str] = []
+    skip_next = False
+    for arg in pytest_args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--cache-dir":
+            skip_next = True
+            continue
+        if arg.startswith("--cache-dir="):
+            continue
+        filtered_args.append(arg)
+    filtered_args.append(f"--cache-dir={cache_dir}")
+    runner._pytest_add_cli_args = filtered_args
+    return cache_dir
+
+
+def _dispose_inherited_database() -> None:
+    """Dispose inherited SQLAlchemy pools before a mutmut child rebinds SQLite."""
+
+    from app.core import database
+
+    for name in ("_engine", "_read_replica_engine"):
+        inherited_engine = getattr(database, name, None)
+        if inherited_engine is None:
+            continue
+        sync_engine = getattr(inherited_engine, "sync_engine", None)
+        if sync_engine is not None:
+            # ``close=False`` avoids closing descriptors which belong to the
+            # parent after fork; replacing the child pool is the important
+            # isolation boundary.  The child exits with os._exit, so this is
+            # deliberately explicit rather than relying on atexit.
+            sync_engine.dispose(close=False)
+
+    database._engine = None
+    database._async_session = None
+    database._read_replica_engine = None
+    database._read_session_factory = None
+
+
+def _isolate_mutation_child_database() -> Path | None:
+    """Allocate a fresh harness SQLite file for a forked mutmut worker.
+
+    Returns the owned directory so the caller can remove it before mutmut's
+    child uses ``os._exit`` (which does not run atexit handlers).  Explicit
+    databases and PostgreSQL mutation runs are intentionally untouched.
+    """
+
+    if os.environ.get(_DATABASE_MODE_ENV) != "harness-sqlite":
+        return None
+    if not os.environ.get(_AUTO_DATABASE_URL_ENV):
+        return None
+
+    import tests.conftest as test_bootstrap
+
+    _dispose_inherited_database()
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+    database_url = test_bootstrap._create_automatic_sqlite_database_url(worker_id)
+
+    from app.core.config import settings
+
+    settings.database_url = database_url
+    # An automatic harness database never has a read replica.  Clearing this
+    # prevents an inherited replica engine from reintroducing a shared path.
+    settings.database_read_replica_url = None
+    return Path(os.environ[_AUTO_DATABASE_DIR_ENV]).resolve()
+
+
+def _cleanup_mutation_child_database(database_dir: Path | None) -> None:
+    """Remove one child-owned database/cache directory after pytest teardown."""
+
+    if database_dir is None:
+        return
+    import tests.conftest as test_bootstrap
+
+    if database_dir.parent != test_bootstrap._AUTO_DATABASE_ROOT:
+        return
+    if not database_dir.name.startswith(f"pytest-{os.getpid()}-"):
+        return
+    sentinel = database_dir / ".pytest-owned"
+    expected = f"university-ecosystem-pytest:{os.getpid()}:{database_dir.name}\n"
+    try:
+        if sentinel.read_text(encoding="utf-8") != expected:
+            return
+    except OSError:
+        return
+    shutil.rmtree(database_dir, ignore_errors=True)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -223,8 +359,21 @@ def run_mutmut_from_stats(
     selected_mutants = tuple(mutant_names)
     original_list_all_tests = cli.PytestRunner.list_all_tests
     original_run_forced_fail = cli.PytestRunner.run_forced_fail
+    original_run_tests = getattr(cli.PytestRunner, "run_tests", None)
+    parent_pid = os.getpid()
+
+    def _prepare_runner_process(runner: Any) -> Path | None:
+        """Apply all process-local resources before a pytest invocation."""
+
+        if os.getpid() == parent_pid:
+            _configure_process_local_pytest_cache(runner)
+            return None
+        database_dir = _isolate_mutation_child_database()
+        _configure_process_local_pytest_cache(runner)
+        return database_dir
 
     def _reuse_precomputed_test_ids(_runner: Any) -> Any:
+        _prepare_runner_process(_runner)
         return cli.ListAllTestsResult(ids=set(cli.collected_test_names()))
 
     def _run_selected_forced_fail(runner: Any) -> Any:
@@ -233,8 +382,23 @@ def run_mutmut_from_stats(
             tests=cli.tests_for_mutant_names(selected_mutants),
         )
 
+    def _run_process_isolated_tests(
+        runner: Any, *, mutant_name: str | None, tests: Sequence[str]
+    ) -> int:
+        database_dir = _prepare_runner_process(runner)
+        try:
+            if original_run_tests is None:
+                raise RuntimeError("mutmut PytestRunner does not implement run_tests")
+            return int(original_run_tests(runner, mutant_name=mutant_name, tests=tests))
+        finally:
+            if database_dir is not None:
+                _dispose_inherited_database()
+                _cleanup_mutation_child_database(database_dir)
+
     cli.PytestRunner.list_all_tests = _reuse_precomputed_test_ids
     cli.PytestRunner.run_forced_fail = _run_selected_forced_fail
+    if original_run_tests is not None:
+        cli.PytestRunner.run_tests = _run_process_isolated_tests
     try:
         # `_run` is pinned with mutmut==3.7.0.  It still owns all mutation
         # phases. The temporary hooks reuse redundant collection and align
@@ -244,6 +408,8 @@ def run_mutmut_from_stats(
     finally:
         cli.PytestRunner.list_all_tests = original_list_all_tests
         cli.PytestRunner.run_forced_fail = original_run_forced_fail
+        if original_run_tests is not None:
+            cli.PytestRunner.run_tests = original_run_tests
 
 
 def main() -> None:

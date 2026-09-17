@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import gc
 import json
+import os
+import subprocess
+import sys
 import weakref
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +14,8 @@ import pytest
 import scripts.run_mutmut_with_stats as run_module
 from scripts.mutmut_stats_shard import _stats_selection_args
 from scripts.run_mutmut_with_stats import run_mutmut_from_stats
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_mutation_worker_atfork_guard_skips_dead_otel_weakmethod(
@@ -169,6 +175,75 @@ def test_mutation_worker_guard_covers_finite_otel_reader(monkeypatch) -> None:
         assert callback() is None
     finally:
         run_module.restore_mutation_atfork_guard()
+
+
+def test_mutation_worker_assigns_process_local_pytest_cache(
+    tmp_path, monkeypatch
+) -> None:
+    """Forked mutmut workers must not share ``mutants/.pytest_cache``."""
+
+    cache_root = tmp_path / "automatic-db"
+    cache_root.mkdir()
+    monkeypatch.setenv(run_module._AUTO_DATABASE_DIR_ENV, str(cache_root))
+    runner = SimpleNamespace(
+        _pytest_add_cli_args=["--timeout=120", "--cache-dir", "shared-cache"]
+    )
+
+    cache_dir = run_module._configure_process_local_pytest_cache(runner)
+
+    assert cache_dir == (cache_root / f"mutmut-cache-{os.getpid()}").resolve()
+    assert cache_dir.is_dir()
+    assert runner._pytest_add_cli_args == [
+        "--timeout=120",
+        f"--cache-dir={cache_dir}",
+    ]
+
+
+def test_mutation_worker_database_isolation_preserves_explicit_database(
+    monkeypatch,
+) -> None:
+    """The mutation-only rebind must never rewrite an explicit database."""
+
+    explicit_url = "sqlite+aiosqlite:///./explicit.db"
+    monkeypatch.setenv(run_module._DATABASE_MODE_ENV, "explicit")
+    monkeypatch.setenv(run_module._AUTO_DATABASE_URL_ENV, explicit_url)
+
+    assert run_module._isolate_mutation_child_database() is None
+
+
+def test_mutation_worker_rebinds_and_cleans_owned_sqlite_in_fresh_process() -> None:
+    """A worker gets a new owned file and leaves no fork-only artifacts."""
+
+    environment = os.environ.copy()
+    for variable in (
+        "DATABASE_URL",
+        run_module._AUTO_DATABASE_URL_ENV,
+        run_module._AUTO_DATABASE_DIR_ENV,
+        run_module._DATABASE_MODE_ENV,
+        "UNIVERSITY_ECOSYSTEM_PYTEST_EXTERNAL_DATABASE_URL",
+    ):
+        environment.pop(variable, None)
+    command = (
+        "import os; import tests.conftest; "
+        "old=os.environ['UNIVERSITY_ECOSYSTEM_PYTEST_AUTO_DATABASE_URL']; "
+        "import scripts.run_mutmut_with_stats as runner; "
+        "new_dir=runner._isolate_mutation_child_database(); "
+        "assert new_dir is not None; "
+        "assert os.environ['UNIVERSITY_ECOSYSTEM_PYTEST_AUTO_DATABASE_URL'] != old; "
+        "runner._cleanup_mutation_child_database(new_dir); "
+        "assert not new_dir.exists()"
+    )
+    process = subprocess.run(  # noqa: S603 - fixed interpreter and inline probe
+        [sys.executable, "-c", command],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert process.returncode == 0, process.stdout + process.stderr
 
 
 class _FakeListAllTestsResult:
