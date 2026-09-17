@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 const { logWarning } = vi.hoisted(() => ({ logWarning: vi.fn() }))
 vi.mock("@/app/logger", () => ({ logWarning }))
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  logWarning.mockClear()
+})
 
 describe("useSessionCrypto legacy storage cleanup", () => {
   it("ignores a storage failure while removing the legacy signing key", async () => {
@@ -17,7 +22,6 @@ describe("useSessionCrypto legacy storage cleanup", () => {
     await expect(import("./useSessionCrypto")).resolves.toBeDefined()
     expect(removeItem).toHaveBeenCalledWith("ecosystem.profile.cache.sessionKey")
     expect(logWarning).toHaveBeenCalledWith("Failed to remove legacy session signing key")
-    vi.unstubAllGlobals()
   })
 
   it("loads without legacy cleanup when sessionStorage is unavailable", async () => {
@@ -25,7 +29,5 @@ describe("useSessionCrypto legacy storage cleanup", () => {
     vi.resetModules()
 
     await expect(import("./useSessionCrypto")).resolves.toBeDefined()
-
-    vi.unstubAllGlobals()
   })
 })
