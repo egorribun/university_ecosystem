@@ -2,6 +2,9 @@
 
 import { describe, expect, it, vi } from "vitest"
 
+const { logWarning } = vi.hoisted(() => ({ logWarning: vi.fn() }))
+vi.mock("@/app/logger", () => ({ logWarning }))
+
 describe("useSessionCrypto legacy storage cleanup", () => {
   it("ignores a storage failure while removing the legacy signing key", async () => {
     const removeItem = vi.fn(() => {
@@ -9,9 +12,11 @@ describe("useSessionCrypto legacy storage cleanup", () => {
     })
     vi.stubGlobal("sessionStorage", { removeItem })
     vi.resetModules()
+    logWarning.mockClear()
 
     await expect(import("./useSessionCrypto")).resolves.toBeDefined()
     expect(removeItem).toHaveBeenCalledWith("ecosystem.profile.cache.sessionKey")
+    expect(logWarning).toHaveBeenCalledWith("Failed to remove legacy session signing key")
     vi.unstubAllGlobals()
   })
 
