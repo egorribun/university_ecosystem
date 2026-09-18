@@ -88,9 +88,34 @@ def test_classify_file() -> None:
         == "source"
     )
     assert classify_file("services/gateway/main.go", generated_patterns) == "source"
+    # Authored capability code lives beside generated protobuf transport files
+    # under gen/go; generated patterns are checked first, so only the authored
+    # contract is treated as source and can own its focused Go tests.
+    assert (
+        classify_file("gen/go/file_processor/v1/capability.go", generated_patterns)
+        == "source"
+    )
+    assert (
+        classify_file("gen/go/file_processor/v1/file.pb.go", ["**/*.pb.go"])
+        == "generated"
+    )
 
     # Utility
     assert classify_file("scripts/setup.sh", generated_patterns) == "utility"
+
+
+def test_rust_fuzz_tsan_contract_is_backed_by_repository_references() -> None:
+    contract = Path(__file__).with_name("test_rust_fuzz_tsan_contract.py")
+
+    references = find_python_repository_references(contract)
+
+    assert {
+        ".github/workflows/rust-fuzz.yml",
+        "infra/oss-fuzz/build.sh",
+        "infra/oss-fuzz/project.yaml",
+        "scripts/run_tsan_tests.sh",
+        "tests/tsan_suppressions.txt",
+    }.issubset(references)
 
 
 def test_inventory_prunes_dependency_and_hidden_directories(
@@ -254,6 +279,31 @@ def test_matches_source_accepts_tests_for_utility_scripts() -> None:
             {"scripts"},
         )
         is True
+    )
+
+
+def test_matches_source_accepts_authored_test_support_module() -> None:
+    assert (
+        matches_source(
+            "tests/test_duration_sharding_contract.py",
+            set(),
+            [],
+            {"tests", "tests.conftest"},
+            reference_paths={"tests/conftest.py"},
+        )
+        is True
+    )
+
+    # Importing another test module is not an ownership relationship.
+    assert (
+        matches_source(
+            "tests/test_duration_sharding_contract.py",
+            set(),
+            [],
+            {"tests", "tests.test_other"},
+            reference_paths={"tests/conftest.py"},
+        )
+        is False
     )
 
 

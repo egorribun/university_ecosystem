@@ -64,8 +64,11 @@ export function ActivityTrendChart({
       return { label: Math.round(val).toString(), y }
     })
 
-    // X-axis labels: first, middle, last
-    const indices = [0, Math.floor(data.length / 2), data.length - 1]
+    // X-axis labels: first, middle, last.  For a two-point series the middle
+    // index is the last point; de-duplicate the source indices so we do not
+    // render the same marker twice.  Visible labels are presentation data and
+    // must never be used as React identity (repeated dates are valid input).
+    const indices = [...new Set([0, Math.floor(data.length / 2), data.length - 1])]
     const xLabels = indices.map((idx) => {
       const datum = data[idx]!
       const pt = pts[idx]!
@@ -109,9 +112,9 @@ export function ActivityTrendChart({
         </defs>
 
         {/* Grid lines */}
-        {yLabels.map((yl) => (
+        {yLabels.map((yl, index) => (
           <line
-            key={yl.label}
+            key={`y-grid-${index}`}
             x1={PADDING.left}
             y1={yl.y}
             x2={chartWidth - PADDING.right}
@@ -138,9 +141,9 @@ export function ActivityTrendChart({
         />
 
         {/* Y-axis labels */}
-        {yLabels.map((yl) => (
+        {yLabels.map((yl, index) => (
           <text
-            key={`y-${yl.label}`}
+            key={`y-label-${index}`}
             x={PADDING.left - 6}
             y={yl.y + 4}
             textAnchor="end"
@@ -152,9 +155,9 @@ export function ActivityTrendChart({
         ))}
 
         {/* X-axis labels */}
-        {xLabels.map((xl) => (
+        {xLabels.map((xl, index) => (
           <text
-            key={`x-${xl.label}`}
+            key={`x-label-${index}`}
             x={xl.x}
             y={height - 4}
             textAnchor="middle"
@@ -181,8 +184,8 @@ export function ActivityTrendChart({
           </tr>
         </thead>
         <tbody>
-          {data.map((point) => (
-            <tr key={point.date}>
+          {data.map((point, index) => (
+            <tr key={`data-row-${index}`}>
               <th scope="row">{formatDate ? formatDate(point.date) : point.date}</th>
               <td>{point.value}</td>
             </tr>

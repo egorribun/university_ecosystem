@@ -12,6 +12,7 @@ import {
   mutationPatternsFromPolicy,
 } from "./validate-stryker-inventory.mjs"
 import {
+  resolveEvidencePath,
   selectValidatedEvidenceCandidate,
   verifyEvidenceDocuments,
 } from "./verify-stryker-evidence.mjs"
@@ -352,6 +353,15 @@ function candidateSelectionOptions(evidence, candidateRoot, expectedWorkflowRunA
     toolchain: evidence.toolchain,
   }
 }
+
+test("resolves repository evidence when the root has a trailing separator", () => {
+  const root = `${path.join(os.tmpdir(), "stryker-evidence-repository")}${path.sep}`
+
+  assert.equal(
+    resolveEvidencePath("frontend/.depcheckrc", root),
+    path.join(root, "frontend", ".depcheckrc")
+  )
+})
 
 test("independently accepts SHA-bound complete release evidence", async () => {
   const evidence = await fixture()

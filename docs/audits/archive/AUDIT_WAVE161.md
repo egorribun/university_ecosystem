@@ -297,14 +297,14 @@ After Tier 1 closes Perf-measurement (root-cause fix OR platform-limitation defe
 
 ## Critical files (audit reference)
 
-- [`frontend/scripts/run-lhci.mjs:142-156`](../../frontend/scripts/run-lhci.mjs#L142-L156) — SW1 chromeFlags + W161 comment block
-- [`frontend/src/routes/_auth/messenger.tsx`](../../frontend/src/routes/_auth/messenger.tsx) — SW2 explicit defer comment block (~40 lines)
-- [`frontend/src/routes/_auth/messenger.$chatId.tsx`](../../frontend/src/routes/_auth/messenger.$chatId.tsx) — SW2 shorter rationale reference
-- [`CLAUDE.md`](../../CLAUDE.md) ## Gotchas — 2 new entries
+- [`frontend/scripts/run-lhci.mjs:142-156`](../../../frontend/scripts/run-lhci.mjs#L142-L156) — SW1 chromeFlags + W161 comment block
+- [`frontend/src/routes/_auth/messenger.tsx`](../../../frontend/src/routes/_auth/messenger.tsx) — SW2 explicit defer comment block (~40 lines)
+- [`frontend/src/routes/_auth/messenger.$chatId.tsx`](../../../frontend/src/routes/_auth/messenger.$chatId.tsx) — SW2 shorter rationale reference
+- [`CLAUDE.md`](../../../CLAUDE.md) ## Gotchas — 2 new entries
 - `C:\Users\egorribun\.claude\projects\C--Users-egorribun-Documents-university-ecosystem\memory\MEMORY.md` lines 10, 11, 22 — SW3 compaction
 - [`docs/audits/AUDIT_WAVE160.md`](AUDIT_WAVE160.md) — W160 narrative + carry-forward §Honesty source
-- [`docs/audits/INDEX.md`](INDEX.md) — N+3 rotation + active audit table updated
-- [`.github/workflows/lhci-linux.yml`](../../.github/workflows/lhci-linux.yml) — workflow_dispatch trigger for SW1 verification (run `25997872114`)
+- [`docs/audits/INDEX.md`](../../../docs/audits/INDEX.md) — N+3 rotation + active audit table updated
+- [`.github/workflows/lhci-linux.yml`](../../../.github/workflows/lhci-linux.yml) — workflow_dispatch trigger for SW1 verification (run `25997872114`)
 
 ---
 

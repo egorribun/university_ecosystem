@@ -38,12 +38,15 @@ describe("lazy route components", () => {
   it.each(lazyRoutes)("loads %s", async (testId, route) => {
     const Component = route.options.component!
 
-    render(
+    const view = render(
       <Suspense fallback={<div data-testid="route-loading" />}>
         <Component />
       </Suspense>
     )
 
     expect(await screen.findByTestId(testId)).toBeInTheDocument()
+    // Resolve the lazy marker before unmounting so a delayed module promise
+    // cannot update a detached root (and produce a late-act diagnostic).
+    view.unmount()
   })
 })

@@ -49,7 +49,7 @@ Wave 120 closed 7 of 9 backlog items + the SW1-candidate CLS gate ratchet, leavi
 
 ## SW1 — `chore(wave120-sw1-lhci-windows-fallback)`: permanentize Windows EPERM workaround
 
-**File**: [`frontend/scripts/lhci-windows-fallback.mjs`](frontend/scripts/lhci-windows-fallback.mjs) (NEW, ~240 lines)
+**File**: [`frontend/scripts/lhci-windows-fallback.mjs`](../../../frontend/scripts/lhci-windows-fallback.mjs) (NEW, ~240 lines)
 
 Wave 119 SW2 created `wave119-lhci-single.mjs` as scratch to bypass `lhci collect` Windows EPERM (chrome-launcher destroyTmp rmSync fires BEFORE LHR write to .lighthouseci/). Per Wave 118 + 119 plan pattern, the scratch was deleted at end-of-wave. Item #10 in Wave 120 backlog: permanentize since every future wave on Windows hits the same EPERM.
 
@@ -80,7 +80,7 @@ matches Wave 119 SW2 baseline (0.54/0.000/9432ms/214ms/1.00) within noise. CI on
 
 ## SW2 — `chore(wave120-sw2-cls-gate-ratchet)`: CLS error@0.15 → error@0.10
 
-**File**: [`frontend/scripts/run-lhci.mjs:178`](frontend/scripts/run-lhci.mjs)
+**File**: [`frontend/scripts/run-lhci.mjs:178`](../../../frontend/scripts/run-lhci.mjs)
 
 Fresh 3-run sweep on /, /dashboard, /events (worst CLS post-W119-SW7) via new `npm run lhci:windows` (Wave 120 SW1) showed worst median = 0.062 (/events) with variance ~0.01 across 3 runs (NOT W119's plan-assumed 0.04 — install-panel CLS-119-02 closure dropped variance dramatically).
 
@@ -109,10 +109,10 @@ ALL 7 URLs comfortably pass new CLS error@0.10 gate. Worst CLS = 0.062 (/events)
 ## SW3 — `a11y(wave120-sw3-schedule-aria-grid)`: 5 axe violations → 0
 
 **Files**:
-- [`frontend/src/components/Layout.tsx`](frontend/src/components/Layout.tsx) — `<motion.main id="main">` → `<motion.div>`
-- [`frontend/src/components/schedule/ScheduleDesktopTable.tsx`](frontend/src/components/schedule/ScheduleDesktopTable.tsx) — `role="row"` wrappers (header + each data row + empty state)
-- [`frontend/src/components/schedule/ScheduleMiniCalendar.tsx`](frontend/src/components/schedule/ScheduleMiniCalendar.tsx) — `role="row"` week wrappers + `role="gridcell"` + `aria-busy` during loading
-- [`frontend/src/components/__tests__/LoadingState.test.tsx`](frontend/src/components/__tests__/LoadingState.test.tsx) — selector `main#main` → `[data-scroll-root]`
+- [`frontend/src/components/Layout.tsx`](../../../frontend/src/components/Layout.tsx) — `<motion.main id="main">` → `<motion.div>`
+- [`frontend/src/components/schedule/ScheduleDesktopTable.tsx`](../../../frontend/src/components/schedule/ScheduleDesktopTable.tsx) — `role="row"` wrappers (header + each data row + empty state)
+- [`frontend/src/components/schedule/ScheduleMiniCalendar.tsx`](../../../frontend/src/components/schedule/ScheduleMiniCalendar.tsx) — `role="row"` week wrappers + `role="gridcell"` + `aria-busy` during loading
+- [`frontend/src/components/__tests__/LoadingState.test.tsx`](../../../frontend/src/components/__tests__/LoadingState.test.tsx) — selector `main#main` → `[data-scroll-root]`
 
 **Live axe-core 4.11.2 scan via chrome-devtools-mcp on /schedule** (1440×900 viewport, VITE_LHCI=true build):
 
@@ -147,9 +147,9 @@ ScheduleMiniCalendar (date-picker grid) used the same pattern: chunked offset+da
 ## SW4 — `docs(wave120-sw4-map-keyboard-shortcuts)`: arrow/zoom/rotate/pitch documented
 
 **Files**:
-- [`frontend/src/components/map/MapShortcutsOverlay.tsx`](frontend/src/components/map/MapShortcutsOverlay.tsx) — added 4 SHORTCUTS entries
-- [`frontend/src/i18n/locales/en/map.json`](frontend/src/i18n/locales/en/map.json) — 4 new shortcuts.* keys
-- [`frontend/src/i18n/locales/ru/map.json`](frontend/src/i18n/locales/ru/map.json) — Russian translations
+- [`frontend/src/components/map/MapShortcutsOverlay.tsx`](../../../frontend/src/components/map/MapShortcutsOverlay.tsx) — added 4 SHORTCUTS entries
+- [`frontend/src/i18n/locales/en/map.json`](../../../frontend/src/i18n/locales/en/map.json) — 4 new shortcuts.* keys
+- [`frontend/src/i18n/locales/ru/map.json`](../../../frontend/src/i18n/locales/ru/map.json) — Russian translations
 
 Wave 116 honest deferral noted MapLibre's built-in keyboard nav (arrow keys, +/- zoom, Shift+arrow rotate/pitch) wasn't verified on physical keyboard. Wave 120 SW4 verified via chrome-devtools-mcp keyboard synthesis on /map.
 
@@ -179,10 +179,10 @@ Playwright e2e fixture (originally planned for SW4) DEFERRED to SW7 URL-state e2
 ## SW5 — `feat(wave120-sw5-map-url-sync)`: zoom/center/pitch/bearing in URL
 
 **Files**:
-- [`frontend/src/features/map/schema.ts`](frontend/src/features/map/schema.ts) (NEW, ~110 lines) — Valibot schema + parseMapViewport + serializeMapViewport
-- [`frontend/src/routes/_auth/map.tsx`](frontend/src/routes/_auth/map.tsx) — added validateSearch
-- [`frontend/src/features/map/MapFeature.tsx`](frontend/src/features/map/MapFeature.tsx) — wired useURLState + onMoveEnd debounced 500ms
-- [`frontend/src/components/map/MapLibreMap.tsx`](frontend/src/components/map/MapLibreMap.tsx) — new urlInitialViewport + onMapMoveEnd props
+- [`frontend/src/features/map/schema.ts`](../../../frontend/src/features/map/schema.ts) (NEW, ~110 lines) — Valibot schema + parseMapViewport + serializeMapViewport
+- [`frontend/src/routes/_auth/map.tsx`](../../../frontend/src/routes/_auth/map.tsx) — added validateSearch
+- [`frontend/src/features/map/MapFeature.tsx`](../../../frontend/src/features/map/MapFeature.tsx) — wired useURLState + onMoveEnd debounced 500ms
+- [`frontend/src/components/map/MapLibreMap.tsx`](../../../frontend/src/components/map/MapLibreMap.tsx) — new urlInitialViewport + onMapMoveEnd props
 
 URL form: `?z=16.5&lat=55.71440&lng=37.81800&p=45&b=120` (numbers, not JSON-quoted strings). Pattern mirrors Events / Activity / News URL-state from Wave 112 SW3 (useURLState hook + Valibot validateSearch + viewTransition: false + replace: true per FIX-77-03).
 
@@ -208,11 +208,11 @@ The default `stringifySearch` JSON-quotes strings that LOOK like numbers (to pre
 ## SW6 — `refactor(wave120-sw6-token-drift-audit)`: hardcoded radii → tokens, drop 3 @property orphans
 
 **Files** (5 changed, +19 / −33):
-- [`frontend/src/styles/tokens/map.css`](frontend/src/styles/tokens/map.css) — 4 × `8px` → `var(--radius-xs)`, 4 × `12px` → `var(--radius-sm)`, removed @property `--map-card-glow` + 2 assignments
-- [`frontend/src/styles/tokens/news.css`](frontend/src/styles/tokens/news.css) — 2 × `0.75rem` → `var(--radius-sm)`
-- [`frontend/src/styles/tokens/schedule.css`](frontend/src/styles/tokens/schedule.css) — 2 × `0.75rem` → `var(--radius-sm)`
-- [`frontend/src/styles/tokens/activity.css`](frontend/src/styles/tokens/activity.css) — removed @property `--activity-card-glow` + 2 assignments
-- [`frontend/src/styles/partials/_glass-layers.css`](frontend/src/styles/partials/_glass-layers.css) — removed @property `--aurora-hue` (no assignments existed)
+- [`frontend/src/styles/tokens/map.css`](../../../frontend/src/styles/tokens/map.css) — 4 × `8px` → `var(--radius-xs)`, 4 × `12px` → `var(--radius-sm)`, removed @property `--map-card-glow` + 2 assignments
+- [`frontend/src/styles/tokens/news.css`](../../../frontend/src/styles/tokens/news.css) — 2 × `0.75rem` → `var(--radius-sm)`
+- [`frontend/src/styles/tokens/schedule.css`](../../../frontend/src/styles/tokens/schedule.css) — 2 × `0.75rem` → `var(--radius-sm)`
+- [`frontend/src/styles/tokens/activity.css`](../../../frontend/src/styles/tokens/activity.css) — removed @property `--activity-card-glow` + 2 assignments
+- [`frontend/src/styles/partials/_glass-layers.css`](../../../frontend/src/styles/partials/_glass-layers.css) — removed @property `--aurora-hue` (no assignments existed)
 
 **(1) Hardcoded radius → token references** (12 sites, visual identical):
 - `--radius-xs: 0.5rem` (8px) ← replaces 8px hardcoded
@@ -235,8 +235,8 @@ The actual hover/glow shadow effects remain intact — they use inline `color-mi
 ## SW7 — `test(wave120-sw7-url-state-e2e)`: 6/6 passing
 
 **Files**:
-- [`frontend/tests/e2e/url-state-persistence.spec.ts`](frontend/tests/e2e/url-state-persistence.spec.ts) (NEW, 149 lines) — 6 tests, chromium-only
-- [`frontend/playwright.config.ts`](frontend/playwright.config.ts) — `SKIP_WEBSERVER=true` opt-out
+- [`frontend/tests/e2e/url-state-persistence.spec.ts`](../../../frontend/tests/e2e/url-state-persistence.spec.ts) (NEW, 149 lines) — 6 tests, chromium-only
+- [`frontend/playwright.config.ts`](../../../frontend/playwright.config.ts) — `SKIP_WEBSERVER=true` opt-out
 
 **6 tests** (all pass in 5.6s, 6 parallel workers):
 1. /events `?tab=archive` — click tab, verify URL, reload, verify

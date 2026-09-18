@@ -141,7 +141,7 @@ core audit values:
   A11y score: 1
 ```
 
-Lighthouse can compute individual metrics (FCP/LCP/TBT/CLS via Chrome DevTools Protocol traces) but CANNOT compute `categories.performance.score` without `speed-index`, which requires screenshot collection. Chrome flags at [`run-lhci.mjs:130`](frontend/scripts/run-lhci.mjs:130) (`--headless=new --disable-gpu --no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type`) prevent Chrome from collecting screenshots in the headless mode under Linux CI runner conditions. Same null-Perf pattern across ALL 9 URLs × 81 LHRs (100% reproducible).
+Lighthouse can compute individual metrics (FCP/LCP/TBT/CLS via Chrome DevTools Protocol traces) but CANNOT compute `categories.performance.score` without `speed-index`, which requires screenshot collection. Chrome flags at [`run-lhci.mjs:130`](../../../frontend/scripts/run-lhci.mjs:130) (`--headless=new --disable-gpu --no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type`) prevent Chrome from collecting screenshots in the headless mode under Linux CI runner conditions. Same null-Perf pattern across ALL 9 URLs × 81 LHRs (100% reproducible).
 
 This closes routine-e5 calibration drift **PARTIALLY** — the prior `error@0.40` relaxation to `warn@0.40` was justified pre-SSR by CI Linux measuring 0.10-0.12 lower than Windows wrapper. W160 confirms the drift NOW manifests as null Perf (structural unmeasurability) rather than just calibration delta. Full ratchet pending W161+ chrome flags investigation (likely drop `--disable-gpu` or switch `--headless=chrome` to restore screenshot collection on Linux CI).
 
@@ -156,7 +156,7 @@ Worst TBT = 549ms on /. Above 200ms ceiling. Same structural reasoning as LCP.
 ### Implementation
 
 Commit `44b33c230` `chore(wave160-sw2-lhci-ratchet)`:
-- Edited [`frontend/scripts/run-lhci.mjs:206-289`](frontend/scripts/run-lhci.mjs:206) inline assertions
+- Edited [`frontend/scripts/run-lhci.mjs:206-289`](../../../frontend/scripts/run-lhci.mjs:206) inline assertions
 - Changed `"cumulative-layout-shift": ["error", { maxNumericValue: 0.1, aggregationMethod: "median" }]` → `{ maxNumericValue: 0.05, aggregationMethod: "median" }`
 - Added 47-line comment block documenting W160 SW2 cross-session medians + ratchet decision lineage + structural Perf blocker rationale
 - Preserved comment history (routine-e5 + W118 SW5 + W119 SW3 + W120 SW2 + W124 SW4)
@@ -184,9 +184,9 @@ W160 verbose row addition in SW4 (~1,800-2,300 chars expected) will push to ~23,
 
 ### Files created / modified
 
-1. NEW [`docs/audits/AUDIT_WAVE160.md`](docs/audits/AUDIT_WAVE160.md) — this audit
+1. NEW [`docs/audits/AUDIT_WAVE160.md`](../../../docs/audits/archive/AUDIT_WAVE160.md) — this audit
 2. MODIFIED `CLAUDE.md ## Audit Trail` — W160 row at top (concise per W134 user-feedback lesson; ~2,000-2,500 chars)
-3. MODIFIED [`docs/audits/INDEX.md`](docs/audits/INDEX.md) — active table replaces W157 with W160; rotation history appends "W160 SW4 (W157 → archive)"
+3. MODIFIED [`docs/audits/INDEX.md`](../../../docs/audits/INDEX.md) — active table replaces W157 with W160; rotation history appends "W160 SW4 (W157 → archive)"
 4. **N+3 rotation**: `git mv docs/audits/AUDIT_WAVE157.md docs/audits/archive/AUDIT_WAVE157.md` per W122 polish-docs-v3 covenant
 5. MODIFIED `memory/MEMORY.md` (user .claude profile) — added W160 verbose row + updated active wave references (W158/W159/W160)
 6. NEW `memory/wave160_backlog.md` (user .claude profile)

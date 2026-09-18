@@ -136,6 +136,16 @@ describe("useEventRegistration (branches)", () => {
     expect(outcome).toBeNull()
   })
 
+  it("uses the documented defaults for an omitted registration state", () => {
+    const { result } = renderHook(() =>
+      useEventRegistration({ eventId, user: mockUser, initialParticipantCount: 4 })
+    )
+
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(4)
+    expect(result.current.qrToken).toBeUndefined()
+  })
+
   // ---- register() (lines 145-189) ----
 
   it("register(): success persists qr token to localStorage (153-163)", async () => {
@@ -236,6 +246,78 @@ describe("useEventRegistration (branches)", () => {
     expect(mockGet).not.toHaveBeenCalled()
   })
 
+  it.each([
+    {
+      label: "abort code",
+      error: { isAxiosError: true, code: "ECONNABORTED", response: { status: 400, data: {} } },
+    },
+    {
+      label: "network code",
+      error: { isAxiosError: true, code: "ERR_NETWORK", response: { status: 400, data: {} } },
+    },
+    {
+      label: "missing response",
+      error: { isAxiosError: true, code: undefined, response: undefined },
+    },
+    {
+      label: "server response",
+      error: { isAxiosError: true, code: undefined, response: { status: 500, data: {} } },
+    },
+  ])("register: resynchronizes after a $label failure", async ({ error }) => {
+    mockPost.mockRejectedValue(error)
+    mockIsAxiosError.mockImplementation((value: unknown) => value === error)
+    mockGet.mockResolvedValue({ data: { is_registered: false, participant_count: 4 } })
+
+    const { result } = renderHook(() =>
+      useEventRegistration({ eventId, user: mockUser, initialRegistered: false })
+    )
+
+    await act(async () => {
+      await result.current.register()
+    })
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith(`/events/${eventId}`))
+  })
+
+  it("register: keeps client errors local and uses the translated fallback for non-string detail", async () => {
+    const error = {
+      isAxiosError: true,
+      code: undefined,
+      response: { status: 422, data: { detail: 42 } },
+    }
+    mockPost.mockRejectedValue(error)
+    mockIsAxiosError.mockImplementation((value: unknown) => value === error)
+    const onNotify = vi.fn()
+    const { result } = renderHook(() =>
+      useEventRegistration({ eventId, user: mockUser, initialRegistered: false, onNotify })
+    )
+
+    await act(async () => {
+      await result.current.register()
+    })
+
+    await waitFor(() =>
+      expect(onNotify).toHaveBeenCalledWith("events:card.messages.registerFailure")
+    )
+    expect(mockGet).not.toHaveBeenCalled()
+  })
+
+  it("register: does not require an optional notification callback", async () => {
+    const error = { isAxiosError: false, response: { status: 422, data: {} } }
+    mockPost.mockRejectedValue(error)
+    mockIsAxiosError.mockReturnValue(false)
+
+    const { result } = renderHook(() =>
+      useEventRegistration({ eventId, user: mockUser, initialRegistered: false })
+    )
+
+    await expect(
+      act(async () => {
+        await result.current.register()
+      })
+    ).resolves.toBeUndefined()
+  })
+
   // ---- unregister() (lines 191-232) ----
 
   it("unregister(): success removes qr from localStorage (199-209)", async () => {
@@ -333,6 +415,77 @@ describe("useEventRegistration (branches)", () => {
     expect(mockGet).not.toHaveBeenCalled()
   })
 
+  it.each([
+    {
+      label: "abort code",
+      error: { isAxiosError: true, code: "ECONNABORTED", response: { status: 400, data: {} } },
+    },
+    {
+      label: "network code",
+      error: { isAxiosError: true, code: "ERR_NETWORK", response: { status: 400, data: {} } },
+    },
+    {
+      label: "missing response",
+      error: { isAxiosError: true, code: undefined, response: undefined },
+    },
+    {
+      label: "server response",
+      error: { isAxiosError: true, code: undefined, response: { status: 500, data: {} } },
+    },
+  ])("unregister: resynchronizes after a $label failure", async ({ error }) => {
+    mockDelete.mockRejectedValue(error)
+    mockIsAxiosError.mockImplementation((value: unknown) => value === error)
+    mockGet.mockResolvedValue({ data: { is_registered: true, participant_count: 4 } })
+
+    const { result } = renderHook(() =>
+      useEventRegistration({ eventId, user: mockUser, initialRegistered: true })
+    )
+
+    await act(async () => {
+      await result.current.unregister()
+    })
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith(`/events/${eventId}`))
+  })
+
+  it("unregister: uses the translated fallback for non-string detail and keeps the callback optional", async () => {
+    const error = {
+      isAxiosError: true,
+      code: undefined,
+      response: { status: 422, data: { detail: 42 } },
+    }
+    mockDelete.mockRejectedValue(error)
+    mockIsAxiosError.mockImplementation((value: unknown) => value === error)
+
+    const { result } = renderHook(() =>
+      useEventRegistration({ eventId, user: mockUser, initialRegistered: true })
+    )
+
+    await expect(
+      act(async () => {
+        await result.current.unregister()
+      })
+    ).resolves.toBeUndefined()
+  })
+
+  it("sends the event id in the attendance request", async () => {
+    mockPost.mockResolvedValue({ data: { qr_code: "request-qr" } })
+    mockDelete.mockResolvedValue({ data: null })
+
+    const { result } = renderHook(() =>
+      useEventRegistration({ eventId, user: mockUser, initialRegistered: false })
+    )
+    await act(async () => {
+      await result.current.register()
+    })
+    expect(mockPost).toHaveBeenCalledWith("/events/attendance", { event_id: eventId })
+
+    await act(async () => {
+      await result.current.unregister()
+    })
+    expect(mockDelete).toHaveBeenCalledWith("/events/attendance", { data: { event_id: eventId } })
+  })
+
   // ---- register/unregister stopPropagation guard (lines 146, 192) ----
 
   it("register/unregister call stopPropagation when given an event (146, 192)", async () => {
@@ -419,6 +572,24 @@ describe("useEventRegistration (branches)", () => {
 
     expect(result.current.isRegistered).toBe(false)
     expect(result.current.qrToken).toBeUndefined()
+  })
+
+  it("uses the anonymous QR namespace when an anonymous registration succeeds", async () => {
+    mockPost.mockResolvedValue({ data: { qr_code: "anon-qr" } })
+    const { result } = renderHook(() =>
+      useEventRegistration({
+        eventId,
+        user: null,
+        initialRegistered: false,
+      })
+    )
+
+    await act(async () => {
+      await result.current.register()
+    })
+
+    expect(result.current.qrToken).toBe("anon-qr")
+    expect(localStorage.getItem(`event:qr:${eventId}:anon`)).toBe("anon-qr")
   })
 
   it("resets registration state before persisting a new event and user scope", async () => {

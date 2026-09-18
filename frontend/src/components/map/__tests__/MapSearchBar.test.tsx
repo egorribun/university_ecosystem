@@ -19,7 +19,10 @@ import {
   applySearchSelection,
   blurSearchInput,
   focusSearchInput,
+  getInitialSearchOpenState,
   MapSearchBar,
+  shouldOpenSearchOnFocus,
+  updateSearchInputRef,
 } from "@/components/map/MapSearchBar"
 import type { CampusBuilding } from "@/data/campusBuildings"
 
@@ -90,6 +93,16 @@ afterEach(() => {
 })
 
 describe("MapSearchBar", () => {
+  it("starts with a closed search dropdown", () => {
+    expect(getInitialSearchOpenState()).toBe(false)
+  })
+
+  it("opens on focus only when at least one result exists", () => {
+    expect(shouldOpenSearchOnFocus(0)).toBe(false)
+    expect(shouldOpenSearchOnFocus(-1)).toBe(false)
+    expect(shouldOpenSearchOnFocus(1)).toBe(true)
+  })
+
   it("ignores a missing selection without invoking either callback", () => {
     const onSelectBuilding = vi.fn()
     const onSelectRoom = vi.fn()
@@ -125,10 +138,56 @@ describe("MapSearchBar", () => {
     expect(onSelectionApplied).toHaveBeenCalledOnce()
   })
 
+  it("updates the input ref without cancelling a pending blur when a node is attached", () => {
+    const input = document.createElement("input")
+    const inputRef: { current: HTMLInputElement | null } = { current: null }
+    const blurTimeoutRef: { current: ReturnType<typeof setTimeout> | null } = {
+      current: setTimeout(() => undefined, 1_000),
+    }
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+
+    try {
+      updateSearchInputRef(input, inputRef, blurTimeoutRef)
+
+      expect(inputRef.current).toBe(input)
+      expect(blurTimeoutRef.current).not.toBeNull()
+      expect(clearTimeoutSpy).not.toHaveBeenCalled()
+    } finally {
+      if (blurTimeoutRef.current !== null) clearTimeout(blurTimeoutRef.current)
+      clearTimeoutSpy.mockRestore()
+    }
+  })
+
+  it("applies a valid selection when the completion callback is omitted", () => {
+    const onSelectBuilding = vi.fn()
+    const onSelectRoom = vi.fn()
+
+    expect(
+      applySearchSelection(
+        { type: "building", buildingLetter: "ГУК", label: "Main" },
+        onSelectBuilding,
+        onSelectRoom
+      )
+    ).toBe(true)
+    expect(onSelectBuilding).toHaveBeenCalledWith("ГУК")
+    expect(onSelectRoom).not.toHaveBeenCalled()
+  })
+
+  it("rejects stale result variants without invoking selection callbacks", () => {
+    const onSelectBuilding = vi.fn()
+    const onSelectRoom = vi.fn()
+    const staleResult = { type: "stale" } as unknown as Parameters<typeof applySearchSelection>[0]
+
+    expect(applySearchSelection(staleResult, onSelectBuilding, onSelectRoom)).toBe(false)
+    expect(onSelectBuilding).not.toHaveBeenCalled()
+    expect(onSelectRoom).not.toHaveBeenCalled()
+  })
+
   it("uses the map translation namespace and exposes the combobox contract", () => {
     render(<MapSearchBar {...baseProps} />)
 
     const input = screen.getByRole("combobox")
+    expect(input).toHaveAttribute("aria-expanded", "false")
     expect(translation.useTranslation).toHaveBeenCalledWith("map")
     expect(input).toHaveAccessibleName("search.ariaLabel")
     expect(input).toHaveAttribute("placeholder", "search.placeholder")
@@ -291,7 +350,12 @@ describe("MapSearchBar", () => {
   })
 
   it("moves the active option with bounded ArrowDown and ArrowUp navigation", () => {
-    render(<MapSearchBar {...baseProps} buildings={CAMPUS_BUILDINGS} />)
+    const thirdBuilding = {
+      ...CAMPUS_BUILDINGS[0]!,
+      letter: "ЦИТ" as const,
+      name: "Campus Lab",
+    } satisfies CampusBuilding
+    render(<MapSearchBar {...baseProps} buildings={[...CAMPUS_BUILDINGS, thirdBuilding]} />)
     const input = screen.getByRole("combobox")
     fireEvent.change(input, { target: { value: "Campus" } })
     const options = screen.getAllByRole("option")
@@ -306,12 +370,12 @@ describe("MapSearchBar", () => {
     expect(input).toHaveAttribute("aria-activedescendant", options[1]!.id)
 
     fireEvent.keyDown(input, { key: "ArrowDown" })
-    expect(options[1]).toHaveAttribute("aria-selected", "true")
+    expect(options[2]).toHaveAttribute("aria-selected", "true")
     fireEvent.keyDown(input, { key: "ArrowDown" })
-    expect(options[1]).toHaveAttribute("aria-selected", "true")
+    expect(options[2]).toHaveAttribute("aria-selected", "true")
 
     fireEvent.keyDown(input, { key: "ArrowUp" })
-    expect(options[0]).toHaveAttribute("aria-selected", "true")
+    expect(options[1]).toHaveAttribute("aria-selected", "true")
     fireEvent.keyDown(input, { key: "ArrowUp" })
     expect(options[0]).toHaveAttribute("aria-selected", "true")
   })
@@ -469,6 +533,38 @@ describe("MapSearchBar", () => {
     }
   })
 
+  it("does not reopen an empty-result dropdown on focus", () => {
+    render(<MapSearchBar {...baseProps} />)
+    const input = screen.getByRole("combobox")
+
+    fireEvent.change(input, { target: { value: "unknown building" } })
+    fireEvent.blur(input)
+    fireEvent.focus(input)
+
+    expect(input).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+  })
+
+  it("keeps a pending blur close until unmount instead of rerender cleanup", () => {
+    vi.useFakeTimers()
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+    try {
+      const view = render(<MapSearchBar {...baseProps} />)
+      fireEvent.change(screen.getByRole("combobox"), { target: { value: "Главный" } })
+      fireEvent.blur(screen.getByRole("combobox"))
+      const callsAfterBlur = clearTimeoutSpy.mock.calls.length
+
+      view.rerender(<MapSearchBar {...baseProps} />)
+      expect(clearTimeoutSpy.mock.calls.length).toBe(callsAfterBlur)
+
+      view.unmount()
+      expect(clearTimeoutSpy.mock.calls.length).toBe(callsAfterBlur + 1)
+    } finally {
+      clearTimeoutSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it("skips only the blur immediately following a selection", () => {
     vi.useFakeTimers()
     const setTimeoutSpy = vi.spyOn(window, "setTimeout")
@@ -527,6 +623,28 @@ describe("MapSearchBar", () => {
 
     expect(firstRef.current).toBeNull()
     expect(secondRef.current).toBe(input)
+  })
+
+  it("cancels a pending blur close when the parent swaps the imperative ref", () => {
+    vi.useFakeTimers()
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+    const firstRef: { current: HTMLInputElement | null } = { current: null }
+    const secondRef: { current: HTMLInputElement | null } = { current: null }
+
+    try {
+      const view = render(<MapSearchBar {...baseProps} searchInputRef={firstRef} />)
+      const input = screen.getByRole("combobox")
+      fireEvent.change(input, { target: { value: "Главный" } })
+      fireEvent.blur(input)
+
+      view.rerender(<MapSearchBar {...baseProps} searchInputRef={secondRef} />)
+
+      expect(clearTimeoutSpy).toHaveBeenCalledOnce()
+      expect(secondRef.current).toBe(input)
+    } finally {
+      clearTimeoutSpy.mockRestore()
+      vi.useRealTimers()
+    }
   })
 
   it("uses the latest selection callbacks after rerender", () => {

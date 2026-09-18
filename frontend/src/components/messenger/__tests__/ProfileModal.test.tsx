@@ -184,4 +184,24 @@ describe("ProfileModal", () => {
 
     expect(screen.getByAltText("")).toBeInTheDocument()
   })
+
+  it("exposes the avatar link only when an avatar exists and preserves status semantics", () => {
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <ProfileModal user={testUser} loading={false} error={null} onClose={onClose} />
+    )
+
+    const avatarLink = screen.getByRole("link", { name: /messenger:viewAvatar/ })
+    expect(avatarLink).toHaveAttribute("href", "/avatar.png")
+    expect(avatarLink).toHaveAttribute("target", "_blank")
+    expect(avatarLink).toHaveAttribute("rel", "noreferrer")
+    expect(document.querySelector('[data-status="online"]')).toBeInTheDocument()
+    expect(document.querySelector(".messenger-online-indicator")).toBeInTheDocument()
+
+    const inactive = { ...testUser, avatar_url: null, is_active: false }
+    rerender(<ProfileModal user={inactive} loading={false} error={null} onClose={onClose} />)
+    expect(screen.queryByRole("link", { name: /messenger:viewAvatar/ })).toBeNull()
+    expect(document.querySelector('[data-status="offline"]')).toBeInTheDocument()
+    expect(document.querySelector(".messenger-online-indicator")).toBeNull()
+  })
 })

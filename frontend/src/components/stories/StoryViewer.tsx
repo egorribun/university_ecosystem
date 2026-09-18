@@ -1,18 +1,16 @@
-import { useRef, useId, useCallback, useEffect, useState } from "react"
+import { useRef, useId, useCallback, useEffect, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
 import { ChevronLeft, ChevronRight, X } from "lucide-react"
 import { cn } from "@/utils/cn"
-import { Button, ProgressBar } from "@/components/ui"
+import { Button, type ButtonProps } from "@/components/ui/Button"
+import { ProgressBar } from "@/components/ui/ProgressBar"
 import SmartImage from "@/components/media/SmartImage"
-import type { ButtonProps } from "@/components/ui/Button"
 import type { StoryItem } from "@/types/Story"
 import { useSwipe } from "@/hooks/useSwipe"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import useMediaQuery from "@/hooks/useMediaQuery"
-
-const isBrowser = typeof document !== "undefined"
 
 interface StoryViewerProps {
   stories: StoryItem[]
@@ -23,6 +21,31 @@ interface StoryViewerProps {
   onPrev: () => void
   onPause: () => void
   onResume: () => void
+}
+
+function noopSubscription(): void {}
+
+const subscribeToClientReady = Function.prototype.bind.bind(noopSubscription) as (
+  listener: () => void
+) => () => void
+const getClientReadySnapshot = Boolean.bind(null, true) as () => boolean
+const getServerReadySnapshot = Boolean.bind(null, false) as () => boolean
+
+const linkPropsFor = (url: string): ButtonProps<typeof Link> | ButtonProps<"a"> | null => {
+  const trimmed = url.trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith("/")) {
+    return { as: Link, to: trimmed } satisfies ButtonProps<typeof Link>
+  }
+  if (/^https?:/i.test(trimmed)) {
+    return {
+      as: "a" as const,
+      href: trimmed,
+      target: "_blank",
+      rel: "noreferrer" as const,
+    } satisfies ButtonProps<"a">
+  }
+  return { as: "a" as const, href: trimmed } satisfies ButtonProps<"a">
 }
 
 export const StoryViewer = ({
@@ -41,8 +64,11 @@ export const StoryViewer = ({
   const dialogTitleId = useId()
   const dialogInstructionsId = useId()
 
-  const [isClient, setIsClient] = useState(false)
-  useEffect(() => setIsClient(true), [])
+  const isClient = useSyncExternalStore(
+    subscribeToClientReady,
+    getClientReadySnapshot,
+    getServerReadySnapshot
+  )
 
   const dialogTrapRef = useFocusTrap<HTMLDivElement>({
     active: activeStoryIndex !== null,
@@ -50,7 +76,7 @@ export const StoryViewer = ({
   })
 
   useEffect(() => {
-    if (!isBrowser || activeStoryIndex === null) return undefined
+    if (activeStoryIndex === null) return undefined
     const { overflow } = document.body.style
     document.body.style.overflow = "hidden"
     return () => {
@@ -58,8 +84,9 @@ export const StoryViewer = ({
     }
   }, [activeStoryIndex])
 
-  const viewerStory = activeStoryIndex === null ? null : (stories[activeStoryIndex] ?? null)
-  const nextStory = activeStoryIndex === null ? null : (stories[activeStoryIndex + 1] ?? null)
+  const activeIndex = activeStoryIndex ?? -1
+  const viewerStory = stories[activeIndex] ?? null
+  const nextStory = stories[activeIndex + 1] ?? null
   const nextStoryImage = nextStory?.cover_url_optimized ?? nextStory?.cover_url ?? null
 
   const progressForIndex = useCallback(
@@ -72,32 +99,12 @@ export const StoryViewer = ({
     [activeStoryIndex, progress]
   )
 
-  const linkPropsFor = useCallback(
-    (url: string): ButtonProps<typeof Link> | ButtonProps<"a"> | null => {
-      const trimmed = url.trim()
-      if (!trimmed) return null
-      if (trimmed.startsWith("/")) {
-        return { as: Link, to: trimmed } satisfies ButtonProps<typeof Link>
-      }
-      if (/^https?:/i.test(trimmed)) {
-        return {
-          as: "a" as const,
-          href: trimmed,
-          target: "_blank",
-          rel: "noreferrer" as const,
-        } satisfies ButtonProps<"a">
-      }
-      return { as: "a" as const, href: trimmed } satisfies ButtonProps<"a">
-    },
-    []
-  )
-
   const viewerStoryLink = viewerStory?.cta_url ? linkPropsFor(viewerStory.cta_url) : null
 
   const storyDialogLabel = viewerStory
     ? t("stories.viewer.aria.dialog", {
         title: viewerStory.title,
-        index: activeStoryIndex! + 1,
+        index: activeIndex + 1,
         total: stories.length,
       })
     : undefined
@@ -141,7 +148,9 @@ export const StoryViewer = ({
     [swipeHandlers, onResume]
   )
 
-  if (!isClient || !viewerStory || activeStoryIndex === null) return null
+  if (!isClient || !viewerStory) return null
+
+  const overlayBackdropFilter = viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined
 
   return createPortal(
     // Wave 54: css-scale-in entrance animation via @starting-style (DESIGN-54-04)
@@ -205,8 +214,8 @@ export const StoryViewer = ({
                 backgroundImage: viewerStory.cover_url
                   ? "linear-gradient(180deg, transparent 0%, var(--primary-subtle-bg) 55%, var(--bg-page) 100%)"
                   : "var(--grad-story-fade)",
-                backdropFilter: viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined,
-                WebkitBackdropFilter: viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined,
+                backdropFilter: overlayBackdropFilter,
+                WebkitBackdropFilter: overlayBackdropFilter,
               }}
             >
               {viewerStory.title && (

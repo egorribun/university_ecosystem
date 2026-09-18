@@ -5,7 +5,10 @@ $services = @(
     @{ Name = "gateway"; Path = "services/gateway" },
     @{ Name = "ws-hub"; Path = "services/ws-hub" },
     @{ Name = "file-processor"; Path = "services/file-processor" },
-    @{ Name = "uni-cli"; Path = "services/cmd/uni-cli" }
+    @{ Name = "uni-cli"; Path = "services/cmd/uni-cli" },
+    @{ Name = "logging"; Path = "services/pkg/logging" },
+    @{ Name = "spiffe"; Path = "services/pkg/spiffe" },
+    @{ Name = "spicedb"; Path = "services/pkg/spicedb" }
 )
 
 Write-Host "=========================================="

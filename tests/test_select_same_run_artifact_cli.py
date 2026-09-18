@@ -85,8 +85,9 @@ class _UrlopenResponse:
         del args
         self.closed = True
 
-    def read(self, _: int) -> bytes:
-        return self._body
+    def read(self, maximum: int) -> bytes:
+        chunk, self._body = self._body[:maximum], self._body[maximum:]
+        return chunk
 
 
 def _response(payload: dict[str, object]) -> selector.HttpResponse:
@@ -163,6 +164,7 @@ def test_selects_newest_valid_earlier_artifact_and_writes_all_outputs(
         artifact_id=20,
         artifact_name=f"{PREFIX}{RUN_ID}-2-{SUFFIX}",
         producer_attempt=2,
+        artifact_digest="sha256:" + "b" * 64,
     )
     assert github_output.read_text(encoding="utf-8") == (
         "prior=true\n"
@@ -170,6 +172,7 @@ def test_selects_newest_valid_earlier_artifact_and_writes_all_outputs(
         "artifact_id=20\n"
         f"artifact_name={PREFIX}{RUN_ID}-2-{SUFFIX}\n"
         "producer_attempt=2\n"
+        "artifact_digest=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n"
     )
     assert [request.path for request in network.requests] == [
         f"/repos/{REPOSITORY}/actions/runs/{RUN_ID}",
@@ -321,6 +324,7 @@ def test_explicit_attempt_layout_selects_lighthouse_style_same_run_evidence(
         artifact_id=24,
         artifact_name="lighthouse-reports-attempt-2",
         producer_attempt=2,
+        artifact_digest="sha256:" + "b" * 64,
     )
 
 
@@ -336,6 +340,18 @@ def test_candidate_rejects_boolean_workflow_run_identity() -> None:
 
     with pytest.raises(selector.SameRunArtifactError, match="foreign workflow"):
         selector._candidate_from_artifact(artifact, arguments)
+
+
+def test_candidate_rejects_artifact_ids_that_cannot_round_trip_through_json_number() -> (
+    None
+):
+    artifact = _artifact(
+        artifact_id=selector._MAX_JSON_SAFE_INTEGER + 1,
+        producer_attempt=1,
+    )
+
+    with pytest.raises(selector.SameRunArtifactError, match="artifact id"):
+        selector._candidate_from_artifact(artifact, _arguments())
 
 
 def test_default_rest_transport_is_single_host_bounded_and_redacts_network_errors(
@@ -359,7 +375,7 @@ def test_default_rest_transport_is_single_host_bounded_and_redacts_network_error
         lambda: context,
     )
     monkeypatch.setattr(
-        "scripts.quality.select_same_run_artifact_cli.urllib.request.urlopen",
+        "scripts.quality.select_same_run_artifact_cli._open_url",
         fake_urlopen,
     )
 
@@ -389,7 +405,7 @@ def test_default_rest_transport_is_single_host_bounded_and_redacts_network_error
             selector._default_request(selector.Request(unsafe_path), 2)
 
     monkeypatch.setattr(
-        "scripts.quality.select_same_run_artifact_cli.urllib.request.urlopen",
+        "scripts.quality.select_same_run_artifact_cli._open_url",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             OSError("token-must-not-appear")
         ),
@@ -397,6 +413,155 @@ def test_default_rest_transport_is_single_host_bounded_and_redacts_network_error
     with pytest.raises(selector.SameRunArtifactError) as raised:
         selector._default_request(selector.Request("/repos/example/repository"), 2)
     assert "token-must-not-appear" not in str(raised.value)
+
+
+def test_default_rest_transport_builds_an_opener_that_rejects_redirects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _RejectingOpener:
+        def open(
+            self,
+            _request: urllib.request.Request,
+            *,
+            timeout: float,
+        ) -> NoReturn:
+            del timeout
+            raise selector.SameRunArtifactError("GitHub REST redirects are not allowed")
+
+    handlers: tuple[object, ...] = ()
+
+    def fake_build_opener(*provided_handlers: object) -> _RejectingOpener:
+        nonlocal handlers
+        handlers = provided_handlers
+        return _RejectingOpener()
+
+    monkeypatch.setattr(
+        "scripts.quality.select_same_run_artifact_cli.urllib.request.build_opener",
+        fake_build_opener,
+    )
+    context = ssl.create_default_context()
+    monkeypatch.setattr(
+        "scripts.quality.select_same_run_artifact_cli.ssl.create_default_context",
+        lambda: context,
+    )
+    monkeypatch.setattr(
+        "scripts.quality.select_same_run_artifact_cli.urllib.request.urlopen",
+        lambda *_args, **_kwargs: pytest.fail(
+            "the default global opener must not be used"
+        ),
+    )
+
+    with pytest.raises(selector.SameRunArtifactError, match="redirects"):
+        selector._default_request(
+            selector.Request("/repos/example/repository/actions/runs/1"), 2
+        )
+
+    assert any(isinstance(handler, selector._NoRedirectHandler) for handler in handlers)
+    https_handlers = [
+        handler
+        for handler in handlers
+        if isinstance(handler, urllib.request.HTTPSHandler)
+    ]
+    assert len(https_handlers) == 1
+    assert getattr(https_handlers[0], "_context", None) is context
+
+
+def test_no_redirect_handler_fails_closed_before_following_a_cross_origin_location() -> (
+    None
+):
+    request = urllib.request.Request(
+        "https://api.github.com/repos/example/repository/actions/runs/1",
+        headers={"Authorization": "Bearer secret"},
+    )
+
+    with pytest.raises(selector.SameRunArtifactError, match="redirects"):
+        selector._NoRedirectHandler().redirect_request(
+            request,
+            cast(object, None),
+            302,
+            "Found",
+            {"Location": "https://attacker.invalid/collect"},
+            "https://attacker.invalid/collect",
+        )
+
+
+def test_default_rest_transport_honors_selection_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = _UrlopenResponse(200, {}, b"{}")
+    calls: list[float] = []
+
+    def fake_urlopen(
+        _request: urllib.request.Request,
+        *,
+        context: ssl.SSLContext,
+        timeout: float,
+    ) -> _UrlopenResponse:
+        del context
+        calls.append(timeout)
+        return response
+
+    monkeypatch.setattr(
+        "scripts.quality.select_same_run_artifact_cli._open_url",
+        fake_urlopen,
+    )
+    monkeypatch.setattr(selector.time, "monotonic", lambda: 2.0)
+    marker = selector._REQUEST_DEADLINE.set(10.0)
+    try:
+        selector._default_request(
+            selector.Request("/repos/example/repository/actions/runs/1"), 2
+        )
+    finally:
+        selector._REQUEST_DEADLINE.reset(marker)
+    assert calls == [8.0]
+
+
+def test_default_rest_transport_rejects_expired_selection_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(selector.time, "monotonic", lambda: 2.0)
+    marker = selector._REQUEST_DEADLINE.set(1.0)
+    try:
+        with pytest.raises(selector.SameRunArtifactError, match="deadline"):
+            selector._default_request(
+                selector.Request("/repos/example/repository/actions/runs/1"), 2
+            )
+    finally:
+        selector._REQUEST_DEADLINE.reset(marker)
+
+
+def test_bounded_transport_enforces_wall_clock_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(selector, "_MAX_SELECTION_SECONDS", 1)
+    monotonic_values = iter((0.0, 2.0))
+    monkeypatch.setattr(selector.time, "monotonic", lambda: next(monotonic_values))
+    called = False
+
+    def request(
+        _request: selector.Request, _maximum_bytes: int
+    ) -> selector.HttpResponse:
+        nonlocal called
+        called = True
+        return selector.HttpResponse(200, {}, b"{}")
+
+    bounded = selector._bounded_request_transport(request)
+    with pytest.raises(selector.SameRunArtifactError, match="deadline"):
+        bounded(selector.Request("/repos/example/repository/actions/runs/1"), 2)
+    assert not called
+
+
+def test_bounded_transport_rejects_response_that_exceeds_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(selector, "_MAX_SELECTION_SECONDS", 1)
+    monotonic_values = iter((0.0, 0.0, 2.0))
+    monkeypatch.setattr(selector.time, "monotonic", lambda: next(monotonic_values))
+    bounded = selector._bounded_request_transport(
+        lambda _request, _maximum_bytes: selector.HttpResponse(200, {}, b"{}")
+    )
+    with pytest.raises(selector.SameRunArtifactError, match="deadline"):
+        bounded(selector.Request("/repos/example/repository/actions/runs/1"), 2)
 
 
 def test_request_json_normalizes_oversized_integer_value_errors() -> None:
@@ -425,7 +590,7 @@ def test_default_rest_transport_normalizes_invalid_header_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "scripts.quality.select_same_run_artifact_cli.urllib.request.urlopen",
+        "scripts.quality.select_same_run_artifact_cli._open_url",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("invalid header")),
     )
 
@@ -522,8 +687,20 @@ def test_read_limited_rejects_oversized_or_non_bytes_bodies(body: object) -> Non
         def read(self, _: int) -> object:
             return body
 
-    with pytest.raises(selector.SameRunArtifactError, match="maximum size"):
+    with pytest.raises(selector.SameRunArtifactError, match=r"maximum size|malformed"):
         selector._read_limited(_Stream(), 2)
+
+
+def test_read_limited_detects_oversized_tail_after_short_reads() -> None:
+    class _ShortReadStream:
+        def __init__(self) -> None:
+            self._chunks = iter((b"1", b"2", b"3"))
+
+        def read(self, _: int) -> bytes:
+            return next(self._chunks, b"")
+
+    with pytest.raises(selector.SameRunArtifactError, match="maximum size"):
+        selector._read_limited(_ShortReadStream(), 2)
 
 
 @pytest.mark.parametrize(
@@ -689,7 +866,7 @@ def test_default_transport_rejects_invalid_status_and_bounded_body_errors() -> N
     response.status = cast(int, "bad")
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr(
-            "scripts.quality.select_same_run_artifact_cli.urllib.request.urlopen",
+            "scripts.quality.select_same_run_artifact_cli._open_url",
             lambda *_args, **_kwargs: response,
         )
         with pytest.raises(selector.SameRunArtifactError, match="invalid status"):
@@ -700,7 +877,7 @@ def test_default_transport_rejects_invalid_status_and_bounded_body_errors() -> N
     response = _UrlopenResponse(200, {}, b"abc")
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr(
-            "scripts.quality.select_same_run_artifact_cli.urllib.request.urlopen",
+            "scripts.quality.select_same_run_artifact_cli._open_url",
             lambda *_args, **_kwargs: response,
         )
         with pytest.raises(selector.SameRunArtifactError, match="maximum size"):
@@ -720,7 +897,7 @@ def test_default_transport_normalizes_url_and_unicode_errors(
         raise error
 
     monkeypatch.setattr(
-        "scripts.quality.select_same_run_artifact_cli.urllib.request.urlopen",
+        "scripts.quality.select_same_run_artifact_cli._open_url",
         raise_error,
     )
     with pytest.raises(selector.SameRunArtifactError, match="request failed"):

@@ -17,7 +17,7 @@ wasm_bindgen_test_configure!(run_in_browser);
 fn pbkdf2_parity_rfc7914() {
     // RFC 7914 §11: P="passwd", S="salt", c=1, dkLen=64.
     assert_eq!(
-        pbkdf2_derive("passwd", "salt", 1, 64),
+        pbkdf2_derive("passwd", "salt", 1, 64).expect("valid PBKDF2 parameters"),
         "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783" // pragma: allowlist secret
     );
 }

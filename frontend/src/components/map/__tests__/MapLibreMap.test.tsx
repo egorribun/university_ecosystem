@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 import { createElement, type ReactNode } from "react"
 import type { MapRef } from "react-map-gl/maplibre"
@@ -816,10 +816,14 @@ describe("MapLibreMap", () => {
       />
     )
 
-    currentMoveEndHandler()({})
+    act(() => {
+      currentMoveEndHandler()({})
+    })
     expect(onMapMoveEnd).not.toHaveBeenCalled()
-    currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
-    currentMoveEndHandler()({})
+    act(() => {
+      currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
+      currentMoveEndHandler()({})
+    })
 
     expect(onMapMoveEnd).toHaveBeenCalledTimes(2)
     expect(onMapMoveEnd).toHaveBeenNthCalledWith(1, {
@@ -847,7 +851,9 @@ describe("MapLibreMap", () => {
     )
 
     rerender(<MapLibreMapComponent {...baseProps} onMapMoveEnd={nextCallback} mapRef={ref} />)
-    currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
+    act(() => {
+      currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
+    })
 
     expect(firstCallback).not.toHaveBeenCalled()
     expect(nextCallback).toHaveBeenCalledWith({
@@ -862,13 +868,19 @@ describe("MapLibreMap", () => {
   it("keeps move-end safe when the map or callback is absent", () => {
     const emptyRef = { current: null } as React.MutableRefObject<MapRef | null>
     const { rerender } = render(<MapLibreMapComponent {...baseProps} />)
-    currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
+    act(() => {
+      currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
+    })
 
     rerender(<MapLibreMapComponent {...baseProps} mapRef={emptyRef} />)
-    currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
+    act(() => {
+      currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
+    })
 
     rerender(<MapLibreMapComponent {...baseProps} mapRef={makeRef(makeMap())} />)
-    currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
+    act(() => {
+      currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
+    })
   })
 
   it("uses the base language and skips an unknown selected building", () => {
@@ -910,12 +922,16 @@ describe("MapLibreMap", () => {
       const map = makeMap()
       map.loaded.mockReturnValue(false)
       const { unmount } = render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(map)} />)
-      pendingFrame?.(0)
+      act(() => {
+        pendingFrame?.(0)
+      })
       expect(requestAnimationFrame).toHaveBeenCalledTimes(2)
       expect(map.resize).not.toHaveBeenCalled()
       const loadedCallsBeforeUnmount = map.loaded.mock.calls.length
       unmount()
-      pendingFrame?.(0)
+      act(() => {
+        pendingFrame?.(0)
+      })
       expect(map.loaded).toHaveBeenCalledTimes(loadedCallsBeforeUnmount)
       expect(cancelAnimationFrame).toHaveBeenCalledWith(2)
     } finally {
@@ -1003,7 +1019,9 @@ describe("MapLibreMap", () => {
 
     try {
       const { unmount } = render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(map)} />)
-      pendingFrame?.(0)
+      act(() => {
+        pendingFrame?.(0)
+      })
       expect(map.resize).toHaveBeenCalled()
       expect(introCallback).toBeDefined()
       unmount()

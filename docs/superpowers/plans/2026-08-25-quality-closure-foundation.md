@@ -1,3 +1,5 @@
+> **Status: HISTORICAL / SUPERSEDED (2026-09-15).** This plan is retained in place without content loss for provenance and reference scanning. Its baseline, SHA, PR, workflow, and acceptance claims are historical and are not current evidence. Continue from the [MVP quality-closure continuation plan](2026-08-31-mvp-quality-closure-continuation.md), then re-verify all evidence for the exact commit under test.
+
 # Quality Closure and MVP Foundation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Every task ends with fresh verification evidence; do not claim completion from an old artifact.

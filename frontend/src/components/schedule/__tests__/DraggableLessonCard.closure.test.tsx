@@ -75,8 +75,11 @@ describe("DraggableLessonCard", () => {
     fireEvent.pointerDown(handle)
 
     expect(handle).toHaveAttribute("data-dnd-attribute", "true")
+    expect(handle).toHaveAttribute("tabindex", "-1")
     expect(sortableState.pointerDown).toHaveBeenCalledOnce()
-    expect(container.querySelector(".relative")).not.toHaveClass("sched-dragging")
+    const wrapper = container.querySelector(".relative")
+    expect(wrapper).not.toHaveClass("sched-dragging")
+    expect(wrapper).toHaveStyle({ transition: "transform 200ms ease" })
     expect(sortableState.setNodeRef).toHaveBeenCalledWith(expect.any(HTMLDivElement))
     expect(sortableState.useSortable).toHaveBeenCalledWith({ id: "lesson-1", disabled: false })
   })

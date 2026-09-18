@@ -2,6 +2,7 @@
 name = "uni-wasm-crypto"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 # Ignore false positive unused dev-dependency in cargo-udeps
 [package.metadata.cargo-udeps.ignore]
@@ -21,6 +22,7 @@ pbkdf2 = "0.12"
 scrypt = "0.11"
 hex = "0.4"
 getrandom = { version = "0.2", features = ["js"] }
+zeroize = "=1.8.1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }

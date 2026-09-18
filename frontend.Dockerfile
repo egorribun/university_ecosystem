@@ -1,16 +1,32 @@
 # syntax=docker/dockerfile:1.12
 
+# Keep BuildKit's automatic target architecture available to stages that scope
+# cache mounts.  Redeclaring this ARG inside the WASM stage below inherits the
+# value for the selected build platform (amd64/arm64/etc.).
+ARG TARGETARCH
+
 # Stage 1: Base
 FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS base
 WORKDIR /app
 
 # Stage 2: WASM — build Rust WASM packages (rust-crypto + wasm-sanitizer)
 FROM rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8ea46b23e403a5690ec357ec AS wasm-builder
-RUN cargo install wasm-pack --locked
+ARG TARGETARCH
+# Keep the Rust registry/git caches in BuildKit rather than rebuilding the
+# wasm-pack dependency graph for every image build.  The cache IDs are scoped
+# to this image and target architecture; cache mounts never become part of the
+# runtime image.
+RUN --mount=type=cache,id=university-frontend-wasm-cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=university-frontend-wasm-cargo-git-${TARGETARCH},target=/usr/local/cargo/git,sharing=locked \
+    cargo install wasm-pack --locked
 WORKDIR /wasm
 COPY frontend/rust-crypto ./rust-crypto
 COPY frontend/wasm-sanitizer ./wasm-sanitizer
-RUN wasm-pack build rust-crypto --target web \
+RUN --mount=type=cache,id=university-frontend-wasm-cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=university-frontend-wasm-cargo-git-${TARGETARCH},target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=university-frontend-rust-crypto-target-${TARGETARCH},target=/wasm/rust-crypto/target,sharing=locked \
+    --mount=type=cache,id=university-frontend-wasm-sanitizer-target-${TARGETARCH},target=/wasm/wasm-sanitizer/target,sharing=locked \
+    wasm-pack build rust-crypto --target web \
  && wasm-pack build wasm-sanitizer --target web
 
 # Stage 3: Dependencies
@@ -153,6 +169,7 @@ COPY --chown=node:node frontend/scripts/lhci-preview-mode.mjs ./scripts/lhci-pre
 COPY --chown=node:node frontend/scripts/server-response-stream.mjs ./scripts/server-response-stream.mjs
 COPY --chown=node:node frontend/scripts/server-readiness.mjs ./scripts/server-readiness.mjs
 COPY --chown=node:node frontend/scripts/server-request-log.mjs ./scripts/server-request-log.mjs
+COPY --chown=node:node frontend/scripts/server-static.mjs ./scripts/server-static.mjs
 
 # Build artifacts:
 #   dist/client/_shell.html + dist/client/index.html (mirror) + dist/client/assets/

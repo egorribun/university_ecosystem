@@ -305,4 +305,40 @@ describe("Navbar", () => {
     expect(scrollTo).not.toHaveBeenCalled()
     expect(await screen.findByText("Dashboard route")).toBeInTheDocument()
   })
+
+  it("keeps the fixed mobile shell styling before the scroll threshold", async () => {
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 0 })
+
+    await renderNavbar()
+
+    const nav = await screen.findByRole("navigation")
+    expect(nav).toHaveClass(
+      "vt-navbar",
+      "sticky",
+      "top-0",
+      "z-(--z-navbar)",
+      "h-(--navbar-height)",
+      "flex",
+      "items-center",
+      "justify-center",
+      "bg-nav/(--opacity-hover)"
+    )
+    expect(nav).not.toHaveClass("bg-(--pill-bg)", "bg-transparent")
+  })
+
+  it("preserves the same-target smooth-scroll contract on mobile", async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 0 })
+    const scrollTo = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    })
+
+    await renderNavbar()
+    await user.click(await screen.findByRole("link", { name: "Home" }))
+
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
+  })
 })

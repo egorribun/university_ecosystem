@@ -7,6 +7,7 @@ notifications/cleanup, graphql_token_validator, schedule_optimizer.
 
 from __future__ import annotations
 
+import importlib
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -41,6 +42,27 @@ def test_cost_visitor_scalar_field():
     list_node.name.value = "messages"
     visitor.enter_field(list_node)
     assert visitor.cost == _FIELD_COST + _LIST_FIELD_COST
+
+
+def test_schedule_item_internal_model_definition_is_executed_under_coverage():
+    """Exercise Pydantic field declarations after coverage starts.
+
+    Other suites import the optimizer during collection, before pytest-cov
+    begins tracing test execution. Reloading it here makes the class
+    definition observable without changing production behavior or adding
+    coverage exclusions.
+    """
+    import app.services.schedule_optimizer as schedule_optimizer
+
+    module = importlib.reload(schedule_optimizer)
+    item = module.ScheduleItemInternal(
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        parity="both",
+    )
+    assert item.weekday == "Monday"
+    assert item.parity == "both"
 
 
 def test_cost_visitor_all_list_fields():

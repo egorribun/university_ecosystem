@@ -2,19 +2,19 @@ name: "SonarCloud Analysis"
 
 on:
   push:
+    # Sonar receives a token and therefore runs only from protected main.
+    # Pull-request analysis is intentionally omitted: workflow and source code
+    # in a same-repository PR are contributor-controlled and must not receive
+    # credentials on a hosted runner.
     branches:
       - main
-      - develop
-  pull_request:
-    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
-  pull-requests: write # Required for posting comments on PRs
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   sonarcloud:
@@ -22,8 +22,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # Advisory external analysis: SonarCloud is intentionally not a protected
-    # branch status context. Forks cannot access SONAR_TOKEN and are skipped.
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push' }}
+    # branch status context. The main-only trigger keeps the token off
+    # contributor-controlled pull-request code.
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

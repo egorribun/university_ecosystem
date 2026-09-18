@@ -82,7 +82,9 @@ def _aggregate(module: ModuleType, evidence_dir: Path, certification: Path) -> d
                 "quality": {
                     "run_id": QUALITY_RUN_ID,
                     "run_attempt": QUALITY_RUN_ATTEMPT,
-                    "evidence_artifact_name": f"quality-evidence-{SHA}",
+                    "evidence_artifact_name": (
+                        f"quality-evidence-{SHA}-attempt-{QUALITY_RUN_ATTEMPT}"
+                    ),
                     "contract_sha256": hashlib.sha256(
                         QUALITY_CONTRACT.read_bytes()
                     ).hexdigest(),

@@ -74,13 +74,15 @@ export class ActivitySummaryUnavailableError extends Error {
 
 const isRequestCancellation = (error: unknown): boolean => {
   if (isCancel(error)) return true
-  if (!error || typeof error !== "object") return false
+  // Property reads below are safe for every non-nullish primitive in modern
+  // JavaScript; only null/undefined would throw during the marker checks.
+  // Keeping the guard explicitly nullish avoids an equivalent mutation of a
+  // redundant `typeof error !== "object"` branch.
+  if (error === null || error === undefined) return false
   const candidate = error as { name?: string; code?: string }
-  return (
-    candidate.name === "AbortError" ||
-    candidate.name === "CanceledError" ||
-    candidate.code === "ERR_CANCELED"
-  )
+  if (candidate.name === "AbortError") return true
+  if (candidate.name === "CanceledError") return true
+  return candidate.code === "ERR_CANCELED"
 }
 
 /**
@@ -121,7 +123,8 @@ const fetchActivitySummary = async (
       participation: summary.data?.participation ?? null,
     }
   } catch (error) {
-    if (signal?.aborted || isRequestCancellation(error)) throw error
+    if (signal?.aborted) throw error
+    if (isRequestCancellation(error)) throw error
     // Fallback: per-endpoint requests for older backend or partial outage.
     const [a, g, p] = await Promise.allSettled([
       api.get<AttendanceSummaryResponse>("/stats/attendance", {
@@ -137,8 +140,10 @@ const fetchActivitySummary = async (
         signal,
       }),
     ])
-    if (a.status === "rejected" && g.status === "rejected" && p.status === "rejected") {
-      throw new ActivitySummaryUnavailableError()
+    if (a.status === "rejected") {
+      if (g.status === "rejected" && p.status === "rejected") {
+        throw new ActivitySummaryUnavailableError()
+      }
     }
     return {
       attendance: a.status === "fulfilled" ? a.value.data : null,

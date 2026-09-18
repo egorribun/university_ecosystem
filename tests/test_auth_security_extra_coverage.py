@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
@@ -61,6 +62,21 @@ def test_container_cpu_count_cgroups_v1() -> None:
         ):
             val = _container_cpu_count()
             assert val == (os.cpu_count() or 2)
+
+
+def test_container_cpu_count_cgroups_v2_quota_precedes_affinity() -> None:
+    """A cgroups v2 CPU quota must beat an unrestricted host affinity mask."""
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> io.StringIO:
+        if path == "/sys/fs/cgroup/cpu.max":
+            return io.StringIO("200000 100000\n")
+        raise FileNotFoundError(path)
+
+    with (
+        patch("builtins.open", side_effect=fake_open),
+        patch("os.sched_getaffinity", return_value=set(range(64)), create=True),
+    ):
+        assert _container_cpu_count() == 2
 
 
 def test_container_cpu_count_falls_back_when_cgroup_files_are_unavailable() -> None:

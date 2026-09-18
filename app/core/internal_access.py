@@ -20,7 +20,12 @@ _logger = get_logger(__name__)
 # avoid BaseHTTPMiddleware's full-body buffering, which prevents streaming
 # responses from reaching the client incrementally.
 class InternalAccessMiddleware:
-    """Restrict access to internal routes by header token or client IP."""
+    """Restrict access to internal routes by a shared header token.
+
+    ``allow_ip_fallback`` is an explicit development-only compatibility switch.
+    It defaults to ``False`` because a source IP is not an authenticated caller
+    identity and must never be accepted implicitly in a production deployment.
+    """
 
     def __init__(
         self,
@@ -30,11 +35,13 @@ class InternalAccessMiddleware:
         header_name: str | None = None,
         header_token: str | None = None,
         internal_prefixes: Sequence[str] = (),
+        allow_ip_fallback: bool = False,
     ) -> None:
         self.app = app
         self.allowed_ips = {ip.strip() for ip in allowed_ips if ip and ip.strip()}
         self.header_name = header_name
         self.header_token = header_token
+        self.allow_ip_fallback = allow_ip_fallback
         self.internal_prefixes = tuple(
             prefix.rstrip("/") for prefix in internal_prefixes
         )
@@ -47,7 +54,14 @@ class InternalAccessMiddleware:
         path: str = scope.get("path", "") or "/"
         path = path.rstrip("/") or "/"
 
-        if not any(path.startswith(prefix) for prefix in self.internal_prefixes):
+        # Match a route prefix on a segment boundary.  Internal route groups
+        # such as ``/api/v1/admin/dlq`` still cover their child endpoints, but
+        # a single internal callback must not accidentally guard a public route
+        # whose name merely starts with the same string.
+        if not any(
+            path == prefix or path.startswith(f"{prefix}/")
+            for prefix in self.internal_prefixes
+        ):
             await self.app(scope, receive, send)
             return
 
@@ -62,8 +76,10 @@ class InternalAccessMiddleware:
             await self.app(scope, receive, vary_send)
             return
 
-        # 2. Check for IP (Secondary / Legacy)
-        if self._is_allowed_ip_from_scope(client_host):
+        # 2. Check for IP only when the caller explicitly enabled the
+        # development compatibility fallback.  Production/staging callers must
+        # prove possession of the shared header token.
+        if self.allow_ip_fallback and self._is_allowed_ip_from_scope(client_host):
             _logger.warning(
                 "Internal API accessed via IP-only allowlist (no token). "
                 "Migrate caller to header-token authentication. "

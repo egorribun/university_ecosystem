@@ -1,10 +1,10 @@
-# Project: University Ecosystem Platform — PR #1249 CI/CD Remediation & Zero-Debt Foundation
+# Project: University Ecosystem Platform — CI/CD Remediation & Quality Foundation
 
 ## Architecture
 The University Ecosystem Platform is an enterprise, multi-stack ecosystem spanning:
 - **Backend (`app/`)**: Python 3.14, FastAPI, SQLAlchemy 2.0 async (mandatory `lazy="noload"`), Dishka DI, Argon2id authentication, RS256 JWKS, outbox pattern, structlog PII redaction.
 - **Frontend (`frontend/`)**: React 19, TypeScript strict, Vite SSR, TanStack Router & Query, Zustand, Valibot-only schemas, ARIA accessibility, Playwright E2E testing.
-- **Go Microservices (`services/`)**: Go 1.22+, `gateway` (reverse proxy, JWT/JWKS, rate limiter, XFetch L1 cache), `ws-hub` (real-time WebSocket broadcasting), `file-processor` (gRPC/GraphQL file engine), `caddy` (edge proxy).
+- **Go Microservices (`services/`)**: Go 1.26.4+ (CI pins 1.26.6; fuzz jobs may use 1.27.1), `gateway` (reverse proxy, JWT/JWKS, rate limiter, XFetch L1 cache), `ws-hub` (real-time WebSocket broadcasting), `file-processor` (gRPC/GraphQL file engine), `caddy` (edge proxy).
 - **Native Optimizer (`native/rust_ext/`)**: Rust PyO3 FFI schedule conflict & HMAC acceleration.
 - **Harness & Infrastructure (`.agents/`, `charts/`, `k8s/`)**: Antigravity lifecycle hooks, safety gates, subagent profiles, Helm v3 charts, Kyverno policy compliance.
 
@@ -36,7 +36,7 @@ university_ecosystem/
 | F7 | Documentation Parity & Link Accuracy | Synchronize `README.ru.md` with `README.md`, fix operational paths in `docs/DEPLOY*.md`, `ADR-008` | M3 | survey_frontend |
 | F8 | WS-Hub Concurrency & Benchmark Tuning | Optimize memory allocations and locks in `services/ws-hub` to eliminate benchmark regression | M4 | survey_backend_ci |
 | F9 | Playwright E2E Matrix Stabilization | Resolve timeouts across Chromium, Firefox, WebKit, and Mobile WebKit test shards | M5 | survey_backend_ci |
-| F10 | Full PR #1249 CI/CD Green Gate & Audit | Verify all required CI/CD check runs for the current head, `verify_harness.py`, git commit & push to `egorribun` | M6 | ORIGINAL_REQUEST |
+| F10 | Current-Head CI/CD Green Gate & Audit | Verify all required CI/CD check runs for the exact head under review, `verify_harness.py`, and the associated audit evidence | M6 | QUALITY_CLOSURE |
 
 ---
 
@@ -49,7 +49,7 @@ university_ecosystem/
 | M3 | Documentation Synchronization & Audit | F7: `README.ru.md` parity, `docs/DEPLOY*.md`, `ADR-008`, `k8s/README.md`, `API_EXAMPLES.md` | none | DONE |
 | M4 | WS-Hub Performance Optimization | F8: `services/ws-hub` memory & lock optimization to satisfy benchmark gate ratio < 1.10 | none | DONE |
 | M5 | Frontend Playwright E2E Stabilization | F9: Playwright test timeout adjustments, mockApi reliability, SSR cold-start stabilization | M1 | DONE |
-| M6 | Final Verification, Commit & PR Delivery | F10: `verify_harness.py`, all required CI/CD checks green, forensic audit, git commit to `egorribun` | M1, M2, M3, M4, M5 | IN PROGRESS |
+| M6 | Final Verification & Delivery | F10: `verify_harness.py`, all required CI/CD checks green for the exact reviewed head, forensic audit, and documented delivery handoff | M1, M2, M3, M4, M5 | IN PROGRESS |
 
 > Status is evidence-based: this milestone remains open until the current PR
 > head has a fresh green required-check set and the full local verification
@@ -69,7 +69,7 @@ university_ecosystem/
 - `.gitignore`: Unignore `!.agents/hooks.json`, `!.agents/hooks/`, `!.agents/subagents.json`, `!.agents/subagents/`, `!.agents/skills/`, `!.agents/ORIGINAL_REQUEST.md`, `!verify_harness.py`, `!docs/mcp/`.
 
 ### 3. Documentation Parity Contract
-- `README.ru.md` MUST include Revocation Valkey topology node/edges, `start-docker.ps1` reference, port 80/8083 access points, and ADR-001—ADR-032 scope.
+- `README.ru.md` MUST include Revocation Valkey topology node/edges, `start-docker.ps1` reference, port 80/8083 access points, and a link to the current ADR inventory under `docs/adr/`.
 
 ---
 

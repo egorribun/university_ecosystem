@@ -219,6 +219,7 @@
       "required": ["environment"],
       "properties": {
         "environment": {"type": "string", "enum": ["development", "staging", "production"]},
+        "jwtIssuer": {"type": "string", "minLength": 1},
         "imageRegistry": {"type": "string"},
         "imageTag": {"type": "string"},
         "imagePullSecrets": {"type": "array", "items": {"$ref": "#/definitions/secretResourceName"}},
@@ -376,11 +377,16 @@
             "wsHubInternalSecret": {"type": "string"}, "csrfHMACSecret": {"type": "string"},
             "spotifyTokenSecret": {"type": "string"}, "elasticsearchPassword": {"type": "string"},
             "spicedbPresharedKey": {"type": "string"}, "auditLogSecret": {"type": "string"},
-            "idempotencyHMACSecret": {"type": "string"}, "mfaEmailOtpHMACKeys": {"type": "string"},
+            "tokenHMACSecret": {"type": "string"}, "idempotencyHMACSecret": {"type": "string"},
+            "mfaEmailOtpHMACKeys": {"type": "string"},
             "mfaEmailOtpActiveHMACKeyId": {"type": "string"}, "mfaEmailDeliveryKEKs": {"type": "string"},
             "mfaEmailDeliveryActiveKEKId": {"type": "string"}, "mfaTrustedDeviceHMACKeys": {"type": "string"},
             "mfaTrustedDeviceActiveHMACKeyId": {"type": "string"}, "elasticsearchURL": {"type": "string"},
-            "minioSecure": {"type": "boolean"}, "flagdHost": {"type": "string"},
+            "storageBackend": {"type": "string", "enum": ["static", "s3", "minio"]},
+            "storageS3Bucket": {"type": "string"}, "storageS3Region": {"type": "string"},
+            "storageS3EndpointURL": {"type": "string"}, "storageS3BaseURL": {"type": "string"},
+            "minioSecure": {"type": "boolean"}, "eventFileScannerEnabled": {"type": "boolean"},
+            "flagdHost": {"type": "string"},
             "flagdPort": {"type": "integer", "minimum": 1, "maximum": 65535}
           }
         }
@@ -392,7 +398,8 @@
         "replicaCount": {"type": "integer", "minimum": 1},
         "image": {"$ref": "#/definitions/image"},
         "service": {"$ref": "#/definitions/service"},
-        "resources": {"$ref": "#/definitions/resources"}
+        "resources": {"$ref": "#/definitions/resources"},
+        "autoscaling": {"$ref": "#/definitions/autoscaling"}
       }
     },
     "gateway": {
@@ -400,6 +407,7 @@
       "properties": {
         "replicaCount": {"type": "integer", "minimum": 1}, "image": {"$ref": "#/definitions/image"},
         "service": {"$ref": "#/definitions/service"}, "resources": {"$ref": "#/definitions/resources"},
+        "autoscaling": {"$ref": "#/definitions/autoscaling"},
         "config": {
           "type": "object", "additionalProperties": false,
           "properties": {
@@ -471,7 +479,10 @@
             "minioAccessKey": {"type": "string"}, "minioSecretKey": {"type": "string"},
             "minioSecure": {"type": "boolean"}, "temporalHost": {"type": "string"},
             "temporalTLSDisabled": {"type": "boolean"}, "temporalAPIKey": {"type": "string"},
-            "rsaPublicKeyPEM": {"type": "string"}, "otlpEndpoint": {"type": "string"},
+            "rsaPublicKeyPEM": {"type": "string"}, "jwksURL": {"type": "string", "format": "uri-reference"},
+            "jwksRefreshInterval": {"type": "integer", "minimum": 1, "maximum": 86400},
+            "jwtActiveKID": {"type": "string", "minLength": 1, "maxLength": 128},
+            "otlpEndpoint": {"type": "string"},
             "otlpInsecure": {"type": "boolean"}
           }
         }

@@ -1,4 +1,4 @@
-import { fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ThemeProvider, useTheme } from "../ThemeContext"
@@ -97,7 +97,9 @@ describe("ThemeContext closure", () => {
     )
 
     await waitFor(() => expect(screen.getByTestId("resolved")).toHaveTextContent("dark"))
-    mediaQuery.dispatchChange(false)
+    act(() => {
+      mediaQuery.dispatchChange(false)
+    })
     await waitFor(() => expect(screen.getByTestId("resolved")).toHaveTextContent("light"))
     expect(mediaQuery.addEventListener).toHaveBeenCalledWith("change", expect.any(Function))
 

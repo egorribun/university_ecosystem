@@ -20,7 +20,7 @@ const ACCENT_MAP = new Map<string, string>([
   ["project", "sched-accent-project"],
 ])
 
-function getAccentClass(lessonType?: string | null): string {
+export function getLessonAccentClass(lessonType?: string | null): string {
   if (!lessonType) return "sched-accent-default"
   const key = lessonType.toLowerCase()
   const direct = ACCENT_MAP.get(key)
@@ -66,7 +66,7 @@ export const LessonCard = memo(function LessonCard({
 }: LessonCardProps) {
   const { t } = useTranslation(["schedule"])
 
-  const accentClass = isConflict ? "sched-conflict" : getAccentClass(lesson.lesson_type)
+  const accentClass = isConflict ? "sched-conflict" : getLessonAccentClass(lesson.lesson_type)
   const buildingInfo = parseBuildingRoom(lesson.room)
 
   return (

@@ -2,10 +2,15 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { renderToString } from "react-dom/server"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
 import { useNewsListQuery } from "@/api/hooks/news"
+import { StorageItem } from "@/utils/storage"
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 const OfflineFallbackProbe = () => {
   const news = useNewsListQuery({ language: "en" })
@@ -17,16 +22,22 @@ const OfflineFallbackProbe = () => {
 
 describe("offline query fallbacks during SSR", () => {
   it("renders without touching browser-only storage", () => {
+    const storageGet = vi.spyOn(StorageItem.prototype, "get")
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
 
-    expect(
-      renderToString(
-        <QueryClientProvider client={queryClient}>
-          <OfflineFallbackProbe />
-        </QueryClientProvider>
-      )
-    ).toContain("0:0:undefined")
+    try {
+      expect(
+        renderToString(
+          <QueryClientProvider client={queryClient}>
+            <OfflineFallbackProbe />
+          </QueryClientProvider>
+        )
+      ).toContain("0:0:undefined")
+      expect(storageGet).not.toHaveBeenCalled()
+    } finally {
+      storageGet.mockRestore()
+    }
   })
 })

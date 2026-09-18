@@ -37,8 +37,16 @@ SHA = "a" * 40
 DIGEST = "sha256:" + "b" * 64
 SECRET = "cwv-signing-secret-with-at-least-32-bytes"  # pragma: allowlist secret
 INTERNAL_HMAC_SECRET = (
-    "internal-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret
+    "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!"  # pragma: allowlist secret
 )
+TOKEN_HMAC_SECRET = (
+    "token-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret
+)
+INTERNAL_AUTH_TOKEN = "internal-route-token-for-test"  # pragma: allowlist secret
+# Keep the independent audit-signing guard valid so the settings tests exercise
+# the CWV validator they target rather than the production placeholder guard.
+# The deterministic low-entropy fixture is intentionally not a real secret.
+AUDIT_LOG_SECRET = "auditlog-" + "a" * 56  # pragma: allowlist secret
 INVALID_SHORT_SECRET = "short"  # pragma: allowlist secret
 TESTER_IDS = ",".join(f"00000000-0000-0000-0000-{index:012d}" for index in range(1, 26))
 OIDC_TEST_TOKEN = (
@@ -700,10 +708,14 @@ def test_staging_settings_redact_secret_and_reject_partial_oidc_policy() -> None
     values = {
         "_allow_missing": True,
         "environment": "staging",
+        "event_file_scanner_enabled": True,
         "database_url": "sqlite+aiosqlite:///:memory:",
         "revocation_redis_url": "redis://revocation.internal:6379/0",
         "algorithm": "RS256",
+        "audit_log_secret": AUDIT_LOG_SECRET,
         "internal_hmac_secret": INTERNAL_HMAC_SECRET,
+        "token_hmac_secret": TOKEN_HMAC_SECRET,
+        "internal_auth_token": INTERNAL_AUTH_TOKEN,
         "cwv_rum_enabled": True,
         "cwv_rum_signing_secret": SECRET,
         "cwv_release_sha": SHA,
@@ -733,10 +745,14 @@ def test_staging_settings_reject_invalid_ttl_origin_and_tester_cohort() -> None:
     base = {
         "_allow_missing": True,
         "environment": "staging",
+        "event_file_scanner_enabled": True,
         "database_url": "sqlite+aiosqlite:///:memory:",
         "revocation_redis_url": "redis://revocation.internal:6379/0",
         "algorithm": "RS256",
+        "audit_log_secret": AUDIT_LOG_SECRET,
         "internal_hmac_secret": INTERNAL_HMAC_SECRET,
+        "token_hmac_secret": TOKEN_HMAC_SECRET,
+        "internal_auth_token": INTERNAL_AUTH_TOKEN,
         "cwv_rum_enabled": True,
         "cwv_rum_signing_secret": SECRET,
         "cwv_release_sha": SHA,

@@ -130,6 +130,65 @@ describe("initObservability", () => {
     )
   })
 
+  it("leaves omitted sample rates unset", () => {
+    const result = initObservability({
+      DEV: false,
+      PROD: true,
+      BASE_URL: "http://localhost",
+      MODE: "production",
+      VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+    } as unknown as ImportMetaEnv)
+
+    expect(result).toBe(true)
+    expect(Sentry.init).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tracesSampleRate: undefined,
+        profilesSampleRate: undefined,
+      })
+    )
+  })
+
+  it("does not parse omitted sample rates", () => {
+    const parseFloatSpy = vi.spyOn(Number, "parseFloat")
+    try {
+      expect(
+        initObservability({
+          DEV: false,
+          PROD: true,
+          BASE_URL: "http://localhost",
+          MODE: "production",
+          VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+        } as unknown as ImportMetaEnv)
+      ).toBe(true)
+
+      expect(parseFloatSpy).not.toHaveBeenCalled()
+    } finally {
+      parseFloatSpy.mockRestore()
+    }
+  })
+
+  it("trims configured sample rates before parsing", () => {
+    const trim = vi.fn(() => "0.25")
+    const sampleRate = {
+      trim,
+      toString: () => "0.25",
+    }
+
+    expect(
+      initObservability({
+        DEV: false,
+        PROD: true,
+        BASE_URL: "http://localhost",
+        MODE: "production",
+        VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+        VITE_SENTRY_TRACES_SAMPLE_RATE: sampleRate as unknown as string,
+      } as unknown as ImportMetaEnv)
+    ).toBe(true)
+
+    expect(trim).toHaveBeenCalledTimes(1)
+    expect(Sentry.init).toHaveBeenCalledWith(expect.objectContaining({ tracesSampleRate: 0.25 }))
+  })
+
   it("accepts exact sample-rate boundaries and rejects empty values", () => {
     const result = initObservability({
       DEV: false,

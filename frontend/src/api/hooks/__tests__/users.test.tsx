@@ -59,6 +59,22 @@ describe("currentUserQueryKey", () => {
   })
 })
 
+describe("currentUserQueryOptions retry delay", () => {
+  it.each([
+    [0, 1_000],
+    [1, 2_000],
+    [2, 4_000],
+    [3, 8_000],
+    [4, 10_000],
+    [10, 10_000],
+  ])("uses capped exponential backoff for attempt %i", (attempt, expected) => {
+    const retryDelay = currentUserQueryOptions().retryDelay
+
+    expect(typeof retryDelay).toBe("function")
+    expect(retryDelay(attempt)).toBe(expected)
+  })
+})
+
 // ── currentUserQueryOptions queryFn execution ───────────────────────────────
 describe("currentUserQueryOptions queryFn execution", () => {
   let queryClient: QueryClient

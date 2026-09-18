@@ -1,6 +1,7 @@
 import { memo } from "react"
 import { useTranslation } from "react-i18next"
-import { Skeleton, Card } from "@/components/ui"
+import { Skeleton } from "@/components/ui/Skeleton"
+import { Card } from "@/components/ui/Card"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 

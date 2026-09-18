@@ -117,7 +117,7 @@ jobs:
             > artifacts/quality/quality-artifact-pages.json
           python scripts/quality/validate_release_artifact_evidence.py \
             --pages artifacts/quality/quality-artifact-pages.json \
-            --expected-name "quality-evidence-$RELEASE_SHA"
+            --expected-name "quality-evidence-$RELEASE_SHA-attempt-$run_attempt"
 
       - name: Clean quality evidence destinations
         run: |
@@ -129,7 +129,7 @@ jobs:
       - name: Download SHA-bound quality evidence
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: quality-evidence-${{ inputs.release-sha }}
+          name: quality-evidence-${{ inputs.release-sha }}-attempt-${{ steps.quality-run.outputs.run-attempt }}
           run-id: ${{ inputs.quality-run-id }}
           github-token: ${{ github.token }}
           path: .
@@ -443,6 +443,8 @@ jobs:
           OIDC_DEPLOY_ROLE_ARN: ${{ secrets.OIDC_DEPLOY_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+          KUBECTL_VERSION: ${{ vars.KUBECTL_VERSION }}
+          KUBECTL_SHA256: ${{ vars.KUBECTL_SHA256 }}
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
           HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
@@ -488,7 +490,8 @@ jobs:
           set -euo pipefail
 
           required=(
-            OIDC_DEPLOY_ROLE_ARN AWS_REGION EKS_CLUSTER_NAME K8S_NAMESPACE
+            OIDC_DEPLOY_ROLE_ARN AWS_REGION EKS_CLUSTER_NAME KUBECTL_VERSION
+            KUBECTL_SHA256 K8S_NAMESPACE
             HELM_RELEASE_NAME HELM_VALUES_FILE CONNECTIONS_SECRET_NAME
             APPLICATION_SECRETS_NAME APPLICATION_EXTERNAL_SECRET_NAME
             DEPLOYMENT_URL CWV_EXPORT_OIDC_SUBJECT FRONTEND_HOST API_HOST
@@ -535,6 +538,14 @@ jobs:
           fi
           if [[ ! "$EKS_CLUSTER_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$ ]]; then
             echo "::error::EKS_CLUSTER_NAME is not a valid EKS cluster name."
+            exit 1
+          fi
+          if [[ ! "$KUBECTL_VERSION" =~ ^v1\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::KUBECTL_VERSION must be an exact stable v1.x.y release."
+            exit 1
+          fi
+          if [[ ! "$KUBECTL_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::KUBECTL_SHA256 must be the official lowercase SHA-256 digest."
             exit 1
           fi
           for name in K8S_NAMESPACE HELM_RELEASE_NAME CONNECTIONS_SECRET_NAME APPLICATION_SECRETS_NAME APPLICATION_EXTERNAL_SECRET_NAME TLS_SECRET_NAME CERT_MANAGER_ISSUER_NAME; do
@@ -600,6 +611,84 @@ jobs:
             exit 1
           fi
 
+      - name: Install checksum-pinned deployment tools
+        shell: bash
+        env:
+          KUBECTL_VERSION: ${{ vars.KUBECTL_VERSION }}
+          KUBECTL_SHA256: ${{ vars.KUBECTL_SHA256 }}
+          HELM_VERSION: v3.17.0
+          HELM_ARCHIVE_SHA256: fb5d12662fde6eeff36ac4ccacbf3abed96b0ee2de07afdde4edb14e613aee24 # pragma: allowlist secret -- public Helm release checksum
+        run: |
+          set -euo pipefail
+          [[ "$KUBECTL_VERSION" =~ ^v1\.[0-9]+\.[0-9]+$ ]]
+          [[ "$KUBECTL_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$HELM_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$HELM_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+
+          tools_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$tools_dir"' EXIT
+          kubectl_bin="$tools_dir/kubectl"
+          helm_archive="$tools_dir/helm.tar.gz"
+
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            --output "$kubectl_bin" \
+            "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            --output "$helm_archive" \
+            "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz"
+
+          printf '%s  %s\n' "$KUBECTL_SHA256" "$kubectl_bin" | sha256sum --check --strict -
+          printf '%s  %s\n' "$HELM_ARCHIVE_SHA256" "$helm_archive" | sha256sum --check --strict -
+
+          tar --extract --gzip --file "$helm_archive" --directory "$tools_dir" linux-amd64/helm
+          sudo install --mode 0755 "$kubectl_bin" /usr/local/bin/kubectl
+          sudo install --mode 0755 "$tools_dir/linux-amd64/helm" /usr/local/bin/helm
+
+          test "$(kubectl version --client --output=json | jq --raw-output '.clientVersion.gitVersion')" = "$KUBECTL_VERSION"
+          test "$(helm version --template '{{.Version}}')" = "$HELM_VERSION"
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install hash-locked smoke-test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          requirements_file="$RUNNER_TEMP/deploy-smoke.requirements.txt"
+          printf '%s\n' \
+            'requests==2.33.1 --hash=sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a' \
+            'certifi==2026.4.22 --hash=sha256:3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a' \
+            'charset-normalizer==3.4.7 --hash=sha256:bd6c2a1c7573c64738d716488d2cdd3c00e340e4835707d8fdb8dc1a66ef164e' \
+            'idna==3.18 --hash=sha256:7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2' \
+            'urllib3==2.7.0 --hash=sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897' \
+            >"$requirements_file"
+          python -m pip --isolated install --disable-pip-version-check \
+            --index-url https://pypi.org/simple \
+            --require-hashes --only-binary=:all: --no-deps --force-reinstall \
+            --requirement "$requirements_file"
+          python -c 'import requests; assert requests.__version__ == "2.33.1"'
+
+      - name: Reverify trusted release source before OIDC
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_SHA" = "$RELEASE_SHA"
+          test "$GITHUB_WORKFLOW_SHA" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+
       - name: Configure AWS credentials (OIDC)
         # Uses an environment-scoped role and GitHub's short-lived OIDC token.
         uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
@@ -607,17 +696,12 @@ jobs:
           role-to-assume: ${{ secrets.OIDC_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
-
-      - name: Set up Helm
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-
       - name: Configure and verify cluster access
         shell: bash
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+          KUBECTL_VERSION: ${{ vars.KUBECTL_VERSION }}
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
         run: |
           set -euo pipefail
@@ -626,7 +710,18 @@ jobs:
             --region "$AWS_REGION" \
             --alias "$EKS_CLUSTER_NAME"
           kubectl config current-context
-          kubectl version --client
+          version_json="$(kubectl version --output=json)"
+          client_major="$(jq --exit-status --raw-output '.clientVersion.major | select(test("^[0-9]+$"))' <<<"$version_json")"
+          client_minor="$(jq --exit-status --raw-output '.clientVersion.minor | capture("^(?<minor>[0-9]+)").minor' <<<"$version_json")"
+          server_major="$(jq --exit-status --raw-output '.serverVersion.major | select(test("^[0-9]+$"))' <<<"$version_json")"
+          server_minor="$(jq --exit-status --raw-output '.serverVersion.minor | capture("^(?<minor>[0-9]+)").minor' <<<"$version_json")"
+          expected_client="${KUBECTL_VERSION#v}"
+          test "$client_major.$client_minor" = "${expected_client%.*}"
+          version_skew=$((client_minor - server_minor))
+          if (( client_major != server_major || version_skew < -1 || version_skew > 1 )); then
+            echo "::error::kubectl $client_major.$client_minor is outside the supported +/-1 minor version skew for API server $server_major.$server_minor."
+            exit 1
+          fi
           helm version --short
           kubectl cluster-info
 
@@ -667,16 +762,7 @@ jobs:
           chart="charts/university-ecosystem"
           test -s "$chart/Chart.lock"
           lock_digest_before="$(sha256sum "$chart/Chart.lock" | awk '{print $1}')"
-          for attempt in 1 2 3; do
-            if helm dependency build --skip-refresh "$chart"; then
-              break
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
+          python3 scripts/ci/helm_dependency_build.py --skip-refresh "$chart"
           lock_digest_after="$(sha256sum "$chart/Chart.lock" | awk '{print $1}')"
           test "$lock_digest_after" = "$lock_digest_before"
           git diff --exit-code -- "$chart/Chart.yaml" "$chart/Chart.lock"
@@ -1479,16 +1565,6 @@ jobs:
           verify_image gateway gateway "$image_prefix/gateway@$GATEWAY_IMAGE_DIGEST"
           verify_image file-processor file-processor "$image_prefix/file-processor@$FILE_PROCESSOR_IMAGE_DIGEST"
           verify_image outbox-worker outbox-worker "$image_prefix/backend@$BACKEND_IMAGE_DIGEST"
-
-      - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.14"
-
-      - name: Install requests
-        # RZ-W8-08: Pin version — unpinned installs can break silently or inject
-        # a supply-chain compromise at deploy time.
-        run: pip install "requests==2.33.1"
 
       - name: Post-deployment smoke test
         run: python scripts/smoke_test.py

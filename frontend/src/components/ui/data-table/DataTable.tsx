@@ -29,8 +29,11 @@ function DataTableInner<TData extends RowData>({ columns, data }: DataTableProps
   const { t } = useTranslation()
   const [rowSelection, setRowSelection] = React.useState({})
   const [columnVisibility, setColumnVisibility] = React.useState<ColumnVisibilityState>({})
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
-  const [sorting, setSorting] = React.useState<SortingState>([])
+  // Use a zero-argument Array factory for the initial collections. It keeps
+  // the state updater compatible with TanStack's `OnChangeFn` while avoiding
+  // a mutable module-level default shared between table instances.
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(Array.of())
+  const [sorting, setSorting] = React.useState<SortingState>(Array.of())
 
   const table = useTable({
     features: dataTableFeatures,
@@ -48,6 +51,7 @@ function DataTableInner<TData extends RowData>({ columns, data }: DataTableProps
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
   })
+  const rows = table.getRowModel().rows
 
   return (
     <div className="space-y-4">
@@ -61,8 +65,9 @@ function DataTableInner<TData extends RowData>({ columns, data }: DataTableProps
                   // `<th>` (TableHead) per ARIA spec, NOT the inner div.
                   // axe-core `aria-allowed-attr` flagged the prior placement
                   // on /admin/users. Compute here from column sort state.
-                  const sortDir = header.column.getCanSort() ? header.column.getIsSorted() : false
-                  const ariaSort = !header.column.getCanSort()
+                  const canSort = header.column.getCanSort()
+                  const sortDir = header.column.getIsSorted()
+                  const ariaSort = !canSort
                     ? undefined
                     : sortDir === "asc"
                       ? "ascending"
@@ -81,9 +86,9 @@ function DataTableInner<TData extends RowData>({ columns, data }: DataTableProps
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+            {rows.length ? (
+              rows.map((row) => (
+                <TableRow key={row.id} data-state={row.getIsSelected() ? "selected" : undefined}>
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

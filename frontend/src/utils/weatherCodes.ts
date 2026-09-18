@@ -1,8 +1,10 @@
 export type WeatherCondition = "clear" | "cloudy" | "rain" | "snow" | "fog" | "storm"
 
+export const WEATHER_CONDITION_CLEAR: WeatherCondition = "clear"
+
 const WMO_MAP: Record<number, WeatherCondition> = {
-  0: "clear",
-  1: "clear",
+  0: WEATHER_CONDITION_CLEAR,
+  1: WEATHER_CONDITION_CLEAR,
   2: "cloudy",
   3: "cloudy",
   45: "fog",
@@ -32,5 +34,5 @@ const WMO_MAP: Record<number, WeatherCondition> = {
 }
 
 export function wmoToCondition(code: number): WeatherCondition {
-  return WMO_MAP[code] ?? "clear"
+  return WMO_MAP[code] ?? WEATHER_CONDITION_CLEAR
 }

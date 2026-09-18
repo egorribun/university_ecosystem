@@ -38,6 +38,11 @@ vi.mock("@dnd-kit/core", () => ({
       />
       <button
         type="button"
+        data-testid="drag-first"
+        onClick={() => onDragEnd({ active: { id: "l2" }, over: { id: "l1" } })}
+      />
+      <button
+        type="button"
         data-testid="drag-unknown"
         onClick={() => onDragEnd({ active: { id: "l1" }, over: { id: "missing" } })}
       />
@@ -57,6 +62,8 @@ vi.mock("@/components/schedule/LessonCard", () => ({
         id={`lesson-card-${lesson.id}`}
         aria-current={props.isCurrent ? "time" : undefined}
         data-progress={String(props.currentProgress ?? 0)}
+        data-current={props.isCurrent ? "true" : "false"}
+        data-draggable="false"
       >
         <span>{lesson.subject}</span>
         {Boolean(props.isConflict) && <span>schedule:lesson.conflict</span>}
@@ -78,7 +85,12 @@ vi.mock("@/components/schedule/DraggableLessonCard", () => ({
   DraggableLessonCard: (props: Record<string, unknown>) => {
     const lesson = props.lesson as { id: string; subject: string }
     return (
-      <div id={`lesson-card-${lesson.id}`} data-progress={String(props.currentProgress ?? 0)}>
+      <div
+        id={`lesson-card-${lesson.id}`}
+        data-progress={String(props.currentProgress ?? 0)}
+        data-current={props.isCurrent ? "true" : "false"}
+        data-draggable="true"
+      >
         <span>{lesson.subject}</span>
         {Boolean(props.isConflict) && <span>schedule:lesson.conflict</span>}
         {Boolean(props.hasNote) && <span title="schedule:notes.hasNote">note</span>}
@@ -103,7 +115,7 @@ vi.mock("@/components/feedback/OfflineFallback", () => ({
   ),
 }))
 
-import { DayColumn } from "@/components/schedule/DayColumn"
+import { DayColumn, getDayHeatClass, shouldCelebrateDay } from "@/components/schedule/DayColumn"
 import type { Lesson } from "@/components/schedule/scheduleUtils"
 
 const LESSONS: Lesson[] = [
@@ -153,6 +165,22 @@ const baseProps = {
 describe("DayColumn closure paths", () => {
   afterEach(() => vi.useRealTimers())
 
+  it("keeps heatmap thresholds and celebration eligibility exact", () => {
+    expect(getDayHeatClass(0)).toBe("")
+    expect(getDayHeatClass(1)).toBe("sched-heat-light")
+    expect(getDayHeatClass(2)).toBe("sched-heat-light")
+    expect(getDayHeatClass(3)).toBe("sched-heat-medium")
+    expect(getDayHeatClass(4)).toBe("sched-heat-medium")
+    expect(getDayHeatClass(5)).toBe("sched-heat-heavy")
+    expect(getDayHeatClass(6)).toBe("sched-heat-heavy")
+
+    expect(shouldCelebrateDay(true, true, 1, false)).toBe(true)
+    expect(shouldCelebrateDay(false, true, 1, false)).toBe(false)
+    expect(shouldCelebrateDay(true, false, 1, false)).toBe(false)
+    expect(shouldCelebrateDay(true, true, 0, false)).toBe(false)
+    expect(shouldCelebrateDay(true, true, 1, true)).toBe(false)
+  })
+
   it("renders the offline fallback and forwards its retry action", async () => {
     const user = userEvent.setup()
     const onRetry = vi.fn()
@@ -194,9 +222,21 @@ describe("DayColumn closure paths", () => {
     await user.click(screen.getByTestId("drag-no-over"))
     await user.click(screen.getByTestId("drag-same"))
     await user.click(screen.getByTestId("drag-known"))
+    await user.click(screen.getByTestId("drag-first"))
     await user.click(screen.getByTestId("drag-unknown"))
     expect(onLessonReorder).toHaveBeenCalledWith("l1", 1)
-    expect(onLessonReorder).toHaveBeenCalledTimes(1)
+    expect(onLessonReorder).toHaveBeenCalledWith("l2", 0)
+    expect(onLessonReorder).toHaveBeenCalledTimes(2)
+    expect(screen.getByText("schedule:break")).toBeInTheDocument()
+    expect(document.getElementById("lesson-card-l1")).toHaveAttribute("data-current", "false")
+    expect(document.getElementById("lesson-card-l2")).toHaveAttribute("data-current", "true")
+  })
+
+  it("uses the explicit current progress while keeping inactive cards at zero", () => {
+    render(<DayColumn {...baseProps} currentLessonId="l2" currentProgress={42} />)
+
+    expect(document.getElementById("lesson-card-l1")).toHaveAttribute("data-progress", "0")
+    expect(document.getElementById("lesson-card-l2")).toHaveAttribute("data-progress", "42")
   })
 
   it("covers heavy/medium heatmaps, compact/today styling, and completion confetti", async () => {
@@ -220,6 +260,16 @@ describe("DayColumn closure paths", () => {
     rerender(<DayColumn {...baseProps} lessons={mediumLessons} isToday={false} />)
     expect(screen.getByRole("tabpanel")).toHaveClass("sched-heat-medium")
 
+    rerender(<DayColumn {...baseProps} lessons={[LESSONS[0]!]} isToday={false} />)
+    expect(screen.getByRole("tabpanel")).toHaveClass("sched-heat-light")
+
+    rerender(<DayColumn {...baseProps} lessons={[]} isToday={false} />)
+    expect(screen.getByRole("tabpanel")).not.toHaveClass(
+      "sched-heat-heavy",
+      "sched-heat-medium",
+      "sched-heat-light"
+    )
+
     rerender(
       <DayColumn {...baseProps} lessons={LESSONS} isToday dayComplete currentProgress={50} />
     )
@@ -227,7 +277,34 @@ describe("DayColumn closure paths", () => {
       expect(screen.getByRole("status")).toHaveTextContent("schedule:dayComplete")
     )
     expect(screen.getByRole("tabpanel")).toHaveClass("sched-today-col")
+    expect(screen.getByRole("tabpanel")).not.toHaveClass("sched-heat-light")
     unmount()
+  })
+
+  it("separates viewer rendering, editor roles, and empty-state branches", async () => {
+    const user = userEvent.setup()
+    const onAdd = vi.fn()
+    const { rerender } = render(
+      <DayColumn {...baseProps} lessons={[]} userRole="teacher" onAdd={onAdd} />
+    )
+
+    expect(screen.getByLabelText("schedule:aria.addLesson")).toBeInTheDocument()
+    expect(screen.getByText("schedule:mobile.noLessons")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "schedule:offline.retry" })).not.toBeInTheDocument()
+    expect(screen.queryByText("0")).not.toBeInTheDocument()
+    await user.click(screen.getByLabelText("schedule:aria.addLesson"))
+    expect(onAdd).toHaveBeenCalledTimes(1)
+
+    rerender(<DayColumn {...baseProps} lessons={LESSONS} userRole="student" />)
+    expect(screen.queryByTestId("drag-known")).not.toBeInTheDocument()
+    expect(screen.getByText("Linear Algebra")).toBeInTheDocument()
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("id", "day-panel-monday")
+
+    rerender(<DayColumn {...baseProps} lessons={[]} userRole="admin" />)
+    expect(screen.getByLabelText("schedule:aria.addLesson")).toBeInTheDocument()
+    rerender(<DayColumn {...baseProps} lessons={[]} userRole="student" isOnline={false} />)
+    expect(screen.getByText("schedule:mobile.noLessons")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "schedule:offline.retry" })).not.toBeInTheDocument()
   })
 
   it("does not reorder when no reorder callback is supplied", async () => {
@@ -242,7 +319,9 @@ describe("DayColumn closure paths", () => {
     render(<DayColumn {...baseProps} isToday dayComplete />)
 
     expect(screen.getByRole("status")).toHaveTextContent("schedule:dayComplete")
-    act(() => vi.advanceTimersByTime(2000))
+    act(() => vi.advanceTimersByTime(1999))
+    expect(screen.getByRole("status")).toBeInTheDocument()
+    act(() => vi.advanceTimersByTime(1))
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })

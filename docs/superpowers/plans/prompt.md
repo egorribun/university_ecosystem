@@ -1,3 +1,5 @@
+> **Status: HISTORICAL / SUPERSEDED (2026-09-15).** This prompt is retained verbatim for provenance and reference scanning. It describes an older checkpoint and must not be used as current CI, branch, PR, or release evidence. Use the [MVP quality-closure continuation plan](2026-08-31-mvp-quality-closure-continuation.md) for the current roadmap and verify every claim against the exact commit under test.
+
 Продолжи автономное закрытие master plan University Ecosystem от текущего egorribun SHA a604c1f1a4d3b62f4594b29f63a32c52e6d292bb. Работай на ветке egorribun
 Сначала прочитай корневой AGENTS.md, доменные AGENTS.md затронутых областей и quality/quality-contract.json. Используй systematic debugging + TDD; не ослабляй 100% coverage/mutation/security gates, не добавляй exclusions/quarantines/suppressions без доказанного false positive. Никаких Co-Authored-By. Коммиты quality/testing не связывать с waves.
 

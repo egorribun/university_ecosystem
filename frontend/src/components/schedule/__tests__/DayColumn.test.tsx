@@ -11,6 +11,7 @@ vi.mock("react-i18next", () => ({
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => () => undefined }))
 
 import { DayColumn } from "@/components/schedule/DayColumn"
 import type { Lesson } from "@/components/schedule/scheduleUtils"

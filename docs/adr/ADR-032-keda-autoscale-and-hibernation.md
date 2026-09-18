@@ -19,7 +19,9 @@ We adopt **KEDA** (Kubernetes Event-driven Autoscaling, `keda.sh/v1alpha1`) and 
 Key technical choices:
 1. **Event-Driven Workload Scalers**:
    - `outbox-worker`: KEDA `postgresql` scaler monitoring unprocessed rows in `stored_events` (`targetQueryValue: 50`).
-   - `file-processor`: Native KEDA `nats-jetstream` scaler monitoring `FILES_PROCESS` stream lag (`lagThreshold: 10`).
+   - `file-processor`: Native KEDA `nats-jetstream` scaler monitoring the
+     `FILES_PROCESS` stream and the canonical `file-processors-temporal`
+     durable consumer (`lagThreshold: 10`).
    - `backend` task workers: Dual KEDA triggers — `redis` scaler monitoring queue depth (`backend_tasks`, `listLength: 20`) and `nats-jetstream` scaler monitoring `TASK_QUEUE` stream lag (`lagThreshold: 25`).
 2. **Off-Peak Resource Hibernation**:
    - Introduce KEDA `cron` scalers for non-critical workloads (`frontend`, `backend`, `gateway`, `fileProcessor`, `outboxWorker`) in non-production environments (`hibernation.enabled: true`).
@@ -53,7 +55,7 @@ For event-driven background workers (`outbox-worker`, `file-processor`, `backend
 | Workload | Target Deployment | Trigger Type(s) | Metric Target / Stream | Default Threshold | Scale Range (Min/Max) |
 |---|---|---|---|---|---|
 | `outbox-worker` | `outbox-worker` | `postgresql`, `cron` | Unprocessed `stored_events` rows | `targetQueryValue: 50` | 1 - 10 (0 in hibernation) |
-| `file-processor` | `file-processor` | `nats-jetstream`, `cron` | `FILES_PROCESS` stream lag | `lagThreshold: 10` | 1 - 10 (0 in hibernation) |
+| `file-processor` | `file-processor` | `nats-jetstream`, `cron` | `FILES_PROCESS` / `file-processors-temporal` durable lag | `lagThreshold: 10` | 1 - 10 (0 in hibernation) |
 | `backend` | `backend` | `redis`, `nats-jetstream`, `cron` | `backend_tasks` list len / `TASK_QUEUE` lag | `listLength: 20`, `lagThreshold: 25` | 2 - 8 (0 in hibernation) |
 | `frontend` | `frontend` | `cron` (hibernation) | Time schedule (off-peak) | `desiredReplicas: 0` | 2 - 5 (0 in hibernation) |
 | `gateway` | `gateway` | `cron` (hibernation) | Time schedule (off-peak) | `desiredReplicas: 0` | 2 - 5 (0 in hibernation) |

@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
+import { renderToString } from "react-dom/server"
 
 const motionState = vi.hoisted(() => ({
   initialValues: [] as unknown[],
@@ -45,7 +46,14 @@ vi.mock("framer-motion", async () => {
   return { ...base, LazyMotion: CapturingLazyMotion, m: { div: CapturingDiv } }
 })
 
-import PageTransition from "@/components/motion/PageTransition"
+import PageTransition, {
+  commitMotionModuleIfActive,
+  deactivateMotionLoad,
+  getInitialReduceMotion,
+  loadMotionModule,
+  shouldLoadMotionModule,
+  shouldLogMotionImportFailure,
+} from "@/components/motion/PageTransition"
 
 const setReduceMotion = (matches: boolean) => {
   const matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -67,6 +75,49 @@ const setReduceMotion = (matches: boolean) => {
 }
 
 describe("PageTransition", () => {
+  it("keeps lazy loading and lifecycle guards explicit", () => {
+    expect(shouldLoadMotionModule(false)).toBe(true)
+    expect(shouldLoadMotionModule(true)).toBe(false)
+    expect(shouldLogMotionImportFailure(true)).toBe(true)
+    expect(shouldLogMotionImportFailure(false)).toBe(false)
+
+    const setter = vi.fn()
+    commitMotionModuleIfActive(false, setter, "ignored")
+    commitMotionModuleIfActive(true, setter, "loaded")
+    expect(setter).toHaveBeenCalledOnce()
+    expect(setter).toHaveBeenCalledWith("loaded")
+
+    const activity = { active: true }
+    deactivateMotionLoad(activity)
+    expect(activity.active).toBe(false)
+  })
+
+  it("caches the dynamic motion import promise", () => {
+    expect(loadMotionModule()).toBe(loadMotionModule())
+  })
+
+  it("derives reduced-motion state safely for SSR and media-query variants", () => {
+    const originalMatchMedia = window.matchMedia
+    try {
+      Object.defineProperty(window, "matchMedia", { configurable: true, value: undefined })
+      expect(getInitialReduceMotion()).toBe(false)
+      const matchMedia = vi.fn().mockReturnValue({ matches: true })
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: matchMedia,
+      })
+      expect(getInitialReduceMotion()).toBe(true)
+      expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
+    } finally {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: originalMatchMedia,
+      })
+    }
+  })
+
   beforeEach(() => {
     motionState.initialValues.length = 0
     motionState.props.length = 0
@@ -89,20 +140,25 @@ describe("PageTransition", () => {
     expect(motionState.lazyFeatures).toHaveLength(1)
   })
 
-  it("keeps the fallback wrapper when matchMedia is unavailable", () => {
+  it("keeps the fallback wrapper when matchMedia is unavailable", async () => {
     const originalMatchMedia = window.matchMedia
     try {
       Object.defineProperty(window, "matchMedia", {
         configurable: true,
         value: undefined,
       })
-      const { container } = render(
+      const view = render(
         <PageTransition>
           <div>No media child</div>
         </PageTransition>
       )
+      await act(async () => {
+        await loadMotionModule()
+      })
+      const { container } = view
       expect(screen.getByText("No media child")).toBeInTheDocument()
       expect(container.querySelector(".bg-page")).toBeInTheDocument()
+      view.unmount()
     } finally {
       Object.defineProperty(window, "matchMedia", {
         configurable: true,
@@ -113,7 +169,7 @@ describe("PageTransition", () => {
   })
 
   it("renders the reduced-motion fallback wrapper (no framer-motion)", () => {
-    setReduceMotion(true)
+    const matchMedia = setReduceMotion(true)
     const { container } = render(
       <PageTransition>
         <div>Hello reduced</div>
@@ -122,6 +178,30 @@ describe("PageTransition", () => {
     expect(screen.getByText("Hello reduced")).toBeInTheDocument()
     // simple fallback wrapper carries the bg-page class
     expect(container.querySelector(".bg-page")).toBeInTheDocument()
+    expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
+  })
+
+  it("keeps the reduced-motion initializer safe when window is unavailable during SSR", () => {
+    const originalWindow = globalThis.window
+    try {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: undefined,
+      })
+      const html = renderToString(
+        <PageTransition>
+          <div>SSR-safe child</div>
+        </PageTransition>
+      )
+      expect(html).toContain("SSR-safe child")
+      expect(html).toContain("bg-page")
+    } finally {
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        writable: true,
+        value: originalWindow,
+      })
+    }
   })
 
   it("renders children through the animated framer-motion path", async () => {

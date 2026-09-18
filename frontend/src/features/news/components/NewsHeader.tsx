@@ -2,7 +2,7 @@ import { Newspaper, Plus, Search, X, ArrowUpDown, Bookmark as BookmarkIcon } fro
 import { useTranslation } from "react-i18next"
 import { useRef, useEffect, useState } from "react"
 import FadeSection from "@/components/motion/FadeSection"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import { ALL_CATEGORIES, type NewsCategory } from "@/features/news/categories"
 import { cn } from "@/utils/cn"
 import type { SortMode } from "@/features/news/NewsFeature"

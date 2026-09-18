@@ -298,7 +298,7 @@ async function readValidatedEvidenceCandidates({ candidateRoot, expectedWorkflow
     rootEntries = await readdir(candidateRoot, { withFileTypes: true })
   } catch (error) {
     if (error && typeof error === "object" && error.code === "ENOENT") {
-      throw new Error("Required validated artifact candidate root is missing")
+      throw new Error("Required validated artifact candidate root is missing", { cause: error })
     }
     throw error
   }
@@ -945,10 +945,12 @@ async function git(args) {
   return stdout.trim()
 }
 
-function resolveEvidencePath(relativePath) {
+export function resolveEvidencePath(relativePath, root = repositoryRoot) {
   const canonical = assertCanonicalRelativePath(relativePath)
-  const resolved = path.resolve(repositoryRoot, canonical)
-  if (!resolved.startsWith(`${repositoryRoot}${path.sep}`)) {
+  const resolvedRoot = path.resolve(root)
+  const resolved = path.resolve(resolvedRoot, canonical)
+  const relative = path.relative(resolvedRoot, resolved)
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error(`Evidence path escapes the repository: ${relativePath}`)
   }
   return resolved

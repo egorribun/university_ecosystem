@@ -65,7 +65,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: frontend
-          image: registry.example.com/frontend:${IMAGE_TAG}  # RZ-33-25: match Kyverno restrict-image-registries; checkov:skip=CKV_K8S_43:IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
+          image: ${IMAGE_REGISTRY}/frontend:${IMAGE_TAG}  # RZ-33-25: match Kyverno restrict-image-registries; checkov:skip=CKV_K8S_43:IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
           imagePullPolicy: Always
           ports:
             # Wave 131 SW5: containerPort 8080 (nginx) → 3000 (Node SSR).

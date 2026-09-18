@@ -11,6 +11,23 @@
 # CI/CD workflow changes affect the entire security posture of the project.
 .github/workflows/ @egorribun
 
+# Scanner policy, ignore lists and dependency allowlists directly influence
+# required security checks. Keep both the policy files and this ownership
+# boundary itself under repository-owner review (SEC-CI-02/03).
+/.github/CODEOWNERS @egorribun
+/.github/codeql/ @egorribun
+/.github/actionlint.yaml @egorribun
+/.github/dependency-review-config.yml @egorribun
+/.checkov.yml @egorribun
+/.semgrep.yml @egorribun
+/.semgrepignore @egorribun
+/.trivyignore @egorribun
+/.trivyignore.yaml @egorribun
+.zap/rules.tsv @egorribun
+budget.json @egorribun
+quality/ @egorribun
+security/audit-allowlist.yaml @egorribun
+security/trivy-*.yaml @egorribun
 # Semgrep suppression entries are security policy, not a generic lint
 # configuration.  Keep ledger changes under the same owner review boundary.
 security/semgrep-suppression-policy.json @egorribun

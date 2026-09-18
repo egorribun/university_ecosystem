@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Camera as PhotoCamera } from "lucide-react"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import SmartImage from "@/components/media/SmartImage"
-import { Button, Input, Textarea } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
+import { Input } from "@/components/ui/Input"
+import { Textarea } from "@/components/ui/Textarea"
 import { updateNews, uploadNewsImage } from "@/api/news"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
@@ -45,6 +47,12 @@ interface NewsDetailEditDialogProps {
   }
   onSuccess: (message: string) => void
   onError: (message: string) => void
+}
+
+/** Return the first selected image, treating every empty input state uniformly. */
+export function getSelectedNewsImageFile(files: FileList | null | undefined): File | undefined {
+  if (!files || files.length === 0) return undefined
+  return files[0]
 }
 
 export function NewsDetailEditDialog({
@@ -93,7 +101,7 @@ export function NewsDetailEditDialog({
   }, [resetPreview, onClose])
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+    const file = getSelectedNewsImageFile(event.target.files)
     if (!file) return
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setNewImage(file)

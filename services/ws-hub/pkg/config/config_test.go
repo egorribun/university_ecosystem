@@ -23,7 +23,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 		"JWT_SECRETS", "JWT_SECRET", "SENTRY_DSN", "VITE_ENVIRONMENT",
 		"ALLOWED_ORIGINS", "TRUSTED_PROXIES", "BACKEND_INTERNAL_URL",
 		"JWKS_URL", "WS_SEND_BUFFER_SIZE", "WS_BROADCAST_BUFFER_SIZE",
-		"WS_BROADCAST_WORKERS", "WS_HUB_INTERNAL_SECRET", "WS_HUB_MAX_CLIENTS",
+		"WS_BROADCAST_WORKERS", "WS_HUB_INTERNAL_SECRET", "INTERNAL_AUTH_TOKEN", "WS_HUB_MAX_CLIENTS",
 		"WS_CLIENT_MSG_RATE_LIMIT", "WS_CLIENT_MSG_BURST", "WS_TICKET_TTL_SECONDS",
 		"REDIS_URL", "REDIS_PASSWORD", "REDIS_DB",
 	}
@@ -42,13 +42,14 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Nil(t, cfg.JWTSecrets)
 	require.Equal(t, "", cfg.SentryDSN)
 	require.Equal(t, "development", cfg.Environment)
-	require.Equal(t, []string{"http://localhost:3000", "http://localhost:5173"}, cfg.AllowedOrigins)
+	require.Equal(t, []string{"http://localhost", "http://localhost:80", "http://localhost:3000", "http://localhost:5173"}, cfg.AllowedOrigins)
 	require.Equal(t, []string{"127.0.0.1", "::1"}, cfg.TrustedProxies)
 	require.Contains(t, cfg.TrustedProxiesSet, "127.0.0.1")
 	require.Contains(t, cfg.TrustedProxiesSet, "::1")
 	require.Empty(t, cfg.TrustedCIDRs)
 	require.Equal(t, "http://backend:8000", cfg.BackendURL)
 	require.Equal(t, "http://backend:8000/.well-known/jwks.json", cfg.JWKSURL)
+	require.Empty(t, cfg.InternalAuthToken)
 	require.Equal(t, 256, cfg.SendBufferSize)
 	require.Equal(t, 4096, cfg.BroadcastBufferSize)
 	require.Equal(t, "", cfg.InternalSecret)
@@ -77,6 +78,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	t.Setenv("WS_BROADCAST_BUFFER_SIZE", "8192")
 	t.Setenv("WS_BROADCAST_WORKERS", "6")
 	t.Setenv("WS_HUB_INTERNAL_SECRET", "supersecret")
+	t.Setenv("INTERNAL_AUTH_TOKEN", "unit-test-internal-token")
 	t.Setenv("WS_HUB_MAX_CLIENTS", "500")
 	t.Setenv("WS_CLIENT_MSG_RATE_LIMIT", "25.5")
 	t.Setenv("WS_CLIENT_MSG_BURST", "50")
@@ -105,6 +107,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, 8192, cfg.BroadcastBufferSize)
 	require.Equal(t, 6, cfg.BroadcastWorkers)
 	require.Equal(t, "supersecret", cfg.InternalSecret)
+	require.Equal(t, "unit-test-internal-token", cfg.InternalAuthToken)
 	require.Equal(t, 500, cfg.MaxClients)
 	require.Equal(t, 25.5, cfg.ClientMsgRateLimit)
 	require.Equal(t, 50, cfg.ClientMsgRateBurst)

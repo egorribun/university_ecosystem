@@ -84,7 +84,11 @@ def test_optimize_image_vips_routing_and_fallback() -> None:
         assert optimized_data == b"vips_optimized_webp_bytes"
         assert content_type == "image/webp"
         mock_vips_opt.assert_called_once_with(
-            png_data, max_width=5, max_height=5, quality=85
+            png_data,
+            max_width=5,
+            max_height=5,
+            quality=85,
+            max_pixels=images.DEFAULT_MAX_IMAGE_PIXELS,
         )
 
     # Case 2: VIPS fails with OSError -> Fallback to Pillow

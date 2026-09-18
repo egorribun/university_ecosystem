@@ -93,7 +93,9 @@ describe("SmartImage defensive and responsive branches", () => {
     expect(screen.getByRole("img", { name: "empty widths" })).not.toHaveAttribute("sizes")
 
     rerender(<SmartImage fallback="/fallback.png" alt="no source" />)
-    expect(screen.getByRole("img", { name: "no source" })).not.toHaveAttribute("srcset")
+    const image = screen.getByRole("img", { name: "no source" })
+    expect(image.getAttribute("src")).toContain("/fallback.png")
+    expect(image).not.toHaveAttribute("srcset")
   })
 
   it("forwards load callbacks and caller style/attributes", () => {

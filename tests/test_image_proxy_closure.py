@@ -5,17 +5,23 @@ from __future__ import annotations
 import runpy
 import sys
 import types
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from PIL import Image
 
 from app.services.image_proxy import (
+    _cache_encode,
     _fetch_source_bytes,
     _process_image,
     _sanitize_path_input,
+    _validate_image_payload,
+    get_transformed_image,
 )
 from app.services.storage import StorageBackend
+from app.utils.images import ImagePixelLimitError
 
 
 @pytest.mark.asyncio
@@ -29,6 +35,54 @@ async def test_fetch_source_bytes_reraises_missing_file_without_space_fallback()
     backend.read_file.assert_awaited_once_with("/static/avatar.png")
 
 
+@pytest.mark.anyio
+async def test_get_transformed_image_cache_hit_validates_decoded_payload():
+    """Cache hits must apply the image safety boundary to decoded bytes."""
+    cached_data = b"cached-webp-bytes"
+    redis = AsyncMock()
+    redis.get.return_value = _cache_encode(cached_data, "image/webp")
+    backend = AsyncMock(spec=StorageBackend)
+
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=redis),
+        patch("app.services.image_proxy.settings.image_max_pixels", 1234),
+        patch("app.services.image_proxy._validate_image_payload") as validate_payload,
+    ):
+        data, mime = await get_transformed_image(
+            backend, "/static/avatar.webp", width=200, format_preference="webp"
+        )
+
+    validate_payload.assert_called_once_with(cached_data, max_pixels=1234)
+    assert data == cached_data
+    assert mime == "image/webp"
+    backend.read_file.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_get_transformed_image_passes_policy_snapshot_to_worker():
+    """Transform workers receive the resolved pixel budget explicitly."""
+    redis = AsyncMock()
+    redis.get.return_value = None
+    backend = AsyncMock(spec=StorageBackend)
+    backend.read_file.return_value = b"source-bytes"
+
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=redis),
+        patch("app.services.image_proxy.settings.image_max_pixels", 1234),
+        patch(
+            "app.services.image_proxy._process_image",
+            return_value=(b"converted", "image/webp"),
+        ) as process_image,
+    ):
+        data, mime = await get_transformed_image(
+            backend, "/static/avatar.png", width=200, format_preference="webp"
+        )
+
+    process_image.assert_called_once_with(b"source-bytes", 200, "webp", 1234)
+    assert data == b"converted"
+    assert mime == "image/webp"
+
+
 def test_sanitize_path_input_decodes_multiple_layers():
     assert _sanitize_path_input("%2573tatic%252Fimage.jpg") == "static/image.jpg"
 
@@ -39,8 +93,9 @@ def test_process_image_returns_avif_when_encoding_succeeds():
     image.format = "PNG"
     image.__enter__.return_value = image
 
-    def save(buffer, *, format, **_kwargs):
+    def save(buffer, *, format, quality):
         assert format == "AVIF"
+        assert quality == 60
         buffer.write(b"avif-data")
 
     image.save.side_effect = save
@@ -50,6 +105,132 @@ def test_process_image_returns_avif_when_encoding_succeeds():
 
     assert data == b"avif-data"
     assert mime == "image/avif"
+    assert image.save.call_args.kwargs == {"format": "AVIF", "quality": 60}
+
+
+def test_process_image_does_not_resize_when_width_matches_source():
+    """A matching width must preserve the source image without a no-op resize."""
+    image = MagicMock()
+    image.size = (100, 50)
+    image.format = "PNG"
+    image.__enter__.return_value = image
+
+    def save(buffer, *, format, **_kwargs):
+        assert format == "PNG"
+        buffer.write(b"png-data")
+
+    image.save.side_effect = save
+
+    with patch("app.services.image_proxy.Image.open", return_value=image):
+        data, mime = _process_image(b"source", 100, "original")
+
+    image.resize.assert_not_called()
+    assert data == b"png-data"
+    assert mime == "image/png"
+
+
+def test_process_image_resize_preserves_aspect_ratio():
+    """A downscale must compute a concrete proportional target height."""
+    source = Image.new("RGB", (10, 20), color="red")
+    source_buffer = BytesIO()
+    source.save(source_buffer, format="PNG")
+
+    data, mime = _process_image(source_buffer.getvalue(), 5, "original")
+
+    with Image.open(BytesIO(data)) as resized:
+        assert resized.size == (5, 10)
+    # Pillow's resized image has no source ``format`` metadata, so the
+    # existing original-mode fallback intentionally encodes it as JPEG.
+    assert mime == "image/jpeg"
+
+
+def test_process_image_original_without_format_uses_canonical_jpeg_encoder_name():
+    """A format-less Pillow image must use the canonical encoder spelling."""
+    image = MagicMock()
+    image.size = (10, 10)
+    image.format = None
+    image.__enter__.return_value = image
+
+    def save(buffer, *, format, **_kwargs):
+        assert format == "JPEG"
+        buffer.write(b"jpeg-data")
+
+    image.save.side_effect = save
+
+    with patch("app.services.image_proxy.Image.open", return_value=image):
+        data, mime = _process_image(b"source", None, "original")
+
+    assert data == b"jpeg-data"
+    assert mime == "image/jpeg"
+
+
+def test_validate_image_payload_preserves_pixel_budget_on_decoder_bomb():
+    """Decoder failures retain the caller's policy budget in the domain error."""
+    from PIL import Image as PILImage
+
+    with patch(
+        "app.services.image_proxy.Image.open",
+        side_effect=PILImage.DecompressionBombError("decoder bomb"),
+    ):
+        with pytest.raises(ImagePixelLimitError) as exc_info:
+            _validate_image_payload(b"bomb", max_pixels=123)
+
+    assert exc_info.value.max_pixels == 123
+
+
+def test_process_image_resize_uses_resolved_high_quality_filter():
+    """Resizing must pass the configured Pillow filter through unchanged."""
+    image = MagicMock()
+    image.size = (100, 50)
+    image.format = "PNG"
+    image.__enter__.return_value = image
+    resized = MagicMock()
+    resized.format = "PNG"
+    image.resize.return_value = resized
+    resized.save.side_effect = lambda buffer, *, format, **_kwargs: (
+        buffer.write(b"resized-png") if format == "PNG" else None
+    )
+    expected_filter = object()
+
+    with (
+        patch("app.services.image_proxy.Image.open", return_value=image),
+        patch(
+            "app.services.image_proxy._resolve_resample_filter",
+            return_value=expected_filter,
+        ),
+    ):
+        data, mime = _process_image(b"source", 50, "original")
+
+    image.resize.assert_called_once_with((50, 25), resample=expected_filter)
+    assert data == b"resized-png"
+    assert mime == "image/png"
+
+
+def test_process_image_webp_uses_quality_and_method_contract():
+    """WebP output must keep the explicit quality and encoder method."""
+    image = MagicMock()
+    image.size = (100, 50)
+    image.format = "PNG"
+    image.__enter__.return_value = image
+
+    def save(buffer, *, format, quality, method):
+        assert format == "WEBP"
+        assert quality == 80
+        assert method == 6
+        buffer.write(b"webp-data")
+
+    image.save.side_effect = save
+
+    with patch("app.services.image_proxy.Image.open", return_value=image):
+        data, mime = _process_image(b"source", None, "webp")
+
+    assert image.save.call_args.kwargs == {
+        "format": "WEBP",
+        "quality": 80,
+        "method": 6,
+    }
+    assert data == b"webp-data"
+    assert mime == "image/webp"
 
 
 def test_image_proxy_cache_and_avif_import_branches():

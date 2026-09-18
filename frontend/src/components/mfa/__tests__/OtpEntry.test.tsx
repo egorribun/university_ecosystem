@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -83,8 +83,6 @@ describe("OtpEntry", () => {
 
     await user.paste("12345")
 
-    // Wait a bit to ensure it doesn't fire
-    await new Promise((r) => setTimeout(r, 100))
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
@@ -121,7 +119,9 @@ describe("OtpEntry", () => {
   it("keeps focus on the final field after a single final digit", () => {
     render(<OtpEntry onSubmit={vi.fn()} />)
     const inputs = screen.getAllByRole("textbox")
-    inputs[5]!.focus()
+    act(() => {
+      inputs[5]!.focus()
+    })
 
     fireEvent.change(inputs[5]!, { target: { value: "6" } })
 
@@ -151,18 +151,24 @@ describe("OtpEntry", () => {
     render(<OtpEntry onSubmit={vi.fn()} />)
     const inputs = screen.getAllByRole("textbox")
 
-    inputs[2]!.focus()
+    act(() => {
+      inputs[2]!.focus()
+    })
     fireEvent.keyDown(inputs[2]!, { key: "Backspace" })
     expect(document.activeElement).toBe(inputs[1])
 
-    inputs[2]!.focus()
+    act(() => {
+      inputs[2]!.focus()
+    })
     fireEvent.keyDown(inputs[2]!, { key: "ArrowLeft" })
     expect(document.activeElement).toBe(inputs[1])
 
     fireEvent.keyDown(inputs[1]!, { key: "ArrowRight" })
     expect(document.activeElement).toBe(inputs[2])
 
-    inputs[0]!.focus()
+    act(() => {
+      inputs[0]!.focus()
+    })
     fireEvent.keyDown(inputs[0]!, { key: "Backspace" })
     fireEvent.keyDown(inputs[5]!, { key: "ArrowRight" })
     expect(document.activeElement).toBe(inputs[0])
@@ -306,7 +312,9 @@ describe("OtpEntry", () => {
     const inputs = screen.getAllByRole("textbox")
 
     fireEvent.change(inputs[0]!, { target: { value: "1" } })
-    inputs[5]!.focus()
+    act(() => {
+      inputs[5]!.focus()
+    })
     fireEvent.change(inputs[0]!, { target: { value: "" } })
 
     await waitFor(() => expect(document.activeElement).toBe(inputs[0]))

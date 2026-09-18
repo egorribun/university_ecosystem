@@ -14,6 +14,7 @@ describe("updateTraceContext", () => {
 
   it("clears trace state when response headers are absent", () => {
     updateTraceContext(undefined)
+
     expect(setTag).toHaveBeenCalledWith("trace_id", "")
   })
 
@@ -25,6 +26,16 @@ describe("updateTraceContext", () => {
   it("clears an empty trace header", () => {
     updateTraceContext({ "x-trace-id": "" })
     expect(setTag).toHaveBeenCalledWith("trace_id", "")
+  })
+
+  it("rejects a whitespace-only trace header", () => {
+    updateTraceContext({ "x-trace-id": "   " })
+    expect(setTag).toHaveBeenCalledWith("trace_id", "")
+  })
+
+  it("trims a valid trace identifier before publishing it", () => {
+    updateTraceContext({ "x-trace-id": "  trace-123  " })
+    expect(setTag).toHaveBeenCalledWith("trace_id", "trace-123")
   })
 
   it("normalizes valid numeric HTTP header values", () => {
@@ -39,5 +50,16 @@ describe("updateTraceContext", () => {
 
     updateTraceContext({ "x-trace-id": "ignored" })
     expect(setTag).toHaveBeenCalledWith("trace_id", "")
+  })
+
+  it("uses the canonical header lookup exactly once", () => {
+    const get = vi.fn((name: string) => (name === "x-trace-id" ? "adapter-id" : undefined))
+    vi.spyOn(AxiosHeaders, "from").mockReturnValue({ get } as unknown as AxiosHeaders)
+
+    updateTraceContext({ "X-Trace-Id": "ignored" })
+
+    expect(get).toHaveBeenCalledOnce()
+    expect(get).toHaveBeenCalledWith("x-trace-id")
+    expect(setTag).toHaveBeenCalledWith("trace_id", "adapter-id")
   })
 })

@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react"
 import { QueryClient } from "@tanstack/react-query"
 import { useRouteContext } from "@tanstack/react-router"
 import { BrandBootLoader } from "@/components/feedback/BrandBootLoader"
+import type { ReactNode } from "react"
 
 let Route: (typeof import("../__root"))["Route"]
 
@@ -60,6 +61,13 @@ vi.mock("@tanstack/react-query-persist-client", () => ({
   ),
 }))
 
+// RootShell owns the complete document (`<html><head><body>`), so the default
+// Testing Library `<div>` container is invalid and React reports a hydration
+// warning. React DOM accepts a Document container; using it here exercises the
+// same document-level ownership as the production hydrateRoot call.
+const renderDocumentShell = (Shell: any, children: ReactNode) =>
+  render(<Shell>{children}</Shell>, { container: document, baseElement: document })
+
 describe("__root.tsx components", () => {
   let originalSSR: any
 
@@ -87,11 +95,7 @@ describe("__root.tsx components", () => {
       const Shell = (Route.options as any).shellComponent
       expect(Shell).toBeDefined()
 
-      render(
-        <Shell>
-          <div>Test Child</div>
-        </Shell>
-      )
+      renderDocumentShell(Shell, <div>Test Child</div>)
 
       // Check document root directly for JSDOM synchronization
       expect(document.documentElement.getAttribute("lang")).toBe("en")
@@ -112,11 +116,7 @@ describe("__root.tsx components", () => {
 
     it("uses default theme/lang values when globals are undefined", () => {
       const Shell = (Route.options as any).shellComponent
-      render(
-        <Shell>
-          <div>Test Child</div>
-        </Shell>
-      )
+      renderDocumentShell(Shell, <div>Test Child</div>)
 
       expect(document.documentElement.getAttribute("lang")).toBe("ru")
       expect(document.documentElement.className).not.toContain("dark")
@@ -127,11 +127,7 @@ describe("__root.tsx components", () => {
       vi.stubEnv("VITE_LHCI", "true")
       const Shell = (Route.options as any).shellComponent
 
-      render(
-        <Shell>
-          <div>Combined shell</div>
-        </Shell>
-      )
+      renderDocumentShell(Shell, <div>Combined shell</div>)
 
       expect(document.documentElement.className).toBe("dark lhci-mode")
     })
@@ -144,11 +140,7 @@ describe("__root.tsx components", () => {
       }))
       const Shell = (Route.options as any).shellComponent
 
-      render(
-        <Shell>
-          <div>Authenticated Child</div>
-        </Shell>
-      )
+      renderDocumentShell(Shell, <div>Authenticated Child</div>)
 
       expect(document.getElementById("root")).toHaveAttribute(
         "data-ssr-auth",
@@ -179,11 +171,7 @@ describe("__root.tsx components", () => {
 
       expect(shellRoot.props["data-ssr-auth"]).toBe("authenticated:admin")
 
-      render(
-        <Shell>
-          <div>Hydrated Child</div>
-        </Shell>
-      )
+      renderDocumentShell(Shell, <div>Hydrated Child</div>)
 
       expect(document.getElementById("root")).toHaveAttribute(
         "data-ssr-auth",
@@ -195,11 +183,7 @@ describe("__root.tsx components", () => {
       vi.stubEnv("VITE_LHCI", "true")
       const Shell = (Route.options as any).shellComponent
 
-      render(
-        <Shell>
-          <div>LHCI Child</div>
-        </Shell>
-      )
+      renderDocumentShell(Shell, <div>LHCI Child</div>)
 
       expect(document.documentElement).toHaveClass("lhci-mode")
       const staticEffects = document.querySelector("style[data-lhci-static-effects]")
@@ -215,11 +199,7 @@ describe("__root.tsx components", () => {
 
     it("keeps the hidden Lighthouse marker geometry and noscript recovery contract", () => {
       const Shell = (Route.options as any).shellComponent
-      render(
-        <Shell>
-          <div>Marker Child</div>
-        </Shell>
-      )
+      renderDocumentShell(Shell, <div>Marker Child</div>)
 
       const markerStyle = document.getElementById("lhci-marker")?.style
       expect({
@@ -257,11 +237,7 @@ describe("__root.tsx components", () => {
 
     it("keeps the loading label outside the cycling logo mark", () => {
       const Shell = (Route.options as any).shellComponent
-      render(
-        <Shell>
-          <BrandBootLoader />
-        </Shell>
-      )
+      renderDocumentShell(Shell, <BrandBootLoader />)
 
       const status = screen.getByText("Загрузка").closest(".brand-boot-loader__status")
       const mark = document.querySelector(".brand-boot-loader__mark")

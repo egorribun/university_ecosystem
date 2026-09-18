@@ -37,6 +37,14 @@ from scripts.quality.coverage_provenance import (
 STATS_ARTIFACT = "mutmut-stats"
 UNIVERSE_ARTIFACT = "mutmut-universe"
 GENERATION_ARTIFACT = "mutmut-generation"
+HELM_DEPENDENCY_ARCHIVES = (
+    "redis-20.13.4.tgz",
+    "nats-8.5.4.tgz",
+)
+HELM_DEPENDENCY_PATHS = tuple(
+    f"charts/university-ecosystem/charts/{archive}"
+    for archive in HELM_DEPENDENCY_ARCHIVES
+)
 STATS_SIDECAR_NAME = "mutmut-stats-artifact.json"
 STATS_SELECTION_NAME = "mutmut-stats-selection.json"
 UNIVERSE_SELECTION_NAME = "mutmut-universe-selection.json"
@@ -76,6 +84,7 @@ _DEFAULT_CONFIG_INPUTS = (
     "scripts/merge_mutmut_stats.py",
     "scripts/plan_mutmut_shards.py",
     "scripts/mutmut_shard_matrix.py",
+    "scripts/validate_mutmut_group_budgets.py",
     "scripts/mutmut_universe_artifact.py",
     "scripts/mutmut_retry_artifacts.py",
 )
@@ -648,6 +657,7 @@ def create_universe_artifact(
     run_attempt: str,
     workflow: str,
     retry_provenance: Mapping[str, str],
+    include_helm_dependencies: bool = False,
 ) -> dict[str, Any]:
     """Bind a generation or final mutation universe to validated receipts."""
 
@@ -682,6 +692,9 @@ def create_universe_artifact(
     elif mode == "generation":
         includes = ("mutants",)
         required = ("mutants/mutmut-generation.json",)
+    if include_helm_dependencies and mode in {"generation", "mutmut"}:
+        includes = (*includes, *HELM_DEPENDENCY_PATHS)
+        required = (*required, *HELM_DEPENDENCY_PATHS)
     try:
         return create_artifact_manifest(
             root=repository_root,
@@ -849,6 +862,11 @@ def _arguments() -> argparse.Namespace:
             child.add_argument(
                 "--manifest", type=Path, default=Path("mutmut-universe-artifact.json")
             )
+            child.add_argument(
+                "--include-helm-dependencies",
+                action="store_true",
+                help="include the producer-verified Helm archives in the artifact",
+            )
         else:
             child.add_argument(
                 "--candidate-root", type=Path, action="append", required=True
@@ -935,6 +953,7 @@ def main() -> int:
                 run_id=args.run_id,
                 run_attempt=args.run_attempt,
                 workflow=args.workflow,
+                include_helm_dependencies=args.include_helm_dependencies,
                 retry_provenance=_from_arguments(
                     args,
                     GENERATION_ARTIFACT

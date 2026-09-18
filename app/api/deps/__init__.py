@@ -6,9 +6,12 @@ from app.api.deps.auth import (
     get_current_user,
     get_current_user_auth_dto,
     get_current_user_dto,
+    get_current_user_from_dishka,
     get_current_user_full,
     get_current_user_optional,
+    get_current_user_optional_from_dishka,
     require_fresh_mfa,
+    require_fresh_mfa_from_dishka,
 )
 from app.api.deps.localization import get_locale, resolve_locale
 from app.api.deps.services import (
@@ -53,8 +56,10 @@ __all__ = [
     "get_current_user",
     "get_current_user_auth_dto",
     "get_current_user_dto",
+    "get_current_user_from_dishka",
     "get_current_user_full",
     "get_current_user_optional",
+    "get_current_user_optional_from_dishka",
     "get_db",
     "get_event_service",
     "get_geolocation_service",
@@ -73,5 +78,6 @@ __all__ = [
     "get_session_service",
     "get_story_service",
     "require_fresh_mfa",
+    "require_fresh_mfa_from_dishka",
     "resolve_locale",
 ]

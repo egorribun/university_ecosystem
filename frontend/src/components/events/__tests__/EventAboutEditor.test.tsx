@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
 
@@ -253,14 +253,18 @@ describe("EventAboutEditor", () => {
       mockPatch.mockResolvedValue({ status: 200 })
       const { unmount } = render(<EventAboutEditor {...baseProps} onSuccess={onSuccess} />)
 
-      fireEvent.click(screen.getByLabelText("events:detail.sections.about.editAria"))
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText("events:detail.sections.about.editAria"))
+      })
       const textarea = screen.getByRole("textbox")
-      fireEvent.change(textarea, { target: { value: "Updated workshop details" } })
-      fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await act(async () => {
+        fireEvent.change(textarea, { target: { value: "Updated workshop details" } })
+        fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
 
-      // Resolve the async save/update chain while keeping the focus timer pending.
-      await Promise.resolve()
-      await Promise.resolve()
+        // Resolve the async save/update chain while keeping the focus timer pending.
+        await Promise.resolve()
+        await Promise.resolve()
+      })
       expect(onSuccess).toHaveBeenCalledWith("events:detail.messages.aboutUpdated")
 
       unmount()

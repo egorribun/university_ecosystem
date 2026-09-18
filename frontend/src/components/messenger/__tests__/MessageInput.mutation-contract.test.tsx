@@ -3,7 +3,14 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const state = vi.hoisted(() => ({ reduced: false }))
+const state = vi.hoisted(() => ({
+  reduced: false,
+  translationCalls: [] as unknown[],
+  mediaQueries: [] as string[],
+}))
+let uuidCounter = 0
+const createObjectURLSpy = vi.fn<(file: Blob | MediaSource) => string>()
+const revokeObjectURLSpy = vi.fn<(url: string) => void>()
 
 vi.mock("framer-motion", async () => {
   const React = await import("react")
@@ -55,12 +62,20 @@ vi.mock("framer-motion", async () => {
   }
 })
 
-vi.mock("@/hooks/useMediaQuery", () => ({ default: () => state.reduced }))
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: (query: string) => {
+    state.mediaQueries.push(query)
+    return state.reduced
+  },
+}))
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: Record<string, unknown>) =>
-      options ? `${key}|${JSON.stringify(options)}` : key,
-  }),
+  useTranslation: (namespaces: unknown) => {
+    state.translationCalls.push(namespaces)
+    return {
+      t: (key: string, options?: Record<string, unknown>) =>
+        options ? `${key}|${JSON.stringify(options)}` : key,
+    }
+  },
 }))
 vi.mock("@/components/media/SmartImage", () => ({
   default: ({ alt, className, srcRaw }: { alt?: string; className?: string; srcRaw?: string }) => (
@@ -68,19 +83,49 @@ vi.mock("@/components/media/SmartImage", () => ({
   ),
 }))
 
-import { MessageInput } from "@/components/messenger/MessageInput"
+import {
+  hasSelectedFiles,
+  MessageInput,
+  normalizeFileSelection,
+} from "@/components/messenger/MessageInput"
 
 const attr = (element: Element, name: string) => element.getAttribute(name)
 
 beforeEach(() => {
   state.reduced = false
-  vi.spyOn(URL, "createObjectURL").mockImplementation((file) => `blob:${(file as File).name}`)
-  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
-  vi.spyOn(crypto, "randomUUID").mockReturnValue("00000000-0000-4000-8000-000000000000")
+  state.translationCalls.length = 0
+  state.mediaQueries.length = 0
+  uuidCounter = 0
+  createObjectURLSpy
+    .mockReset()
+    .mockImplementation((file) => `blob:${file instanceof File ? file.name : "blob"}`)
+  revokeObjectURLSpy.mockReset()
+  vi.spyOn(URL, "createObjectURL").mockImplementation(createObjectURLSpy)
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(revokeObjectURLSpy)
+  vi.spyOn(crypto, "randomUUID").mockImplementation(
+    () => `00000000-0000-4000-8000-00000000000${++uuidCounter}`
+  )
 })
 afterEach(() => vi.restoreAllMocks())
 
 describe("MessageInput motion and DOM contract", () => {
+  it("normalizes nullable browser file selections without throwing", () => {
+    expect(normalizeFileSelection(null)).toEqual([])
+    expect(hasSelectedFiles(normalizeFileSelection(null))).toBe(false)
+
+    const file = new File(["payload"], "notes.txt", { type: "text/plain" })
+    const fileList = { 0: file, length: 1, item: (index: number) => (index === 0 ? file : null) }
+    const normalized = normalizeFileSelection(fileList as unknown as FileList)
+    expect(normalized).toEqual([file])
+    expect(hasSelectedFiles(normalized)).toBe(true)
+  })
+
+  it("requests both translation namespaces as a stable ordered tuple", () => {
+    render(<MessageInput onSend={() => {}} />)
+    expect(state.translationCalls).toContainEqual(["messenger", "common"])
+    expect(state.mediaQueries).toContain("(prefers-reduced-motion: reduce)")
+  })
+
   it("exposes exact attach/send animations, touch targets and Unicode maxLength", async () => {
     const onSend = vi.fn()
     const { container } = render(<MessageInput onSend={onSend} />)
@@ -134,6 +179,17 @@ describe("MessageInput motion and DOM contract", () => {
 
   it("keeps attachment menu animation, item colors and accept contracts stable", () => {
     const { container } = render(<MessageInput onSend={() => {}} />)
+    const attachButton = screen.getByRole("button", { name: "messenger:aria.attachments" })
+    expect(attachButton).toHaveClass(
+      "min-h-[44px]",
+      "min-w-[44px]",
+      "focus-visible:ring-2",
+      "focus-visible:ring-offset-2"
+    )
+    const textarea = screen.getByRole("textbox", { name: "messenger:typeMessage" })
+    expect(textarea).toHaveAttribute("placeholder", "messenger:typeMessage")
+    expect(textarea).toHaveClass("flex-1", "resize-none", "max-h-48", "text-base")
+    expect(container.querySelector(".flex.gap-2.mb-3")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "messenger:aria.attachments" }))
     const menu = container.querySelector(".absolute.bottom-full")!
     expect(attr(menu, "data-motion-initial")).toBe(
@@ -143,6 +199,14 @@ describe("MessageInput motion and DOM contract", () => {
     expect(attr(menu, "data-motion-exit")).toBe(JSON.stringify({ opacity: 0, scale: 0.95, y: 10 }))
     expect(menu).toHaveClass("min-w-(--min-w-column)", "rounded-2xl", "shadow-premium")
     expect(container.querySelector("#chat-attach-type-photo > div")).toHaveClass(
+      "w-8",
+      "h-8",
+      "rounded-lg",
+      "flex",
+      "items-center",
+      "justify-center",
+      "transition-transform",
+      "group-hover:scale-110",
       "text-(--primary-main)",
       "bg-(--primary-main)/(--opacity-subtle)"
     )
@@ -164,6 +228,31 @@ describe("MessageInput motion and DOM contract", () => {
     fireEvent.click(screen.getByRole("button", { name: "messenger:aria.attachments" }))
     fireEvent.click(screen.getByRole("button", { name: "messenger:attachFile" }))
     expect(input.accept).toBe("*")
+  })
+
+  it("keeps attachment and send state classes tied to their actual state", () => {
+    render(<MessageInput onSend={() => {}} />)
+    const attach = screen.getByRole("button", { name: "messenger:aria.attachments" })
+    const send = screen.getByRole("button", { name: "messenger:aria.sendMessage" })
+    expect(attach).toHaveClass("text-(--text-secondary)")
+    expect(attach.querySelector("svg")).toHaveClass("transition-transform", "duration-base")
+    expect(send).toHaveClass(
+      "bg-(--bg-surface-hover)/(--opacity-subtle)",
+      "text-(--text-secondary)",
+      "opacity-soft",
+      "cursor-not-allowed",
+      "focus-visible:ring-2"
+    )
+
+    fireEvent.click(attach)
+    expect(attach).toHaveClass("text-(--brand-main)", "bg-(--brand-main)/(--opacity-subtle)")
+    expect(attach.querySelector("svg")).toHaveClass("rotate-45")
+    fireEvent.click(attach)
+
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:typeMessage" }), {
+      target: { value: "ready" },
+    })
+    expect(send).toHaveClass("messenger-send-btn")
   })
 
   it("serialises rejected SVG alert animation and reply-chip accessibility", async () => {
@@ -189,5 +278,173 @@ describe("MessageInput motion and DOM contract", () => {
       screen.getByText('messenger:replyingTo|{"name":"messenger:replyTo.unknownSender"}')
     ).toBeInTheDocument()
     expect(screen.getByText("quoted")).toHaveClass("truncate", "text-sm")
+  })
+
+  it("keeps the attachment send state and Blob URL lifecycle deterministic", async () => {
+    const onSend = vi.fn()
+    const { container } = render(<MessageInput onSend={onSend} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const first = new File(["one"], "one.txt", { type: "text/plain" })
+    const second = new File(["two"], "two.txt", { type: "text/plain" })
+    Object.defineProperty(fileInput, "files", { value: [first, second], configurable: true })
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+
+    expect(screen.getAllByRole("button", { name: "messenger:aria.removeAttachment" })).toHaveLength(
+      2
+    )
+    const removeButtons = screen.getAllByRole("button", { name: "messenger:aria.removeAttachment" })
+    fireEvent.click(removeButtons[1]!)
+    expect(screen.getAllByRole("button", { name: "messenger:aria.removeAttachment" })).toHaveLength(
+      1
+    )
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:two.txt")
+    expect(revokeObjectURLSpy).not.toHaveBeenCalledWith("blob:one.txt")
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:aria.attachments" }))
+    expect(screen.getByRole("button", { name: "messenger:attachPhoto" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "messenger:aria.sendMessage" }))
+    expect(onSend).toHaveBeenCalledWith("", [first])
+    expect(screen.queryByRole("button", { name: "messenger:attachPhoto" })).not.toBeInTheDocument()
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:one.txt")
+  })
+
+  it("guards null and empty FileList values without allocating previews", async () => {
+    const { container } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+
+    Object.defineProperty(fileInput, "files", { value: null, configurable: true })
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+    Object.defineProperty(fileInput, "files", { value: [], configurable: true })
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+    expect(
+      screen.queryByRole("button", { name: "messenger:aria.removeAttachment" })
+    ).not.toBeInTheDocument()
+    expect(createObjectURLSpy).not.toHaveBeenCalled()
+  })
+
+  it("clears a cancelled file picker synchronously before async processing", () => {
+    const { container } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const valueWrites: string[] = []
+    Object.defineProperty(fileInput, "value", {
+      configurable: true,
+      get: () => "",
+      set: (value: string) => valueWrites.push(value),
+    })
+    Object.defineProperty(fileInput, "files", { value: null, configurable: true })
+
+    fireEvent.change(fileInput)
+
+    expect(valueWrites).toEqual([""])
+  })
+
+  it("keeps preview URLs alive across rerenders and revokes them on unmount", async () => {
+    const { container, rerender, unmount } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(["payload"], "notes.txt", { type: "text/plain" })
+    Object.defineProperty(fileInput, "files", { value: [file], configurable: true })
+
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+    revokeObjectURLSpy.mockClear()
+
+    rerender(<MessageInput onSend={() => {}} />)
+    expect(revokeObjectURLSpy).not.toHaveBeenCalled()
+
+    unmount()
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:notes.txt")
+  })
+
+  it("clears the file input after accepting a file", async () => {
+    const { container } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const valueWrites: string[] = []
+    Object.defineProperty(fileInput, "value", {
+      configurable: true,
+      get: () => "",
+      set: (value: string) => valueWrites.push(value),
+    })
+    const file = new File(["payload"], "notes.txt", { type: "text/plain" })
+    Object.defineProperty(fileInput, "files", { value: [file], configurable: true })
+
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+
+    expect(valueWrites).toEqual([""])
+  })
+
+  it("rejects SVG MIME independently from the filename extension", async () => {
+    const { container } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const svg = new File(["<svg/>"], "vector.bin", { type: "image/svg+xml" })
+    Object.defineProperty(fileInput, "files", { value: [svg], configurable: true })
+
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+
+    expect(screen.getByRole("alert")).toHaveTextContent("messenger:svgNotAllowed")
+    expect(createObjectURLSpy).not.toHaveBeenCalled()
+  })
+
+  it("does not sniff SVG markup for non-image attachments", async () => {
+    const { container } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const documentFile = new File(["<svg/>"], "notes.txt", { type: "text/plain" })
+    const sniffBlob = new Blob([])
+    Object.defineProperty(sniffBlob, "text", {
+      configurable: true,
+      value: vi.fn().mockResolvedValue("<svg viewBox='0 0 1 1'>"),
+    })
+    const sliceSpy = vi.spyOn(documentFile, "slice").mockReturnValue(sniffBlob)
+    Object.defineProperty(fileInput, "files", { value: [documentFile], configurable: true })
+
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(createObjectURLSpy).toHaveBeenCalledWith(documentFile)
+    expect(sliceSpy).not.toHaveBeenCalled()
+  })
+
+  it("rejects XML-declared SVG markup with arbitrary declaration whitespace", async () => {
+    const { container } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const image = new File(["raw"], "vector.png", { type: "image/png" })
+    const sniffBlob = new Blob([])
+    Object.defineProperty(sniffBlob, "text", {
+      configurable: true,
+      value: vi.fn().mockResolvedValue('<?xml version="1.0"?>   \n\n <svg>'),
+    })
+    vi.spyOn(image, "slice").mockReturnValue(sniffBlob)
+    Object.defineProperty(fileInput, "files", { value: [image], configurable: true })
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+
+    expect(screen.getByRole("alert")).toHaveTextContent("messenger:svgNotAllowed")
+    expect(
+      screen.queryByRole("button", { name: "messenger:aria.removeAttachment" })
+    ).not.toBeInTheDocument()
+  })
+
+  it("renders an image preview with the canonical object URL and alt text", async () => {
+    const { container } = render(<MessageInput onSend={() => {}} />)
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const image = new File(["png"], "photo.png", { type: "image/png" })
+    Object.defineProperty(fileInput, "files", { value: [image], configurable: true })
+    await act(async () => {
+      fireEvent.change(fileInput)
+    })
+    expect(screen.getByRole("img", { name: "photo.png" })).toHaveAttribute("src", "blob:photo.png")
   })
 })

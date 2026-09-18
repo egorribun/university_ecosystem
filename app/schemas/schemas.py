@@ -456,7 +456,7 @@ class NewsCreate(BaseModel):
     title: SanitizedStr
     content: SafeRichText
     title_en: SanitizedInput = None
-    content_en: SanitizedInput = None
+    content_en: SafeRichText | None = None
     image_url: str | None = None
 
 
@@ -464,7 +464,7 @@ class NewsUpdate(BaseModel):
     title: SanitizedStr | None = None
     content: SafeRichText | None = None
     title_en: SanitizedInput = None
-    content_en: SanitizedInput = None
+    content_en: SafeRichText | None = None
     image_url: str | None = None
 
 
@@ -551,6 +551,19 @@ class EventFileOut(OrmModel):
     event_id: uuid.UUID
     file_url: str
     description: str | None = None
+
+    @model_validator(mode="after")
+    def protect_private_url(self) -> EventFileOut:
+        """Expose event attachments only through the authorized download route."""
+
+        from app.services.private_attachments import private_attachment_url
+
+        object.__setattr__(
+            self,
+            "file_url",
+            private_attachment_url("event", self.event_id, self.file_url),
+        )
+        return self
 
 
 class EventCreate(BaseModel):

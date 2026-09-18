@@ -64,9 +64,18 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         index=True,
         nullable=True,
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true",
+        index=True,
+    )
     mfa_required: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, index=True
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+        index=True,
     )
     mfa_default_method: Mapped[str | None] = mapped_column(String(64))
     mfa_last_verified_at: Mapped[datetime | None] = mapped_column(
@@ -219,6 +228,15 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="noload",
+    )
+    # Chat membership is an explicit bidirectional relation.  Do not use a
+    # dynamically generated backref here: its implicit ``lazy="select"``
+    # strategy performs synchronous IO when accessed from an async request.
+    chats = relationship(
+        "Chat",
+        secondary="chat_participants",
+        back_populates="participants",
         lazy="noload",
     )
 
@@ -380,8 +398,18 @@ class InviteCode(Base, UUID7PrimaryKeyMixin):
 
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     role: Mapped[str] = mapped_column(String(50))  # LOW-W19: bounded String
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    is_used: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true",
+        index=True,
+    )
+    is_used: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )

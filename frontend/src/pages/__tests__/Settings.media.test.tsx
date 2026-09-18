@@ -1,4 +1,4 @@
-import { screen, waitFor, act } from "@testing-library/react"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -168,10 +168,7 @@ describe("Settings media actions", () => {
 
     const file = new File(["avatar"], "avatar.png", { type: "image/png" })
 
-    await act(async () => {
-      await user.upload(fileInputs[0]!, file)
-      await new Promise((resolve) => setTimeout(resolve, 15))
-    })
+    await user.upload(fileInputs[0]!, file)
 
     await waitFor(() => expect(postSpy).toHaveBeenCalled())
 
@@ -189,9 +186,11 @@ describe("Settings media actions", () => {
     })
     await waitFor(() => expect(mockSetUser).toHaveBeenCalledWith(updatedUser))
 
-    const updatedSrc = avatar.getAttribute("src")
-    expect(updatedSrc).toContain("v=")
-    expect(updatedSrc).not.toEqual(initialSrc)
+    await waitFor(() => {
+      const updatedSrc = avatar.getAttribute("src")
+      expect(updatedSrc).toContain("_v=")
+      expect(updatedSrc).not.toEqual(initialSrc)
+    })
   })
 
   it("shows an error when avatar upload fails", async () => {
@@ -204,9 +203,7 @@ describe("Settings media actions", () => {
     const fileInputs = document.querySelectorAll<HTMLInputElement>("input[type='file']")
     const file = new File(["avatar"], "avatar.png", { type: "image/png" })
 
-    await act(async () => {
-      await user.upload(fileInputs[0]!, file)
-    })
+    await user.upload(fileInputs[0]!, file)
 
     await waitFor(() => expect(api.post).toHaveBeenCalled())
 
@@ -243,18 +240,17 @@ describe("Settings media actions", () => {
     const initialBackground = window.getComputedStyle(preview!).backgroundImage
 
     const file = new File(["cover"], "cover.png", { type: "image/png" })
-    await act(async () => {
-      await user.upload(fileInputs[1]!, file)
-      await new Promise((resolve) => setTimeout(resolve, 15))
-    })
+    await user.upload(fileInputs[1]!, file)
 
     await waitFor(() => expect(api.post).toHaveBeenCalled())
 
     await waitFor(() => expect(mockSetUser).toHaveBeenCalledWith(updatedUser))
 
-    const updatedBackground = window.getComputedStyle(preview!).backgroundImage
-    expect(updatedBackground).toContain("v=")
-    expect(updatedBackground).not.toEqual(initialBackground)
+    await waitFor(() => {
+      const updatedBackground = window.getComputedStyle(preview!).backgroundImage
+      expect(updatedBackground).toContain("_v=")
+      expect(updatedBackground).not.toEqual(initialBackground)
+    })
   })
 
   it("deletes avatar and refreshes the profile", async () => {
@@ -272,13 +268,14 @@ describe("Settings media actions", () => {
       name: tSettings("media.avatar.delete"),
     })
 
-    await act(async () => {
-      await user.click(deleteButton)
-    })
+    await user.click(deleteButton)
 
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("/users/me/avatar"))
     await waitFor(() => expect(getSpy).toHaveBeenCalled())
     await waitFor(() => expect(mockSetUser).toHaveBeenCalledWith(updatedUser))
+    await waitFor(() =>
+      expect(screen.getByText(tSettings("media.avatar.deleted"))).toBeInTheDocument()
+    )
   })
 
   it("deletes cover and refreshes the profile", async () => {
@@ -296,12 +293,13 @@ describe("Settings media actions", () => {
       name: tSettings("media.cover.remove"),
     })
 
-    await act(async () => {
-      await user.click(deleteButton)
-    })
+    await user.click(deleteButton)
 
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("/users/me/cover"))
     await waitFor(() => expect(getSpy).toHaveBeenCalled())
     await waitFor(() => expect(mockSetUser).toHaveBeenCalledWith(updatedUser))
+    await waitFor(() =>
+      expect(screen.getByText(tSettings("media.cover.deleted"))).toBeInTheDocument()
+    )
   })
 })

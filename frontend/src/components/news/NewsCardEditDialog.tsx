@@ -9,7 +9,7 @@ import {
   captureActiveTelemetryContext,
   type CapturedTelemetryContext,
 } from "@/utils/telemetryContext"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import Dialog from "@/components/ui/Dialog"
 import SmartImage from "@/components/media/SmartImage"
 import { newsFormSchema, type NewsFormValues } from "@/features/news/schema"

@@ -65,6 +65,10 @@ type Config struct {
 	// X-Internal-Signature to reject requests that bypass the gateway.
 	// Optional in dev; required in production for full zero-trust enforcement.
 	InternalHMACSecret string
+	// FileProcessingCapabilitySecret authenticates short-lived, backend-issued
+	// proofs at the gateway/file-processor boundary. It is optional only for
+	// local development; release environments fail closed when it is missing.
+	FileProcessingCapabilitySecret string
 	// MOD-W17-03: JWKS hot-reload configuration.
 	// When JWKSEndpoint is non-empty, the gateway periodically fetches the JWKS
 	// from this URL and atomically swaps the RSA public key for RS256 verification.
@@ -134,7 +138,8 @@ func loadFromEnvironment() *Config {
 		GRPCServerName:        os.Getenv("GRPC_SERVER_NAME"),
 		GRPCClientIdentityURI: os.Getenv("GRPC_CLIENT_IDENTITY_URI"),
 		// RZ-14-05: optional in dev, required in production.
-		InternalHMACSecret: os.Getenv("INTERNAL_HMAC_SECRET"),
+		InternalHMACSecret:             os.Getenv("INTERNAL_HMAC_SECRET"),
+		FileProcessingCapabilitySecret: os.Getenv("FILE_PROCESSING_CAPABILITY_SECRET"),
 		// MOD-W17-03: JWKS hot-reload. Set JWKS_ENDPOINT to enable.
 		JWKSEndpoint:        os.Getenv("JWKS_ENDPOINT"),
 		JWKSRefreshInterval: getEnvInt("JWKS_REFRESH_INTERVAL", 300),
@@ -170,6 +175,16 @@ func validateConfig(cfg *Config) error {
 
 	environment := strings.ToLower(strings.TrimSpace(cfg.Environment))
 	isRelease := environment == "staging" || environment == "production"
+	if isRelease {
+		cfg.InternalHMACSecret = strings.TrimSpace(cfg.InternalHMACSecret)
+		if err := validateInternalHMACSecret(cfg.InternalHMACSecret); err != nil {
+			return err
+		}
+		cfg.FileProcessingCapabilitySecret = strings.TrimSpace(cfg.FileProcessingCapabilitySecret)
+		if err := validateFileProcessingCapabilitySecret(cfg.FileProcessingCapabilitySecret); err != nil {
+			return err
+		}
+	}
 	if isRelease && !cfg.GrpcUseTLS {
 		return fmt.Errorf("GRPC_USE_TLS=true is required in %s", environment)
 	}
@@ -186,6 +201,89 @@ func validateConfig(cfg *Config) error {
 	}
 
 	return nil
+}
+
+// validateInternalHMACSecret rejects predictable gateway/backend trust-boundary
+// keys before the gateway starts signing identity headers. A minimum length is
+// necessary but not sufficient: repeated values and copied placeholders remain
+// guessable even when padded to 32 bytes. The check is deliberately structural
+// and never logs or returns the configured secret.
+func validateInternalHMACSecret(secret string) error {
+	return validateStrongSecret("INTERNAL_HMAC_SECRET", secret)
+}
+
+func validateFileProcessingCapabilitySecret(secret string) error {
+	return validateStrongSecret("FILE_PROCESSING_CAPABILITY_SECRET", secret)
+}
+
+func validateStrongSecret(name, secret string) error {
+	normalized := strings.TrimSpace(secret)
+	if len([]byte(normalized)) < 32 {
+		return fmt.Errorf("%s must contain at least 32 bytes of entropy", name)
+	}
+
+	secretBytes := []byte(normalized)
+	distinct := make(map[byte]struct{}, len(secretBytes))
+	for _, value := range secretBytes {
+		distinct[value] = struct{}{}
+	}
+	repeated := len(distinct) < 4 || isRepeatedSecret(secretBytes)
+	lower := strings.ToLower(normalized)
+	for _, placeholder := range []string{
+		"change_me",
+		"change-me",
+		"changeme",
+		"placeholder",
+		"example",
+		"your-secret",
+		"internal_hmac_secret",
+		"internal-hmac-secret",
+		"file-processing-capability-secret",
+		"test-secret",
+		"dummy-secret",
+	} {
+		if strings.Contains(lower, placeholder) {
+			return fmt.Errorf(
+				"%s must contain at least 32 bytes of entropy; placeholder or repeated values are not allowed",
+				name,
+			)
+		}
+	}
+	if repeated {
+		return fmt.Errorf(
+			"%s must contain at least 32 bytes of entropy; placeholder or repeated values are not allowed",
+			name,
+		)
+	}
+	return nil
+}
+
+// isRepeatedSecret reports whether the complete value consists of a repeated
+// block no longer than eight bytes (for example, "abcd" repeated 16 times).
+// Such values are deterministic and unsuitable as a trust-boundary key.
+func isRepeatedSecret(value []byte) bool {
+	for blockLen := 1; blockLen <= 8; blockLen++ {
+		if len(value)%blockLen != 0 || len(value)/blockLen < 2 {
+			continue
+		}
+		block := value[:blockLen]
+		repeated := true
+		for offset := blockLen; offset < len(value); offset += blockLen {
+			for index := range block {
+				if value[offset+index] != block[index] {
+					repeated = false
+					break
+				}
+			}
+			if !repeated {
+				break
+			}
+		}
+		if repeated {
+			return true
+		}
+	}
+	return false
 }
 
 func validateConventionalGRPCConfig(cfg *Config, environment string) error {

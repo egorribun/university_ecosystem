@@ -4184,6 +4184,39 @@ export type RenameChatApiV1ChatsChatIdPatchResponses = {
 export type RenameChatApiV1ChatsChatIdPatchResponse =
   RenameChatApiV1ChatsChatIdPatchResponses[keyof RenameChatApiV1ChatsChatIdPatchResponses]
 
+export type DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetData = {
+  body?: never
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+    /**
+     * Filename
+     */
+    filename: string
+  }
+  query?: never
+  url: "/api/v1/chats/{chat_id}/attachments/{filename}"
+}
+
+export type DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetError =
+  DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetErrors[keyof DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetErrors]
+
+export type DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
 export type ClearChatHistoryApiV1ChatsChatIdClearPostData = {
   body?: never
   path: {
@@ -5194,6 +5227,39 @@ export type GetEventFilesApiV1EventsEventIdFilesGetResponses = {
 
 export type GetEventFilesApiV1EventsEventIdFilesGetResponse =
   GetEventFilesApiV1EventsEventIdFilesGetResponses[keyof GetEventFilesApiV1EventsEventIdFilesGetResponses]
+
+export type DownloadEventFileApiV1EventsEventIdFilesFilenameGetData = {
+  body?: never
+  path: {
+    /**
+     * Event Id
+     */
+    event_id: string | number
+    /**
+     * Filename
+     */
+    filename: string
+  }
+  query?: never
+  url: "/api/v1/events/{event_id}/files/{filename}"
+}
+
+export type DownloadEventFileApiV1EventsEventIdFilesFilenameGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DownloadEventFileApiV1EventsEventIdFilesFilenameGetError =
+  DownloadEventFileApiV1EventsEventIdFilesFilenameGetErrors[keyof DownloadEventFileApiV1EventsEventIdFilesFilenameGetErrors]
+
+export type DownloadEventFileApiV1EventsEventIdFilesFilenameGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
 
 export type UploadEventFileApiV1EventsEventIdUploadFilePostData = {
   body: BodyUploadEventFileApiV1EventsEventIdUploadFilePost

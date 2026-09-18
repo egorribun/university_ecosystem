@@ -202,6 +202,41 @@ def extract_findings(document: object, *, artifact: str) -> set[FindingIdentity]
     return findings
 
 
+def validate_baseline_triage(document: object) -> None:
+    """Require an explicit false-positive decision for every baseline entry.
+
+    A baseline entry is an allowlist record, not proof that a detector hit was
+    reviewed.  ``detect-secrets audit`` records that decision in ``is_secret``;
+    keeping the field explicit prevents an unknown finding from silently
+    becoming a long-lived suppression.  A committed baseline may contain only
+    findings confirmed to be non-secrets.  Real credentials must be removed or
+    rotated instead of being labelled as acceptable repository content.
+    """
+
+    if not isinstance(document, dict):
+        raise BaselineArtifactError("baseline: top-level JSON value must be an object")
+    raw_results = document.get("results")
+    if not isinstance(raw_results, dict):
+        raise BaselineArtifactError("baseline: results must be an object")
+    for raw_path, raw_findings in raw_results.items():
+        result_path = _canonical_result_path(raw_path, artifact="baseline")
+        if not isinstance(raw_findings, list):
+            raise BaselineArtifactError(
+                f"baseline: findings for {result_path} must be a list"
+            )
+        for index, raw_finding in enumerate(raw_findings):
+            if not isinstance(raw_finding, dict):
+                raise BaselineArtifactError(
+                    f"baseline: finding {result_path}[{index}] must be an object"
+                )
+            decision = raw_finding.get("is_secret")
+            if decision is not False:
+                raise BaselineArtifactError(
+                    f"baseline: finding {result_path}[{index}] requires explicit "
+                    "is_secret=false triage"
+                )
+
+
 def _describe_findings(findings: set[FindingIdentity]) -> str:
     """Render bounded, deterministic diagnostics without secret material."""
 
@@ -238,9 +273,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return int(error.code) if isinstance(error.code, int) else 2
 
     try:
-        baseline_findings = extract_findings(
-            load_json(arguments.baseline_path), artifact="baseline"
-        )
+        baseline_document = load_json(arguments.baseline_path)
+        validate_baseline_triage(baseline_document)
+        baseline_findings = extract_findings(baseline_document, artifact="baseline")
         current_findings = extract_findings(
             load_json(arguments.current_scan_path), artifact="current scan"
         )

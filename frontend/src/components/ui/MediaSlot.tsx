@@ -14,7 +14,7 @@
  * ```
  */
 
-import { useState, forwardRef, type ReactNode, type ImgHTMLAttributes } from "react"
+import { forwardRef, useEffect, useState, type ImgHTMLAttributes, type ReactNode } from "react"
 import { Image as ImageIcon, ImageOff } from "lucide-react"
 
 import { cn } from "@/utils/cn"
@@ -59,13 +59,22 @@ export const MediaSlot = forwardRef<HTMLDivElement, MediaSlotProps>(
     const [isLoading, setIsLoading] = useState(true)
     const [hasError, setHasError] = useState(false)
 
+    useEffect(() => {
+      // A changed source is a new resource: discard the previous error and
+      // show the loading state until the replacement image resolves.
+      setIsLoading(Boolean(src))
+      setHasError(false)
+    }, [src])
+
     const handleLoad = () => {
       setIsLoading(false)
       onLoad?.()
     }
 
     const handleError = () => {
-      setIsLoading(false)
+      // The error branch replaces the image and loading placeholder in the
+      // same render, so a second loading-state update is redundant. The next
+      // source change resets the loading state in the effect above.
       setHasError(true)
       onError?.()
     }

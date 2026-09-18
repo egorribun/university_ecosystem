@@ -673,6 +673,7 @@ async def test_internal_access_valid_ip_passes() -> None:
         inner_app,
         internal_prefixes=["/internal"],
         allowed_ips=["10.0.0.1"],
+        allow_ip_fallback=True,
     )
 
     scope = _make_asgi_scope(path="/internal/status", client_host="10.0.0.1")
@@ -725,6 +726,7 @@ async def test_internal_access_no_client_still_denies() -> None:
         inner_app,
         internal_prefixes=["/internal"],
         allowed_ips=["127.0.0.1"],
+        allow_ip_fallback=True,
     )
 
     scope = _make_asgi_scope(path="/internal/test")

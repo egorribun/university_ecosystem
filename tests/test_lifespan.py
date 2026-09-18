@@ -294,12 +294,13 @@ async def test_handle_schema_and_extensions_pgvector_fail() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_schema_and_extensions_sqlite_computed_patch() -> None:
-    # SQLite dialect should remove computed tsvector columns
+    # SQLite dialect should temporarily remove computed tsvector columns.
     mock_computed = MagicMock()
     mock_computed.sqltext = "to_tsvector('english')"
 
     mock_column = MagicMock()
     mock_column.computed = mock_computed
+    mock_column.nullable = False
 
     mock_column2 = MagicMock()
     mock_column2.computed = None
@@ -324,11 +325,62 @@ async def test_handle_schema_and_extensions_sqlite_computed_patch() -> None:
 
         mock_base.metadata.tables.values.return_value = [mock_table]
 
+        observed_during_create_all: list[tuple[object | None, bool]] = []
+
+        async def observe_temporary_patch(_create_all: object) -> None:
+            observed_during_create_all.append(
+                (mock_column.computed, mock_column.nullable)
+            )
+
+        mock_conn.run_sync.side_effect = observe_temporary_patch
+
         await _handle_schema_and_extensions()
 
-        # Computed attribute should be cleared
-        assert mock_column.computed is None
+        assert observed_during_create_all == [(None, True)]
+        assert mock_column.computed is mock_computed
+        assert mock_column.nullable is False
         mock_conn.run_sync.assert_called_once_with(mock_base.metadata.create_all)
+
+
+@pytest.mark.asyncio
+async def test_handle_schema_and_extensions_restores_sqlite_metadata_on_failure() -> (
+    None
+):
+    mock_computed = MagicMock()
+    mock_computed.sqltext = "to_tsvector('english')"
+
+    mock_column = MagicMock()
+    mock_column.computed = mock_computed
+    mock_column.nullable = False
+
+    mock_table = MagicMock()
+    mock_table.columns = [mock_column]
+
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.engine") as mock_engine,
+        patch("app.core.lifespan.Base") as mock_base,
+        patch("app.core.lifespan._logger") as mock_logger,
+    ):
+        mock_settings.auto_create_schema = True
+        mock_settings.environment = "testing"
+
+        mock_conn = AsyncMock()
+        mock_conn.dialect.name = "sqlite"
+        mock_conn.run_sync.side_effect = SQLAlchemyError("create_all failed")
+
+        mock_begin_context = MagicMock()
+        mock_begin_context.__aenter__.return_value = mock_conn
+        mock_engine.begin.return_value = mock_begin_context
+        mock_base.metadata.tables.values.return_value = [mock_table]
+
+        await _handle_schema_and_extensions()
+
+        assert mock_column.computed is mock_computed
+        assert mock_column.nullable is False
+        mock_logger.warning.assert_called_once_with(
+            "Auto-schema failed: %s", mock_conn.run_sync.side_effect
+        )
 
 
 @pytest.mark.asyncio

@@ -24,6 +24,20 @@ import ResetPassword from "@/pages/ResetPassword"
 import i18n from "@/i18n/config"
 import type { User } from "@/types/User"
 
+// Keep the dashboard translation contract independent from the wall-clock.
+// `useClock` schedules a real minute-alignment timeout; under slow mutation
+// dry-runs that timeout can fire while this test's Dashboard tree is mounted,
+// producing a React update outside `act`. The hook's own tests cover its timer
+// lifecycle, so this page-level translation test uses a deterministic clock.
+vi.mock("@/hooks/useClock", () => ({
+  useClock: () => ({
+    hh: "09",
+    mm: "30",
+    dateStr: "Monday, September 15",
+    time: new Date(2025, 8, 15, 9, 30),
+  }),
+}))
+
 const resizeObserverMock = vi.fn()
 
 class MockResizeObserver {
@@ -624,52 +638,43 @@ describe("page translations", { retry: 2 }, () => {
   })
 
   it("switches dashboard page translations", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] })
-    vi.setSystemTime(new Date("2025-09-15T09:30:00"))
+    const { user } = await renderWithProviders(<Dashboard />, { initialPath: "/dashboard" })
 
-    try {
-      const { user } = await renderWithProviders(<Dashboard />, { initialPath: "/dashboard" })
+    expect(await screen.findByText("Today's schedule")).toBeInTheDocument()
+    const weatherBadgeEn = await screen.findByLabelText("Weather. Clear sky. Temperature +21°C.")
+    expect(weatherBadgeEn).toHaveAttribute("data-animation", "glow")
+    expect(weatherBadgeEn).toHaveAttribute("title", "Weather · Clear sky · +21°")
+    // The Tailwind dashboard keeps the stories heading visually hidden but exposes it to
+    // assistive tech. Querying by role keeps that intentional sr-only <h2> in place.
+    expect(await screen.findByRole("heading", { name: "Stories" })).toBeInTheDocument()
+    const storyButton = await screen.findByRole("button", {
+      name: "Story: Campus orientation",
+    })
 
-      expect(await screen.findByText("Today's schedule")).toBeInTheDocument()
-      const weatherBadgeEn = await screen.findByLabelText("Weather. Clear sky. Temperature +21°C.")
-      expect(weatherBadgeEn).toHaveAttribute("data-animation", "glow")
-      expect(weatherBadgeEn).toHaveAttribute("title", "Weather · Clear sky · +21°")
-      // The Tailwind dashboard keeps the stories heading visually hidden but exposes it to
-      // assistive tech. Querying by role keeps that intentional sr-only <h2> in place.
-      expect(await screen.findByRole("heading", { name: "Stories" })).toBeInTheDocument()
-      const storyButton = await screen.findByRole("button", {
-        name: "Story: Campus orientation",
-      })
+    await user.click(storyButton)
 
-      await user.click(storyButton)
+    expect(await screen.findByText("Stories advance automatically.")).toBeInTheDocument()
 
-      expect(await screen.findByText("Stories advance automatically.")).toBeInTheDocument()
+    // The progress bar now comes from the Tailwind primitive and exposes an explicit
+    // aria-label so screen readers can announce the metric instead of a raw percentage.
+    const progressbarsEn = await screen.findAllByRole("progressbar")
+    expect(progressbarsEn.map((el) => el.getAttribute("aria-label"))).toContain(
+      "Progress of the current lesson"
+    )
 
-      // The progress bar now comes from the Tailwind primitive and exposes an explicit
-      // aria-label so screen readers can announce the metric instead of a raw percentage.
-      const progressbarsEn = await screen.findAllByRole("progressbar")
-      expect(progressbarsEn.map((el) => el.getAttribute("aria-label"))).toContain(
-        "Progress of the current lesson"
-      )
+    await user.click(screen.getByTestId("lang-toggle"))
 
-      await user.click(screen.getByTestId("lang-toggle"))
-
-      expect(await screen.findByText("Расписание на сегодня")).toBeInTheDocument()
-      await waitFor(() => {
-        const weatherBadgeRu = screen.getByLabelText("Погода. Ясно. Температура +21°C.")
-        expect(weatherBadgeRu).toHaveAttribute("data-animation", "glow")
-        expect(weatherBadgeRu).toHaveAttribute("title", "Погода · Ясно · +21°")
-      })
-      expect(await screen.findByText("Истории переключаются автоматически.")).toBeInTheDocument()
-      await waitFor(() => {
-        const ruLabels = screen
-          .getAllByRole("progressbar")
-          .map((el) => el.getAttribute("aria-label"))
-        expect(ruLabels).toContain("Прогресс текущего занятия")
-      })
-    } finally {
-      vi.useRealTimers()
-    }
+    expect(await screen.findByText("Расписание на сегодня")).toBeInTheDocument()
+    await waitFor(() => {
+      const weatherBadgeRu = screen.getByLabelText("Погода. Ясно. Температура +21°C.")
+      expect(weatherBadgeRu).toHaveAttribute("data-animation", "glow")
+      expect(weatherBadgeRu).toHaveAttribute("title", "Погода · Ясно · +21°")
+    })
+    expect(await screen.findByText("Истории переключаются автоматически.")).toBeInTheDocument()
+    await waitFor(() => {
+      const ruLabels = screen.getAllByRole("progressbar").map((el) => el.getAttribute("aria-label"))
+      expect(ruLabels).toContain("Прогресс текущего занятия")
+    })
   })
 
   it("switches news page translations", async () => {

@@ -3,12 +3,11 @@ import { cn } from "@/utils/cn"
 import {
   Button as GlobalButton,
   type ButtonProps as GlobalButtonProps,
-  Input,
-  Textarea,
-  Switch,
-  RadioGroup,
-  RadioGroupItem as Radio,
-} from "@/components/ui"
+} from "@/components/ui/Button"
+import { Input } from "@/components/ui/Input"
+import { Textarea } from "@/components/ui/Textarea"
+import { Switch } from "@/components/ui/Switch"
+import { RadioGroup, RadioGroupItem as Radio } from "@/components/ui/RadioGroup"
 
 export { Input, Textarea, Switch, RadioGroup, Radio }
 

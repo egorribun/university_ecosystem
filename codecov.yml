@@ -88,6 +88,7 @@ flags:
   go-shared:
     paths:
       - services/cmd/uni-cli/
+      - services/pkg/logging/
       - services/pkg/spiffe/
       - services/pkg/spicedb/
   rust-native:

@@ -2,7 +2,7 @@ import { Calendar, Plus, Search, X, ArrowUpDown, Filter as FilterIcon } from "lu
 import { useTranslation } from "react-i18next"
 import { useRef, useEffect, useState } from "react"
 import FadeSection from "@/components/motion/FadeSection"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import { ALL_EVENT_CATEGORIES, type EventCategory } from "@/features/events/categories"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"

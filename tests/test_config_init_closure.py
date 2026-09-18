@@ -11,6 +11,7 @@ from app.core.config.__init__ import DatabaseSettings, SecuritySettings, _Namesp
 def test_dependent_settings_skips_cache_warning_for_non_redis_backend():
     settings = Settings(_allow_missing=True)
     settings.environment = "production"
+    settings.event_file_scanner_enabled = True
     settings.cache_backend = "memory"
     settings.revocation_redis_url = "redis://revocation.internal:6379/0"
     settings.database_pool_size = 5
@@ -23,6 +24,7 @@ def test_dependent_settings_skips_cache_warning_for_non_redis_backend():
 def test_dependent_settings_accepts_custom_redis_url_without_warning_path():
     settings = Settings(_allow_missing=True)
     settings.environment = "production"
+    settings.event_file_scanner_enabled = True
     settings.cache_backend = "redis"
     settings.cache_redis_url = "redis://cache.internal:6379/0"
     settings.revocation_redis_url = "redis://revocation.internal:6379/0"
@@ -36,6 +38,7 @@ def test_dependent_settings_accepts_custom_redis_url_without_warning_path():
 def test_dependent_settings_requires_revocation_url_outside_development():
     settings = Settings(_allow_missing=True)
     settings.environment = "production"
+    settings.event_file_scanner_enabled = True
     settings.revocation_redis_url = ""
 
     with pytest.raises(ValueError, match="REVOCATION_REDIS_URL is required"):
@@ -45,6 +48,7 @@ def test_dependent_settings_requires_revocation_url_outside_development():
 def test_dependent_settings_requires_distinct_revocation_process():
     settings = Settings(_allow_missing=True)
     settings.environment = "production"
+    settings.event_file_scanner_enabled = True
     settings.cache_redis_url = "redis://cache.internal:6379/0"
     settings.revocation_redis_url = "redis://cache.internal:6379/9"
 
@@ -55,6 +59,7 @@ def test_dependent_settings_requires_distinct_revocation_process():
 def test_dependent_settings_rejects_reused_cache_and_revocation_credentials():
     settings = Settings(_allow_missing=True)
     settings.environment = "production"
+    settings.event_file_scanner_enabled = True
     settings.cache_redis_url = "redis://:shared-password@cache.internal:6379/0"
     settings.revocation_redis_url = (
         "redis://:shared-password@revocation.internal:6379/0"
@@ -72,6 +77,7 @@ def test_only_explicit_worker_roles_may_disable_revocation_redis_access(
 
     settings = Settings(_allow_missing=True)
     settings.environment = "production"
+    settings.event_file_scanner_enabled = True
     settings.app_process_role = role
     settings.revocation_redis_access_enabled = False
     settings.revocation_redis_url = "redis://127.0.0.1:6380/0"
@@ -96,6 +102,7 @@ def test_revocation_access_mode_cannot_silently_disable_auth_capable_roles(
 ) -> None:
     settings = Settings(_allow_missing=True)
     settings.environment = "production"
+    settings.event_file_scanner_enabled = True
     settings.app_process_role = role
     settings.revocation_redis_access_enabled = access_enabled
     settings.revocation_redis_url = "redis://revocation.internal:6379/0"
@@ -107,6 +114,7 @@ def test_revocation_access_mode_cannot_silently_disable_auth_capable_roles(
 def test_auth_capable_roles_reject_the_default_local_revocation_url() -> None:
     settings = Settings(_allow_missing=True)
     settings.environment = "production"
+    settings.event_file_scanner_enabled = True
     settings.app_process_role = "api"
     settings.revocation_redis_access_enabled = True
     settings.revocation_redis_url = "redis://127.0.0.1:6380/0"

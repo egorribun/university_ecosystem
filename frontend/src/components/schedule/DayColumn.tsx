@@ -1,10 +1,10 @@
-import { useCallback, useMemo, useRef, useState, useEffect } from "react"
+import { useCallback, useRef, useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { Plus as AddIcon, CalendarOff as EmptyDayIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
-import { Badge } from "@/components/ui"
+import { Badge } from "@/components/ui/Badge"
 import { EmptyState } from "@/components/ui/EmptyState"
 import OfflineFallback from "@/components/feedback/OfflineFallback"
 
@@ -14,6 +14,22 @@ import { DraggableLessonCard } from "./DraggableLessonCard"
 
 /** Heatmap thresholds for day load intensity (lesson count) */
 const HEAT_THRESHOLDS = { heavy: 5, medium: 3, light: 1 } as const
+
+export function getDayHeatClass(lessonCount: number): string {
+  if (lessonCount >= HEAT_THRESHOLDS.heavy) return "sched-heat-heavy"
+  if (lessonCount >= HEAT_THRESHOLDS.medium) return "sched-heat-medium"
+  if (lessonCount >= HEAT_THRESHOLDS.light) return "sched-heat-light"
+  return ""
+}
+
+export function shouldCelebrateDay(
+  dayComplete: boolean,
+  isToday: boolean,
+  lessonCount: number,
+  alreadyCelebrated: boolean
+): boolean {
+  return dayComplete && isToday && !alreadyCelebrated && lessonCount > 0
+}
 
 /** PERF-70-06: extracted so DndContext only mounts when canEdit */
 function LessonList({
@@ -160,13 +176,15 @@ export function DayColumn({
   const { t } = useTranslation(["schedule", "common"])
 
   const canEdit = userRole === "admin" || userRole === "teacher"
-  const lessonIds = useMemo(() => lessons.map((l) => l.id), [lessons])
+  // The list is tiny (one day only); deriving IDs directly avoids retaining a
+  // stale memo when a schedule update replaces the lesson array in place.
+  const lessonIds = lessons.map((lesson) => lesson.id)
 
   // Celebration: show confetti once when today's lessons are all done (FIX-68-23)
   const celebratedRef = useRef(false)
   const [showConfetti, setShowConfetti] = useState(false)
   useEffect(() => {
-    if (dayComplete && isToday && !celebratedRef.current && lessons.length > 0) {
+    if (shouldCelebrateDay(dayComplete, isToday, lessons.length, celebratedRef.current)) {
       celebratedRef.current = true
       setShowConfetti(true)
       const timer = setTimeout(() => setShowConfetti(false), 2000)
@@ -187,14 +205,7 @@ export function DayColumn({
   )
 
   // Heatmap: color intensity based on lesson count
-  const heatClass =
-    lessons.length >= HEAT_THRESHOLDS.heavy
-      ? "sched-heat-heavy"
-      : lessons.length >= HEAT_THRESHOLDS.medium
-        ? "sched-heat-medium"
-        : lessons.length >= HEAT_THRESHOLDS.light
-          ? "sched-heat-light"
-          : ""
+  const heatClass = getDayHeatClass(lessons.length)
 
   return (
     <div

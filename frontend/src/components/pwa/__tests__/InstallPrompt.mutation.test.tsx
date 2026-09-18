@@ -82,7 +82,11 @@ vi.mock("@/hooks/usePushPreferences", () => ({
   },
 }))
 
-import InstallPrompt from "@/components/pwa/InstallPrompt"
+import InstallPrompt, {
+  isInstallPromptStandalone,
+  isInstallPromptSuppressed,
+  readInstallPromptDismissedAt,
+} from "@/components/pwa/InstallPrompt"
 import { PWA_REFRESH_EVENT } from "@/app/pwaEvents"
 
 const INSTALL_DISMISS_KEY = "ecosystem.pwa.install.dismissedAt"
@@ -210,6 +214,49 @@ afterEach(() => {
 })
 
 describe("InstallPrompt mutation contracts", () => {
+  it("keeps standalone detection and dismissal boundaries fail-closed", () => {
+    expect(isInstallPromptStandalone()).toBe(false)
+
+    state.standalone = true
+    configureBrowserSurface()
+    expect(isInstallPromptStandalone()).toBe(true)
+
+    state.standalone = false
+    state.minimalUi = true
+    configureBrowserSurface()
+    expect(isInstallPromptStandalone()).toBe(true)
+
+    state.minimalUi = false
+    state.navigatorStandalone = true
+    configureBrowserSurface()
+    expect(isInstallPromptStandalone()).toBe(true)
+
+    state.navigatorStandalone = false
+    configureBrowserSurface()
+    expect(isInstallPromptStandalone()).toBe(false)
+
+    expect(isInstallPromptSuppressed(100, 101)).toBe(true)
+    expect(isInstallPromptSuppressed(101, 101)).toBe(false)
+    expect(isInstallPromptSuppressed(101, 0)).toBe(false)
+  })
+
+  it("normalizes absent, invalid, finite, and storage-error dismissal values", () => {
+    expect(readInstallPromptDismissedAt("missing")).toBe(0)
+    window.localStorage.setItem("finite", "123")
+    window.localStorage.setItem("invalid", "not-a-number")
+    expect(readInstallPromptDismissedAt("finite")).toBe(123)
+    expect(readInstallPromptDismissedAt("invalid")).toBe(0)
+
+    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+    try {
+      expect(readInstallPromptDismissedAt("throws")).toBe(0)
+    } finally {
+      getItem.mockRestore()
+    }
+  })
+
   it("keeps all install, feedback, and update motion variants intact", async () => {
     render(<InstallPrompt />)
     const installVariants = await waitFor(() => {

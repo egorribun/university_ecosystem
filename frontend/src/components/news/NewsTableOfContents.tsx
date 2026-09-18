@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { List as TocIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
@@ -11,7 +11,7 @@ interface NewsTableOfContentsProps {
 
 export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
   const { t } = useTranslation(["news"])
-  const [activeId, setActiveId] = useState("")
+  const [activeId, setActiveId] = useState<string>(String)
   const [collapsed, setCollapsed] = useState(true)
   const observerRef = useRef<IntersectionObserver | null>(null)
   const isDesktop = useMediaQuery("(min-width: 1024px)")
@@ -52,17 +52,17 @@ export function NewsTableOfContents({ headings }: NewsTableOfContentsProps) {
     return () => observer.disconnect()
   }, [headings])
 
-  const scrollToHeading = useCallback(
-    (id: string) => {
-      const el = document.getElementById(id)
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" })
-        setActiveId(id)
-        if (!isDesktop) setCollapsed(true)
-      }
-    },
-    [isDesktop]
-  )
+  const scrollToHeading = (id: string) => {
+    const el = document.getElementById(id)
+    if (!el) return
+
+    el.scrollIntoView({ behavior: "smooth", block: "start" })
+    setActiveId(id)
+    // Collapsing after navigation is harmless on desktop (where the desktop
+    // media query keeps the list expanded) and gives mobile a deterministic
+    // restoration point after every anchor jump.
+    setCollapsed(true)
+  }
 
   if (headings.length < 3) return null
 

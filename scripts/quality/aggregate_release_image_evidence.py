@@ -206,7 +206,9 @@ def _validate_certification(
     expected_quality = {
         "run_id": quality_run_id,
         "run_attempt": quality_run_attempt,
-        "evidence_artifact_name": f"quality-evidence-{expected_sha}",
+        "evidence_artifact_name": (
+            f"quality-evidence-{expected_sha}-attempt-{quality_run_attempt}"
+        ),
         "contract_sha256": contract_sha256,
         "check_policy_sha256": policy_sha256,
         "check_event": "push_main",

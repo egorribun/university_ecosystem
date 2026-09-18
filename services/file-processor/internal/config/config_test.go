@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const validProcessingCapabilitySecret = "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!" // pragma: allowlist secret
+
 // TD-33-12: Use FP_ prefix — SetEnvPrefix("FP") in Load() requires it.
 func TestLoad_ReturnsDefaultValues(t *testing.T) {
 	fpEnvVars := []string{
@@ -16,6 +18,8 @@ func TestLoad_ReturnsDefaultValues(t *testing.T) {
 		"FP_TEMPORAL_HOST", "FP_MINIO_BUCKET", "FP_MINIO_ENDPOINT",
 		"FP_MINIO_ACCESS_KEY", "FP_MINIO_SECRET_KEY", "FP_MINIO_SECURE",
 		"FP_TEMPORAL_TLS_DISABLED", "FP_ENVIRONMENT",
+		"FP_JWT_AUDIENCE", "FP_JWT_ISSUER", "FP_JWKS_URL",
+		"FP_JWKS_REFRESH_INTERVAL", "FP_JWT_ACTIVE_KID", "FP_REVOCATION_REDIS_URL",
 	}
 	originalEnvVars := make(map[string]string, len(fpEnvVars))
 	for _, key := range fpEnvVars {
@@ -50,6 +54,12 @@ func TestLoad_ReturnsDefaultValues(t *testing.T) {
 	assert.False(t, cfg.MinioSecure)
 	assert.True(t, cfg.TemporalTLSDisabled)
 	assert.Equal(t, "development", cfg.Environment)
+	assert.Equal(t, "university-ecosystem-api", cfg.JWTAudience)
+	assert.Equal(t, "university-ecosystem", cfg.JWTIssuer)
+	assert.Empty(t, cfg.JWKSURL)
+	assert.Equal(t, defaultJWKSRefreshIntervalSeconds, cfg.JWKSRefreshInterval)
+	assert.Equal(t, "primary", cfg.JWTActiveKID)
+	assert.Empty(t, cfg.RevocationRedisURL)
 }
 
 // TD-33-12: Use FP_ prefix — SetEnvPrefix("FP") in Load() requires it.
@@ -57,12 +67,59 @@ func TestLoad_ReadsEnvironmentVariables(t *testing.T) {
 	t.Setenv("FP_GRPC_PORT", "9999")
 	t.Setenv("FP_NATS_URL", "nats://custom:4222")
 	t.Setenv("FP_JWT_SECRET", "dummy-secret-value-for-testing-purposes-only")
+	t.Setenv("FP_JWT_AUDIENCE", "api.example")
+	t.Setenv("FP_JWT_ISSUER", "https://issuer.example")
+	t.Setenv("FP_JWKS_URL", "https://issuer.example/.well-known/jwks.json")
+	t.Setenv("FP_JWKS_REFRESH_INTERVAL", "60")
+	t.Setenv("FP_JWT_ACTIVE_KID", "release-2026")
+	t.Setenv("FP_REVOCATION_REDIS_URL", "redis://:secret@revocation:6379/0")
 
 	cfg, err := Load()
 	assert.NoError(t, err)
 
 	assert.Equal(t, "9999", cfg.GRPCPort)
 	assert.Equal(t, "nats://custom:4222", cfg.NatsURL)
+	assert.Equal(t, "api.example", cfg.JWTAudience)
+	assert.Equal(t, "https://issuer.example", cfg.JWTIssuer)
+	assert.Equal(t, "https://issuer.example/.well-known/jwks.json", cfg.JWKSURL)
+	assert.Equal(t, 60, cfg.JWKSRefreshInterval)
+	assert.Equal(t, "release-2026", cfg.JWTActiveKID)
+	assert.Equal(t, "redis://:secret@revocation:6379/0", cfg.RevocationRedisURL)
+}
+
+func TestValidateJWKSConfigRejectsUnsafeEndpointAndInterval(t *testing.T) {
+	for name, endpoint := range map[string]string{
+		"relative":      "backend/jwks",
+		"credentials":   "https://user:password@backend/jwks", // pragma: allowlist secret; inert URL parser fixture
+		"query":         "https://backend/jwks?token=secret",
+		"fragment":      "https://backend/jwks#fragment",
+		"unsupported":   "ftp://backend/jwks",
+		"missing host":  "https:///jwks",
+		"leading space": " https://backend/jwks",
+		"newline":       "https://backend/jwks\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := &Config{JWKSURL: endpoint}
+			assert.ErrorContains(t, validateJWKSConfig(cfg), "FP_JWKS_URL")
+		})
+	}
+
+	tooLong := &Config{JWKSRefreshInterval: maxJWKSRefreshIntervalSeconds + 1}
+	assert.ErrorContains(t, validateJWKSConfig(tooLong), "FP_JWKS_REFRESH_INTERVAL")
+	defaulted := &Config{JWKSRefreshInterval: 0, JWTActiveKID: ""}
+	assert.NoError(t, validateJWKSConfig(defaulted))
+	assert.Equal(t, defaultJWKSRefreshIntervalSeconds, defaulted.JWKSRefreshInterval)
+	assert.Equal(t, "primary", defaulted.JWTActiveKID)
+
+	for name, kid := range map[string]string{
+		"too long": strings.Repeat("k", maxJWTActiveKIDLength+1),
+		"newline":  "release\nkid",
+	} {
+		t.Run("kid "+name, func(t *testing.T) {
+			assert.ErrorContains(t, validateJWKSConfig(&Config{JWTActiveKID: kid}), "FP_JWT_ACTIVE_KID")
+		})
+	}
+	assert.ErrorContains(t, validateJWKSConfig(nil), "configuration is nil")
 }
 
 func TestLoad_MissingCredentials(t *testing.T) {
@@ -80,9 +137,41 @@ func TestLoad_MissingJWTSecretAndRSAPublicKey(t *testing.T) {
 	t.Setenv("FP_JWT_SECRET", "")
 	t.Setenv("FP_RSA_PUBLIC_KEY_PEM", "")
 	t.Setenv("FP_RSA_PUBLIC_KEY_FILE", "")
+	t.Setenv("FP_JWKS_URL", "")
 	_, err := Load()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "FP_RSA_PUBLIC_KEY_FILE")
+}
+
+func TestValidateConfig_AllowsJWKSOnlyReleaseTrustRoot(t *testing.T) {
+	cfg := &Config{
+		JWKSURL:                    "https://backend.example/.well-known/jwks.json",
+		JWKSRefreshInterval:        300,
+		JWTActiveKID:               "primary",
+		Environment:                "staging",
+		MinioAccessKey:             "access",
+		MinioSecretKey:             "secret",
+		MinioSecure:                true,
+		TemporalTLSDisabled:        false,
+		OTLPInsecure:               false,
+		ProcessingCapabilitySecret: validProcessingCapabilitySecret,
+		SpiffeEnabled:              true,
+	}
+
+	assert.NoError(t, validateConfig(cfg))
+	assert.Empty(t, cfg.JWTSecret)
+}
+
+func TestLoad_JWKSOnlyIsAcceptedAsRS256TrustRoot(t *testing.T) {
+	t.Setenv("FP_JWT_SECRET", "")
+	t.Setenv("FP_RSA_PUBLIC_KEY_PEM", "")
+	t.Setenv("FP_RSA_PUBLIC_KEY_FILE", "")
+	t.Setenv("FP_JWKS_URL", "https://issuer.example/.well-known/jwks.json")
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg)
+	assert.Equal(t, "https://issuer.example/.well-known/jwks.json", cfg.JWKSURL)
 }
 
 func TestLoad_RejectsInsecureProductionDataPlanes(t *testing.T) {
@@ -91,6 +180,7 @@ func TestLoad_RejectsInsecureProductionDataPlanes(t *testing.T) {
 	t.Setenv("FP_MINIO_SECURE", "true")
 	t.Setenv("FP_TEMPORAL_TLS_DISABLED", "false")
 	t.Setenv("FP_OTLP_INSECURE", "false")
+	t.Setenv("FP_PROCESSING_CAPABILITY_SECRET", validProcessingCapabilitySecret)
 	t.Setenv("FP_GRPC_TLS_CERT_FILE", "/run/secrets/internal-grpc-mtls/tls.crt")
 	t.Setenv("FP_GRPC_TLS_KEY_FILE", "/run/secrets/internal-grpc-mtls/tls.key")
 	t.Setenv("FP_GRPC_CLIENT_CA_FILE", "/run/secrets/internal-grpc-mtls/ca.crt")
@@ -118,6 +208,41 @@ func TestLoad_RejectsInsecureProductionDataPlanes(t *testing.T) {
 		_, err := Load()
 		assert.ErrorContains(t, err, "FP_OTLP_INSECURE=false")
 	})
+
+	t.Run("processing capability", func(t *testing.T) {
+		t.Setenv("FP_PROCESSING_CAPABILITY_SECRET", "")
+		_, err := Load()
+		assert.ErrorContains(t, err, "FP_PROCESSING_CAPABILITY_SECRET")
+	})
+}
+
+func TestValidateProcessingCapabilitySecretRejectsPredictableValues(t *testing.T) {
+	for name, value := range map[string]string{
+		"short":          "too-short",
+		"single byte":    strings.Repeat("a", 32),
+		"repeated block": strings.Repeat("abcd", 8),
+		"placeholder":    "file-processing-capability-secret-012345",
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := validateProcessingCapabilitySecret(value)
+			assert.ErrorContains(t, err, "FP_PROCESSING_CAPABILITY_SECRET")
+			assert.NotContains(t, err.Error(), value)
+		})
+	}
+
+	assert.NoError(t, validateProcessingCapabilitySecret(validProcessingCapabilitySecret))
+}
+
+func TestValidateConfigRejectsUnknownEnvironment(t *testing.T) {
+	cfg := &Config{
+		MinioAccessKey: "access",
+		MinioSecretKey: "secret",
+		JWTSecret:      "jwt-secret",
+		Environment:    "qa",
+	}
+
+	err := validateConfig(cfg)
+	assert.EqualError(t, err, "FP_ENVIRONMENT must be one of: development, test, testing, staging, production")
 }
 
 func TestLoad_RSAPublicKeySetOnly(t *testing.T) {
@@ -178,6 +303,7 @@ func TestLoad_ReleaseWithoutSPIFFERequiresConventionalMTLSFiles(t *testing.T) {
 			t.Setenv("FP_MINIO_SECURE", "true")
 			t.Setenv("FP_TEMPORAL_TLS_DISABLED", "false")
 			t.Setenv("FP_OTLP_INSECURE", "false")
+			t.Setenv("FP_PROCESSING_CAPABILITY_SECRET", validProcessingCapabilitySecret)
 			t.Setenv("FP_SPIFFE_ENABLED", "false")
 			for name := range required {
 				t.Setenv(name, "/run/secrets/internal-grpc-mtls/value")
@@ -194,10 +320,11 @@ func TestLoad_ReleaseWithoutSPIFFERequiresConventionalMTLSFiles(t *testing.T) {
 
 func TestValidateReleaseConfig_SPIFFEProvidesReleaseTransportIdentity(t *testing.T) {
 	cfg := &Config{
-		MinioSecure:         true,
-		TemporalTLSDisabled: false,
-		OTLPInsecure:        false,
-		SpiffeEnabled:       true,
+		MinioSecure:                true,
+		TemporalTLSDisabled:        false,
+		OTLPInsecure:               false,
+		ProcessingCapabilitySecret: validProcessingCapabilitySecret,
+		SpiffeEnabled:              true,
 	}
 
 	assert.NoError(t, validateReleaseConfig(cfg, "staging"))
@@ -211,6 +338,7 @@ func TestLoad_ReleaseValidatesAllowedClientURIs(t *testing.T) {
 		t.Setenv("FP_MINIO_SECURE", "true")
 		t.Setenv("FP_TEMPORAL_TLS_DISABLED", "false")
 		t.Setenv("FP_OTLP_INSECURE", "false")
+		t.Setenv("FP_PROCESSING_CAPABILITY_SECRET", validProcessingCapabilitySecret)
 		t.Setenv("FP_SPIFFE_ENABLED", "false")
 		t.Setenv("FP_GRPC_TLS_CERT_FILE", "/run/secrets/internal-grpc-mtls-server/tls.crt")
 		t.Setenv("FP_GRPC_TLS_KEY_FILE", "/run/secrets/internal-grpc-mtls-server/tls.key")

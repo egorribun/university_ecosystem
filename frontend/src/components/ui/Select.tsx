@@ -24,6 +24,8 @@ interface SelectProps {
   "aria-labelledby"?: string
 }
 
+const noopValueChange = (_value: string): void => undefined
+
 /**
  * Accessible Select component following WAI-ARIA Listbox pattern.
  *
@@ -52,7 +54,10 @@ const Select = ({
   const baseId = externalId ?? generatedId
 
   const [isOpen, setIsOpen] = React.useState(false)
-  const [activeIndex, setActiveIndex] = React.useState(-1)
+  // `undefined` is the explicit no-active-option sentinel.  Keeping that
+  // state separate from a valid array index prevents closed comboboxes from
+  // ever exposing a synthetic option id to assistive technology.
+  const [activeIndex, setActiveIndex] = React.useState<number>()
   const containerRef = React.useRef<HTMLDivElement>(null)
   const listboxRef = React.useRef<HTMLDivElement>(null)
   const typeAheadBuffer = React.useRef("")
@@ -70,6 +75,8 @@ const Select = ({
 
   // Close on outside click
   React.useEffect(() => {
+    if (!isOpen) return
+
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false)
@@ -77,11 +84,11 @@ const Select = ({
     }
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
+  }, [isOpen])
 
   // Scroll active option into view
   React.useEffect(() => {
-    if (!isOpen || activeIndex < 0) return
+    if (!isOpen || activeIndex === undefined) return
     const optionElement = document.getElementById(computeOptionId(activeIndex))
     optionElement?.scrollIntoView({ block: "nearest" })
   }, [activeIndex, isOpen, computeOptionId])
@@ -89,23 +96,25 @@ const Select = ({
   const openListbox = React.useCallback(() => {
     setIsOpen(true)
     // Focus the selected or first option when opening
-    setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0)
-  }, [selectedIndex])
+    setActiveIndex(selectedIndex === -1 ? (options.length > 0 ? 0 : undefined) : selectedIndex)
+  }, [options.length, selectedIndex])
 
-  const closeListbox = React.useCallback(() => {
+  const closeListbox = () => {
     setIsOpen(false)
-    setActiveIndex(-1)
-  }, [])
+  }
 
-  const selectOption = React.useCallback(
-    (index: number) => {
-      const option = options[index]
-      if (!option) return
-      onValueChange?.(option.value)
+  const selectOption = (index: number | undefined) => {
+    if (index === undefined) {
       closeListbox()
-    },
-    [options, onValueChange, closeListbox]
-  )
+      return
+    }
+    const option = options[index]
+    const optionValue = option && option.value
+    if (!option) return
+    const notifyValueChange = onValueChange ?? noopValueChange
+    notifyValueChange(optionValue as string)
+    closeListbox()
+  }
 
   // Type-ahead: typing a character focuses the first matching option
   const handleTypeAhead = React.useCallback(
@@ -129,84 +138,82 @@ const Select = ({
     [isOpen, options]
   )
 
-  const handleKeyDown = React.useCallback(
-    (event: React.KeyboardEvent) => {
-      if (disabled) return
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (disabled) return
 
-      switch (event.key) {
-        case "Enter":
-        case " ": {
+    switch (event.key) {
+      case "Enter":
+      case " ": {
+        event.preventDefault()
+        if (!isOpen) {
+          openListbox()
+          break
+        }
+        selectOption(activeIndex)
+        break
+      }
+      case "ArrowDown": {
+        event.preventDefault()
+        if (!isOpen) {
+          openListbox()
+        } else {
+          setActiveIndex((previous) =>
+            previous === undefined
+              ? options.length > 0
+                ? 0
+                : undefined
+              : Math.min(previous + 1, options.length - 1)
+          )
+        }
+        break
+      }
+      case "ArrowUp": {
+        event.preventDefault()
+        if (!isOpen) {
+          openListbox()
+        } else {
+          setActiveIndex((previous) =>
+            previous === undefined
+              ? options.length > 0
+                ? 0
+                : undefined
+              : Math.max(previous - 1, 0)
+          )
+        }
+        break
+      }
+      case "Home": {
+        if (isOpen) {
           event.preventDefault()
-          if (isOpen && activeIndex >= 0) {
-            selectOption(activeIndex)
-          } else {
-            openListbox()
-          }
-          break
+          setActiveIndex(options.length > 0 ? 0 : undefined)
         }
-        case "ArrowDown": {
+        break
+      }
+      case "End": {
+        if (isOpen) {
           event.preventDefault()
-          if (!isOpen) {
-            openListbox()
-          } else {
-            setActiveIndex((previous) => Math.min(previous + 1, options.length - 1))
-          }
-          break
+          setActiveIndex(options.length > 0 ? options.length - 1 : undefined)
         }
-        case "ArrowUp": {
+        break
+      }
+      case "Escape": {
+        if (isOpen) {
           event.preventDefault()
-          if (!isOpen) {
-            openListbox()
-          } else {
-            setActiveIndex((previous) => Math.max(previous - 1, 0))
-          }
-          break
+          closeListbox()
         }
-        case "Home": {
-          if (isOpen) {
-            event.preventDefault()
-            setActiveIndex(0)
-          }
-          break
-        }
-        case "End": {
-          if (isOpen) {
-            event.preventDefault()
-            setActiveIndex(options.length - 1)
-          }
-          break
-        }
-        case "Escape": {
-          if (isOpen) {
-            event.preventDefault()
-            closeListbox()
-          }
-          break
-        }
-        case "Tab": {
-          if (isOpen) {
-            closeListbox()
-          }
-          break
-        }
-        default: {
-          if (event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
-            handleTypeAhead(event.key)
-          }
+        break
+      }
+      case "Tab": {
+        closeListbox()
+        break
+      }
+      default: {
+        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
+          handleTypeAhead(event.key)
         }
       }
-    },
-    [
-      disabled,
-      isOpen,
-      activeIndex,
-      options.length,
-      openListbox,
-      closeListbox,
-      selectOption,
-      handleTypeAhead,
-    ]
-  )
+    }
+  }
 
   return (
     <div ref={containerRef} className={cn("relative w-full", className)}>
@@ -218,7 +225,7 @@ const Select = ({
         aria-haspopup="listbox"
         aria-controls={listboxId}
         aria-activedescendant={
-          isOpen && activeIndex >= 0 ? computeOptionId(activeIndex) : undefined
+          isOpen && activeIndex !== undefined ? computeOptionId(activeIndex) : undefined
         }
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
@@ -284,7 +291,7 @@ const Select = ({
                       selectOption(index)
                     }}
                     className={cn(
-                      "flex w-full cursor-pointer items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-fast",
+                      "flex min-h-11 w-full cursor-pointer items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-fast",
                       isSelected
                         ? "bg-brand text-inverse-text shadow-sm"
                         : isActive

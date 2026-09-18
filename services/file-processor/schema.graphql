@@ -29,6 +29,7 @@ input ProcessFileInput {
   type: String!
   sourceKey: String!
   destKey: String!
+  capability: String!
   width: Int
   height: Int
 }

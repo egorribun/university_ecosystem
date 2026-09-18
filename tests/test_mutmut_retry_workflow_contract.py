@@ -69,8 +69,21 @@ def test_primary_ci_mutmut_chain_selects_only_complete_retry_safe_candidates() -
         "python -m scripts.mutmut_retry_artifacts create-universe"
         in universe_create["run"]
     )
+    assert "--include-helm-dependencies" in universe_create["run"]
     universe_upload = _step(universe, "Upload central mutmut universe")
     assert universe_upload["with"]["retention-days"] == 30
+    assert (
+        "charts/university-ecosystem/charts/redis-20.13.4.tgz"
+        in universe_upload["with"]["path"]
+    )
+    assert (
+        "charts/university-ecosystem/charts/nats-8.5.4.tgz"
+        in universe_upload["with"]["path"]
+    )
+    assert universe_upload["if"] == "steps.mutation_scope.outputs.has_python == 'true'"
+    empty_upload = _step(universe, "Upload empty central mutmut universe")
+    assert empty_upload["if"] == "steps.mutation_scope.outputs.has_python != 'true'"
+    assert "charts/university-ecosystem/charts" not in empty_upload["with"]["path"]
 
     scope = _step(incremental, "Detect changed Python source")
     universe_selector = _step(

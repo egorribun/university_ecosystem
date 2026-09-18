@@ -276,6 +276,7 @@ function Ensure-ApplicationSecrets {
         # cache. Do not merge this with REDIS_PASSWORD: cache-only workers must
         # be unable to erase revoked-JTI tombstones.
         @{ Key = "REVOCATION_REDIS_PASSWORD"; Length = 32; Fernet = $false },
+        @{ Key = "TOKEN_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "CSRF_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "INTERNAL_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "IDEMPOTENCY_HMAC_SECRET"; Length = 48; Fernet = $false },
@@ -347,6 +348,8 @@ function Ensure-JwtEnvironment {
     # full and base Compose modes, so keep their environment files aligned.
     foreach ($path in @($EnvFile, $EnvCompose)) {
         Set-EnvEntry -Path $path -Key "ALGORITHM" -Value "RS256"
+        Set-EnvEntry -Path $path -Key "JWT_AUDIENCE" -Value "university-ecosystem-api"
+        Set-EnvEntry -Path $path -Key "JWT_ISSUER" -Value "university-ecosystem"
         Set-EnvEntry -Path $path -Key "JWT_PRIVATE_KEY_PATH" -Value ".secrets/jwt_rs256.pem"
     }
 }
@@ -865,6 +868,7 @@ if ($needsEnvDocker -and $needsEnvCompose) {
     $minioPassword     = New-Secret -Length 32
     $redisPassword     = New-Secret -Length 32
     $revocationRedisPassword = New-Secret -Length 32
+    $tokenHmacSecret  = New-Secret -Length 48
     $elasticPassword   = New-Secret -Length 32
     $natsPassword      = New-Secret -Length 32
     $spicedbKey        = New-Secret -Length 32
@@ -886,6 +890,8 @@ POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
 SECRET_KEY=$secretKey
 ALGORITHM=RS256
+JWT_AUDIENCE=university-ecosystem-api
+JWT_ISSUER=university-ecosystem
 JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 MINIO_ROOT_USER=minioadmin
@@ -899,6 +905,7 @@ GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=$grafanaPassword
 REDIS_PASSWORD=$redisPassword
 REVOCATION_REDIS_PASSWORD=$revocationRedisPassword
+TOKEN_HMAC_SECRET=$tokenHmacSecret
 ENABLE_METRICS_ENDPOINT=true
 METRICS_BASIC_AUTH_USERNAME=metrics_scraper
 METRICS_BASIC_AUTH_PASSWORD=$metricsPassword
@@ -928,6 +935,8 @@ POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
 SECRET_KEY=$secretKey
 ALGORITHM=RS256
+JWT_AUDIENCE=university-ecosystem-api
+JWT_ISSUER=university-ecosystem
 JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem
 MINIO_ROOT_USER=minioadmin
 MINIO_ROOT_PASSWORD=$minioPassword
@@ -940,6 +949,7 @@ GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=$grafanaPassword
 REDIS_PASSWORD=$redisPassword
 REVOCATION_REDIS_PASSWORD=$revocationRedisPassword
+TOKEN_HMAC_SECRET=$tokenHmacSecret
 ENABLE_METRICS_ENDPOINT=true
 METRICS_BASIC_AUTH_USERNAME=metrics_scraper
 METRICS_BASIC_AUTH_PASSWORD=$metricsPassword

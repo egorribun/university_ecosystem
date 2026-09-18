@@ -37,6 +37,16 @@ const drawerSpring = {
   mass: 0.8,
 }
 
+/** Keep a swipe gesture from translating the drawer outside the viewport. */
+export const getMobileDrawerOffset = (dragOffset: number): number =>
+  Number.isNaN(dragOffset) ? 0 : Math.max(0, dragOffset)
+
+/** Trigger the shell-owned notification button when it is mounted. */
+export const clickGlobalNotifications = (): void => {
+  const trigger = document.getElementById("global-notifications-btn")
+  trigger?.click()
+}
+
 export function MobileMenu({
   isOpen,
   onClose,
@@ -118,7 +128,7 @@ export function MobileMenu({
         aria-describedby="mobile-drawer-description"
         ref={drawerTrapRef}
         initial={{ x: "100%" }}
-        animate={{ x: dragOffset > 0 ? dragOffset : 0 }}
+        animate={{ x: getMobileDrawerOffset(dragOffset) }}
         transition={prefersReducedMotion ? { duration: 0 } : drawerSpring}
         className={cn(
           "fixed inset-y-0 right-0 z-overlay flex h-dvh max-h-dvh flex-col",
@@ -173,7 +183,7 @@ export function MobileMenu({
           onSearch={handleSearch}
           onNotifications={() => {
             onClose()
-            document.getElementById("global-notifications-btn")?.click()
+            clickGlobalNotifications()
           }}
           onSettings={() => {
             onClose()

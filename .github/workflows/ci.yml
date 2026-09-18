@@ -1,9 +1,10 @@
 # CI Pipeline - Refactored to use Reusable Workflows
 name: "CI - Matrix Expansion"
 
-# MOD-20-03 (audit 2026-03-24): Added branch filter to prevent CI from running
-# on every push to every branch.  Previously, each push to ANY branch triggered
-# 20+ workflows.  Path-level filtering is done within individual jobs below.
+# MOD-20-03 (audit 2026-03-24): Keep push-triggered CI limited to protected
+# delivery branches (main, develop, and release/*); pull requests retain their
+# required matrix regardless of source branch. Path-level filtering is done
+# within individual jobs below.
 on:
   push:
     branches: [main, develop, "release/**"]
@@ -17,7 +18,22 @@ on:
 permissions: read-all
 
 concurrency:
-  group: ci-matrix-${{ github.ref }}
+  # Required PR runs share an admission group per PR so a newer commit cancels
+  # stale work for that PR without evicting another PR's required run, while
+  # pushes to protected branches retain independent per-ref isolation. The
+  # advisory nightly workflow deliberately uses a separate
+  # group because GitHub retains only one pending run per group and does not
+  # provide priority ordering between workflow events.
+  # This is a workflow-scoped per-PR admission/cancellation guard, not an
+  # account-wide runner-pool semaphore or a reduction of logical matrix size
+  # and per-lane max-parallel contracts. Other workflows have independent
+  # concurrency groups and remain subject to the repository/host runner pool.
+  group: >-
+    ${{ github.event_name == 'pull_request'
+      && format('quality-heavy-pr-{0}', github.event.pull_request.number)
+      || format('ci-matrix-{0}', github.ref) }}
+  # Preserve stale-run cancellation for required PRs and protected-branch
+  # pushes without allowing an advisory run to evict a required pending run.
   cancel-in-progress: true
 
 env:
@@ -110,7 +126,7 @@ jobs:
             --no-deps \
             --force-reinstall \
             -r "$requirements_file"
-          test "$(pre-commit --version)" = "pre-commit 4.6.0"
+          test "$(pre-commit --version)" = "pre-commit 4.6.2"
 
       - name: Run fast pre-commit hooks
         env:
@@ -191,7 +207,7 @@ jobs:
             --no-deps \
             --force-reinstall \
             -r "$requirements_file"
-          test "$(pre-commit --version)" = "pre-commit 4.6.0"
+          test "$(pre-commit --version)" = "pre-commit 4.6.2"
 
       - name: Run security and type pre-commit hooks
         env:
@@ -516,10 +532,10 @@ jobs:
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
-          cargo clippy --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features -- -D warnings
-          cargo clippy --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets -- -D warnings
-          cargo clippy --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets -- -D warnings
-          cargo clippy --manifest-path frontend/rust-crypto/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features --locked -- -D warnings
+          cargo clippy --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets --locked -- -D warnings
+          cargo clippy --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets --locked -- -D warnings
+          cargo clippy --manifest-path frontend/rust-crypto/Cargo.toml --all-targets --locked -- -D warnings
 
       - name: Install cargo-udeps
         run: |
@@ -539,16 +555,20 @@ jobs:
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
-          cargo +nightly udeps --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features
-          cargo +nightly udeps --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets
-          cargo +nightly udeps --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets
-          cargo +nightly udeps --manifest-path frontend/rust-crypto/Cargo.toml --all-targets
+          cargo +nightly udeps --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features --locked
+          cargo +nightly udeps --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets --locked
+          cargo +nightly udeps --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets --locked
+          cargo +nightly udeps --manifest-path frontend/rust-crypto/Cargo.toml --all-targets --locked
 
 
   backend-tests:
     name: "Backend Tests (${{ matrix.name }})"
     strategy:
       fail-fast: false
+      # Reusable backend calls expand into unit and (for selected legs)
+      # integration jobs.  Keep two callers active so the PR matrix cannot
+      # consume the entire hosted-runner pool while preserving all four legs.
+      max-parallel: 2
       matrix:
         include:
           - python-version: "3.14"
@@ -630,6 +650,10 @@ jobs:
       # Keep every service leg running so one failure cannot mask diagnostics
       # from the remaining modules.
       fail-fast: false
+      # Each reusable call expands into test, lint, and an optional mutation
+      # diagnostic job.  Two callers preserve diagnostics while leaving runner
+      # capacity for required API, browser, and mutation aggregation jobs.
+      max-parallel: 2
       matrix:
         # Every supported Go module has exact statement coverage. Integration
         # semantics remain a separate required gate below.
@@ -650,6 +674,10 @@ jobs:
             coverage-threshold: 100
             coverage-component: go-shared-fragment
             coverage-canonical-path: artifacts/coverage/go/shared-inputs/uni-cli/coverage.out
+          - service: services/pkg/logging
+            coverage-threshold: 100
+            coverage-component: go-shared-fragment
+            coverage-canonical-path: artifacts/coverage/go/shared-inputs/logging/coverage.out
           - service: services/pkg/spiffe
             coverage-threshold: 100
             coverage-component: go-shared-fragment
@@ -670,7 +698,8 @@ jobs:
       coverage-canonical-path: ${{ matrix.coverage-canonical-path }}
 
   # MOD-W15-06 (audit 2026-03-23 Wave 15): Go fuzz testing for ws-hub message parsing.
-  # Short 30s CI budget — finds quick panics and crashes.
+  # Bounded fuzz smoke — finds quick panics and crashes without an unbounded
+  # worker lifetime.
   # Crashes are stored in testdata/fuzz/ and replayed on subsequent runs automatically.
   go-fuzz:
     name: Go Fuzz Tests (ws-hub)
@@ -679,21 +708,25 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          # Go 1.27.1 contains the upstream fix for golang/go#75804.  Pin the
+          # patched toolchain so the bounded fuzz smoke cannot report a false
+          # context-deadline failure during normal deadline shutdown.
+          go-version: "1.27.1"
           cache-dependency-path: services/ws-hub/go.sum
 
-      # PERF-W18-04 (audit 2026-03-23 Wave 18): increased from 30s to 120s for
-      # meaningful coverage of JSON parsing and WebSocket message validation.
-      - name: Run fuzz tests (120s CI budget)
+      - name: Run fuzz tests (bounded smoke)
         run: |
           cd services/ws-hub
-          # Serialize fuzz workers to bound runner memory; fuzz duration and
-          # target coverage remain unchanged.
-          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=30s -parallel=1 -timeout=3m
-          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=30s -parallel=1 -timeout=3m
+          # Serialize fuzz workers to bound runner memory. Go 1.27.1 contains
+          # the upstream fix for golang/go#75804, so the full bounded smoke
+          # budget is retained without masking or ignoring failures.
+          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=20s -parallel=1 -timeout=3m
+          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=20s -parallel=1 -timeout=3m
 
       - name: Upload fuzz corpus on failure
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -731,25 +764,42 @@ jobs:
 
   frontend-tests:
     name: Frontend Tests
+    needs:
+      - e2e-wasm-build
     permissions:
       contents: read
+      actions: read
     uses: ./.github/workflows/reusable-frontend-tests.yml
     with:
       node-version: "24"
       run-lighthouse: true
+      wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
+      wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
+      wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
-  # Generate the expensive instrumenter universe once. The artifact is named
-  # for an exact immutable GitHub workflow attempt and commit; every consumer
-  # validates all bound metadata before it can select a logical shard.
+  # Build the generated WASM packages once for all frontend and Playwright
+  # jobs. Consumers bind the server-issued artifact outputs to this run.
+  e2e-wasm-build:
+    name: E2E WASM Build
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-e2e-wasm-build.yml
+
+  # Generate the expensive instrumenter universe only after all frontend
+  # qualification has passed. This keeps mutation work fail-closed: a broken
+  # WASM build, unit suite, lint/build, or frontend audit cannot spend a full
+  # producer run before the required product checks have completed. The artifact
+  # is named for an exact immutable GitHub workflow attempt and commit; every
+  # consumer validates all bound metadata before it can select a logical shard.
   stryker-preflight:
     name: Frontend Mutation Preflight Universe
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs:
       - pre-commit-check
+      - e2e-wasm-build
       - frontend-tests
-      - coverage-policy-gate
-    if: ${{ github.event_name == 'pull_request' && needs.frontend-tests.result == 'success' && needs.pre-commit-check.result == 'success' && needs.coverage-policy-gate.result == 'success' }}
+    if: ${{ github.event_name == 'pull_request' && needs.pre-commit-check.result == 'success' && needs.e2e-wasm-build.result == 'success' && needs.frontend-tests.result == 'success' }}
     permissions:
       contents: read
       actions: read
@@ -782,7 +832,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       # A timing model is only an optimization; the first attempt has no
       # prior aggregate in this run. Later retries may consume exactly one
@@ -866,20 +916,25 @@ jobs:
     name: Frontend mutation shard ${{ matrix.shard-index }}/64
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    needs: stryker-preflight
-    if: ${{ github.event_name == 'pull_request' }}
+    needs:
+      - stryker-preflight
+      - coverage-policy-gate
+      - pre-commit-security-and-types
+    if: ${{ github.event_name == 'pull_request' && needs.stryker-preflight.result == 'success' && needs.coverage-policy-gate.result == 'success' && needs.pre-commit-security-and-types.result == 'success' }}
     strategy:
       fail-fast: false
       # A c4 timing sample from exact run 33303107020 (6 completed Stryker
       # legs averaging 27.6m; 10 completed mutmut legs averaging 18.5m)
       # estimates total work at roughly 1,764 versus 2,368 runner-minutes
-      # for the 64 versus 128 legs. Keep the initial 8-runner Stryker lane
-      # alongside the 12-runner mutmut lane: together they use the hosted
-      # repository's 20-runner ceiling during the mutation phase. Required
-      # diagnostics/aggregation remain dependency-gated and start as slots
-      # free up. Rebalance only after three comparable green runs with queue,
-      # timeout and billed-minute evidence.
-      max-parallel: 8
+      # for the 64 versus 128 legs. Keep the initial six-runner Stryker lane
+      # alongside the ten-runner mutmut lane: together they use at most 16
+      # concurrent mutation jobs in this workflow's documented 20-job
+      # operational budget. This is not a GitHub account-wide cap or a
+      # cross-workflow semaphore; companion workflows can still overlap.
+      # The four reserved slots are only an in-workflow planning guard. Rebalance
+      # after three comparable green runs with queue, timeout and billed-minute
+      # evidence.
+      max-parallel: 6
       matrix:
         shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
     permissions:
@@ -913,7 +968,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Select immutable same-run Stryker preflight candidate
         id: select_stryker_preflight
@@ -1010,12 +1065,14 @@ jobs:
     name: Frontend Mutation Evidence (100%)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    needs: [stryker-preflight, stryker-shards]
-    # The preflight is intentionally gated on frontend readiness.  If that
-    # prerequisite is skipped, no producer can emit a same-run artifact and
-    # this consumer must remain skipped as well.  Once preflight started,
-    # keep the aggregate fail-closed for failed/cancelled shard producers.
-    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-preflight.result != 'skipped' }}
+    needs: [stryker-preflight, stryker-shards, coverage-policy-gate, pre-commit-security-and-types]
+    # The preflight has already passed frontend/WASM qualification before this
+    # aggregate can start. Coverage and security/type qualification are also
+    # explicit prerequisites for both shard execution and aggregation: a
+    # failed/cancelled qualification gate must never produce mutation evidence.
+    # Once preflight started, keep the aggregate fail-closed for failed/
+    # cancelled shard producers.
+    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-preflight.result != 'skipped' && needs.coverage-policy-gate.result == 'success' && needs.pre-commit-security-and-types.result == 'success' }}
     permissions:
       contents: read
       actions: read
@@ -1047,7 +1104,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Select immutable same-run Stryker preflight candidate
         id: select_stryker_preflight
@@ -1172,7 +1229,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Set up Python for artifact provenance selection
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -1256,11 +1313,15 @@ jobs:
   # without overloading the SSR preview.
   e2e-tests:
     name: E2E Tests (shard ${{ matrix.shard-index }}/4)
-    needs: pre-commit-check
+    needs:
+      - pre-commit-check
+      - e2e-wasm-build
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         shard-index: [1, 2, 3, 4]
     uses: ./.github/workflows/reusable-e2e-tests.yml
@@ -1271,18 +1332,24 @@ jobs:
       shard-index: ${{ matrix.shard-index }}
       shard-total: 4
       collect-coverage: true
+      wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
+      wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
+      wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
-  # Phase 7.1: browser coverage is visible immediately but remains advisory
-  # during the 30-day stabilization window. Nightly runs execute the same
-  # four-project matrix; this PR job gives Firefox/WebKit/mobile-WebKit fast
-  # feedback without making pre-existing renderer flakes merge blockers.
+  # Cross-browser coverage is release-blocking for pull requests. Keep the
+  # browser projects in one deterministic matrix so missing, cancelled, or
+  # failed projects are visible to the CI Success finalizer.
   e2e-tests-cross-browser:
     name: E2E Tests (cross-browser ${{ matrix.browser }})
-    needs: pre-commit-check
+    needs:
+      - pre-commit-check
+      - e2e-wasm-build
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         browser: [firefox, webkit, mobile-webkit]
     uses: ./.github/workflows/reusable-e2e-tests.yml
@@ -1292,7 +1359,10 @@ jobs:
       browser: ${{ matrix.browser }}
       shard-index: 1
       shard-total: 1
-      advisory: true
+      advisory: false
+      wasm-artifact-id: ${{ needs.e2e-wasm-build.outputs.artifact_id }}
+      wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
+      wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
   security-audit:
     name: Security Audit
@@ -1603,7 +1673,7 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         shell: pwsh
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Generate OpenAPI schema
         env:
@@ -1738,7 +1808,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Select immutable same-run Lighthouse evidence candidate
         id: select_lighthouse_results
@@ -1891,33 +1961,11 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         id: trivy_scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.28.0
-        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           # Prefer the canonical GHCR database. The public mirror can be
           # transiently unavailable from GitHub-hosted runners; changing the
           # source does not alter severity policy or the fail-closed gate.
-          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
-        with:
-          image-ref: university-ecosystem/backend:${{ github.sha }}
-          format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL,HIGH
-          limit-severities-for-sarif: true
-          exit-code: "1"
-          ignore-unfixed: true
-
-      - name: Preserve first Trivy scan evidence
-        if: always() && steps.trivy_scan.outcome == 'failure' && hashFiles('trivy-results.sarif') != ''
-        shell: bash
-        run: cp -- trivy-results.sarif trivy-results-first.sarif
-
-      - name: Retry Trivy vulnerability scanner after registry transient failure
-        id: trivy_scan_retry
-        if: always() && steps.trivy_scan.outcome == 'failure'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.28.0
-        continue-on-error: true
-        env:
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
         with:
           image-ref: university-ecosystem/backend:${{ github.sha }}
@@ -1938,40 +1986,6 @@ jobs:
           # reusable audit has a separate job key for filesystem/config scans.
           category: ".github/workflows/ci.yml:docker-security-scan"
 
-      - name: Re-assert Trivy vulnerability gate
-        if: always()
-        env:
-          FIRST_OUTCOME: ${{ steps.trivy_scan.outcome }}
-          RETRY_OUTCOME: ${{ steps.trivy_scan_retry.outcome }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "$FIRST_OUTCOME" != "failure" ]]; then
-            exit 0
-          fi
-          if [[ "$RETRY_OUTCOME" != "success" ]]; then
-            echo "::error::Trivy found a CRITICAL/HIGH backend image vulnerability or failed to complete the retry scan."
-            exit 1
-          fi
-          if [[ -f trivy-results-first.sarif ]] && ! jq -e '
-            type == "object" and
-            (.version | type == "string") and
-            (.runs | type == "array" and length > 0) and
-            ([.runs[]?.results[]?] | length == 0)
-          ' trivy-results-first.sarif >/dev/null; then
-            echo "::error::The initial Trivy failure produced findings or invalid SARIF; the security gate remains failed."
-            exit 1
-          fi
-          if [[ ! -s trivy-results.sarif ]] || ! jq -e '
-            type == "object" and
-            (.version | type == "string") and
-            (.runs | type == "array" and length > 0) and
-            ([.runs[]?.results[]?] | length == 0)
-          ' trivy-results.sarif >/dev/null; then
-            echo "::error::A successful Trivy retry did not produce valid zero-finding SARIF evidence."
-            exit 1
-          fi
-
   # MOD-W15-03 (audit 2026-03-23 Wave 15): Helm lint + kubeconform validation.
   # Catches broken Helm templates and K8s manifest schema violations before deploy.
   helm-validate:
@@ -1990,17 +2004,9 @@ jobs:
       - name: Helm dependency build
         shell: bash
         run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem/; then
-              exit 0
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
+          python3 scripts/ci/helm_dependency_build.py \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
 
       - name: Helm lint — university-ecosystem chart
         run: |  # pragma: allowlist secret
@@ -2175,6 +2181,11 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
+      # Eight operation shards remain mandatory; four concurrent runners keep
+      # the property-based lane bounded under this workflow's operational
+      # budget and prevent mutation fan-out starvation. The budget is not a
+      # GitHub account-wide cap or a cross-workflow semaphore.
+      max-parallel: 4
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
     # 25 examples per operation across the complete OpenAPI surface are
@@ -2308,7 +2319,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Generate OpenAPI spec from live FastAPI app
         env:
@@ -2517,7 +2528,9 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # cargo-llvm-cov
         with:
-          tool: cargo-llvm-cov
+          # 0.9.1 understands Cargo's build-dir v2 layout used by current
+          # nightly Rust, while remaining immutable and reproducible here.
+          tool: cargo-llvm-cov@0.9.1
 
       - name: Install nightly Rust for branch coverage
         run: rustup toolchain install nightly --component llvm-tools-preview --allow-downgrade --no-self-update
@@ -2541,52 +2554,70 @@ jobs:
         working-directory: native/rust_ext
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-native
+          NIGHTLY_CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-native-nightly
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo llvm-cov clean
-          cargo llvm-cov --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-native/llvm.json
-          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-native/codecov.json
+          cargo llvm-cov --locked --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-native/llvm.json
+          cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-native/codecov.json
+          # Nightly branch instrumentation has a different compiler/configuration
+          # identity. Keep its object files and profdata in a separate target
+          # tree so the stable report lifecycle cannot remove or invalidate them.
+          nightly_target_dir="${NIGHTLY_CARGO_TARGET_DIR:?}"
+          export CARGO_TARGET_DIR="$nightly_target_dir"
           cargo +nightly llvm-cov clean
-          cargo +nightly llvm-cov --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-native/branch-llvm.json
+          cargo +nightly llvm-cov --locked --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-native/branch-llvm.json
 
       - name: pyo3-sanitizer — native unit tests + coverage
         working-directory: crates/pyo3-sanitizer
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-pyo3-sanitizer
+          NIGHTLY_CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-pyo3-sanitizer-nightly
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo llvm-cov clean
-          cargo llvm-cov --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
-          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
+          cargo llvm-cov --locked --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
+          cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
+          # Isolate nightly branch objects from the stable coverage tree.
+          nightly_target_dir="${NIGHTLY_CARGO_TARGET_DIR:?}"
+          export CARGO_TARGET_DIR="$nightly_target_dir"
           cargo +nightly llvm-cov clean
-          cargo +nightly llvm-cov --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
+          cargo +nightly llvm-cov --locked --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
 
       - name: wasm-sanitizer — native unit tests + coverage
         working-directory: frontend/wasm-sanitizer
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-wasm-sanitizer
+          NIGHTLY_CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-wasm-sanitizer-nightly
         run: |
           cargo llvm-cov clean
-          cargo llvm-cov --lib --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
-          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
+          cargo llvm-cov --locked --lib --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
+          cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
+          # Isolate nightly branch objects from the stable coverage tree.
+          nightly_target_dir="${NIGHTLY_CARGO_TARGET_DIR:?}"
+          export CARGO_TARGET_DIR="$nightly_target_dir"
           cargo +nightly llvm-cov clean
-          cargo +nightly llvm-cov --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json
+          cargo +nightly llvm-cov --locked --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json
 
       - name: rust-crypto — native KAT tests + coverage
         working-directory: frontend/rust-crypto
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-crypto
+          NIGHTLY_CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-crypto-nightly
         # Include tests/native.rs in the coverage universe; --lib alone only
         # measures the two src/lib.rs unit tests and leaves the contract below
         # the 99/98 rust-crypto floor.
         run: |
           cargo llvm-cov clean
-          cargo llvm-cov --all-targets --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
-          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-crypto/codecov.json
+          cargo llvm-cov --locked --all-targets --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
+          cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-crypto/codecov.json
+          # Isolate nightly branch objects from the stable coverage tree.
+          nightly_target_dir="${NIGHTLY_CARGO_TARGET_DIR:?}"
+          export CARGO_TARGET_DIR="$nightly_target_dir"
           cargo +nightly llvm-cov clean
-          cargo +nightly llvm-cov --all-targets --branch --json --output-path ../../artifacts/coverage/rust/rust-crypto/branch-llvm.json
+          cargo +nightly llvm-cov --locked --all-targets --branch --json --output-path ../../artifacts/coverage/rust/rust-crypto/branch-llvm.json
 
       - name: Write Rust coverage provenance
         shell: bash
@@ -2626,7 +2657,7 @@ jobs:
             --run-attempt "$RUN_ATTEMPT" \
             --event "$WORKFLOW_EVENT" \
             --job "$GITHUB_JOB" \
-            --artifact rust-coverage \
+            --artifact "rust-coverage-attempt-${RUN_ATTEMPT}" \
             --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
             --tool-version "rustc=$rustc_version" \
             --tool-version "rustc-nightly=$rustc_nightly_version" \
@@ -2644,7 +2675,7 @@ jobs:
       - name: Upload Rust coverage artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: rust-coverage
+          name: rust-coverage-attempt-${{ github.run_attempt }}
           path: |
             artifacts/coverage/rust/rust-native/llvm.json
             artifacts/coverage/rust/rust-native/branch-llvm.json
@@ -2660,7 +2691,7 @@ jobs:
       - name: Upload Rust Codecov diagnostic artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: rust-codecov-reports
+          name: rust-codecov-reports-attempt-${{ github.run_attempt }}
           path: |
             artifacts/coverage/rust/rust-native/codecov.json
             artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
@@ -2816,17 +2847,9 @@ jobs:
         if: needs.mutation-scope.outputs.has_python == 'true'
         shell: bash
         run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem/; then
-              exit 0
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
+          python3 scripts/ci/helm_dependency_build.py \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
 
       - name: Generate reusable mutmut source and metadata
         if: needs.mutation-scope.outputs.has_python == 'true'
@@ -2858,6 +2881,7 @@ jobs:
             --root . \
             --manifest mutmut-universe-artifact.json \
             --mode generation \
+            --include-helm-dependencies \
             --commit-sha "$COMMIT_SHA" \
             --run-id "$RUN_ID" \
             --run-attempt "$RUN_ATTEMPT" \
@@ -2877,6 +2901,8 @@ jobs:
           path: |
             mutmut-universe-artifact.json
             mutants/
+            charts/university-ecosystem/charts/redis-20.13.4.tgz
+            charts/university-ecosystem/charts/nats-8.5.4.tgz
           include-hidden-files: true
           retention-days: 30
           if-no-files-found: error
@@ -2884,6 +2910,9 @@ jobs:
   mutation-tests-stats:
     name: Incremental Mutation Stats (mutmut) / shard ${{ matrix.stats_shard }}/${{ matrix.stats_total }}
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     needs:
       - mutation-scope
       - mutation-tests-universe-base
@@ -2894,8 +2923,9 @@ jobs:
       - coverage-policy-gate
     strategy:
       fail-fast: false
-      # Reserve four of the repository's 20 hosted-runner slots for required
-      # non-mutation diagnostics and aggregation.
+      # Reserve four slots in this workflow's documented 20-job operational
+      # budget for required non-mutation diagnostics and aggregation. This is
+      # not a GitHub account-wide cap or a cross-workflow semaphore.
       max-parallel: 8
       # mutmut 3.7.0 collects the complete pytest-to-mutant mapping before it
       # applies positional mutant filters.  Collect disjoint test populations
@@ -3012,6 +3042,10 @@ jobs:
           test -f "$root/mutmut-universe-artifact.json" && test ! -L "$root/mutmut-universe-artifact.json"
           test -d "$root/mutants" && test ! -L "$root/mutants"
           test -f "$root/mutants/mutmut-generation.json" && test ! -L "$root/mutants/mutmut-generation.json"
+          for archive in redis-20.13.4.tgz nats-8.5.4.tgz; do
+            archive_path="$root/charts/university-ecosystem/charts/$archive"
+            test -f "$archive_path" && test ! -L "$archive_path"
+          done
           test "$(stat --format='%h' "$root/mutmut-universe-artifact.json")" = "1"
 
       - name: Select retry-safe mutmut generation base
@@ -3075,17 +3109,10 @@ jobs:
         if: steps.mutation_scope.outputs.has_python == 'true'
         shell: bash
         run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem/; then
-              exit 0
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
+          python3 scripts/ci/helm_dependency_build.py \
+            --skip-refresh \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
 
       - name: Collect mutmut stats shard
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -3176,6 +3203,9 @@ jobs:
   mutation-tests-universe:
     name: Build central mutmut universe
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 35
     outputs:
       # The matrix is derived from the producer's complete, validated plan;
@@ -3201,7 +3231,7 @@ jobs:
           persist-credentials: false
 
       # A single producer performs the expensive source/metadata generation
-      # and duration-balanced planning.  Resolve the scope before installing
+      # and full watchdog-budget-aware planning. Resolve the scope before installing
       # uv, dependencies, or Helm so a frontend-only PR can publish the
       # explicit empty envelope without paying for the Python toolchain.
       - name: Detect changed Python source
@@ -3248,22 +3278,6 @@ jobs:
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.17.0
-
-      - name: Resolve Helm chart dependencies
-        if: steps.mutation_scope.outputs.has_python == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem/; then
-              exit 0
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
 
       - name: Download same-run mutmut stats candidates
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -3315,6 +3329,10 @@ jobs:
           test -f "$root/mutmut-universe-artifact.json" && test ! -L "$root/mutmut-universe-artifact.json"
           test -d "$root/mutants" && test ! -L "$root/mutants"
           test -f "$root/mutants/mutmut-generation.json" && test ! -L "$root/mutants/mutmut-generation.json"
+          for archive in redis-20.13.4.tgz nats-8.5.4.tgz; do
+            archive_path="$root/charts/university-ecosystem/charts/$archive"
+            test -f "$archive_path" && test ! -L "$archive_path"
+          done
           test "$(stat --format='%h' "$root/mutmut-universe-artifact.json")" = "1"
 
       - name: Select retry-safe mutmut generation base
@@ -3353,6 +3371,15 @@ jobs:
           test -s mutmut-generation-selection.json
           test -s mutants/mutmut-generation.json
           echo "Selected retry-safe mutmut generation base: $selection"
+
+      - name: Resolve Helm chart dependencies
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        shell: bash
+        run: |
+          python3 scripts/ci/helm_dependency_build.py \
+            --skip-refresh \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
 
       - name: Select complete retry-safe mutmut stats cohort
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -3413,7 +3440,10 @@ jobs:
             --changed-files /tmp/changed_py.txt \
             --changed-diff /tmp/changed_py.diff \
             --num-shards 128 \
-            --max-children 2 \
+            --max-children 3 \
+            --control-cycle-reserve-seconds 5 \
+            --metadata-startup-reserve-seconds 120 \
+            --max-timeout-seconds 20880 \
             --reuse-generated-universe \
             --allow-empty-shards \
             --output-directory mutants/mutmut-incremental-plan
@@ -3422,27 +3452,77 @@ jobs:
           test -s mutants/mutmut-incremental-plan/plan-manifest.json
 
       # A typical focused backend change occupies only a handful of the fixed
-      # 128 plan entries.  Emitting only nonempty entries releases hosted
+      # 128 logical plan entries. Emitting only nonempty entries and coalescing
+      # them into at most 128 budget-validated physical groups releases hosted
       # runners for E2E, Lighthouse, and frontend mutation work rather than
       # repeatedly bootstrapping uv and Helm for a plan already proven empty.
-      # The helper validates every shard file, selection digest, and complete
-      # population digest before it writes this matrix; the consumers validate
-      # the same plan again after downloading the attempt-scoped envelope.
+      # The upper bound matches the complete logical inventory: when a pair of
+      # logical shards would exceed the conservative six-hour budget, each is
+      # dispatched independently without dropping or merging mutant IDs.
+      # The matrix helper validates every shard file, selection digest, and
+      # complete population digest; the grouped-budget helper then validates
+      # both logical and physical timeout envelopes in one stats-loaded pass.
+      # Consumers validate the same plan again after downloading the
+      # attempt-scoped envelope.
       - name: Build validated mutmut execution matrix
         id: mutation_matrix
         shell: bash
         run: |
           set -euo pipefail
           if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then
-            matrix="$(python scripts/mutmut_shard_matrix.py matrix \
+            # Preflight the exact execution budget before expanding runners.
+            # The consumer repeats this calculation, but doing it here avoids
+            # allocating any matrix leg when fresh stats no longer fit the
+            # six-hour envelope.  The 120-second reserve is restricted to the
+            # already-generated, immutable universe reuse path; it is greater
+            # than the measured 72-second maximum for that phase.  The live
+            # deadline check separately charges checkout/setup elapsed time;
+            # all selected-test and per-mutant watchdog costs remain fail-closed.
+            # Keep a 90-second pre-run setup envelope in the producer gate so
+            # a plan that would only fit before checkout/setup is rejected
+            # before any matrix runner is allocated: 21,600 - 630 - 90.
+            mapfile -t nonempty_plan_files < <(
+              find mutants/mutmut-incremental-plan -maxdepth 1 -type f \
+                -name 'shard-*.txt' -size +0c -print | sort
+            )
+            matrix="$(python scripts/mutmut_shard_matrix.py groups \
               --plan-directory mutants/mutmut-incremental-plan \
-              --expected-shards 128)"
-            matrix_summary="Fully validated fixed plan assignments: 128"
+              --expected-shards 128 \
+              --target-groups 128)"
+            printf '%s\n' "$matrix" > /tmp/mutmut-execution-matrix.json
+            # Validate every logical assignment and every coalesced physical
+            # group against merged stats in one process. This keeps the
+            # producer fail-closed without reparsing a large stats JSON once
+            # per logical shard before any runner can start.
+            uv run python scripts/validate_mutmut_group_budgets.py \
+              --matrix-file /tmp/mutmut-execution-matrix.json \
+              --plan-directory mutants/mutmut-incremental-plan \
+              --stats mutants/mutmut-stats.json \
+              --output-manifest /tmp/mutmut-group-budgets.json \
+              --expected-shards 128 \
+              --target-groups 128 \
+              --max-children 3 \
+              --control-cycle-reserve-seconds 5 \
+              --metadata-startup-reserve-seconds 120 \
+              --max-timeout-seconds 20880
+            test -s /tmp/mutmut-group-budgets.json
+            if [ "${#nonempty_plan_files[@]}" -eq 0 ]; then
+              # Keep the explicit non-mutant sentinel emitted by ``groups``
+              # for an already-validated empty plan (for example, a legacy
+              # retry artifact); the planner itself normally rejects an empty
+              # changed-Python mutation universe before writing a plan.
+              echo "Validated Python scope contains no nonempty mutation shards; emitting the non-mutant sentinel."
+            fi
+            if [ "${#nonempty_plan_files[@]}" -eq 0 ]; then
+              matrix_summary="Validated Python scope has no mutants; one explicit non-mutant sentinel"
+            else
+              matrix_summary="Fully validated 128 logical assignments; up to 128 budget-validated physical groups"
+            fi
           else
             # GitHub does not permit an empty dynamic matrix. A single explicit
             # no-Python sentinel validates the empty attempt envelope and exits
             # without installing a mutation toolchain.
-            matrix='{"include":[{"shard":0,"has_python":"false","has_mutants":"false"}]}'
+            matrix='{"include":[{"group_id":0,"logical_shards":[],"selection_files":[],"selected_count":0,"selection_sha256":"","group_sha256":"","estimated_load_micros":0,"has_python":"false","has_mutants":"false"}]}'
             matrix_summary="No-Python sentinel: one explicit non-mutant descriptor (not a 128-assignment plan)"
           fi
           descriptor_count="$(printf '%s' "$matrix" | python -c 'import json, sys; entries = json.load(sys.stdin).get("include"); sys.exit("mutation matrix must contain a nonempty include list") if not isinstance(entries, list) or not entries else None; print(len(entries))')"
@@ -3465,9 +3545,9 @@ jobs:
             echo "## Mutation matrix capacity"
             echo "- $matrix_summary"
             echo "- $descriptor_summary"
-            echo "- Mutmut producer max concurrency: 12"
-            echo "- Stryker producer max concurrency: 8"
-            echo "- GitHub global hosted-runner cap: 20 (12 mutmut + 8 Stryker after the coverage phase barrier)."
+            echo "- Mutmut producer max concurrency: 10"
+            echo "- Stryker producer max concurrency: 6"
+            echo "- Repository mutation concurrency budget: 20 (10 mutmut + 6 Stryker after the coverage phase barrier; 4 reserved; not globally enforced)."
             echo "- The coverage phase barrier prevents mutation fan-out when foundational evidence is red."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -3495,6 +3575,7 @@ jobs:
             --root . \
             --manifest mutmut-universe-artifact.json \
             --mode "$mode" \
+            --include-helm-dependencies \
             --commit-sha "$COMMIT_SHA" \
             --run-id "$RUN_ID" \
             --run-attempt "$RUN_ATTEMPT" \
@@ -3507,12 +3588,15 @@ jobs:
           test -s mutmut-universe-artifact.json
 
       - name: Upload central mutmut universe
+        if: steps.mutation_scope.outputs.has_python == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             mutmut-universe-artifact.json
             mutants/
+            charts/university-ecosystem/charts/redis-20.13.4.tgz
+            charts/university-ecosystem/charts/nats-8.5.4.tgz
           # The mutmut sandbox intentionally carries dotfiles such as
           # .secrets.baseline. Preserve the producer's exact inventory during
           # transport; silently dropping hidden members would make the
@@ -3521,33 +3605,57 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      - name: Upload empty central mutmut universe
+        if: steps.mutation_scope.outputs.has_python != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            mutmut-universe-artifact.json
+            mutants/
+          include-hidden-files: true
+          retention-days: 30
+          if-no-files-found: error
+
   mutation-tests-incremental:
-    name: Incremental Mutation Tests (mutmut) / shard ${{ matrix.shard }}/128
+    name: Incremental Mutation Tests (mutmut) / execution group ${{ matrix.group_id }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       # Coverage is a deliberate phase barrier for both mutation families, so
       # expensive runners are not allocated when the foundational quality gate
-      # is already red. Once that gate is green, use the complete hosted-runner
-      # budget: eight Stryker workers plus twelve mutmut workers equals the
-      # repository's 20-runner ceiling. The bounded inner mutmut worker count
-      # and the complete 128-assignment evidence plan remain unchanged.
-      max-parallel: 12
+      # is already red. Once that gate is green, use at most 16 mutation jobs
+      # in this workflow's operational budget: six Stryker workers plus ten
+      # mutmut workers, reserving four slots for required diagnostics and
+      # aggregation. This is not a GitHub account-wide cap or semaphore. The
+      # bounded inner mutmut worker count,
+      # complete 128-assignment evidence plan, and at-most-128 physical groups
+      # remain fail-closed.
+      max-parallel: 10
       # The producer validates all 128 fixed assignments, then dynamically
-      # emits only exact nonempty entries. This preserves the full plan as
-      # evidence while preventing empty shards from consuming the scarce
-      # hosted-runner pool. A single explicit sentinel handles an empty scope.
+      # emits at most 128 deterministic physical groups over their exact
+      # nonempty entries. This preserves the full plan as evidence while
+      # preventing empty logical shards and per-shard bootstrap overhead from
+      # consuming hosted runners.
+      # A single explicit sentinel handles an empty scope.
       matrix: ${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}
-    # Exact shards can legitimately map to a large lifecycle test union. The
+    # Exact execution groups can legitimately map to a large lifecycle test union. The
     # pull-request gate therefore uses the same six-hour wall-clock envelope
     # as the manual evidence workflow. Three bounded workers avoid SQLite
     # contention in forked test processes while the fixed one-hundred-twenty-eight
-    # shard plan bounds the maximum fan-out without allowing an unbounded fork storm.
+    # logical plan and at-most-128 physical groups cap fan-out without
+    # allowing an unbounded fork storm.
     # The dynamic inner timeout remains fail-closed and leaves ten minutes for
     # proof, score verification, upload, and a controlled exit.
     timeout-minutes: 360
     env:
       OTEL_SDK_DISABLED: "true"
+      # mutmut forks test processes after the application has constructed
+      # metric readers. An infinite export interval keeps the mutation
+      # subprocesses deterministic without registering the SDK's periodic
+      # at-fork callback; normal stats/universe and observability jobs retain
+      # the default exporter behavior.
+      OTEL_METRIC_EXPORT_INTERVAL: "inf"
       REVOCATION_REDIS_URL: redis://localhost:6380/0
     permissions:
       contents: read
@@ -3630,6 +3738,7 @@ jobs:
           path: mutmut-universe-candidates/${{ steps.select_mutmut_universe.outputs.artifact_name }}
 
       - name: Verify selected mutmut universe payload
+        if: steps.mutation_scope.outputs.has_python == 'true'
         shell: bash
         env:
           ARTIFACT_NAME: ${{ steps.select_mutmut_universe.outputs.artifact_name }}
@@ -3639,6 +3748,10 @@ jobs:
           test -d "$root" && test ! -L "$root"
           test -f "$root/mutmut-universe-artifact.json" && test ! -L "$root/mutmut-universe-artifact.json"
           test -d "$root/mutants" && test ! -L "$root/mutants"
+          for archive in redis-20.13.4.tgz nats-8.5.4.tgz; do
+            archive_path="$root/charts/university-ecosystem/charts/$archive"
+            test -f "$archive_path" && test ! -L "$archive_path"
+          done
           test "$(stat --format='%h' "$root/mutmut-universe-artifact.json")" = "1"
 
       - name: Select retry-safe central mutmut universe
@@ -3705,7 +3818,13 @@ jobs:
           LOCAL_HAS_PYTHON: ${{ steps.mutation_scope.outputs.has_python }}
           MATRIX_HAS_PYTHON: ${{ matrix.has_python }}
           MATRIX_HAS_MUTANTS: ${{ matrix.has_mutants }}
-          MATRIX_SHARD: ${{ matrix.shard }}
+          MATRIX_GROUP_ID: ${{ matrix.group_id }}
+          MATRIX_LOGICAL_SHARDS: ${{ join(matrix.logical_shards, ',') }}
+          MATRIX_SELECTED_COUNT: ${{ matrix.selected_count }}
+          MATRIX_SELECTION_SHA256: ${{ matrix.selection_sha256 }}
+          MATRIX_GROUP_SHA256: ${{ matrix.group_sha256 }}
+          MATRIX_ESTIMATED_LOAD_MICROS: ${{ matrix.estimated_load_micros }}
+          MUTMUT_TARGET_GROUPS: "128"
         run: |
           set -euo pipefail
           if [[ "$MATRIX_HAS_PYTHON" != "true" && "$MATRIX_HAS_PYTHON" != "false" ]]; then
@@ -3721,19 +3840,31 @@ jobs:
             exit 1
           fi
           if [ "$LOCAL_HAS_PYTHON" = "false" ]; then
-            if [ "$MATRIX_SHARD" != "0" ] || [ "$MATRIX_HAS_MUTANTS" != "false" ]; then
+            if [ "$MATRIX_GROUP_ID" != "0" ] || [ "$MATRIX_HAS_MUTANTS" != "false" ]; then
               echo "::error::Empty mutation scope must use the explicit non-mutant sentinel."
               exit 1
             fi
             echo "has_mutants=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          python scripts/mutmut_shard_matrix.py validate-entry \
+          if [ "$MATRIX_HAS_MUTANTS" != "true" ]; then
+            if [ "$MATRIX_GROUP_ID" != "0" ] || [ -n "$MATRIX_LOGICAL_SHARDS" ]; then
+              echo "::error::Empty mutation scope has an invalid group sentinel."
+              exit 1
+            fi
+            echo "has_mutants=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python scripts/mutmut_shard_matrix.py validate-group \
             --plan-directory mutants/mutmut-incremental-plan \
             --expected-shards 128 \
-            --shard-id "$MATRIX_SHARD" \
-            --has-python "$MATRIX_HAS_PYTHON" \
-            --has-mutants "$MATRIX_HAS_MUTANTS"
+            --target-groups "$MUTMUT_TARGET_GROUPS" \
+            --group-id "$MATRIX_GROUP_ID" \
+            --logical-shards "$MATRIX_LOGICAL_SHARDS" \
+            --selected-count "$MATRIX_SELECTED_COUNT" \
+            --selection-sha256 "$MATRIX_SELECTION_SHA256" \
+            --group-sha256 "$MATRIX_GROUP_SHA256" \
+            --estimated-load-micros "$MATRIX_ESTIMATED_LOAD_MICROS"
           printf 'has_mutants=%s\n' "$MATRIX_HAS_MUTANTS" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
@@ -3765,40 +3896,77 @@ jobs:
         if: steps.mutation_scope.outputs.has_python == 'true' && steps.mutation_shard.outputs.has_mutants == 'true'
         shell: bash
         run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem/; then
-              exit 0
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
+          python3 scripts/ci/helm_dependency_build.py \
+            --skip-refresh \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
 
       - name: Run incremental mutmut (blocking, stats-derived budget)
         id: run_incremental_mutmut
         if: steps.mutation_scope.outputs.has_python == 'true' && steps.mutation_shard.outputs.has_mutants == 'true'
+        # GitHub Actions creates a fresh shell for every step.  Keep the
+        # validated matrix descriptor available to the execution step instead
+        # of relying on the validation step's process environment.  Without
+        # this explicit binding the runner reaches ``test -n
+        # "$MATRIX_LOGICAL_SHARDS"`` with an empty variable and exits before
+        # any selected mutant is executed or evidence is finalized.
+        env:
+          MATRIX_GROUP_ID: ${{ matrix.group_id }}
+          MATRIX_LOGICAL_SHARDS: ${{ join(matrix.logical_shards, ',') }}
+          MATRIX_SELECTED_COUNT: ${{ matrix.selected_count }}
+          MATRIX_SELECTION_SHA256: ${{ matrix.selection_sha256 }}
+          MATRIX_GROUP_SHA256: ${{ matrix.group_sha256 }}
+          MATRIX_ESTIMATED_LOAD_MICROS: ${{ matrix.estimated_load_micros }}
         run: |
           # Scope mutmut to every changed backend source line.  The old
           # tenant-only probe silently skipped mutation evidence for all other
           # Python diffs, while whole-file selection made a small edit replay
           # hundreds of unrelated mutants.
           # The central producer has already generated the complete source /
-          # metadata universe and a duration-balanced exact plan.  Selecting a
-          # precomputed file here avoids repeating mutmut's expensive source
-          # generation in all 128 consumer legs.
-          shard_plan="mutants/mutmut-incremental-plan/shard-$(printf '%02d' '${{ matrix.shard }}').txt"
-          test -f "$shard_plan"
-          cp "$shard_plan" /tmp/mutmut-shard.txt
+          # metadata universe and a duration-balanced exact plan. Selecting the
+          # validated logical files in this physical group avoids repeating
+          # mutmut's expensive source generation per logical shard.
+          test -n "$MATRIX_LOGICAL_SHARDS"
+          : > /tmp/mutmut-shard.txt
+          IFS=',' read -r -a logical_shards <<< "$MATRIX_LOGICAL_SHARDS"
+          for logical_shard in "${logical_shards[@]}"; do
+            if ! [[ "$logical_shard" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Validated group contains an invalid logical shard ID."
+              exit 1
+            fi
+            shard_plan="mutants/mutmut-incremental-plan/shard-$(printf '%02d' "$logical_shard").txt"
+            test -f "$shard_plan" && test ! -L "$shard_plan"
+            cat "$shard_plan" >> /tmp/mutmut-shard.txt
+          done
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
             echo "::error::Validated nonempty mutation matrix entry became empty."
             exit 1
           fi
           echo "has_mutants=true" >> "$GITHUB_OUTPUT"
-          echo "Mutating shard ${{ matrix.shard }}/128: ${#MUTANT_NAMES[@]} exact mutants"
+          if [ "${#MUTANT_NAMES[@]}" -ne "$MATRIX_SELECTED_COUNT" ]; then
+            echo "::error::Grouped mutation selection count changed after materialization."
+            exit 1
+          fi
+          duplicate_count="$(LC_ALL=C sort /tmp/mutmut-shard.txt | uniq -d | wc -l)"
+          if [ "$duplicate_count" -ne 0 ]; then
+            echo "::error::Grouped mutation selection contains duplicate mutant IDs."
+            exit 1
+          fi
+          actual_selection_sha256="$(python - /tmp/mutmut-shard.txt <<'PY'
+          import hashlib
+          import sys
+          from pathlib import Path
+
+          names = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+          print(hashlib.sha256("\n".join(sorted(names)).encode("utf-8")).hexdigest())
+          PY
+          )"
+          if [ "$actual_selection_sha256" != "$MATRIX_SELECTION_SHA256" ]; then
+            echo "::error::Grouped mutation selection digest changed after materialization."
+            exit 1
+          fi
+          echo "Mutating execution group $MATRIX_GROUP_ID (logical shards $MATRIX_LOGICAL_SHARDS): ${#MUTANT_NAMES[@]} exact mutants"
           MUTMUT_EVIDENCE_DIR=mutants/mutmut-exact-evidence
           mkdir -p "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_EVIDENCE_FINALIZED=false
@@ -3855,11 +4023,18 @@ jobs:
             --prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
             --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_FAILURE_REASON="deriving the stats-based mutation budget"
+          # The immutable source/metadata universe was generated and
+          # validated by the producer.  Two minutes is an evidence-backed
+          # reserve for this reuse path (13 sampled successful jobs stayed
+          # below 90 seconds, with a 72-second maximum; the largest observed
+          # pre-run setup elapsed 89 seconds).  The selected-test and mutmut
+          # watchdog phases remain fully charged by the helper.
           MUTMUT_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
             --max-children 3 \
             --control-cycle-reserve-seconds 5 \
+            --metadata-startup-reserve-seconds 120 \
             --max-timeout-seconds 20970 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
@@ -3978,7 +4153,7 @@ jobs:
         if: always() && steps.mutation_scope.outputs.has_python == 'true' && steps.run_incremental_mutmut.outputs.has_mutants == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          name: mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-group-${{ matrix.group_id }}
           path: |
             mutants/mutmut-cicd-stats.json
             mutants/mutmut-exact-evidence/
@@ -4005,7 +4180,7 @@ jobs:
         image: nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228
         ports: ["4222:4222"]
       minio:
-        image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+        image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
         # The MinIO image defaults to printing its CLI help and exiting.  The
         # chaos job needs a long-lived object-storage server for the health
         # probe and the ToxiProxy upstream.
@@ -4198,12 +4373,61 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Select retry-safe same-run coverage producer artifacts
+        id: select_coverage_producers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -m scripts.quality.select_coverage_producer_artifacts \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --consumer-run-attempt "${{ github.run_attempt }}" \
+            --commit-sha "${{ github.sha }}" \
+            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --workflow-path ".github/workflows/ci.yml"
+
       - name: Download Python shard coverage data
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: backend-coverage-data-All-Python 3.14-shard-*-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).backend_shard_0.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/python/shards
-          merge-multiple: true
+          merge-multiple: false
+
+      - name: Download Python shard coverage data (shard 1)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).backend_shard_1.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/coverage/python/shards
+          merge-multiple: false
+
+      - name: Download Python shard coverage data (shard 2)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).backend_shard_2.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/coverage/python/shards
+          merge-multiple: false
+
+      - name: Download Python shard coverage data (shard 3)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).backend_shard_3.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/coverage/python/shards
+          merge-multiple: false
 
       - name: Set up uv for coverage aggregation
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -4214,56 +4438,102 @@ jobs:
       - name: Download Frontend coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: frontend-coverage-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).frontend.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: frontend/coverage
+          merge-multiple: false
 
       - name: Download Go gateway coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-gateway
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_gateway.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/gateway
+          merge-multiple: false
 
       - name: Download Go ws-hub coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-ws-hub
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_ws_hub.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/ws-hub
+          merge-multiple: false
 
       - name: Download Go file-processor coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-file-processor
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_file_processor.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/file-processor
+          merge-multiple: false
 
       - name: Download Go uni-cli coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-cmd-uni-cli
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_uni_cli.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/shared-inputs/uni-cli
+          merge-multiple: false
 
       - name: Download Go SPIFFE coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-pkg-spiffe
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_spiffe.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/shared-inputs/spiffe
+          merge-multiple: false
+
+      - name: Download Go shared logging coverage artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_logging.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/coverage/go/shared-inputs/logging
+          merge-multiple: false
 
       - name: Download Go SpiceDB coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-coverage-services-pkg-spicedb
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).go_spicedb.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/go/shared-inputs/spicedb
+          merge-multiple: false
 
       - name: Download Rust coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: rust-coverage
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).rust_coverage.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/rust
+          merge-multiple: false
 
       - name: Download Rust Codecov diagnostics
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: rust-codecov-reports
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).rust_codecov.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts/coverage/rust
+          merge-multiple: false
 
       - name: Verify backend shard provenance
         shell: bash
@@ -4275,20 +4545,36 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           WORKFLOW_EVENT: ${{ github.event_name }}
+          SELECTIONS_JSON: ${{ steps.select_coverage_producers.outputs.selections }}
         run: |
           set -euo pipefail
+          selection_value() {
+            python3 - "$SELECTIONS_JSON" "$1" "$2" <<'PY'
+          import json
+          import sys
+
+          selections = json.loads(sys.argv[1])
+          key, field = sys.argv[2], sys.argv[3]
+          value = selections.get(key, {}).get(field)
+          if not isinstance(value, (str, int)) or isinstance(value, bool):
+              raise SystemExit(f"missing or invalid coverage selection: {key}.{field}")
+          print(value)
+          PY
+          }
           test "$(find artifacts/coverage/python/shards -name '.coverage.shard-*' -type f | wc -l)" -eq 4
+          test "$(find artifacts/coverage/python/shards -name 'pytest-shard-*.json' -type f | wc -l)" -eq 4
           test "$(find artifacts/coverage/python/shards -name 'coverage-provenance-shard-*.json' -type f | wc -l)" -eq 4
-          test "$(find artifacts/coverage/python/shards -type f | wc -l)" -eq 8
+          test "$(find artifacts/coverage/python/shards -type f | wc -l)" -eq 12
           for shard in 0 1 2 3; do
             metadata="artifacts/coverage/python/shards/coverage-provenance-shard-${shard}.json"
-            artifact="backend-coverage-data-All-Python 3.14-shard-${shard}-attempt-${RUN_ATTEMPT}"
+            artifact="$(selection_value "backend_shard_${shard}" artifact_name)"
+            producer_attempt="$(selection_value "backend_shard_${shard}" producer_attempt)"
             python scripts/quality/coverage_provenance.py verify \
               --repository-root "$GITHUB_WORKSPACE" \
               --expected-sha "$EXPECTED_SHA" \
               --expected-repository "$WORKFLOW_REPOSITORY" \
               --expected-run-id "$RUN_ID" \
-              --expected-run-attempt "$RUN_ATTEMPT" \
+              --expected-run-attempt "$producer_attempt" \
               --expected-workflow-ref "$WORKFLOW_REF" \
               --expected-workflow-sha "$WORKFLOW_SHA" \
               --expected-event "$WORKFLOW_EVENT" \
@@ -4296,6 +4582,21 @@ jobs:
               --expected-artifact "$artifact" \
               --metadata "$metadata"
           done
+
+      - name: Verify backend test-universe manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t manifests < <(
+            find artifacts/coverage/python/shards \
+              -name 'pytest-shard-*.json' -type f -print | sort
+          )
+          test "${#manifests[@]}" -eq 4
+          verify_args=(--expected-shards 4)
+          for manifest in "${manifests[@]}"; do
+            verify_args+=(--manifest "$manifest")
+          done
+          python scripts/quality/pytest_shard_manifest.py "${verify_args[@]}"
 
       - name: Verify downloaded coverage artifacts
         shell: bash
@@ -4307,8 +4608,22 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           WORKFLOW_EVENT: ${{ github.event_name }}
+          SELECTIONS_JSON: ${{ steps.select_coverage_producers.outputs.selections }}
         run: |
           set -euo pipefail
+          selection_value() {
+            python3 - "$SELECTIONS_JSON" "$1" "$2" <<'PY'
+          import json
+          import sys
+
+          selections = json.loads(sys.argv[1])
+          key, field = sys.argv[2], sys.argv[3]
+          value = selections.get(key, {}).get(field)
+          if not isinstance(value, (str, int)) or isinstance(value, bool):
+              raise SystemExit(f"missing or invalid coverage selection: {key}.{field}")
+          print(value)
+          PY
+          }
           test "$(find artifacts/coverage/python/shards -name '.coverage.shard-*' -type f | wc -l)" -eq 4
           while IFS= read -r report; do test -s "$report"; done < <(
             find artifacts/coverage/python/shards -name '.coverage.shard-*' -type f -print
@@ -4316,22 +4631,26 @@ jobs:
           test -s frontend/coverage/lcov.info
           test -s frontend/coverage/coverage-final.json
           test "$(find frontend/coverage -maxdepth 1 -type f | wc -l)" -eq 3
-          test "$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)" -eq 3
-          test "$(find artifacts/coverage/go -name 'coverage.out' -type f | wc -l)" -eq 6
-          test "$(find artifacts/coverage/go -name 'coverage-provenance.json' -type f | wc -l)" -eq 6
+          test "$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)" -eq 4
+          test "$(find artifacts/coverage/go -name 'coverage.out' -type f | wc -l)" -eq 7
+          test "$(find artifacts/coverage/go -name 'coverage-provenance.json' -type f | wc -l)" -eq 7
           test "$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)" -eq 4
           test "$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)" -eq 4
           test "$(find artifacts/coverage/rust -name 'codecov.json' -type f | wc -l)" -eq 4
           verify_producer() {
             local metadata="$1"
             local job="$2"
-            local artifact="$3"
+            local key="$3"
+            local artifact
+            local producer_attempt
+            artifact="$(selection_value "$key" artifact_name)"
+            producer_attempt="$(selection_value "$key" producer_attempt)"
             python scripts/quality/coverage_provenance.py verify \
               --repository-root "$GITHUB_WORKSPACE" \
               --expected-sha "$EXPECTED_SHA" \
               --expected-repository "$WORKFLOW_REPOSITORY" \
               --expected-run-id "$RUN_ID" \
-              --expected-run-attempt "$RUN_ATTEMPT" \
+              --expected-run-attempt "$producer_attempt" \
               --expected-workflow-ref "$WORKFLOW_REF" \
               --expected-workflow-sha "$WORKFLOW_SHA" \
               --expected-event "$WORKFLOW_EVENT" \
@@ -4339,14 +4658,15 @@ jobs:
               --expected-artifact "$artifact" \
               --metadata "$metadata"
           }
-          verify_producer frontend/coverage/coverage-provenance.json unit-tests "frontend-coverage-attempt-$RUN_ATTEMPT"
-          verify_producer artifacts/coverage/go/gateway/coverage-provenance.json test go-coverage-services-gateway
-          verify_producer artifacts/coverage/go/ws-hub/coverage-provenance.json test go-coverage-services-ws-hub
-          verify_producer artifacts/coverage/go/file-processor/coverage-provenance.json test go-coverage-services-file-processor
-          verify_producer artifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json test go-coverage-services-cmd-uni-cli
-          verify_producer artifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json test go-coverage-services-pkg-spiffe
-          verify_producer artifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json test go-coverage-services-pkg-spicedb
-          verify_producer artifacts/coverage/rust/coverage-provenance.json rust-tests rust-coverage
+          verify_producer frontend/coverage/coverage-provenance.json unit-tests frontend
+          verify_producer artifacts/coverage/go/gateway/coverage-provenance.json test go_gateway
+          verify_producer artifacts/coverage/go/ws-hub/coverage-provenance.json test go_ws_hub
+          verify_producer artifacts/coverage/go/file-processor/coverage-provenance.json test go_file_processor
+          verify_producer artifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json test go_uni_cli
+          verify_producer artifacts/coverage/go/shared-inputs/logging/coverage-provenance.json test go_logging
+          verify_producer artifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json test go_spiffe
+          verify_producer artifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json test go_spicedb
+          verify_producer artifacts/coverage/rust/coverage-provenance.json rust-tests rust_coverage
 
       - name: Install coverage tooling
         run: uv sync --frozen
@@ -4422,6 +4742,7 @@ jobs:
           uv run python scripts/quality/merge_go_coverprofiles.py \
             --output artifacts/coverage/go/shared/coverage.out \
             artifacts/coverage/go/shared-inputs/uni-cli/coverage.out \
+            artifacts/coverage/go/shared-inputs/logging/coverage.out \
             artifacts/coverage/go/shared-inputs/spiffe/coverage.out \
             artifacts/coverage/go/shared-inputs/spicedb/coverage.out
           test -s artifacts/coverage/go/shared/coverage.out
@@ -4443,6 +4764,69 @@ jobs:
             --tool-version quality-provenance=2.0.0 \
             --report "go-shared|go-coverprofile|artifacts/coverage/go/shared/coverage.out|artifacts/coverage/go/shared/coverage.out"
 
+      - name: Write API-bound coverage selection receipt
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+          SELECTIONS_JSON: ${{ steps.select_coverage_producers.outputs.selections }}
+        run: |
+          set -euo pipefail
+          selection_value() {
+            python3 - "$SELECTIONS_JSON" "$1" "$2" <<'PY'
+          import json
+          import sys
+
+          selections = json.loads(sys.argv[1])
+          key, field = sys.argv[2], sys.argv[3]
+          value = selections.get(key, {}).get(field)
+          if not isinstance(value, (str, int)) or isinstance(value, bool):
+              raise SystemExit(f"missing or invalid coverage selection: {key}.{field}")
+          print(value)
+          PY
+          }
+          frontend_attempt="$(selection_value frontend producer_attempt)"
+          frontend_id="$(selection_value frontend artifact_id)"
+          frontend_name="$(selection_value frontend artifact_name)"
+          frontend_digest="$(selection_value frontend artifact_digest)"
+          gateway_attempt="$(selection_value go_gateway producer_attempt)"
+          gateway_id="$(selection_value go_gateway artifact_id)"
+          gateway_name="$(selection_value go_gateway artifact_name)"
+          gateway_digest="$(selection_value go_gateway artifact_digest)"
+          ws_hub_attempt="$(selection_value go_ws_hub producer_attempt)"
+          ws_hub_id="$(selection_value go_ws_hub artifact_id)"
+          ws_hub_name="$(selection_value go_ws_hub artifact_name)"
+          ws_hub_digest="$(selection_value go_ws_hub artifact_digest)"
+          file_processor_attempt="$(selection_value go_file_processor producer_attempt)"
+          file_processor_id="$(selection_value go_file_processor artifact_id)"
+          file_processor_name="$(selection_value go_file_processor artifact_name)"
+          file_processor_digest="$(selection_value go_file_processor artifact_digest)"
+          rust_attempt="$(selection_value rust_coverage producer_attempt)"
+          rust_id="$(selection_value rust_coverage artifact_id)"
+          rust_name="$(selection_value rust_coverage artifact_name)"
+          rust_digest="$(selection_value rust_coverage artifact_digest)"
+          python3 scripts/quality/coverage_provenance.py write-api-receipt \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output artifacts/coverage/provenance/api-selection.json \
+            --expected-sha "$EXPECTED_SHA" \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job coverage-policy-gate \
+            --selection "frontend/coverage/coverage-provenance.json|unit-tests|$frontend_attempt|$frontend_id|$frontend_name|$frontend_digest" \
+            --selection "artifacts/coverage/go/gateway/coverage-provenance.json|test|$gateway_attempt|$gateway_id|$gateway_name|$gateway_digest" \
+            --selection "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|$ws_hub_attempt|$ws_hub_id|$ws_hub_name|$ws_hub_digest" \
+            --selection "artifacts/coverage/go/file-processor/coverage-provenance.json|test|$file_processor_attempt|$file_processor_id|$file_processor_name|$file_processor_digest" \
+            --selection "artifacts/coverage/rust/coverage-provenance.json|rust-tests|$rust_attempt|$rust_id|$rust_name|$rust_digest"
+
       - name: Merge canonical coverage provenance
         shell: bash
         env:
@@ -4453,8 +4837,27 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           WORKFLOW_EVENT: ${{ github.event_name }}
+          SELECTIONS_JSON: ${{ steps.select_coverage_producers.outputs.selections }}
         run: |
           set -euo pipefail
+          selection_value() {
+            python3 - "$SELECTIONS_JSON" "$1" "$2" <<'PY'
+          import json
+          import sys
+
+          selections = json.loads(sys.argv[1])
+          key, field = sys.argv[2], sys.argv[3]
+          value = selections.get(key, {}).get(field)
+          if not isinstance(value, (str, int)) or isinstance(value, bool):
+              raise SystemExit(f"missing or invalid coverage selection: {key}.{field}")
+          print(value)
+          PY
+          }
+          frontend_artifact="$(selection_value frontend artifact_name)"
+          gateway_artifact="$(selection_value go_gateway artifact_name)"
+          ws_hub_artifact="$(selection_value go_ws_hub artifact_name)"
+          file_processor_artifact="$(selection_value go_file_processor artifact_name)"
+          rust_artifact="$(selection_value rust_coverage artifact_name)"
           python scripts/quality/coverage_provenance.py merge \
             --repository-root "$GITHUB_WORKSPACE" \
             --contract quality/quality-contract.json \
@@ -4468,16 +4871,17 @@ jobs:
             --run-attempt "$RUN_ATTEMPT" \
             --event "$WORKFLOW_EVENT" \
             --job coverage-policy-gate \
-            --artifact "quality-evidence-${{ github.sha }}" \
+            --artifact "quality-evidence-${{ github.sha }}-attempt-${RUN_ATTEMPT}" \
             --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
             --tool-version quality-provenance=2.0.0 \
+            --retry-selection-receipt artifacts/coverage/provenance/api-selection.json \
             --producer-expectation "artifacts/coverage/provenance/python.json|coverage-policy-gate|python-coverage-aggregate" \
-            --producer-expectation "frontend/coverage/coverage-provenance.json|unit-tests|frontend-coverage-attempt-$RUN_ATTEMPT" \
-            --producer-expectation "artifacts/coverage/go/gateway/coverage-provenance.json|test|go-coverage-services-gateway" \
-            --producer-expectation "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|go-coverage-services-ws-hub" \
-            --producer-expectation "artifacts/coverage/go/file-processor/coverage-provenance.json|test|go-coverage-services-file-processor" \
+            --producer-expectation "frontend/coverage/coverage-provenance.json|unit-tests|$frontend_artifact" \
+            --producer-expectation "artifacts/coverage/go/gateway/coverage-provenance.json|test|$gateway_artifact" \
+            --producer-expectation "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|$ws_hub_artifact" \
+            --producer-expectation "artifacts/coverage/go/file-processor/coverage-provenance.json|test|$file_processor_artifact" \
             --producer-expectation "artifacts/coverage/provenance/go-shared.json|coverage-policy-gate|go-shared-coverage-aggregate" \
-            --producer-expectation "artifacts/coverage/rust/coverage-provenance.json|rust-tests|rust-coverage" \
+            --producer-expectation "artifacts/coverage/rust/coverage-provenance.json|rust-tests|$rust_artifact" \
             --metadata artifacts/coverage/provenance/python.json \
             --metadata frontend/coverage/coverage-provenance.json \
             --metadata artifacts/coverage/go/gateway/coverage-provenance.json \
@@ -4619,7 +5023,7 @@ jobs:
       - name: Upload canonical quality evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: quality-evidence-${{ github.sha }}
+          name: quality-evidence-${{ github.sha }}-attempt-${{ github.run_attempt }}
           path: |
             coverage.xml
             artifacts/coverage/python/coverage.json
@@ -4629,6 +5033,7 @@ jobs:
             artifacts/coverage/go/ws-hub/coverage.out
             artifacts/coverage/go/file-processor/coverage.out
             artifacts/coverage/go/shared/coverage.out
+            artifacts/coverage/go/shared-inputs/logging/coverage.out
             artifacts/coverage/rust/rust-native/llvm.json
             artifacts/coverage/rust/rust-native/branch-llvm.json
             artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
@@ -4639,6 +5044,7 @@ jobs:
             artifacts/coverage/rust/rust-crypto/branch-llvm.json
             artifacts/coverage/provenance/python.json
             artifacts/coverage/provenance/go-shared.json
+            artifacts/coverage/provenance/api-selection.json
             artifacts/coverage/provenance/aggregate.json
             frontend/coverage/coverage-provenance.json
             artifacts/coverage/rust/coverage-provenance.json
@@ -4646,6 +5052,7 @@ jobs:
             artifacts/coverage/go/ws-hub/coverage-provenance.json
             artifacts/coverage/go/file-processor/coverage-provenance.json
             artifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json
+            artifacts/coverage/go/shared-inputs/logging/coverage-provenance.json
             artifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json
             artifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json
             artifacts/coverage/quality-manifest.json
@@ -4797,19 +5204,48 @@ jobs:
       - name: Install harness toolchains
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
+      - name: Generate ephemeral audit settings
+        # The model-default inventory imports SQLAlchemy metadata, which loads
+        # the settings object.  Keep the workflow-level SECRET_KEY empty and
+        # mint a runner-local value only for this unprivileged metadata check;
+        # no repository or long-lived CI secret is exposed to PR code.
+        if: env.SECRET_KEY == ''
+        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
       - name: Install harness dependencies
         run: |
           uv sync --frozen
-          npm --prefix frontend ci
+          npm --prefix frontend ci --no-audit --no-fund
 
       - name: Generate Inventory Manifest
-        run: python scripts/quality/generate_test_inventory.py
+        run: uv run python scripts/quality/generate_test_inventory.py
+
+      - name: Generate and verify model-default inventory
+        run: |
+          uv run python scripts/quality/audit_model_defaults.py \
+            --output artifacts/quality/model-default-inventory.json
+          uv run python scripts/quality/audit_model_defaults.py \
+            --check artifacts/quality/model-default-inventory.json
+
+      - name: Upload model-default inventory
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: model-default-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: artifacts/quality/model-default-inventory.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Validate CI check catalog
+        # Keep the static governance contract on the existing required
+        # inventory runner; this adds no fan-out lane or runner pressure.
+        run: uv run python scripts/quality/validate_ci_check_catalog.py
 
       - name: Verify Orphans and Anti-Patterns
-        run: python scripts/quality/check_orphans_and_anti_patterns.py
+        run: uv run python scripts/quality/check_orphans_and_anti_patterns.py
 
       - name: Verify developer harness (hermetic repository checks)
-        run: python verify_harness.py --repo-only
+        run: uv run python verify_harness.py --repo-only
 
   kyverno-test:
     name: Kyverno policy tests
@@ -4827,7 +5263,9 @@ jobs:
           version="v1.19.0"
           archive="kyverno-cli_v1.19.0_linux_x86_64.tar.gz"
           base="https://github.com/kyverno/kyverno/releases/download/${version}"
-          curl_args=(--fail --silent --show-error --location --retry 10 --retry-delay 5 --retry-all-errors --connect-timeout 20)
+          # Retry only transport/connection and curl-classified transient
+          # failures; deterministic HTTP errors must fail the gate immediately.
+          curl_args=(--fail --silent --show-error --location --retry 10 --retry-delay 5 --retry-connrefused --connect-timeout 20)
           curl "${curl_args[@]}" --output "$RUNNER_TEMP/$archive" "$base/$archive"
           curl "${curl_args[@]}" --output "$RUNNER_TEMP/checksums.txt" "$base/checksums.txt"
           archive_path="$RUNNER_TEMP/$archive"
@@ -4863,12 +5301,13 @@ jobs:
     name: CI Success
     runs-on: ubuntu-24.04
     timeout-minutes: 5 # CI-03 (audit Wave 10)
-    # A superseded PR run is cancelled while its dependencies are unwinding.
-    # Do not enqueue an always-on finalizer in that cancelled run: a queued
-    # finalizer can retain the workflow concurrency group and delay the fresh
-    # SHA-bound run even though no result from the stale run is releasable.
-    # Active (non-cancelled) runs still evaluate every dependency below.
-    if: ${{ always() && !cancelled() }}
+    permissions:
+      actions: read
+      contents: read
+    # The authoritative aggregate must execute even while dependencies are
+    # cancelled. A conditionally skipped required job is reported as success by
+    # GitHub, so cancellation is evaluated by the fail-closed result table below.
+    if: ${{ always() }}
     needs:
       - pre-commit-check
       - pre-commit-security-and-types
@@ -4894,6 +5333,7 @@ jobs:
       - schemathesis-api-tests
       - msw-mock-drift
       - provenance-check
+      - e2e-wasm-build
       - e2e-tests
       - e2e-tests-cross-browser
       - rust-ffi-asan
@@ -4939,10 +5379,6 @@ jobs:
           COVERAGE_RESULT: ${{ needs.coverage-policy-gate.result }}
         run: |
           set -euo pipefail
-          # The full load-and-chaos stack runs in nightly-full-gate.yml. It is
-          # deliberately absent from this fast PR gate until Temporal boot is
-          # reliable enough for a merge-blocking promotion.
-          #
           required_results=(
             "pre-commit-check|${{ needs.pre-commit-check.result }}"
             "pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}"
@@ -4968,7 +5404,9 @@ jobs:
             "schemathesis-api-tests|${{ needs.schemathesis-api-tests.result }}"
             "msw-mock-drift|${{ needs.msw-mock-drift.result }}"
             "provenance-check|${{ needs.provenance-check.result }}"
+            "e2e-wasm-build|${{ needs.e2e-wasm-build.result }}"
             "e2e-tests|${{ needs.e2e-tests.result }}"
+            "e2e-tests-cross-browser|${{ needs.e2e-tests-cross-browser.result }}"
             "rust-ffi-asan|${{ needs.rust-ffi-asan.result }}"
             "rust-ffi-tsan|${{ needs.rust-ffi-tsan.result }}"
             "rust-tests|${{ needs.rust-tests.result }}"
@@ -4977,7 +5415,9 @@ jobs:
             "mutation-tests-stats|${{ needs.mutation-tests-stats.result }}"
             "mutation-tests-universe|${{ needs.mutation-tests-universe.result }}"
             "mutation-tests-incremental|${{ needs.mutation-tests-incremental.result }}"
+            "chaos-tests|${{ needs.chaos-tests.result }}"
             "chaos-loadtest-orchestrator|${{ needs.chaos-loadtest-orchestrator.result }}"
+            "db-migration-integrity|${{ needs.db-migration-integrity.result }}"
             "actionlint|${{ needs.actionlint.result }}"
             "dockerfile-lint|${{ needs.dockerfile-lint.result }}"
             "shellcheck|${{ needs.shellcheck.result }}"
@@ -5009,11 +5449,12 @@ jobs:
             fi
           done
 
-          # Mutation producers are intentionally phase-gated on the aggregate
-          # coverage contract. A failed prerequisite already blocks this
-          # finalizer; in that case the expensive matrix is expected to be
-          # skipped, while any producer that started despite green readiness
-          # remains fail-closed and must conclude successfully.
+          # Mutation execution and aggregation are intentionally phase-gated on
+          # the aggregate coverage contract. The Stryker preflight may overlap
+          # coverage, but a failed prerequisite still blocks execution. In that
+          # case the expensive matrix is expected to be skipped, while any
+          # producer that started despite green readiness remains fail-closed
+          # and must conclude successfully.
           mutation_expected_result=success
           if {
             [[ "$COVERAGE_RESULT" != "success" ]] ||
@@ -5026,6 +5467,19 @@ jobs:
             mutation_expected_result=skipped
           fi
 
+          # These two resilience jobs are dependency-gated. GitHub reports a
+          # dependent job as skipped when its direct prerequisite failed or
+          # was itself skipped. Model only those explicit states as an
+          # expected skip; cancellations and unrelated skips remain failures.
+          chaos_expected_result=success
+          if [[ "$BACKEND_TESTS_RESULT" == "failure" || "$BACKEND_TESTS_RESULT" == "skipped" ]]; then
+            chaos_expected_result=skipped
+          fi
+          chaos_loadtest_expected_result=success
+          if [[ "$PRE_COMMIT_RESULT" == "failure" || "$PRE_COMMIT_RESULT" == "skipped" ]]; then
+            chaos_loadtest_expected_result=skipped
+          fi
+
           failed=0
           for entry in "${required_results[@]}"; do
             IFS='|' read -r job result <<< "$entry"
@@ -5034,6 +5488,10 @@ jobs:
               expected_result="$coverage_expected_result"
             elif [[ "$job" == mutation-tests-* ]]; then
               expected_result="$mutation_expected_result"
+            elif [[ "$job" == "chaos-tests" ]]; then
+              expected_result="$chaos_expected_result"
+            elif [[ "$job" == "chaos-loadtest-orchestrator" ]]; then
+              expected_result="$chaos_loadtest_expected_result"
             fi
             if [[ "$result" != "$expected_result" ]]; then
               echo "::error::Required CI job '$job' concluded '$result'; expected '$expected_result'."
@@ -5052,16 +5510,22 @@ jobs:
           }
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            # The frontend mutation lane is intentionally skipped when either
-            # readiness prerequisite fails.  The prerequisite is already a
-            # required result above; avoid reporting those expected skips as
-            # synthetic mutation failures while keeping every started lane
-            # fail-closed.
-            if [[ "$PRE_COMMIT_RESULT" == "success" && "$FRONTEND_TESTS_RESULT" == "success" && "$COVERAGE_RESULT" == "success" ]]; then
+            # The preflight is qualification-gated, so a started producer has
+            # already observed successful frontend/WASM checks. Coverage and
+            # security/type gates still authorize execution and aggregation;
+            # any started producer is required to conclude successfully.
+            if [[ "$PRE_COMMIT_RESULT" == "success" && "$PRE_COMMIT_SECURITY_RESULT" == "success" && "$COVERAGE_RESULT" == "success" ]]; then
               assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
               assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "success"
               assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "success"
               assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "success"
+            elif [[ "$PRE_COMMIT_RESULT" == "success" && "${{ needs.stryker-preflight.result }}" == "success" ]]; then
+              # No execution or aggregate lane may start on a
+              # failed/cancelled coverage gate.
+              assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
+              assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "skipped"
+              assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "skipped"
+              assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "skipped"
             else
               assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "skipped"
               assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "skipped"
@@ -5116,21 +5580,69 @@ jobs:
             echo "| stryker-aggregate (frontend, 100%) | $stryker |";
             echo "| stryker-evidence-roundtrip | $stryker_roundtrip |";
             echo "";
-            echo "## Load & chaos resilience (advisory)";
+             echo "## Load & chaos resilience (release-blocking)";
             echo "";
             echo "| Job | Result |";
             echo "|-----|--------|";
             echo "| chaos-tests (ToxiProxy W19) | $toxi |";
             echo "| db-migration-integrity (W21) | $dbmig |";
             echo "";
-            echo "_chaos-tests + db-migration-integrity advisory until ToxiProxy coverage baseline is established._";
+             echo "_Chaos resilience and migration rollback integrity are release-blocking checks._";
             echo "";
-            echo "## Cross-browser E2E (advisory - Phase 7 stabilization)";
+             echo "## Cross-browser E2E (release-blocking)";
             echo "";
             echo "| Job | Result |";
             echo "|-----|--------|";
             echo "| e2e-tests-cross-browser | $browsers |";
-            echo "_Promote after 30 consecutive green days and update required-check policy._";
+             echo "_All supported browser projects must pass for release promotion._";
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Required Go integration results - ws-hub: $ws, file-processor: $fp, gateway: $gw"
-          echo "Advisory results - browsers: $browsers, toxi: $toxi, dbmig: $dbmig"
+           echo "Release-blocking results - browsers: $browsers, chaos: $toxi, migration: $dbmig"
+
+      - name: Checkout source for CI health report
+        if: ${{ always() }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python for CI health report
+        if: ${{ always() }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Generate current-run CI timing ledger
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/quality
+          python scripts/quality/analyze_ci_critical_path.py \
+            --repository "${GITHUB_REPOSITORY}" \
+            --run-id "${GITHUB_RUN_ID}" \
+            --concurrency-cap 20 \
+            --diagnostic-lower-bound \
+            --output artifacts/quality/ci-health-report.json
+
+      - name: Render compact current-run CI health report
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/quality/render_ci_health_report.py \
+            --input artifacts/quality/ci-health-report.json \
+            --output artifacts/quality/ci-health-report.md
+          cat artifacts/quality/ci-health-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload current-run CI health report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v6.0.0
+        with:
+          name: ci-health-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/quality/ci-health-report.*
+          if-no-files-found: error
+          retention-days: 14

@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -75,6 +76,51 @@ async def start_presence_pubsub() -> None:
 
 async def stop_presence_pubsub() -> None:
     await presence_pubsub.shutdown()
+
+
+def _message_content_from_payload(data: Mapping[str, Any]) -> tuple[bool, object]:
+    """Return an explicitly supplied chat message content value.
+
+    The Python fallback endpoint historically received control frames, while
+    ws-hub accepts ``message`` envelopes whose content lives in ``payload``.
+    Keep extraction deliberately narrow: only those two wire shapes participate
+    in the content contract; unrelated control metadata is covered by the raw
+    UTF-8 frame limit instead.
+    """
+    if data.get("type") != "message":
+        return False, None
+
+    if "content" in data:
+        return True, data["content"]
+
+    payload = data.get("payload")
+    if isinstance(payload, Mapping):
+        if "content" in payload:
+            return True, payload["content"]
+        nested_message = payload.get("message")
+        if isinstance(nested_message, Mapping) and "content" in nested_message:
+            return True, nested_message["content"]
+
+    return False, None
+
+
+def _is_websocket_payload_within_limits(text_data: str, data: object) -> bool:
+    """Apply independent content and transport limits to one WS frame.
+
+    ``CHAT_MAX_MESSAGE_LENGTH`` counts Unicode code points in the message body,
+    matching Pydantic/DB/frontend contracts. ``CHAT_MAX_WEBSOCKET_FRAME_BYTES``
+    counts the complete UTF-8 JSON frame, matching ws-hub's raw ingress guard;
+    JSON framing overhead therefore never consumes message-content slots.
+    """
+    if len(text_data.encode("utf-8")) > CHAT_MAX_WEBSOCKET_FRAME_BYTES:
+        return False
+    if not isinstance(data, Mapping):
+        return False
+
+    has_content, content = _message_content_from_payload(data)
+    if not has_content:
+        return True
+    return isinstance(content, str) and len(content) <= CHAT_MAX_MESSAGE_LENGTH
 
 
 # MOVED: _handle_presence_pubsub is now in app/api/ws/presence.py
@@ -157,10 +203,9 @@ async def websocket_chat(websocket: WebSocket) -> None:
         while True:
             try:
                 text_data = await websocket.receive_text()
-                if (
-                    len(text_data) > CHAT_MAX_MESSAGE_LENGTH
-                    or len(text_data.encode("utf-8")) > CHAT_MAX_WEBSOCKET_FRAME_BYTES
-                ):
+                # Reject over-limit raw frames before parsing, matching ws-hub's
+                # 60 KiB ingress guard and avoiding unnecessary JSON work.
+                if len(text_data.encode("utf-8")) > CHAT_MAX_WEBSOCKET_FRAME_BYTES:
                     logger.warning(
                         "WS payload too large from user %s", user.id
                     )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
@@ -180,6 +225,17 @@ async def websocket_chat(websocket: WebSocket) -> None:
                     continue
 
                 data = orjson.loads(text_data)
+                if not isinstance(data, dict):
+                    await websocket.send_json(
+                        {"type": "error", "message": "Invalid JSON"}
+                    )
+                    continue
+                if not _is_websocket_payload_within_limits(text_data, data):
+                    logger.warning(
+                        "WS message content too large from user %s", user.id
+                    )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                    await websocket.close(code=1009, reason="Payload too large")
+                    return
             except (json.JSONDecodeError, ValueError, orjson.JSONDecodeError) as exc:
                 # MOD-14-04 (audit 2026-03-23): Log malformed frames with a frame preview
                 # so ops can distinguish bugs (e.g. wrong Content-Type) from active

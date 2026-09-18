@@ -113,6 +113,8 @@
 	}
 
 	# Optional same-origin access to MinIO objects.
+	@private_storage path /storage/chat_uploads/* /storage/event_files/*
+	respond @private_storage 404
 	handle /storage/* {
 		uri strip_prefix /storage
 		reverse_proxy minio:9000
@@ -159,7 +161,14 @@
 	# --- Logging -----------------------------------------------------------
 	log {
 		output stderr
-		format json
+		# The WebSocket one-time ticket is intentionally carried in the browser
+		# query string for the upgrade, but it is a bearer credential. Keep the
+		# request shape for diagnostics while never persisting the token value.
+		format filter {
+			request>uri query {
+				replace ticket REDACTED
+			}
+		}
 		level INFO
 	}
 }

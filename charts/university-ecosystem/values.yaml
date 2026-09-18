@@ -3,6 +3,9 @@ fullnameOverride: ""
 
 global:
   environment: "development"
+  # Canonical JWT issuer shared by backend minting and zero-trust consumers.
+  # Release overlays replace this with the HTTPS API origin for the deployment.
+  jwtIssuer: "university-ecosystem"
   # Leave empty so dependency charts can use their own verified registries.
   imageRegistry: ""
   # Optional immutable release tag shared by all first-party workloads. A
@@ -43,7 +46,7 @@ connections:
 # Required keys: jwt-secret, jwt-rsa-private-key, jwt-rsa-public-key,
 # internal-hmac-secret, ws-hub-internal-secret, csrf-hmac-secret,
 # spotify-token-secret, elasticsearch-password, spicedb-preshared-key,
-# audit-log-secret, idempotency-hmac-secret, all keys configured under
+# audit-log-secret, token-hmac-secret, idempotency-hmac-secret, all keys configured under
 # applicationSecrets.keys, minio-access-key, minio-secret-key, temporal-api-key.
 # An ExternalSecret may own this Secret; keep its refreshInterval at 1m so both
 # backend and outbox-worker receive overlapping key rings during rotation.
@@ -117,7 +120,7 @@ backup:
   failedJobsHistoryLimit: 3
   ttlSecondsAfterFinished: 86400
   postgresImage: "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
-  minioClientImage: "minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
+  minioClientImage: "quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
   minioEndpoint: "http://minio:9000"
   minioBucket: "backups"
 
@@ -177,6 +180,7 @@ backend:
     elasticsearchPassword: ""
     spicedbPresharedKey: ""
     auditLogSecret: ""
+    tokenHMACSecret: ""
     idempotencyHMACSecret: ""
     # Development-only key-ring material used when existingSecret is empty.
     # Format: "key-id:base64url-key[,previous-id:base64url-key]". Never set
@@ -190,7 +194,18 @@ backend:
     # Empty disables the Elasticsearch integration. Production URLs must use
     # HTTPS; the application validates this at startup.
     elasticsearchURL: ""
+    # User uploads use the local static directory only in development. Release
+    # environments must select S3/MinIO so the read-only container root is not
+    # used as durable storage. Credentials come from applicationSecrets.
+    storageBackend: "static"
+    storageS3Bucket: ""
+    storageS3Region: ""
+    storageS3EndpointURL: ""
+    storageS3BaseURL: ""
     minioSecure: false
+    # Malware scanning is opt-in for local development and mandatory in
+    # staging/production (validated by the chart and backend at startup).
+    eventFileScannerEnabled: false
     # OpenFeature RPC provider endpoint. The flagd Service is deployed from
     # k8s/flagd/ in the same namespace by the GitOps stack.
     flagdHost: "flagd"
@@ -210,10 +225,19 @@ frontend:
   resources:
     requests:
       cpu: 50m
-      memory: 64Mi
+      memory: 128Mi
     limits:
       cpu: 200m
-      memory: 256Mi
+      # Node SSR can briefly retain rendered route data and Vite assets during
+      # concurrent navigations. Keep the chart limit aligned with the
+      # standalone manifest (512Mi) so HPA memory utilization is meaningful.
+      memory: 512Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
 
 # Gateway Service (Go)
 gateway:
@@ -234,6 +258,12 @@ gateway:
     limits:
       cpu: 500m
       memory: 512Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
   config:
     jwtSecret: "" # MUST be provided as --set gateway.config.jwtSecret=...
     jwtAudience: "university-ecosystem-api"
@@ -327,6 +357,12 @@ fileProcessor:
     temporalTLSDisabled: true
     temporalAPIKey: ""
     rsaPublicKeyPEM: ""
+    # File-processor fetches the backend's public RSA JWKS and retains the
+    # previous snapshot when a refresh fails. Empty uses the in-cluster backend
+    # service URL rendered by the deployment template.
+    jwksURL: ""
+    jwksRefreshInterval: 300
+    jwtActiveKID: "primary"
     otlpEndpoint: "otel-collector:4317"
     # Production config validation rejects true; set false with a TLS endpoint.
     otlpInsecure: true
@@ -383,6 +419,11 @@ ingress:
           pathType: Prefix
           # Keep authentication, rate limiting, and gRPC dispatch at the edge.
           service: gateway
+        - path: /.well-known
+          pathType: Prefix
+          # Release JWKS discovery is fetched through the HTTPS API origin and
+          # must terminate at the backend that owns the public key endpoint.
+          service: backend
   tls:
     - secretName: university-ecosystem-tls  # pragma: allowlist secret
       hosts:
@@ -571,7 +612,11 @@ keda:
       enabled: true
       monitoringEndpoint: ""
       stream: "FILES_PROCESS"
-      consumer: "file-processor-worker"
+      # Keep this durable name aligned with the canonical consumer declared by
+      # services/file-processor/cmd/file-processor/main.go.  KEDA reads lag for
+      # this exact durable; a different name silently scales the deployment
+      # based on a consumer that the service never creates.
+      consumer: "file-processors-temporal"
       lagThreshold: 10
 
   outboxWorker:

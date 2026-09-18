@@ -3,7 +3,7 @@
 ## Test Philosophy
 - Multi-stack end-to-end verification, quality contracts, and closed-loop regression prevention.
 - Coverage Mandate: 100% statement, branch, function, and line coverage across critical backend and frontend paths per `quality/quality-contract.json`.
-- Zero-Debt Target: All required PR #1249 CI/CD checks, mutation testing shards, and harness suites passing cleanly. This file describes the target, not a historical pass claim.
+- Zero-Debt Target: All required CI/CD checks for the exact head under review, mutation testing shards, and harness suites passing cleanly. This file describes the target, not a historical pass claim.
 
 ---
 
@@ -20,7 +20,7 @@
 | F7 | Documentation Parity | `audit_links.py` / `compare_readmes.py` | ✓ | ✓ | ✓ | ✓ |
 | F8 | WS-Hub Benchmark Ratio | `compare_paired_benchmarks.py` | ✓ | ✓ | ✓ | ✓ |
 | F9 | Playwright Cross-Browser Matrix | `playwright test` (Chromium/Firefox/WebKit) | ✓ | ✓ | ✓ | ✓ |
-| F10 | PR #1249 Aggregator Gate | `gh pr checks 1249` / `verify_harness.py` | ✓ | ✓ | ✓ | ✓ |
+| F10 | Current-Head Aggregator Gate | repository CI status for the reviewed head / `verify_harness.py` | ✓ | ✓ | ✓ | ✓ |
 
 ---
 
@@ -38,4 +38,4 @@
 - **Harness Acceptance**: report from a fresh `verify_harness.py --repo-only` run; no stale count is normative.
 - **Pre-Tool Safety Challenger**: report from a fresh `scripts/verify_challenger_pre_tool.py` run.
 - **Quality Gate Aggregator**: `check_orphans_and_anti_patterns.py` returns 0 violations.
-- **PR #1249 Checks**: every required check must report `conclusion: SUCCESS` for the current head SHA; inspect with `gh pr checks 1249`.
+- **Current-head checks**: every required check must report `conclusion: SUCCESS` for the exact head SHA under review; inspect the hosting provider's check/run API and record the SHA alongside the evidence.

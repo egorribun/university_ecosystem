@@ -315,13 +315,18 @@ async def start_totp_verification(
     client_fingerprint: str,
 ) -> IssuedChallenge:
     with _tracer.start_as_current_span("mfa.totp.challenge.issue"):
+        payload_data = dict(payload or {})
+        # Bind the challenge to the account security epoch.  Password reset and
+        # MFA lifecycle mutations advance this value; consume_challenge() then
+        # rejects any token that was issued before the rotation.
+        payload_data["mfa_epoch"] = int(getattr(user, "mfa_epoch", 0) or 0)
         challenge = await issue_challenge(
             db,
             user_id=user.id,
             session_id=session.id if session else None,
             challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
             locale=locale,
-            payload=dict(payload or {}),
+            payload=payload_data,
             attempt_limit=settings.mfa_totp_attempt_limit,
             flow=flow,
             session_identifier=session_identifier,

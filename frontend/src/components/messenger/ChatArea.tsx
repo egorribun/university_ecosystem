@@ -22,6 +22,16 @@ import { memo, Dispatch, SetStateAction, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "@tanstack/react-router"
 
+/** Search focus is only scheduled while the search control is mounted. */
+export function shouldFocusSearchInput(
+  showSearchInChat: boolean,
+  input: HTMLInputElement | null
+): input is HTMLInputElement {
+  return showSearchInChat && input !== null
+}
+
+const NOOP_CHAT_ACTION = () => undefined
+
 interface ChatAreaProps {
   isMobile: boolean
   selectedChatId: string | null
@@ -164,7 +174,11 @@ export const ChatArea = memo(function ChatArea({
   // changes needed; typing events flow through ws-hub presence subscription
   // already (W134+ infra).
   const { getTypingUsersForChat, sendTyping } = useMessenger()
-  const typingUsers = selectedChatId ? getTypingUsersForChat(selectedChatId) : []
+  const openGroupInfo = onOpenGroupInfo ?? NOOP_CHAT_ACTION
+  // The indicator is only mounted for an active chat, so there is no need to
+  // allocate a placeholder array while the empty state is visible. The null
+  // inactive value is never rendered and keeps the branch allocation-free.
+  const typingUsers = selectedChatId ? getTypingUsersForChat(selectedChatId) : null
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const chatMenuItems = [
     {
@@ -199,11 +213,11 @@ export const ChatArea = memo(function ChatArea({
   // component unmounts mid-focus-frame, e.g., rapid navigation away from
   // /messenger immediately after toggling chat search).
   useEffect(() => {
-    if (showSearchInChat && searchInputRef.current) {
-      const rafId = requestAnimationFrame(() => searchInputRef.current?.focus())
-      return () => cancelAnimationFrame(rafId)
-    }
-    return undefined
+    const input = searchInputRef.current
+    if (!shouldFocusSearchInput(showSearchInChat, input)) return undefined
+
+    const rafId = requestAnimationFrame(() => input.focus())
+    return () => cancelAnimationFrame(rafId)
   }, [showSearchInChat])
 
   return (
@@ -246,9 +260,13 @@ export const ChatArea = memo(function ChatArea({
                     whileHover={prefersReducedMotion ? undefined : { scale: 1.02 }}
                     whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
                     className="flex cursor-pointer items-center gap-3 border-none bg-transparent text-left outline-none"
-                    onClick={() =>
-                      activeChatDisplay?.isGroup ? onOpenGroupInfo?.() : handleViewProfile()
-                    }
+                    onClick={() => {
+                      if (activeChatDisplay?.isGroup) {
+                        openGroupInfo()
+                        return
+                      }
+                      handleViewProfile()
+                    }}
                   >
                     <div className="relative">
                       {/* Wave 211 G4 — group header: the GroupAvatar Users glyph +
@@ -442,7 +460,7 @@ export const ChatArea = memo(function ChatArea({
             onStartReply={onStartReply}
             onForward={onForward}
           />
-          <TypingIndicator users={typingUsers} prefersReducedMotion={prefersReducedMotion} />
+          <TypingIndicator users={typingUsers!} prefersReducedMotion={prefersReducedMotion} />
           <MessageInput
             onSend={handleSendMessage}
             replyingTo={replyingTo}

@@ -1,7 +1,22 @@
 import time
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+import app.auth.rbac as rbac
+
+
+@pytest.fixture(autouse=True)
+async def reset_spicedb_state() -> AsyncIterator[None]:
+    """Reset process-global SpiceDB state around breaker/cache tests."""
+    await rbac._spicedb_breaker.reset()
+    rbac._permission_cache.clear()
+    try:
+        yield
+    finally:
+        await rbac._spicedb_breaker.reset()
+        rbac._permission_cache.clear()
 
 
 def _clear_rbac_metrics():
