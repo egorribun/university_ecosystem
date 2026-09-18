@@ -182,6 +182,42 @@ async def test_save_image_forwards_all_configured_optimizer_bounds():
 
 
 @pytest.mark.asyncio
+async def test_save_image_defaults_missing_pixel_budget_to_zero():
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(b"raw"),
+        headers={"content-type": "image/png"},
+    )
+    backend = AsyncMock()
+    backend.save_file.return_value = "/static/avatar.webp"
+    legacy_settings = SimpleNamespace(image_max_width=640, image_max_height=480)
+
+    with (
+        patch.object(files_module, "settings", legacy_settings),
+        patch.object(files_module, "_read_limited", new=AsyncMock(return_value=b"raw")),
+        patch.object(files_module, "_detect_image_mime", return_value="image/png"),
+        patch.object(files_module, "_looks_like_polyglot", return_value=False),
+        patch.object(
+            files_module,
+            "optimize_image",
+            return_value=(b"optimized", "image/webp"),
+        ) as optimizer,
+        patch.object(files_module, "_get_storage_backend", return_value=backend),
+        patch.object(files_module, "_prepare_local_storage", new=AsyncMock()),
+    ):
+        result = await save_image(upload, "avatars", "user")
+
+    assert result == "/static/avatar.webp"
+    optimizer.assert_called_once_with(
+        b"raw",
+        max_width=640,
+        max_height=480,
+        max_pixels=0,
+        content_type="image/png",
+    )
+
+
+@pytest.mark.asyncio
 async def test_save_image_maps_pixel_budget_to_payload_too_large():
     from app.utils.images import ImagePixelLimitError
 
