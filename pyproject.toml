@@ -600,7 +600,12 @@ also_copy = [
     ".lighthouserc.js",
     ".trivyignore.yaml",
     "quality",
-    # The directory creates the destination parent before the exact allowlist
+     # Configuration-reference contract tests read the operator-facing example
+     # and documentation from the repository root during mutmut's isolated
+     # baseline/stats pass.
+     ".env.example",
+     "CONFIGURATION.md",
+     # The directory creates the destination parent before the exact allowlist
     # file is copied below; mutmut's copy2 path does not create parents.
     "security",
     "security/audit-allowlist.yaml",
