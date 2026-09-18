@@ -48,7 +48,9 @@ def _path_segments(storage_url: str) -> list[str]:
     if not raw:
         return []
     parsed = urlparse(raw)
-    path = parsed.path if parsed.scheme or parsed.netloc else raw.split("?", 1)[0]
+    # ``partition`` keeps only the first query delimiter without exposing a
+    # max-split parameter whose equivalent mutations cannot be distinguished.
+    path = parsed.path if parsed.scheme or parsed.netloc else raw.partition("?")[0]
     # ``image_proxy._sanitize_path_input`` applies URL decoding repeatedly;
     # perform the same canonicalisation before classifying a path so an
     # over-encoded private prefix cannot reach a public transformation route.

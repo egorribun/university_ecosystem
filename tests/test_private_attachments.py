@@ -51,6 +51,11 @@ def test_private_attachment_urls_cover_local_s3_and_legacy_values() -> None:
         )
         == "agenda.docx"
     )
+    # Raw storage paths may contain a query suffix too.  Only the first
+    # delimiter belongs to the URL grammar; a second delimiter must not leak
+    # into the validated filename or weaken the private-path classification.
+    raw_query_path = f"chat_uploads/chat_{chat_id}/report.pdf?download=1?redirect=0"
+    assert private_attachment_filename(raw_query_path, "chat") == "report.pdf"
     assert (
         private_attachment_url(
             "chat", chat_id, f"/static/chat_uploads/chat_{chat_id}/report.pdf"
@@ -82,6 +87,11 @@ def test_private_attachment_urls_cover_local_s3_and_legacy_values() -> None:
     )
     assert is_private_attachment_path("chat_uploads/chat_id/report.pdf")
     assert is_private_attachment_path("%2563hat_uploads%2Fchat_id%2Freport.pdf")
+    # A protocol-relative URL whose host merely resembles the protected
+    # prefix must not be classified as a private storage path.  Only the URL
+    # path is security-relevant; treating the authority as a path segment
+    # would incorrectly route a public resource through the private handler.
+    assert not is_private_attachment_path("//chat_uploads/public.txt")
     assert not is_private_attachment_path("avatars/avatar.png")
 
 
@@ -138,6 +148,8 @@ def test_private_attachment_helpers_fail_closed_for_invalid_paths() -> None:
     )
     with pytest.raises(ValueError, match=r"^Invalid attachment filename$"):
         private_attachment_storage_key("chat", "x", "../file.txt")
+    with pytest.raises(ValueError, match=r"^Invalid attachment resource id$"):
+        private_attachment_storage_key("chat", ".", "file.txt")
     for resource_id, filename in (
         ("../x", "file.txt"),
         (".", "file.txt"),

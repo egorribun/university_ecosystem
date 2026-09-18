@@ -413,6 +413,21 @@ async def test_save_attachment_marks_private_prefixes_non_cacheable(subdir: str)
     assert backend.save_file.await_args.kwargs["cache_control"] == "private, no-store"
 
 
+@pytest.mark.parametrize(
+    ("subdir", "expected"),
+    [
+        ("chat_uploads", "private, no-store"),
+        ("event_files/archive", "private, no-store"),
+        ("documents", "public, max-age=31536000, immutable"),
+        ("/documents/", "public, max-age=31536000, immutable"),
+    ],
+)
+def test_cache_control_helper_normalizes_prefix_without_type_errors(
+    subdir: str, expected: str
+):
+    assert files_module._cache_control_for_subdir(subdir) == expected
+
+
 @pytest.mark.asyncio
 async def test_save_attachment_accepts_matching_allowed_extension():
     upload = UploadFile(
