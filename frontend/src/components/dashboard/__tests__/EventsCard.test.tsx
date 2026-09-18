@@ -667,25 +667,33 @@ describe("EventsCard", () => {
   })
 
   it("keeps reduced-motion presence values inert", () => {
-    reducedMotion.value = true
-    eventsState.current = {
-      data: [
-        {
-          id: 99,
-          title: "Reduced motion event",
-          starts_at: new Date(Date.now() + 60_000).toISOString(),
-          location: "",
-        },
-      ],
-      isLoading: false,
-      isFetching: false,
-    }
+    vi.useFakeTimers()
+    try {
+      // Freeze the clock away from a local-midnight boundary so the event
+      // remains in the deterministic "today" scope during the test.
+      vi.setSystemTime(new Date(2026, 8, 1, 12, 0, 0, 0))
+      reducedMotion.value = true
+      eventsState.current = {
+        data: [
+          {
+            id: 99,
+            title: "Reduced motion event",
+            starts_at: new Date(Date.now() + 60_000).toISOString(),
+            location: "",
+          },
+        ],
+        isLoading: false,
+        isFetching: false,
+      }
 
-    renderCard()
-    const item = screen.getByText("Reduced motion event").closest("li")!
-    expect(item).toHaveAttribute("data-motion-initial", "false")
-    expect(item).toHaveAttribute("data-motion-exit", '{"opacity":0}')
-    expect(item).toHaveAttribute("data-motion-transition", '{"duration":0}')
+      renderCard()
+      const item = screen.getByText("Reduced motion event").closest("li")!
+      expect(item).toHaveAttribute("data-motion-initial", "false")
+      expect(item).toHaveAttribute("data-motion-exit", '{"opacity":0}')
+      expect(item).toHaveAttribute("data-motion-transition", '{"duration":0}')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("activates the view-all link for the legacy Spacebar key", () => {
