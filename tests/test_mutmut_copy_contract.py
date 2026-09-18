@@ -8,6 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED_ALSO_COPY = {
+    ".env.example",
+    "CONFIGURATION.md",
     ".gitleaks.toml",
     "SECURITY.md",
     "security",
