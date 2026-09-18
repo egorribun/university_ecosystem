@@ -9,8 +9,11 @@ import { utf8ToBytes } from "@noble/hashes/utils.js"
 import { AxiosError } from "axios"
 
 import api from "@/api/client"
+import * as apiClient from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
 import * as logger from "@/app/logger"
+import * as etagCache from "@/api/interceptors/etagCache"
+import * as legacyTokenCleanup from "@/hooks/auth/legacyTokenCleanup"
 import { testUser } from "@/tests/mocks/handlers"
 import { withExpectedConsole } from "@/tests/strictConsole"
 import type { UserState } from "@/types/Auth"
@@ -1456,6 +1459,10 @@ describe("useProfileSync mutation contracts", () => {
 
     const posted = channels.flatMap((channel) => channel.postMessage.mock.calls)
     expect(posted).toEqual([[{ type: "mfa-pending", payload: pending }], [{ type: "mfa-cleared" }]])
+    // Every one-shot publisher owns its channel and must release it after the
+    // message is queued. The subscription channel is intentionally retained
+    // until unmount, so exclude it from this assertion.
+    expect(channels.slice(1).every((channel) => channel.close.mock.calls.length === 1)).toBe(true)
     unmount()
   })
 
@@ -1479,8 +1486,12 @@ describe("useProfileSync mutation contracts", () => {
     })
     expect(channels).toHaveLength(1)
     const cancelQueriesSpy = vi.spyOn(queryClient, "cancelQueries")
+    const clearCachesOnLogoutSpy = vi.spyOn(etagCache, "clearCachesOnLogout")
+    const resetEtagCacheSpy = vi.spyOn(apiClient, "resetEtagCache")
+    const clearLegacyAccessTokenSpy = vi.spyOn(legacyTokenCleanup, "clearLegacyAccessToken")
 
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "stale-cache")
+    localStorage.setItem("ecosystem.access.token", "legacy-token")
     const pending = { ticket: "local-pending", methods: ["totp"] } as never
     await act(async () => {
       result.current.updatePendingMfa(pending, { broadcast: false })
@@ -1491,6 +1502,10 @@ describe("useProfileSync mutation contracts", () => {
     })
 
     expect(cancelQueriesSpy).toHaveBeenCalledWith({ queryKey: currentUserQueryKey })
+    expect(clearCachesOnLogoutSpy).toHaveBeenCalledTimes(1)
+    expect(resetEtagCacheSpy).toHaveBeenCalledTimes(1)
+    expect(clearLegacyAccessTokenSpy).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem("ecosystem.access.token")).toBeNull()
     expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
     expect(channels.flatMap((channel) => channel.postMessage.mock.calls)).toEqual([])
 
@@ -1499,11 +1514,40 @@ describe("useProfileSync mutation contracts", () => {
       result.current.handleUnauthorized()
     })
 
+    expect(clearCachesOnLogoutSpy).toHaveBeenCalledTimes(2)
+    expect(resetEtagCacheSpy).toHaveBeenCalledTimes(2)
+    expect(clearLegacyAccessTokenSpy).toHaveBeenCalledTimes(2)
     expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
     expect(channels.flatMap((channel) => channel.postMessage.mock.calls)).toEqual([
       [{ type: "unauthorized" }],
     ])
     unmount()
+  })
+
+  it("publishes an explicit null to the current-user query after cache deletion", async () => {
+    const queryClient = createQueryClient()
+    const setQueryDataSpy = vi.spyOn(queryClient, "setQueryData")
+    const view = renderProfile(signingKey, {}, queryClient)
+
+    await waitFor(() => expect(view.result.current.loading).toBe(true))
+    setQueryDataSpy.mockClear()
+
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          newValue: null,
+          storageArea: localStorage,
+        })
+      )
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(setQueryDataSpy).toHaveBeenCalledTimes(2))
+    expect(setQueryDataSpy).toHaveBeenNthCalledWith(1, currentUserQueryKey, null)
+    expect(setQueryDataSpy).toHaveBeenNthCalledWith(2, currentUserQueryKey, null)
+    view.unmount()
   })
 
   it("keeps BroadcastChannel diagnostics generic while retaining the failure context", async () => {
