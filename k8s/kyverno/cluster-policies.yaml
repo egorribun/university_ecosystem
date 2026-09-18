@@ -229,9 +229,7 @@ spec:
         variables.allContainers.all(container,
           container.image.startsWith('registry.example.com/') ||
           container.image.startsWith('ghcr.io/') ||
-          container.image.startsWith('docker.io/bitnami/redis@sha256:') ||
-          container.image.startsWith('docker.io/bitnami/redis-exporter@sha256:') ||
-          container.image.startsWith('docker.io/bitnami/nats@sha256:'))
+          container.image.matches('^docker[.]io/bitnami/(redis|redis-exporter|nats)@sha256:[0-9a-f]{64}$'))
       message: Images must come from an approved registry or an explicitly pinned Bitnami dependency
 
 ---

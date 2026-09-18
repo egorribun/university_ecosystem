@@ -9,6 +9,11 @@ resources:
   - approved-bitnami-pod.yaml
   - bad.yaml
   - unpinned-bitnami-pod.yaml
+  - empty-bitnami-digest-pod.yaml
+  - nonhex-bitnami-digest-pod.yaml
+  - suffix-bitnami-digest-pod.yaml
+  - unpinned-bitnami-exporter-pod.yaml
+  - unpinned-bitnami-nats-pod.yaml
 results:
   - policy: restrict-image-registries
     resources: [university-ecosystem/compliant-pod]
@@ -24,5 +29,25 @@ results:
     result: fail
   - policy: restrict-image-registries
     resources: [university-ecosystem/unpinned-bitnami-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/empty-bitnami-digest-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/nonhex-bitnami-digest-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/suffix-bitnami-digest-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/unpinned-bitnami-exporter-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/unpinned-bitnami-nats-pod]
     kind: Pod
     result: fail

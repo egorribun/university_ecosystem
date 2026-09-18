@@ -125,6 +125,33 @@ class TestSendWebPush:
         finally:
             session.close()
 
+    def test_pinned_transport_forwards_client_certificate(self):
+        """Pinned pools must preserve an explicitly configured mTLS certificate."""
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://push.example.test/push"
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        try:
+            request = session.prepare_request(Request("POST", endpoint))
+            adapter = session.get_adapter(endpoint)
+            client_cert = ("/run/secrets/client.crt", "/run/secrets/client.key")
+            with patch.object(
+                adapter,
+                "build_connection_pool_key_attributes",
+                wraps=adapter.build_connection_pool_key_attributes,
+            ) as build_pool_key:
+                pool = adapter.get_connection_with_tls_context(
+                    request, verify=True, proxies={}, cert=client_cert
+                )
+
+            assert build_pool_key.call_args.args[2] == client_cert
+            # ``requests`` folds client-certificate fields into the pool key;
+            # asserting the adapter call is the stable contract across the
+            # supported urllib3 versions.
+            assert pool.host == "203.0.113.7"
+        finally:
+            session.close()
+
     def test_pinned_transport_normalizes_hostname_case_and_trailing_dot(self):
         """Equivalent DNS spellings must remain on the same pinned origin."""
         from app.services.webpush import _create_pinned_webpush_session
@@ -221,13 +248,16 @@ class TestSendWebPush:
         try:
             request = session.prepare_request(Request("POST", endpoint))
             adapter = session.get_adapter(endpoint)
-            with pytest.raises(requests.exceptions.InvalidProxyURL):
+            with pytest.raises(requests.exceptions.InvalidProxyURL) as exc_info:
                 adapter.get_connection_with_tls_context(
                     request,
                     verify=True,
                     proxies={"https": "http://proxy.example.test"},
                     cert=None,
                 )
+            assert str(exc_info.value) == (
+                "Pinned Web Push transport does not support proxies"
+            )
         finally:
             session.close()
 
