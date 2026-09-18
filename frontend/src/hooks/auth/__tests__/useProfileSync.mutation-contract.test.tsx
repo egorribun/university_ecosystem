@@ -1046,6 +1046,8 @@ describe("useProfileSync mutation contracts", () => {
 
   it("migrates every legacy cache key and writes the current schema marker", () => {
     localStorage.setItem(PROFILE_CACHE_VERSION_KEY, "7")
+    localStorage.setItem("ecosystem.access.token", "legacy-token")
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "stale-current-key")
     for (const key of [
       "ecosystem.profile.cache.v1",
       "ecosystem.profile.cache.v4",
@@ -1069,6 +1071,7 @@ describe("useProfileSync mutation contracts", () => {
     ]) {
       expect(localStorage.getItem(key)).toBeNull()
     }
+    expect(localStorage.getItem("ecosystem.access.token")).toBeNull()
   })
 
   it("keeps the PII-bearing v7 key in the legacy eviction contract", () => {
