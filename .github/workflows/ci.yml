@@ -915,7 +915,14 @@ jobs:
   stryker-shards:
     name: Frontend mutation shard ${{ matrix.shard-index }}/64
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    # Run 35327250942 measured 15 of 64 shards carrying 80% of the 42,889
+    # mutant universe, with legs at 120/111/98/95/87/86/85 minutes against the
+    # previous 120-minute cap.  Shard 61 reached 2,292 of its 2,367 mutants and
+    # was cancelled at the cap before it could write evidence, which cost the
+    # whole aggregate.  Raise the ceiling so the measured tail keeps headroom
+    # even after the first-attempt regular-lane budget in
+    # frontend/scripts/run-stryker.mjs flattens the distribution.
+    timeout-minutes: 180
     needs:
       - stryker-preflight
       - coverage-policy-gate
@@ -944,6 +951,12 @@ jobs:
       STRYKER_SHARD_COUNT: "64"
       STRYKER_SHARD_INDEX: ${{ matrix.shard-index }}
       STRYKER_CONCURRENCY: "4"
+      # The runner default equals the job cap, so GitHub always cancelled
+      # first and the shard died without a diagnostic or an evidence upload
+      # (run 35327250942 shard 61).  Keep the in-process deadline strictly
+      # below timeout-minutes so the runner reports the overrun itself and
+      # the always() upload step still gets to run.
+      STRYKER_SHARD_TIMEOUT_MS: "9900000"
       STRYKER_PREFLIGHT_ARTIFACT: required
       STRYKER_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       STRYKER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
@@ -3436,6 +3449,25 @@ jobs:
             --input-root mutmut-stats \
             --output mutants/mutmut-stats.json
           cp mutmut-stats/mutmut-stats-selection.json mutants/mutmut-stats-selection.json
+          # The planner's per-mutant estimate is the unbounded sum of every
+          # test mutmut's runtime trampoline mapped to the mutated function,
+          # scaled by the 15x watchdog model.  A helper on a universally
+          # executed path (structlog redaction, session logging) therefore
+          # inherits the whole suite and is rejected outright by the seeding
+          # pass even in an empty shard, so no shard count can absorb it.
+          # Reduce to the fastest observed kill probes per function exactly as
+          # nightly-full-gate.yml does before planning.  The reduction is
+          # monotonic -- it can turn a killed mutant into a survivor but never
+          # the reverse -- so mutation-tests-incremental confirms every
+          # reduced-map survivor against the retained full map before scoring.
+          cp mutants/mutmut-stats.json mutants/mutmut-stats-full.json
+          uv run python scripts/reduce_mutmut_stats.py \
+            --input mutants/mutmut-stats-full.json \
+            --output mutants/mutmut-stats.json \
+            --audit-output mutants/mutmut-stats-reduction.json \
+            --tests-per-function 2
+          test -s mutants/mutmut-stats-full.json
+          test -s mutants/mutmut-stats-reduction.json
           uv run python scripts/plan_mutmut_shards.py \
             --changed-files /tmp/changed_py.txt \
             --changed-diff /tmp/changed_py.diff \
@@ -4108,24 +4140,104 @@ jobs:
           mutants_started=0
           if grep -qF 'Running mutation testing' "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"; then mutants_started=1; fi
           if [ "$mutmut_exit_code" -eq 0 ]; then
-            MUTMUT_FAILURE_REASON="verifying exact mutmut execution"
+            MUTMUT_FAILURE_REASON="exporting primary reduced-map mutation outcomes"
             echo "mutmut completed within its stats-derived budget."
             # mutmut creates metadata for the full source universe even when
             # positional arguments run one exact shard. Verify the pristine
             # snapshot before exporting only the assigned terminal records.
+            #
+            # The producer planned this shard against the reduced kill-probe
+            # map, so this pass is PRIMARY evidence only.  Reduction is
+            # monotonic: it can turn a killed mutant into a survivor but never
+            # a survivor into a killed mutant.  Every primary survivor is
+            # therefore re-run against its complete mapped test set below
+            # before the 100% gate scores anything.
+            uv run python scripts/export_mutmut_shard_stats.py \
+              --selected-file /tmp/mutmut-shard.txt \
+              --verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
+              --execution-proof "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
+              --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" \
+              --output mutants/mutmut-primary-cicd-stats.json
+            cp "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
+              "$MUTMUT_EVIDENCE_DIR/primary-execution-proof.json"
+            cp "$MUTMUT_EVIDENCE_DIR/selected-results.json" \
+              "$MUTMUT_EVIDENCE_DIR/primary-selected-results.json"
+            jq -r \
+              '.selected_results[] | select(.status == "survived") | .mutant_name' \
+              "$MUTMUT_EVIDENCE_DIR/primary-selected-results.json" \
+              > "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt"
+            survivor_count="$(wc -l < "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt")"
+            echo "Primary reduced-map survivors requiring full-map confirmation: $survivor_count"
+
+            if [ "$survivor_count" -gt 0 ]; then
+              cp mutants/mutmut-stats-full.json mutants/mutmut-stats.json
+              MUTMUT_FAILURE_REASON="deriving the full-map survivor confirmation budget"
+              # Survivor confirmation reuses the same bounded mutmut startup
+              # phase and stays subject to the job-level deadline guard.
+              FULL_MAP_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
+                --selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt" \
+                --stats mutants/mutmut-stats-full.json \
+                --max-children 3 \
+                --control-cycle-reserve-seconds 5 \
+                --metadata-startup-reserve-seconds 120 \
+                --max-timeout-seconds 20970 \
+                --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget.json")"
+              if ! [[ "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+                MUTMUT_FAILURE_REASON="full-map survivor budget helper returned an unsafe timeout value"
+                echo "::error::Full-map survivor budget helper returned an unsafe timeout value."
+                exit 1
+              fi
+              MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
+              FULL_MAP_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
+              if [ "$FULL_MAP_REMAINING_TIMEOUT_SECONDS" -lt "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" ]; then
+                MUTMUT_FAILURE_REASON="full-map survivor confirmation cannot fit the fail-closed job deadline"
+                echo "::error::Full-map survivor confirmation requires ${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s but the job deadline permits only ${FULL_MAP_REMAINING_TIMEOUT_SECONDS}s; refusing unconfirmed evidence."
+                exit 1
+              fi
+
+              mapfile -t FULL_MAP_SURVIVORS < "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt"
+              MUTMUT_FAILURE_REASON="confirming primary survivors against the complete mapped test sets"
+              set +e
+              timeout --kill-after=30s "${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s" \
+                uv run python scripts/run_mutmut_with_stats.py --max-children 3 --reuse-generated-universe "${FULL_MAP_SURVIVORS[@]}" \
+                2>&1 | tee "$MUTMUT_EVIDENCE_DIR/full-map-confirmation.log"
+              pipeline_status=("${PIPESTATUS[@]}")
+              mutmut_exit_code="${pipeline_status[0]}"
+              tee_exit_code="${pipeline_status[1]}"
+              set -e
+              if [ "$tee_exit_code" -ne 0 ]; then
+                MUTMUT_FAILURE_REASON="unable to persist full-map survivor confirmation output"
+                exit "$tee_exit_code"
+              fi
+              if [ "$mutmut_exit_code" -eq 124 ]; then
+                MUTMUT_FAILURE_REASON="full-map survivor confirmation exceeded its stats-derived timeout"
+                echo "::error::Full-map survivor confirmation exceeded its stats-derived budget."
+                exit 124
+              fi
+              if [ "$mutmut_exit_code" -ne 0 ]; then
+                MUTMUT_FAILURE_REASON="full-map survivor confirmation did not complete"
+                echo "::error::Full-map survivor confirmation exited with ${mutmut_exit_code}."
+                exit "$mutmut_exit_code"
+              fi
+            fi
+
+            MUTMUT_FAILURE_REASON="verifying final exact full-map-confirmed mutation execution"
             uv run python scripts/export_mutmut_shard_stats.py \
               --selected-file /tmp/mutmut-shard.txt \
               --verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
               --execution-proof "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
               --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" \
               --output mutants/mutmut-cicd-stats.json
+            test -s mutants/mutmut-primary-cicd-stats.json
             test -s mutants/mutmut-cicd-stats.json
             test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json"
             test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json"
             test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json"
             # Preserve the completed proof if the independent score gate fails.
             MUTMUT_EVIDENCE_FINALIZED=true
-            # Verify viable mutation score (gate blocking at 100% via mutmut_ci_gate.py)
+            # Verify viable mutation score (gate blocking at 100% via
+            # mutmut_ci_gate.py).  It scores the full-map-confirmed export
+            # above, never the reduced-map primary.
             echo "Verifying viable mutation score (gate blocking at 100%)..."
             uv run python scripts/mutmut_ci_gate.py
           elif [ "$mutmut_exit_code" -eq 124 ]; then
@@ -4156,6 +4268,9 @@ jobs:
           name: mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-group-${{ matrix.group_id }}
           path: |
             mutants/mutmut-cicd-stats.json
+            mutants/mutmut-primary-cicd-stats.json
+            mutants/mutmut-stats-full.json
+            mutants/mutmut-stats-reduction.json
             mutants/mutmut-exact-evidence/
           if-no-files-found: error
 

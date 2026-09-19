@@ -738,7 +738,18 @@ const firstAttemptRegularUnitsPerShard = 256
 // Regular mutants do not trigger a full test-environment reload. Reserve a
 // bounded number of regular lanes, but leave the reclaimed logical capacity
 // available for static reload lanes when the inventory proves a hotspot.
-const firstAttemptRegularMutantsPerShard = 2_048
+//
+// Run 35327250942 proved 2,048 too coarse for the current inventory.  The
+// 42,889-mutant universe packed 80% of its mutants into 15 regular lanes of
+// roughly 2,300 mutants each; those legs ran 85-120 minutes and shard 61/64
+// was cancelled at the 120-minute cap with 2,292 of 2,367 mutants tested,
+// producing no evidence and failing the whole aggregate.  Replanning that
+// exact preflight universe offline at 1,024 removes every lane above 2,000
+// mutants and lowers the maximum lane from 2,367 to 1,418 while preserving
+// all 42,889 mutants, all 725 ranges and the dedicated lane contracts.  This
+// is placement-only: the 64-shard denominator and the complete source
+// inventory are unchanged.
+const firstAttemptRegularMutantsPerShard = 1_024
 
 function isFirstAttemptTailDomainPattern(pattern) {
   const source = mutationPatternSource(pattern)

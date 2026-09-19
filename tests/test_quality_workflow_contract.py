@@ -4826,7 +4826,12 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert 1 <= mutation_shards["strategy"]["max-parallel"] <= 20
     assert mutation_shards["strategy"]["max-parallel"] == 6
     assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
-    assert mutation_shards["timeout-minutes"] == 120
+    assert mutation_shards["timeout-minutes"] == 180
+    # The in-process runner deadline must stay strictly below the job cap so
+    # an overrunning shard reports itself and still uploads evidence instead
+    # of being cancelled silently by GitHub (run 35327250942 shard 61/64).
+    shard_timeout_ms = int(mutation_shards["env"]["STRYKER_SHARD_TIMEOUT_MS"])
+    assert shard_timeout_ms < mutation_shards["timeout-minutes"] * 60 * 1000
     assert mutation_shards["needs"] == [
         "stryker-preflight",
         "coverage-policy-gate",
@@ -4844,6 +4849,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         "STRYKER_SHARD_COUNT": "64",
         "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
         "STRYKER_CONCURRENCY": "4",
+        "STRYKER_SHARD_TIMEOUT_MS": "9900000",
         "STRYKER_PREFLIGHT_ARTIFACT": "required",
         "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
         "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
