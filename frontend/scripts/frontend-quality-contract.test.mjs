@@ -65,7 +65,7 @@ test("Stryker mutation scope is derived from the complete frontend coverage deno
   }
   assert.equal(
     strykerConfig.dryRunTimeoutMinutes,
-    15,
+    30,
     "Stryker's initial test run deadline must be explicit and long enough for the full suite"
   )
 })

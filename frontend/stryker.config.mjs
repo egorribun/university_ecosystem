@@ -134,6 +134,16 @@ export default {
   // Keep an explicit bounded deadline for the related-mode discovery pass.
   // Mutation thresholds remain fail-closed at 100%; the outer shard timeout is
   // still enforced by the canonical runner.
-  dryRunTimeoutMinutes: 15,
+  //
+  // The dry run's cost scales with how many distinct sources a shard owns,
+  // because vitest.related expands each one into its related test graph --
+  // not with the shard's mutant count.  Flattening the mutant distribution
+  // moved more sources into previously light shards, and run 35463029375
+  // shard 26/64 (1,418 mutants across 44 patterns, up from 483 across 14)
+  // exceeded the 15-minute deadline during discovery alone.  The shard job
+  // now allows 180 minutes and the mutation phase itself finishes well
+  // inside it, so widen the discovery deadline rather than re-concentrating
+  // mutants into a few multi-hour runners.
+  dryRunTimeoutMinutes: 30,
   timeoutFactor: 2,
 }
