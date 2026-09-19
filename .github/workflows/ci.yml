@@ -3465,7 +3465,7 @@ jobs:
             --input mutants/mutmut-stats-full.json \
             --output mutants/mutmut-stats.json \
             --audit-output mutants/mutmut-stats-reduction.json \
-            --tests-per-function 2
+            --tests-per-function 25
           test -s mutants/mutmut-stats-full.json
           test -s mutants/mutmut-stats-reduction.json
           uv run python scripts/plan_mutmut_shards.py \
@@ -4171,54 +4171,64 @@ jobs:
 
             if [ "$survivor_count" -gt 0 ]; then
               cp mutants/mutmut-stats-full.json mutants/mutmut-stats.json
-              MUTMUT_FAILURE_REASON="deriving the full-map survivor confirmation budget"
-              # Survivor confirmation reuses the same bounded mutmut startup
-              # phase and stays subject to the job-level deadline guard.
-              FULL_MAP_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
-                --selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt" \
-                --stats mutants/mutmut-stats-full.json \
-                --max-children 3 \
-                --control-cycle-reserve-seconds 5 \
-                --metadata-startup-reserve-seconds 120 \
-                --max-timeout-seconds 20970 \
-                --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget.json")"
-              if ! [[ "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
-                MUTMUT_FAILURE_REASON="full-map survivor budget helper returned an unsafe timeout value"
-                echo "::error::Full-map survivor budget helper returned an unsafe timeout value."
-                exit 1
-              fi
-              MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
-              FULL_MAP_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
-              if [ "$FULL_MAP_REMAINING_TIMEOUT_SECONDS" -lt "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" ]; then
-                MUTMUT_FAILURE_REASON="full-map survivor confirmation cannot fit the fail-closed job deadline"
-                echo "::error::Full-map survivor confirmation requires ${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s but the job deadline permits only ${FULL_MAP_REMAINING_TIMEOUT_SECONDS}s; refusing unconfirmed evidence."
-                exit 1
-              fi
-
+              # Confirm one mutant per mutmut invocation.  The budget helper
+              # charges a shard the union of every mapped test plus the 15x
+              # watchdog, so batching survivors multiplies a hub function's
+              # already-dominant cost and can exceed the six-hour envelope even
+              # when each mutant fits alone (run 35463029375 needed 21,446s for
+              # eight survivors against a 20,970s ceiling).  Per-mutant budgets
+              # keep every confirmation individually bounded and fail closed.
               mapfile -t FULL_MAP_SURVIVORS < "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt"
-              MUTMUT_FAILURE_REASON="confirming primary survivors against the complete mapped test sets"
-              set +e
-              timeout --kill-after=30s "${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s" \
-                uv run python scripts/run_mutmut_with_stats.py --max-children 3 --reuse-generated-universe "${FULL_MAP_SURVIVORS[@]}" \
-                2>&1 | tee "$MUTMUT_EVIDENCE_DIR/full-map-confirmation.log"
-              pipeline_status=("${PIPESTATUS[@]}")
-              mutmut_exit_code="${pipeline_status[0]}"
-              tee_exit_code="${pipeline_status[1]}"
-              set -e
-              if [ "$tee_exit_code" -ne 0 ]; then
-                MUTMUT_FAILURE_REASON="unable to persist full-map survivor confirmation output"
-                exit "$tee_exit_code"
-              fi
-              if [ "$mutmut_exit_code" -eq 124 ]; then
-                MUTMUT_FAILURE_REASON="full-map survivor confirmation exceeded its stats-derived timeout"
-                echo "::error::Full-map survivor confirmation exceeded its stats-derived budget."
-                exit 124
-              fi
-              if [ "$mutmut_exit_code" -ne 0 ]; then
-                MUTMUT_FAILURE_REASON="full-map survivor confirmation did not complete"
-                echo "::error::Full-map survivor confirmation exited with ${mutmut_exit_code}."
-                exit "$mutmut_exit_code"
-              fi
+              survivor_index=0
+              for survivor in "${FULL_MAP_SURVIVORS[@]}"; do
+                survivor_index=$((survivor_index + 1))
+                printf '%s\n' "$survivor" > "$MUTMUT_EVIDENCE_DIR/full-map-survivor.txt"
+                MUTMUT_FAILURE_REASON="deriving the full-map confirmation budget for ${survivor}"
+                FULL_MAP_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
+                  --selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivor.txt" \
+                  --stats mutants/mutmut-stats-full.json \
+                  --max-children 3 \
+                  --control-cycle-reserve-seconds 5 \
+                  --metadata-startup-reserve-seconds 120 \
+                  --max-timeout-seconds 20970 \
+                  --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget-${survivor_index}.json")"
+                if ! [[ "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+                  MUTMUT_FAILURE_REASON="full-map survivor budget helper returned an unsafe timeout value"
+                  echo "::error::Full-map survivor budget helper returned an unsafe timeout value for ${survivor}."
+                  exit 1
+                fi
+                MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
+                FULL_MAP_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
+                if [ "$FULL_MAP_REMAINING_TIMEOUT_SECONDS" -lt "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" ]; then
+                  MUTMUT_FAILURE_REASON="full-map survivor confirmation cannot fit the fail-closed job deadline"
+                  echo "::error::Full-map confirmation of ${survivor} requires ${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s but the job deadline permits only ${FULL_MAP_REMAINING_TIMEOUT_SECONDS}s; refusing unconfirmed evidence."
+                  exit 1
+                fi
+
+                MUTMUT_FAILURE_REASON="confirming ${survivor} against its complete mapped test set"
+                set +e
+                timeout --kill-after=30s "${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s" \
+                  uv run python scripts/run_mutmut_with_stats.py --max-children 3 --reuse-generated-universe "$survivor" \
+                  2>&1 | tee -a "$MUTMUT_EVIDENCE_DIR/full-map-confirmation.log"
+                pipeline_status=("${PIPESTATUS[@]}")
+                mutmut_exit_code="${pipeline_status[0]}"
+                tee_exit_code="${pipeline_status[1]}"
+                set -e
+                if [ "$tee_exit_code" -ne 0 ]; then
+                  MUTMUT_FAILURE_REASON="unable to persist full-map survivor confirmation output"
+                  exit "$tee_exit_code"
+                fi
+                if [ "$mutmut_exit_code" -eq 124 ]; then
+                  MUTMUT_FAILURE_REASON="full-map survivor confirmation exceeded its stats-derived timeout"
+                  echo "::error::Full-map confirmation of ${survivor} exceeded its stats-derived budget."
+                  exit 124
+                fi
+                if [ "$mutmut_exit_code" -ne 0 ]; then
+                  MUTMUT_FAILURE_REASON="full-map survivor confirmation did not complete"
+                  echo "::error::Full-map confirmation of ${survivor} exited with ${mutmut_exit_code}."
+                  exit "$mutmut_exit_code"
+                fi
+              done
             fi
 
             MUTMUT_FAILURE_REASON="verifying final exact full-map-confirmed mutation execution"
