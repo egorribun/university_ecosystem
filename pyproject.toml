@@ -10,7 +10,12 @@ dependencies = [
   "aiofiles>=25.1.0,<26",    # TD-06 (audit 2026-03-15): upper bound prevents silent breaking major upgrades
   "aiosqlite>=0.22.1,<1.0",  # TD-W9-06: upper bound — aiosqlite 1.0 may break API
   "alembic>=1.18.4,<2.0",
-  "anyio>=4.13.0,<5.0",
+  # anyio 4.15 deprecated the anyio.abc.BlockingPortal alias that
+  # starlette 1.3.1's TestClient still imports, and this suite treats
+  # DeprecationWarning as an error, so collection fails on 4.15.x.
+  # 4.14.2 is the first release fixing CVE-2026-63374 and CVE-2026-64847.
+  # Lift the upper bound once starlette moves to anyio.from_thread.
+  "anyio>=4.14.2,<4.15",
   "argon2-cffi>=25.1.0,<26",  # TD-W18-06 (Wave 18): upper bound prevents silent major-version breakage
   "asyncpg>=0.31.0,<0.32", # PY-P1-01 (audit Wave 10): tight minor bound; Renovate opens PR to advance
   # TD-21-04 (Wave 21): bcrypt removed from production deps — legacy hash
