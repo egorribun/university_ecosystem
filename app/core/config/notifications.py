@@ -90,6 +90,13 @@ class NotificationSettings(BaseAppSettings):
     outbox_batch_size: int = 20
     outbox_max_retries: int = 5
     embedded_outbox_worker_enabled: bool = True
+    # BE-08: the CDC worker consumes PostgreSQL logical replication instead of
+    # polling stored_events. It is an alternative to the polling worker above,
+    # never an addition -- both publish the same DomainEvents to the same
+    # JetStream stream, so running them together would double-deliver. It stays
+    # off by default because it requires wal_level=logical plus a provisioned
+    # publication and replication slot.
+    embedded_cdc_outbox_worker_enabled: bool = False
 
     # RZ-20-02 (audit 2026-03-24): Docker Secrets / K8s Secrets support.
     @field_validator("vapid_private_key", mode="before")

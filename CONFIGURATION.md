@@ -149,7 +149,8 @@ take precedence over the corresponding plaintext variable.
 | `OUTBOX_BATCH_SIZE` | Events processed per poll cycle by the active embedded worker | `20` |
 | `OUTBOX_POLL_INTERVAL_SECONDS` | Polling interval (seconds) for the active embedded worker | `5.0` |
 | `OUTBOX_MAX_RETRIES` | Dispatch attempts before DLQ | `5` |
-| `EMBEDDED_OUTBOX_WORKER_ENABLED` | Enable the embedded outbox worker | `true` |
+| `EMBEDDED_OUTBOX_WORKER_ENABLED` | Enable the embedded polling outbox worker | `true` |
+| `EMBEDDED_CDC_OUTBOX_WORKER_ENABLED` | Use PostgreSQL logical replication instead of polling. Replaces, never accompanies, the polling worker — both publish the same events. Requires `wal_level=logical`. | `false` |
 
 ---
 

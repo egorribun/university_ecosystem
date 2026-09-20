@@ -57,6 +57,14 @@ jobs:
         with:
           python-version: "3.14"
 
+      # This step is deliberately fail-closed, and a warn-and-skip variant was
+      # considered and rejected. The job already runs only on main (see the
+      # job-level `if` above), so a fork or a PR never reaches it and there is
+      # no cross-repository noise to suppress. On main the secrets are required
+      # configuration: a missing one means retention has silently stopped
+      # running, and downgrading to a warning would hide exactly that. The
+      # behaviour is pinned by
+      # tests/test_workflow_fail_closed_contracts.py::test_scheduled_workflows_reject_missing_required_inputs.
       - name: Validate cleanup configuration
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

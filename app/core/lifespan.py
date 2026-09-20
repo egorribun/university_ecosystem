@@ -20,6 +20,7 @@ from app.services.partition_manager import (
     start_partition_management_scheduler,
 )
 from app.tasks.cleanups import setup_periodic_cleanups
+from app.workers.cdc_outbox import CdcOutboxWorker
 from app.workers.outbox import OutboxWorker
 
 _logger = get_logger(__name__)
@@ -263,7 +264,23 @@ async def _startup_background_workers(app: FastAPI) -> None:
 
     # Boot components from DI container
     if settings.environment != "testing":
-        if settings.embedded_outbox_worker_enabled:
+        # BE-08: CDC and polling are two implementations of the same outbox
+        # delivery, so exactly one may run. CDC wins when enabled because it is
+        # the explicit opt-in; the polling default would otherwise silently
+        # double-publish every DomainEvent.
+        if settings.embedded_cdc_outbox_worker_enabled:
+            cdc_broker = await app.state.dishka_container.get(NatsTaskBroker)
+            cdc_outbox_worker = CdcOutboxWorker(nats_broker=cdc_broker)
+            app.state.cdc_outbox_worker = cdc_outbox_worker
+            app.state.background_tasks.add(
+                asyncio.create_task(
+                    cdc_outbox_worker.run_forever(), name="cdc_outbox_worker"
+                )
+            )
+            _logger.info(
+                "Embedded CdcOutboxWorker enabled; polling OutboxWorker suppressed"
+            )
+        elif settings.embedded_outbox_worker_enabled:
             outbox_worker = await app.state.dishka_container.get(OutboxWorker)
             outbox_task = asyncio.create_task(
                 outbox_worker.run_forever(), name="outbox_worker"
@@ -532,6 +549,13 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     # TD-3: Signal the periodic scheduler to stop before cancelling tasks,
     # so it exits its current sleep immediately via asyncio.Event.
     _SCHEDULER_STOP.set()
+
+    # BE-08: ask the CDC worker to stop before cancelling, so it closes its
+    # logical-replication connection and fallback worker itself. A bare cancel
+    # would leave the replication slot held open by a detached connection.
+    cdc_outbox_worker = getattr(app.state, "cdc_outbox_worker", None)
+    if cdc_outbox_worker is not None:
+        await cdc_outbox_worker.stop()
 
     # Cancel background noise first
     _bg_tasks = list(getattr(app.state, "background_tasks", set()))

@@ -68,6 +68,10 @@ async def test_startup_database_and_di_warnings() -> None:
     ):
         mock_settings.spotify_token_secret = None
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
 
         with pytest.raises(RuntimeError, match="SPOTIFY_TOKEN_SECRET must be set"):
             await _startup_database_and_di(app)
@@ -79,6 +83,10 @@ async def test_startup_database_and_di_warnings() -> None:
     ):
         mock_settings.spotify_token_secret = "some-key"  # pragma: allowlist secret
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
 
         await _startup_database_and_di(app)
         mock_init_db.assert_called_once()
@@ -125,6 +133,10 @@ async def test_verify_database_readiness_testing() -> None:
         patch("app.core.lifespan.settings") as mock_settings,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_wait_db.side_effect = TimeoutError("DB timeout")
 
         with pytest.raises(TimeoutError):
@@ -143,6 +155,10 @@ async def test_verify_database_readiness_alembic_head_check() -> None:
         patch("alembic.script.ScriptDirectory.from_config") as mock_script_dir,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
 
         # Setup Alembic mocks
         mock_scripts = MagicMock()
@@ -178,6 +194,10 @@ async def test_verify_database_readiness_alembic_head_check() -> None:
         patch("alembic.script.ScriptDirectory.from_config") as mock_script_dir,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
 
         mock_scripts = MagicMock()
         mock_scripts.get_current_head.return_value = "head_rev"
@@ -203,6 +223,10 @@ async def test_verify_database_readiness_alembic_head_check() -> None:
         patch("app.core.lifespan.engine") as mock_engine,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
 
         mock_conn = AsyncMock()
         mock_dialect = MagicMock()
@@ -253,6 +277,10 @@ async def test_verify_database_readiness_reads_revision_inside_run_sync() -> Non
         ) as configure,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_script_dir.return_value.get_current_head.return_value = "head_rev"
         mock_engine.connect.return_value.__aenter__.return_value = mock_conn
 
@@ -401,6 +429,10 @@ async def test_handle_schema_and_extensions_auto_schema_fail() -> None:
 
         # In production environment: error raised
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         with pytest.raises(SQLAlchemyError):
             await _handle_schema_and_extensions()
 
@@ -430,6 +462,10 @@ async def test_validate_di_container() -> None:
 
     with patch("app.core.lifespan.settings") as mock_settings:
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         with pytest.raises(RuntimeError, match="DI container smoke-test FAILED"):
             await _validate_di_container(app)
 
@@ -620,6 +656,10 @@ async def test_startup_background_workers_production() -> None:
         mock_settings.environment = "production"
         mock_settings.partition_management_enabled = True
         mock_settings.partition_management_interval_seconds = 3600
+        # ``settings`` is a MagicMock, so every unset boolean reads truthy.
+        # State the outbox choice explicitly: polling on, CDC off (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_sched.return_value = AsyncMock()
 
         await _startup_background_workers(app)
@@ -650,6 +690,10 @@ async def test_startup_background_workers_production() -> None:
         ) as mock_sched,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_settings.partition_management_enabled = True
         mock_sched.return_value = AsyncMock()
 
@@ -679,6 +723,10 @@ async def test_startup_background_workers_production() -> None:
         patch("app.core.lifespan._logger") as mock_logger,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_settings.partition_management_enabled = True
 
         await _startup_background_workers(app3)
@@ -726,6 +774,10 @@ async def test_lifespan_context_manager() -> None:
         patch("app.core.lifespan.settings") as mock_settings,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
 
         async with lifespan(app):
             # Lifespan context entered
@@ -764,6 +816,10 @@ async def test_lifespan_context_manager() -> None:
         patch("app.core.lifespan._logger") as mock_logger,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
 
         # Force registration flag to be True
         import app.core.lifespan as lifespan_module
@@ -893,6 +949,10 @@ async def test_lifespan_edge_cases_coverage() -> None:
     ):
         mock_settings.spotify_token_secret = ""
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         with pytest.raises(RuntimeError, match="SPOTIFY_TOKEN_SECRET must be set"):
             await _startup_database_and_di(app)
 
@@ -902,6 +962,10 @@ async def test_lifespan_edge_cases_coverage() -> None:
         patch("app.core.lifespan.wait_db", side_effect=TimeoutError("DB Timeout")),
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         with pytest.raises(TimeoutError):
             await _verify_database_readiness()
 
@@ -912,6 +976,10 @@ async def test_lifespan_edge_cases_coverage() -> None:
         patch("app.core.lifespan.engine") as mock_engine,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_conn = AsyncMock()
         mock_engine.connect.return_value.__aenter__.return_value = mock_conn
         mock_conn.dialect.name = "postgresql"
@@ -932,6 +1000,10 @@ async def test_lifespan_edge_cases_coverage() -> None:
         patch("app.core.lifespan.engine") as mock_engine,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_conn = AsyncMock()
         mock_engine.connect.return_value.__aenter__.return_value = mock_conn
         mock_conn.dialect.name = "postgresql"
@@ -968,6 +1040,10 @@ async def test_lifespan_edge_cases_coverage() -> None:
     ):
         mock_settings.auto_create_schema = True
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_engine.begin.side_effect = Exception("DB fail")
         with pytest.raises(Exception, match="DB fail"):
             await _handle_schema_and_extensions()
@@ -975,6 +1051,10 @@ async def test_lifespan_edge_cases_coverage() -> None:
     # 7. DI container validation fail raises in production env
     with patch("app.core.lifespan.settings") as mock_settings:
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_app = MagicMock()
         mock_container = AsyncMock()
         mock_app.state.dishka_container = mock_container
@@ -1027,6 +1107,10 @@ async def test_lifespan_edge_cases_coverage() -> None:
         patch("app.core.lifespan._logger") as mock_logger,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         async with lifespan(app):
             pass
         mock_logger.warning.assert_called_with(
@@ -1138,6 +1222,10 @@ async def test_startup_background_workers_can_disable_embedded_outbox() -> None:
         patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_settings.embedded_outbox_worker_enabled = False
         mock_settings.partition_management_enabled = False
 
@@ -1163,6 +1251,10 @@ async def test_startup_background_workers_production_env() -> None:
         ) as mock_scheduler,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_settings.partition_management_enabled = True
         mock_app = MagicMock()
         mock_app.state = MagicMock()
@@ -1278,6 +1370,10 @@ async def test_lifespan_warm_cache_production() -> None:
         patch("app.core.lifespan.settings") as mock_settings,
     ):
         mock_settings.environment = "production"
+        # ``settings`` is a MagicMock, so every unset boolean reads
+        # truthy. State the outbox choice explicitly (BE-08).
+        mock_settings.embedded_outbox_worker_enabled = True
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         app = FastAPI()
         async with lifespan(app):
             pass
@@ -1333,3 +1429,153 @@ async def test_startup_background_workers_partition_enabled_testing_env() -> Non
         await _startup_background_workers(mock_app)
         assert not hasattr(mock_app.state, "partition_stopper")
         mock_scheduler.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cdc_outbox_worker_replaces_the_polling_worker_when_enabled() -> None:
+    """BE-08: CDC and polling deliver the same events, so only one may run.
+
+    ``embedded_outbox_worker_enabled`` defaults to ``True``, so enabling CDC
+    without suppressing polling would publish every DomainEvent to the same
+    JetStream stream twice.
+    """
+
+    app = FastAPI()
+    app.state.dishka_container = AsyncMock()
+    mock_nats = AsyncMock()
+    mock_nats.is_connected = False
+    mock_cdc = MagicMock()
+    started = asyncio.Event()
+
+    async def _run_forever() -> None:
+        started.set()
+        await asyncio.sleep(3600)
+
+    mock_cdc.run_forever = _run_forever
+    mock_cdc.stop = AsyncMock()
+
+    async def container_get(svc_type: type) -> object:
+        from app.core.nats_broker import NatsTaskBroker
+
+        if svc_type is NatsTaskBroker:
+            return mock_nats
+        if svc_type is OutboxWorker:
+            raise AssertionError("polling OutboxWorker must not be resolved")
+        return MagicMock()
+
+    app.state.dishka_container.get.side_effect = container_get
+
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
+        patch(
+            "app.core.lifespan.CdcOutboxWorker", return_value=mock_cdc
+        ) as mock_cdc_cls,
+    ):
+        mock_settings.environment = "production"
+        mock_settings.partition_management_enabled = False
+        mock_settings.embedded_cdc_outbox_worker_enabled = True
+        mock_settings.embedded_outbox_worker_enabled = True
+
+        await _startup_background_workers(app)
+        await asyncio.wait_for(started.wait(), timeout=5)
+
+        task_names = {task.get_name() for task in app.state.background_tasks}
+        assert "cdc_outbox_worker" in task_names
+        assert "outbox_worker" not in task_names
+        assert app.state.cdc_outbox_worker is mock_cdc
+        # The worker shares the application's broker rather than the module
+        # global, so shutdown tears down one NATS connection, not two.
+        assert mock_cdc_cls.call_args.kwargs["nats_broker"] is mock_nats
+
+        for task in list(app.state.background_tasks):
+            task.cancel()
+        await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_shutdown_stops_the_cdc_worker_before_cancelling_tasks() -> None:
+    """BE-08: a bare cancel would strand the logical-replication slot.
+
+    ``CdcOutboxWorker.stop()`` closes the replication connection and the
+    fallback worker it may have started, so it must run before the task that
+    owns them is cancelled.
+    """
+
+    app = FastAPI()
+    app.state.dishka_container = AsyncMock()
+    order: list[str] = []
+
+    async def _never() -> None:
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            order.append("cancelled")
+            raise
+
+    task = asyncio.create_task(_never())
+    # Let the task actually enter its body, or cancelling it would never reach
+    # the handler and the ordering assertion would pass vacuously.
+    await asyncio.sleep(0)
+    app.state.background_tasks = {task}
+
+    mock_cdc = MagicMock()
+
+    async def _stop() -> None:
+        order.append("stopped")
+
+    mock_cdc.stop = _stop
+    app.state.cdc_outbox_worker = mock_cdc
+
+    try:
+        with (
+            patch("app.api.health.set_shutdown_flag"),
+            patch("app.core.lifespan._SCHEDULER_STOP"),
+            patch("app.api.ws.presence.stop_presence_pubsub", new_callable=AsyncMock),
+            patch("app.core.lifespan.webpush.cleanup"),
+            patch("app.core.lifespan.shutdown_cache", new_callable=AsyncMock),
+            patch(
+                "app.core.feature_flags.shutdown_feature_flags", new_callable=AsyncMock
+            ),
+            patch(
+                "app.core.ratelimit.stop_memory_cleanup_task", new_callable=AsyncMock
+            ),
+            patch(
+                "app.core.spicedb.close_global_spicedb_channel", new_callable=AsyncMock
+            ),
+            patch("app.core.lifespan.shutdown_observability"),
+            patch("app.services.geolocation.shutdown_geolocation_service"),
+            patch("app.auth.security.close_hibp_client", new_callable=AsyncMock),
+        ):
+            await _shutdown_subsystems(app)
+
+        assert order == ["stopped", "cancelled"]
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_shutdown_is_unaffected_when_no_cdc_worker_was_started() -> None:
+    """The default deployment never sets ``app.state.cdc_outbox_worker``."""
+
+    app = FastAPI()
+    app.state.dishka_container = AsyncMock()
+    app.state.background_tasks = set()
+
+    with (
+        patch("app.api.health.set_shutdown_flag"),
+        patch("app.core.lifespan._SCHEDULER_STOP"),
+        patch("app.api.ws.presence.stop_presence_pubsub", new_callable=AsyncMock),
+        patch("app.core.lifespan.webpush.cleanup"),
+        patch("app.core.lifespan.shutdown_cache", new_callable=AsyncMock),
+        patch("app.core.feature_flags.shutdown_feature_flags", new_callable=AsyncMock),
+        patch("app.core.ratelimit.stop_memory_cleanup_task", new_callable=AsyncMock),
+        patch("app.core.spicedb.close_global_spicedb_channel", new_callable=AsyncMock),
+        patch("app.core.lifespan.shutdown_observability"),
+        patch("app.services.geolocation.shutdown_geolocation_service"),
+        patch("app.auth.security.close_hibp_client", new_callable=AsyncMock),
+    ):
+        await _shutdown_subsystems(app)
+
+    assert not hasattr(app.state, "cdc_outbox_worker")
