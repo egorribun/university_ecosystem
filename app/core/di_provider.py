@@ -5,6 +5,7 @@ from app.core.di.chat import ChatProvider
 from app.core.di.content import ContentProvider
 from app.core.di.cqrs import CQRSProvider
 from app.core.di.infrastructure import InfrastructureProvider
+from app.core.di.read_replica import READ_COMPONENT, ReadReplicaProvider
 from app.core.di.search import SearchProvider
 from app.core.di.spicedb import SpiceDBProvider
 from app.core.di.users import UserProvider
@@ -25,4 +26,11 @@ def create_dishka_container() -> AsyncContainer:
         ChatProvider(),
         CQRSProvider(),
         SearchProvider(),
+        # BE-04: the same query services registered a second time against the
+        # read replica. Endpoints reach them with
+        # ``Annotated[T, FromComponent(READ_COMPONENT)]``, which replaces the
+        # legacy ``get_read_*`` factories in app/api/deps/services.py.
+        ReadReplicaProvider(),
+        UserProvider().to_component(READ_COMPONENT),
+        ContentProvider().to_component(READ_COMPONENT),
     )
