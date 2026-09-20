@@ -433,7 +433,7 @@ jobs:
   manual-frontend-mutation-shards:
     name: Manual Mutation Evidence (frontend shard ${{ matrix.shard-index }}/64)
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 270
     needs: manual-frontend-mutation-preflight
     strategy:
       fail-fast: false
@@ -457,7 +457,10 @@ jobs:
       # evidence -- 14 nightly shards died that way in run 35423800635.  Keep
       # 225 minutes strictly below the 240-minute cap so the shard reports its
       # own overrun and still uploads partial evidence.
-      STRYKER_SHARD_TIMEOUT_MS: "13500000"
+      # Raised with ci.yml: run 35517610350 shard 26/64 overran 13,500,000ms
+      # with 1,417 of 1,418 mutants tested.  See ci.yml for the measurement
+      # and why re-planning is not the available lever.
+      STRYKER_SHARD_TIMEOUT_MS: "15300000"
       STRYKER_PREFLIGHT_ARTIFACT: required
     steps:
       - name: Checkout

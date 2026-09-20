@@ -1108,8 +1108,8 @@
             "max_parallel": 6
           },
           "check_name_template": "Frontend mutation shard ${{ matrix.shard-index }}/64",
-          "expected_timeout_minutes": 240,
-          "expected_duration_seconds": 14400,
+          "expected_timeout_minutes": 270,
+          "expected_duration_seconds": 16200,
           "guard": "${{ github.event_name == 'pull_request' && needs.stryker-preflight.result == 'success' && needs.coverage-policy-gate.result == 'success' && needs.pre-commit-security-and-types.result == 'success' }}",
           "artifacts": [
             {
@@ -2542,8 +2542,8 @@
             "max_parallel": 20
           },
           "check_name_template": "Manual Mutation Evidence (frontend shard ${{ matrix.shard-index }}/64)",
-          "expected_timeout_minutes": 240,
-          "expected_duration_seconds": 14400,
+          "expected_timeout_minutes": 270,
+          "expected_duration_seconds": 16200,
           "guard": "workflow trigger",
           "artifacts": [
             {
@@ -2850,8 +2850,8 @@
             "max_parallel": 8
           },
           "check_name_template": "Nightly frontend mutation shard ${{ matrix.shard-index }}/64",
-          "expected_timeout_minutes": 240,
-          "expected_duration_seconds": 14400,
+          "expected_timeout_minutes": 270,
+          "expected_duration_seconds": 16200,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
           "artifacts": [
             {

@@ -664,3 +664,12 @@ def test_validate_image_dimensions_rejects_large_integer_overflow_boundary():
         img_mod.validate_image_dimensions(width, 2, max_pixels=budget)
 
     assert exc_info.value.max_pixels == budget
+    # The error must name the rejected raster, not just the budget: callers
+    # log these to diagnose which upload tripped the limit, and the
+    # width-only ``None`` form is reserved for Pillow's decoder-level bomb
+    # where the true dimensions are unknown.
+    assert exc_info.value.width == width
+    assert exc_info.value.height == 2
+    assert str(exc_info.value) == (
+        f"image dimensions {width}x2 exceed pixel budget of {budget}"
+    )

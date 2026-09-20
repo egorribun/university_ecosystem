@@ -597,7 +597,25 @@ jobs:
                 # Safe because 15x is a backstop that should never fire --
                 # pytest's --timeout=120 is the real hang detector -- and a
                 # preempted run exits 124 below before any export or scoring.
-                FULL_MAP_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
+                # Cap the derivation at the live remaining deadline, not a
+                # static ceiling: the watchdog bound is an upper bound on a
+                # child's wall cost rather than an estimate of it, and run
+                # 35517610350 measured app/core/logging.py confirmations
+                # deriving ~18,460s and finishing in 1,211-1,555s.  Charging the
+                # full ceiling against a shrinking deadline refuses survivors
+                # that fit with hours to spare.
+                MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
+                FULL_MAP_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
+                if [ "$FULL_MAP_REMAINING_TIMEOUT_SECONDS" -lt 1 ]; then
+                  MUTMUT_FAILURE_REASON="full-map survivor confirmation cannot fit the fail-closed job deadline"
+                  echo "::error::Full-map confirmation of ${survivor} has no deadline headroom left after the required post-run reserve; refusing unconfirmed evidence."
+                  exit 1
+                fi
+                FULL_MAP_CONFIRMATION_CAP_SECONDS=20970
+                if [ "$FULL_MAP_REMAINING_TIMEOUT_SECONDS" -lt "$FULL_MAP_CONFIRMATION_CAP_SECONDS" ]; then
+                  FULL_MAP_CONFIRMATION_CAP_SECONDS="$FULL_MAP_REMAINING_TIMEOUT_SECONDS"
+                fi
+                if ! FULL_MAP_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
                   --selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivor.txt" \
                   --stats mutants/mutmut-stats-full.json \
                   --max-children 2 \
@@ -605,15 +623,17 @@ jobs:
                   --metadata-startup-reserve-seconds 120 \
                   --execution-multiplier auto \
                   --min-execution-multiplier 2 \
-                  --max-timeout-seconds 20970 \
-                  --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget-${survivor_index}.json")"
+                  --max-timeout-seconds "$FULL_MAP_CONFIRMATION_CAP_SECONDS" \
+                  --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget-${survivor_index}.json")"; then
+                  MUTMUT_FAILURE_REASON="full-map survivor confirmation cannot fit the fail-closed job deadline"
+                  echo "::error::Full-map confirmation of ${survivor} could not derive a budget within the ${FULL_MAP_CONFIRMATION_CAP_SECONDS}s the job deadline still permits, even at the minimum execution multiplier; the helper error above states which; refusing unconfirmed evidence."
+                  exit 1
+                fi
                 if ! [[ "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
                   MUTMUT_FAILURE_REASON="full-map survivor budget helper returned an unsafe timeout value for ${survivor}"
                   echo "::error::Full-map survivor budget helper returned an unsafe timeout value for ${survivor}."
                   exit 1
                 fi
-                MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
-                FULL_MAP_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
                 if [ "$FULL_MAP_REMAINING_TIMEOUT_SECONDS" -lt "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" ]; then
                   MUTMUT_FAILURE_REASON="full-map survivor confirmation cannot fit the fail-closed job deadline"
                   echo "::error::Full-map confirmation of ${survivor} requires ${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s but the job deadline permits only ${FULL_MAP_REMAINING_TIMEOUT_SECONDS}s; refusing unconfirmed evidence."
@@ -816,7 +836,7 @@ jobs:
     name: Nightly frontend mutation shard ${{ matrix.shard-index }}/64
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 270
     needs: frontend-mutation-preflight
     strategy:
       fail-fast: false
@@ -840,7 +860,10 @@ jobs:
       # evidence -- 14 nightly shards died that way in run 35423800635.  Keep
       # 225 minutes strictly below the 240-minute cap so the shard reports its
       # own overrun and still uploads partial evidence.
-      STRYKER_SHARD_TIMEOUT_MS: "13500000"
+      # Raised with ci.yml: run 35517610350 shard 26/64 overran 13,500,000ms
+      # with 1,417 of 1,418 mutants tested.  See ci.yml for the measurement
+      # and why re-planning is not the available lever.
+      STRYKER_SHARD_TIMEOUT_MS: "15300000"
       STRYKER_PREFLIGHT_ARTIFACT: required
     steps:
       - name: Checkout

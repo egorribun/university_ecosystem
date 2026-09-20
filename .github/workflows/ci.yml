@@ -917,11 +917,13 @@ jobs:
     runs-on: ubuntu-24.04
     # Run 35470088045 shard 26/64 measured a 16m34s perTest dry run over 5,219
     # tests followed by 2h28m of mutation, reaching 1,387 of its 1,418 mutants
-    # before the in-process deadline fired; projected completion is ~175
-    # minutes.  The 64-shard critical path is set by throughput, not by this
-    # shard: 1,842 measured shard-minutes across max-parallel 6 is already
-    # ~307 minutes, so the extra ceiling costs no additional wall clock.
-    timeout-minutes: 240
+    # before the in-process deadline fired.  Run 35517610350 reached 1,417 of
+    # 1,418 in 225.0 minutes -- 76 seconds short -- so the earlier ~175-minute
+    # projection was low and the shard needs a real envelope, not a nudge.
+    # The 64-shard critical path is set by throughput, not by this shard:
+    # 1,842 measured shard-minutes across max-parallel 6 is already ~307
+    # minutes, so the extra ceiling costs no additional wall clock.
+    timeout-minutes: 270
     needs:
       - stryker-preflight
       - coverage-policy-gate
@@ -957,7 +959,27 @@ jobs:
       # the always() upload step still gets to run.
       # Run 35470088045 shard 26/64 confirmed the mechanism: it logged
       # "Stryker shard-026 exceeded 9900000ms" and the upload step ran.
-      STRYKER_SHARD_TIMEOUT_MS: "13500000"
+      #
+      # Run 35517610350 shard 26/64 then overran 13,500,000ms with 1,417 of
+      # 1,418 mutants tested -- 76 seconds short, while averaging ~65s per
+      # mutant over its final 13 minutes.  That job used 225.8 of its 240
+      # minutes and only 0.8 of those went to anything but Stryker, so the
+      # envelope grows rather than the shard being re-planned around it.
+      #
+      # Re-planning is not the available lever: the first-attempt cost proxy
+      # is uncorrelated with real shard cost.  Scoring this run's own plan
+      # against its 63 completed shard reports gives r = -0.03 for the
+      # planner's estimatedCost, 0.42 for mutant count and 0.82 for measured
+      # testsCompleted, and every placement knob replanned offline against
+      # that universe (regular-lane size, static-hotspot membership, unit
+      # split factor, dedicated lanes, measured per-source weights) left the
+      # worst lane unchanged or made it worse.  The durable fix is the
+      # historical cost model run-stryker.mjs already implements
+      # (STRYKER_HISTORICAL_COSTS_ARTIFACT), which replans this universe from
+      # 48.9x to 8.4x cost imbalance -- but it cannot bootstrap until one
+      # complete 64-shard run exists to measure.  This budget is what buys
+      # that run.
+      STRYKER_SHARD_TIMEOUT_MS: "15300000"
       STRYKER_PREFLIGHT_ARTIFACT: required
       STRYKER_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       STRYKER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
@@ -4218,8 +4240,34 @@ jobs:
                 # run, the 124 branch below exits before any export, the trap
                 # stamps execution_complete=false, and merge_mutmut_cicd_stats.py
                 # rejects that artifact -- fail closed, never a silent pass.
+                # Derive the budget against the time this survivor actually has
+                # left, not a static ceiling.  The watchdog bound is an upper
+                # bound on a child's wall cost, not an estimate of it, and on a
+                # hub function the two diverge by an order of magnitude: in run
+                # 35517610350 every app/core/logging.py confirmation derived
+                # ~18,460s and finished in 1,211-1,555s.  Charging the static
+                # 20,970s ceiling against a shrinking deadline therefore refused
+                # confirmations that fit with hours to spare -- groups 23 and 26
+                # confirmed two logging survivors each, then refused a third
+                # that needed ~20 minutes.  Capping the derivation at the live
+                # remaining deadline lets the same auto-degradation that already
+                # fits a survivor into the job fit it into what remains of the
+                # job.  Degrading further only shortens a backstop that should
+                # never fire, and the guard below still fails closed when even
+                # the floor multiplier cannot fit.
+                MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
+                FULL_MAP_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
+                if [ "$FULL_MAP_REMAINING_TIMEOUT_SECONDS" -lt 1 ]; then
+                  MUTMUT_FAILURE_REASON="full-map survivor confirmation cannot fit the fail-closed job deadline"
+                  echo "::error::Full-map confirmation of ${survivor} has no deadline headroom left after the required post-run reserve; refusing unconfirmed evidence."
+                  exit 1
+                fi
+                FULL_MAP_CONFIRMATION_CAP_SECONDS=20970
+                if [ "$FULL_MAP_REMAINING_TIMEOUT_SECONDS" -lt "$FULL_MAP_CONFIRMATION_CAP_SECONDS" ]; then
+                  FULL_MAP_CONFIRMATION_CAP_SECONDS="$FULL_MAP_REMAINING_TIMEOUT_SECONDS"
+                fi
                 MUTMUT_FAILURE_REASON="deriving the full-map confirmation budget for ${survivor}"
-                FULL_MAP_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
+                if ! FULL_MAP_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
                   --selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivor.txt" \
                   --stats mutants/mutmut-stats-full.json \
                   --max-children 3 \
@@ -4227,15 +4275,17 @@ jobs:
                   --metadata-startup-reserve-seconds 120 \
                   --execution-multiplier auto \
                   --min-execution-multiplier 2 \
-                  --max-timeout-seconds 20970 \
-                  --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget-${survivor_index}.json")"
+                  --max-timeout-seconds "$FULL_MAP_CONFIRMATION_CAP_SECONDS" \
+                  --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget-${survivor_index}.json")"; then
+                  MUTMUT_FAILURE_REASON="full-map survivor confirmation cannot fit the fail-closed job deadline"
+                  echo "::error::Full-map confirmation of ${survivor} could not derive a budget within the ${FULL_MAP_CONFIRMATION_CAP_SECONDS}s the job deadline still permits, even at the minimum execution multiplier; the helper error above states which; refusing unconfirmed evidence."
+                  exit 1
+                fi
                 if ! [[ "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
                   MUTMUT_FAILURE_REASON="full-map survivor budget helper returned an unsafe timeout value for ${survivor}"
                   echo "::error::Full-map survivor budget helper returned an unsafe timeout value for ${survivor}."
                   exit 1
                 fi
-                MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
-                FULL_MAP_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
                 if [ "$FULL_MAP_REMAINING_TIMEOUT_SECONDS" -lt "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" ]; then
                   MUTMUT_FAILURE_REASON="full-map survivor confirmation cannot fit the fail-closed job deadline"
                   echo "::error::Full-map confirmation of ${survivor} requires ${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s but the job deadline permits only ${FULL_MAP_REMAINING_TIMEOUT_SECONDS}s; refusing unconfirmed evidence."

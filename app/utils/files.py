@@ -314,7 +314,11 @@ def _cache_control_for_subdir(subdir: str) -> str:
     """Return a cache policy that preserves attachment privacy at the object layer."""
 
     normalized = subdir.replace("\\", "/").strip("/ ")
-    root = normalized.split("/", 1)[0]
+    # ``partition`` rather than ``split(sep, maxsplit)``: element zero is the
+    # text before the first separator for every maxsplit >= 1, so the argument
+    # is unobservable here and only yields equivalent mutants (run 35517610350
+    # left ``split("/",)`` and ``split("/", 2)`` alive against the 100% gate).
+    root = normalized.partition("/")[0]
     if root in _PRIVATE_ATTACHMENT_PREFIXES:
         return "private, no-store"
     return "public, max-age=31536000, immutable"

@@ -189,7 +189,11 @@ def _create_pinned_webpush_session(
     if parsed.scheme.lower() != "https" or parsed.username or parsed.password:
         raise ValueError("URL must use https scheme and no credentials")
     host_header = hostname
-    if ":" in host_header and not host_header.startswith("["):
+    # ``urlparse`` strips the brackets from an IPv6 literal, so a colon in the
+    # hostname always means IPv6 and always needs re-bracketing here.  The
+    # "already bracketed" guard this replaces could never be false and so only
+    # produced an equivalent mutant against the 100% gate (run 35517610350).
+    if ":" in host_header:
         host_header = f"[{host_header}]"
     if parsed.port is not None and parsed.port != 443:
         host_header = f"{host_header}:{parsed.port}"

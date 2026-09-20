@@ -12,6 +12,7 @@ from app.core.static import PublicStaticFiles, is_private_static_path
 from app.schemas.chat import AttachmentResponse, MessageResponse
 from app.schemas.schemas import EventFileOut
 from app.services.private_attachments import (
+    _path_segments,
     is_private_attachment_path,
     private_attachment_filename,
     private_attachment_response,
@@ -159,6 +160,53 @@ def test_private_attachment_helpers_fail_closed_for_invalid_paths() -> None:
     ):
         with pytest.raises(ValueError):
             private_attachment_storage_key("chat", resource_id, filename)
+
+
+@pytest.mark.parametrize("storage_url", ["", None, 0, False])
+def test_path_segments_treat_every_empty_storage_value_as_no_path(
+    storage_url: object,
+) -> None:
+    """A missing storage value must yield no segments, never a literal one.
+
+    ``private_attachment_url`` classifies a value by whether any segment names
+    a private prefix, so inventing a segment for an absent URL would change
+    that classification.
+    """
+
+    assert _path_segments(storage_url) == []  # type: ignore[arg-type]
+    assert private_attachment_filename(storage_url, "chat") is None  # type: ignore[arg-type]
+    # Nothing was classified as private, so the compatibility path returns the
+    # caller's value untouched rather than inventing a download URL.
+    assert private_attachment_url("chat", uuid4(), storage_url) is storage_url  # type: ignore[arg-type]
+
+
+def test_path_segments_normalize_backslash_separators_before_splitting() -> None:
+    """Windows-style separators must split into segments like forward slashes.
+
+    ``is_private_attachment_path`` and the download URL builder both decide on
+    whole segments, so a path that keeps its backslashes would read as a single
+    opaque segment and escape the private-prefix classification entirely.
+    """
+
+    assert _path_segments("chat_uploads\\chat_7\\report.pdf") == [
+        "chat_uploads",
+        "chat_7",
+        "report.pdf",
+    ]
+    assert _path_segments("/static\\event_files\\agenda.pdf") == [
+        "static",
+        "event_files",
+        "agenda.pdf",
+    ]
+    # Mixed separators normalize to the same segment list.
+    assert _path_segments("/static/chat_uploads\\chat_7/report.pdf") == [
+        "static",
+        "chat_uploads",
+        "chat_7",
+        "report.pdf",
+    ]
+    # The classification that depends on it follows.
+    assert is_private_attachment_path("/static\\chat_uploads\\chat_7\\report.pdf")
 
 
 def test_private_attachment_response_headers_cover_mime_fallback() -> None:

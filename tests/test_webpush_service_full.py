@@ -302,8 +302,28 @@ class TestSendWebPush:
         ("endpoint", "message"),
         [
             ("https:///push", "URL has no hostname"),
+            # A netloc that carries only a port parses to an empty hostname.
+            # Each half of the hostname guard must reject on its own, or a
+            # credential-free authority with no host would reach the pinner.
+            ("https://:443/push", "URL has no hostname"),
             (
                 "http://user@push.example.test/push",
+                "URL must use https scheme and no credentials",
+            ),
+            # Plain http must be refused even with no credentials at all:
+            # the scheme check cannot be conditional on userinfo.
+            (
+                "http://push.example.test/push",
+                "URL must use https scheme and no credentials",
+            ),
+            # Userinfo must be refused on its own, whether or not a password
+            # accompanies the username.
+            (
+                "https://user@push.example.test/push",
+                "URL must use https scheme and no credentials",
+            ),
+            (
+                "https://:secret@push.example.test/push",
                 "URL must use https scheme and no credentials",
             ),
         ],
@@ -314,6 +334,50 @@ class TestSendWebPush:
         with pytest.raises(ValueError) as exc_info:
             _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
         assert str(exc_info.value) == message
+
+    def test_pinned_session_omits_the_default_https_port_from_host_header(self):
+        """An explicit :443 is the default port and must not reach the Host header.
+
+        Providers compare the Host header against their certificate name, so
+        appending the implicit port would produce an origin the provider does
+        not recognise.
+        """
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://push.example.test:443/push"
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        try:
+            request = session.prepare_request(Request("POST", endpoint))
+            adapter = session.get_adapter(endpoint)
+            adapter.add_headers(request)
+
+            assert request.headers["Host"] == "push.example.test"
+        finally:
+            session.close()
+
+    def test_pinned_adapter_delegates_to_the_base_header_builder(self):
+        """The Host override must augment the base adapter, not replace it.
+
+        ``HTTPAdapter.add_headers`` is a documented extension point; dropping
+        the request or the keyword arguments on the way through would silently
+        discard anything requests contributes there.
+        """
+        from requests.adapters import HTTPAdapter
+
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://push.example.test/push"
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        try:
+            request = session.prepare_request(Request("POST", endpoint))
+            adapter = session.get_adapter(endpoint)
+            with patch.object(HTTPAdapter, "add_headers") as base_add_headers:
+                adapter.add_headers(request, stream=True)
+
+            base_add_headers.assert_called_once_with(request, stream=True)
+            assert request.headers["Host"] == "push.example.test"
+        finally:
+            session.close()
 
     def test_pinned_session_formats_ipv6_host_header(self):
         from app.services.webpush import _create_pinned_webpush_session

@@ -464,6 +464,49 @@ def test_cache_control_helper_normalizes_prefix_without_type_errors(
     assert files_module._cache_control_for_subdir(subdir) == expected
 
 
+PRIVATE_CACHE_CONTROL = "private, no-store"
+PUBLIC_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+
+@pytest.mark.parametrize(
+    ("subdir", "expected"),
+    [
+        # Only the first path segment selects the policy, however deep the
+        # remainder goes: a private root stays private...
+        ("chat_uploads/2026/03/thread-1", PRIVATE_CACHE_CONTROL),
+        ("event_files/archive/2026/agenda", PRIVATE_CACHE_CONTROL),
+        # ...and a public root is not made private by a deeper segment that
+        # happens to be named after a private prefix.
+        ("documents/chat_uploads/report", PUBLIC_CACHE_CONTROL),
+        # Windows-style separators must normalize before the root is taken,
+        # otherwise the whole path reads as a single non-private segment.
+        ("chat_uploads\\2026\\thread-1", PRIVATE_CACHE_CONTROL),
+        ("event_files\\archive", PRIVATE_CACHE_CONTROL),
+        # Leading and trailing separators and spaces are stripped, so a private
+        # root keeps its policy no matter how the caller spells the prefix.
+        ("/chat_uploads/2026", PRIVATE_CACHE_CONTROL),
+        (" event_files ", PRIVATE_CACHE_CONTROL),
+        # Stripping is confined to separators and spaces: a sibling directory
+        # whose name merely extends a private prefix is a different root and
+        # must not inherit the private policy.
+        ("chat_uploadsX", PUBLIC_CACHE_CONTROL),
+        ("chat_uploads_archive", PUBLIC_CACHE_CONTROL),
+        ("Xchat_uploads", PUBLIC_CACHE_CONTROL),
+    ],
+)
+def test_cache_control_policy_is_decided_by_the_normalized_root_segment(
+    subdir: str, expected: str
+):
+    """Pin the exact root-segment rule the object-layer privacy policy relies on.
+
+    Every case here distinguishes the implementation from a mutation that
+    weakens normalization: dropping the backslash rewrite, widening or
+    narrowing the strip set, or taking the last segment instead of the first.
+    """
+
+    assert files_module._cache_control_for_subdir(subdir) == expected
+
+
 @pytest.mark.asyncio
 async def test_save_attachment_accepts_matching_allowed_extension():
     upload = UploadFile(

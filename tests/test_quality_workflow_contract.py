@@ -3236,6 +3236,65 @@ def test_full_map_survivor_confirmation_degrades_only_the_watchdog_it_must() -> 
     )
 
 
+@pytest.mark.parametrize(
+    ("workflow_path", "job_name", "step_name"),
+    [
+        (
+            CI_WORKFLOW_PATH,
+            "mutation-tests-incremental",
+            "Run incremental mutmut (blocking, stats-derived budget)",
+        ),
+        (
+            NIGHTLY_FULL_WORKFLOW_PATH,
+            "mutation-tests-full",
+            "Plan and run exact full mutation shard",
+        ),
+    ],
+)
+def test_survivor_confirmation_budget_is_capped_by_the_live_deadline(
+    workflow_path: Path, job_name: str, step_name: str
+) -> None:
+    """The budget must be derived against the time the survivor actually has.
+
+    The watchdog bound is an upper bound on a child's wall cost, not an
+    estimate of it.  Run 35517610350 measured every ``app/core/logging.py``
+    confirmation deriving ~18,460s and finishing in 1,211-1,555s, so charging
+    the static ceiling against a shrinking deadline refused survivors that fit
+    with hours to spare (groups 23 and 26 each confirmed two and then refused
+    a third).  Deriving against the remaining deadline lets the existing
+    auto-degradation fit a survivor into what is left of the job.
+    """
+
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    run_script = _step_named(workflow["jobs"][job_name], step_name)["run"]
+    _, _, confirmation = run_script.partition(
+        "Primary reduced-map survivors requiring full-map confirmation"
+    )
+    assert confirmation, "survivor confirmation stage is missing from the run script"
+
+    remaining = confirmation.index("FULL_MAP_REMAINING_TIMEOUT_SECONDS=")
+    cap = confirmation.index("FULL_MAP_CONFIRMATION_CAP_SECONDS=")
+    derive = confirmation.index("scripts/mutmut_shard_budget.py")
+
+    # The deadline must be read, and the cap clamped to it, before the budget
+    # helper runs -- otherwise the derivation cannot degrade to fit.
+    assert remaining < cap < derive
+    assert '--max-timeout-seconds "$FULL_MAP_CONFIRMATION_CAP_SECONDS"' in confirmation
+    assert "--max-timeout-seconds 20970" not in confirmation
+
+    # The clamp must lower the static ceiling, never raise it.
+    assert (
+        'if [ "$FULL_MAP_REMAINING_TIMEOUT_SECONDS" -lt '
+        '"$FULL_MAP_CONFIRMATION_CAP_SECONDS" ]; then' in confirmation
+    )
+
+    # A survivor that does not fit even at the floor multiplier must fail
+    # closed rather than run unbounded: the helper's non-zero exit is caught.
+    assert "refusing unconfirmed evidence" in confirmation
+    assert "full-map survivor confirmation cannot fit" in confirmation
+    assert "even at the minimum execution multiplier" in confirmation
+
+
 def test_universe_producer_proves_every_function_stays_confirmable() -> None:
     """The sweep turns a 128-job matrix failure into one named producer failure.
 
@@ -4975,7 +5034,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert 1 <= mutation_shards["strategy"]["max-parallel"] <= 20
     assert mutation_shards["strategy"]["max-parallel"] == 6
     assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
-    assert mutation_shards["timeout-minutes"] == 240
+    assert mutation_shards["timeout-minutes"] == 270
     # The in-process runner deadline must stay strictly below the job cap so
     # an overrunning shard reports itself and still uploads evidence instead
     # of being cancelled silently by GitHub (run 35327250942 shard 61/64).
@@ -4998,7 +5057,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         "STRYKER_SHARD_COUNT": "64",
         "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
         "STRYKER_CONCURRENCY": "4",
-        "STRYKER_SHARD_TIMEOUT_MS": "13500000",
+        "STRYKER_SHARD_TIMEOUT_MS": "15300000",
         "STRYKER_PREFLIGHT_ARTIFACT": "required",
         "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
         "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
@@ -5204,13 +5263,13 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert manual_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
     assert manual_shards["name"].endswith("/64)")
     assert manual_shards["strategy"]["max-parallel"] == 20
-    assert manual_shards["timeout-minutes"] == 240
+    assert manual_shards["timeout-minutes"] == 270
     assert manual_shards["needs"] == "manual-frontend-mutation-preflight"
     assert manual_shards["env"] == {
         "STRYKER_SHARD_COUNT": "64",
         "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
         "STRYKER_CONCURRENCY": "4",
-        "STRYKER_SHARD_TIMEOUT_MS": "13500000",
+        "STRYKER_SHARD_TIMEOUT_MS": "15300000",
         "STRYKER_PREFLIGHT_ARTIFACT": "required",
     }
     assert manual_shards["permissions"] == {"contents": "read", "actions": "read"}
@@ -5251,7 +5310,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert nightly_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
     assert nightly_shards["name"].endswith("/64")
     assert nightly_shards["strategy"]["max-parallel"] == 8
-    assert nightly_shards["timeout-minutes"] == 240
+    assert nightly_shards["timeout-minutes"] == 270
     assert nightly_shards["needs"] == "frontend-mutation-preflight"
     assert nightly_shards["env"] == manual_shards["env"]
     assert nightly_shards["permissions"] == {"contents": "read", "actions": "read"}
