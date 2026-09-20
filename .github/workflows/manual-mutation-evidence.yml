@@ -433,7 +433,7 @@ jobs:
   manual-frontend-mutation-shards:
     name: Manual Mutation Evidence (frontend shard ${{ matrix.shard-index }}/64)
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 240
     needs: manual-frontend-mutation-preflight
     strategy:
       fail-fast: false
@@ -450,6 +450,14 @@ jobs:
       STRYKER_SHARD_COUNT: "64"
       STRYKER_SHARD_INDEX: ${{ matrix.shard-index }}
       STRYKER_CONCURRENCY: "4"
+      # Run 35470088045 measured a single PR shard needing ~175 minutes
+      # (16m34s perTest dry run over 5,219 tests plus 2h28m of mutation).
+      # Without an in-process deadline the runner default equals the job cap,
+      # so GitHub cancels the shard silently and the always() upload finds no
+      # evidence -- 14 nightly shards died that way in run 35423800635.  Keep
+      # 225 minutes strictly below the 240-minute cap so the shard reports its
+      # own overrun and still uploads partial evidence.
+      STRYKER_SHARD_TIMEOUT_MS: "13500000"
       STRYKER_PREFLIGHT_ARTIFACT: required
     steps:
       - name: Checkout
