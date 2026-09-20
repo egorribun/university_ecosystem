@@ -3109,6 +3109,67 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         assert "30-second KILL grace" in workflow_text
 
 
+def test_full_map_survivor_confirmation_regenerates_the_mutmut_universe() -> None:
+    """The survivor confirmation pass must not reuse the generated universe.
+
+    ``validate_universe_manifest`` pins the per-mutant ``.meta`` digests and the
+    stats digest recorded when the planner generated the universe.  By the time
+    a reduced-map survivor is confirmed, the primary run has written its exit
+    codes back into ``mutants/**/*.meta`` and the workflow has deliberately
+    copied the full map over ``mutants/mutmut-stats.json``, so both digests have
+    moved.  Passing ``--reuse-generated-universe`` to the confirmation therefore
+    aborts with "mutmut universe metadata fingerprint mismatch; refusing reuse"
+    before a single survivor is re-executed, which failed 66 execution groups in
+    run 35470088045.  ``nightly-full-gate.yml`` omits the flag for the same
+    reason; see ``test_scheduled_workflow_regressions``.
+
+    The primary run keeps the flag: its manifest is still the one the planner
+    wrote, so reuse there remains both valid and fail-closed.
+    """
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["mutation-tests-incremental"]
+    run_script = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
+    )["run"]
+
+    primary, _, confirmation = run_script.partition(
+        "Primary reduced-map survivors requiring full-map confirmation"
+    )
+    assert confirmation, "survivor confirmation stage is missing from the run script"
+
+    # The primary reduced-map run still reuses the planner-created universe.
+    assert "--reuse-generated-universe" in primary
+
+    # The confirmation re-runs each survivor alone, against the restored full
+    # map, and regenerates rather than reusing.
+    assert "cp mutants/mutmut-stats-full.json mutants/mutmut-stats.json" in confirmation
+    assert "--stats mutants/mutmut-stats-full.json" in confirmation
+    assert (
+        'uv run python scripts/run_mutmut_with_stats.py --max-children 3 "$survivor"'
+        in confirmation
+    )
+    # Ignore shell comments: the rationale above the invocation deliberately
+    # names the flag, so only executable lines may be searched for it.
+    confirmation_commands = [
+        line for line in confirmation.splitlines() if not line.lstrip().startswith("#")
+    ]
+    assert not any(
+        "--reuse-generated-universe" in line for line in confirmation_commands
+    )
+    assert "Confirmation must NOT reuse the generated universe" in confirmation
+
+    # The 100% gate must score the confirmed export, never the primary one.
+    assert run_script.index(
+        "mutants/mutmut-primary-cicd-stats.json"
+    ) < run_script.index("--output mutants/mutmut-cicd-stats.json")
+    assert run_script.index(
+        "--output mutants/mutmut-cicd-stats.json"
+    ) < run_script.index("scripts/mutmut_ci_gate.py")
+
+
 def test_incremental_mutation_workflows_allow_empty_shards_and_validate_failures() -> (
     None
 ):
@@ -4826,7 +4887,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert 1 <= mutation_shards["strategy"]["max-parallel"] <= 20
     assert mutation_shards["strategy"]["max-parallel"] == 6
     assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
-    assert mutation_shards["timeout-minutes"] == 180
+    assert mutation_shards["timeout-minutes"] == 240
     # The in-process runner deadline must stay strictly below the job cap so
     # an overrunning shard reports itself and still uploads evidence instead
     # of being cancelled silently by GitHub (run 35327250942 shard 61/64).
@@ -4849,7 +4910,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         "STRYKER_SHARD_COUNT": "64",
         "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
         "STRYKER_CONCURRENCY": "4",
-        "STRYKER_SHARD_TIMEOUT_MS": "9900000",
+        "STRYKER_SHARD_TIMEOUT_MS": "13500000",
         "STRYKER_PREFLIGHT_ARTIFACT": "required",
         "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
         "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",

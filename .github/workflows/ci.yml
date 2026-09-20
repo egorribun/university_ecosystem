@@ -915,14 +915,13 @@ jobs:
   stryker-shards:
     name: Frontend mutation shard ${{ matrix.shard-index }}/64
     runs-on: ubuntu-24.04
-    # Run 35327250942 measured 15 of 64 shards carrying 80% of the 42,889
-    # mutant universe, with legs at 120/111/98/95/87/86/85 minutes against the
-    # previous 120-minute cap.  Shard 61 reached 2,292 of its 2,367 mutants and
-    # was cancelled at the cap before it could write evidence, which cost the
-    # whole aggregate.  Raise the ceiling so the measured tail keeps headroom
-    # even after the first-attempt regular-lane budget in
-    # frontend/scripts/run-stryker.mjs flattens the distribution.
-    timeout-minutes: 180
+    # Run 35470088045 shard 26/64 measured a 16m34s perTest dry run over 5,219
+    # tests followed by 2h28m of mutation, reaching 1,387 of its 1,418 mutants
+    # before the in-process deadline fired; projected completion is ~175
+    # minutes.  The 64-shard critical path is set by throughput, not by this
+    # shard: 1,842 measured shard-minutes across max-parallel 6 is already
+    # ~307 minutes, so the extra ceiling costs no additional wall clock.
+    timeout-minutes: 240
     needs:
       - stryker-preflight
       - coverage-policy-gate
@@ -956,7 +955,9 @@ jobs:
       # (run 35327250942 shard 61).  Keep the in-process deadline strictly
       # below timeout-minutes so the runner reports the overrun itself and
       # the always() upload step still gets to run.
-      STRYKER_SHARD_TIMEOUT_MS: "9900000"
+      # Run 35470088045 shard 26/64 confirmed the mechanism: it logged
+      # "Stryker shard-026 exceeded 9900000ms" and the upload step ran.
+      STRYKER_SHARD_TIMEOUT_MS: "13500000"
       STRYKER_PREFLIGHT_ARTIFACT: required
       STRYKER_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       STRYKER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
@@ -4205,10 +4206,22 @@ jobs:
                   exit 1
                 fi
 
+                # Confirmation must NOT reuse the generated universe.  The manifest
+                # pins both the per-mutant .meta hashes and the stats digest, and the
+                # primary run has already invalidated both: it records exit codes into
+                # mutants/**/*.meta, and the full map was deliberately copied over
+                # mutants/mutmut-stats.json above.  Passing --reuse-generated-universe
+                # here aborted every confirmation with "mutmut universe metadata
+                # fingerprint mismatch; refusing reuse" and failed 66 execution groups
+                # in run 35470088045.  Regeneration is safe and effectively free:
+                # copy_src_dir skips existing targets, source_paths is app/ only, and
+                # create_mutants preserves exit_code_by_key for unchanged functions, so
+                # the primary evidence survives intact.  nightly-full-gate.yml omits
+                # the flag for the same reason.
                 MUTMUT_FAILURE_REASON="confirming ${survivor} against its complete mapped test set"
                 set +e
                 timeout --kill-after=30s "${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s" \
-                  uv run python scripts/run_mutmut_with_stats.py --max-children 3 --reuse-generated-universe "$survivor" \
+                  uv run python scripts/run_mutmut_with_stats.py --max-children 3 "$survivor" \
                   2>&1 | tee -a "$MUTMUT_EVIDENCE_DIR/full-map-confirmation.log"
                 pipeline_status=("${PIPESTATUS[@]}")
                 mutmut_exit_code="${pipeline_status[0]}"
