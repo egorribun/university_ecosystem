@@ -3170,6 +3170,94 @@ def test_full_map_survivor_confirmation_regenerates_the_mutmut_universe() -> Non
     ) < run_script.index("scripts/mutmut_ci_gate.py")
 
 
+def test_full_map_survivor_confirmation_degrades_only_the_watchdog_it_must() -> None:
+    """Only survivor confirmation may lower mutmut's 15x watchdog multiplier.
+
+    The full map charges a survivor the union of every test mapped to its
+    function.  For ``app/core/logging.py``'s PII helpers that is ~1355 tests
+    (~1335s), deriving 21,611s against GitHub's hard 21,600-second job maximum,
+    which failed 58 of 128 execution groups in run 35488190240; the whole-suite
+    hubs derive 97,567s.  No reserve tuning closes a gap above the platform
+    limit, so the confirmation resolves the largest multiplier that still fits
+    and never less than 2.
+
+    The reduction must stay scoped.  The primary run, the planner and the group
+    validator all plan against mutmut's own watchdog and must keep the module
+    default, or their budgets would stop bounding real wall cost.
+    """
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    consumer = workflow["jobs"]["mutation-tests-incremental"]
+    producer = workflow["jobs"]["mutation-tests-universe"]
+    run_script = _step_named(
+        consumer, "Run incremental mutmut (blocking, stats-derived budget)"
+    )["run"]
+
+    primary, _, confirmation = run_script.partition(
+        "Primary reduced-map survivors requiring full-map confirmation"
+    )
+    assert confirmation, "survivor confirmation stage is missing from the run script"
+
+    def commands(script: str) -> str:
+        """Drop shell comments: the rationale deliberately names the flags."""
+
+        return "\n".join(
+            line for line in script.splitlines() if not line.lstrip().startswith("#")
+        )
+
+    # Exactly one degraded multiplier, and only on the confirmation budget call.
+    assert re.findall(r"--execution-multiplier\s+(\S+)", commands(confirmation)) == [
+        "auto"
+    ]
+    assert re.findall(
+        r"--min-execution-multiplier\s+(\d+)", commands(confirmation)
+    ) == ["2"]
+
+    # A reduced cap is only legitimate per-survivor; a batch would multiply each
+    # hub function's union and blow the envelope it was lowered to fit.
+    assert '--selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivor.txt"' in commands(
+        confirmation
+    )
+
+    # Everything that plans against mutmut's own watchdog keeps the default.
+    assert "--execution-multiplier" not in commands(primary)
+    for step_name in (
+        "Merge and plan central mutmut universe",
+        "Build validated mutmut execution matrix",
+    ):
+        assert "--execution-multiplier" not in commands(
+            _step_named(producer, step_name)["run"]
+        )
+
+    # A preempted confirmation must fail the job before anything is scored.
+    assert "exit 124" in confirmation
+    assert confirmation.index("exit 124") < confirmation.index(
+        "scripts/mutmut_ci_gate.py"
+    )
+
+
+def test_universe_producer_proves_every_function_stays_confirmable() -> None:
+    """The sweep turns a 128-job matrix failure into one named producer failure.
+
+    Run 35488190240 discovered an underivable confirmation budget only after 58
+    consumer jobs had each spent hours reaching it.  The producer already holds
+    the merged full map, so it can prove the property once, and at the stricter
+    producer cap so that anything clearing it also clears the consumer's.
+    """
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    producer = workflow["jobs"]["mutation-tests-universe"]
+    plan_step = _step_named(producer, "Merge and plan central mutmut universe")["run"]
+
+    assert "scripts/validate_mutmut_confirmation_budgets.py" in plan_step
+    assert "--stats mutants/mutmut-stats-full.json" in plan_step
+    assert "--min-execution-multiplier 2" in plan_step
+    # The sweep must gate the plan, not trail it.
+    assert plan_step.index("validate_mutmut_confirmation_budgets.py") < plan_step.index(
+        "scripts/plan_mutmut_shards.py"
+    )
+
+
 def test_incremental_mutation_workflows_allow_empty_shards_and_validate_failures() -> (
     None
 ):

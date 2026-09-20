@@ -3469,6 +3469,22 @@ jobs:
             --tests-per-function 25
           test -s mutants/mutmut-stats-full.json
           test -s mutants/mutmut-stats-reduction.json
+          # Every reduced-map survivor is later re-confirmed against its COMPLETE
+          # mapped union, so a hub function's confirmation budget is charged most
+          # of the suite. Prove here -- once, where the merged stats already
+          # exist -- that every function stays confirmable, instead of letting
+          # 58 of 128 consumer jobs discover it hours into the matrix as they did
+          # in run 35488190240. The producer's stricter 20,880s cap is used on
+          # purpose: anything that clears it also clears the consumer's 20,970s.
+          uv run python scripts/validate_mutmut_confirmation_budgets.py \
+            --stats mutants/mutmut-stats-full.json \
+            --max-children 3 \
+            --control-cycle-reserve-seconds 5 \
+            --metadata-startup-reserve-seconds 120 \
+            --max-timeout-seconds 20880 \
+            --min-execution-multiplier 2 \
+            --output mutants/mutmut-confirmation-budget-sweep.json
+          test -s mutants/mutmut-confirmation-budget-sweep.json
           uv run python scripts/plan_mutmut_shards.py \
             --changed-files /tmp/changed_py.txt \
             --changed-diff /tmp/changed_py.diff \
@@ -4184,6 +4200,24 @@ jobs:
               for survivor in "${FULL_MAP_SURVIVORS[@]}"; do
                 survivor_index=$((survivor_index + 1))
                 printf '%s\n' "$survivor" > "$MUTMUT_EVIDENCE_DIR/full-map-survivor.txt"
+                # The full map charges a survivor the union of EVERY test mapped
+                # to its function, so mutmut's own 15x watchdog is not derivable
+                # for a hub function: app/core/logging.py's PII helpers each map
+                # to ~1355 tests (~1335s) and derive 21,611s against GitHub's
+                # hard 21,600s job maximum, which failed 58 of 128 groups in run
+                # 35488190240; the whole-suite hubs derive 97,567s, 4.5x the
+                # envelope. No reserve tuning closes a gap above the platform
+                # limit, so confirmation takes the largest multiplier that still
+                # fits and never less than 2. Sweeping that run's universe, 1799
+                # of 1814 functions still resolve to the full 15x, 7 to 14 and 8
+                # to 2 -- the reduction is spent only where it is forced.
+                # This is safe because 15x is a backstop that should never fire:
+                # pytest's --timeout=120 --timeout-method=signal (pyproject.toml)
+                # is what detects a mutant-induced hang, and mutmut's -x aborts
+                # at the first failing test. If the shorter cap does preempt a
+                # run, the 124 branch below exits before any export, the trap
+                # stamps execution_complete=false, and merge_mutmut_cicd_stats.py
+                # rejects that artifact -- fail closed, never a silent pass.
                 MUTMUT_FAILURE_REASON="deriving the full-map confirmation budget for ${survivor}"
                 FULL_MAP_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
                   --selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivor.txt" \
@@ -4191,10 +4225,12 @@ jobs:
                   --max-children 3 \
                   --control-cycle-reserve-seconds 5 \
                   --metadata-startup-reserve-seconds 120 \
+                  --execution-multiplier auto \
+                  --min-execution-multiplier 2 \
                   --max-timeout-seconds 20970 \
                   --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget-${survivor_index}.json")"
                 if ! [[ "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
-                  MUTMUT_FAILURE_REASON="full-map survivor budget helper returned an unsafe timeout value"
+                  MUTMUT_FAILURE_REASON="full-map survivor budget helper returned an unsafe timeout value for ${survivor}"
                   echo "::error::Full-map survivor budget helper returned an unsafe timeout value for ${survivor}."
                   exit 1
                 fi
@@ -4219,6 +4255,12 @@ jobs:
                 # the primary evidence survives intact.  nightly-full-gate.yml omits
                 # the flag for the same reason.
                 MUTMUT_FAILURE_REASON="confirming ${survivor} against its complete mapped test set"
+                # Every survivor appends to one log, so delimit them: after a
+                # timeout the reader must be able to tell where survivor N began.
+                FULL_MAP_BUDGET_MULTIPLIER="$(jq -r '.execution_multiplier' \
+                  "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget-${survivor_index}.json")"
+                echo "=== confirming ${survivor} (budget ${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s at ${FULL_MAP_BUDGET_MULTIPLIER}x) ===" \
+                  | tee -a "$MUTMUT_EVIDENCE_DIR/full-map-confirmation.log"
                 set +e
                 timeout --kill-after=30s "${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s" \
                   uv run python scripts/run_mutmut_with_stats.py --max-children 3 "$survivor" \
@@ -4232,12 +4274,12 @@ jobs:
                   exit "$tee_exit_code"
                 fi
                 if [ "$mutmut_exit_code" -eq 124 ]; then
-                  MUTMUT_FAILURE_REASON="full-map survivor confirmation exceeded its stats-derived timeout"
+                  MUTMUT_FAILURE_REASON="full-map survivor confirmation of ${survivor} exceeded its stats-derived timeout"
                   echo "::error::Full-map confirmation of ${survivor} exceeded its stats-derived budget."
                   exit 124
                 fi
                 if [ "$mutmut_exit_code" -ne 0 ]; then
-                  MUTMUT_FAILURE_REASON="full-map survivor confirmation did not complete"
+                  MUTMUT_FAILURE_REASON="full-map survivor confirmation of ${survivor} did not complete"
                   echo "::error::Full-map confirmation of ${survivor} exited with ${mutmut_exit_code}."
                   exit "$mutmut_exit_code"
                 fi
