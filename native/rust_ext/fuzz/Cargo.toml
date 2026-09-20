@@ -10,7 +10,9 @@ cargo-fuzz = true
 [dependencies]
 ammonia = "4.1.4"
 arbitrary = { version = "1", features = ["derive"] }
-chrono = { version = "0.4", features = ["serde"] }
+# RUST-P3-04: the fuzz targets use chrono only for Duration/TimeZone/Utc
+# arithmetic; nothing here is serialized.
+chrono = "0.4"
 libfuzzer-sys = "0.4"
 hmac = "0.12.1"
 sha2 = "0.10.9"
