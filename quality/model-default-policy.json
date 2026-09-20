@@ -5,16 +5,16 @@
       "events.search_vector"
     ],
     "effective_counts": {
-      "both": 36,
+      "both": 53,
       "python_only": 81,
-      "server_only": 17
+      "server_only": 0
     },
     "effective_default_count": 134,
     "migration_head": "202609150001",
     "source_counts": {
-      "both": 36,
+      "both": 53,
       "python_only": 55,
-      "server_only": 17
+      "server_only": 0
     },
     "source_default_none_columns": [
       "chats.created_by",

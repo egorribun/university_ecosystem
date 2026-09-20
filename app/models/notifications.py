@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -46,6 +46,7 @@ class Notification(Base, UUID7PrimaryKeyMixin, UserFK):
     )
     created_at: Mapped[datetime] = mapped_column(  # MED-W19: was Mapped[DateTime]
         DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
         index=True,
         nullable=False,
@@ -89,6 +90,7 @@ class NotificationQueueJob(Base, UUID7PrimaryKeyMixin):
     locale: Mapped[str | None] = mapped_column(String(16))
     enqueued_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
         nullable=False,
     )
@@ -171,6 +173,7 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
     )
     attempted_at: Mapped[datetime] = mapped_column(  # MED-W19: was Mapped[DateTime]
         DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
         nullable=False,
         index=True,
@@ -232,6 +235,7 @@ class PushSubscription(Base, UUID7PrimaryKeyMixin, UserFK):
     auth: Mapped[str] = mapped_column(String(200), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
         nullable=False,
         index=True,
@@ -268,6 +272,7 @@ class UserPushTopic(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
         onupdate=func.now(),
     )

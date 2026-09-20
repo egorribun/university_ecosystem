@@ -41,9 +41,9 @@ def test_repository_inventory_is_current_and_owner_scoped() -> None:
     assert inventory["source"]["migration_head"] == "202609150001"
     assert inventory["summary"] == {
         "computed_columns": ["events.search_vector"],
-        "effective_counts": {"both": 36, "python_only": 81, "server_only": 17},
+        "effective_counts": {"both": 53, "python_only": 81, "server_only": 0},
         "effective_default_count": 134,
-        "source_counts": {"both": 36, "python_only": 55, "server_only": 17},
+        "source_counts": {"both": 53, "python_only": 55, "server_only": 0},
         "source_default_none_count": 10,
         "source_mapped_column_count": 108,
         "table_count": 45,

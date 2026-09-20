@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -41,6 +41,7 @@ class DataAccessLog(Base, UUID7PrimaryKeyMixin):
     __table_args__ = ({"postgresql_partition_by": "RANGE (created_at)"},)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
         server_default=func.now(),
         index=True,
         primary_key=not settings.database_url.startswith("sqlite"),

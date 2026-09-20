@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,8 +22,11 @@ class Tenant(Base, UUID7PrimaryKeyMixin):
         String(256), unique=True, index=True, nullable=True
     )
     is_active: Mapped[bool] = mapped_column(
-        Boolean, server_default="true", nullable=False, index=True
+        Boolean, default=True, server_default="true", nullable=False, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )

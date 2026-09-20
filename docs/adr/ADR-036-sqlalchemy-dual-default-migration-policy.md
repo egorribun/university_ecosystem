@@ -25,16 +25,16 @@ pretend that source metadata alone proves the DDL of every deployed database.
 
 ## Inventory
 
-The current SQLAlchemy metadata (measured 2026-09-15) contains 45 tables and
-134 effective defaulted columns (computed expressions and `default=None`
-excluded):
+The current SQLAlchemy metadata (re-measured 2026-09-20 after phase two)
+contains 45 tables and 134 effective defaulted columns (computed expressions
+and `default=None` excluded):
 
-- 36 declarations have both an ORM and server default;
+- 53 declarations have both an ORM and server default;
 - 81 effective declarations are Python-only;
-- 17 declarations are server-only.
+- 0 declarations are server-only.
 
 The source-level AST inventory contains 108 `mapped_column` calls with a
-`default` or `server_default` keyword: 36 both, 55 Python-only and 17
+`default` or `server_default` keyword: 53 both, 55 Python-only and 0
 server-only. The effective/source difference includes UUIDv7 primary-key
 defaults inherited from the mixin and explicit `default=None` declarations;
 the candidate list must therefore be generated from both metadata and the
@@ -105,6 +105,49 @@ quoted, and an advisory transaction lock serializes concurrent applications.
 The downgrade is deliberately contract-preserving: it verifies the same
 catalog invariants and retains matching defaults/constraints because Alembic
 cannot prove ownership of equivalent objects that pre-date this revision.
+
+### Phase two: Python-side completion for server-only defaults
+
+Every column that carried a PostgreSQL default but no ORM default now declares
+one. This is the class the audit's stated impact actually describes: a freshly
+instantiated entity left the attribute unpopulated, so `model_validate(
+from_attributes=True)` forced a database roundtrip and raised `MissingGreenlet`
+on async paths. The seventeen columns are:
+
+```text
+data_access_logs.created_at            news_likes.created_at
+event_attendance.registered_at         notification_deliveries.attempted_at
+events.created_at                      notification_queue_jobs.enqueued_at
+invite_codes.created_at                notifications.created_at
+news.created_at                        push_subscriptions.created_at
+news_comments.created_at               tenants.created_at
+tenants.is_active                      user_push_topics.updated_at
+user_stats.last_computed_at            users.created_at
+vector_chunks.created_at
+```
+
+Sixteen are `DateTime(timezone=True)` columns whose server default is `now()`;
+they receive `default=lambda: datetime.now(UTC)`, matching both the existing
+dual-declared timestamps in `app/models/auth.py` and PostgreSQL's
+`CURRENT_TIMESTAMP` semantics. `tenants.is_active` receives `default=True` to
+mirror its `server_default="true"`.
+
+This phase deliberately emits **no DDL and no migration**. A Python-side
+`default=` is applied by the ORM before the INSERT and never renders into
+`CREATE TABLE`; only `server_default` does. `tests/test_alembic_schema_drift.py`
+passes unchanged, which is the evidence that the deployed catalog is untouched
+and that no lock, backfill or rewrite was required. The catalog preflight
+mandated for DDL phases therefore does not gate this one -- but it still gates
+every remaining phase.
+
+`user_push_topics.updated_at` and `user_stats.last_computed_at` keep their
+server-side `onupdate=func.now()`. Adding a Python-side `onupdate` would move
+UPDATE-time clock authority from PostgreSQL to the application, which is a
+separate contract change and is out of scope here.
+
+The 81 Python-only declarations are untouched. They are the low-risk scalar,
+timestamp and JSON phases, and each still requires its own catalog-backed
+migration.
 
 ## Exceptions
 

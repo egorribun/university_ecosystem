@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
@@ -45,7 +45,10 @@ class News(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         Text().with_variant(Vector(1536), "postgresql"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        index=True,
     )
 
     # TD-20-05 (audit 2026-03-24): Explicit noload prevents N+1 on list endpoints.
@@ -94,7 +97,10 @@ class NewsLike(Base, UUID7PrimaryKeyMixin, UserFK):
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        index=True,
     )
 
     # TD-20-05: noload on back-references — load explicitly when needed.
@@ -118,7 +124,10 @@ class NewsComment(Base, UUID7PrimaryKeyMixin, UserFK):
     )
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        index=True,
     )
 
     # TD-20-05: noload on back-references — load explicitly when needed.
