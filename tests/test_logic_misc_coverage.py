@@ -52,17 +52,53 @@ def test_schedule_item_internal_model_definition_is_executed_under_coverage():
     definition observable without changing production behavior or adding
     coverage exclusions.
     """
+    import uuid
+
     import app.services.schedule_optimizer as schedule_optimizer
 
-    module = importlib.reload(schedule_optimizer)
-    item = module.ScheduleItemInternal(
-        weekday="Monday",
-        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
-        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
-        parity="both",
+    # ``importlib.reload`` re-executes the module *in place*, so every
+    # module-level object is rebuilt -- including the ``_UNSET`` sentinel that
+    # ``_to_rust_item`` compares by identity. Suites that imported the module
+    # earlier keep the previous function objects, whose captured keyword
+    # default is the previous sentinel while their globals now hold the new
+    # one. The identity check then fails and a valid UUID silently converts to
+    # ``None``. That is not hypothetical: it broke
+    # tests/test_mutation_regressions.py in run 35505045642, the first run in
+    # which shard rebalancing placed both files in the same worker.
+    #
+    # Snapshotting and restoring the namespace keeps the reload local to this
+    # test. Restoring the dict (rather than reloading a second time) is what
+    # makes it exact -- a second reload would mint a third sentinel and leave
+    # the already-imported references just as stale.
+    original_namespace = dict(schedule_optimizer.__dict__)
+    try:
+        module = importlib.reload(schedule_optimizer)
+        item = module.ScheduleItemInternal(
+            weekday="Monday",
+            start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+            end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+            parity="both",
+        )
+        assert item.weekday == "Monday"
+        assert item.parity == "both"
+    finally:
+        schedule_optimizer.__dict__.clear()
+        schedule_optimizer.__dict__.update(original_namespace)
+
+    # Prove the restoration is complete, not merely attempted: this is the
+    # exact conversion the stale sentinel silently broke.
+    item_id = uuid.UUID("12345678-1234-5678-90ab-cdef12345678")
+    service = schedule_optimizer.ScheduleOptimizerService()
+    rust_item = service._to_rust_item(
+        schedule_optimizer.ScheduleItemInternal(
+            id=item_id,
+            weekday="Monday",
+            start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+            end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+            parity="both",
+        )
     )
-    assert item.weekday == "Monday"
-    assert item.parity == "both"
+    assert rust_item.id == int.from_bytes(item_id.bytes[:4], "big") & 0x7FFFFFFF
 
 
 def test_cost_visitor_all_list_fields():
