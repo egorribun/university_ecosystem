@@ -4964,6 +4964,52 @@ def test_actionlint_documents_github_service_command_compatibility() -> None:
     assert 'unexpected key "command" for "services" section' in ignores
 
 
+def test_stryker_duration_bounds_track_the_shard_job_cap() -> None:
+    """Every duration bound in run-stryker.mjs must track the shard job cap.
+
+    A shard cannot legitimately run longer than the job hosting it, so both
+    bounds are derived from ``timeout-minutes`` rather than written out by
+    hand.  Run 35545015344 and run 35547440861 each failed the whole frontend
+    gate on a copy of that literal that had not been moved with the cap: the
+    first rejected the configured ``STRYKER_SHARD_TIMEOUT_MS`` before any
+    mutant ran, the second rejected shard 26/64's own 244-minute timing as
+    malformed after it finally completed.  Pinning the derivation here means
+    the next change to the cap fails locally instead of four hours into CI.
+    """
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    cap_minutes = workflow["jobs"]["stryker-shards"]["timeout-minutes"]
+    cap_ms = cap_minutes * 60 * 1000
+
+    script = (REPOSITORY_ROOT / "frontend" / "scripts" / "run-stryker.mjs").read_text(
+        encoding="utf-8"
+    )
+
+    def literal(pattern: str) -> int:
+        match = re.search(pattern, script)
+        assert match, f"run-stryker.mjs no longer matches {pattern!r}"
+        return int(match.group(1).replace("_", ""))
+
+    historical_cost_bound = literal(
+        r"const maximumHistoricalCostMs = ([0-9_]+)",
+    )
+    shard_timeout_bound = literal(
+        r'"STRYKER_SHARD_TIMEOUT_MS",\s*[0-9_]+,\s*[0-9_]+,\s*([0-9_]+)',
+    )
+
+    assert historical_cost_bound == cap_ms
+    assert shard_timeout_bound == cap_ms
+
+    # The configured deadline must still sit strictly inside both the bound
+    # and the cap, so an overrun is reported by the runner rather than by
+    # GitHub cancelling the job.
+    configured = int(
+        workflow["jobs"]["stryker-shards"]["env"]["STRYKER_SHARD_TIMEOUT_MS"]
+    )
+    assert configured < shard_timeout_bound
+    assert configured < cap_ms
+
+
 def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     manual_workflow = yaml.safe_load(

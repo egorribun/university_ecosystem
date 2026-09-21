@@ -56,7 +56,12 @@ export const strykerSafeErrorStringPreloadOption = `--import=${
 const instrumenterOptions = { plugins: null, excludedMutations: [], ignorers: [] }
 const preflightArtifactSchemaVersion = "1.0"
 const historicalCostArtifactSchemaVersion = "1.0"
-const maximumHistoricalCostMs = 14_400_000
+// A shard cannot legitimately run longer than the job that hosts it, so this
+// tracks the shard job cap (timeout-minutes: 270) exactly as the
+// STRYKER_SHARD_TIMEOUT_MS bound does.  Run 35547440861 proved the coupling:
+// shard 26/64 finally completed, in 244 minutes, and the previous 14,400,000
+// literal then rejected its own timing as malformed and failed the aggregate.
+const maximumHistoricalCostMs = 16_200_000
 const windowsDeviceNamePattern = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9]|clock\$)(?:\..*)?$/iu
 
 export function buildStrykerChildEnvironment(parentEnv = process.env) {
