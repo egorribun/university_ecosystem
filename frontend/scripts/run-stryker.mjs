@@ -3964,11 +3964,19 @@ async function main() {
     const { identity: before, sourceByFile } = beforeSnapshot
     const shardTarget = boundedEnvironmentInteger("STRYKER_SHARD_TARGET", 750, 50, 2_000)
     const shardParallelism = boundedEnvironmentInteger("STRYKER_SHARD_PARALLELISM", 2, 1, 4)
+    // The ceiling is the shard job's own cap (ci.yml `stryker-shards`,
+    // nightly-full-gate.yml and manual-mutation-evidence.yml all use
+    // timeout-minutes: 270).  An in-process deadline above the job cap could
+    // never fire, so GitHub would cancel the runner first and the shard would
+    // die without a diagnostic or an evidence upload -- the exact failure
+    // ADR-039 records for run 35327250942 shard 61.  The workflow contract
+    // test keeps the configured value strictly below the cap; this bound stops
+    // a value that could not be honoured at all.
     const shardTimeoutMs = boundedEnvironmentInteger(
       "STRYKER_SHARD_TIMEOUT_MS",
       7_200_000,
       60_000,
-      14_400_000
+      16_200_000
     )
     const runnerConcurrency = boundedEnvironmentInteger("STRYKER_CONCURRENCY", 2, 1, 4)
     if (runnerConcurrency * shardParallelism > 8) {
