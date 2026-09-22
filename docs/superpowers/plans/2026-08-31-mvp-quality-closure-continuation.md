@@ -8255,6 +8255,23 @@ and provenance were restored to the previously clean tracked versions, not
 published as canonical artifacts. Test scratch and downloaded reports remain
 under ignored `artifacts/`; the external audit remains untouched and untracked.
 
+Post-commit fast preflight on `c082176f7` passed 6/6: frontend typecheck
+(8.049 s), frontend lint (98.870 s), backend typecheck (5.851 s), backend lint
+(0.178 s), harness (34.319 s), focused contracts (70.833 s). The local JSON is
+`artifacts/fast-preflight/fast-preflight.json`. A later documentation-only
+checkpoint must not be mislabeled as the SHA tested by this report.
+
+Additional policy gap discovered during verification: `cspell.json` contains
+`ignorePaths: ["**/*"]` alongside its other patterns, making the spelling
+step effectively empty. The separate Markdown linter is still active. No
+approved waiver was located in the targeted repository search; shallow history
+does not establish who introduced it. This is OPEN, not an accepted quality
+exception: define reviewed authored documentation/code scopes, preserve generated
+and third-party boundaries, add a regression proving a deliberate typo is
+detected, then remove the universal ignore and repair genuine findings. Do not
+bulk-allowlist unknown words or assume RU/EN prose is a defect in an English-only
+dictionary. Keep this distinct from the already-fixed source/test inventory.
+
 ### Remaining master-plan acceptance, not presumed product defects
 
 | Stage | Required closure evidence |
