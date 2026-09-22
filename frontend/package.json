@@ -239,6 +239,9 @@
     "@opentelemetry/core": "2.8.0",
     "uuid": ">=14.0.0",
     "lighthouse": "^13.1.0",
+    "msw-auto-mock": {
+      "@ai-sdk/provider-utils": "4.0.33"
+    },
     "eslint-plugin-react-hooks": {
       "zod-validation-error": "4.0.2"
     }
