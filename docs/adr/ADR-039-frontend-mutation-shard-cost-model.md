@@ -73,10 +73,13 @@ to 1,259 mutants.
 
 That path is implemented — `buildHistoricalCostArtifact`,
 `historicalCostModelCosts` and the `STRYKER_HISTORICAL_COSTS_ARTIFACT`
-contract all exist in `run-stryker.mjs` — but no workflow produces or consumes
-the artifact, and `validatedHistoricalCosts` requires a cost for every viable
-source. A complete 64-shard run is therefore a precondition for enabling it,
-and no complete run exists: shard 26 has never finished.
+contract all exist in `run-stryker.mjs`. The workflow already publishes the
+historical-cost artifact and can restore compatible evidence from an earlier
+attempt of the same run and SHA. It does not yet restore a compatible artifact
+across runs, so a new run's first attempt still uses the fallback planner.
+`validatedHistoricalCosts` requires a cost for every viable source; partial
+reports must not silently become complete cost evidence. The measured run
+above lacked one shard, which prevented bootstrapping from that particular run.
 
 ## Decision
 
@@ -89,31 +92,33 @@ sized from measurement rather than from re-planning. The shard job cap is 270
 minutes and the in-process Stryker deadline is 15,300,000 ms (255 minutes),
 keeping the in-process deadline strictly below the job cap so the runner
 reports its own overrun and the evidence upload still runs (the property
-ADR-era run 35327250942 established). The 64-shard critical path is bounded by
-throughput, not by any single shard — 1,842 measured shard-minutes at
-`max-parallel: 6` is roughly 307 minutes — so a higher per-job ceiling costs
-no additional wall clock.
+ADR-era run 35327250942 established). The measured 1,842 shard-minutes at
+`max-parallel: 6` imply a roughly 307-minute throughput lower bound, not a
+wall-clock upper bound. Queueing, lane imbalance and a long final shard can
+extend the critical path. Raising the ceiling improves the opportunity to
+produce complete diagnostic evidence; it is not evidence of faster execution
+or unchanged wall-clock duration.
 
 This envelope is explicitly a means, not an end: its purpose is to let one
 complete 64-shard run exist so the cost model can be bootstrapped.
 
 ## Consequences
 
-A frontend mutation shard may now occupy a runner for up to 270 minutes. The
-measured aggregate is unchanged, so the wall-clock cost of the matrix is
-unchanged.
+A frontend mutation shard may now occupy a runner for up to 270 minutes.
+Its effect on total matrix duration and runner occupancy must be measured on
+comparable completed runs; neither is guaranteed to remain unchanged.
 
 The weight table remains in the source because removing it would reshuffle
 every lane, and a reshuffle cannot be validated offline against wall time. It
 is frozen, not deleted; its entries retain their provenance comments as
 history.
 
-Wiring the historical cost model remains open work. It requires a producer
-step that publishes `HISTORICAL_COSTS.json` from a completed run, a consumer
-that restores it on a later run, and a decision about how a cost artifact ages
-against a moving source inventory. Until then the envelope above is the only
-thing standing between shard 26 and a red gate, and this ADR is the record of
-why no planner change accompanies it.
+Cross-run historical-cost reuse remains open work. The existing producer and
+same-run retry consumer are not sufficient: a later run needs explicit
+compatibility, source-inventory and aging validation before using prior costs.
+Historical timing is planning advice, never a substitute for fresh mutation
+results. The larger envelope is a temporary completion/diagnostic measure,
+not certification that timeouts or load imbalance are resolved.
 
 ## References
 

@@ -4,17 +4,17 @@
 > **Status ledger convention:** the checkbox lists below are an immutable
 > acceptance template retained for traceability; they are intentionally not
 > bulk-ticked after implementation. Current truth is recorded only in the
-> latest dated overlay section (currently §142), which classifies each item as
+> latest dated overlay section (currently §148), which classifies each item as
 > `DONE`, `OPEN`, `EVIDENCE-BLOCKED` or `EXTERNAL-ONLY` and links to the exact
 > command, SHA and artifact required for promotion.
 
-**Goal:** продолжить работу на ветке `egorribun` от исторической контрольной точки `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, сохранить уже реализованные основные вертикали MVP, закрыть подтверждённые инфраструктурные и mutation-дефекты текущего PR, получить полный current-SHA набор quality/mutation/security evidence и довести тот же immutable build через Docker и production-like staging до доказуемо готового к релизу состояния. Исторические SHA/run из baseline ниже не являются текущей сертификацией; authoritative overlay находится в §142.
+**Goal:** продолжить работу на ветке `egorribun` от исторической контрольной точки `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, сохранить уже реализованные основные вертикали MVP, закрыть подтверждённые инфраструктурные и mutation-дефекты текущего PR, получить полный current-SHA набор quality/mutation/security evidence и довести тот же immutable build через Docker и production-like staging до доказуемо готового к релизу состояния. Исторические SHA/run из baseline ниже не являются текущей сертификацией; authoritative overlay находится в §148.
 
 **Architecture:** репозиторий рассматривается как единая fail-closed система качества. Каждая технологическая область формирует нативные отчёты, а SHA-bound агрегатор принимает только полные, свежие и хешированные артефакты одного workflow run/attempt, отдельно фиксируя source head SHA и tested merge SHA. Уже реализованные продуктовые вертикали проходят evidence-first gap-аудит и меняются только при воспроизведённом дефекте; CI закрывается root-cause группами через RED → GREEN → REFACTOR и оптимизируется по измеренному критическому пути при лимите 20 одновременно исполняемых jobs без ослабления coverage, mutation, security или browser matrix.
 
 **Tech Stack:** Python 3.14, FastAPI, SQLAlchemy 2 async, Dishka, PostgreSQL, Redis/Valkey, NATS, transactional outbox, pytest/coverage.py/mutmut; React 19, TypeScript 7, TanStack Router/Query, Zustand, Valibot, Vite 8/Rolldown, Vitest/Stryker, Playwright, Storybook, Lighthouse; Go 1.26 modules, race detector, golangci-lint; Rust, cargo-llvm-cov, WASM, PyO3; Docker Compose, Caddy, Helm/Kubernetes, Kyverno, ExternalSecrets, Prometheus/Grafana/Tempo/Loki; GitHub Actions, CodeQL, Semgrep, Bandit, detect-secrets, gitleaks, Trivy, SBOM и provenance.
 
-**Historical audit refresh:** `2026-08-31T13:37:11+03:00`; live PR `#1257`, source head `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, matrix run `33349026009`. Это superseded baseline, сохранённый для причинного и regression-аудита. §32 и последующие ранние разделы являются историческими snapshots; текущий identity/status snapshot и authoritative overlay находятся в §142 и должны обновляться через paginated GitHub Jobs API перед каждым утверждением о закрытии.
+**Historical audit refresh:** `2026-08-31T13:37:11+03:00`; historical PR `#1257`, source head `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, matrix run `33349026009`. Это superseded baseline, сохранённый для причинного и regression-аудита. §32 и последующие ранние разделы являются историческими snapshots; текущий identity/status snapshot и authoritative overlay находятся в §148 и должны обновляться через paginated GitHub Jobs API перед каждым утверждением о закрытии.
 
 **Spec:** [`AGENTS.md`](../../../AGENTS.md), [`app/AGENTS.md`](../../../app/AGENTS.md), [`frontend/AGENTS.md`](../../../frontend/AGENTS.md), [`services/AGENTS.md`](../../../services/AGENTS.md), [`quality/quality-contract.json`](../../../quality/quality-contract.json), [`University_Ecosystem_MVP.md`](University_Ecosystem_MVP.md), [`2026-08-25-quality-closure-foundation.md`](2026-08-25-quality-closure-foundation.md), [`prompt.md`](prompt.md), PR [#1257](https://github.com/egorribun/university_ecosystem/pull/1257).
 
@@ -8114,3 +8114,219 @@ the fresh run's first failure is not conflated with this historical Semgrep
 ledger issue. Do not claim release readiness until the new exact-SHA matrix is
 terminal green and all external image, Docker, staging, browser/device,
 chaos/rollback, manifest and resulting-main gates are independently evidenced.
+
+## 148. Post-maintainer reassessment and active closure ledger (2026-09-22)
+
+This section supersedes the operational state of §§142–147, not their historical
+evidence or the master-plan acceptance requirements. Existing checkbox lists
+remain acceptance templates, not a command to repeat completed feature work.
+
+### Identity and preservation
+
+- Reassessed range: `d4d3021b912cb59ed6e8bb132c7eec6faed8b2cb` through
+  `2fdb2e2f45618f4c5a836203f379bec36f76313d`: 19 commits, 159 changed files.
+- Active branch: `egorribun`; PR: [#1266](https://github.com/egorribun/university_ecosystem/pull/1266).
+- Baseline Matrix run: [35724213801](https://github.com/egorribun/university_ecosystem/actions/runs/35724213801),
+  source head `2fdb2e2f45618f4c5a836203f379bec36f76313d`, tested merge
+  `9d811b29cf09fa9e96dbb8081b3b342dc885320b`. It completed during implementation:
+  inventory, Node audit and combined Python coverage failed; downstream
+  mutation lanes did not execute. CI Success is an aggregate failure.
+- Baseline local/origin/PR source heads agreed; tracked worktree was clean.
+  Only `docs/audits/AUDIT_PLATFORM_FULL.md` was untracked and user-owned.
+  Preserve it; do not silently rewrite or stage the external audit.
+- Only the primary worktree was registered. Earlier temporary integration
+  worktrees, ahead counts and dirty WASM statements are historical, not current.
+- Local edits below are candidates until reviewed and committed. Their focused
+  checks do not certify the baseline SHA or replace a fresh full matrix.
+
+### Confirmed implementation progress
+
+| Item | Status | Evidence and remaining boundary |
+| --- | --- | --- |
+| BE-04 route DI | DONE implementation | 135 canonical Dishka routes, zero mixed/legacy; 11 public and 4 worker-internal routes separately classified. Primary/read component ownership independently resolved. |
+| BE-12 schema split | DONE implementation | 77 classes in 11 domain modules; AST class-body comparison unchanged; compatibility re-exports retained. |
+| BE-02 phase two/three | OPEN remainder | 82 dual, 52 Python-only, zero server-only defaults across 45 tables. Phase-three migration covers 29 literal columns; preflight defect below still needs closure. |
+| Product stages 1–8 | EVIDENCE-BLOCKED | Substantial existing implementations retained. No from-scratch profile/activity/messenger rewrite is authorized by historical checkbox templates. |
+| Full quality and release | EVIDENCE-BLOCKED | No terminal current-SHA 100% mutation/coverage manifest plus runtime/release evidence established by this reassessment. |
+
+Of 52 Python-only defaults, 40 are governed application-owned exceptions:
+37 UUIDv7 values, one CSPRNG signing secret and two JSON defaults. The remaining
+12 candidates are `attachments.created_at`, `chats.created_at/updated_at`,
+`dead_letter_jobs.created_at/updated_at`, `failed_outbox_events.failed_at`,
+`grades.created_at/updated_at`, `message_reactions.created_at`,
+`messages.created_at`, `stored_events.created_at`, and `users.role`.
+Decide timestamp/enum semantics before adding DDL; do not convert all 52 blindly.
+
+The external audit's reported 59 closed / 2 declined / 2 open is an input,
+not certification. BE-08 must be reopened: wiring CDC does not prove usable
+replication or durable acknowledgment. Keep the justified native/WASM workspace
+and fail-closed secret-cleanup decisions; retain the HMAC/base64 and canonical
+WASM reproducibility item as OPEN until verified or explicitly scoped out.
+
+### Immediate implementation lanes
+
+1. **CDC safety — LOCAL-GREEN, real transport remains deferred.** Owner: backend implementer, then
+   independent reviewer. Files: `app/workers/cdc_outbox.py`,
+   `app/core/lifespan.py`, CDC/lifespan tests and ADR-037. Installed asyncpg
+   rejects `replication="database"` and has no `put_copy_data`; enabling CDC
+   currently suppresses polling before failure. Reject unsupported CDC startup
+   before side effects, preserve default polling, and retain explicit deferral
+   until a supported transport passes real PostgreSQL/NATS replay tests.
+   Independently ensure keepalive cannot acknowledge beyond successfully
+   dispatched WAL. RED reproductions: connect TypeError with no fallback;
+   failed insert at LSN 100 followed by keepalive 200 incorrectly acknowledges
+   200. Transaction/replay barriers remain required before enabling CDC.
+2. **Migration semantics — LOCAL-GREEN, hosted recertification pending.** Owner: migration implementer/reviewer.
+   Files: `alembic/versions/202609220001_phase_literal_scalar_defaults.py` and
+   focused migration tests and `tests/integration/test_be02_literal_defaults_postgres.py`.
+   Reject `'PENDING'` and `'pen ding'` as defaults for
+   intended `'pending'`; preserve literal payload while normalizing supported
+   cast/parenthesis syntax. Cover fail-before-DDL, upgrade/downgrade and an
+   isolated PostgreSQL catalog with divergent existing defaults.
+3. **Source/test inventory — COMMITTED, hosted recertification pending.** Owner: lead.
+   `tests/test_api_dependency_injection_contract.py` now uses canonical
+   `from pathlib import Path`, preserving the real `app/api` ownership link.
+   Regression added in `tests/test_quality_inventory.py`; RED was the empty
+   reference set. Focused command below passes 114 tests; regenerated full
+   inventory validator passes without a new orphan exception. Commit:
+   `0606860c6` (`test(contracts): preserve DI route inventory ownership`).
+4. **Node audit — LOCAL-GREEN, hosted recertification pending.** Owner: dependency implementer.
+   Files: frontend package/lock and `security/audit-allowlist.yaml`. Eight
+   undici allowances expired on 2026-09-21; fresh audit instead reported seven
+   low findings from provider-utils through msw-auto-mock. Use compatible
+   scoped updates, verify generated mock contracts, and remove only obsolete
+   allowances with evidence. Do not renew expiry merely to unblock CI.
+   Scoped provider-utils 4.0.33 override removes the observed low advisory;
+   fresh full and lock-only audits report zero findings. Actual generated
+   mock outputs remain identical after normalization.
+5. **Python coverage — LOCAL-GREEN, full hosted aggregation pending.** Owner: two disjoint test
+   implementers, then independent reviewer. The four shard reports agree on
+   source/run identity and artifact hashes. Their union lacks only three
+   statements and six branch arcs: `app/api/deps/auth.py:372-373`,
+   `app/repositories/schedule_repository.py:33` and arc `32->33`,
+   `app/api/events.py` arcs `503->505`, `541->543`, and `app/api/news.py`
+   arcs `113->115`, `266->268`, `296->298` (baseline line numbers).
+   Add real authorization-unavailability and invalid-cache-shape contracts.
+   For news/events, establish required HTTP Request ownership before removing
+   obsolete optional-request branches; do not manufacture impossible handler
+   inputs just to reach a percentage. Full hosted aggregation remains required.
+   Candidate tests now cover both target groups: auth/schedule 88 passed,
+   259/259 statements and 60/60 branches; news/events 69 passed, 445/445
+   statements and 62/62 branches. Existing type-only coverage exclusions were
+   not changed. Five required-Request guards were removed only after RED
+   signature/behavior contracts; optional application cache remains covered.
+
+Focused inventory verification (exit 0, 114 passed at candidate checkpoint):
+
+```powershell
+.venv/Scripts/python.exe -m pytest tests/test_quality_inventory.py tests/test_api_dependency_injection_contract.py --noconftest -o addopts= -p no:cacheprovider -q
+.venv/Scripts/python.exe scripts/quality/generate_test_inventory.py
+.venv/Scripts/python.exe scripts/quality/check_orphans_and_anti_patterns.py
+```
+
+Parallel ownership is by disjoint files, with at most three implementers plus
+the lead. No concurrent commits or dependency installs. Review each diff for
+spec compliance before independent code-quality/security review. Only then
+run combined regression and create coherent non-wave commits without trailers.
+
+Candidate verification checkpoint: spec and independent code-quality reviews
+approved the four immediate implementation lanes. CDC/lifespan focused
+verification passed 101 tests with both touched production modules at 100%
+line/branch coverage. Migration offline contracts passed 42 tests without
+skips, and six isolated PostgreSQL 17 cases passed in the required integration
+lane. Combined migration/CDC tests passed 143; inventory/DI tests passed 114.
+Frontend typecheck, lint and production build exit 0; build diagnostics include
+Rolldown plugin timing and Node localStorage warnings, so this is not a
+zero-warning certification. Frontend quality/MSW contracts pass 13 tests;
+strict mypy passes all 361 app files; harness passes 29/29; Ruff, AST checks,
+Bandit and the scoped dependency audit pass. Scoped pre-commit for inventory
+and dependency changes passes. These results do not claim full mutation or
+repository-wide coverage closure.
+
+Reviewed implementation checkpoints (all committed on `egorribun`, hooks
+enabled, no co-author trailers): `0606860c6` inventory ownership,
+`c91f7d0bb` dependency/allowlist repair, `e88009d6f` literal-safe migration,
+`200a48f01` CDC safety boundary and `325418de3` remaining coverage contracts.
+The lead independently reran six PostgreSQL integration cases, 143 combined
+migration/CDC tests, 65 auth/schedule/content behavior tests and 13 frontend
+quality/MSW contracts. Full changed-file pre-commit passes after writers were
+quiesced; no secret-baseline content change remained. Build-generated WASM
+and provenance were restored to the previously clean tracked versions, not
+published as canonical artifacts. Test scratch and downloaded reports remain
+under ignored `artifacts/`; the external audit remains untouched and untracked.
+
+### Remaining master-plan acceptance, not presumed product defects
+
+| Stage | Required closure evidence |
+| --- | --- |
+| 0 | Current branch/source/tested-merge identity, inventory, harness and fail-closed provenance/manifest checks. |
+| 1 | Complete visual/a11y/performance budgets; keyboard, 200% zoom, reduced motion, screen-reader and real-device checks. |
+| 2 | Real email OTP browser journeys: enrollment/login/resend/expiry/recovery and outbox/SMTP failures across applicable roles and RU/EN; mocked TOTP is insufficient. |
+| 3 | Shell fast transitions, focus/scroll locking, safe areas and required five viewport widths. |
+| 4 | Map wheel/touch/pinch containment, route/filter restoration, repeated lifecycle cleanup and long-task measurements. URL-only tests are insufficient. |
+| 5 | Stories visibility/interaction/media cleanup with repeated-open memory plateau; content CRUD/admin/offline regression. |
+| 6 | Real REST plus WebSocket ordering/dedup/reconnect/history anchoring/files/permissions; race/load/resource cleanup evidence. |
+| 7 | Profile/settings/activity save/rollback/error scenarios, shared period behavior, RU/EN and role parity. |
+| 8 | Real delivery/deep links/unread dedup for all five canonical topics; consent/denial/quiet hours and stale subscriptions. Mocked PushManager alone is insufficient. |
+| 9 | Fresh complete Python/frontend/Go/Rust/API/security/infrastructure matrix and 100% applicable coverage/viable mutation manifest. |
+| 10 | Immutable six-image build, Docker Core/full smoke and resources, production-like Kubernetes/TLS/ExternalSecrets/observability, field CWV/devices, chaos/rollback, resulting-main recertification and final audit. |
+
+Playwright Chromium/Firefox/WebKit/mobile-WebKit success is not proof of the
+last two branded browser versions or real iOS/Android. The visual suite's
+limited route/viewport set is not the full master matrix. Mark missing evidence
+explicitly rather than assuming a failure or declaring acceptance complete.
+
+### Organizational and CI optimization ledger
+
+| Task | Current boundary / next verification |
+| --- | --- |
+| 1. Timing/resource ledger | Timing diagnostics exist; complete CPU/RSS, queue/critical-path and provenance-bound measurements remain OPEN. |
+| 2. Duration-aware sharding | Python cost-aware execution exists; frontend same-run retry history exists. Safe compatible cross-run history remains OPEN. |
+| 3. Setup/artifact reuse | Same-run SHA-bound reuse exists; quantify remaining repeated setup and reject incompatible artifacts. |
+| 4. Required vs advisory | Live main ruleset read; compare exact produced contexts/guards before proposing changes. Do not silently remove required gates. |
+| 5. Narrow transient retries | Existing bounded helpers retained; classify upload/network failures separately from product/mutation failures and preserve first-attempt evidence. |
+| 6. Catalog/runbooks | Catalog verification covers 56 workflows / 185 source jobs; review owners, contracts and actual observed durations as workflows change. |
+| 7. Health report | p50/p95 diagnostics exist; distinguish timeout budgets from observed durations and unsupported resource measurements. |
+| 8. Local preflight | Bounded parallel preflight exists; verify it against the combined candidate before push. |
+| 9. Watchdog | Mutation deadline/partial reports exist; a general heartbeat-based stuck-job watchdog remains OPEN. |
+
+ADR-039 must distinguish a throughput lower bound from actual wall-clock
+duration. A larger job cap is not measured acceleration. Preserve the global
+20-job constraint; only compare concurrency variants after three comparable
+green runs, retaining rollback criteria for queueing, starvation, RSS,
+timeouts and provenance. Do not import old mutation results as fresh evidence.
+
+The next bounded historical-cost slice must use a dedicated timing selector,
+not relax `scripts/quality/select_same_run_artifact_cli.py`. Its proposed home
+is `scripts/quality/select_stryker_history_artifact_cli.py` with transport tests
+in `tests/test_select_stryker_history_artifact_cli.py` and planner/workflow
+contracts in `frontend/scripts/run-stryker.test.mjs` and
+`tests/test_stryker_cost_workflow_contract.py`. Initially accept another run
+only when frontend config, lockfile, toolchain, test inputs and preflight
+inventory fingerprints agree. Require every current viable source to have
+validated finite cost. Invalid, incomplete or stale advice falls back to the
+existing first-attempt planner with a diagnostic, never to reused test results.
+Bound runs/pages/bytes/entries/age and one monotonic search deadline. Verify
+producer identity, archive digest and exactly one regular historical-cost JSON;
+reject links, extra files and executable/cache payloads. Mutation/preflight
+certification retains its exact run/SHA rules. This task remains OPEN.
+
+Prior terminal run `35635039077` is diagnostic history: Python group 67 killed
+15/15 mutants but artifact upload failed with HTTP 403; frontend aggregation
+rejected `shard-001:2` with status `Timeout`. Neither is a completed quality gate.
+Inspect fresh terminal logs rather than replaying all historical failures.
+
+### Promotion order and external boundaries
+
+Close the four immediate lanes, review, run focused plus combined regression,
+then publish a coherent candidate. Obtain a fresh full current-SHA matrix and
+strict evidence aggregation. Continue product acceptance and measured CI work
+in parallel without invalidating the run for cosmetic edits. Finally promote
+the same immutable artifacts through Docker and staging, verifying resulting
+main separately from PR merge/source identities.
+
+Only GitHub Pages deployments were observed in the read-only GitHub deployment
+query. This does not prove an external staging environment is absent; obtain
+its exact target/access before deployment. No production/staging mutation,
+merge, destructive data migration or gate bypass is implied by this ledger.
+The goal remains active and release readiness remains EVIDENCE-BLOCKED.
