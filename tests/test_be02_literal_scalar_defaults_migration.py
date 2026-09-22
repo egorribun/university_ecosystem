@@ -14,7 +14,12 @@ import importlib.util
 import re
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
+import yaml
+from sqlalchemy.dialects import postgresql
 
 import app.models  # noqa: F401  # register all mapped metadata
 from app.core.database import Base
@@ -111,3 +116,133 @@ def test_migration_revision_is_the_single_head() -> None:
         if pattern.search(path.read_text(encoding="utf-8"))
     ]
     assert successors == []
+
+
+def test_postgresql_regressions_are_collected_by_the_enabled_integration_lane() -> None:
+    integration_test = ROOT / "tests/integration/test_be02_literal_defaults_postgres.py"
+    assert integration_test.is_file()
+    workflow = yaml.safe_load(
+        (ROOT / ".github/workflows/reusable-backend-tests.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    triggers = workflow.get("on", workflow.get(True))
+    pattern = triggers["workflow_call"]["inputs"]["integration-test-pattern"]["default"]
+    assert integration_test.is_relative_to(ROOT / pattern)
+    job = workflow["jobs"]["integration-tests"]
+    assert job["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    assert job["env"]["DATABASE_URL"].startswith("postgresql+asyncpg://")
+    step = next(
+        step for step in job["steps"] if step.get("name") == "Run integration tests"
+    )
+    assert (
+        step["env"]["INTEGRATION_TEST_PATTERN"]
+        == "${{ inputs.integration-test-pattern }}"
+    )
+    assert "$env:INTEGRATION_TEST_PATTERN" in step["run"]
+
+
+@pytest.mark.parametrize(
+    "default_sql",
+    [
+        "'PENDING'::character varying",
+        "'pen ding'::character varying",
+        "' pending'::text",
+        "'pending '::text",
+        "'pen\tding'::text",
+        "'pen\"ding'::text",
+        "'pen''ding'::text",
+        "(('pending')::character varying(3))",
+        "'pending'::citext",
+        "lower('PENDING'::text)",
+        "pending",
+        "('pending'",
+        "'pending')",
+        "true",
+        "'pending' || ''",
+    ],
+)
+def test_conflicting_text_default_is_rejected(default_sql: str) -> None:
+    migration = _load_migration()
+    spec = migration.DefaultSpec("dead_letter_jobs", "status", "'pending'", "text")
+    state = migration.CatalogState("character varying(20)", True, default_sql)
+
+    with pytest.raises(RuntimeError, match="conflicting server default"):
+        migration._validate_existing_default(spec, state)
+
+
+@pytest.mark.parametrize(
+    ("family", "literal", "default_sql"),
+    [
+        ("text", "'pending'", "'pending'::character varying"),
+        ("text", "'pending'", " (( 'pending' ) :: CHARACTER VARYING) "),
+        ("text", "'pending'", "(('pending'::text)::character varying)"),
+        ("text", "'pending'", "((('pending')))"),
+        ("text", "'Pending now'", "('Pending now'::text)"),
+        ("text", "'pen''ding'", "('pen''ding'::text)"),
+        ("text", "'0.0'", "'0.0'::text"),
+        ("boolean", "true", "(TRUE::boolean)"),
+        ("boolean", "false", "false"),
+        ("integer", "3", "('3'::integer)"),
+        ("float", "0.0", "'0'::double precision"),
+        ("float", "0.0", "((0.0)::numeric)"),
+    ],
+)
+def test_equivalent_scalar_default_is_preserved(
+    family: str, literal: str, default_sql: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    migration = _load_migration()
+    spec = migration.DefaultSpec("example", "value", literal, family)
+    state = migration.CatalogState("text", True, default_sql)
+    ddl = Mock()
+    monkeypatch.setattr(migration, "_execute_ddl", ddl)
+
+    migration._validate_existing_default(spec, state)
+    migration._set_server_default(None, spec, state)
+
+    ddl.assert_not_called()
+
+
+@pytest.mark.parametrize("default_sql", ["'0'::text", "'0.00'::text"])
+def test_numeric_text_literals_are_not_numeric_defaults(default_sql: str) -> None:
+    migration = _load_migration()
+    spec = migration.DefaultSpec("example", "value", "'0.0'", "text")
+    state = migration.CatalogState("text", True, default_sql)
+
+    with pytest.raises(RuntimeError, match="conflicting server default"):
+        migration._validate_existing_default(spec, state)
+
+
+@pytest.mark.parametrize("operation", ["upgrade", "downgrade"])
+@pytest.mark.parametrize("default_sql", ["'PENDING'::text", "'pen ding'::text"])
+def test_preflight_rejects_conflict_without_mutation(
+    operation: str, default_sql: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    migration = _load_migration()
+    safe = migration.DefaultSpec("example", "count", "0", "integer")
+    conflicting = migration.DefaultSpec(
+        "dead_letter_jobs", "status", "'pending'", "text"
+    )
+    monkeypatch.setattr(migration, "DEFAULT_SPECS", (safe, conflicting))
+    monkeypatch.setattr(
+        migration,
+        "_catalog_state",
+        lambda _bind, spec: migration.CatalogState(
+            "text", True, None if spec == safe else default_sql
+        ),
+    )
+    bind = SimpleNamespace(dialect=postgresql.dialect())
+    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
+    monkeypatch.setattr(migration.context, "is_offline_mode", lambda: False)
+    monkeypatch.setattr(migration, "_lock_postgresql", lambda: None)
+    monkeypatch.setattr(migration, "_constraint_rows", lambda *_args: [])
+    backfill = Mock()
+    ddl = Mock()
+    monkeypatch.setattr(migration, "_backfill_nulls", backfill)
+    monkeypatch.setattr(migration, "_execute_ddl", ddl)
+
+    with pytest.raises(RuntimeError, match="conflicting server default"):
+        getattr(migration, operation)()
+
+    backfill.assert_not_called()
+    ddl.assert_not_called()

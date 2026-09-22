@@ -189,30 +189,57 @@ def _catalog_state(bind: Any, spec: DefaultSpec) -> CatalogState:
     )
 
 
-def _normalize_sql(value: str) -> str:
-    """Reduce a catalog default to a form comparable with the reviewed literal.
+def _normalize_sql(value: str, family: str) -> str | None:
+    """Recognise only a literal wrapped in parentheses and same-family casts.
 
-    PostgreSQL renders a default with its cast and may parenthesise it, and it
-    quotes even numeric literals: a reviewed ``0.0`` comes back from the
-    catalog as ``'0'::double precision``.  Casts, parentheses and the quoting
-    are stripped from both sides so an equivalent operator default is
-    recognised rather than reported as a conflict.
+    String payloads are opaque: case, whitespace, quotes and numeric-looking
+    text must remain exact.  PostgreSQL may quote numeric defaults (for
+    example ``'0'::double precision``), so only numeric families coerce those
+    spellings.  Unknown expressions, casts and type modifiers fail closed.
     """
 
-    normalized = re.sub(r'[\s"]+', "", value).lower()
-    while normalized.startswith("(") and normalized.endswith(")"):
-        normalized = normalized[1:-1]
-    normalized = re.sub(r"::[a-z0-9_ ]+$", "", normalized)
-    if len(normalized) >= 2 and normalized.startswith("'") and normalized.endswith("'"):
-        normalized = normalized[1:-1]
-    # ``0.0`` and ``0`` are the same scalar for a float column.
-    if re.fullmatch(r"-?\d+\.0+", normalized):
+    match = re.match(
+        r"\s*(?P<opening>(?:\(\s*)*)"
+        r"(?P<literal>'(?:[^']|'')*'|true|false|-?\d+(?:\.\d+)?)",
+        value,
+        re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    depth = match["opening"].count("(")
+    remainder = value[match.end() :].strip()
+    while remainder:
+        if remainder.startswith(")"):
+            depth -= 1
+            if depth < 0:
+                return None
+            remainder = remainder[1:].strip()
+            continue
+        cast = re.match(
+            r"::\s*(character\s+varying|double\s+precision|[a-z][a-z0-9_]*)",
+            remainder,
+            re.IGNORECASE,
+        )
+        if cast is None:
+            return None
+        cast_type = " ".join(cast[1].lower().split())
+        if cast_type not in _TYPE_FAMILIES[family]:
+            return None
+        remainder = remainder[cast.end() :].strip()
+    if depth:
+        return None
+    literal = match["literal"]
+    if family == "text":
+        return literal if literal.startswith("'") else None
+    normalized = literal.strip("'").lower()
+    # ``0.0`` and ``0`` are equivalent floats, but not equivalent text.
+    if family == "float" and re.fullmatch(r"-?\d+\.0+", normalized):
         normalized = normalized.split(".", 1)[0]
     return normalized
 
 
-def _expected_default(spec: DefaultSpec) -> str:
-    return _normalize_sql(spec.server_default)
+def _expected_default(spec: DefaultSpec) -> str | None:
+    return _normalize_sql(spec.server_default, spec.family)
 
 
 def _validate_existing_default(spec: DefaultSpec, state: CatalogState) -> None:
@@ -220,7 +247,7 @@ def _validate_existing_default(spec: DefaultSpec, state: CatalogState) -> None:
 
     if state.default_sql is None:
         return
-    if _normalize_sql(state.default_sql) != _expected_default(spec):
+    if _normalize_sql(state.default_sql, spec.family) != _expected_default(spec):
         raise RuntimeError(
             f"conflicting server default on {spec.table}.{spec.column}: "
             f"expected {spec.server_default!r}, found {state.default_sql!r}"
