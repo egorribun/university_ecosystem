@@ -1,6 +1,7 @@
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
+from dishka import FromComponent
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
@@ -15,14 +16,13 @@ from fastapi import (
 
 import app.models as models
 from app.api.deps import (
-    get_current_user,
     get_current_user_from_dishka,
-    get_read_story_service,
 )
 from app.api.deps.etag import cached_endpoint
 from app.api.utils import save_upload
 from app.api.validation import ensure_exists, require_admin
 from app.core.config import settings
+from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import (
     DEFAULT_LOCALE,
     SUPPORTED_LOCALES,
@@ -62,11 +62,12 @@ mock_stories_version = MockStoriesVersionResolver()
     cache_prefix="ue:stories:list",
     cache_control="public, max-age=180",
 )
+@inject
 async def list_stories(
     request: Request,
     response: Response,
+    service: Annotated[StoryService, FromComponent(READ_COMPONENT)],
     if_none_match: str | None = Header(default=None),
-    service: StoryService = Depends(get_read_story_service),
 ) -> list[schemas.StoryOut] | Response | Any:
     locale = resolve_locale(request=request)
 
@@ -162,7 +163,7 @@ async def upload_story_cover(
     file: UploadFile = File(...),
     *,
     request: Request,
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> dict[str, str]:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)

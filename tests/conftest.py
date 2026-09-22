@@ -1,6 +1,8 @@
 import atexit
 import base64
+import contextlib
 import hashlib
+import inspect
 import json
 import math
 import os
@@ -8,6 +10,8 @@ import shutil
 import sys
 import tempfile
 import time
+import types
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
@@ -582,6 +586,67 @@ def link_read_db_to_write_db():
         del app.dependency_overrides[get_read_db]
 
 
+class _MirroringOverrides(dict):
+    """A dependency_overrides mapping that keeps Dishka auth variants in step.
+
+    BE-04 moved every route onto ``get_current_user_from_dishka`` and friends
+    so authentication and the route body share one session.  Hundreds of tests
+    still say "pretend this user is logged in" by overriding the legacy name,
+    and that intent has not changed -- only the name the route reaches for.
+    Mirroring on assignment keeps those tests meaningful while leaving routes
+    whose auth a test did *not* override completely untouched, which a blanket
+    override would not.
+    """
+
+    def __init__(self, source: dict, pairs: tuple[tuple[Any, Any], ...]) -> None:
+        super().__init__(source)
+        self._pairs = dict(pairs)
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        super().__setitem__(key, value)
+        mirrored = self._pairs.get(key)
+        if mirrored is not None:
+            super().__setitem__(mirrored, value)
+
+    def __delitem__(self, key: Any) -> None:
+        super().__delitem__(key)
+        mirrored = self._pairs.get(key)
+        if mirrored is not None:
+            super().pop(mirrored, None)
+
+    def pop(self, key: Any, *default: Any) -> Any:
+        mirrored = self._pairs.get(key)
+        if mirrored is not None:
+            super().pop(mirrored, None)
+        return super().pop(key, *default)
+
+
+@pytest.fixture(autouse=True)
+def link_dishka_auth_to_legacy_auth():
+    """Mirror an override of a legacy auth dependency onto its Dishka variant."""
+
+    from app.api.deps import auth as auth_deps
+    from app.main import app
+
+    pairs = (
+        (auth_deps.get_current_user, auth_deps.get_current_user_from_dishka),
+        (
+            auth_deps.get_current_user_optional,
+            auth_deps.get_current_user_optional_from_dishka,
+        ),
+        (
+            auth_deps.get_current_admin_user,
+            auth_deps.get_current_admin_user_from_dishka,
+        ),
+    )
+    original = app.dependency_overrides
+    app.dependency_overrides = _MirroringOverrides(original, pairs)
+    try:
+        yield
+    finally:
+        app.dependency_overrides = original
+
+
 @pytest.fixture(autouse=True)
 def _reset_settings_cached_properties():
     """Pop settings @cached_property caches before each test (defense-in-depth).
@@ -1106,3 +1171,399 @@ def pytest_collection_modifyitems(config, items):
                 raise pytest.UsageError(
                     f"Unable to write pytest shard manifest: {error}"
                 ) from error
+
+
+# ---------------------------------------------------------------------------
+# BE-04: calling a Dishka-injected endpoint directly
+# ---------------------------------------------------------------------------
+# ``@inject`` reads the container from the endpoint's own ``Request``
+# parameter (dishka/integrations/fastapi.py::_container_getter), resolves each
+# injected parameter with ``await container.get(Type, component)`` and passes
+# the results as keyword arguments.  A test that calls an endpoint function
+# directly therefore cannot pass those services itself -- that raises "got
+# multiple values for keyword argument" -- and must supply a request instead.
+#
+# ``injected_request`` keeps such a test the shape it had before the
+# migration: name the objects the endpoint should receive and hand the result
+# to the endpoint as ``request=``.
+
+
+class _StubDishkaContainer:
+    """Resolve only what a test explicitly provided, and fail loudly otherwise."""
+
+    def __init__(self, provided: dict[str, Any]) -> None:
+        self._provided = provided
+
+    async def get(self, dependency: Any, component: str = "") -> Any:
+        # ``AsyncDatabaseSession`` is an alias for ``Any`` at runtime, so the
+        # container asks for ``Any``; accept the name tests actually write.
+        candidates = [getattr(dependency, "__name__", None), str(dependency)]
+        if dependency is Any:
+            candidates.append("AsyncDatabaseSession")
+        for name in candidates:
+            if name in self._provided:
+                return self._provided[name]
+        name = candidates[0] or candidates[1]
+        raise AssertionError(
+            f"the endpoint asked the container for {name!r}"
+            f"{f' in component {component!r}' if component else ''}, which this "
+            "test did not provide; add it to the provides= mapping"
+        )
+
+
+def injected_request(**provided: Any) -> Any:
+    """Return a stub ``Request`` whose container yields ``provided``.
+
+    Keys are annotation names, so ``injected_request(NewsService=service)``
+    satisfies a parameter annotated ``FromDishka[NewsService]``.  The stub also
+    carries ``app.state`` because some endpoints reach through it.
+    """
+
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        state=SimpleNamespace(dishka_container=_StubDishkaContainer(provided)),
+        app=SimpleNamespace(state=SimpleNamespace()),
+        headers={},
+        query_params={},
+        cookies={},
+    )
+
+
+@pytest.fixture
+def injected_request_factory():
+    """Fixture form of :func:`injected_request` for tests that prefer injection."""
+
+    return injected_request
+
+
+async def call_injected(endpoint: Any, *args: Any, **kwargs: Any) -> Any:
+    """Call a ``@inject`` endpoint directly, wiring the container for it.
+
+    Dishka takes the container from a parameter annotated exactly ``Request``
+    when the endpoint declares one, and otherwise from the hidden
+    ``___dishka_request`` parameter it adds itself.  Tests should not have to
+    know which shape an endpoint has, so pass the objects the endpoint needs as
+    ``provides=`` and let this helper place the stub correctly.
+    """
+
+    import inspect
+
+    provides: dict[str, Any] = kwargs.pop("provides", {})
+    stub = injected_request(**provides)
+    parameters = inspect.signature(endpoint).parameters
+
+    # Dishka's container getter reads ``kwargs["request"]``, so a positional
+    # request would be invisible to it.  Bind every positional argument to its
+    # parameter name first; after this the call is purely keyword-based.
+    names = [
+        name
+        for name, parameter in parameters.items()
+        if parameter.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+    ]
+    for position, value in enumerate(args):
+        if position < len(names):
+            kwargs.setdefault(names[position], value)
+    args = ()
+
+    # Order matters.  Dishka only reads ``kwargs["request"]`` when the endpoint
+    # declares a parameter typed exactly ``Request``; otherwise it adds
+    # ``___dishka_request`` of its own.  An endpoint whose ``request`` is a
+    # request *body* model -- app/api/dlq.py has one -- therefore has both
+    # names in its signature, and only the hidden one carries the container.
+    if "___dishka_request" in parameters:
+        kwargs["___dishka_request"] = stub
+    elif "request" in parameters:
+        supplied = kwargs.get("request")
+        if supplied is None:
+            kwargs["request"] = stub
+        else:
+            # Keep the caller's request -- it may carry headers the endpoint
+            # reads -- and only attach the container to it.
+            state = getattr(supplied, "state", None)
+            if state is None:
+                from types import SimpleNamespace
+
+                supplied.state = SimpleNamespace()
+                state = supplied.state
+            state.dishka_container = stub.state.dishka_container
+
+    return await endpoint(*args, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# BE-04: binding the app's Dishka container to the test session
+# ---------------------------------------------------------------------------
+# The suite isolates the database by overriding ``get_db`` through FastAPI's
+# dependency_overrides.  A Dishka-injected endpoint never consults those
+# overrides, so once a route asks for ``FromDishka[AsyncDatabaseSession]`` it
+# would open its own session while ``get_current_user`` still used the test's
+# -- SQLAlchemy then raises "Object is already attached to session N".
+#
+# Rebinding the container is the equivalent lever: the same session object is
+# handed to both components so reads and writes in a test stay on one identity
+# map.  The read component deliberately resolves to the same session here,
+# matching the existing ``dependency_overrides[get_read_db] = get_db`` rule.
+
+
+def test_session_overrides(app: Any) -> tuple[Any, ...]:
+    """Providers that make Dishka follow ``dependency_overrides[get_db]``.
+
+    The suite already has one lever for database isolation -- overriding
+    ``get_db`` (and ``get_read_db``) on the app -- and hundreds of tests pull
+    it.  Rather than teach each of them about the container, the test container
+    resolves ``AsyncDatabaseSession`` through that same override, so a
+    Dishka-injected endpoint lands on exactly the session the test installed.
+    When no override is present the application provider is used unchanged.
+    """
+
+    from dishka import Provider, Scope, provide
+
+    from app.core.database import get_db, get_read_db
+    from app.core.di.read_replica import READ_COMPONENT
+    from app.core.protocols import AsyncDatabaseSession
+
+    async def _resolve(dependency: Any):
+        # No override means the test wants the real dependency, exactly as it
+        # got before the endpoint moved to Dishka.  Generator dependencies are
+        # driven to completion rather than abandoned after their first yield:
+        # leaving ``get_db``'s ``async with`` unfinished closes the session
+        # from the wrong task and raises IllegalStateChangeError.
+        produced = app.dependency_overrides.get(dependency, dependency)()
+        if inspect.isasyncgen(produced):
+            try:
+                yield await anext(produced)
+            finally:
+                await produced.aclose()
+            return
+        if inspect.isgenerator(produced):
+            try:
+                yield next(produced)
+            finally:
+                produced.close()
+            return
+        if inspect.isawaitable(produced):
+            produced = await produced
+        yield produced
+
+    class _OverrideAwareSession(Provider):
+        @provide(scope=Scope.REQUEST)
+        async def session(self) -> AsyncIterator[AsyncDatabaseSession]:
+            async for resolved in _resolve(get_db):
+                yield resolved
+
+    class _OverrideAwareReadSession(Provider):
+        component = READ_COMPONENT
+
+        @provide(scope=Scope.REQUEST)
+        async def session(self) -> AsyncIterator[AsyncDatabaseSession]:
+            # conftest already maps get_read_db onto get_db for tests, so this
+            # follows whichever the test actually installed.
+            async for resolved in _resolve(get_read_db):
+                yield resolved
+
+    return (_OverrideAwareSession(), _OverrideAwareReadSession())
+
+
+@contextlib.contextmanager
+def dishka_overrides(app: Any, **provides: Any):
+    """Temporarily make the app's container yield ``provides`` for a test.
+
+    The HTTP-level counterpart of :func:`call_injected`.  A test that used to
+    write ``app.dependency_overrides[get_x_service] = ...`` needs this instead
+    once the endpoint injects that service, because Dishka never consults
+    FastAPI's overrides.  Keys are type names, matching ``provides=``.
+    """
+
+    from app.core.di_provider import create_dishka_container
+
+    # Swap the container on app.state rather than calling setup_dishka: that
+    # helper also installs middleware, and Starlette refuses to add middleware
+    # to an application that has already started.
+    previous = getattr(app.state, "dishka_container", None)
+    app.state.dishka_container = create_dishka_container(
+        overrides=(*test_session_overrides(app), *_override_providers(**provides))
+    )
+    try:
+        yield
+    finally:
+        app.state.dishka_container = previous
+
+
+def _override_providers(**provides: Any) -> tuple[Any, ...]:
+    """Build the providers that substitute ``provides`` in every component.
+
+    A route reaches a read-replica service with
+    ``Annotated[T, FromComponent(READ_COMPONENT)]``, and dishka components do
+    not fall back to the default one: a provider registered only in the
+    default component leaves such a route resolving the real service, and the
+    substitution silently does nothing.  Registering the same binding in both
+    components makes a test's replacement apply wherever the endpoint asks for
+    it.
+    """
+
+    from dishka import Provider, Scope
+
+    from app.core.di.read_replica import READ_COMPONENT
+
+    provider = Provider(scope=Scope.REQUEST)
+    for name, value in provides.items():
+        dependency = _PROVIDABLE_TYPES[name]
+        # These call sites grew out of ``dependency_overrides[get_x] = ...``,
+        # which accepted either the object or a zero-argument factory for it.
+        # A plain function is never itself a service, so calling it here keeps
+        # both spellings working instead of provisioning the function object.
+        if isinstance(value, types.FunctionType) and isinstance(dependency, type):
+            value = value()
+        provider.provide(
+            (lambda bound: lambda: bound)(value),
+            provides=dependency,
+            scope=Scope.REQUEST,
+        )
+    return (provider, provider.to_component(READ_COMPONENT))
+
+
+class _ProvidableTypes(dict):
+    """Resolve a type name to the class the container provides it under."""
+
+    _MODULES = (
+        "app.services.audit_service",
+        "app.services.secure_audit_service",
+        "app.services.auth_service",
+        "app.services.news_service",
+        "app.services.event_service",
+        "app.services.story_service",
+        "app.services.schedule_service",
+        "app.services.group_service",
+        "app.services.notification_service",
+        "app.services.vector_service",
+        "app.services.user_service",
+        "app.services.chat.query_service",
+        "app.services.chat.creation_service",
+        "app.services.chat.command_service",
+        "app.cqrs.queries",
+    )
+
+    def __missing__(self, name: str) -> Any:
+        import importlib
+
+        for module_name in self._MODULES:
+            try:
+                module = importlib.import_module(module_name)
+            except ImportError:
+                # A module that cannot be imported simply cannot own the name.
+                continue
+            found = getattr(module, name, None)
+            if found is not None:
+                self[name] = found
+                return found
+        raise KeyError(
+            f"{name!r} is not a type this helper knows how to provide; add its "
+            "module to _ProvidableTypes._MODULES"
+        )
+
+
+_PROVIDABLE_TYPES = _ProvidableTypes()
+
+
+@pytest.fixture
+def dishka_override(app):
+    """Install container overrides for a test, restoring them at teardown.
+
+    The fixture form of :func:`dishka_overrides`, for tests that used to write
+    ``app.dependency_overrides[get_x_service] = lambda: svc`` and have no
+    convenient place for a ``with`` block.  Call it as
+    ``dishka_override(NewsService=service)``; repeated calls accumulate.
+    """
+
+    from app.core.di_provider import create_dishka_container
+
+    previous = getattr(app.state, "dishka_container", None)
+    installed: dict[str, Any] = {}
+
+    def install(**provides: Any) -> None:
+        installed.update(provides)
+        app.state.dishka_container = create_dishka_container(
+            overrides=(
+                *test_session_overrides(app),
+                *_override_providers(**installed),
+            )
+        )
+
+    yield install
+
+    app.state.dishka_container = previous
+
+
+_ACTIVE_DISHKA_OVERRIDES: dict[str, Any] = {}
+
+
+def install_dishka_override(app: Any, **provides: Any) -> None:
+    """Substitute a service in the app's container for the current test.
+
+    The replacement for ``app.dependency_overrides[get_x_service] = ...`` on a
+    Dishka-injected route, which never reads FastAPI's overrides.  Repeated
+    calls accumulate, and ``_reset_dishka_overrides`` restores the container
+    when the test ends, so callers need no teardown of their own.
+    """
+
+    from app.core.di_provider import create_dishka_container
+
+    _ACTIVE_DISHKA_OVERRIDES.update(provides)
+    app.state.dishka_container = create_dishka_container(
+        overrides=(
+            *test_session_overrides(app),
+            *_override_providers(**_ACTIVE_DISHKA_OVERRIDES),
+        )
+    )
+
+
+def build_dishka_app(*routers: Any, **provides: Any) -> Any:
+    """Build a standalone FastAPI app whose routes can resolve from a container.
+
+    ``install_dishka_override`` only swaps the container on ``app.state``; it
+    assumes dishka's middleware is already there to copy it onto the request,
+    which is true for ``app.main.app`` but not for an app a test assembles
+    itself.  Without the middleware an injected route raises
+    ``AttributeError: 'State' object has no attribute 'dishka_container'``, so
+    a test that builds its own app needs this instead.
+    """
+
+    from dishka.integrations.fastapi import setup_dishka
+    from fastapi import FastAPI
+
+    from app.core.di_provider import create_dishka_container
+
+    test_app = FastAPI()
+    for router in routers:
+        test_app.include_router(router)
+    setup_dishka(
+        create_dishka_container(
+            overrides=(
+                *test_session_overrides(test_app),
+                *_override_providers(**provides),
+            )
+        ),
+        test_app,
+    )
+    return test_app
+
+
+@pytest.fixture(autouse=True)
+def _reset_dishka_overrides():
+    """Drop any container substitution a test installed."""
+
+    yield
+    if not _ACTIVE_DISHKA_OVERRIDES:
+        return
+    _ACTIVE_DISHKA_OVERRIDES.clear()
+    from app.core.di_provider import create_dishka_container
+    from app.main import app
+
+    app.state.dishka_container = create_dishka_container(
+        overrides=test_session_overrides(app)
+    )

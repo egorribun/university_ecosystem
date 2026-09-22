@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from tests.conftest import call_injected
+
 
 class _NestedTransaction:
     async def __aenter__(self):
@@ -96,7 +98,13 @@ async def test_subscribe_defensive_failure_and_missing_client_host():
         patch.object(notifications, "range", lambda *_args: (), create=True),
     ):
         with pytest.raises(notifications.HTTPException) as exc:
-            await notifications.subscribe(payload, request, db, user)
+            await call_injected(
+                notifications.subscribe,
+                payload=payload,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
 
     assert exc.value.status_code == 500
 
@@ -146,8 +154,12 @@ async def test_unsubscribe_and_send_test_cover_missing_client_and_optional_paylo
         patch.object(notifications, "resolve_locale", return_value="en"),
         patch.object(notifications, "enforce_rate_limit", new=AsyncMock()),
     ):
-        assert await notifications.unsubscribe(
-            PushSubscriptionDelete(endpoint="endpoint"), request, db, user
+        assert await call_injected(
+            notifications.unsubscribe,
+            payload=PushSubscriptionDelete(endpoint="endpoint"),
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
         ) == {"ok": True, "removed": False}
 
     target = MagicMock(id=user.id)
@@ -172,7 +184,13 @@ async def test_unsubscribe_and_send_test_cover_missing_client_and_optional_paylo
             new=AsyncMock(return_value=[]),
         ),
     ):
-        result = await notifications.send_test(request, db, user, None)
+        result = await call_injected(
+            notifications.send_test,
+            request=request,
+            user=user,
+            payload=None,
+            provides={"AsyncDatabaseSession": db},
+        )
 
     assert result.total == 0
     assert result.sent == 0
@@ -197,11 +215,12 @@ async def test_unsubscribe_rate_limit_returns_retry_after():
         ),
     ):
         with pytest.raises(notifications.HTTPException) as exc:
-            await notifications.unsubscribe(
-                PushSubscriptionDelete(endpoint="https://push.example/sub"),
-                request,
-                AsyncMock(),
-                user,
+            await call_injected(
+                notifications.unsubscribe,
+                payload=PushSubscriptionDelete(endpoint="https://push.example/sub"),
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": AsyncMock()},
             )
 
     assert exc.value.status_code == 429

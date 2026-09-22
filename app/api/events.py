@@ -1,7 +1,9 @@
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any
 
+from dishka import FromComponent
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -17,13 +19,10 @@ from fastapi import (
     status,
 )
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.models as models
 from app.api.deps import (
-    get_current_user,
-    get_event_service,
-    get_read_event_service,
+    get_current_user_from_dishka,
 )
 from app.api.deps.auth import get_permission_checker
 from app.api.deps.etag import _set_language_headers, cached_endpoint
@@ -38,10 +37,10 @@ from app.api.validation import (
 from app.auth.rbac import PermissionChecker
 from app.core.cache_versioning import events_cache_version
 from app.core.config import settings
-from app.core.container import get_notification_service, get_vector_service
-from app.core.database import get_db, get_read_db
+from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import normalize_locale, resolve_locale
 from app.core.logging import get_logger
+from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.repositories.event_repository import EventRepository
@@ -55,6 +54,7 @@ from app.services.private_attachments import (
     private_attachment_response,
     private_attachment_storage_key,
 )
+from app.services.vector_service import VectorService
 from app.utils.files import _get_storage_backend, delete_static_file, save_attachment
 
 logger = get_logger(__name__)
@@ -97,13 +97,14 @@ async def _increment_events_list_version(cache: Any | None) -> None:
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_events))
     ],
 )
+@inject
 async def create_event(
     data: schemas.EventCreate,
     request: Request,
     background: BackgroundTasks,
-    user: models.User = Depends(get_current_user),
-    notifications: NotificationService = Depends(get_notification_service),
-    events: EventService = Depends(get_event_service),
+    notifications: FromDishka[NotificationService],
+    events: FromDishka[EventService],
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.EventOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
@@ -117,8 +118,11 @@ async def create_event(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="errors.events.creation_failed",
         ) from exc
-    if request:
-        await _increment_events_list_version(getattr(request.app.state, "cache", None))
+    # ``request`` is a required FastAPI parameter and, since the route moved to
+    # Dishka, also the carrier of the container -- it is never absent.  Whether
+    # a cache exists is the real condition, and _increment_events_list_version
+    # owns it.
+    await _increment_events_list_version(getattr(request.app.state, "cache", None))
     await notifications.dispatch_event_created(record.id, locale, background)
     return events.serialize_event(record, locale)
 
@@ -134,10 +138,12 @@ async def create_event(
     cache_prefix=_EVENTS_LIST_CACHE_PREFIX,
     cache_control=_EVENTS_CACHE_CONTROL,
 )
+@inject
 async def all_events(
     request: Request,
     response: Response,
-    user: models.User = Depends(get_current_user),
+    events: Annotated[EventService, FromComponent(READ_COMPONENT)],
+    user: models.User = Depends(get_current_user_from_dishka),
     search: str = Query("", alias="search"),
     type: str = Query("", alias="type"),
     location: str = Query("", alias="location"),
@@ -150,7 +156,6 @@ async def all_events(
     ),
     cursor: str | None = Query(None, alias="cursor"),
     if_none_match: str | None = Header(default=None),
-    events: EventService = Depends(get_read_event_service),
 ) -> schemas.PaginatedEvents | Response | dict[str, Any]:
     """
     Get paginated list of events.
@@ -199,12 +204,13 @@ def _to_utc(dt: datetime) -> datetime:
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_interactions))
     ],
 )
+@inject
 async def attend(
     data: schemas.EventAttendanceCreate,
     request: Request,
-    db: AsyncSession = Depends(get_db),
-    user: models.User = Depends(get_current_user),
-    events: EventService = Depends(get_event_service),
+    db: FromDishka[AsyncDatabaseSession],
+    events: FromDishka[EventService],
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.EventAttendanceOut:
     """
     Register attendance for an event.
@@ -230,10 +236,11 @@ async def attend(
 
 
 @router.delete("/attendance", response_model=dict)
+@inject
 async def unregister_event(
     data: schemas.EventAttendanceCreate,
-    user: models.User = Depends(get_current_user),
-    events: EventService = Depends(get_event_service),
+    events: FromDishka[EventService],
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> dict[str, bool]:
     return await events.unregister_attendance(data, user_id=user.id)
 
@@ -244,12 +251,13 @@ async def unregister_event(
     cache_prefix="ue:events:my",
     cache_control=_EVENTS_CACHE_CONTROL,
 )
+@inject
 async def my_events(
     request: Request,
     response: Response,
-    user: models.User = Depends(get_current_user),
+    events: Annotated[EventService, FromComponent(READ_COMPONENT)],
+    user: models.User = Depends(get_current_user_from_dishka),
     if_none_match: str | None = Header(default=None),
-    events: EventService = Depends(get_read_event_service),
 ) -> list[schemas.EventOut] | Response | Any:
     locale = resolve_locale(request=request, user=user)
     payload = await events.get_my_events(user_id=user.id, locale=locale)
@@ -263,13 +271,14 @@ async def my_events(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_upload))
     ],
 )
+@inject
 async def upload_event_file(
     event_id: uuid.UUID | int,
     file: UploadFile = File(...),
     *,
     request: Request,
-    db: AsyncSession = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    db: FromDishka[AsyncDatabaseSession],
+    user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> models.EventFile:
     _validate_id_type(event_id)
@@ -303,14 +312,15 @@ async def upload_event_file(
 
 
 @router.get("/{event_id}/files", response_model=list[schemas.EventFileOut])
+@inject
 async def get_event_files(
     event_id: uuid.UUID | int,
     *,
     request: Request,
     # Event visibility is revocation-sensitive; authorize against the primary
     # database so a lagging replica cannot keep a removed viewer authorized.
-    db: AsyncSession = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    db: FromDishka[AsyncDatabaseSession],
+    user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> list[models.EventFile]:
     _validate_id_type(event_id)
@@ -341,7 +351,9 @@ async def get_event_files(
     dependencies=[
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_static))
     ],
+    response_model=None,
 )
+@inject
 async def download_event_file(
     event_id: uuid.UUID | int,
     filename: str,
@@ -349,8 +361,8 @@ async def download_event_file(
     request: Request,
     # File authorization is revocation-sensitive; use the primary database
     # rather than a potentially lagging read replica.
-    db: AsyncSession = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    db: FromDishka[AsyncDatabaseSession],
+    user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> Response:
     """Download an event file after checking the event's view permission."""
@@ -397,13 +409,14 @@ async def download_event_file(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_upload))
     ],
 )
+@inject
 async def upload_event_image(
     file: UploadFile = File(...),
     *,
     request: Request,
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_from_dishka),
     event_id: uuid.UUID | int = Form(...),
-    db: AsyncSession = Depends(get_db),
+    db: FromDishka[AsyncDatabaseSession],
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, str]:
     _validate_id_type(event_id)
@@ -436,13 +449,14 @@ async def upload_event_image(
 
 
 @router.patch("/{event_id}", response_model=schemas.EventOut)
+@inject
 async def update_event(
     event_id: uuid.UUID | int,
     data: schemas.EventUpdate,
     request: Request,
-    db: AsyncSession = Depends(get_db),
-    user: models.User = Depends(get_current_user),
-    events: EventService = Depends(get_event_service),
+    db: FromDishka[AsyncDatabaseSession],
+    events: FromDishka[EventService],
+    user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> schemas.EventOut:
     locale = resolve_locale(request=request, user=user)
@@ -497,11 +511,12 @@ async def update_event(
 
 
 @router.delete("/{event_id}", response_model=dict)
+@inject
 async def delete_event(
     event_id: uuid.UUID | int,
     request: Request,
-    events: EventService = Depends(get_event_service),
-    user: models.User = Depends(get_current_user),
+    events: FromDishka[EventService],
+    user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
     _validate_id_type(event_id)
@@ -534,13 +549,14 @@ async def delete_event(
     cache_prefix="ue:events:detail",
     cache_control=_EVENTS_CACHE_CONTROL,
 )
+@inject
 async def get_event(
     event_id: uuid.UUID | int,
     request: Request,
     response: Response,
-    user: models.User = Depends(get_current_user),
+    events: Annotated[EventService, FromComponent(READ_COMPONENT)],
+    user: models.User = Depends(get_current_user_from_dishka),
     if_none_match: str | None = Header(default=None),
-    events: EventService = Depends(get_read_event_service),
 ) -> schemas.EventOut | Response | Any:
     _validate_id_type(event_id)
     locale = resolve_locale(request=request, user=user)
@@ -553,11 +569,12 @@ async def get_event(
 
 
 @router.delete("/file/{file_id}", response_model=dict)
+@inject
 async def delete_event_file(
     file_id: uuid.UUID | int,
     request: Request,
-    db: AsyncSession = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    db: FromDishka[AsyncDatabaseSession],
+    user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
     _validate_id_type(file_id)
@@ -600,17 +617,18 @@ async def delete_event_file(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_graphql))
     ],
 )
+@inject
 async def semantic_search(
     request: Request,
     response: Response,
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    vector_service: FromDishka[VectorService],
+    events: Annotated[EventService, FromComponent(READ_COMPONENT)],
     query: str = Query(..., min_length=3),
     limit: int = Query(5, ge=1, le=20),
     min_score: float = Query(0.7, ge=0.0, le=1.0),
     if_none_match: str | None = Header(default=None),
-    db: AsyncSession = Depends(get_read_db),
-    vector_service: Any = Depends(get_vector_service),
-    events: EventService = Depends(get_read_event_service),
-    _user: models.User = Depends(get_current_user),  # P0-W5-01: auth gate
+    _user: models.User = Depends(get_current_user_from_dishka),
 ) -> list[schemas.EventOut] | Response:
     """
     Semantic search for events using embeddings.

@@ -11,6 +11,8 @@ Each endpoint now injects the narrowest service it needs:
 import uuid
 from typing import Annotated
 
+from dishka import FromComponent
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
     Depends,
@@ -22,20 +24,16 @@ from fastapi import (
     UploadFile,
 )
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
-    get_chat_creation_service,
-    get_chat_maintenance_service,
-    get_chat_message_dispatcher,
-    get_current_user,
+    get_current_user_from_dishka,
     get_locale,
-    get_read_chat_query_service,
 )
 from app.api.validation import raise_forbidden, raise_not_found
 from app.core.config import settings
 from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
-from app.core.database import get_db
+from app.core.di.read_replica import READ_COMPONENT
+from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.models import Attachment, Chat, Message, User
 from app.models.chat import chat_participants
@@ -73,9 +71,10 @@ router = APIRouter(prefix="/chats", tags=["chats"])
     response_model=ChatsListOut,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def get_chats(
-    current_user: Annotated[User, Depends(get_current_user)],
-    query_service: Annotated[ChatQueryService, Depends(get_read_chat_query_service)],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    query_service: Annotated[ChatQueryService, FromComponent(READ_COMPONENT)],
     cursor: str | None = Query(None, description="Pagination cursor"),
     limit: int = Query(20, ge=1, le=100, description="Number of chats to return"),
 ) -> ChatsListOut:
@@ -88,12 +87,11 @@ async def get_chats(
     response_model=ChatResponse,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def create_chat(
     chat_in: ChatCreate,
-    current_user: Annotated[User, Depends(get_current_user)],
-    creation_service: Annotated[
-        ChatCreationService, Depends(get_chat_creation_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    creation_service: FromDishka[ChatCreationService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatResponse:
     """Create a new chat with a user.  If a DM chat already exists, return it."""
@@ -107,12 +105,11 @@ async def create_chat(
     response_model=ChatResponse,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def create_group(
     group_in: GroupChatCreate,
-    current_user: Annotated[User, Depends(get_current_user)],
-    creation_service: Annotated[
-        ChatCreationService, Depends(get_chat_creation_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    creation_service: FromDishka[ChatCreationService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatResponse:
     """Create a named group chat (Wave 209 G1).
@@ -131,10 +128,11 @@ async def create_group(
     response_model=ChatResponse,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def get_chat(
     chat_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    query_service: Annotated[ChatQueryService, Depends(get_read_chat_query_service)],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    query_service: Annotated[ChatQueryService, FromComponent(READ_COMPONENT)],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatResponse:
     """Get details for a specific chat."""
@@ -146,16 +144,18 @@ async def get_chat(
     dependencies=[
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_static))
     ],
+    response_model=None,
 )
+@inject
 async def download_chat_attachment(
     chat_id: uuid.UUID,
     filename: str,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
     locale: Annotated[str, Depends(get_locale)],
     # Membership is a revocation-sensitive authorization decision.  Always
     # read it from the primary database instead of a potentially lagging read
     # replica so removed participants lose access immediately.
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: FromDishka[AsyncDatabaseSession],
 ) -> Response:
     """Download a chat attachment after live membership authorization."""
 
@@ -207,10 +207,11 @@ async def download_chat_attachment(
     response_model=MessagesListOut,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def get_messages(
     chat_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    query_service: Annotated[ChatQueryService, Depends(get_read_chat_query_service)],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    query_service: Annotated[ChatQueryService, FromComponent(READ_COMPONENT)],
     locale: Annotated[str, Depends(get_locale)],
     cursor: str | None = Query(None, description="Pagination cursor"),
     limit: int = Query(50, ge=1, le=100, description="Number of messages to return"),
@@ -226,10 +227,11 @@ async def get_messages(
     response_model=MessageResponse,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def send_message(
     chat_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    dispatcher: Annotated[ChatMessageDispatcher, Depends(get_chat_message_dispatcher)],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    dispatcher: FromDishka[ChatMessageDispatcher],
     locale: Annotated[str, Depends(get_locale)],
     content: str = Form("", max_length=CHAT_MAX_MESSAGE_LENGTH),
     files: list[UploadFile] = File(default=[]),
@@ -261,11 +263,12 @@ async def send_message(
     response_model=list[MessageResponse],
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def forward_messages(
     dest_chat_id: uuid.UUID,
     body: ForwardMessages,
-    current_user: Annotated[User, Depends(get_current_user)],
-    dispatcher: Annotated[ChatMessageDispatcher, Depends(get_chat_message_dispatcher)],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    dispatcher: FromDishka[ChatMessageDispatcher],
     locale: Annotated[str, Depends(get_locale)],
 ) -> list[MessageResponse]:
     """Forward 1..N messages from a source chat into this destination chat (Wave 211).
@@ -288,12 +291,11 @@ async def forward_messages(
     "/{chat_id}/read",
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def mark_read(
     chat_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[
-        ChatMaintenanceService, Depends(get_chat_maintenance_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> dict[str, str]:
     """Mark all messages in a chat as read."""
@@ -305,13 +307,12 @@ async def mark_read(
     "/{chat_id}/messages/{message_id}",
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def edit_message(
     chat_id: uuid.UUID,
     message_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[
-        ChatMaintenanceService, Depends(get_chat_maintenance_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
     content: str = Form(..., min_length=1, max_length=CHAT_MAX_MESSAGE_LENGTH),
 ) -> dict[str, str]:
@@ -326,13 +327,12 @@ async def edit_message(
     "/{chat_id}/messages/{message_id}",
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def delete_message(
     chat_id: uuid.UUID,
     message_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[
-        ChatMaintenanceService, Depends(get_chat_maintenance_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> dict[str, str]:
     """Soft-delete a message (author-only).  W174 auto-cookie covers DELETE CSRF."""
@@ -346,13 +346,12 @@ async def delete_message(
     "/{chat_id}/messages/{message_id}/reactions",
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def add_reaction(
     chat_id: uuid.UUID,
     message_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[
-        ChatMaintenanceService, Depends(get_chat_maintenance_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
     emoji: str = Form(..., min_length=1, max_length=16),
 ) -> dict[str, str]:
@@ -370,13 +369,12 @@ async def add_reaction(
     "/{chat_id}/messages/{message_id}/reactions",
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def remove_reaction(
     chat_id: uuid.UUID,
     message_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[
-        ChatMaintenanceService, Depends(get_chat_maintenance_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
     emoji: str = Query(..., min_length=1, max_length=16),
 ) -> dict[str, str]:
@@ -407,11 +405,12 @@ async def remove_reaction(
     response_model=list[ReactorOut],
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def get_reactors(
     chat_id: uuid.UUID,
     message_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    query_service: Annotated[ChatQueryService, Depends(get_read_chat_query_service)],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    query_service: Annotated[ChatQueryService, FromComponent(READ_COMPONENT)],
     locale: Annotated[str, Depends(get_locale)],
     emoji: str = Query(..., min_length=1, max_length=16),
 ) -> list[ReactorOut]:
@@ -435,12 +434,11 @@ async def get_reactors(
         Depends(sensitive_route_limit(limit=180, window_sec=60, key_prefix="typing"))
     ],
 )
+@inject
 async def typing_indicator(
     chat_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[
-        ChatMaintenanceService, Depends(get_chat_maintenance_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> dict[str, str]:
     """Broadcast a 'typing' indicator to the other chat participants (Wave 207).
@@ -461,12 +459,11 @@ async def typing_indicator(
     response_model=ChatMaintenanceResult,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def clear_chat_history(
     chat_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[
-        ChatMaintenanceService, Depends(get_chat_maintenance_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatMaintenanceResult:
     """Remove all messages (and attachments) from a chat for its participants."""
@@ -478,12 +475,11 @@ async def clear_chat_history(
     response_model=ChatMaintenanceResult,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def delete_chat(
     chat_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[
-        ChatMaintenanceService, Depends(get_chat_maintenance_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> ChatMaintenanceResult:
     """Delete a chat entirely for all participants (messages, attachments, links)."""
@@ -494,13 +490,12 @@ async def delete_chat(
     "/{chat_id}/participants",
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def add_participant(
     chat_id: uuid.UUID,
     body: AddParticipant,
-    current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[
-        ChatMaintenanceService, Depends(get_chat_maintenance_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> dict[str, str]:
     """Add a member to a group (Wave 209 G1 — any participant). W174 auto-cookie."""
@@ -514,13 +509,12 @@ async def add_participant(
     "/{chat_id}/participants/{user_id}",
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def remove_participant(
     chat_id: uuid.UUID,
     user_id: uuid.UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[
-        ChatMaintenanceService, Depends(get_chat_maintenance_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> dict[str, str]:
     """Remove a member from a group / leave (Wave 209 G1 — owner or self).
@@ -535,13 +529,12 @@ async def remove_participant(
     "/{chat_id}",
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def rename_chat(
     chat_id: uuid.UUID,
     body: RenameChat,
-    current_user: Annotated[User, Depends(get_current_user)],
-    maintenance: Annotated[
-        ChatMaintenanceService, Depends(get_chat_maintenance_service)
-    ],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    maintenance: FromDishka[ChatMaintenanceService],
     locale: Annotated[str, Depends(get_locale)],
 ) -> dict[str, str]:
     """Rename a group's title (Wave 209 G1 — any participant).

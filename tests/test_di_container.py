@@ -114,3 +114,39 @@ async def test_read_component_shares_app_singletons_instead_of_rebuilding_them()
             assert read_cache is default_cache
     finally:
         await container.close()
+
+
+@pytest.mark.asyncio
+async def test_read_component_covers_every_legacy_read_factory() -> None:
+    """The read component must reach as far as the ``get_read_*`` factories did.
+
+    ``ContentProvider`` alone left four call sites without a replica-backed
+    provider: ``get_read_chat_query_service``, ``get_read_chat_service``,
+    ``get_read_stats_handler`` and ``get_read_schedule_handler``.  Registering
+    ``ChatProvider`` and ``CQRSProvider`` into the component closes them, and
+    each must resolve to its own instance over the replica session rather than
+    quietly sharing the primary one.
+    """
+    from app.core.di.read_replica import READ_COMPONENT
+    from app.cqrs.queries import GetScheduleHandler, GetStatsHandler
+    from app.services.chat.query_service import ChatQueryService
+
+    container = create_dishka_container()
+    try:
+        async with container() as request_container:
+            for dependency, session_attribute in (
+                (ChatQueryService, "session"),
+                (GetStatsHandler, "db"),
+                (GetScheduleHandler, "db"),
+            ):
+                write = await request_container.get(dependency)
+                read = await request_container.get(dependency, component=READ_COMPONENT)
+
+                assert isinstance(read, dependency)
+                assert read is not write
+                # The component exists to change the session, so prove it did.
+                assert getattr(read, session_attribute) is not getattr(
+                    write, session_attribute
+                )
+    finally:
+        await container.close()

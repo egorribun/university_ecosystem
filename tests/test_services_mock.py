@@ -542,9 +542,7 @@ async def test_generate_event_embedding_not_found() -> None:
         patch(
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
-        patch(
-            "app.services.event_handlers.get_vector_service", return_value=MagicMock()
-        ),
+        patch("app.services.event_handlers.VectorService", return_value=MagicMock()),
     ):
         await generate_event_embedding(mock_event)  # returns early when not found
 
@@ -567,9 +565,7 @@ async def test_generate_news_embedding_not_found() -> None:
         patch(
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
-        patch(
-            "app.services.event_handlers.get_vector_service", return_value=MagicMock()
-        ),
+        patch("app.services.event_handlers.VectorService", return_value=MagicMock()),
     ):
         await generate_news_embedding(mock_event)
 
@@ -602,7 +598,7 @@ async def test_generate_event_embedding_found() -> None:
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
         patch(
-            "app.services.event_handlers.get_vector_service",
+            "app.services.event_handlers.VectorService",
             return_value=mock_vector_svc,
         ),
     ):

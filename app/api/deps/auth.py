@@ -248,14 +248,14 @@ async def get_current_user_from_dishka(
 
 
 async def get_current_user_dto(
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> UserDTO:
     """Return the current user as a DTO."""
     return UserDTO.model_validate(user)
 
 
 async def get_current_user_auth_dto(
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> UserAuthDTO:
     """Return the current user as an Auth DTO (includes sensitive fields)."""
     return UserAuthDTO.model_validate(user)
@@ -295,9 +295,10 @@ async def get_current_user_optional_from_dishka(
         raise
 
 
+@inject
 async def get_current_user_full(
-    user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    db: FromDishka[AsyncDatabaseSession],
 ) -> User:
     """
     Get current user with ALL MFA and Profile relationships loaded.
@@ -335,6 +336,37 @@ async def get_current_admin_user(
     checker: Annotated[PermissionChecker, Depends(get_permission_checker)],
 ) -> User:
     """Dependency that ensures the current user is an admin via SpiceDB."""
+    try:
+        is_admin_user = await checker.check_admin(str(user.id), user=user)
+    except SpiceDBUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "authz_unavailable",
+                "message": "Authorization service temporarily unavailable",
+            },
+        ) from None
+    if not is_admin_user:
+        locale = resolve_locale(request=request)
+        raise_forbidden(locale)
+    return user
+
+
+async def get_current_admin_user_from_dishka(
+    request: Request,
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    checker: Annotated[PermissionChecker, Depends(get_permission_checker)],
+) -> User:
+    """Admin guard for a route whose session is owned by Dishka.
+
+    ``get_current_admin_user`` resolves its user through the legacy FastAPI
+    adapter, which opens a second session.  On a migrated route that means the
+    authenticated ``User`` belongs to a different identity map than everything
+    the endpoint touches, and SQLAlchemy rejects the second attachment.  This
+    variant keeps authentication and the route on one session owner; the
+    authorization check itself is unchanged.
+    """
+
     try:
         is_admin_user = await checker.check_admin(str(user.id), user=user)
     except SpiceDBUnavailableError:
@@ -389,32 +421,25 @@ def _enforce_fresh_mfa(request: Request) -> None:
         )
 
 
+@inject
 async def require_fresh_mfa(
     request: Request,
-    user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    db: FromDishka[AsyncDatabaseSession],
 ) -> None:
+    """Fresh-MFA guard sharing the canonical Dishka auth session.
+
+    BE-04 folded ``require_fresh_mfa_from_dishka`` back in here: that name
+    existed only while this guard still opened a FastAPI-owned session, and
+    once both resolved the session from the container the two bodies were
+    identical.
+    """
+
     await ensure_mfa_relationships_loaded(db, user)
     # Treat PostgreSQL as authoritative at this authorization boundary.  A
     # ``lazy="noload"`` collection can legitimately be empty in the identity
     # map even when a confirmed enrollment exists; relying only on that cached
     # collection allowed destructive endpoints to skip step-up enforcement.
-    has_totp = await mfa.has_totp_enabled(db, user)
-    has_email_otp = user.email_mfa_enabled_at is not None
-    if not has_totp and not has_email_otp:
-        return
-    _enforce_fresh_mfa(request)
-
-
-@inject
-async def require_fresh_mfa_from_dishka(
-    request: Request,
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
-    db: FromDishka[AsyncDatabaseSession],
-) -> None:
-    """Fresh-MFA guard sharing the canonical Dishka auth session."""
-
-    await ensure_mfa_relationships_loaded(db, user)
     has_totp = await mfa.has_totp_enabled(db, user)
     has_email_otp = user.email_mfa_enabled_at is not None
     if not has_totp and not has_email_otp:

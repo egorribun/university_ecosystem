@@ -16,7 +16,7 @@ from fastapi import (
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api.deps import (
-    get_current_user,
+    get_current_user_from_dishka,
     get_current_user_optional,
 )
 from app.auth import constants, mfa
@@ -449,7 +449,7 @@ async def register(
 
 @router.get("/session/signing-key", response_model=SessionSigningKeyOut)
 async def get_session_signing_key(
-    request: Request, _: User = Depends(get_current_user)
+    request: Request, _: User = Depends(get_current_user_from_dishka)
 ) -> SessionSigningKeyOut:
     session = getattr(request.state, "active_session", None)
     if session is None or not getattr(session, "signing_key", None):

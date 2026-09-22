@@ -257,19 +257,13 @@ async def test_graphql_context_db_error(
         extra_claims={"jti": str(uuid.uuid4())},
     )
 
-    # Mock select to raise error
-
-    async def mock_execute(*args, **kwargs):
-        raise Exception("Database explosion")
-
-    # We need to monkeypatch the session executed inside get_context
-    # This is tricky because it's an 'async with' session.
-    # But get_context logs the error and continues.
-
+    # ``get_context`` resolves its session from the container
+    # (app/graphql/schema.py:107), and BE-04 bound the test container to the
+    # same ``get_db`` the suite overrides -- so patching ``async_session`` now
+    # actually reaches the session GraphQL authenticates with.  Before that it
+    # silently missed, the query never failed, and this test passed for the
+    # wrong reason while asserting behaviour the code had already dropped.
     query = "{ me { email } }"
-    # We'll use a malformed token that causes decode_token to pass but then fail later?
-    # Actually, the easiest is to mock decode_token to return a payload,
-    # but then have the session.execute fail.
 
     with patch("app.core.database.async_session") as mock_session_cm:
         mock_session = AsyncMock()
@@ -281,9 +275,14 @@ async def test_graphql_context_db_error(
             json={"query": query},
             headers={"Authorization": f"Bearer {token}"},
         )
-        assert response.status_code == 200
-        # Should still return None for 'me' due to exception handling in get_context
-        assert response.json()["data"]["me"] is None
+
+    # RZ-W9-03 (app/graphql/schema.py): a non-auth failure during
+    # authentication must NOT demote the request to anonymous.  Returning 200
+    # with ``me: null`` would make a database outage indistinguishable from a
+    # signed-out caller and hand every resolver an anonymous context, so the
+    # request fails closed instead and the operator sees the real error.
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Service temporarily unavailable"
 
 
 @pytest.mark.asyncio

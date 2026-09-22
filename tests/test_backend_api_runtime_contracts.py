@@ -22,6 +22,7 @@ import app.core.observability as observability_core
 import app.routers.notifications as push_router
 from app.models import PushSubscription, UserPushTopic
 from app.models.enums import UserRole
+from tests.conftest import call_injected
 
 
 # Helper to mock Dishka container on request
@@ -84,7 +85,13 @@ async def test_subscribe_existing_subscription_update():
             MagicMock(return_value={"system"}),
         ),
     ):
-        res = await push_router.subscribe(payload, request, db, user)
+        res = await call_injected(
+            push_router.subscribe,
+            payload=payload,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert res is not None
         assert existing_sub.topics == ["system"]
 
@@ -114,7 +121,13 @@ async def test_subscribe_rate_limit_exceeded():
         patch("app.routers.notifications.resolve_locale", MagicMock(return_value="en")),
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.subscribe(payload, request, db, user)
+            await call_injected(
+                push_router.subscribe,
+                payload=payload,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 429
 
 
@@ -167,7 +180,13 @@ async def test_subscribe_db_integrity_error_recovered_on_final_attempt():
         patch("app.routers.notifications.resolve_locale", MagicMock(return_value="en")),
         patch("asyncio.sleep", AsyncMock()),
     ):
-        res = await push_router.subscribe(payload, request, db, user)
+        res = await call_injected(
+            push_router.subscribe,
+            payload=payload,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert res is not None
         assert res.id == existing_sub.id
 
@@ -213,7 +232,13 @@ async def test_subscribe_db_integrity_error_not_found_on_final_attempt():
         patch("asyncio.sleep", AsyncMock()),
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.subscribe(payload, request, db, user)
+            await call_injected(
+                push_router.subscribe,
+                payload=payload,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 409
 
 
@@ -227,7 +252,9 @@ async def test_get_push_topics_no_record():
     mock_res.scalar_one_or_none.return_value = None
     db.execute.return_value = mock_res
 
-    res = await push_router.get_push_topics(db, user)
+    res = await call_injected(
+        push_router.get_push_topics, user=user, provides={"AsyncDatabaseSession": db}
+    )
     assert res.has_preferences is False
     assert res.topics == []
 
@@ -243,7 +270,9 @@ async def test_get_push_topics_with_record():
     mock_res.scalar_one_or_none.return_value = record
     db.execute.return_value = mock_res
 
-    res = await push_router.get_push_topics(db, user)
+    res = await call_injected(
+        push_router.get_push_topics, user=user, provides={"AsyncDatabaseSession": db}
+    )
     assert res.has_preferences is True
     assert "system.release" in res.topics
 
@@ -264,7 +293,13 @@ async def test_delete_push_subscription_not_found():
     db.execute.return_value = mock_res
 
     with patch("app.routers.notifications.enforce_rate_limit", AsyncMock()):
-        res = await push_router.unsubscribe(payload, request, db, user)
+        res = await call_injected(
+            push_router.unsubscribe,
+            payload=payload,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert res == {"ok": True, "removed": False}
 
 
@@ -282,7 +317,13 @@ async def test_send_test_push_forbidden():
         "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.send_test(request, db, user, payload)
+            await call_injected(
+                push_router.send_test,
+                request=request,
+                user=user,
+                payload=payload,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 403
 
 
@@ -304,7 +345,13 @@ async def test_send_test_push_vapid_not_configured():
         mock_settings.VAPID_PUBLIC_KEY = ""
         mock_settings.environment = "production"
         with pytest.raises(HTTPException) as exc:
-            await push_router.send_test(request, db, user, payload)
+            await call_injected(
+                push_router.send_test,
+                request=request,
+                user=user,
+                payload=payload,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 503
 
 
@@ -334,7 +381,13 @@ async def test_send_test_push_rate_limit():
         mock_settings.VAPID_PUBLIC_KEY = "key"
         mock_settings.environment = "production"
         with pytest.raises(HTTPException) as exc:
-            await push_router.send_test(request, db, user, payload)
+            await call_injected(
+                push_router.send_test,
+                request=request,
+                user=user,
+                payload=payload,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 429
 
 
@@ -360,7 +413,13 @@ async def test_send_test_push_user_not_found():
         mock_settings.VAPID_PUBLIC_KEY = "key"
         mock_settings.environment = "test"
         with pytest.raises(HTTPException) as exc:
-            await push_router.send_test(request, db, user, payload)
+            await call_injected(
+                push_router.send_test,
+                request=request,
+                user=user,
+                payload=payload,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 404
 
 
@@ -393,7 +452,13 @@ async def test_send_test_push_no_subscriptions():
         mock_settings.VAPID_PRIVATE_KEY = "key"  # pragma: allowlist secret
         mock_settings.VAPID_PUBLIC_KEY = "key"
         mock_settings.environment = "test"
-        res = await push_router.send_test(request, db, user, payload)
+        res = await call_injected(
+            push_router.send_test,
+            request=request,
+            user=user,
+            payload=payload,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert res.total == 0
         assert res.sent == 0
 
@@ -442,7 +507,13 @@ async def test_send_test_push_success():
         mock_settings.VAPID_PRIVATE_KEY = "key"  # pragma: allowlist secret
         mock_settings.VAPID_PUBLIC_KEY = "key"
         mock_settings.environment = "test"
-        res = await push_router.send_test(request, db, user, payload)
+        res = await call_injected(
+            push_router.send_test,
+            request=request,
+            user=user,
+            payload=payload,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert res.total == 1
         assert res.sent == 1
 
@@ -457,7 +528,13 @@ async def test_admin_get_user_topics_forbidden():
         "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.admin_get_user_topics(uuid.uuid4(), request, db, user)
+            await call_injected(
+                push_router.admin_get_user_topics,
+                user_id=uuid.uuid4(),
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 403
 
 
@@ -476,7 +553,13 @@ async def test_admin_get_user_topics_not_found():
         "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.admin_get_user_topics(uuid.uuid4(), request, db, user)
+            await call_injected(
+                push_router.admin_get_user_topics,
+                user_id=uuid.uuid4(),
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 404
 
 
@@ -501,7 +584,13 @@ async def test_admin_get_user_topics_success():
     with patch(
         "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
     ):
-        res = await push_router.admin_get_user_topics(target_user.id, request, db, user)
+        res = await call_injected(
+            push_router.admin_get_user_topics,
+            user_id=target_user.id,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert res.user_id == target_user.id
         assert res.email == target_user.email
         assert "system.release" in res.topics
@@ -520,8 +609,13 @@ async def test_admin_update_user_topics_forbidden():
         "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.admin_update_user_topics(
-                uuid.uuid4(), payload, request, db, user
+            await call_injected(
+                push_router.admin_update_user_topics,
+                user_id=uuid.uuid4(),
+                payload=payload,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
             )
         assert exc.value.status_code == 403
 
@@ -544,8 +638,13 @@ async def test_admin_update_user_topics_not_found():
         "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.admin_update_user_topics(
-                uuid.uuid4(), payload, request, db, user
+            await call_injected(
+                push_router.admin_update_user_topics,
+                user_id=uuid.uuid4(),
+                payload=payload,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
             )
         assert exc.value.status_code == 404
 
@@ -578,8 +677,13 @@ async def test_admin_update_user_topics_success():
             AsyncMock(return_value=["system"]),
         ),
     ):
-        res = await push_router.admin_update_user_topics(
-            target_user.id, payload, request, db, user
+        res = await call_injected(
+            push_router.admin_update_user_topics,
+            user_id=target_user.id,
+            payload=payload,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
         )
         assert res.user_id == target_user.id
         assert "system.release" in res.topics
@@ -598,7 +702,13 @@ async def test_disable_user_push_forbidden():
         "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.disable_user_push(payload, request, db, user)
+            await call_injected(
+                push_router.disable_user_push,
+                payload=payload,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 403
 
 
@@ -616,7 +726,13 @@ async def test_disable_user_push_not_found():
         "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.disable_user_push(payload, request, db, user)
+            await call_injected(
+                push_router.disable_user_push,
+                payload=payload,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 404
 
 
@@ -640,7 +756,13 @@ async def test_disable_user_push_no_subscriptions():
     with patch(
         "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
     ):
-        res = await push_router.disable_user_push(payload, request, db, user)
+        res = await call_injected(
+            push_router.disable_user_push,
+            payload=payload,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert res == {"ok": True, "removed": 0}
 
 
@@ -664,7 +786,13 @@ async def test_disable_user_push_success():
     with patch(
         "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
     ):
-        res = await push_router.disable_user_push(payload, request, db, user)
+        res = await call_injected(
+            push_router.disable_user_push,
+            payload=payload,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert res == {"ok": True, "removed": 2}
 
 
@@ -681,7 +809,13 @@ async def test_broadcast_forbidden():
         "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.broadcast(payload, request, db, user)
+            await call_injected(
+                push_router.broadcast,
+                data=payload,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 403
 
 
@@ -706,7 +840,13 @@ async def test_broadcast_rate_limited():
         ),
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.broadcast(payload, request, db, user)
+            await call_injected(
+                push_router.broadcast,
+                data=payload,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 429
 
 
@@ -747,7 +887,13 @@ async def test_broadcast_success():
             AsyncMock(return_value=results),
         ),
     ):
-        res = await push_router.broadcast(payload, request, db, user)
+        res = await call_injected(
+            push_router.broadcast,
+            data=payload,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert res.total == 1
         assert res.sent == 1
 
@@ -803,8 +949,13 @@ async def test_list_notifications_bad_cursor_dt():
     bad_cursor = base64.b64encode(b"invalid-timestamp,not-a-uuid").decode()
     with patch("app.api.notifications.resolve_locale", MagicMock(return_value="en")):
         with pytest.raises(HTTPException) as exc:
-            await notifications_api.list_notifications(
-                request=request, response=response, db=db, user=user, cursor=bad_cursor
+            await call_injected(
+                notifications_api.list_notifications,
+                request=request,
+                response=response,
+                user=user,
+                cursor=bad_cursor,
+                provides={"AsyncDatabaseSession": db},
             )
         assert exc.value.status_code == 400
 
@@ -839,8 +990,14 @@ async def test_list_notifications_has_more():
         mock_exec_res.scalar_one.return_value = 1
         db.execute.return_value = mock_exec_res
 
-        res = await notifications_api.list_notifications(
-            request=request, response=response, db=db, user=user, cursor=None, limit=1
+        res = await call_injected(
+            notifications_api.list_notifications,
+            request=request,
+            response=response,
+            user=user,
+            cursor=None,
+            limit=1,
+            provides={"AsyncDatabaseSession": db},
         )
         assert res.has_more is True
         assert res.next_cursor is not None
@@ -862,8 +1019,14 @@ async def test_list_notifications_available_columns_read_mismatch():
         mock_exec_res.scalar_one.return_value = 5
         db.execute.return_value = mock_exec_res
 
-        res = await notifications_api.list_notifications(
-            request=request, response=response, db=db, user=user, cursor=None, limit=20
+        res = await call_injected(
+            notifications_api.list_notifications,
+            request=request,
+            response=response,
+            user=user,
+            cursor=None,
+            limit=20,
+            provides={"AsyncDatabaseSession": db},
         )
         assert res.unread_count == 5
 

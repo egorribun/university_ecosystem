@@ -12,11 +12,11 @@ from app.api.deps import (
     get_current_user_from_dishka,
     get_current_user_optional_from_dishka,
 )
-from app.core.container import get_read_schedule_handler
 from app.core.csrf import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
 from app.core.database import get_db
 from app.cqrs.bus import CommandBus, QueryBus
 from app.main import app
+from tests.conftest import install_dishka_override
 
 
 @pytest.fixture
@@ -116,12 +116,11 @@ async def test_schedule_api_coverage(
     mock_user, mock_db, mock_schedule_handler, mock_schedule_service
 ):
     # We override get_schedule_service dependency
-    from app.api.deps import get_schedule_service
 
     app.dependency_overrides[get_current_user_from_dishka] = lambda: mock_user
     app.dependency_overrides[get_current_user_optional_from_dishka] = lambda: None
-    app.dependency_overrides[get_schedule_service] = lambda: mock_schedule_service
-    app.dependency_overrides[get_read_schedule_handler] = lambda: mock_schedule_handler
+    install_dishka_override(app, ScheduleService=mock_schedule_service)
+    install_dishka_override(app, GetScheduleHandler=mock_schedule_handler)
     # We also keep get_db override if needed by other deps,
     # but schedule endpoints now use service
     app.dependency_overrides[get_db] = lambda: mock_db

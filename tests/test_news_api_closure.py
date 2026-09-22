@@ -12,6 +12,7 @@ from fastapi import BackgroundTasks, HTTPException, Response
 
 import app.api.news as news_api
 from app.models.enums import UserRole
+from tests.conftest import call_injected
 
 NEWS_ID = uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df79")
 
@@ -79,13 +80,13 @@ async def test_create_news_requires_admin_and_dispatches_notification() -> None:
     with patch.object(
         news_api, "_increment_news_list_version", new_callable=AsyncMock
     ) as increment:
-        result = await handler(
+        result = await call_injected(
+            handler,
             data=MagicMock(),
             request=request,
             background=background,
-            service=service,
             user=_admin(),
-            notifications=notifications,
+            provides={"NewsService": service, "NotificationService": notifications},
         )
 
     assert result == {"id": NEWS_ID}
@@ -97,13 +98,13 @@ async def test_create_news_requires_admin_and_dispatches_notification() -> None:
     increment.assert_awaited_once_with(request.app.state.cache)
 
     with patch.object(news_api, "_increment_news_list_version", new_callable=AsyncMock):
-        result = await handler(
+        result = await call_injected(
+            handler,
             data=MagicMock(),
             request=None,
             background=background,
-            service=service,
             user=_admin(),
-            notifications=notifications,
+            provides={"NewsService": service, "NotificationService": notifications},
         )
     assert result == {"id": NEWS_ID}
 
@@ -114,23 +115,25 @@ async def test_news_list_for_anonymous_and_authenticated_users() -> None:
     service.list_news.return_value = {"items": [], "next_cursor": None}
     request = _request()
 
-    anonymous = await handler(
+    anonymous = await call_injected(
+        handler,
         request=request,
         response=Response(),
         limit=10,
         cursor="cursor-1",
         if_none_match=None,
-        service=service,
         user=None,
+        provides={"NewsService": service},
     )
-    authenticated = await handler(
+    authenticated = await call_injected(
+        handler,
         request=request,
         response=Response(),
         limit=5,
         cursor=None,
         if_none_match=None,
-        service=service,
         user=_user(),
+        provides={"NewsService": service},
     )
 
     assert anonymous == authenticated == {"items": [], "next_cursor": None}
@@ -156,14 +159,14 @@ async def test_get_news_handles_anonymous_authenticated_and_missing_rows() -> No
     db.execute.return_value = db_result
     db_result.first.return_value = (row, 4, 2, True)
 
-    result = await handler(
+    result = await call_injected(
+        handler,
         id=NEWS_ID,
         request=_request(),
         response=Response(),
         if_none_match=None,
         user=None,
-        db=db,
-        service=service,
+        provides={"AsyncDatabaseSession": db, "NewsService": service},
     )
     assert result == {"id": NEWS_ID}
     assert row.likes_count == 4
@@ -171,14 +174,14 @@ async def test_get_news_handles_anonymous_authenticated_and_missing_rows() -> No
     assert row.is_liked is True
 
     db_result.first.return_value = (row, None, None, False)
-    result = await handler(
+    result = await call_injected(
+        handler,
         id=NEWS_ID,
         request=_request(),
         response=Response(),
         if_none_match=None,
         user=_user(),
-        db=db,
-        service=service,
+        provides={"AsyncDatabaseSession": db, "NewsService": service},
     )
     assert result == {"id": NEWS_ID}
     assert row.likes_count == 0
@@ -187,14 +190,14 @@ async def test_get_news_handles_anonymous_authenticated_and_missing_rows() -> No
 
     db_result.first.return_value = None
     with pytest.raises(HTTPException) as exc_info:
-        await handler(
+        await call_injected(
+            handler,
             id=NEWS_ID,
             request=_request(),
             response=Response(),
             if_none_match=None,
             user=None,
-            db=db,
-            service=service,
+            provides={"AsyncDatabaseSession": db, "NewsService": service},
         )
     assert exc_info.value.status_code == 404
 
@@ -212,12 +215,13 @@ async def test_update_news_success_and_missing_paths_invalidate_cache() -> None:
         patch.object(news_api, "get_cache", return_value=cache),
         patch.object(news_api, "_increment_news_list_version", new_callable=AsyncMock),
     ):
-        result = await handler(
+        result = await call_injected(
+            handler,
             id=NEWS_ID,
             request=_request(cache=object()),
             data=data,
-            service=service,
             user=_admin(),
+            provides={"NewsService": service},
         )
     assert result == {"id": NEWS_ID}
     service.update_news.assert_awaited_once_with(NEWS_ID, data)
@@ -225,12 +229,13 @@ async def test_update_news_success_and_missing_paths_invalidate_cache() -> None:
 
     service.update_news.side_effect = ValueError("not found")
     with pytest.raises(HTTPException) as exc_info:
-        await handler(
+        await call_injected(
+            handler,
             id=NEWS_ID,
             request=_request(cache=None),
             data=None,
-            service=service,
             user=_admin(),
+            provides={"NewsService": service},
         )
     assert exc_info.value.status_code == 404
 
@@ -241,12 +246,13 @@ async def test_update_news_success_and_missing_paths_invalidate_cache() -> None:
         patch.object(news_api, "get_cache", return_value=disabled_cache),
         patch.object(news_api, "_increment_news_list_version", new_callable=AsyncMock),
     ):
-        assert await handler(
+        assert await call_injected(
+            handler,
             id=NEWS_ID,
             request=None,
             data=None,
-            service=service,
             user=_admin(),
+            provides={"NewsService": service},
         ) == {"id": NEWS_ID}
     disabled_cache.invalidate.assert_not_awaited()
 
@@ -261,11 +267,12 @@ async def test_delete_news_success_and_missing_paths_invalidate_cache() -> None:
         patch.object(news_api, "_increment_news_list_version", new_callable=AsyncMock),
     ):
         service.delete_news.return_value = True
-        assert await handler(
+        assert await call_injected(
+            handler,
             id=NEWS_ID,
             request=_request(cache=object()),
-            service=service,
             user=_admin(),
+            provides={"NewsService": service},
         ) == {"ok": True}
     cache.invalidate.assert_awaited_once()
 
@@ -275,21 +282,23 @@ async def test_delete_news_success_and_missing_paths_invalidate_cache() -> None:
         patch.object(news_api, "get_cache", return_value=disabled_cache),
         patch.object(news_api, "_increment_news_list_version", new_callable=AsyncMock),
     ):
-        assert await handler(
+        assert await call_injected(
+            handler,
             id=NEWS_ID,
             request=None,
-            service=service,
             user=_admin(),
+            provides={"NewsService": service},
         ) == {"ok": True}
     disabled_cache.invalidate.assert_not_awaited()
 
     service.delete_news.return_value = False
     with pytest.raises(HTTPException) as exc_info:
-        await handler(
+        await call_injected(
+            handler,
             id=NEWS_ID,
             request=_request(cache=None),
-            service=service,
             user=_admin(),
+            provides={"NewsService": service},
         )
     assert exc_info.value.status_code == 404
 
@@ -301,21 +310,23 @@ async def test_like_news_success_and_missing_paths() -> None:
     service.get_news_item.return_value = _news_record()
     service.toggle_like.return_value = True
 
-    assert await handler(
+    assert await call_injected(
+        handler,
         id=NEWS_ID,
         request=_request(),
-        service=service,
         user=user,
+        provides={"NewsService": service},
     ) == {"is_liked": True}
     service.toggle_like.assert_awaited_once_with(NEWS_ID, user.id)
 
     service.get_news_item.return_value = None
     with pytest.raises(HTTPException) as exc_info:
-        await handler(
+        await call_injected(
+            handler,
             id=NEWS_ID,
             request=_request(),
-            service=service,
             user=user,
+            provides={"NewsService": service},
         )
     assert exc_info.value.status_code == 404
 
@@ -334,40 +345,40 @@ async def test_comment_news_validates_news_content_and_profile_fallback() -> Non
     service.get_news_item.return_value = _news_record()
     service.create_comment.return_value = comment
 
-    result = await handler(
+    result = await call_injected(
+        handler,
         id=NEWS_ID,
         request=_request(),
         background=BackgroundTasks(),
         content=" A comment ",
-        service=service,
         user=user,
-        notifications=notifications,
+        provides={"NewsService": service, "NotificationService": notifications},
     )
     assert result["user_name"] == str(user.email)
     notifications.dispatch_comment_created.assert_awaited_once()
 
     with pytest.raises(HTTPException) as exc_info:
-        await handler(
+        await call_injected(
+            handler,
             id=NEWS_ID,
             request=_request(),
             background=BackgroundTasks(),
             content="   ",
-            service=service,
             user=user,
-            notifications=notifications,
+            provides={"NewsService": service, "NotificationService": notifications},
         )
     assert exc_info.value.status_code == 400
 
     service.get_news_item.return_value = None
     with pytest.raises(HTTPException) as exc_info:
-        await handler(
+        await call_injected(
+            handler,
             id=NEWS_ID,
             request=_request(),
             background=BackgroundTasks(),
             content="comment",
-            service=service,
             user=user,
-            notifications=notifications,
+            provides={"NewsService": service, "NotificationService": notifications},
         )
     assert exc_info.value.status_code == 404
 
@@ -378,13 +389,14 @@ async def test_news_interactions_not_found() -> None:
     service.get_news_item.return_value = None
 
     with pytest.raises(HTTPException) as exc_info:
-        await handler(
+        await call_injected(
+            handler,
             id=NEWS_ID,
             request=_request(),
             limit=10,
             offset=2,
-            service=service,
             user=None,
+            provides={"NewsService": service},
         )
     assert exc_info.value.status_code == 404
 
@@ -401,13 +413,14 @@ async def test_news_interactions_success() -> None:
     }
     user = _user()
 
-    result = await handler(
+    result = await call_injected(
+        handler,
         id=NEWS_ID,
         request=_request(),
         limit=10,
         offset=2,
-        service=service,
         user=user,
+        provides={"NewsService": service},
     )
 
     assert result.likes_count == 2
@@ -429,24 +442,26 @@ async def test_update_comment_success_and_error_paths() -> None:
     user = _user()
     data = SimpleNamespace(content="updated")
 
-    result = await handler(
+    result = await call_injected(
+        handler,
         comment_id=uuid.UUID(int=3),
         request=_request(),
         data=data,
-        service=service,
         user=user,
+        provides={"NewsService": service},
     )
     assert result["user_name"] == str(user.email)
 
     for error, status_code in ((LookupError(), 404), (PermissionError(), 403)):
         service.update_comment.side_effect = error
         with pytest.raises(HTTPException) as exc_info:
-            await handler(
+            await call_injected(
+                handler,
                 comment_id=uuid.UUID(int=3),
                 request=_request(),
                 data=data,
-                service=service,
                 user=user,
+                provides={"NewsService": service},
             )
         assert exc_info.value.status_code == status_code
     service.update_comment.side_effect = None
@@ -458,11 +473,12 @@ async def test_delete_comment_success_and_error_paths() -> None:
     comment_id = uuid.UUID(int=3)
 
     for user, expected_admin in ((_user(), False), (_admin(), True)):
-        assert await handler(
+        assert await call_injected(
+            handler,
             comment_id=comment_id,
             request=_request(),
-            service=service,
             user=user,
+            provides={"NewsService": service},
         ) == {"ok": True}
         assert (
             service.delete_comment.await_args_list[-1].kwargs["is_admin"]
@@ -472,11 +488,12 @@ async def test_delete_comment_success_and_error_paths() -> None:
     for error, status_code in ((LookupError(), 404), (PermissionError(), 403)):
         service.delete_comment.side_effect = error
         with pytest.raises(HTTPException) as exc_info:
-            await handler(
+            await call_injected(
+                handler,
                 comment_id=comment_id,
                 request=_request(),
-                service=service,
                 user=_user(),
+                provides={"NewsService": service},
             )
         assert exc_info.value.status_code == status_code
     service.delete_comment.side_effect = None
@@ -517,17 +534,20 @@ async def test_semantic_search_returns_not_modified_for_matching_etag() -> None:
         patch.object(news_api, "etag_matches", return_value=True),
     ):
         etag = news_api.format_etag("semantic:v1:query:5:0.7")
-        result = await handler(
+        result = await call_injected(
+            handler,
             request=_request(),
             response=response,
             query="query",
             limit=5,
             min_score=0.7,
             if_none_match=etag,
-            db=AsyncMock(),
-            vector_service=vector,
-            service=service,
             _user=_user(),
+            provides={
+                "AsyncDatabaseSession": AsyncMock(),
+                "VectorService": vector,
+                "NewsService": service,
+            },
         )
 
     assert isinstance(result, Response)
@@ -555,17 +575,20 @@ async def test_semantic_search_returns_serialized_matches() -> None:
             return_value="v1",
         ),
     ):
-        result = await handler(
+        result = await call_injected(
+            handler,
             request=_request(),
             response=response,
             query="query",
             limit=5,
             min_score=0.7,
             if_none_match=None,
-            db=AsyncMock(),
-            vector_service=vector,
-            service=service,
             _user=_user(),
+            provides={
+                "AsyncDatabaseSession": AsyncMock(),
+                "VectorService": vector,
+                "NewsService": service,
+            },
         )
 
     assert result == [{"id": NEWS_ID}]

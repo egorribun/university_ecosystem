@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from app.api import users as api
 from app.models.enums import UserRole
 from app.schemas import schemas
+from tests.conftest import call_injected
 
 
 def _request(headers: dict[str, str] | None = None) -> SimpleNamespace:
@@ -139,14 +140,21 @@ async def test_password_and_profile_adapters() -> None:
     request = _request()
     auth = MagicMock()
     auth.initiate_password_reset = AsyncMock()
-    assert await api.forgot_password(
-        schemas.ForgotPasswordIn(email="user@example.com"), request, MagicMock(), auth
+    assert await call_injected(
+        api.forgot_password,
+        schemas.ForgotPasswordIn(email="user@example.com"),
+        bg=MagicMock(),
+        request=request,
+        provides={"AuthService": auth},
     ) == {"ok": True}
     auth.initiate_password_reset.assert_awaited_once()
 
     auth.perform_password_reset = AsyncMock()
-    assert await api.reset_password(
-        schemas.ResetPasswordIn(token="token", password="Password123!"), request, auth
+    assert await call_injected(
+        api.reset_password,
+        schemas.ResetPasswordIn(token="token", password="Password123!"),
+        request=request,
+        provides={"AuthService": auth},
     ) == {"ok": True}
 
     user = _user()
@@ -158,14 +166,25 @@ async def test_password_and_profile_adapters() -> None:
         patch.object(api, "log_data_access", AsyncMock()) as log,
         _patch_user_out(expected),
     ):
-        result = await api.me(request, db=db, user=user, auth_service=auth)
+        result = await call_injected(
+            api.me,
+            request=request,
+            user=user,
+            provides={"AuthService": auth, "AsyncDatabaseSession": db},
+        )
     assert result is expected
     log.assert_awaited_once()
 
     service = MagicMock()
     service.update_user_profile = AsyncMock(return_value=user)
     with _patch_user_out(expected):
-        result = await api.update_me(MagicMock(), request, user=user, service=service)
+        result = await call_injected(
+            api.update_me,
+            MagicMock(),
+            request=request,
+            user=user,
+            provides={"UserProfileService": service},
+        )
     assert result is expected
 
 
@@ -178,41 +197,52 @@ async def test_email_password_compliance_and_media_adapters() -> None:
     auth.initiate_email_change = AsyncMock(return_value=user)
     auth.confirm_email_change = AsyncMock(return_value=user)
     with _patch_user_out(expected):
-        result = await api.change_email(
+        result = await call_injected(
+            api.change_email,
             schemas.UserEmailChangeIn(email="new@example.com", password="pw"),
-            request,
-            MagicMock(),
-            None,
-            user,
-            auth,
+            bg=MagicMock(),
+            request=request,
+            user=user,
+            provides={"AuthService": auth},
         )
         assert result is expected
-        result = await api.verify_email_change(
-            schemas.UserEmailConfirmIn(token="token"), request, user, auth
+        result = await call_injected(
+            api.verify_email_change,
+            schemas.UserEmailConfirmIn(token="token"),
+            request=request,
+            user=user,
+            provides={"AuthService": auth},
         )
     assert result is expected
 
     auth.change_password = AsyncMock(return_value=(True, 2))
-    result = await api.change_password(
+    result = await call_injected(
+        api.change_password,
         schemas.UserPasswordChangeIn(
             current_password="old", new_password="Password123!"
         ),
-        request,
-        None,
-        user,
-        auth,
+        request=request,
+        user=user,
+        provides={"AuthService": auth},
     )
     assert result.ok is True
     assert result.revoked_sessions == 2
 
     compliance = MagicMock()
     compliance.export_user_data = AsyncMock(return_value={"ok": True})
-    assert await api.export_current_user_data(request, None, user, compliance) == {
-        "ok": True
-    }
+    assert await call_injected(
+        api.export_current_user_data,
+        request=request,
+        user=user,
+        provides={"UserComplianceService": compliance},
+    ) == {"ok": True}
     compliance.delete_user_data = AsyncMock(return_value={"deleted": True})
-    assert await api.delete_current_user_account(
-        schemas.DataDeletionRequest(confirm=True), request, None, user, compliance
+    assert await call_injected(
+        api.delete_current_user_account,
+        schemas.DataDeletionRequest(confirm=True),
+        request=request,
+        user=user,
+        provides={"UserComplianceService": compliance},
     ) == {"deleted": True}
 
     media = MagicMock()
@@ -225,10 +255,38 @@ async def test_email_password_compliance_and_media_adapters() -> None:
         patch.object(api, "scan_for_malware", AsyncMock()) as scan,
         _patch_user_out(expected),
     ):
-        assert await api.upload_avatar(file, request=request, user=user, service=media)
-        assert await api.upload_cover(file, request=request, user=user, service=media)
-        assert await api.delete_avatar(request, user=user, service=media) is expected
-        assert await api.delete_cover(request, user=user, service=media) is expected
+        assert await call_injected(
+            api.upload_avatar,
+            file,
+            request=request,
+            user=user,
+            provides={"UserMediaService": media},
+        )
+        assert await call_injected(
+            api.upload_cover,
+            file,
+            request=request,
+            user=user,
+            provides={"UserMediaService": media},
+        )
+        assert (
+            await call_injected(
+                api.delete_avatar,
+                request=request,
+                user=user,
+                provides={"UserMediaService": media},
+            )
+            is expected
+        )
+        assert (
+            await call_injected(
+                api.delete_cover,
+                request=request,
+                user=user,
+                provides={"UserMediaService": media},
+            )
+            is expected
+        )
     assert scan.await_count == 2
 
 
@@ -240,7 +298,16 @@ async def test_create_and_list_users_roles() -> None:
     service.create_user = AsyncMock(return_value=user)
     expected = object()
     with _patch_user_out(expected):
-        assert await api.create_user(MagicMock(), request, user, service) is expected
+        assert (
+            await call_injected(
+                api.create_user,
+                MagicMock(),
+                request=request,
+                user=user,
+                provides={"UserComplianceService": service},
+            )
+            is expected
+        )
 
     items = [SimpleNamespace(id=uuid4())]
     service.get_users = AsyncMock(return_value=items)
@@ -248,26 +315,26 @@ async def test_create_and_list_users_roles() -> None:
     db = AsyncMock()
     public = object()
     with patch.object(api.schemas.UserPublicOut, "model_validate", return_value=public):
-        result = await api.get_users(
-            request,
-            bg,
+        result = await call_injected(
+            api.get_users,
+            bg=bg,
+            request=request,
             filters=schemas.UserSearchFilter(),
             current_user=user,
-            service=service,
-            db=db,
+            provides={"UserProfileService": service, "AsyncDatabaseSession": db},
         )
     assert result == [public]
     bg.add_task.assert_called_once()
 
     admin = _user(role=UserRole.ADMIN)
     with _patch_user_out(expected):
-        result = await api.get_users(
-            request,
-            MagicMock(),
+        result = await call_injected(
+            api.get_users,
+            bg=MagicMock(),
+            request=request,
             filters=schemas.UserSearchFilter(),
             current_user=admin,
-            service=service,
-            db=db,
+            provides={"UserProfileService": service, "AsyncDatabaseSession": db},
         )
     assert result == [expected]
 
@@ -280,13 +347,13 @@ async def test_audit_export_admin_range_and_admin_adapters() -> None:
     db = AsyncMock()
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.export_access_audit(
-                request,
+            await call_injected(
+                api.export_access_audit,
+                request=request,
                 start_at=datetime(2024, 1, 1, tzinfo=UTC),
                 end_at=datetime(2024, 3, 1, tzinfo=UTC),
-                db=db,
                 user=admin,
-                audit=audit,
+                provides={"AsyncDatabaseSession": db, "AuditService": audit},
             )
     assert exc.value.status_code == 400
 
@@ -297,13 +364,13 @@ async def test_audit_export_admin_range_and_admin_adapters() -> None:
             "app.services.data_access.export_access_logs_stream", return_value=stream
         ),
     ):
-        response = await api.export_access_audit(
-            request,
+        response = await call_injected(
+            api.export_access_audit,
+            request=request,
             start_at=None,
             end_at=None,
-            db=db,
             user=admin,
-            audit=audit,
+            provides={"AsyncDatabaseSession": db, "AuditService": audit},
         )
     assert response.media_type == "text/csv"
     assert "access_audit.csv" in response.headers["content-disposition"]
@@ -314,17 +381,26 @@ async def test_audit_export_admin_range_and_admin_adapters() -> None:
     expected = object()
     with _patch_user_out(expected):
         assert (
-            await api.update_user_admin(
-                admin.id, schemas.UserAdminUpdate(), request, admin, profile
+            await call_injected(
+                api.update_user_admin,
+                admin.id,
+                schemas.UserAdminUpdate(),
+                request=request,
+                user=admin,
+                provides={"UserProfileService": profile},
             )
             is expected
         )
 
     compliance = MagicMock()
     compliance.admin_delete_user = AsyncMock(return_value={"ok": True})
-    assert await api.delete_user_admin(admin.id, request, admin, compliance) == {
-        "ok": True
-    }
+    assert await call_injected(
+        api.delete_user_admin,
+        admin.id,
+        request=request,
+        user=admin,
+        provides={"UserComplianceService": compliance},
+    ) == {"ok": True}
 
 
 @pytest.mark.asyncio
@@ -332,6 +408,6 @@ async def test_get_groups_maps_service_results() -> None:
     group = SimpleNamespace(id=uuid4(), name="Group", course=1, faculty="Faculty")
     service = MagicMock()
     service.get_groups = AsyncMock(return_value=[group])
-    result = await api.get_groups(service)
+    result = await call_injected(api.get_groups, provides={"GroupService": service})
     assert result[0].id == group.id
     assert result[0].name == "Group"

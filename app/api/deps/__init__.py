@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.api.deps.auth import (
     _enforce_fresh_mfa,
     get_current_admin_user,
+    get_current_admin_user_from_dishka,
     get_current_user,
     get_current_user_auth_dto,
     get_current_user_dto,
@@ -10,49 +11,22 @@ from app.api.deps.auth import (
     get_current_user_full,
     get_current_user_optional,
     get_current_user_optional_from_dishka,
+    get_redis_session_service,
     require_fresh_mfa,
-    require_fresh_mfa_from_dishka,
 )
 from app.api.deps.localization import get_locale, resolve_locale
-from app.api.deps.services import (
-    get_analytics_service,
-    get_audit_service,
-    get_auth_service,
-    get_chat_command_service,
-    get_chat_creation_service,
-    get_chat_maintenance_service,
-    get_chat_message_dispatcher,
-    get_chat_query_service,
-    get_chat_service,  # legacy alias
-    get_event_service,
-    get_geolocation_service,
-    get_login_service,
-    get_news_service,
-    get_read_chat_query_service,
-    get_read_chat_service,  # legacy alias
-    get_read_event_service,
-    get_read_news_service,
-    get_read_schedule_service,
-    get_read_story_service,
-    get_redis_session_service,
-    get_schedule_service,
-    get_session_service,
-    get_story_service,
-)
 from app.core.database import get_db, get_read_db
+
+# BE-04: app/api/deps/services.py and app/core/container.py are gone. Between
+# them they held the 39 legacy ``Depends(get_*_service)`` factories and the
+# four private constructors behind them; every route now resolves its services
+# from the Dishka container, and the two remaining non-route callers construct
+# their service over the session they already own.
 
 __all__ = [
     "_enforce_fresh_mfa",
-    "get_analytics_service",
-    "get_audit_service",
-    "get_auth_service",
-    "get_chat_command_service",
-    "get_chat_creation_service",
-    "get_chat_maintenance_service",
-    "get_chat_message_dispatcher",
-    "get_chat_query_service",
-    "get_chat_service",
     "get_current_admin_user",
+    "get_current_admin_user_from_dishka",
     "get_current_user",
     "get_current_user_auth_dto",
     "get_current_user_dto",
@@ -61,23 +35,9 @@ __all__ = [
     "get_current_user_optional",
     "get_current_user_optional_from_dishka",
     "get_db",
-    "get_event_service",
-    "get_geolocation_service",
     "get_locale",
-    "get_login_service",
-    "get_news_service",
-    "get_read_chat_query_service",
-    "get_read_chat_service",
     "get_read_db",
-    "get_read_event_service",
-    "get_read_news_service",
-    "get_read_schedule_service",
-    "get_read_story_service",
     "get_redis_session_service",
-    "get_schedule_service",
-    "get_session_service",
-    "get_story_service",
     "require_fresh_mfa",
-    "require_fresh_mfa_from_dishka",
     "resolve_locale",
 ]

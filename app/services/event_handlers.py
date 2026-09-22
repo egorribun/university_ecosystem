@@ -8,7 +8,6 @@ These handlers are registered with the EventBus during application startup.
 from __future__ import annotations
 
 import app.models as models
-from app.core.container import get_vector_service
 from app.core.database import async_session
 from app.core.events import (
     AttachmentCleanupRequested,
@@ -27,6 +26,7 @@ from app.core.events import (
     event_bus,
 )
 from app.core.logging import get_logger
+from app.services.vector_service import VectorService
 
 logger = get_logger(__name__)
 
@@ -141,7 +141,9 @@ async def handle_notification_sent(event: NotificationSent) -> None:
 async def generate_event_embedding(event: EventCreated) -> None:
     """Generate embedding for newly created event."""
     async with async_session() as db:
-        vector_service = get_vector_service(db)
+        # An event handler runs outside any request scope and opens its own
+        # session, so it constructs the service over that session directly.
+        vector_service = VectorService(db=db)
         # Fetch the event to get full content
         db_event = await db.get(models.Event, event.event_id_entity)
         if not db_event:
@@ -158,7 +160,7 @@ async def generate_event_embedding(event: EventCreated) -> None:
 async def generate_news_embedding(event: NewsCreated) -> None:
     """Generate embedding for newly created news."""
     async with async_session() as db:
-        vector_service = get_vector_service(db)
+        vector_service = VectorService(db=db)
         db_news = await db.get(models.News, event.news_id)
         if not db_news:
             return

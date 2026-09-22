@@ -24,6 +24,7 @@ import app.core.metrics as metrics_core
 import app.core.observability as observability_core
 import app.graphql.extensions as graphql_extensions
 import app.routers.notifications as push_router
+from tests.conftest import call_injected
 
 
 # Helper to mock Dishka container on request
@@ -202,15 +203,25 @@ async def test_list_notifications_bad_cursor():
     user = MagicMock()
     response = MagicMock()
     with pytest.raises(HTTPException) as exc:
-        await notifications_api.list_notifications(
-            request, response, db=db, user=user, cursor="invalid_base64_string"
+        await call_injected(
+            notifications_api.list_notifications,
+            request,
+            response,
+            user=user,
+            cursor="invalid_base64_string",
+            provides={"AsyncDatabaseSession": db},
         )
     assert exc.value.status_code == 400
 
     bad_cursor = base64.b64encode(b"2026-01-01T00:00:00,not-a-uuid").decode()
     with pytest.raises(HTTPException) as exc:
-        await notifications_api.list_notifications(
-            request, response, db=db, user=user, cursor=bad_cursor
+        await call_injected(
+            notifications_api.list_notifications,
+            request,
+            response,
+            user=user,
+            cursor=bad_cursor,
+            provides={"AsyncDatabaseSession": db},
         )
     assert exc.value.status_code == 400
 
@@ -290,7 +301,13 @@ async def test_subscribe_integrity_error_retry():
         db.refresh = mock_refresh
 
         with patch("asyncio.sleep", AsyncMock()):
-            res = await push_router.subscribe(payload, request, db, user)
+            res = await call_injected(
+                push_router.subscribe,
+                payload=payload,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
             assert res is not None
             assert call_count >= 2
 
@@ -312,7 +329,13 @@ async def test_update_subscription_topics_not_found():
     db.execute.return_value = mock_res
 
     with pytest.raises(HTTPException) as exc:
-        await push_router.update_subscription_topics(payload, request, db, user)
+        await call_injected(
+            push_router.update_subscription_topics,
+            payload=payload,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
     assert exc.value.status_code == 404
 
 
@@ -328,7 +351,13 @@ async def test_unsubscribe_errors():
 
     payload = PushSubscriptionDelete(endpoint="")
     with pytest.raises(HTTPException) as exc:
-        await push_router.unsubscribe(payload, request, db, user)
+        await call_injected(
+            push_router.unsubscribe,
+            payload=payload,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
     assert exc.value.status_code == 400
 
     from app.core.ratelimit import RateLimitExceeded, RateLimitInfo
@@ -340,7 +369,13 @@ async def test_unsubscribe_errors():
         side_effect=RateLimitExceeded(info),
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.unsubscribe(payload2, request, db, user)
+            await call_injected(
+                push_router.unsubscribe,
+                payload=payload2,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 429
 
 
@@ -398,7 +433,12 @@ async def test_now_playing_endpoint_error_states():
             AsyncMock(return_value=Response(204)),
         ),
     ):
-        res = await spotify_api.now_playing(request=request, db=db, user=user)
+        res = await call_injected(
+            spotify_api.now_playing,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert res.status_code == 204
         assert not user.spotify.is_playing
 
@@ -410,7 +450,12 @@ async def test_now_playing_endpoint_error_states():
         ),
     ):
         with pytest.raises(HTTPException) as exc:
-            await spotify_api.now_playing(request=request, db=db, user=user)
+            await call_injected(
+                spotify_api.now_playing,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 401
         assert not user.spotify.is_connected
 
@@ -424,7 +469,12 @@ async def test_now_playing_endpoint_error_states():
         ),
     ):
         with pytest.raises(HTTPException) as exc:
-            await spotify_api.now_playing(request=request, db=db, user=user)
+            await call_injected(
+                spotify_api.now_playing,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 429
 
     from app.core.circuit_breaker import CircuitBreakerOpenError
@@ -438,7 +488,12 @@ async def test_now_playing_endpoint_error_states():
             ),
         ),
     ):
-        res = await spotify_api.now_playing(request=request, db=db, user=user)
+        res = await call_injected(
+            spotify_api.now_playing,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert not res.is_playing
 
 

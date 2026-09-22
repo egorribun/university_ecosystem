@@ -155,7 +155,7 @@ async def test_warm_news():
             "app.api.news._get_news_list_version",
             AsyncMock(return_value="v1"),
         ),
-        patch("app.core.container.get_vector_service"),
+        patch("app.services.vector_service.VectorService"),
         patch("app.repositories.news_repository.NewsRepository"),
         patch("app.services.news_service.NewsService") as MockNewsService,
     ):

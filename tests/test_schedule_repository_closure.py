@@ -17,30 +17,77 @@ from app.repositories.schedule_repository import (
     get_group_repository,
     get_schedule_repository,
 )
+from app.schemas.dtos import GroupDTO, ScheduleDTO
 
 
 @pytest.mark.asyncio
-async def test_group_repository_returns_cached_groups():
-    repo = GroupRepository(MagicMock())
+async def test_group_repository_rebuilds_dtos_from_the_cache():
+    """A cache hit must return DTOs, not the dicts the cache actually holds.
 
-    with patch.object(
-        schedule_cache, "get", new=AsyncMock(return_value=["cached-group"])
-    ):
+    The cache stores ``model_dump(mode="json")`` output so orjson can
+    serialize it for L2 -- the sibling cache-miss tests below pin that.  These
+    tests used to seed a sentinel string and assert it came back untouched,
+    which described a pass-through that silently handed every caller ``dict``
+    where it read DTO attributes.
+    """
+
+    repo = GroupRepository(MagicMock())
+    group_id = uuid4()
+    cached = [
+        GroupDTO(
+            id=group_id, name="Group Alpha", created_at=datetime(2026, 1, 1, 9, 0)
+        ).model_dump(mode="json")
+    ]
+
+    with patch.object(schedule_cache, "get", new=AsyncMock(return_value=cached)):
         result = await repo.list_groups()
 
-    assert result == ["cached-group"]
+    assert [type(item) for item in result] == [GroupDTO]
+    assert result[0].id == group_id
+    assert result[0].name == "Group Alpha"
 
 
 @pytest.mark.asyncio
-async def test_schedule_repository_returns_cached_items():
+async def test_schedule_repository_rebuilds_dtos_from_the_cache():
     repo = ScheduleRepository(MagicMock())
+    group_id = uuid4()
+    lesson_id = uuid4()
+    cached = [
+        ScheduleDTO(
+            id=lesson_id,
+            group_id=group_id,
+            weekday="monday",
+            start_time=datetime(2026, 1, 1, 9, 0),
+            end_time=datetime(2026, 1, 1, 10, 30),
+            subject="Physics",
+            teacher="Prof. Xavier",
+            room="A-101",
+        ).model_dump(mode="json")
+    ]
 
-    with patch.object(
-        schedule_cache, "get", new=AsyncMock(return_value=["cached-item"])
-    ):
-        result = await repo.get_by_group(uuid4())
+    with patch.object(schedule_cache, "get", new=AsyncMock(return_value=cached)):
+        result = await repo.get_by_group(group_id)
 
-    assert result == ["cached-item"]
+    assert [type(item) for item in result] == [ScheduleDTO]
+    assert result[0].subject == "Physics"
+    # The ICS export reads these three; a dict would have yielded None for each
+    # and produced an empty calendar.
+    assert result[0].weekday == "monday"
+    assert result[0].start_time is not None
+    assert result[0].end_time is not None
+
+
+@pytest.mark.asyncio
+async def test_cached_dtos_are_passed_through_untouched():
+    """An L1 hit can hand back the DTO objects themselves; do not re-validate."""
+
+    repo = GroupRepository(MagicMock())
+    dto = GroupDTO(id=uuid4(), name="Group Beta")
+
+    with patch.object(schedule_cache, "get", new=AsyncMock(return_value=[dto])):
+        result = await repo.list_groups()
+
+    assert result[0] is dto
 
 
 @pytest.mark.asyncio

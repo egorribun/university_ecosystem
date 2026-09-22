@@ -4,6 +4,7 @@ import uuid
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel
 from sqlalchemy import select
 
 import app.models as models
@@ -14,6 +15,26 @@ from app.schemas.dtos import GroupDTO, ScheduleDTO
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
+
+
+def _restore_cached[DTOModel: BaseModel](
+    model: type[DTOModel], cached: object
+) -> list[DTOModel]:
+    """Rebuild DTOs from whatever the cache handed back.
+
+    The cache stores ``model_dump(mode="json")`` dicts so orjson can serialize
+    them for L2.  A hit therefore yields dicts, not DTOs, and every caller of
+    these methods reads DTO attributes -- a cached read used to hand them
+    ``dict`` and silently produce empty results.  Re-validating on the way out
+    keeps the return type honest whichever layer answered.
+    """
+
+    if not isinstance(cached, list):
+        return []
+    return [
+        item if isinstance(item, model) else model.model_validate(item)
+        for item in cached
+    ]
 
 
 class GroupRepository(
@@ -36,9 +57,7 @@ class GroupRepository(
         cache_key = "schedule:groups"
         cached = await schedule_cache.get(cache_key)
         if cached is not None:
-            from typing import cast
-
-            return cast(list[GroupDTO], cached)
+            return _restore_cached(GroupDTO, cached)
 
         stmt = select(self.model).order_by(self.model.name).limit(self._MAX_GROUPS)
         result = await self.db.execute(stmt)
@@ -70,9 +89,7 @@ class ScheduleRepository(
         cache_key = f"schedule:group:{group_id}"
         cached = await schedule_cache.get(cache_key)
         if cached is not None:
-            from typing import cast
-
-            return cast(list[ScheduleDTO], cached)
+            return _restore_cached(ScheduleDTO, cached)
 
         stmt = (
             select(self.model)

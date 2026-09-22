@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from app.api import sessions
 from app.models.enums import UserRole
+from tests.conftest import call_injected
 
 
 def _request(headers: list[tuple[bytes, bytes]] | None = None):
@@ -131,7 +132,12 @@ async def test_list_sessions_marks_current_token():
         patch.object(sessions, "resolve_locale", return_value="en"),
         patch.object(sessions, "decode_token", return_value={"jti": "current"}),
     ):
-        result = await sessions.list_sessions(request, user, AsyncMock(), service)
+        result = await call_injected(
+            sessions.list_sessions,
+            request=request,
+            current_user=user,
+            provides={"AsyncDatabaseSession": AsyncMock(), "SessionService": service},
+        )
 
     assert [item.is_current for item in result] == [True, False]
     service.get_active_sessions_for_user.assert_awaited_once_with(user.id)

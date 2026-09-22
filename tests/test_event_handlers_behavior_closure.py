@@ -53,7 +53,7 @@ async def test_event_and_news_embedding_handlers_cover_missing_and_success():
     missing_db.get.return_value = None
     with (
         patch.object(event_handlers, "async_session", lambda: _session(missing_db)),
-        patch.object(event_handlers, "get_vector_service", return_value=AsyncMock()),
+        patch.object(event_handlers, "VectorService", return_value=AsyncMock()),
     ):
         await event_handlers.generate_event_embedding(
             EventCreated(event_id_entity=uuid4())
@@ -72,7 +72,7 @@ async def test_event_and_news_embedding_handlers_cover_missing_and_success():
     vector.get_embedding = AsyncMock(return_value=[0.1, 0.2])
     with (
         patch.object(event_handlers, "async_session", lambda: _session(db)),
-        patch.object(event_handlers, "get_vector_service", return_value=vector),
+        patch.object(event_handlers, "VectorService", return_value=vector),
     ):
         await event_handlers.generate_event_embedding(
             EventCreated(event_id_entity=uuid4())
@@ -85,7 +85,7 @@ async def test_event_and_news_embedding_handlers_cover_missing_and_success():
     news_db.get.return_value = db_news
     with (
         patch.object(event_handlers, "async_session", lambda: _session(news_db)),
-        patch.object(event_handlers, "get_vector_service", return_value=vector),
+        patch.object(event_handlers, "VectorService", return_value=vector),
     ):
         await event_handlers.generate_news_embedding(NewsCreated(news_id=uuid4()))
     assert db_news.embedding == [0.1, 0.2]

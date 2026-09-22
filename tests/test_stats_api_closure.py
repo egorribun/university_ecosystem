@@ -12,7 +12,6 @@ from starlette.responses import Response
 _MISSING = object()
 _STUBBED_MODULE_NAMES = (
     "app.api.deps",
-    "app.core.container",
     "app.core.middleware",
     "app.core.ratelimit",
     "app.cqrs.queries",
@@ -26,10 +25,6 @@ def _install_lightweight_imports() -> None:
     deps = ModuleType("app.api.deps")
     deps.get_current_user = lambda: None
     sys.modules.setdefault("app.api.deps", deps)
-
-    container = ModuleType("app.core.container")
-    container.get_read_stats_handler = lambda: None
-    sys.modules.setdefault("app.core.container", container)
 
     middleware = ModuleType("app.core.middleware")
 
@@ -67,6 +62,7 @@ def _install_lightweight_imports() -> None:
 _install_lightweight_imports()
 
 from app.api import stats
+from tests.conftest import call_injected
 
 for _name, _original in _ORIGINAL_MODULES.items():
     if _original is _MISSING:
@@ -178,14 +174,15 @@ async def test_individual_stats_routes_delegate_to_expected_kind():
     ):
         handler = _Handler([_result({"kind": kind}, etag=kind)])
         response = Response()
-        result = await endpoint(
-            request,
-            response,
+        result = await call_injected(
+            endpoint,
+            request=request,
+            response=response,
             period="30d",
             skip_cache=False,
             if_none_match=None,
             user=user,
-            handler=handler,
+            provides={"GetStatsHandler": handler},
         )
         assert result == {"kind": kind}
         assert handler.queries[0].kind == kind
@@ -202,14 +199,15 @@ async def test_stats_summary_combines_subqueries_and_handles_304(monkeypatch):
         ]
     )
     response = Response()
-    result = await stats.stats_summary(
+    result = await call_injected(
+        stats.stats_summary,
         _request(),
         response,
         period="180d",
         skip_cache=True,
         if_none_match=None,
         user=_user(),
-        handler=handler,
+        provides={"GetStatsHandler": handler},
     )
     assert result == {
         "attendance": {"a": 1},
@@ -231,14 +229,15 @@ async def test_stats_summary_combines_subqueries_and_handles_304(monkeypatch):
             _result(etag="p"),
         ]
     )
-    not_modified = await stats.stats_summary(
+    not_modified = await call_injected(
+        stats.stats_summary,
         _request(),
         Response(),
         period="180d",
         skip_cache=False,
         if_none_match=combined,
         user=_user(),
-        handler=not_modified_handler,
+        provides={"GetStatsHandler": not_modified_handler},
     )
     assert isinstance(not_modified, Response)
     assert not_modified.status_code == status.HTTP_304_NOT_MODIFIED

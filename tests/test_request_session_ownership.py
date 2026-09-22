@@ -95,10 +95,9 @@ def test_injected_auth_routes_use_the_canonical_dishka_session() -> None:
         implementation = endpoint.__dishka_orig_func__
         parameter_guard = inspect.signature(implementation).parameters.get("_")
         route_guards = [dependency.dependency for dependency in route.dependencies]
-        assert auth_deps.require_fresh_mfa_from_dishka in route_guards or (
+        assert auth_deps.require_fresh_mfa in route_guards or (
             parameter_guard is not None
-            and parameter_guard.default.dependency
-            is auth_deps.require_fresh_mfa_from_dishka
+            and parameter_guard.default.dependency is auth_deps.require_fresh_mfa
         ), endpoint.__name__
 
 
@@ -121,7 +120,7 @@ def test_session_mutation_routes_use_the_canonical_dishka_session() -> None:
             continue
         implementation = getattr(route.endpoint, "__dishka_orig_func__", route.endpoint)
         guard = inspect.signature(implementation).parameters["mfa_check"]
-        assert guard.default.dependency is auth_deps.require_fresh_mfa_from_dishka
+        assert guard.default.dependency is auth_deps.require_fresh_mfa
 
 
 @pytest.mark.asyncio
@@ -232,7 +231,7 @@ async def test_dishka_optional_adapter_only_hides_auth_rejections(
 
 @pytest.mark.asyncio
 async def test_dishka_fresh_mfa_guard_uses_the_same_session() -> None:
-    implementation = auth_deps.require_fresh_mfa_from_dishka.__dishka_orig_func__
+    implementation = auth_deps.require_fresh_mfa.__dishka_orig_func__
     request = MagicMock(state=SimpleNamespace())
     user = SimpleNamespace(email_mfa_enabled_at=None)
     db = object()
@@ -252,7 +251,7 @@ async def test_dishka_fresh_mfa_guard_uses_the_same_session() -> None:
 
 @pytest.mark.asyncio
 async def test_dishka_fresh_mfa_guard_enforces_when_factor_is_enabled() -> None:
-    implementation = auth_deps.require_fresh_mfa_from_dishka.__dishka_orig_func__
+    implementation = auth_deps.require_fresh_mfa.__dishka_orig_func__
     request = MagicMock(state=SimpleNamespace())
     user = SimpleNamespace(email_mfa_enabled_at=None)
     db = object()

@@ -9,6 +9,7 @@ from fastapi import HTTPException
 
 from app.api import chat as chat_api
 from app.api import events as events_api
+from tests.conftest import call_injected
 
 
 def _result(*, scalar: object = None, rows: list[object] | None = None) -> MagicMock:
@@ -34,8 +35,13 @@ async def test_chat_attachment_download_authorizes_member_and_reads_storage() ->
     backend.read_file = AsyncMock(return_value=b"private bytes")
 
     with patch.object(chat_api, "_get_storage_backend", return_value=backend):
-        response = await chat_api.download_chat_attachment(
-            chat_id, filename, user, "en", db
+        response = await call_injected(
+            chat_api.download_chat_attachment,
+            chat_id,
+            filename,
+            current_user=user,
+            locale="en",
+            provides={"AsyncDatabaseSession": db},
         )
 
     assert response.status_code == 200
@@ -52,16 +58,37 @@ async def test_chat_attachment_download_denies_non_member_and_missing_values() -
     db.get.return_value = SimpleNamespace(id=chat_id)
     db.execute.return_value = _result(scalar=None)
     with pytest.raises(HTTPException) as denied:
-        await chat_api.download_chat_attachment(chat_id, "report.pdf", user, "en", db)
+        await call_injected(
+            chat_api.download_chat_attachment,
+            chat_id,
+            "report.pdf",
+            current_user=user,
+            locale="en",
+            provides={"AsyncDatabaseSession": db},
+        )
     assert denied.value.status_code == 403
 
     db.get.return_value = None
     with pytest.raises(HTTPException) as missing_chat:
-        await chat_api.download_chat_attachment(chat_id, "report.pdf", user, "en", db)
+        await call_injected(
+            chat_api.download_chat_attachment,
+            chat_id,
+            "report.pdf",
+            current_user=user,
+            locale="en",
+            provides={"AsyncDatabaseSession": db},
+        )
     assert missing_chat.value.status_code == 404
 
     with pytest.raises(HTTPException) as invalid:
-        await chat_api.download_chat_attachment(chat_id, "../secret", user, "en", db)
+        await call_injected(
+            chat_api.download_chat_attachment,
+            chat_id,
+            "../secret",
+            current_user=user,
+            locale="en",
+            provides={"AsyncDatabaseSession": db},
+        )
     assert invalid.value.status_code == 404
 
 
@@ -80,7 +107,14 @@ async def test_chat_attachment_download_handles_missing_attachment_and_storage()
         ),
     ]
     with pytest.raises(HTTPException) as missing:
-        await chat_api.download_chat_attachment(chat_id, "report.pdf", user, "en", db)
+        await call_injected(
+            chat_api.download_chat_attachment,
+            chat_id,
+            "report.pdf",
+            current_user=user,
+            locale="en",
+            provides={"AsyncDatabaseSession": db},
+        )
     assert missing.value.status_code == 404
 
     filename = f"chat_{chat_id}_0123456789abcdef0123456789abcdef.pdf"
@@ -95,7 +129,14 @@ async def test_chat_attachment_download_handles_missing_attachment_and_storage()
     backend.read_file = AsyncMock(side_effect=FileNotFoundError)
     with patch.object(chat_api, "_get_storage_backend", return_value=backend):
         with pytest.raises(HTTPException) as storage_missing:
-            await chat_api.download_chat_attachment(chat_id, filename, user, "en", db)
+            await call_injected(
+                chat_api.download_chat_attachment,
+                chat_id,
+                filename,
+                current_user=user,
+                locale="en",
+                provides={"AsyncDatabaseSession": db},
+            )
     assert storage_missing.value.status_code == 404
 
 
@@ -123,13 +164,14 @@ async def test_event_file_download_authorizes_viewer_and_handles_denial() -> Non
         patch.object(events_api, "_get_storage_backend", return_value=backend),
         patch.object(events_api, "resolve_locale", return_value="en"),
     ):
-        response = await events_api.download_event_file(
+        response = await call_injected(
+            events_api.download_event_file,
             event_id,
             filename,
             request=SimpleNamespace(),
-            db=db,
             user=user,
             checker=checker,
+            provides={"AsyncDatabaseSession": db},
         )
     assert response.body == b"event bytes"
     checker.check_permission.assert_awaited_once_with(
@@ -142,13 +184,14 @@ async def test_event_file_download_authorizes_viewer_and_handles_denial() -> Non
     checker.check_permission = AsyncMock(return_value=False)
     with patch.object(events_api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as denied:
-            await events_api.download_event_file(
+            await call_injected(
+                events_api.download_event_file,
                 event_id,
                 filename,
                 request=SimpleNamespace(),
-                db=db,
                 user=user,
                 checker=checker,
+                provides={"AsyncDatabaseSession": db},
             )
     assert denied.value.status_code == 403
 
@@ -163,26 +206,28 @@ async def test_event_file_download_missing_parent_file_storage_and_id() -> None:
     db.get.return_value = None
     with patch.object(events_api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as missing_event:
-            await events_api.download_event_file(
+            await call_injected(
+                events_api.download_event_file,
                 event_id,
                 "agenda.pdf",
                 request=SimpleNamespace(),
-                db=db,
                 user=user,
                 checker=checker,
+                provides={"AsyncDatabaseSession": db},
             )
     assert missing_event.value.status_code == 404
     checker.check_permission.assert_not_awaited()
 
     with patch.object(events_api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as invalid:
-            await events_api.download_event_file(
+            await call_injected(
+                events_api.download_event_file,
                 event_id,
                 "../agenda.pdf",
                 request=SimpleNamespace(),
-                db=db,
                 user=user,
                 checker=checker,
+                provides={"AsyncDatabaseSession": db},
             )
     assert invalid.value.status_code == 404
 
@@ -197,13 +242,14 @@ async def test_event_file_download_missing_parent_file_storage_and_id() -> None:
         ),
     ):
         with pytest.raises(HTTPException) as missing_file:
-            await events_api.download_event_file(
+            await call_injected(
+                events_api.download_event_file,
                 event_id,
                 "agenda.pdf",
                 request=SimpleNamespace(),
-                db=db,
                 user=user,
                 checker=checker,
+                provides={"AsyncDatabaseSession": db},
             )
     assert missing_file.value.status_code == 404
 
@@ -228,12 +274,13 @@ async def test_event_file_download_missing_parent_file_storage_and_id() -> None:
         ),
     ):
         with pytest.raises(HTTPException) as storage_missing:
-            await events_api.download_event_file(
+            await call_injected(
+                events_api.download_event_file,
                 event_id,
                 matching_name,
                 request=SimpleNamespace(),
-                db=db,
                 user=user,
                 checker=checker,
+                provides={"AsyncDatabaseSession": db},
             )
     assert storage_missing.value.status_code == 404

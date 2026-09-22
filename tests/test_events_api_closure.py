@@ -10,6 +10,7 @@ from fastapi import HTTPException, Response
 
 from app.api import events as api
 from app.schemas import schemas
+from tests.conftest import call_injected
 
 
 def _request() -> SimpleNamespace:
@@ -103,27 +104,55 @@ async def test_create_event_success_and_role_guard() -> None:
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(api, "_increment_events_list_version", AsyncMock()) as bump,
     ):
-        result = await api.create_event(
-            _event_create(), request, MagicMock(), user, notifications, service
+        result = await call_injected(
+            api.create_event,
+            data=_event_create(),
+            request=request,
+            background=MagicMock(),
+            user=user,
+            provides={"NotificationService": notifications, "EventService": service},
         )
     assert result == {"id": str(record.id)}
     bump.assert_awaited_once()
     notifications.dispatch_event_created.assert_awaited_once()
 
+    # An app that carries no cache still creates the event; the version bump is
+    # simply a no-op.  This is the branch ``if request:`` used to stand in for.
+    cacheless = SimpleNamespace(
+        method="GET", headers={}, app=SimpleNamespace(state=SimpleNamespace())
+    )
     with (
         patch.object(api, "resolve_locale", return_value="en"),
-        patch.object(api, "_increment_events_list_version", AsyncMock()) as no_bump,
+        patch.object(
+            api, "_increment_events_list_version", AsyncMock()
+        ) as cacheless_bump,
     ):
-        result = await api.create_event(
-            _event_create(), None, MagicMock(), user, notifications, service
+        result = await call_injected(
+            api.create_event,
+            data=_event_create(),
+            request=cacheless,
+            background=MagicMock(),
+            user=user,
+            provides={"NotificationService": notifications, "EventService": service},
         )
     assert result == {"id": str(record.id)}
-    no_bump.assert_not_awaited()
+    cacheless_bump.assert_awaited_once_with(None)
+
+    # ...and the helper itself is the no-op in that case.
+    await api._increment_events_list_version(None)
 
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.create_event(
-                _event_create(), None, MagicMock(), _user(), notifications, service
+            await call_injected(
+                api.create_event,
+                data=_event_create(),
+                request=None,
+                background=MagicMock(),
+                user=_user(),
+                provides={
+                    "NotificationService": notifications,
+                    "EventService": service,
+                },
             )
     assert exc.value.status_code == 403
 
@@ -134,7 +163,8 @@ async def test_all_events_and_my_events_call_services() -> None:
     service = MagicMock()
     service.get_events = AsyncMock(return_value={"items": [], "total": 0})
     with patch.object(api, "resolve_locale", return_value="en"):
-        result = await api.all_events.__wrapped__(
+        result = await call_injected(
+            api.all_events.__wrapped__,
             request=_request(),
             response=Response(),
             user=user,
@@ -145,7 +175,7 @@ async def test_all_events_and_my_events_call_services() -> None:
             limit=7,
             cursor="cursor",
             if_none_match=None,
-            events=service,
+            provides={"EventService": service},
         )
     assert result == {"items": [], "total": 0}
     service.get_events.assert_awaited_once_with(
@@ -161,12 +191,13 @@ async def test_all_events_and_my_events_call_services() -> None:
 
     service.get_my_events = AsyncMock(return_value=["mine"])
     with patch.object(api, "resolve_locale", return_value="ru"):
-        result = await api.my_events.__wrapped__(
+        result = await call_injected(
+            api.my_events.__wrapped__,
             request=_request(),
             response=Response(),
             user=user,
             if_none_match=None,
-            events=service,
+            provides={"EventService": service},
         )
     assert result == ["mine"]
     service.get_my_events.assert_awaited_once_with(user_id=user.id, locale="ru")
@@ -185,14 +216,26 @@ async def test_attendance_success_lookup_and_value_errors() -> None:
         return_value=_attendance_dto(user.id, event.id)
     )
     with patch.object(api, "resolve_locale", return_value="en"):
-        result = await api.attend(data, _request(), db, user, service)
+        result = await call_injected(
+            api.attend,
+            data=data,
+            request=_request(),
+            user=user,
+            provides={"AsyncDatabaseSession": db, "EventService": service},
+        )
     assert result.event_id == event.id
 
     for error in (LookupError(), ValueError()):
         service.register_attendance = AsyncMock(side_effect=error)
         with patch.object(api, "resolve_locale", return_value="en"):
             with pytest.raises(HTTPException) as exc:
-                await api.attend(data, _request(), db, user, service)
+                await call_injected(
+                    api.attend,
+                    data=data,
+                    request=_request(),
+                    user=user,
+                    provides={"AsyncDatabaseSession": db, "EventService": service},
+                )
         assert exc.value.status_code in (404, 409)
 
 
@@ -202,7 +245,9 @@ async def test_unregister_event_delegates() -> None:
     data = schemas.EventAttendanceCreate(event_id=uuid.uuid4())
     service = MagicMock()
     service.unregister_attendance = AsyncMock(return_value={"ok": True})
-    assert await api.unregister_event(data, user, service) == {"ok": True}
+    assert await call_injected(
+        api.unregister_event, data=data, user=user, provides={"EventService": service}
+    ) == {"ok": True}
     service.unregister_attendance.assert_awaited_once_with(data, user_id=user.id)
 
 
@@ -222,8 +267,14 @@ async def test_upload_event_file_commit_and_refresh_cleanup() -> None:
         patch.object(api, "scan_for_malware", AsyncMock()),
         patch.object(api, "save_attachment", AsyncMock(return_value="/file.txt")),
     ):
-        result = await api.upload_event_file(
-            event.id, file, request=None, db=db, user=user, checker=checker
+        result = await call_injected(
+            api.upload_event_file,
+            event.id,
+            file,
+            request=None,
+            user=user,
+            checker=checker,
+            provides={"AsyncDatabaseSession": db},
         )
     assert result.file_url == "/file.txt"
 
@@ -242,8 +293,14 @@ async def test_upload_event_file_commit_and_refresh_cleanup() -> None:
             patch.object(api, "delete_static_file", AsyncMock()) as cleanup,
         ):
             with pytest.raises(RuntimeError):
-                await api.upload_event_file(
-                    event.id, file, request=None, db=db, user=user, checker=checker
+                await call_injected(
+                    api.upload_event_file,
+                    event.id,
+                    file,
+                    request=None,
+                    user=user,
+                    checker=checker,
+                    provides={"AsyncDatabaseSession": db},
                 )
         cleanup.assert_awaited_once_with("/file.txt")
         if method == "commit":
@@ -262,12 +319,13 @@ async def test_get_event_files_and_upload_image_paths() -> None:
     db.get.return_value = SimpleNamespace(id=event_id)
     with patch.object(api, "resolve_locale", return_value="en"):
         assert (
-            await api.get_event_files(
+            await call_injected(
+                api.get_event_files,
                 event_id,
                 request=_request(),
-                db=db,
                 user=user,
                 checker=checker,
+                provides={"AsyncDatabaseSession": db},
             )
             == files
         )
@@ -284,12 +342,13 @@ async def test_get_event_files_and_upload_image_paths() -> None:
     db.execute.reset_mock()
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.get_event_files(
+            await call_injected(
+                api.get_event_files,
                 event_id,
                 request=_request(),
-                db=db,
                 user=user,
                 checker=checker,
+                provides={"AsyncDatabaseSession": db},
             )
     assert exc.value.status_code == 403
     db.execute.assert_not_awaited()
@@ -300,12 +359,13 @@ async def test_get_event_files_and_upload_image_paths() -> None:
     checker.check_permission.reset_mock()
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.get_event_files(
+            await call_injected(
+                api.get_event_files,
                 uuid.uuid4(),
                 request=_request(),
-                db=db,
                 user=user,
                 checker=checker,
+                provides={"AsyncDatabaseSession": db},
             )
     assert exc.value.status_code == 404
     checker.check_permission.assert_not_awaited()
@@ -323,26 +383,28 @@ async def test_get_event_files_and_upload_image_paths() -> None:
             api, "save_upload", AsyncMock(return_value="/static/tmp/event-image.png")
         ),
     ):
-        result = await api.upload_event_image(
+        result = await call_injected(
+            api.upload_event_image,
             file,
             request=_request(),
             user=_user(role="teacher"),
             event_id=event.id,
-            db=db,
             checker=checker,
+            provides={"AsyncDatabaseSession": db},
         )
     assert result == {"url": "/static/tmp/event-image.png"}
 
     checker.check_permission = AsyncMock(return_value=False)
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.upload_event_image(
+            await call_injected(
+                api.upload_event_image,
                 file,
                 request=_request(),
                 user=_user(role="teacher"),
                 event_id=event.id,
-                db=db,
                 checker=checker,
+                provides={"AsyncDatabaseSession": db},
             )
     assert exc.value.status_code == 403
 
@@ -366,13 +428,14 @@ async def test_upload_image_cleanup_and_missing_event() -> None:
         patch.object(api, "delete_static_file", AsyncMock()) as delete,
     ):
         with pytest.raises(RuntimeError):
-            await api.upload_event_image(
+            await call_injected(
+                api.upload_event_image,
                 file,
                 request=_request(),
                 user=_user(role="teacher"),
                 event_id=event_id,
-                db=db,
                 checker=checker,
+                provides={"AsyncDatabaseSession": db},
             )
     delete.assert_not_awaited()
 
@@ -380,13 +443,14 @@ async def test_upload_image_cleanup_and_missing_event() -> None:
     db.get.return_value = None
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.upload_event_image(
+            await call_injected(
+                api.upload_event_image,
                 file,
                 request=_request(),
                 user=_user(role="teacher"),
                 event_id=event_id,
-                db=db,
                 checker=checker,
+                provides={"AsyncDatabaseSession": db},
             )
     assert exc.value.status_code == 404
 
@@ -412,8 +476,14 @@ async def test_update_event_success_permissions_and_errors() -> None:
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(api, "delete_static_file", AsyncMock()) as delete,
     ):
-        result = await api.update_event(
-            event_id, schemas.EventUpdate(), None, db, user, service, checker
+        result = await call_injected(
+            api.update_event,
+            event_id=event_id,
+            data=schemas.EventUpdate(),
+            request=None,
+            user=user,
+            checker=checker,
+            provides={"AsyncDatabaseSession": db, "EventService": service},
         )
     assert result == {"id": str(event_id)}
     delete.assert_awaited_once_with("/old.png")
@@ -429,8 +499,14 @@ async def test_update_event_success_permissions_and_errors() -> None:
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(api, "_increment_events_list_version", AsyncMock()) as bump,
     ):
-        result = await api.update_event(
-            event_id, schemas.EventUpdate(), _request(), db, user, service, checker
+        result = await call_injected(
+            api.update_event,
+            event_id=event_id,
+            data=schemas.EventUpdate(),
+            request=_request(),
+            user=user,
+            checker=checker,
+            provides={"AsyncDatabaseSession": db, "EventService": service},
         )
     assert result == {"id": str(event_id)}
     bump.assert_awaited_once()
@@ -438,8 +514,14 @@ async def test_update_event_success_permissions_and_errors() -> None:
     checker.check_permission = AsyncMock(return_value=False)
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.update_event(
-                event_id, schemas.EventUpdate(), None, db, user, service, checker
+            await call_injected(
+                api.update_event,
+                event_id=event_id,
+                data=schemas.EventUpdate(),
+                request=None,
+                user=user,
+                checker=checker,
+                provides={"AsyncDatabaseSession": db, "EventService": service},
             )
     assert exc.value.status_code == 403
 
@@ -447,8 +529,14 @@ async def test_update_event_success_permissions_and_errors() -> None:
     service.update_event = AsyncMock(side_effect=ValueError("invalid update"))
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.update_event(
-                event_id, schemas.EventUpdate(), None, db, user, service, checker
+            await call_injected(
+                api.update_event,
+                event_id=event_id,
+                data=schemas.EventUpdate(),
+                request=None,
+                user=user,
+                checker=checker,
+                provides={"AsyncDatabaseSession": db, "EventService": service},
             )
     assert exc.value.status_code == 400
 
@@ -456,8 +544,14 @@ async def test_update_event_success_permissions_and_errors() -> None:
     service.update_event = AsyncMock(return_value=updated)
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.update_event(
-                1, schemas.EventUpdate(), None, db, user, service, checker
+            await call_injected(
+                api.update_event,
+                event_id=1,
+                data=schemas.EventUpdate(),
+                request=None,
+                user=user,
+                checker=checker,
+                provides={"AsyncDatabaseSession": db, "EventService": service},
             )
     assert exc.value.status_code == 400
 
@@ -473,9 +567,14 @@ async def test_delete_and_get_event_paths() -> None:
     service.get_event_by_id = AsyncMock(return_value=event)
     service.delete_event = AsyncMock()
     with patch.object(api, "resolve_locale", return_value="en"):
-        assert await api.delete_event(event_id, None, service, user, checker) == {
-            "ok": True
-        }
+        assert await call_injected(
+            api.delete_event,
+            event_id=event_id,
+            request=None,
+            user=user,
+            checker=checker,
+            provides={"EventService": service},
+        ) == {"ok": True}
     service.delete_event.assert_awaited_once_with(event_id)
 
     service.get_event_by_id = AsyncMock(return_value=event)
@@ -484,35 +583,66 @@ async def test_delete_and_get_event_paths() -> None:
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(api, "_increment_events_list_version", AsyncMock()) as bump,
     ):
-        assert await api.delete_event(event_id, _request(), service, user, checker) == {
-            "ok": True
-        }
+        assert await call_injected(
+            api.delete_event,
+            event_id=event_id,
+            request=_request(),
+            user=user,
+            checker=checker,
+            provides={"EventService": service},
+        ) == {"ok": True}
     bump.assert_awaited_once()
 
     checker.check_permission = AsyncMock(return_value=False)
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.delete_event(event_id, None, service, user, checker)
+            await call_injected(
+                api.delete_event,
+                event_id=event_id,
+                request=None,
+                user=user,
+                checker=checker,
+                provides={"EventService": service},
+            )
     assert exc.value.status_code == 403
 
     service.get_event_by_id = AsyncMock(return_value=None)
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.delete_event(event_id, None, service, user, checker)
+            await call_injected(
+                api.delete_event,
+                event_id=event_id,
+                request=None,
+                user=user,
+                checker=checker,
+                provides={"EventService": service},
+            )
     assert exc.value.status_code == 404
 
     service.get_event_detail = AsyncMock(return_value={"id": str(event_id)})
     with patch.object(api, "resolve_locale", return_value="en"):
-        result = await api.get_event.__wrapped__(
-            event_id, None, Response(), user, None, service
+        result = await call_injected(
+            api.get_event.__wrapped__,
+            event_id=event_id,
+            request=None,
+            response=Response(),
+            user=user,
+            if_none_match=None,
+            provides={"EventService": service},
         )
     assert result == {"id": str(event_id)}
 
     service.get_event_detail = AsyncMock(return_value=None)
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.get_event.__wrapped__(
-                event_id, None, Response(), user, None, service
+            await call_injected(
+                api.get_event.__wrapped__,
+                event_id=event_id,
+                request=None,
+                response=Response(),
+                user=user,
+                if_none_match=None,
+                provides={"EventService": service},
             )
     assert exc.value.status_code == 404
 
@@ -531,9 +661,14 @@ async def test_delete_event_file_success_parent_guard_and_permission() -> None:
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(api, "delete_static_file", AsyncMock()) as delete,
     ):
-        assert await api.delete_event_file(file_id, None, db, user, checker) == {
-            "ok": True
-        }
+        assert await call_injected(
+            api.delete_event_file,
+            file_id=file_id,
+            request=None,
+            user=user,
+            checker=checker,
+            provides={"AsyncDatabaseSession": db},
+        ) == {"ok": True}
     delete.assert_awaited_once_with("/file.txt")
     db.delete.assert_awaited_once_with(record)
     db.commit.assert_awaited_once()
@@ -542,7 +677,14 @@ async def test_delete_event_file_success_parent_guard_and_permission() -> None:
     db.get.side_effect = [record, None]
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.delete_event_file(file_id, None, db, user, checker)
+            await call_injected(
+                api.delete_event_file,
+                file_id=file_id,
+                request=None,
+                user=user,
+                checker=checker,
+                provides={"AsyncDatabaseSession": db},
+            )
     assert exc.value.status_code == 404
 
     db = AsyncMock()
@@ -550,7 +692,14 @@ async def test_delete_event_file_success_parent_guard_and_permission() -> None:
     checker.check_permission = AsyncMock(return_value=False)
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.delete_event_file(file_id, None, db, user, checker)
+            await call_injected(
+                api.delete_event_file,
+                file_id=file_id,
+                request=None,
+                user=user,
+                checker=checker,
+                provides={"AsyncDatabaseSession": db},
+            )
     assert exc.value.status_code == 403
 
 
@@ -572,17 +721,20 @@ async def test_semantic_search_full_and_event_etag() -> None:
         patch.object(api, "format_etag", return_value='"etag"'),
         patch.object(api, "etag_matches", return_value=False),
     ):
-        result = await api.semantic_search(
+        result = await call_injected(
+            api.semantic_search,
             _request(),
             response,
             query="term",
             limit=5,
             min_score=0.7,
             if_none_match=None,
-            db=AsyncMock(),
-            vector_service=vector,
-            events=service,
             _user=_user(),
+            provides={
+                "AsyncDatabaseSession": AsyncMock(),
+                "VectorService": vector,
+                "EventService": service,
+            },
         )
     assert result == [{"id": str(query_event.id)}]
     assert response.headers["ETag"] == '"etag"'

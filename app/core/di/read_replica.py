@@ -1,11 +1,11 @@
 """Read-replica component for the Dishka container.
 
-BE-04 groundwork. The legacy factories in ``app/api/deps/services.py`` expose
-each query service twice -- ``get_news_service`` and ``get_read_news_service``
-build the *same* class and differ only in which session they receive. The
-container cannot express that distinction by type, because
-``app/core/database.py`` yields the same ``AsyncDatabaseSession`` from both
-``get_db`` and ``get_read_db``.
+This is what let BE-04 delete the legacy factories. They exposed each query
+service twice -- ``get_news_service`` and ``get_read_news_service`` built the
+*same* class and differed only in which session they received. The container
+cannot express that distinction by type, because ``app/core/database.py``
+yields the same ``AsyncDatabaseSession`` from both ``get_db`` and
+``get_read_db``.
 
 Dishka's answer is a component: the same providers registered a second time
 under a name, resolving their own ``AsyncDatabaseSession`` from this module

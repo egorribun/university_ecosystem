@@ -14,6 +14,7 @@ from fastapi import HTTPException, status
 
 from app.api.deps import auth as module
 from app.auth.rbac import SpiceDBUnavailableError
+from tests.conftest import call_injected
 
 
 def _request(headers: dict[str, str] | None = None) -> MagicMock:
@@ -408,7 +409,12 @@ async def test_require_fresh_mfa_delegates_only_for_confirmed_factor():
         patch.object(module.mfa, "has_totp_enabled", new=AsyncMock(return_value=False)),
         patch.object(module, "_enforce_fresh_mfa") as enforce,
     ):
-        await module.require_fresh_mfa(request, user, db)
+        await call_injected(
+            module.require_fresh_mfa,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
     enforce.assert_not_called()
 
     with (
@@ -416,5 +422,10 @@ async def test_require_fresh_mfa_delegates_only_for_confirmed_factor():
         patch.object(module.mfa, "has_totp_enabled", new=AsyncMock(return_value=True)),
         patch.object(module, "_enforce_fresh_mfa") as enforce,
     ):
-        await module.require_fresh_mfa(request, user, db)
+        await call_injected(
+            module.require_fresh_mfa,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
     enforce.assert_called_once_with(request)

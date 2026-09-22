@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from app.api.deps import (
     get_current_user_from_dishka,
-    require_fresh_mfa_from_dishka,
+    require_fresh_mfa,
 )
 from app.api.validation import raise_http_error
 from app.auth import mfa
@@ -143,7 +143,7 @@ async def start_email_verification(
 @router.post(
     "/mfa/email/enable",
     response_model=auth_schemas.MfaMethodChallengeOut,
-    dependencies=[Depends(require_fresh_mfa_from_dishka)],
+    dependencies=[Depends(require_fresh_mfa)],
 )
 @inject
 async def start_email_mfa_enablement(
@@ -164,7 +164,7 @@ async def start_email_mfa_enablement(
 @router.delete(
     "/mfa/email",
     response_model=MfaFactorStatusOut,
-    dependencies=[Depends(require_fresh_mfa_from_dishka)],
+    dependencies=[Depends(require_fresh_mfa)],
 )
 @inject
 async def disable_email_mfa_endpoint(
@@ -186,7 +186,7 @@ async def disable_email_mfa_endpoint(
 @router.post(
     "/mfa/totp/start",
     response_model=TotpEnrollmentStartOut,
-    dependencies=[Depends(require_fresh_mfa_from_dishka)],
+    dependencies=[Depends(require_fresh_mfa)],
 )
 @inject
 async def start_totp_enrollment_endpoint(
@@ -231,7 +231,7 @@ async def start_totp_enrollment_endpoint(
 @router.post(
     "/mfa/totp/confirm",
     response_model=MfaTotpEnrollmentOut,
-    dependencies=[Depends(require_fresh_mfa_from_dishka)],
+    dependencies=[Depends(require_fresh_mfa)],
 )
 @inject
 async def confirm_totp_enrollment(
@@ -356,7 +356,7 @@ async def delete_totp_enrollment(
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
     audit: FromDishka[AuditService],
-    _: None = Depends(require_fresh_mfa_from_dishka),
+    _: None = Depends(require_fresh_mfa),
     user: User = Depends(get_current_user_from_dishka),
 ) -> MfaFactorStatusOut:
     disabled_count, pending = await mfa.disable_totp(
@@ -391,7 +391,7 @@ async def generate_recovery_codes_endpoint(
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
     audit: FromDishka[AuditService],
-    _: None = Depends(require_fresh_mfa_from_dishka),
+    _: None = Depends(require_fresh_mfa),
     user: User = Depends(get_current_user_from_dishka),
 ) -> RecoveryCodesGenerateOut:
     session: ActiveSession | None = getattr(request.state, "active_session", None)

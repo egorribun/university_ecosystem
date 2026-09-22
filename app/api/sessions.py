@@ -3,15 +3,13 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from dishka import FromDishka
+from dishka import FromComponent, FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Depends, Request, status
 
 from app.api.deps import (
-    get_current_user,
     get_current_user_from_dishka,
-    get_session_service,
-    require_fresh_mfa_from_dishka,
+    require_fresh_mfa,
 )
 from app.api.validation import (
     raise_http_error,
@@ -19,7 +17,7 @@ from app.api.validation import (
     require_owner_or_admin,
 )
 from app.auth.security import decode_token
-from app.core.database import get_read_db
+from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import resolve_locale
 from app.core.protocols import AsyncDatabaseSession
 from app.models import User
@@ -78,11 +76,12 @@ async def _resolve_target_user(
 
 
 @router.get("", response_model=list[schemas.ActiveSessionOut])
+@inject
 async def list_sessions(
     request: Request,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncDatabaseSession, Depends(get_read_db)],
-    session_service: Annotated[SessionService, Depends(get_session_service)],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    session_service: FromDishka[SessionService],
     user_id: uuid.UUID | None = None,
 ) -> list[schemas.ActiveSessionOut]:
     locale = resolve_locale(request=request, user=current_user)
@@ -110,7 +109,7 @@ async def revoke_session(
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
     session_service: FromDishka[SessionService],
-    mfa_check: None = Depends(require_fresh_mfa_from_dishka),
+    mfa_check: None = Depends(require_fresh_mfa),
     current_user: User = Depends(get_current_user_from_dishka),
 ) -> schemas.ActiveSessionOut:
     locale = resolve_locale(request=request, user=current_user)
@@ -143,7 +142,7 @@ async def revoke_other_sessions(
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
     session_service: FromDishka[SessionService],
-    mfa_check: None = Depends(require_fresh_mfa_from_dishka),
+    mfa_check: None = Depends(require_fresh_mfa),
     current_user: User = Depends(get_current_user_from_dishka),
     user_id: uuid.UUID | None = None,
 ) -> schemas.SessionBulkRevokeOut:

@@ -5,6 +5,7 @@ import pytest
 
 import app.models as models
 from app.api import events
+from tests.conftest import call_injected
 
 
 @pytest.mark.asyncio
@@ -51,12 +52,13 @@ async def test_delete_event_file_atomicity_vulnerability_fix(
     # If the storage delete fails, the handler should raise and NOT commit.
 
     with pytest.raises(RuntimeError) as excinfo:
-        await events.delete_event_file(
+        await call_injected(
+            events.delete_event_file,
             file_id,
             request=None,
-            db=db_session,
             user=admin,
             checker=AsyncMock(return_value=True),
+            provides={"AsyncDatabaseSession": db_session},
         )
 
     assert "Storage failure" in str(excinfo.value)

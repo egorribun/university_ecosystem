@@ -80,3 +80,35 @@ commit/rollback behaviour, and exactly-once cleanup on success and failure.
 The ownership test harness uses real SQLite `AsyncSession` instances for local
 deterministic checks; PostgreSQL integration remains required for the final
 BE-04 closure.
+
+## Outcome — migration complete (2026-09-22)
+
+The migration this ADR opened is finished, so the parts written as temporary
+now have a terminal state:
+
+* **The adapters are no longer a pair.** Every route resolves its user through
+  `get_current_user_from_dishka`;
+  `scripts/check_route_dependency_inventory.py` reports **135
+  canonical_dishka / 0 approved_legacy / 0 mixed** and fails closed on drift,
+  with `quality/route-dependency-inventory.json` committed as the ledger this
+  ADR asked for. `get_current_user` survives only as the implementation behind
+  `get_current_user_optional` and as the name the test suite overrides to say
+  "pretend this user is logged in"; it is reachable from no route.
+* **`require_fresh_mfa_from_dishka` is gone.** It existed only while
+  `require_fresh_mfa` still opened a FastAPI-owned session. Once both resolved
+  from the container the two bodies were byte-identical, and two identical
+  authorization guards are a hazard, not a migration aid.
+* **The read owner deferred to "BE-04 S5" exists.** It is a Dishka *component*
+  rather than a distinct type, because `get_db` and `get_read_db` yield the
+  same `AsyncDatabaseSession` and the container cannot tell them apart by
+  type. An endpoint asks for `Annotated[T, FromComponent(READ_COMPONENT)]`;
+  see `app/core/di/read_replica.py`.
+* **The legacy factories are deleted**, and with them
+  `app/api/deps/services.py` and `app/core/container.py` in their entirety:
+  39 `get_*` factories plus the four private `_build_*` constructors behind
+  them, 43 functions in all. (BE-04 recorded "43 legacy factories"; that is
+  the function count, not the factory count.)
+
+`get_db` and `get_read_db` themselves remain: they are what the test suite
+overrides for database isolation, and the container follows those overrides
+rather than bypassing them.

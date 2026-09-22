@@ -18,6 +18,7 @@ from app.models import PushSubscription
 from app.models.enums import UserRole
 from app.services import webpush as webpush_module
 from app.services.webpush import WebPushResult
+from tests.conftest import call_injected
 
 
 def _request() -> MagicMock:
@@ -83,8 +84,12 @@ async def test_send_test_processes_results_after_delivery() -> None:
         ),
         patch.object(webpush_module, "process_push_results", new=process),
     ):
-        response = await notifications.send_test(
-            _request(), db, _admin(), PushTestRequest(user_id=target.id, topic="system")
+        response = await call_injected(
+            notifications.send_test,
+            request=_request(),
+            user=_admin(),
+            payload=PushTestRequest(user_id=target.id, topic="system"),
+            provides={"AsyncDatabaseSession": db},
         )
 
     assert response.sent == 1
@@ -128,11 +133,12 @@ async def test_broadcast_processes_results_for_each_batch() -> None:
         ),
         patch.object(webpush_module, "process_push_results", new=process),
     ):
-        response = await notifications.broadcast(
-            NotifyBody(title="Test", body="Body", topic="system"),
-            _request(),
-            db,
-            _admin(),
+        response = await call_injected(
+            notifications.broadcast,
+            data=NotifyBody(title="Test", body="Body", topic="system"),
+            request=_request(),
+            user=_admin(),
+            provides={"AsyncDatabaseSession": db},
         )
 
     assert response.removed == 1
@@ -194,11 +200,12 @@ async def test_send_test_removes_gone_and_marks_sent_subscription(
             new=AsyncMock(return_value=results),
         ),
     ):
-        response = await notifications.send_test(
-            request,
-            db_session,
-            admin,
-            PushTestRequest(user_id=target.id, topic="system"),
+        response = await call_injected(
+            notifications.send_test,
+            request=request,
+            user=admin,
+            payload=PushTestRequest(user_id=target.id, topic="system"),
+            provides={"AsyncDatabaseSession": db_session},
         )
 
     assert response.total == 3
@@ -263,11 +270,12 @@ async def test_broadcast_removes_stale_and_marks_successful_subscription(
             new=AsyncMock(return_value=results),
         ),
     ):
-        response = await notifications.broadcast(
-            NotifyBody(title="Broadcast", body="Body", topic="system"),
-            request,
-            db_session,
-            admin,
+        response = await call_injected(
+            notifications.broadcast,
+            data=NotifyBody(title="Broadcast", body="Body", topic="system"),
+            request=request,
+            user=admin,
+            provides={"AsyncDatabaseSession": db_session},
         )
 
     assert response.total == 2
@@ -319,11 +327,12 @@ async def test_broadcast_stops_on_malformed_pagination_cursor() -> None:
         patch.object(notifications, "deliver_push_to_subscriptions", new=deliver),
         patch.object(webpush_module, "process_push_results", new=AsyncMock()),
     ):
-        response = await notifications.broadcast(
-            NotifyBody(title="Test", body="Body", topic="system"),
-            _request(),
-            db,
-            _admin(),
+        response = await call_injected(
+            notifications.broadcast,
+            data=NotifyBody(title="Test", body="Body", topic="system"),
+            request=_request(),
+            user=_admin(),
+            provides={"AsyncDatabaseSession": db},
         )
 
     assert response.sent == 1

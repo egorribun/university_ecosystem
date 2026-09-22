@@ -7,17 +7,18 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user_from_dishka
 from app.core.config import settings
-from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
+from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import (
     RateLimitExceeded,
     RateLimitInfo,
@@ -233,11 +234,12 @@ async def get_vapid_public_key() -> dict[str, str | None]:
 
 
 @router.post("/subscribe", response_model=PushSubscriptionOut)
+@inject
 async def subscribe(
     payload: PushSubscriptionIn,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> PushSubscriptionOut:
     locale = resolve_locale(request=request, user=user)
     endpoint, p256dh, auth = await _validate_subscription_payload(
@@ -423,11 +425,12 @@ async def subscribe(
 
 
 @router.patch("/subscribe/topics", response_model=PushSubscriptionOut)
+@inject
 async def update_subscription_topics(
     payload: PushSubscriptionTopicsUpdate,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> PushSubscriptionOut:
     locale = resolve_locale(request=request, user=user)
     endpoint = payload.endpoint.strip()
@@ -474,11 +477,12 @@ async def update_subscription_topics(
 
 
 @router.post("/unsubscribe")
+@inject
 async def unsubscribe(
     payload: PushSubscriptionDelete,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     endpoint = payload.endpoint.strip()
@@ -540,9 +544,10 @@ async def unsubscribe(
 
 
 @router.get("/topics", response_model=PushTopicsResponse)
+@inject
 async def get_push_topics(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> PushTopicsResponse:
     record = (
         await db.execute(select(UserPushTopic).where(UserPushTopic.user_id == user.id))
@@ -560,10 +565,11 @@ async def get_push_topics(
 
 
 @router.post("/test", response_model=SendTestResponse)
+@inject
 async def send_test(
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
     payload: PushTestRequest | None = None,
 ) -> SendTestResponse:
     locale = resolve_locale(request=request, user=user)
@@ -698,11 +704,12 @@ async def send_test(
 
 
 @router.get("/admin/topics/{user_id}", response_model=AdminUserTopicsResponse)
+@inject
 async def admin_get_user_topics(
     user_id: uuid.UUID,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
     if user.role != UserRole.ADMIN:
@@ -741,12 +748,13 @@ async def admin_get_user_topics(
 
 
 @router.put("/admin/topics/{user_id}", response_model=AdminUserTopicsResponse)
+@inject
 async def admin_update_user_topics(
     user_id: uuid.UUID,
     payload: AdminUserTopicsUpdate,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
     if user.role != UserRole.ADMIN:
@@ -792,11 +800,12 @@ async def admin_update_user_topics(
 
 
 @router.post("/admin/disable-user")
+@inject
 async def disable_user_push(
     payload: DisableUserPushRequest,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> dict[str, int | bool]:
     locale = resolve_locale(request=request, user=user)
     if user.role != UserRole.ADMIN:
@@ -846,11 +855,12 @@ async def disable_user_push(
 
 
 @router.post("/broadcast", response_model=SendTestResponse)
+@inject
 async def broadcast(
     data: NotifyBody,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> SendTestResponse:
     locale = resolve_locale(request=request, user=user)
     # RZ-33-18: Auth check BEFORE rate limit — prevents unauthenticated users
