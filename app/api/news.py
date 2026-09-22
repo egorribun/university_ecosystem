@@ -110,8 +110,7 @@ async def create_news(
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
     record = await service.create_news(data)
-    if request:
-        await _increment_news_list_version(getattr(request.app.state, "cache", None))
+    await _increment_news_list_version(getattr(request.app.state, "cache", None))
     serialized = service.serialize_news(record, locale)
     await notifications.dispatch_news_created(record.id, locale, background)
     return serialized
@@ -263,8 +262,7 @@ async def update_news(
     except ValueError:
         raise_not_found("news", locale)
 
-    if request:
-        await _increment_news_list_version(getattr(request.app.state, "cache", None))
+    await _increment_news_list_version(getattr(request.app.state, "cache", None))
     cache = get_cache()
     if cache.enabled:
         await cache.invalidate(
@@ -293,8 +291,7 @@ async def delete_news(
     if not deleted:
         raise_not_found("news", locale)
 
-    if request:
-        await _increment_news_list_version(getattr(request.app.state, "cache", None))
+    await _increment_news_list_version(getattr(request.app.state, "cache", None))
     cache = get_cache()
     if cache.enabled:
         await cache.invalidate(

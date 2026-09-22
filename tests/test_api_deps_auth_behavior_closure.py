@@ -326,11 +326,19 @@ async def test_optional_user_converts_auth_error_to_none():
 
 
 @pytest.mark.asyncio
-async def test_admin_dependency_success_forbidden_and_spicedb_unavailable():
+@pytest.mark.parametrize(
+    "admin_dependency",
+    [module.get_current_admin_user, module.get_current_admin_user_from_dishka],
+    ids=["legacy", "dishka"],
+)
+async def test_admin_dependency_success_forbidden_and_spicedb_unavailable(
+    admin_dependency,
+):
     user = SimpleNamespace(id=uuid4())
     request = _request()
     good_checker = MagicMock(check_admin=AsyncMock(return_value=True))
-    assert await module.get_current_admin_user(request, user, good_checker) is user
+    assert await admin_dependency(request, user, good_checker) is user
+    good_checker.check_admin.assert_awaited_once_with(str(user.id), user=user)
 
     with (
         patch.object(module, "resolve_locale", return_value="en"),
@@ -339,7 +347,7 @@ async def test_admin_dependency_success_forbidden_and_spicedb_unavailable():
         ),
     ):
         with pytest.raises(HTTPException) as forbidden:
-            await module.get_current_admin_user(
+            await admin_dependency(
                 request, user, MagicMock(check_admin=AsyncMock(return_value=False))
             )
     assert forbidden.value.status_code == 403
@@ -348,8 +356,13 @@ async def test_admin_dependency_success_forbidden_and_spicedb_unavailable():
         check_admin=AsyncMock(side_effect=SpiceDBUnavailableError("down"))
     )
     with pytest.raises(HTTPException) as unavailable_error:
-        await module.get_current_admin_user(request, user, unavailable)
+        await admin_dependency(request, user, unavailable)
     assert unavailable_error.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert unavailable_error.value.detail == {
+        "error": "authz_unavailable",
+        "message": "Authorization service temporarily unavailable",
+    }
+    unavailable.check_admin.assert_awaited_once_with(str(user.id), user=user)
 
 
 def test_fresh_mfa_all_lifecycle_branches():

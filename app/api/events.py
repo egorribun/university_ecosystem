@@ -500,8 +500,7 @@ async def update_event(
     )
     participant_count = participant_count_res.scalar() or 0
 
-    if request:
-        await _increment_events_list_version(getattr(request.app.state, "cache", None))
+    await _increment_events_list_version(getattr(request.app.state, "cache", None))
     return events.serialize_event(
         event_dto,
         locale,
@@ -538,8 +537,7 @@ async def delete_event(
         raise_forbidden(locale)
 
     await events.delete_event(event_id)
-    if request:
-        await _increment_events_list_version(getattr(request.app.state, "cache", None))
+    await _increment_events_list_version(getattr(request.app.state, "cache", None))
     return {"ok": True}
 
 

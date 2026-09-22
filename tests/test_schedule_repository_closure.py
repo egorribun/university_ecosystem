@@ -78,6 +78,30 @@ async def test_schedule_repository_rebuilds_dtos_from_the_cache():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("repository_kind", ["group", "schedule"])
+@pytest.mark.parametrize("cached", [{"items": []}, "invalid-cache-payload", False])
+async def test_non_list_cache_hit_returns_empty_collection(repository_kind, cached):
+    """Malformed cached containers must not leak mappings or scalars to callers."""
+
+    db = MagicMock(execute=AsyncMock())
+    group_id = uuid4()
+    with (
+        patch.object(schedule_cache, "get", new=AsyncMock(return_value=cached)) as get,
+        patch.object(schedule_cache, "set", new=AsyncMock()) as set_cache,
+    ):
+        if repository_kind == "group":
+            result = await GroupRepository(db).list_groups()
+            get.assert_awaited_once_with("schedule:groups")
+        else:
+            result = await ScheduleRepository(db).get_by_group(group_id)
+            get.assert_awaited_once_with(f"schedule:group:{group_id}")
+
+    assert result == []
+    db.execute.assert_not_awaited()
+    set_cache.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_cached_dtos_are_passed_through_untouched():
     """An L1 hit can hand back the DTO objects themselves; do not re-validate."""
 
