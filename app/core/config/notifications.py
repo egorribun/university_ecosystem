@@ -94,8 +94,10 @@ class NotificationSettings(BaseAppSettings):
     # polling stored_events. It is an alternative to the polling worker above,
     # never an addition -- both publish the same DomainEvents to the same
     # JetStream stream, so running them together would double-deliver. It stays
-    # off by default because it requires wal_level=logical plus a provisioned
-    # publication and replication slot.
+    # off by default. Enabling it currently fails startup before resources are
+    # opened: asyncpg does not support this prototype's replication API and the
+    # replay/integration gates in ADR-037 remain deferred. Logical WAL alone is
+    # not sufficient to enable it safely.
     embedded_cdc_outbox_worker_enabled: bool = False
 
     # RZ-20-02 (audit 2026-03-24): Docker Secrets / K8s Secrets support.

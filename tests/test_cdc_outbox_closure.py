@@ -456,6 +456,7 @@ async def test_process_wal_message_covers_failure_and_lsn_paths(
 
 
 @pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
 async def test_run_forever_connects_and_processes_replication_stream() -> None:
     broker = MagicMock(is_connected=False)
     broker.connect = AsyncMock()
@@ -480,6 +481,7 @@ async def test_run_forever_connects_and_processes_replication_stream() -> None:
 
 
 @pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
 async def test_run_forever_logs_shutdown_provisioning_without_starting_fallback() -> (
     None
 ):
@@ -528,6 +530,7 @@ async def test_fallback_worker_clears_owned_reference_after_completion(
 
 
 @pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
 async def test_replication_writer_ignores_data_after_stop() -> None:
     broker = MagicMock(is_connected=True)
     worker = cdc.CdcOutboxWorker(nats_broker=broker)

@@ -442,8 +442,17 @@ class PgOutputDecoder:
 # ── CdcOutboxWorker Implementation ───────────────────────────────────────────
 
 
+def require_supported_cdc_transport() -> None:
+    """Fail closed until a real replication driver and replay contract are verified."""
+    raise RuntimeError(
+        "CDC outbox transport is unsupported by the installed asyncpg driver; "
+        "keep EMBEDDED_CDC_OUTBOX_WORKER_ENABLED=false and use the polling "
+        "OutboxWorker. Production integration is deferred under ADR-037."
+    )
+
+
 class CdcOutboxWorker:
-    """Zero-Latency CDC Outbox Worker using PostgreSQL Logical Replication (pgoutput).
+    """Deferred CDC prototype; public startup is blocked pending ADR-037 gates.
 
     Consumes WAL binary changes directly from PostgreSQL WAL logs without polling
     stored_events or using SELECT FOR UPDATE SKIP LOCKED. Reconstructs DomainEvents
@@ -666,10 +675,12 @@ class CdcOutboxWorker:
             return None
 
     def send_status_update(self, lsn: int, reply_requested: bool = False) -> bytes:
-        """Advance replication slot acknowledged LSN position."""
+        """Encode a monotonic delivery checkpoint, never a server WAL-end position."""
         if lsn > self._last_acknowledged_lsn:
             self._last_acknowledged_lsn = lsn
-        return format_standby_status_update(lsn, reply_requested)
+        return format_standby_status_update(
+            self._last_acknowledged_lsn, reply_requested
+        )
 
     async def process_wal_message(
         self, raw_bytes: bytes, lsn: int = 0, conn: asyncpg.Connection | None = None
@@ -720,7 +731,8 @@ class CdcOutboxWorker:
                         slot_name=self.slot_name
                     ).set(lag_seconds)
                 status_bytes = self.send_status_update(
-                    decoded.wal_end_lsn, reply_requested=decoded.reply_requested
+                    self._last_acknowledged_lsn,
+                    reply_requested=decoded.reply_requested,
                 )
 
         if status_bytes and conn is not None:
@@ -733,6 +745,10 @@ class CdcOutboxWorker:
 
     async def run_forever(self) -> None:
         """Run CDC Outbox worker loop over asyncpg logical replication protocol."""
+        # asyncpg has neither the replication connect argument nor the public
+        # bidirectional CopyData API this prototype assumes. Do not create a
+        # slot, connect NATS, or fall back after a silent background-task failure.
+        require_supported_cdc_transport()
         self._is_running = True
         logger.info("CdcOutboxWorker starting (Zero-Latency CDC Mode)")
 

@@ -337,6 +337,7 @@ async def test_cdc_outbox_worker_provision_replication_resources() -> None:
 
 
 @pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
 async def test_cdc_outbox_worker_fallback_on_provision_failure() -> None:
     mock_broker = AsyncMock()
     worker = CdcOutboxWorker(nats_broker=mock_broker)
@@ -411,6 +412,7 @@ def test_pgoutput_decoder_malformed_binary_safety() -> None:
 
 
 @pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
 async def test_cdc_outbox_worker_retries_on_interface_error() -> None:
     import asyncpg
 
@@ -440,6 +442,7 @@ async def test_cdc_outbox_worker_retries_on_interface_error() -> None:
 
 
 @pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
 async def test_cdc_outbox_worker_stop_closes_active_replication_stream() -> None:
     """Stopping CDC must interrupt and close an in-flight replication stream."""
     broker = AsyncMock()
@@ -476,6 +479,7 @@ async def test_cdc_outbox_worker_stop_closes_active_replication_stream() -> None
 
 
 @pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
 async def test_cdc_outbox_worker_closes_connection_when_stopped_during_connect() -> (
     None
 ):
@@ -504,6 +508,7 @@ async def test_cdc_outbox_worker_closes_connection_when_stopped_during_connect()
 
 
 @pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
 async def test_cdc_outbox_worker_stop_stops_fallback_worker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -545,6 +550,7 @@ async def test_cdc_outbox_worker_stop_stops_fallback_worker(
 
 
 @pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
 async def test_cdc_outbox_worker_stop_during_failed_provisioning_skips_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -607,7 +613,8 @@ async def test_cdc_outbox_worker_status_update_byte_transmission() -> None:
     assert isinstance(status_bytes, bytes)
     assert len(status_bytes) == 34
     assert status_bytes[0:1] == b"r"
-    assert worker._last_acknowledged_lsn == 88888
+    assert worker._last_acknowledged_lsn == 0
+    assert struct.unpack_from(">QQQ", status_bytes, 1) == (0, 0, 0)
 
     # 2. Feed insert record message with conn
     mock_conn.reset_mock()

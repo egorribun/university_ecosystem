@@ -20,7 +20,7 @@ from app.services.partition_manager import (
     start_partition_management_scheduler,
 )
 from app.tasks.cleanups import setup_periodic_cleanups
-from app.workers.cdc_outbox import CdcOutboxWorker
+from app.workers.cdc_outbox import CdcOutboxWorker, require_supported_cdc_transport
 from app.workers.outbox import OutboxWorker
 
 _logger = get_logger(__name__)
@@ -240,6 +240,9 @@ async def _validate_di_container(app: FastAPI) -> None:
 
 async def _startup_background_workers(app: FastAPI) -> None:
     """Stage 5: Pub/Sub workers, Outbox, and NATS task processors."""
+    if settings.embedded_cdc_outbox_worker_enabled:
+        require_supported_cdc_transport()
+
     from app.core.nats_broker import NatsTaskBroker
 
     await setup_periodic_cleanups()
@@ -475,6 +478,11 @@ def _reset_closed_dishka_container(app: FastAPI) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Granular startup and shutdown orchestration (TD-004 decomposition)."""
+    # Reject unsupported transport selection before opening resources or
+    # displacing polling. This applies in testing as well as production.
+    if settings.embedded_cdc_outbox_worker_enabled:
+        require_supported_cdc_transport()
+
     # RZ-33-14: Clear the stop event so the scheduler works after hot-reload.
     _SCHEDULER_STOP.clear()
     _reset_closed_dishka_container(app)

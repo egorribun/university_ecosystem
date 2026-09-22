@@ -1082,6 +1082,7 @@ async def test_lifespan_edge_cases_coverage() -> None:
         mock_settings.environment = "testing"
         mock_settings.partition_management_enabled = True
         mock_app = MockApp()
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
 
         await _startup_background_workers(mock_app)
         assert not hasattr(mock_app.state, "partition_stopper")
@@ -1192,6 +1193,7 @@ async def test_startup_background_workers_partition_disabled() -> None:
         patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
     ):
         mock_settings.environment = "testing"
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_settings.partition_management_enabled = False
         mock_app = MagicMock()
         mock_app.state = MagicMock()
@@ -1400,6 +1402,7 @@ async def test_lifespan_warm_cache_testing() -> None:
         patch("app.core.lifespan.settings") as mock_settings,
     ):
         mock_settings.environment = "testing"
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         app = FastAPI()
         async with lifespan(app):
             pass
@@ -1418,6 +1421,7 @@ async def test_startup_background_workers_partition_enabled_testing_env() -> Non
         ) as mock_scheduler,
     ):
         mock_settings.environment = "testing"
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_settings.partition_management_enabled = True
 
         class MockState:
@@ -1466,6 +1470,9 @@ async def test_cdc_outbox_worker_replaces_the_polling_worker_when_enabled() -> N
     app.state.dishka_container.get.side_effect = container_get
 
     with (
+        # Simulate a future supported driver; the real guard is covered in
+        # test_cdc_safety.py and must reject this selection today.
+        patch("app.core.lifespan.require_supported_cdc_transport"),
         patch("app.core.lifespan.settings") as mock_settings,
         patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch(
