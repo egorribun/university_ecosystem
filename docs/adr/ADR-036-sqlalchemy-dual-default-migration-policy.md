@@ -145,9 +145,74 @@ server-side `onupdate=func.now()`. Adding a Python-side `onupdate` would move
 UPDATE-time clock authority from PostgreSQL to the application, which is a
 separate contract change and is out of scope here.
 
-The 81 Python-only declarations are untouched. They are the low-risk scalar,
-timestamp and JSON phases, and each still requires its own catalog-backed
-migration.
+At the close of phase two the 81 Python-only declarations were still
+untouched. They are the low-risk scalar, timestamp and JSON phases, and each
+requires its own catalog-backed migration; phase three below takes the first
+of them.
+
+### Phase three: literal non-secret scalar defaults
+
+Revision `202609220001` converges the class named in step 3 above: the
+Python-only declarations whose default is a literal, non-secret scalar.
+Twenty-nine columns qualify -- seven booleans, eleven integers, five floats
+and six short enumerated strings -- across the dead-letter, events, chat,
+notification, schedule, Spotify, stats and vector domains:
+
+```text
+dead_letter_jobs.max_retries           user_stats.attendance_percent
+dead_letter_jobs.retry_count           user_stats.attendance_present
+dead_letter_jobs.status                user_stats.attendance_total
+events.is_active                       user_stats.attendance_trend
+failed_outbox_events.retry_count       user_stats.grades_average
+grades.assessment_type                 user_stats.grades_trend
+messages.read_status                   user_stats.participation_events
+notification_deliveries.channel        user_stats.participation_groups
+notification_deliveries.status         user_stats.participation_hours
+notifications.read                     user_stats.participation_trend
+schedule.parity                        vector_chunks.chunk_index
+spotify_integrations.is_connected      vector_chunks.is_active
+spotify_integrations.is_playing
+stored_events.error_count
+stored_events.status
+stored_events.version
+user_preferences.dnd_enabled
+```
+
+The structure mirrors phase one exactly: fail-closed catalog preflight,
+bounded NULL backfill in `ctid` batches, `CHECK ... NOT VALID` validated
+before `SET NOT NULL`, the server default installed last, and a
+contract-preserving downgrade. It adds one guard phase one did not need --
+each spec declares a type family, and a column whose deployed type falls
+outside it aborts the phase rather than receiving a literal PostgreSQL might
+coerce differently than the ORM does.
+
+Unlike phase two, this phase changes both halves: the migration writes the
+catalog default and the mapped columns now declare the matching
+`server_default=`. Declaring only one half is worse than neither, because
+autogenerate then proposes dropping the default the migration just installed;
+`tests/test_be02_literal_scalar_defaults_migration.py` fails closed on that.
+The inventory moves accordingly, from `both: 53 / python_only: 81` to
+`both: 82 / python_only: 52`.
+
+Deliberately excluded, each awaiting its own phase: the thirty-seven UUIDv7
+primary keys (no PostgreSQL equivalent preserves identity semantics), the
+eleven timestamps (`now()` and a Python `datetime.now(UTC)` disagree about
+clock authority inside a transaction), `active_sessions.signing_key` (secret
+material), the two JSON columns defaulting to `list`, and `users.role`, whose
+catalog form `'student'::userrole` is a cast to a named enum type rather than
+a literal in any of this phase's four families. Those five groups sum to the
+fifty-two Python-only columns that remain, so every one is accounted for.
+
+Verification performed against `pgvector/pgvector:pg16`: the full migration
+chain applied from scratch, upgrade installing every default and `NOT NULL`,
+downgrade then re-upgrade proving idempotency over existing defaults,
+restoration of a column stripped of its default and `NOT NULL`, and a NULL
+backfill exercised on a real row. That preflight earned its keep immediately:
+PostgreSQL stores a float default as the quoted literal `'0'::double
+precision`, which the normalizer had to learn to strip on both sides. A
+container built from migrations proves correctness, not safety against
+production data -- the **deployed** catalog preflight this ADR mandates still
+gates acceptance.
 
 ## Exceptions
 

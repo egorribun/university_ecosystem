@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+POLICY_PATH = ROOT / "quality" / "model-default-policy.json"
 
 
 def test_dual_defaults_inventory_and_exceptions_are_recorded() -> None:
@@ -64,6 +66,11 @@ def test_effective_metadata_inventory_matches_adr_snapshot() -> None:
             elif has_server_default:
                 counts["server_only"] += 1
 
-    assert len(Base.metadata.tables) == 45
-    assert computed_columns == ["events.search_vector"]
-    assert counts == {"both": 53, "python_only": 81, "server_only": 0}
+    # The expected numbers come from the policy.  They move with every BE-02
+    # phase, so a private copy here either has to be edited in lockstep or
+    # silently contradicts the policy this test exists to protect.
+    expected = json.loads(POLICY_PATH.read_text(encoding="utf-8"))["expected"]
+
+    assert len(Base.metadata.tables) == expected["table_count"]
+    assert computed_columns == expected["computed_columns"]
+    assert counts == expected["effective_counts"]

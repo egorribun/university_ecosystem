@@ -135,7 +135,9 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
-    read_status: Mapped[bool] = mapped_column(Boolean, default=False)
+    read_status: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
     # Wave 203 SW2 — read-receipt timestamp. NULL until the message is marked
     # read; set to utc_now() by ChatRepository.mark_messages_read. A column (not
     # a relationship), so the MOD-30-01 explicit-lazy CI gate does not apply.

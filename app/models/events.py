@@ -78,7 +78,9 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         server_default=func.now(),
         index=True,
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", index=True
+    )
     speaker: Mapped[str | None] = mapped_column(String(512))  # LOW-W19: bounded String
     image_url: Mapped[str | None] = mapped_column(
         String(2048)

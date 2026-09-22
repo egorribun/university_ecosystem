@@ -40,7 +40,9 @@ class Notification(Base, UUID7PrimaryKeyMixin, UserFK):
     )  # LOW-W19: bounded String
     url: Mapped[str | None] = mapped_column(String(2048))  # LOW-W19: bounded String
     dedupe_key: Mapped[str | None] = mapped_column(String(255), index=True)
-    read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    read: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", index=True
+    )
     read_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True
     )
@@ -156,6 +158,7 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
         String(50),
         nullable=False,
         default="inapp",
+        server_default="inapp",
         index=True,  # LOW-W19: bounded String
     )
     # DEBT-03: subscription_id records which push subscription received this delivery.
@@ -169,6 +172,7 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
         String(50),
         nullable=False,
         default="delivered",
+        server_default="delivered",
         index=True,  # LOW-W19: bounded String
     )
     attempted_at: Mapped[datetime] = mapped_column(  # MED-W19: was Mapped[DateTime]

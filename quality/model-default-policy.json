@@ -5,15 +5,15 @@
       "events.search_vector"
     ],
     "effective_counts": {
-      "both": 53,
-      "python_only": 81,
+      "both": 82,
+      "python_only": 52,
       "server_only": 0
     },
     "effective_default_count": 134,
-    "migration_head": "202609150001",
+    "migration_head": "202609220001",
     "source_counts": {
-      "both": 53,
-      "python_only": 55,
+      "both": 82,
+      "python_only": 26,
       "server_only": 0
     },
     "source_default_none_columns": [

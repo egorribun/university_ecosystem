@@ -34,11 +34,15 @@ class VectorChunk(Base, UUID7PrimaryKeyMixin):
         String(256), nullable=True, index=True
     )
     document_id: Mapped[str] = mapped_column(String(256), nullable=False, index=True)
-    chunk_index: Mapped[int] = mapped_column(default=0, nullable=False, index=True)
+    chunk_index: Mapped[int] = mapped_column(
+        default=0, server_default="0", nullable=False, index=True
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[Any | None] = mapped_column(Vector(1536), nullable=True)
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

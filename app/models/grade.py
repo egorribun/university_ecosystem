@@ -25,7 +25,7 @@ class Grade(Base, UUID7PrimaryKeyMixin):
     subject: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     score: Mapped[float] = mapped_column(Float, nullable=False)
     assessment_type: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="exam"
+        String(50), nullable=False, default="exam", server_default="exam"
     )
     assigned_by: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),

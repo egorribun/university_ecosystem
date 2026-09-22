@@ -37,16 +37,22 @@ def test_repository_inventory_is_current_and_owner_scoped() -> None:
         dict[str, Any], build_inventory(REPO_ROOT, policy_path=POLICY_PATH)
     )
 
+    # The expected shape is read from the policy rather than restated here.
+    # A second copy of these numbers is a drift trap: the counts move with
+    # every BE-02 phase, and a test carrying its own copy either has to be
+    # edited in lockstep or silently contradicts the policy it guards.
+    expected = json.loads(POLICY_PATH.read_text(encoding="utf-8"))["expected"]
+
     assert inventory["source"]["git_sha"] == _current_sha()
-    assert inventory["source"]["migration_head"] == "202609150001"
+    assert inventory["source"]["migration_head"] == expected["migration_head"]
     assert inventory["summary"] == {
-        "computed_columns": ["events.search_vector"],
-        "effective_counts": {"both": 53, "python_only": 81, "server_only": 0},
-        "effective_default_count": 134,
-        "source_counts": {"both": 53, "python_only": 55, "server_only": 0},
-        "source_default_none_count": 10,
-        "source_mapped_column_count": 108,
-        "table_count": 45,
+        "computed_columns": expected["computed_columns"],
+        "effective_counts": expected["effective_counts"],
+        "effective_default_count": expected["effective_default_count"],
+        "source_counts": expected["source_counts"],
+        "source_default_none_count": len(expected["source_default_none_columns"]),
+        "source_mapped_column_count": expected["source_mapped_column_count"],
+        "table_count": expected["table_count"],
     }
 
     columns = {item["column"]: item for item in inventory["columns"]}

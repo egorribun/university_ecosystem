@@ -30,8 +30,12 @@ class SpotifyIntegration(Base):
     display_name: Mapped[str | None] = mapped_column(
         String(256)
     )  # LOW-W19: bounded String
-    is_connected: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    is_playing: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_connected: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", index=True
+    )
+    is_playing: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", index=True
+    )
     last_checked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True
     )

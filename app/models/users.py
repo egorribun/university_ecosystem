@@ -332,7 +332,9 @@ class UserPreferences(Base):
     # TD-2: Use timezone-aware Time so the application can correctly compare DnD
     # window boundaries against UTC server time regardless of the user's locale.
     # Requires a new Alembic migration (ALTER COLUMN ... TYPE TIMETZ).
-    dnd_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    dnd_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     dnd_start: Mapped[time | None] = mapped_column(Time(timezone=True), nullable=True)
     dnd_end: Mapped[time | None] = mapped_column(Time(timezone=True), nullable=True)
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -451,20 +453,40 @@ class UserStats(Base):
     # TD-1: Migrated from legacy Column() to typed Mapped[] for consistency with
     # the rest of the codebase and to benefit from SQLAlchemy 2.x type inference.
     # Attendance metrics
-    attendance_percent: Mapped[float] = mapped_column(Float, default=0.0)
-    attendance_present: Mapped[int] = mapped_column(Integer, default=0)
-    attendance_total: Mapped[int] = mapped_column(Integer, default=0)
-    attendance_trend: Mapped[float] = mapped_column(Float, default=0.0)
+    attendance_percent: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
+    )
+    attendance_present: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    attendance_total: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    attendance_trend: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
+    )
 
     # Grade metrics
-    grades_average: Mapped[float] = mapped_column(Float, default=0.0)
-    grades_trend: Mapped[float] = mapped_column(Float, default=0.0)
+    grades_average: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
+    )
+    grades_trend: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
+    )
 
     # Participation metrics
-    participation_events: Mapped[int] = mapped_column(Integer, default=0)
-    participation_hours: Mapped[float] = mapped_column(Float, default=0.0)
-    participation_groups: Mapped[int] = mapped_column(Integer, default=0)
-    participation_trend: Mapped[int] = mapped_column(Integer, default=0)
+    participation_events: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    participation_hours: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
+    )
+    participation_groups: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    participation_trend: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
 
     # General metadata
     last_computed_at: Mapped[datetime] = mapped_column(

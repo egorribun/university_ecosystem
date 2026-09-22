@@ -24,7 +24,7 @@ class StoredEvent(Base, UUID7PrimaryKeyMixin):
     aggregate_id: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, nullable=True)
-    version: Mapped[int] = mapped_column(Integer, default=1)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
     # Cryptographic HMAC Hash-Chaining fields (R3 & R4)
     prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -33,7 +33,11 @@ class StoredEvent(Base, UUID7PrimaryKeyMixin):
     # Outbox Pattern fields (RZ-F-11)
     subject: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
     status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending", index=True
+        String(20),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+        index=True,
     )
     trace_context: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
 
@@ -43,7 +47,9 @@ class StoredEvent(Base, UUID7PrimaryKeyMixin):
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
-    error_count: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    error_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", index=True
+    )
     last_error: Mapped[str | None] = mapped_column(
         String(4096), nullable=True
     )  # MED-W19: unbounded String → String(4096)
