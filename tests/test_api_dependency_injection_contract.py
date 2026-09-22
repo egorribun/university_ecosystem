@@ -13,11 +13,11 @@ reaches for a legacy factory fails here instead of at runtime.
 from __future__ import annotations
 
 import ast
-import pathlib
+from pathlib import Path
 
 import pytest
 
-REPOSITORY_ROOT = pathlib.Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 API_ROOT = REPOSITORY_ROOT / "app" / "api"
 
 # ``app/api/deps`` is where the remaining legitimate dependencies are defined,
@@ -50,7 +50,7 @@ ALLOWED_DEPENDENCIES = frozenset(
 )
 
 
-def _api_modules() -> list[pathlib.Path]:
+def _api_modules() -> list[Path]:
     return sorted(
         path
         for path in API_ROOT.rglob("*.py")
@@ -58,7 +58,7 @@ def _api_modules() -> list[pathlib.Path]:
     )
 
 
-def _depends_targets(path: pathlib.Path) -> set[str]:
+def _depends_targets(path: Path) -> set[str]:
     """Every ``get_*`` name this module passes to ``Depends(...)``."""
 
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -81,7 +81,7 @@ def _depends_targets(path: pathlib.Path) -> set[str]:
     "module", _api_modules(), ids=lambda path: path.relative_to(API_ROOT).as_posix()
 )
 def test_routes_do_not_depend_on_legacy_service_factories(
-    module: pathlib.Path,
+    module: Path,
 ) -> None:
     """No route may take a service or a session through ``Depends``."""
 

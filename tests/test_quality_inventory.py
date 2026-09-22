@@ -118,6 +118,21 @@ def test_rust_fuzz_tsan_contract_is_backed_by_repository_references() -> None:
     }.issubset(references)
 
 
+def test_api_dependency_contract_is_backed_by_repository_references() -> None:
+    contract = Path(__file__).with_name("test_api_dependency_injection_contract.py")
+
+    references = find_python_repository_references(contract)
+
+    assert "app/api" in references
+    assert matches_source(
+        "tests/test_api_dependency_injection_contract.py",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={"app/api/auth/login.py"},
+    )
+
+
 def test_inventory_prunes_dependency_and_hidden_directories(
     tmp_path: Path, monkeypatch
 ) -> None:
