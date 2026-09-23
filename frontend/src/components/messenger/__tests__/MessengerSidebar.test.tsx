@@ -180,10 +180,24 @@ describe("MessengerSidebar", () => {
     expect(navigateMock).toHaveBeenCalledWith({
       to: "/messenger/$chatId",
       params: { chatId: "c2" },
+      replace: false,
+      state: { messengerOpenedFromList: true },
     })
 
     fireEvent.click(screen.getByRole("button", { name: "mock-clear-search" }))
     expect(screen.getByTestId("mock-contact-list")).toHaveAttribute("data-search-active", "false")
+  })
+
+  it("replaces the open chat when switching chats so back returns to the list", () => {
+    navigateMock.mockClear()
+    render(<MessengerSidebar {...baseProps} selectedChatId="c1" />, { wrapper })
+    fireEvent.click(screen.getByRole("button", { name: "mock-select-contact" }))
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/messenger/$chatId",
+      params: { chatId: "c2" },
+      replace: true,
+      state: { messengerOpenedFromList: true },
+    })
   })
 
   it("forwards loading + error flags to ContactList", () => {

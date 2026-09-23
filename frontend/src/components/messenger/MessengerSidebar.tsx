@@ -136,7 +136,16 @@ export function MessengerSidebar({
       <ContactList
         contacts={filteredContacts}
         selectedId={selectedChatId}
-        onSelect={(id: string) => navigate({ to: "/messenger/$chatId", params: { chatId: id } })}
+        onSelect={(id: string) =>
+          navigate({
+            to: "/messenger/$chatId",
+            params: { chatId: id },
+            // Switching between chats replaces the open one, so mobile back
+            // always returns to the list rather than a previous chat.
+            replace: selectedChatId != null,
+            state: { messengerOpenedFromList: true },
+          })
+        }
         isSearchActive={isSearchActive}
         searchQuery={searchQuery.trim()}
         onStartNewChat={handleStartNewChat}

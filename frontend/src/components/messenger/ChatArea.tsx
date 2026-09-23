@@ -20,7 +20,7 @@ import {
 } from "lucide-react"
 import { memo, Dispatch, SetStateAction, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "@tanstack/react-router"
+import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router"
 
 /** Search focus is only scheduled while the search control is mounted. */
 export function shouldFocusSearchInput(
@@ -168,6 +168,16 @@ export const ChatArea = memo(function ChatArea({
 }: ChatAreaProps) {
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
+  const router = useRouter()
+  const openedFromList = useRouterState({
+    select: (state) => state.location.state.messengerOpenedFromList === true,
+  })
+  // A chat pushed from the list pops back to it; a deep-linked chat replaces
+  // itself with the list so history never holds the list twice.
+  const handleBackToChats = () => {
+    if (openedFromList) router.history.back()
+    else navigate({ to: "/messenger", replace: true })
+  }
   const searchInputRef = useRef<HTMLInputElement>(null)
   // Wave 181 SW4 — TypingIndicator wired to existing WebSocket presence channel
   // via useMessenger().getTypingUsersForChat (MessengerContext). No backend
@@ -249,7 +259,7 @@ export const ChatArea = memo(function ChatArea({
                     <m.button
                       type="button"
                       whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
-                      onClick={() => navigate({ to: "/messenger", replace: true })}
+                      onClick={handleBackToChats}
                       aria-label={t("messenger:backToChats")}
                       className="-ml-1 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                     >

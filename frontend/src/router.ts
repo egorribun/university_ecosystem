@@ -178,4 +178,8 @@ declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router
   }
+  interface HistoryState {
+    /** Set when a chat is opened from the messenger list, so mobile back pops it. */
+    messengerOpenedFromList?: boolean
+  }
 }

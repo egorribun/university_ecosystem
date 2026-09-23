@@ -67,7 +67,12 @@ vi.mock("@/contexts/MessengerContext", () => ({
     sendTyping: state.typing,
   }),
 }))
-vi.mock("@tanstack/react-router", () => ({ useNavigate: () => state.navigate }))
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => state.navigate,
+  useRouter: () => ({ history: { back: vi.fn() } }),
+  useRouterState: ({ select }: { select: (s: { location: { state: object } }) => unknown }) =>
+    select({ location: { state: {} } }),
+}))
 vi.mock("react-i18next", () => ({
   useTranslation: (namespaces?: string[]) => {
     state.translationNamespaces = namespaces
