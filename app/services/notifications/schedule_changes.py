@@ -75,16 +75,16 @@ def _render(
     state: Mapping[str, Any], *, cancelled: bool, schedule_id: str, locale: str
 ) -> dict[str, Any] | None:
     start, end = _clock(state.get("start_time")), _clock(state.get("end_time"))
-    summary_key = (
-        "notifications.schedule.change.cancelled"
+    summary = (
+        translate("notifications.schedule.change.cancelled", locale=locale)
         if cancelled
-        else "notifications.schedule.change.updated"
+        else translate("notifications.schedule.change.updated", locale=locale)
     )
     return render_notification_template(
         "schedule.change",
         {
             "subject": state.get("subject"),
-            "summary": translate(summary_key, locale=locale),
+            "summary": summary,
             "teacher": state.get("teacher"),
             "room": state.get("room"),
             "date": _weekday(state.get("weekday"), locale),
