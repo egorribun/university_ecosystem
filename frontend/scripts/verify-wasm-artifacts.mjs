@@ -34,7 +34,13 @@ const ARTIFACTS = [
     packageName: "uni-wasm-crypto",
     jsFile: "uni_wasm_crypto.js",
     wasmFile: "uni_wasm_crypto_bg.wasm",
-    exports: ["default", "pbkdf2_derive", "scrypt_derive", "hmac_sha256_sign"],
+    exports: [
+      "default",
+      "pbkdf2_derive",
+      "scrypt_derive",
+      "hmac_sha256_sign",
+      "hmac_sha256_sign_base64",
+    ],
     placeholderPatterns: [
       {
         pattern: /function\s+pbkdf2_derive\s*\([^)]*\)\s*\{\s*return\s+["']{2}\s*;\s*\}/,

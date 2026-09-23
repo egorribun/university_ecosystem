@@ -3,18 +3,18 @@
   "source_files": [
     {
       "path": "rust-crypto/Cargo.lock",
-      "size": 22506,
-      "sha256": "1f03d9d8cf574b4d25eb24f46aa30cbb382dcda6e54630e874228617f5e0c431"
+      "size": 22519,
+      "sha256": "e2b021c7aa642bd653a2e7bad98911ad9e2c7b9d80acda97760fd9d5251679e9"
     },
     {
       "path": "rust-crypto/Cargo.toml",
-      "size": 999,
-      "sha256": "cabe81b651b5d1a1971f1decb3c5b3d16cb7a8d1f6f2d6efee0ad249d9fc2caa"
+      "size": 1081,
+      "sha256": "ccf4ac842b8929d1f56f409bbbafb19346b8eb859ced5438b7728aaaf52d4dea"
     },
     {
       "path": "rust-crypto/src/lib.rs",
-      "size": 4552,
-      "sha256": "da44d0d060d373ac58f3cc888f76f0da2ac472d0daf5e383e2b657e3158be992"
+      "size": 4978,
+      "sha256": "19715100cbd7a5b4f9dcd85f45ebb08a82240c148e3abb3bec395a963bf5ec95"
     },
     {
       "path": "wasm-sanitizer/Cargo.lock",
@@ -32,23 +32,23 @@
       "sha256": "91eb2a042d5495b52b6537ee0cad8ef258afe421316f9309f650f0b63d6c4293"
     }
   ],
-  "source_tree_sha256": "d3dbe4efbb9b43bc051af583c0f1dd2f6560196ad745dc3cadb9db260c772699",
+  "source_tree_sha256": "631182476176f444bf15ee711d6e515e89fb72b3d50fc942712d18312eb01626",
   "packages": {
     "rust-crypto/pkg/package.json": {
       "size": 305,
       "sha256": "b6fa8ca6bd52b940bb55338299b80968082b5fc90e8607b3cdb0304a0a030d4c"
     },
     "rust-crypto/pkg/uni_wasm_crypto.d.ts": {
-      "size": 2154,
-      "sha256": "ee248b85c086e004641bcdd6eab3e495d78ef08e73e666422e285ac135684d91"
+      "size": 2416,
+      "sha256": "2abadeb4354eadb305e5d48f17ade6e54866b7767857dafbc245fa280725f35d"
     },
     "rust-crypto/pkg/uni_wasm_crypto.js": {
-      "size": 9279,
-      "sha256": "df36f7227ea418af16af0c6d3bcfdb787e366e10da010f528f48fdae6439f3a0"
+      "size": 10073,
+      "sha256": "e114bb1c45944549fa22449b7d4431fc45680ac248dd94c1fa243907d4fb01c6"
     },
     "rust-crypto/pkg/uni_wasm_crypto_bg.wasm": {
-      "size": 45424,
-      "sha256": "98e6d43877ef0ac02b4f80859e097d1a24836311a749d75968ac63fa213a59ab"
+      "size": 46914,
+      "sha256": "c7ed6bd918f48e167e0fe0d96265dc6b6aa27ce25aec4ead98cb42ce3800760f"
     },
     "wasm-sanitizer/pkg/package.json": {
       "size": 337,

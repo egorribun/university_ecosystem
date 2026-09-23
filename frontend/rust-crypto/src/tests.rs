@@ -1,6 +1,6 @@
 use super::{
-    derive_scrypt_output, fill_scrypt_output, hmac_sha256_sign, make_err, pbkdf2_derive,
-    scrypt_derive, ErrorType, ScryptParams,
+    derive_scrypt_output, fill_scrypt_output, hmac_sha256_sign, hmac_sha256_sign_base64, make_err,
+    pbkdf2_derive, scrypt_derive, ErrorType, ScryptParams,
 };
 
 // Generate private-helper fixtures from the OS CSPRNG rather than embedding
@@ -27,6 +27,20 @@ fn hmac_sha256_sign_is_deterministic_and_hex_encoded() {
     assert_eq!(first, second);
     assert_eq!(first.len(), 64);
     assert!(first.chars().all(|character| character.is_ascii_hexdigit()));
+}
+
+#[test]
+fn hmac_sha256_base64_encodes_the_same_guarded_digest() {
+    use base64ct::{Base64, Encoding};
+
+    let key = fixture_text(3);
+    let message = fixture_text(7);
+    let encoded = hmac_sha256_sign_base64(&key, &message);
+    assert_eq!(encoded.len(), 44);
+    assert_eq!(
+        hex::encode(Base64::decode_vec(&encoded).unwrap()),
+        hmac_sha256_sign(&key, &message)
+    );
 }
 
 #[test]

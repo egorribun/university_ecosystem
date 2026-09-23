@@ -1,7 +1,8 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use base64ct::{Base64, Encoding};
 use proptest::prelude::*;
-use uni_wasm_crypto::{hmac_sha256_sign, pbkdf2_derive, scrypt_derive};
+use uni_wasm_crypto::{hmac_sha256_sign, hmac_sha256_sign_base64, pbkdf2_derive, scrypt_derive};
 
 // Native Known-Answer-Test (KAT) suite. The #[wasm_bindgen] functions are
 // callable as plain Rust on a non-wasm target; PBKDF2/HMAC return hex Strings
@@ -70,6 +71,34 @@ fn hmac_sha256_is_deterministic() {
 }
 
 #[test]
+fn hmac_base64_matches_rfc4231_vectors() {
+    for (key, message, expected_hex) in [
+        ("\u{0b}".repeat(20), "Hi There", HMAC_TC1),
+        ("Jefe".to_string(), "what do ya want for nothing?", HMAC_TC2),
+    ] {
+        let encoded = hmac_sha256_sign_base64(&key, message);
+        assert_eq!(encoded.len(), 44);
+        assert!(encoded.ends_with('='));
+        assert_eq!(
+            hex::encode(Base64::decode_vec(&encoded).unwrap()),
+            expected_hex
+        );
+    }
+}
+
+#[test]
+fn hmac_base64_handles_empty_and_unicode_utf8_inputs() {
+    for (key, message) in [("", ""), ("ключ🔑", "сообщение🌍")] {
+        let encoded = hmac_sha256_sign_base64(key, message);
+        assert_eq!(encoded, hmac_sha256_sign_base64(key, message));
+        assert_eq!(
+            hex::encode(Base64::decode_vec(&encoded).unwrap()),
+            hmac_sha256_sign(key, message)
+        );
+    }
+}
+
+#[test]
 fn scrypt_rfc7914_vector1() {
     let out = scrypt_derive(b"", b"", 16, 1, 1, 64).expect("valid params");
     assert_eq!(hex::encode(out), SCRYPT_V1);
@@ -132,6 +161,14 @@ fn scrypt_invalid_params_and_output_len() {
 }
 
 proptest! {
+    #[test]
+    fn hmac_base64_and_hex_encode_the_same_digest(key in any::<String>(), message in any::<String>()) {
+        let encoded = hmac_sha256_sign_base64(&key, &message);
+        prop_assert_eq!(encoded.len(), 44);
+        prop_assert!(encoded.ends_with('='));
+        prop_assert_eq!(hex::encode(Base64::decode_vec(&encoded).unwrap()), hmac_sha256_sign(&key, &message));
+    }
+
     #[test]
     fn hmac_always_emits_a_sha256_hex_digest(key in any::<String>(), message in any::<String>()) {
         let digest = hmac_sha256_sign(&key, &message);

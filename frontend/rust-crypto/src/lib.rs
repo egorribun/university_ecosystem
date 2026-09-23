@@ -1,3 +1,4 @@
+use base64ct::{Base64, Encoding};
 use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use scrypt::{scrypt, Params as ScryptParams};
@@ -63,6 +64,18 @@ pub fn pbkdf2_derive(
 
 #[wasm_bindgen]
 pub fn hmac_sha256_sign(key: &str, message: &str) -> String {
+    let result = hmac_sha256_digest(key, message);
+    hex::encode(result.as_slice())
+}
+
+/// Sign UTF-8 input and return standard RFC 4648 base64 with padding.
+#[wasm_bindgen]
+pub fn hmac_sha256_sign_base64(key: &str, message: &str) -> String {
+    let result = hmac_sha256_digest(key, message);
+    Base64::encode_string(result.as_slice())
+}
+
+fn hmac_sha256_digest(key: &str, message: &str) -> Zeroizing<Vec<u8>> {
     let key_bytes = Zeroizing::new(key.as_bytes().to_vec());
     let message_bytes = Zeroizing::new(message.as_bytes().to_vec());
     let mut mac = HmacSha256::new_from_slice(key_bytes.as_slice())
@@ -74,7 +87,7 @@ pub fn hmac_sha256_sign(key: &str, message: &str) -> String {
     // immediately and never retained beyond this scope.
     let result = Zeroizing::new(digest.to_vec());
     digest.fill(0);
-    hex::encode(result.as_slice())
+    result
 }
 
 fn fill_scrypt_output(

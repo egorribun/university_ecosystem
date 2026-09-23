@@ -1,12 +1,12 @@
 /**
  * Web Worker for heavy cryptographic operations.
- * Uses native Web Crypto API to prevent blocking the main thread.
+ * Uses Rust WASM to avoid blocking the main thread.
  */
 
 import init, {
   pbkdf2_derive,
   scrypt_derive,
-  hmac_sha256_sign,
+  hmac_sha256_sign_base64,
 } from "../../rust-crypto/pkg/uni_wasm_crypto.js"
 
 let wasmInitPromise: Promise<unknown> | null = null
@@ -42,12 +42,7 @@ self.onmessage = async (event: MessageEvent) => {
       self.postMessage({ id, result: hex })
     } else if (type === "HMAC_SHA256") {
       const { json, key } = payload
-      const hex = hmac_sha256_sign(key, json)
-      // JS implementation returned base64. Let's convert hex to base64.
-      const match = hex.match(/\w{2}/g)
-      if (!match) throw new Error("Invalid hex from WASM HMAC")
-      const uint8 = new Uint8Array(match.map((a: string) => parseInt(a, 16)))
-      const base64 = btoa(String.fromCharCode(...uint8))
+      const base64 = hmac_sha256_sign_base64(key, json)
       self.postMessage({ id, result: base64 })
     }
   } catch (error: unknown) {

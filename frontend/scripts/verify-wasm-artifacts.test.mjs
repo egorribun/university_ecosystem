@@ -39,6 +39,7 @@ export { init as default }
 export function pbkdf2_derive() { return "derived" }
 export function scrypt_derive() { return Uint8Array.of(1) }
 export function hmac_sha256_sign() { return "signature" }
+export function hmac_sha256_sign_base64() { return "signature" }
 `,
   },
 }
@@ -98,6 +99,18 @@ test("rejects package glue that omits a required sanitizer export", async () => 
         "export default async function init() { return undefined }\nexport function initSync() {}\n",
     })
     await assert.rejects(() => validateWasmArtifacts(root), /sanitize_rich_text/)
+  })
+})
+
+test("rejects crypto glue missing the worker's base64 HMAC export", async () => {
+  await withFixture(async (root) => {
+    await writePackage(root, "rust-crypto", {
+      source: packageFixtures["rust-crypto"].source.replace(
+        'export function hmac_sha256_sign_base64() { return "signature" }\n',
+        ""
+      ),
+    })
+    await assert.rejects(() => validateWasmArtifacts(root), /hmac_sha256_sign_base64/)
   })
 })
 

@@ -23,6 +23,29 @@ export function hmac_sha256_sign(key, message) {
 }
 
 /**
+ * Sign UTF-8 input and return standard RFC 4648 base64 with padding.
+ * @param {string} key
+ * @param {string} message
+ * @returns {string}
+ */
+export function hmac_sha256_sign_base64(key, message) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(message, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.hmac_sha256_sign_base64(ptr0, len0, ptr1, len1);
+        deferred3_0 = ret[0];
+        deferred3_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
  * @param {string} password
  * @param {string} salt
  * @param {number} iterations
