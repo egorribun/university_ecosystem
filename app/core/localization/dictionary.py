@@ -141,6 +141,14 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Изменение пары",
         "en": "Class change",
     },
+    "notifications.schedule.change.updated": {
+        "ru": "Пара перенесена или изменена",
+        "en": "The class was rescheduled or changed",
+    },
+    "notifications.schedule.change.cancelled": {
+        "ru": "Пара отменена",
+        "en": "The class was cancelled",
+    },
     "notifications.schedule.reminder.start_line": {
         "ru": "Начало: {start}",
         "en": "Starts at: {start}",

@@ -21,6 +21,8 @@ from app.core.events import (
     NewsCreated,
     NotificationSent,
     NotificationsRequested,
+    ScheduleDeleted,
+    ScheduleUpdated,
     UserCreated,
     UserLoggedIn,
     event_bus,
@@ -324,6 +326,27 @@ async def handle_attachment_cleanup_requested(
     )
 
 
+async def handle_schedule_changed(event: ScheduleUpdated | ScheduleDeleted) -> None:
+    """Notify affected groups about a changed or cancelled lesson (outbox-delivered)."""
+    from app.services.notifications.schedule_changes import (
+        notify_about_schedule_change,
+    )
+
+    if isinstance(event, ScheduleDeleted):
+        previous, current = event.previous_state, None
+    else:
+        previous, current = event.previous_state, event.current_state
+    if not event.schedule_id or not previous:
+        # Legacy rows predate the before/after snapshot; there is nothing to diff.
+        logger.info("Skipping schedule notification without a change snapshot")
+        return
+    async with async_session() as db:
+        await notify_about_schedule_change(
+            db, schedule_id=event.schedule_id, previous=previous, current=current
+        )
+        await db.commit()
+
+
 def configure_event_handlers() -> None:
     """
     Register all event handlers with the global event bus.
@@ -349,6 +372,9 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("event.registration", handle_event_registration)  # type: ignore[arg-type]
     event_bus.subscribe("notification.sent", handle_notification_sent)  # type: ignore[arg-type]
     event_bus.subscribe("chat.message_sent", handle_message_sent)  # type: ignore[arg-type]
+    # Outbox-delivered lesson changes notify the affected groups (schedule.changed).
+    event_bus.subscribe("SCHEDULE_UPDATED", handle_schedule_changed)  # type: ignore[arg-type]
+    event_bus.subscribe("SCHEDULE_DELETED", handle_schedule_changed)  # type: ignore[arg-type]
     # RED-04: OutboxWorker delivers ChatDeleted events with at-least-once guarantees.
     event_bus.subscribe("chat.deleted", handle_chat_deleted)  # type: ignore[arg-type]
     # PERF-W10-05: OutboxWorker delivers file cleanup with at-least-once guarantees.

@@ -222,7 +222,13 @@ def test_configure_event_handlers_registers_global_subscriptions():
         event_handlers.configure_event_handlers()
 
     subscribe_all.assert_called_once_with(event_handlers.log_all_events)
-    assert subscribe.call_count == 15
+    assert subscribe.call_count == 17
+    subscribe.assert_any_call(
+        "SCHEDULE_UPDATED", event_handlers.handle_schedule_changed
+    )
+    subscribe.assert_any_call(
+        "SCHEDULE_DELETED", event_handlers.handle_schedule_changed
+    )
     subscribe.assert_any_call(
         "notification.delivery_requested",
         event_handlers.handle_notifications_requested,
