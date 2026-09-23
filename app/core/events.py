@@ -272,9 +272,10 @@ class ScheduleUpdated(DomainEvent):
 
     EVENT_VERSION: ClassVar[int] = 1
 
-    schedule_id: UUID | None = None
+    schedule_id: UUID | str | None = None
     group_id: UUID | None = None
     changes: dict[str, Any] = field(default_factory=dict)
+    previous_state: dict[str, Any] = field(default_factory=dict)
     current_state: dict[str, Any] = field(default_factory=dict)
 
     EVENT_TYPE: ClassVar[str] = "SCHEDULE_UPDATED"
@@ -288,6 +289,66 @@ class ScheduleUpdated(DomainEvent):
             if f.name not in ("event_id", "occurred_at", "metadata")
         }
         return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
+class ScheduleDeleted(DomainEvent):
+    """Fired when a schedule item is deleted (the lesson is cancelled)."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    schedule_id: str | None = None
+    deleted: bool = True
+    subject: str = ""
+    group_id: str | None = None
+    previous_state: dict[str, Any] = field(default_factory=dict)
+
+    EVENT_TYPE: ClassVar[str] = "SCHEDULE_DELETED"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ScheduleDeleted:
+        data.pop("_schema_version", 1)
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
+class NotificationDeadLetterRetried(DomainEvent):
+    """Audited administrator retry of a dead-lettered notification batch."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    batch_count: int = 0
+
+    EVENT_TYPE: ClassVar[str] = "NOTIFICATION_DEAD_LETTER_RETRY"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NotificationDeadLetterRetried:
+        data.pop("_schema_version", 1)
+        return cls(batch_count=int(data.get("batch_count", 0)))
+
+
+@register_domain_event
+@dataclass
+class NotificationDeadLetterPurged(DomainEvent):
+    """Audited administrator purge of a dead-lettered notification batch."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    batch_count: int = 0
+
+    EVENT_TYPE: ClassVar[str] = "NOTIFICATION_DEAD_LETTER_PURGE"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NotificationDeadLetterPurged:
+        data.pop("_schema_version", 1)
+        return cls(batch_count=int(data.get("batch_count", 0)))
 
 
 @register_domain_event
@@ -984,8 +1045,11 @@ __all__ = [
     "MfaEnabled",
     "NewsCreated",
     "NewsUpdated",
+    "NotificationDeadLetterPurged",
+    "NotificationDeadLetterRetried",
     "NotificationSent",
     "NotificationsRequested",
+    "ScheduleDeleted",
     "UserCreated",
     "UserDeleted",
     "UserLoggedIn",
