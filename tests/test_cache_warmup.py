@@ -1,9 +1,10 @@
 import time
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
+from app.api.deps.etag import generate_cache_key
 from app.deps.cache import CacheEntry
 from app.schemas import schemas
 from app.services import cache_warmup
@@ -155,7 +156,8 @@ async def test_warm_news():
             "app.api.news._get_news_list_version",
             AsyncMock(return_value="v1"),
         ),
-        patch("app.services.vector_service.VectorService"),
+        patch("app.services.vector_service.VectorService") as MockVectorService,
+        patch("app.repositories.unit_of_work.uow_from_session") as mock_uow_factory,
         patch("app.repositories.news_repository.NewsRepository"),
         patch("app.services.news_service.NewsService") as MockNewsService,
     ):
@@ -184,7 +186,29 @@ async def test_warm_news():
 
         await cache_warmup._warm_news(mock_cache, mock_db)
 
-        assert mock_cache.set.call_count >= 1
+        # Warm-up owns its session, so every collaborator is built over it.
+        mock_uow_factory.assert_called_once_with(mock_db)
+        MockVectorService.assert_called_once_with(db=mock_db)
+        MockNewsService.assert_called_once_with(
+            mock_uow_factory.return_value, MockVectorService.return_value
+        )
+        assert mock_service.list_news.await_args_list == [
+            call(limit=20, cursor=None, locale="ru"),
+            call(limit=20, cursor=None, locale="en"),
+        ]
+        expected_keys = [
+            generate_cache_key(
+                cache_prefix="ue:news:list",
+                version="v1",
+                locale=locale,
+                params={"limit": 20, "cursor": None},
+            )
+            for locale in ("ru", "en")
+        ]
+        assert [c.args[0] for c in mock_cache.set.await_args_list] == expected_keys
+        for c in mock_cache.set.await_args_list:
+            assert c.args[1]["has_more"] is False
+            assert c.args[1]["next_cursor"] is None
 
 
 # --------------------------------------------------------------------------- #
@@ -349,3 +373,31 @@ async def test_warm_cache_swallows_connection_errors():
         msess.return_value.__aenter__.return_value = AsyncMock()
         # Must not raise — the except (ConnectionError, ...) handler swallows it.
         await cache_warmup.warm_cache()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("item_count", "has_more"), [(19, False), (20, True)])
+async def test_warm_news_marks_a_full_page_as_having_more(
+    item_count: int, has_more: bool
+) -> None:
+    mock_cache = AsyncMock()
+    mock_cache.enabled = True
+    mock_cache.get.return_value = None
+
+    with (
+        patch("app.api.news._get_news_list_version", AsyncMock(return_value="v1")),
+        patch("app.services.vector_service.VectorService"),
+        patch("app.repositories.unit_of_work.uow_from_session"),
+        patch("app.services.news_service.NewsService") as MockNewsService,
+        patch.object(cache_warmup, "jsonable_encoder", side_effect=lambda value: value),
+    ):
+        items = [object() for _ in range(item_count)]
+        MockNewsService.return_value.list_news = AsyncMock(
+            return_value=MagicMock(items=items)
+        )
+
+        await cache_warmup._warm_news(mock_cache, AsyncMock())
+
+    payloads = [c.args[1] for c in mock_cache.set.await_args_list]
+    assert [p["has_more"] for p in payloads] == [has_more, has_more]
+    assert all(p["items"] is items for p in payloads)

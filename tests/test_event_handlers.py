@@ -61,9 +61,8 @@ async def test_generate_event_embedding(monkeypatch):
 
     mock_vector_service = AsyncMock()
     mock_vector_service.get_embedding.return_value = [0.1, 0.2]
-    monkeypatch.setattr(
-        "app.services.event_handlers.VectorService", lambda **_: mock_vector_service
-    )
+    vector_service_cls = MagicMock(return_value=mock_vector_service)
+    monkeypatch.setattr("app.services.event_handlers.VectorService", vector_service_cls)
 
     mock_event = Event(id=1, title="Event", description="Desc", location="Room 1")
     mock_db.get.return_value = mock_event
@@ -72,6 +71,7 @@ async def test_generate_event_embedding(monkeypatch):
         EventCreated(event_id_entity=1, organizer_id=1, title="Test")
     )
 
+    vector_service_cls.assert_called_once_with(db=mock_db)
     mock_db.get.assert_called_once_with(Event, 1)
     mock_vector_service.get_embedding.assert_called_once_with("Event Desc Room 1")
     assert mock_event.embedding == [0.1, 0.2]
@@ -109,15 +109,15 @@ async def test_generate_news_embedding(monkeypatch):
 
     mock_vector_service = AsyncMock()
     mock_vector_service.get_embedding.return_value = [0.1, 0.2]
-    monkeypatch.setattr(
-        "app.services.event_handlers.VectorService", lambda **_: mock_vector_service
-    )
+    vector_service_cls = MagicMock(return_value=mock_vector_service)
+    monkeypatch.setattr("app.services.event_handlers.VectorService", vector_service_cls)
 
     mock_news = News(id=1, title="News", content="Content")
     mock_db.get.return_value = mock_news
 
     await generate_news_embedding(NewsCreated(news_id=1, title="News"))
 
+    vector_service_cls.assert_called_once_with(db=mock_db)
     mock_db.get.assert_called_once_with(News, 1)
     mock_vector_service.get_embedding.assert_called_once_with("News Content")
     assert mock_news.embedding == [0.1, 0.2]
