@@ -1,4 +1,4 @@
-import type { MutableRefObject, PropsWithChildren } from "react"
+import { StrictMode, type MutableRefObject, type PropsWithChildren } from "react"
 import { act, renderHook, waitFor, cleanup } from "@testing-library/react"
 import { renderToString } from "react-dom/server"
 import { QueryClientProvider } from "@tanstack/react-query"
@@ -235,6 +235,49 @@ describe("useProfileSync runtime defensive paths", () => {
     expect(api.get).toHaveBeenCalledOnce()
     expect(fetchQuery).toHaveBeenCalledOnce()
     expect(replacementEnsure).not.toHaveBeenCalled()
+  })
+
+  it("does not fetch the signing key or apply the profile after unmounting mid-fetch", async () => {
+    const queryClient = createQueryClient()
+    let resolveProfile: (value: unknown) => void = () => undefined
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(
+      new Promise((resolve) => {
+        resolveProfile = resolve
+      }) as never
+    )
+    const ensure = vi.fn(async () => null)
+    const view = renderRuntime(ensure, null, queryClient)
+    await waitFor(() => expect(queryClient.fetchQuery).toHaveBeenCalledOnce())
+
+    view.unmount()
+    await act(async () => {
+      resolveProfile(testUser)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(ensure).not.toHaveBeenCalled()
+  })
+
+  it("still completes the profile bootstrap after a StrictMode remount", async () => {
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockResolvedValue(testUser as never)
+    const ensure = vi.fn(async () => signingKey)
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <StrictMode>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </StrictMode>
+    )
+    const signingKeyRef = { current: null } as MutableRefObject<string | null>
+    const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+
+    const { result } = renderHook(
+      () => useProfileSync(vi.fn(), signingKeyRef, promiseRef, ensure),
+      { wrapper }
+    )
+
+    await waitFor(() => expect(result.current.user).toEqual(testUser))
+    expect(ensure).toHaveBeenCalled()
   })
 
   it("does not restart an in-flight fetch when an effect dependency changes", async () => {

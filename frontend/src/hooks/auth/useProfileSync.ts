@@ -1340,6 +1340,9 @@ export const useProfileSync = (
           ...currentUserQueryOptions(),
           retry: false,
         })
+        // An unmounted provider must not start the signing-key request or
+        // apply a profile: that work would outlive its owner.
+        if (mountedRef.current !== true) return
         try {
           await ensureSessionSigningKey()
         } catch (_error) {
