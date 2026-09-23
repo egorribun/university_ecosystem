@@ -1,8 +1,7 @@
 /**
  * MessengerBackdrop — decorative ambient gradient layer for /messenger page.
  *
- * Pattern source: `components/layout/FooterBackdrop.tsx` (Wave 176 SW2,
- * itself mirroring `components/events/EventsBackdrop.tsx` Wave 118 SW3
+ * Pattern source: `components/events/EventsBackdrop.tsx` (Wave 118 SW3
  * CLS-118-03 lesson — pixel-based orb sizing eliminates CLS shifts when
  * container content grows; %-based sizing was the W118 culprit).
  *

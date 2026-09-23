@@ -5,7 +5,7 @@
  * Wave 186 SW2 (Path C) — Auth pages polish to feature-page parity
  * with W181-W184 polish arc. Pattern mirrors ProfileBackdrop.tsx
  * (W184 SW5) + MessengerBackdrop.tsx (W181 SW2) which themselves
- * mirror FooterBackdrop.tsx (W176 SW2 / EventsBackdrop W118 SW3
+ * mirror EventsBackdrop (W118 SW3
  * CLS-118-03 lesson — pixel-based orb sizing eliminates CLS
  * shifts when container content grows; %-based sizing was the
  * W118 culprit).

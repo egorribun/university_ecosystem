@@ -20,7 +20,6 @@ const state = vi.hoisted(() => ({
   eventsQuery: { isLoading: false },
   queryClient: { id: "dashboard-test-client" },
   prefetch: vi.fn(),
-  tiltDisabled: [] as boolean[],
 }))
 
 vi.mock("react-i18next", () => ({
@@ -94,18 +93,6 @@ vi.mock("@/hooks/useMediaQuery", () => ({
     if (query.includes("max-width")) return state.narrow
     if (query.includes("min-width")) return state.storiesInHero
     return state.reduced
-  },
-}))
-
-vi.mock("@/hooks/useTilt", () => ({
-  useTilt: ({ disabled }: { disabled: boolean }) => {
-    state.tiltDisabled.push(disabled)
-    return {
-      ref: vi.fn(),
-      style: {} as CSSProperties,
-      onMouseMove: vi.fn(),
-      onMouseLeave: vi.fn(),
-    }
   },
 }))
 
@@ -258,7 +245,6 @@ beforeEach(() => {
   state.newsQuery = { isLoading: false }
   state.eventsQuery = { isLoading: false }
   state.prefetch.mockClear()
-  state.tiltDisabled.length = 0
   window.sessionStorage.clear()
   vi.useRealTimers()
 })
@@ -277,7 +263,6 @@ describe("Dashboard closure behavior", () => {
 
     render(<Dashboard />)
 
-    expect(state.tiltDisabled).toEqual([])
     expect(
       addEventListener.mock.calls.filter(([eventName]) => String(eventName) === "scroll")
     ).toHaveLength(0)
@@ -350,7 +335,6 @@ describe("Dashboard closure behavior", () => {
     expect(screen.getAllByTestId("motion-card")).toHaveLength(3)
     expect(screen.getAllByTestId("motion-card").at(0)).toHaveAttribute("data-cascade", "active")
     expect(screen.getAllByTestId("skeleton").length).toBeGreaterThan(0)
-    expect(state.tiltDisabled).toEqual([])
     expect(window.sessionStorage.getItem("dash-cascade-done")).toBe("1")
 
     if (!e2eMode) {
@@ -407,8 +391,30 @@ describe("Dashboard closure behavior", () => {
     expect(screen.getByTestId("schedule-card")).toBeInTheDocument()
     expect(screen.getByTestId("news-card")).toBeInTheDocument()
     expect(screen.getByTestId("events-card")).toBeInTheDocument()
-    expect(state.tiltDisabled).toEqual([])
   })
+
+  it.skipIf(e2eMode)(
+    "reserves the below-hero stories slot only while loading or showing stories",
+    () => {
+      state.storiesInHero = false
+      const slotClasses = () => screen.getByTestId("dashboard-stories").parentElement?.className
+
+      state.storiesData = []
+      state.storiesLoading = true
+      const { unmount } = render(<Dashboard />)
+      expect(slotClasses()).toContain("min-h-[120px]")
+      unmount()
+
+      state.storiesLoading = false
+      const empty = render(<Dashboard />)
+      expect(slotClasses()).not.toContain("min-h-[120px]")
+      empty.unmount()
+
+      state.storiesData = [realStory]
+      render(<Dashboard />)
+      expect(slotClasses()).toContain("min-h-[120px]")
+    }
+  )
 
   it("disables motion for narrow reduced-motion users and tolerates missing sessionStorage", () => {
     state.narrow = true
@@ -430,7 +436,6 @@ describe("Dashboard closure behavior", () => {
       expect(screen.getByTestId("weather-ambient")).toHaveAttribute("data-disabled", "true")
     }
     expect(screen.queryByTestId("skeleton")).not.toBeInTheDocument()
-    expect(state.tiltDisabled).toEqual([])
     expect(requestAnimationFrame).not.toHaveBeenCalled()
 
     const backdrop = document.querySelector(".aurora-mesh")!.children[0] as HTMLElement

@@ -61,7 +61,6 @@ export type ChallengeWithAttempts = ChallengeMethod &
  *  - email blur → ``trigger("email")`` then debounced suggestion
  *    population; ``applySuggestion()`` writes the suggested address
  *    back into the form and clears the suggestion banner.
- *    ``navigator.credentials`` then redirect.
  *
  * @returns Surface consumed by ``LoginCredentialForm`` —
  *   form instance + caps/showPassword UI flags + suggestion handles

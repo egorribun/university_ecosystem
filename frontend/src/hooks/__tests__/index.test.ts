@@ -25,7 +25,6 @@ describe("hooks barrel (@/hooks)", () => {
       "useSwipe",
       "useBookmarks",
       "useShare",
-      "useTilt",
       "useSeason",
       "useTimeOfDay",
       "useWeather",

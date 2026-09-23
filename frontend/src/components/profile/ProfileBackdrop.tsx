@@ -3,8 +3,8 @@
  *
  * Wave 184 SW5 (Path D) — Profile polish to feature-page parity with
  * W181-W183 messenger polish arc. Pattern mirrors MessengerBackdrop.tsx
- * (W181 SW2) which itself mirrors FooterBackdrop.tsx (W176 SW2 / EventsBackdrop
- * W118 SW3 CLS-118-03 lesson — pixel-based orb sizing eliminates CLS
+ * (W181 SW2) which itself mirrors EventsBackdrop
+ * (W118 SW3 CLS-118-03 lesson — pixel-based orb sizing eliminates CLS
  * shifts when container content grows; %-based sizing was the W118 culprit).
  *
  * 3 orbs (rose-primary, pink-warm-accent, amber-cozy-tertiary) layered
