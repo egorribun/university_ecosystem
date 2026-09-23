@@ -1637,6 +1637,18 @@
         "FromDishka[AsyncDatabaseSession]",
         "inject"
       ],
+      "id": "app.routers.notifications:announce_platform_release:POST:/admin/releases",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
       "id": "app.routers.notifications:broadcast:POST:/broadcast",
       "legacy_dependencies": [],
       "ownership": "canonical_dishka"
@@ -1732,7 +1744,7 @@
   ],
   "schema_version": 1,
   "summary": {
-    "canonical_dishka": 135,
+    "canonical_dishka": 136,
     "public_no_db": 11,
     "worker_internal": 4
   }
