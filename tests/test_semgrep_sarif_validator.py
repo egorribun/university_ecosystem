@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import runpy
 import sys
@@ -81,6 +82,63 @@ def test_approved_suppression_is_valid_even_when_semgrep_returns_findings(
     report, policy = _write_inputs(tmp_path, _report(_result()))
 
     validator.validate_report(report, policy, scanner_status=1)
+
+
+@pytest.mark.parametrize("alteration", [None, "shifted", "unsuppressed"])
+def test_cdc_publication_suppressions_match_the_current_source_only(
+    tmp_path: Path, alteration: str | None
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    source_path = "app/workers/cdc_outbox.py"
+    source = ast.parse((root / source_path).read_text(encoding="utf-8"))
+    calls = [
+        node
+        for node in ast.walk(source)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "execute"
+        and node.args
+        and isinstance(node.args[0], ast.JoinedStr)
+        and isinstance(node.args[0].values[0], ast.Constant)
+        and node.args[0].values[0].value == "CREATE PUBLICATION "
+    ]
+    assert len(calls) == 1
+    call = calls[0]
+    assert call.end_lineno is not None
+    policy_path = root / "security/semgrep-suppression-policy.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    cdc_rules = {
+        entry["rule_id"] for entry in policy["entries"] if entry["path"] == source_path
+    }
+    assert cdc_rules == {
+        "python.lang.security.audit.formatted-sql-query.formatted-sql-query",
+        "python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query",
+    }
+
+    results = []
+    for entry in policy["entries"]:
+        is_cdc = entry["path"] == source_path
+        start = call.lineno if is_cdc else entry["start_line"]
+        end = call.end_lineno if is_cdc else entry["end_line"]
+        if is_cdc and alteration == "shifted":
+            start += 1
+            end += 1
+        results.append(
+            _result(
+                rule_id=entry["rule_id"],
+                path=entry["path"],
+                start_line=start,
+                end_line=end,
+                suppressed=not (is_cdc and alteration == "unsuppressed"),
+            )
+        )
+    report, _ = _write_inputs(tmp_path, _report(*results))
+
+    if alteration is None:
+        validator.validate_report(report, policy_path, scanner_status=0)
+    else:
+        with pytest.raises(validator.ValidationError, match="not covered"):
+            validator.validate_report(report, policy_path, scanner_status=0)
 
 
 def test_unapproved_result_is_rejected(tmp_path: Path) -> None:
