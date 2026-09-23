@@ -2,30 +2,46 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import psycopg
 import pyotp
 import pytest
 from alembic.config import Config
 from fastapi import HTTPException
+from psycopg import sql
 from sqlalchemy import MetaData, Table, create_engine, insert, inspect, select, text
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from alembic import command
 from app.auth import mfa
 from app.auth.mfa.email_otp import EmailOtpService, MfaOtpRejected
 from app.models import User
 
-DSN = os.getenv("MFA_TEST_POSTGRES_DSN", "")
+
+def _acceptance_requested() -> bool:
+    return bool(os.getenv("MFA_TEST_POSTGRES_DSN")) or (
+        os.getenv("RUN_INTEGRATION_TESTS") == "1"
+    )
+
+
 pytestmark = [
     pytest.mark.skipif(
-        not DSN,
-        reason="MFA_TEST_POSTGRES_DSN is required for destructive PostgreSQL acceptance",
+        "not _acceptance_requested()",
+        reason="requires PostgreSQL integration lane or dedicated MFA test DSN",
     ),
     pytest.mark.filterwarnings("error:.*autoincrement.*only make sense for MySQL.*"),
 ]
@@ -42,10 +58,18 @@ class _Limiter:
         return None
 
 
-def _urls() -> tuple[str, str]:
-    parsed = make_url(DSN)
-    if "test" not in (parsed.database or "").lower():
-        pytest.fail("MFA_TEST_POSTGRES_DSN must name a dedicated test database")
+def _urls(dsn: str) -> tuple[str, str]:
+    if not dsn:
+        raise ValueError("PostgreSQL acceptance requires an explicit test database URL")
+    parsed = make_url(dsn)
+    if (
+        parsed.get_backend_name() != "postgresql"
+        or not parsed.host
+        or not parsed.username
+    ):
+        raise ValueError("PostgreSQL acceptance requires explicit host and user")
+    if not re.search(r"(?:^test|[-_]test(?:[-_]|$))", parsed.database or "", re.I):
+        raise ValueError("PostgreSQL acceptance must name a dedicated test database")
     return (
         parsed.set(drivername="postgresql+asyncpg").render_as_string(
             hide_password=False
@@ -54,6 +78,60 @@ def _urls() -> tuple[str, str]:
             hide_password=False
         ),
     )
+
+
+@contextmanager
+def _postgres_acceptance_urls() -> Iterator[tuple[str, str]]:
+    """Own only a newly created database, never the suite or manual database."""
+    manual_dsn = os.getenv("MFA_TEST_POSTGRES_DSN")
+    if manual_dsn:
+        yield _urls(manual_dsn)
+        return
+    if os.getenv("RUN_INTEGRATION_TESTS") != "1":
+        raise RuntimeError("PostgreSQL acceptance requires the integration opt-in")
+    if os.getenv("ENVIRONMENT") != "testing":
+        raise RuntimeError("PostgreSQL acceptance provisioning requires testing")
+    if os.getenv("UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET") != "1":
+        raise RuntimeError("PostgreSQL acceptance provisioning requires reset opt-in")
+
+    source_async, _ = _urls(os.getenv("DATABASE_URL", ""))
+    source = make_url(source_async)
+    database_name = f"test_mfa_{uuid4().hex}"
+    if database_name == source.database:
+        raise RuntimeError("owned acceptance target must differ from source database")
+    target_urls = _urls(
+        source.set(database=database_name).render_as_string(hide_password=False)
+    )
+    maintenance_dsn = source.set(
+        drivername="postgresql", database="postgres"
+    ).render_as_string(hide_password=False)
+    with psycopg.connect(
+        maintenance_dsn,
+        autocommit=True,
+        connect_timeout=10,
+        options="-c lock_timeout=10000 -c statement_timeout=30000",
+    ) as admin:
+        # A failed CREATE (including a name collision) confers no ownership.
+        # Never use DROP IF EXISTS or retry by deleting another run's database.
+        admin.execute(
+            sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database_name))
+        )
+        try:
+            yield target_urls
+        finally:
+            # FORCE closes remaining connections only to this owned disposable
+            # database if an assertion interrupted normal session disposal.
+            admin.execute(
+                sql.SQL("DROP DATABASE {} WITH (FORCE)").format(
+                    sql.Identifier(database_name)
+                )
+            )
+
+
+@pytest.fixture
+def mfa_postgres_urls() -> Iterator[tuple[str, str]]:
+    with _postgres_acceptance_urls() as urls:
+        yield urls
 
 
 def _upgrade(sync_url: str, revision: str) -> None:
@@ -82,6 +160,13 @@ def _service() -> EmailOtpService:
 
 def _assert_contract_abort_and_lock(sync_url: str) -> None:
     engine = create_engine(sync_url)
+    try:
+        _assert_contract_on_engine(sync_url, engine)
+    finally:
+        engine.dispose()
+
+
+def _assert_contract_on_engine(sync_url: str, engine: Engine) -> None:
     with engine.connect() as connection:
         if inspect(connection).has_table("alembic_version"):
             pytest.fail("dedicated PostgreSQL acceptance database must start empty")
@@ -214,14 +299,22 @@ def _assert_contract_abort_and_lock(sync_url: str) -> None:
             ).scalar_one()
             == "a" * 64
         )
-    engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_postgres_migration_and_two_connection_security_races() -> None:
-    async_url, sync_url = _urls()
+async def test_postgres_migration_and_two_connection_security_races(
+    mfa_postgres_urls: tuple[str, str],
+) -> None:
+    async_url, sync_url = mfa_postgres_urls
     _assert_contract_abort_and_lock(sync_url)
     engine = create_async_engine(async_url)
+    try:
+        await _assert_security_races(engine)
+    finally:
+        await engine.dispose()
+
+
+async def _assert_security_races(engine: AsyncEngine) -> None:
     sessions = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     service = _service()
 
@@ -431,4 +524,3 @@ async def test_postgres_migration_and_two_connection_security_races() -> None:
         await factor_db.commit()
 
     assert await asyncio.wait_for(trusted_task, timeout=5) is None
-    await engine.dispose()
