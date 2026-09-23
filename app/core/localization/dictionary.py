@@ -141,6 +141,14 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Изменение пары",
         "en": "Class change",
     },
+    "notifications.system.release.title": {
+        "ru": "Вышла новая версия платформы {version}",
+        "en": "Platform version {version} is available",
+    },
+    "notifications.system.release.body_default": {
+        "ru": "Обновите страницу, чтобы получить последние улучшения.",
+        "en": "Reload the page to get the latest improvements.",
+    },
     "notifications.schedule.change.updated": {
         "ru": "Пара перенесена или изменена",
         "en": "The class was rescheduled or changed",

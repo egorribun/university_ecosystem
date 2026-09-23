@@ -39,9 +39,12 @@ from app.schemas.notifications import (
     PushSubscriptionTopicsUpdate,
     PushTestRequest,
     PushTopicsResponse,
+    ReleaseAnnouncementRequest,
+    ReleaseAnnouncementResponse,
     SendTestResponse,
 )
 from app.services.notifications.delivery import deliver_and_process_push_results
+from app.services.notifications.system_release import announce_release
 from app.services.push_service import deliver_push_to_subscriptions
 from app.services.push_topics import (
     get_allowed_topics,
@@ -852,6 +855,63 @@ async def disable_user_push(
         },
     )
     return {"ok": True, "removed": len(existing)}
+
+
+@router.post("/admin/releases", response_model=ReleaseAnnouncementResponse)
+@inject
+async def announce_platform_release(
+    data: ReleaseAnnouncementRequest,
+    request: Request,
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
+) -> ReleaseAnnouncementResponse:
+    """Announce a released platform version once to every active user."""
+    locale = resolve_locale(request=request, user=user)
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "forbidden",
+                "message": translate("errors.forbidden", locale=locale),
+            },
+        )
+    try:
+        await enforce_rate_limit(
+            strategy=get_default_strategy(),
+            identifier=f"notifications:release:{user.id}",
+            limit=5,
+            window_seconds=3600,
+        )
+    except RateLimitExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": "rate_limited",
+                "message": translate("errors.rate_limit.push_broadcast", locale=locale),
+                "retry_after": exc.info.retry_after,
+            },
+        ) from None
+
+    result = await announce_release(
+        db,
+        version=data.version,
+        notes={"ru": data.notes_ru, "en": data.notes_en},
+    )
+    await db.commit()
+    logger.info(
+        "notifications.release.announced",
+        extra={
+            "user_id": user.id,
+            "version": result.version,
+            "created": result.created,
+            "already_announced": result.already_announced,
+        },
+    )
+    return ReleaseAnnouncementResponse(
+        version=result.version,
+        created=result.created,
+        already_announced=result.already_announced,
+    )
 
 
 @router.post("/broadcast", response_model=SendTestResponse)

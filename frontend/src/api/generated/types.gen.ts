@@ -2074,6 +2074,44 @@ export type RecoveryCodesGenerateOut = {
 }
 
 /**
+ * ReleaseAnnouncementRequest
+ */
+export type ReleaseAnnouncementRequest = {
+  /**
+   * Notes En
+   */
+  notes_en?: string | null
+  /**
+   * Notes Ru
+   */
+  notes_ru?: string | null
+  /**
+   * Version
+   *
+   * Released semantic version, announced once
+   */
+  version: string
+}
+
+/**
+ * ReleaseAnnouncementResponse
+ */
+export type ReleaseAnnouncementResponse = {
+  /**
+   * Already Announced
+   */
+  already_announced: boolean
+  /**
+   * Created
+   */
+  created: number
+  /**
+   * Version
+   */
+  version: string
+}
+
+/**
  * RenameChat
  *
  * Wave 209 G1 — rename a group's display title.
@@ -6185,6 +6223,33 @@ export type DisableUserPushApiV1PushAdminDisableUserPostResponses = {
 
 export type DisableUserPushApiV1PushAdminDisableUserPostResponse =
   DisableUserPushApiV1PushAdminDisableUserPostResponses[keyof DisableUserPushApiV1PushAdminDisableUserPostResponses]
+
+export type AnnouncePlatformReleaseApiV1PushAdminReleasesPostData = {
+  body: ReleaseAnnouncementRequest
+  path?: never
+  query?: never
+  url: "/api/v1/push/admin/releases"
+}
+
+export type AnnouncePlatformReleaseApiV1PushAdminReleasesPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AnnouncePlatformReleaseApiV1PushAdminReleasesPostError =
+  AnnouncePlatformReleaseApiV1PushAdminReleasesPostErrors[keyof AnnouncePlatformReleaseApiV1PushAdminReleasesPostErrors]
+
+export type AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReleaseAnnouncementResponse
+}
+
+export type AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponse =
+  AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponses[keyof AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponses]
 
 export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetData = {
   body?: never

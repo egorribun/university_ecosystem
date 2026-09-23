@@ -29,6 +29,9 @@ import type {
   AllEventsApiV1EventsGetData,
   AllEventsApiV1EventsGetErrors,
   AllEventsApiV1EventsGetResponses,
+  AnnouncePlatformReleaseApiV1PushAdminReleasesPostData,
+  AnnouncePlatformReleaseApiV1PushAdminReleasesPostErrors,
+  AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponses,
   AttendanceSummaryApiV1StatsAttendanceGetData,
   AttendanceSummaryApiV1StatsAttendanceGetErrors,
   AttendanceSummaryApiV1StatsAttendanceGetResponses,
@@ -2605,6 +2608,35 @@ export const disableUserPushApiV1PushAdminDisableUserPost = <ThrowOnError extend
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/push/admin/disable-user",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Announce Platform Release
+ *
+ * Announce a released platform version once to every active user.
+ */
+export const announcePlatformReleaseApiV1PushAdminReleasesPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<AnnouncePlatformReleaseApiV1PushAdminReleasesPostData, ThrowOnError>
+): RequestResult<
+  AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponses,
+  AnnouncePlatformReleaseApiV1PushAdminReleasesPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponses,
+    AnnouncePlatformReleaseApiV1PushAdminReleasesPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/push/admin/releases",
     ...options,
     headers: {
       "Content-Type": "application/json",

@@ -767,6 +767,38 @@ export const handlers = [
       return HttpResponse.json(responseJson, init);
     },
   ),
+  http.post(`${baseURL}/api/v1/push/admin/releases`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getAnnouncePlatformReleaseApiV1PushAdminReleasesPost200Response(),
+        { status: 200 },
+      ],
+      [
+        await getAnnouncePlatformReleaseApiV1PushAdminReleasesPost422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[
+        next(`post /api/v1/push/admin/releases`) % resultArray.length
+      ];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
   http.post(`${baseURL}/api/v1/users/me/avatar`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -9150,6 +9182,47 @@ export function getDisableUserPushApiV1PushAdminDisableUserPost200Response() {
 }
 
 export function getDisableUserPushApiV1PushAdminDisableUserPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getAnnouncePlatformReleaseApiV1PushAdminReleasesPost200Response() {
+  return {
+    already_announced: faker.datatype.boolean(),
+    created: faker.number.int(),
+    version: faker.lorem.words(),
+  };
+}
+
+export function getAnnouncePlatformReleaseApiV1PushAdminReleasesPost422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
