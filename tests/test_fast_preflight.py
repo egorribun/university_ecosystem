@@ -29,21 +29,52 @@ def test_default_checks_cover_frontend_backend_harness_and_focused_contracts() -
     assert [check.name for check in checks] == [
         "frontend-typecheck",
         "frontend-lint",
+        "frontend-format",
+        "frontend-i18n",
+        "message-contract",
         "backend-typecheck",
         "backend-lint",
         "verify-harness",
         "focused-contract-tests",
     ]
+    by_name = {check.name: check for check in checks}
+    # These mirror the Frontend "Lint & Format" static gates in CI.
+    assert by_name["frontend-format"].command[1:] == (
+        "run",
+        "format:check",
+        "--prefix",
+        "frontend",
+    )
+    assert by_name["frontend-i18n"].command[1:] == (
+        "run",
+        "i18n:check",
+        "--prefix",
+        "frontend",
+    )
+    assert by_name["message-contract"].command == (
+        sys.executable,
+        "scripts/generate_message_contract.py",
+        "--check",
+    )
     assert Path(checks[0].command[0]).name.lower() in {"npm", "npm.cmd"}
     assert checks[0].command[1:3] == ("run", "typecheck")
     assert checks[1].command[1:3] == ("run", "lint")
-    assert checks[2].command[:3] == (sys.executable, "-m", "mypy")
-    assert checks[3].command[:3] == (sys.executable, "-m", "ruff")
-    assert checks[4].command[:2] == (sys.executable, "verify_harness.py")
-    assert checks[5].command[:3] == (sys.executable, "-m", "pytest")
-    assert checks[5].command[3:5] == ("-q", "-p")
-    assert checks[5].command[5] == "no:cacheprovider"
-    normalized_command = [item.replace("\\", "/") for item in checks[5].command]
+    assert by_name["backend-typecheck"].command[:3] == (sys.executable, "-m", "mypy")
+    assert by_name["backend-lint"].command[:3] == (sys.executable, "-m", "ruff")
+    assert by_name["verify-harness"].command[:2] == (
+        sys.executable,
+        "verify_harness.py",
+    )
+    assert by_name["focused-contract-tests"].command[:3] == (
+        sys.executable,
+        "-m",
+        "pytest",
+    )
+    assert by_name["focused-contract-tests"].command[3:5] == ("-q", "-p")
+    assert by_name["focused-contract-tests"].command[5] == "no:cacheprovider"
+    normalized_command = [
+        item.replace("\\", "/") for item in by_name["focused-contract-tests"].command
+    ]
     assert any(
         item.endswith("/tests/contracts/test_ci_release_capacity_contract.py")
         for item in normalized_command

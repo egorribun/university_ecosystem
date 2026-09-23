@@ -91,6 +91,16 @@ def default_checks(repo_root: Path) -> tuple[CheckSpec, ...]:
             "frontend-typecheck", (npm, "run", "typecheck", "--prefix", "frontend")
         ),
         CheckSpec("frontend-lint", (npm, "run", "lint", "--prefix", "frontend")),
+        # Mirror the remaining Frontend "Lint & Format" static gates that are
+        # fast enough for a local preflight.
+        CheckSpec(
+            "frontend-format", (npm, "run", "format:check", "--prefix", "frontend")
+        ),
+        CheckSpec("frontend-i18n", (npm, "run", "i18n:check", "--prefix", "frontend")),
+        CheckSpec(
+            "message-contract",
+            _python_command("scripts/generate_message_contract.py", "--check"),
+        ),
         CheckSpec(
             "backend-typecheck",
             _python_command("-m", "mypy", "--config-file", "pyproject.toml", "app"),
@@ -406,6 +416,9 @@ def _parser() -> argparse.ArgumentParser:
         choices=(
             "frontend-typecheck",
             "frontend-lint",
+            "frontend-format",
+            "frontend-i18n",
+            "message-contract",
             "backend-typecheck",
             "backend-lint",
             "verify-harness",
