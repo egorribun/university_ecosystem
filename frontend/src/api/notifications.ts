@@ -2,6 +2,7 @@ import * as v from "valibot"
 
 import {
   adminGetUserTopicsApiV1PushAdminTopicsUserIdGet,
+  announcePlatformReleaseApiV1PushAdminReleasesPost,
   adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut,
   checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost,
   clearNotificationsApiV1NotificationsDelete,
@@ -64,6 +65,30 @@ const deadLetterListSchema = v.object({
   total: v.pipe(v.number(), v.integer()),
 })
 
+const RELEASE_CORE = /^\d{1,4}\.\d{1,4}\.\d{1,6}$/u
+const RELEASE_PRERELEASE = /^[0-9A-Za-z][0-9A-Za-z.-]{0,31}$/u
+
+/**
+ * Mirrors the backend RELEASE_VERSION_PATTERN: a semantic version with an
+ * optional pre-release suffix and no build metadata.
+ */
+export const isReleaseVersion = (value: string): boolean => {
+  const separator = value.indexOf("-")
+  if (separator === -1) return RELEASE_CORE.test(value)
+  return (
+    RELEASE_CORE.test(value.slice(0, separator)) &&
+    RELEASE_PRERELEASE.test(value.slice(separator + 1))
+  )
+}
+
+const releaseAnnouncementSchema = v.object({
+  version: v.string(),
+  created: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  already_announced: v.boolean(),
+})
+
+export type ReleaseAnnouncementResult = v.InferOutput<typeof releaseAnnouncementSchema>
+
 export type NotificationEntry = v.InferOutput<typeof notificationSchema>
 export type NotificationsListResult = v.InferOutput<typeof notificationsListSchema>
 export type DeadLetterJob = v.InferOutput<typeof deadLetterJobSchema>
@@ -122,6 +147,29 @@ export const retryDeadLetterJobs = async (jobIds: string[]) => {
     body: { job_ids: jobIds },
     throwOnError: true,
   })
+}
+
+export const announcePlatformRelease = async (input: {
+  version: string
+  notesRu?: string
+  notesEn?: string
+}): Promise<ReleaseAnnouncementResult> => {
+  await import("@/api/client")
+  const notesRu = input.notesRu?.trim()
+  const notesEn = input.notesEn?.trim()
+  const response = await announcePlatformReleaseApiV1PushAdminReleasesPost({
+    body: {
+      version: input.version,
+      ...(notesRu ? { notes_ru: notesRu } : {}),
+      ...(notesEn ? { notes_en: notesEn } : {}),
+    },
+    throwOnError: true,
+  })
+  return ensureValidResponse(
+    releaseAnnouncementSchema,
+    response.data,
+    "POST /api/v1/push/admin/releases"
+  )
 }
 
 export const purgeDeadLetterJobs = async (jobIds: string[]) => {

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 vi.mock("@/api/generated", () => ({
   adminGetUserTopicsApiV1PushAdminTopicsUserIdGet: vi.fn(),
   adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut: vi.fn(),
+  announcePlatformReleaseApiV1PushAdminReleasesPost: vi.fn(),
   checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost: vi.fn(),
   clearNotificationsApiV1NotificationsDelete: vi.fn(),
   unsubscribeApiV1PushUnsubscribePost: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("@/api/client", () => ({
 
 import * as gen from "@/api/generated"
 import {
+  announcePlatformRelease,
   checkSchedule,
   clearNotifications,
   deleteSubscription,
@@ -462,5 +464,37 @@ describe("dead-letter queue (generated client)", () => {
       body: { job_ids: ["j2"] },
       throwOnError: true,
     })
+  })
+})
+
+describe("announcePlatformRelease", () => {
+  it("sends only the provided notes and validates the response", async () => {
+    vi.mocked(gen.announcePlatformReleaseApiV1PushAdminReleasesPost).mockResolvedValue({
+      data: { version: "1.4.0", created: 2, already_announced: false },
+    } as never)
+
+    await expect(announcePlatformRelease({ version: "1.4.0" })).resolves.toEqual({
+      version: "1.4.0",
+      created: 2,
+      already_announced: false,
+    })
+    expect(gen.announcePlatformReleaseApiV1PushAdminReleasesPost).toHaveBeenCalledWith({
+      body: { version: "1.4.0" },
+      throwOnError: true,
+    })
+
+    await announcePlatformRelease({ version: "1.4.1", notesRu: " RU ", notesEn: "" })
+    expect(gen.announcePlatformReleaseApiV1PushAdminReleasesPost).toHaveBeenLastCalledWith({
+      body: { version: "1.4.1", notes_ru: "RU" },
+      throwOnError: true,
+    })
+  })
+
+  it("rejects a response that does not match the contract", async () => {
+    vi.mocked(gen.announcePlatformReleaseApiV1PushAdminReleasesPost).mockResolvedValue({
+      data: { version: "1.4.0", created: 1.5, already_announced: false },
+    } as never)
+
+    await expect(announcePlatformRelease({ version: "1.4.0" })).rejects.toThrow()
   })
 })

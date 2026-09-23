@@ -258,7 +258,8 @@ describe("AdminNotificationsFeature defensive error handling", () => {
     expect(screen.getByRole("checkbox", { name: "Select all" })).toBeInTheDocument()
     expect(screen.getByRole("checkbox", { name: "Select" })).toBeInTheDocument()
 
-    const userIdInput = await screen.findByRole("textbox")
+    // The user-topics ID field is the first textbox; the release form follows it.
+    const userIdInput = (await screen.findAllByRole("textbox"))[0]!
     await userEvent.type(userIdInput, "44444444-4444-4444-4444-444444444444")
     await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
     expect(await screen.findByText("Experimental topic")).toBeInTheDocument()

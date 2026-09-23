@@ -47,6 +47,21 @@
       "userSummary": "Managing topics for {{email}} (ID {{id}})",
       "empty": "No topics are currently available."
     },
+    "release": {
+      "title": "Release announcement",
+      "description": "Tell every active user that a new platform version is available. Each version is announced once.",
+      "versionLabel": "Version",
+      "versionHelper": "Semantic version, for example 1.4.0 or 2.0.0-rc.1.",
+      "invalidVersion": "Enter a semantic version such as 1.4.0.",
+      "notesRuLabel": "Release notes (Russian, optional)",
+      "notesEnLabel": "Release notes (English, optional)",
+      "submit": "Announce release",
+      "sent": "Version {{version}} announced to {{count}} users.",
+      "alreadyAnnounced": "Version {{version}} was already announced; nobody new needed the notification.",
+      "caughtUp": "Version {{version}} was already announced; {{count}} users who missed it were notified.",
+      "error": "Failed to announce the release.",
+      "rateLimited": "Too many announcements. Try again later."
+    },
     "actions": {
       "retrySelected": "Retry selected",
       "purgeSelected": "Delete selected",
