@@ -80,6 +80,20 @@ restart protocol. PubAck-before-feedback also leaves a duplicate-delivery
 window on crash; bounded JetStream deduplication is not an indefinite replay
 guarantee. These are acceptance requirements, not a reason to remove the guard.
 
+### MVP scope decision (2026-09-23)
+
+The maintainer explicitly placed CDC outside the functional MVP. For the MVP
+release, the polling/LISTEN-NOTIFY `OutboxWorker` is the only supported outbox
+transport, and `BE-08` is recorded as **DEFERRED (maintainer-approved)**, not
+closed. The fail-closed guard, the monotonic checkpoint feedback and their
+tests remain in the release scope and must keep 100% viable-mutant coverage.
+The unsupported-transport message and the reply-request flag of standby
+status packets are therefore pinned exactly by `tests/test_cdc_safety.py`.
+
+This decision does not relax the acceptance contract below. Reactivating CDC
+requires a new maintainer decision and a separate implementation slice that
+satisfies every gate.
+
 ## Required acceptance contract before wiring CDC
 
 Any future CDC enablement must be a separate, reviewable implementation slice

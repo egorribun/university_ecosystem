@@ -8117,6 +8117,13 @@ chaos/rollback, manifest and resulting-main gates are independently evidenced.
 
 ## 148. Post-maintainer reassessment and active closure ledger (2026-09-22)
 
+**Safe-pause checkpoint:** the [2026-09-22 handoff](2026-09-22-mvp-safe-pause-handoff.md)
+records the paused state and the complete remaining stage/organizational
+acceptance. Work resumed on 2026-09-23; §149 supersedes the handoff's
+uncommitted-file inventory, WASM status and CI failure list. The handoff is an
+operational snapshot of this roadmap, not a replacement scope or a completion
+certificate.
+
 This section supersedes the operational state of §§142–147, not their historical
 evidence or the master-plan acceptance requirements. Existing checkbox lists
 remain acceptance templates, not a command to repeat completed feature work.
@@ -8145,7 +8152,7 @@ remain acceptance templates, not a command to repeat completed feature work.
 | --- | --- | --- |
 | BE-04 route DI | DONE implementation | 135 canonical Dishka routes, zero mixed/legacy; 11 public and 4 worker-internal routes separately classified. Primary/read component ownership independently resolved. |
 | BE-12 schema split | DONE implementation | 77 classes in 11 domain modules; AST class-body comparison unchanged; compatibility re-exports retained. |
-| BE-02 phase two/three | OPEN remainder | 82 dual, 52 Python-only, zero server-only defaults across 45 tables. Phase-three migration covers 29 literal columns; preflight defect below still needs closure. |
+| BE-02 phase two/three | OPEN remainder | 82 dual, 52 Python-only, zero server-only defaults across 45 tables. Phase-three migration covers 29 literal columns; its scalar-preflight defect is fixed in `e88009d6f`, with 42 offline and 6 PostgreSQL tests. Deployed-catalog acceptance and the remaining semantic candidates are still open. |
 | Product stages 1–8 | EVIDENCE-BLOCKED | Substantial existing implementations retained. No from-scratch profile/activity/messenger rewrite is authorized by historical checkbox templates. |
 | Full quality and release | EVIDENCE-BLOCKED | No terminal current-SHA 100% mutation/coverage manifest plus runtime/release evidence established by this reassessment. |
 
@@ -8218,11 +8225,9 @@ WASM reproducibility item as OPEN until verified or explicitly scoped out.
 
 Focused inventory verification (exit 0, 114 passed at candidate checkpoint):
 
-```powershell
-.venv/Scripts/python.exe -m pytest tests/test_quality_inventory.py tests/test_api_dependency_injection_contract.py --noconftest -o addopts= -p no:cacheprovider -q
-.venv/Scripts/python.exe scripts/quality/generate_test_inventory.py
-.venv/Scripts/python.exe scripts/quality/check_orphans_and_anti_patterns.py
-```
+    .venv/Scripts/python.exe -m pytest tests/test_quality_inventory.py tests/test_api_dependency_injection_contract.py --noconftest -o addopts= -p no:cacheprovider -q
+    .venv/Scripts/python.exe scripts/quality/generate_test_inventory.py
+    .venv/Scripts/python.exe scripts/quality/check_orphans_and_anti_patterns.py
 
 Parallel ownership is by disjoint files, with at most three implementers plus
 the lead. No concurrent commits or dependency installs. Review each diff for
@@ -8347,3 +8352,135 @@ query. This does not prove an external staging environment is absent; obtain
 its exact target/access before deployment. No production/staging mutation,
 merge, destructive data migration or gate bypass is implied by this ledger.
 The goal remains active and release readiness remains EVIDENCE-BLOCKED.
+
+### Published candidate and follow-up diagnostics (2026-09-22)
+
+The seven reviewed commits from `0606860c6` through
+`0ec4fed3a61826561cbbcaf3c7e1b665ac579706` were pushed to `egorribun` without
+force. PR #1266 reports this exact head. The fresh Matrix run is
+`35730420629`, attempt 1; it was queued/in progress at this checkpoint, not
+terminal green. Earlier focused coverage and fast-preflight results do not
+certify this new hosted run. Keep unrelated cosmetic changes local while the
+candidate runs, unless a confirmed failure requires a new candidate.
+
+Additional independent checks identified the following boundaries:
+
+- **Dependabot:** all 16 open default-branch alerts were compared with this
+  branch's manifests and lockfiles. The affected Python/npm versions are
+  patched here: anyio 4.14.2, httpx2/httpcore2 2.12.0, urllib3 2.7.0 and
+  js-yaml 4.3.2. Go service manifests use OTel 1.46.0 and grpc 1.83.2.
+  Five Go alerts still refer to old entries in GitHub's dependency graph,
+  which contains both old and patched versions even though root `go.mod`
+  declares no dependencies. Investigate graph provenance and verify a fresh
+  graph after promotion; do not dismiss alerts or change dependencies merely
+  to hide stale graph records. This comparison is not an image vulnerability
+  scan or certification of all dependencies.
+- **Spelling:** isolated CSpell 10.2.2 confirmed that the current configuration
+  checks zero files, including `README.md`. A diagnostic RU/EN inventory of
+  3,832 tracked text files reported 27,862 unknown-token occurrences, not
+  27,862 genuine typos. The sample excludes imported skill trees and lockfiles;
+  it is not a release scope. Technical identifiers and intentionally invalid
+  test inputs must not be blindly corrected or globally allowlisted. An
+  explicit authored-document/code scope and a typo canary remain necessary.
+- **WASM:** Windows byte mismatch does not establish an external blocker:
+  local Linux Docker is available. First reproduce the unchanged packages in
+  an isolated Linux builder with CI's Rust 1.97.1, wasm-pack 0.13.1 and Binaryen
+  117 pins/remaps, then implement the base64 export and repeat a clean strict
+  comparison. Existing CI intentionally verifies committed package hashes
+  before publishing provenance; do not reorder that check to accept arbitrary
+  regenerated bytes. `frontend.Dockerfile` currently uses Rust 1.94.1 and an
+  unpinned wasm-pack install, so it is not the canonical builder for this task.
+- **CI optimization:** `download_stryker_cost_artifacts.py` has no current
+  workflow caller. The active path uses `select_same_run_artifact_cli.py` and
+  pinned `actions/download-artifact`. Optimizing the unused downloader is not
+  evidence of faster CI; no such implementation was made.
+- **Email MFA acceptance:** existing browser MFA suites principally exercise
+  mocked TOTP. Add explicit email challenge/resend/rotation/error browser
+  contracts, but keep real SMTP/outbox, PostgreSQL concurrency and full
+  role/language release journeys separate from mocked-browser evidence.
+
+The user-owned untracked external audit remains untouched. No alert dismissal,
+merge, staging/production action, gate reduction or historical-result reuse was
+performed by these diagnostics.
+
+The maintained local-link checker additionally passed across 892 Markdown
+files. This checks local file targets, not wording, remote URLs or section
+anchors, and therefore does not close the dormant spelling gate.
+
+Fresh diagnostic timing for terminal baseline run `35724213801` was generated
+with the existing analyzer/renderer, not reconstructed from recollection:
+119 jobs, 95 success / 4 failure / 20 skipped; observed wall clock 2,530 seconds;
+peak concurrency 19 of the configured 20 slots. API-derived queue p50/p95 were
+63/386 seconds; setup p50/p95 34/98 seconds; test p50/p95 51/725 seconds.
+The four failures are dependency audit, source/test inventory, coverage policy
+and the CI aggregate, matching the fixes in the published candidate. Mutation
+lanes were skipped downstream: this 42-minute partial run is not a comparable
+full mutation benchmark. The report covers this workflow only, not simultaneous
+independent workflows sharing the account limit, and cannot justify raising
+concurrency or claiming unused global slots. CPU/RSS are explicitly unsupported
+by the Jobs API. Diagnostic artifacts are under `artifacts/quality/` and remain
+outside tracked source.
+
+## 149. Resume after safe pause: terminal CI triage and local candidate (2026-09-24)
+
+Scope decisions approved by the maintainer on 2026-09-23 (recorded in ADR-037
+and the active execution plan): CDC stays outside the functional MVP as
+DEFERRED; the spelling gate starts with authored documentation and adds code in
+a separate slice; no real staging exists, so Stage 10 uses Docker Core/full plus
+a local kind cluster; email and Web Push delivery use local Mailpit and VAPID
+sinks without third-party recipients.
+
+### Terminal state of run 35730420629 (source `0ec4fed3a`)
+
+The Jobs API reports 316 jobs across four pages; earlier triage read only the
+first three. Nineteen jobs failed and `CI Success` failed:
+
+- Semgrep ledger and MD046, both fixed by the §3.4/§3.5 handoff package.
+- Fourteen full-map-confirmed mutmut survivors: six string mutants of
+  `require_supported_cdc_transport` (message matched only by a loose regex),
+  `process_wal_message` mutants 73/75 and `send_status_update` mutants 5/7
+  (the reply-request byte 33 was never asserted), and constructor-argument
+  mutants in both embedding handlers and `cache_warmup._warm_news`.
+- `Frontend Mutation Evidence (100%)`: shard 1 reported 19 `Timeout` mutants,
+  all in the `src/api/client.ts` request interceptor and all marked `static`.
+
+Each Python survivor was reproduced by applying the exact generated mutation to
+the source and restoring the original bytes afterwards; all 17 exercised
+mutations (the 14 survivors plus preventive `uow`/`limit`/`locale` variants)
+are now killed by strengthened assertions without product changes.
+
+The frontend timeouts were not a slow interceptor. A probe with the Stryker
+runner's beforeEach/afterEach attribution window recorded 75 axios requests
+outside any test, every one `GET /auth/session/signing-key`: `useProfileSync`
+continued its bootstrap after the provider unmounted mid-`/users/me` and then
+fetched the signing key. Stryker therefore classified the interceptor mutants
+as static and ran the full related suite per mutant. The bootstrap now stops
+once the provider is unmounted (reusing the StrictMode-safe `mountedRef`);
+RED/GREEN runtime tests cover unmount and StrictMode remount. The same probe
+then recorded zero out-of-test requests over 3,080 related tests. A fresh
+focused Stryker run is the acceptance evidence, not the probe.
+
+### Canonical WASM regeneration
+
+A new bounded Linux builder (Rust 1.97.1, wasm-pack 0.13.1 with the digest the
+CI installer pins, Binaryen 117, Node 24.21.0; every download checksum-verified)
+produced two clean builds whose packages and provenance are byte-identical; the
+strict validator and runtime smoke passed and the sanitizer package is
+unchanged. The generated crypto package now exports `hmac_sha256_sign_base64`
+and full TypeScript passes. Evidence: `artifacts/quality/wasm-canonical-0ec4fed3a/`.
+`challenger-adversarial.test.mjs` had been outside every test command and
+failed since provenance validation was added; its fixture now carries a
+matching provenance file and the file runs in `npm run test:wasm`.
+
+### Product defects closed with RED tests
+
+Sliding tab indicators (border counted twice), mobile messenger back
+navigation (duplicate list entry), empty Stories slot height, StoryViewer body
+scroll ownership, and removal of unused glow/tilt/footer-orb code guarded by a source contract.
+The shared `renderWithRouter` helper now mounts `AppShellProvider` like
+production `AppProviders`.
+
+Remaining before publication: focused Stryker evidence for `client.ts`, full
+frontend and backend regression, independent review, then coherent commits and
+a fresh exact-SHA matrix. P3 notification producers, BE-02 phase four and the
+Stage 10 environments remain open.
