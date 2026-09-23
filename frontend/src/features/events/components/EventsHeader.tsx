@@ -217,7 +217,7 @@ export const EventsHeader = ({
           {tabRect && (
             <div
               aria-hidden="true"
-              className="absolute bg-(--bg-surface) shadow-sm rounded-lg z-negative"
+              className="absolute left-0 top-0 bg-(--bg-surface) shadow-sm rounded-lg z-negative"
               style={{
                 transform: `translate3d(${tabRect.left}px, ${tabRect.top}px, 0)`,
                 width: tabRect.width,
