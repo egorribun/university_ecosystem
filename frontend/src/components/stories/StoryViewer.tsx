@@ -11,6 +11,9 @@ import type { StoryItem } from "@/types/Story"
 import { useSwipe } from "@/hooks/useSwipe"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { useAppShell } from "@/contexts/AppShellContext"
+
+const STORY_VIEWER_OVERLAY_ID = "story-viewer"
 
 interface StoryViewerProps {
   stories: StoryItem[]
@@ -70,19 +73,20 @@ export const StoryViewer = ({
     getServerReadySnapshot
   )
 
+  const { setOverlayState } = useAppShell()
   const dialogTrapRef = useFocusTrap<HTMLDivElement>({
     active: activeStoryIndex !== null,
     initialFocus: () => closeButtonRef.current ?? undefined,
   })
 
+  // The app shell owns body scroll locking so overlapping overlays (mobile
+  // menu, map sidebar) release it only when the last one closes.
+  const isOpen = activeStoryIndex !== null
   useEffect(() => {
-    if (activeStoryIndex === null) return undefined
-    const { overflow } = document.body.style
-    document.body.style.overflow = "hidden"
-    return () => {
-      document.body.style.overflow = overflow
-    }
-  }, [activeStoryIndex])
+    if (!isOpen) return undefined
+    setOverlayState(STORY_VIEWER_OVERLAY_ID, { blurred: false, scrollLocked: true })
+    return () => setOverlayState(STORY_VIEWER_OVERLAY_ID, null)
+  }, [isOpen, setOverlayState])
 
   const activeIndex = activeStoryIndex ?? -1
   const viewerStory = stories[activeIndex] ?? null

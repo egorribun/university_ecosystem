@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
+import { useEffect, type ReactNode } from "react"
 import { renderToString } from "react-dom/server"
+import { AppShellProvider, useAppShell } from "@/contexts/AppShellContext"
 import { StoryViewer } from "../StoryViewer"
 import type { StoryItem } from "@/types/Story"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
@@ -112,6 +114,19 @@ const mockStories: StoryItem[] = [
   },
 ]
 
+// Production always mounts the viewer under the app shell, which owns body
+// scroll locking; keep follow-up renders under the same provider.
+const withShellRerender = async <T extends { rerender: (ui: ReactNode) => void }>(
+  view: Promise<T>
+): Promise<T> => {
+  const resolved = await view
+  const rerender = resolved.rerender
+  return {
+    ...resolved,
+    rerender: (ui: ReactNode) => rerender(<AppShellProvider>{ui}</AppShellProvider>),
+  }
+}
+
 describe("StoryViewer", () => {
   const defaultProps = {
     stories: mockStories,
@@ -126,13 +141,17 @@ describe("StoryViewer", () => {
 
   const renderViewer = (props = {}) => {
     const merged = { ...defaultProps, ...props }
-    const Wrapped = () => <StoryViewer {...merged} />
-    return renderWithRouter({ ui: Wrapped })
+    const Wrapped = () => (
+      <AppShellProvider>
+        <StoryViewer {...merged} />
+      </AppShellProvider>
+    )
+    return withShellRerender(renderWithRouter({ ui: Wrapped }))
   }
 
   const renderViewerDirect = (props = {}) => {
     const merged = { ...defaultProps, ...props }
-    return render(<StoryViewer {...merged} />)
+    return render(<StoryViewer {...merged} />, { wrapper: AppShellProvider })
   }
 
   it("renders nothing when activeStoryIndex is null", async () => {
@@ -152,7 +171,13 @@ describe("StoryViewer", () => {
     const serverDocument = globalThis.document
     vi.stubGlobal("document", undefined)
     try {
-      expect(renderToString(<StoryViewer {...defaultProps} />)).toBe("")
+      expect(
+        renderToString(
+          <AppShellProvider>
+            <StoryViewer {...defaultProps} />
+          </AppShellProvider>
+        )
+      ).toBe("")
     } finally {
       vi.stubGlobal("document", serverDocument)
     }
@@ -282,12 +307,16 @@ describe("StoryViewer", () => {
   it("keeps internal CTA navigation inside the router and rejects non-URL prefixes", async () => {
     const user = userEvent.setup()
     const target = () => <div data-testid="events-target">Events target</div>
-    const { rerender } = await renderWithRouter({
-      ui: () => (
-        <StoryViewer {...defaultProps} stories={[{ ...mockStories[0]!, cta_url: "/events" }]} />
-      ),
-      extraRoutes: [{ path: "/events", Component: target }],
-    })
+    const { rerender } = await withShellRerender(
+      renderWithRouter({
+        ui: () => (
+          <AppShellProvider>
+            <StoryViewer {...defaultProps} stories={[{ ...mockStories[0]!, cta_url: "/events" }]} />
+          </AppShellProvider>
+        ),
+        extraRoutes: [{ path: "/events", Component: target }],
+      })
+    )
 
     await user.click(screen.getByRole("link", { name: "stories.viewer.openLink" }))
     expect(await screen.findByTestId("events-target")).toBeInTheDocument()
@@ -404,9 +433,10 @@ describe("StoryViewer", () => {
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
     expect(screen.getAllByRole("progressbar")[0]).toHaveAttribute("aria-valuenow", "10")
 
-    document.body.style.overflow = "scroll"
+    expect(document.body.style.overflow).toBe("hidden")
     view.rerender(<StoryViewer {...defaultProps} activeStoryIndex={1} progress={65} />)
 
+    // Switching stories keeps the one shared lock instead of re-acquiring it.
     expect(document.body.style.overflow).toBe("hidden")
     expect(
       screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow"))
@@ -551,5 +581,36 @@ describe("StoryViewer", () => {
     })
     const dialog = screen.getByRole("dialog", { name: "Story Viewer:" })
     expect(dialog.querySelector('[class*="bottom-0"]')).not.toBeInTheDocument()
+  })
+
+  it("shares the app-shell scroll lock with other overlays instead of owning body overflow", () => {
+    const OtherOverlay = ({ locked }: { locked: boolean }) => {
+      const { setOverlayState } = useAppShell()
+      useEffect(() => {
+        setOverlayState("other-overlay", locked ? { blurred: false, scrollLocked: true } : null)
+      }, [locked, setOverlayState])
+      return null
+    }
+    const Shell = ({
+      locked,
+      activeStoryIndex,
+    }: {
+      locked: boolean
+      activeStoryIndex: number | null
+    }) => (
+      <AppShellProvider>
+        <OtherOverlay locked={locked} />
+        <StoryViewer {...defaultProps} activeStoryIndex={activeStoryIndex} />
+      </AppShellProvider>
+    )
+
+    const { rerender } = render(<Shell locked activeStoryIndex={null} />)
+    expect(document.body.style.overflow).toBe("hidden")
+    rerender(<Shell locked activeStoryIndex={0} />)
+    rerender(<Shell locked={false} activeStoryIndex={0} />)
+    // The story is still open, so releasing the other overlay keeps the lock.
+    expect(document.body.style.overflow).toBe("hidden")
+    rerender(<Shell locked={false} activeStoryIndex={null} />)
+    expect(document.body.style.overflow).toBe("")
   })
 })
