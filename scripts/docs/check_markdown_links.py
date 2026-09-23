@@ -12,7 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
 
 INLINE_LINK_RE = re.compile(r"\[[^\]]*\]\((?:<(?P<angled>[^>]+)>|(?P<plain>[^\s)]+))")
@@ -54,6 +54,29 @@ def _tracked_markdown(root: Path) -> list[Path]:
     return [root / line for line in result.stdout.splitlines() if line]
 
 
+def tracked_targets(root: Path) -> set[str] | None:
+    """Tracked files and their parent directories, or ``None`` without Git."""
+    git = shutil.which("git")
+    if git is None:
+        return None
+    try:
+        result = subprocess.run(  # noqa: S603 - executable resolved with shutil.which
+            [git, "ls-files"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    targets: set[str] = set()
+    for line in result.stdout.splitlines():
+        path = PurePosixPath(line)
+        targets.add(path.as_posix())
+        targets.update(parent.as_posix() for parent in path.parents)
+    return targets
+
+
 def _relative_target(document: Path, target: str, root: Path) -> Path | None:
     target = unquote(target.split("#", maxsplit=1)[0])
     target = re.sub(r":\d+(?:-\d+)?$", "", target)
@@ -66,8 +89,22 @@ def _relative_target(document: Path, target: str, root: Path) -> Path | None:
     )
 
 
+def _resolves(candidate: Path, root: Path, tracked: set[str] | None) -> bool:
+    if tracked is None:
+        return candidate.exists()
+    # An untracked local file exists on disk yet is absent from every checkout.
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(root.resolve()):
+        return False
+    return resolved.relative_to(root.resolve()).as_posix() in tracked
+
+
 def find_missing(
-    root: Path, documents: list[Path], *, include_archives: bool = False
+    root: Path,
+    documents: list[Path],
+    *,
+    include_archives: bool = False,
+    tracked: set[str] | None = None,
 ) -> list[str]:
     missing: list[str] = []
     for document in documents:
@@ -87,7 +124,7 @@ def find_missing(
         for match in matches:
             target = match.group("angled") or match.group("plain") or ""
             candidate = _relative_target(document, target, root)
-            if candidate is None or candidate.exists():
+            if candidate is None or _resolves(candidate, root, tracked):
                 continue
             line = content.count("\n", 0, match.start()) + 1
             missing.append(f"{relative_name}:{line} -> {target}")
@@ -114,7 +151,12 @@ def main() -> int:
             documents.extend(sorted(path.rglob("*.md")) if path.is_dir() else [path])
     else:
         documents = _tracked_markdown(root)
-    missing = find_missing(root, documents, include_archives=args.include_archives)
+    missing = find_missing(
+        root,
+        documents,
+        include_archives=args.include_archives,
+        tracked=tracked_targets(root),
+    )
     if missing:
         print("broken local Markdown links:", file=sys.stderr)
         print("\n".join(missing), file=sys.stderr)

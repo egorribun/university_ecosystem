@@ -111,8 +111,22 @@ def test_agent_instruction_surface_has_one_canonical_source() -> None:
     assert "docs/audits/AUDIT_WAVE" not in claude_adapter
 
 
+def _tracked_targets() -> set[str]:
+    """Every tracked file plus its parent directories, as POSIX repo paths."""
+    targets: set[str] = set()
+    for name in _tracked_files():
+        path = PurePosixPath(name)
+        targets.add(path.as_posix())
+        targets.update(parent.as_posix() for parent in path.parents)
+    return targets
+
+
 def test_canonical_markdown_internal_links_resolve() -> None:
     tracked = _tracked_files("*.md")
+    # A link must reach a tracked path: an untracked local file (such as a
+    # user-owned draft) exists on disk yet is absent from every CI checkout.
+    tracked_targets = _tracked_targets()
+    repository = ROOT.resolve()
     excluded_prefixes = (
         ".agents/",
         ".opencode/",
@@ -151,7 +165,10 @@ def test_canonical_markdown_internal_links_resolve() -> None:
                     if path_text.startswith("/")
                     else document.parent / path_text
                 )
-                if not candidate.exists():
+                resolved = candidate.resolve()
+                if not resolved.is_relative_to(repository) or (
+                    resolved.relative_to(repository).as_posix() not in tracked_targets
+                ):
                     line = text.count("\n", 0, match.start()) + 1
                     missing.append(f"{relative_name}:{line} -> {target}")
 

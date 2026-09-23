@@ -21,7 +21,7 @@
 3. [Continuation plan](2026-08-31-mvp-quality-closure-continuation.md), **§148**, затем относящиеся к текущей задаче acceptance-разделы. Старые operational snapshots не являются текущим статусом.
 4. [Исходное MVP ТЗ](University_Ecosystem_MVP.md): требования сохраняются, но предложения «переписать профиль с нуля» заменены утверждённым gap-аудитом существующего продукта.
 5. [Foundation plan](2026-08-25-quality-closure-foundation.md) и [старый prompt](prompt.md) — явно HISTORICAL/SUPERSEDED. Старые TypeScript blocker, PR #1257, shard counts и SHA не переносить в новый статус.
-6. [Внешний аудит](../../audits/AUDIT_PLATFORM_FULL.md), [индекс аудитов](../../audits/INDEX.md), [ADR-037](../../adr/ADR-037-cdc-outbox-transport-ownership.md), [ADR-039](../../adr/ADR-039-frontend-mutation-shard-cost-model.md).
+6. Внешний аудит `docs/audits/AUDIT_PLATFORM_FULL.md` (пользовательский, не отслеживается в Git), [индекс аудитов](../../audits/INDEX.md), [ADR-037](../../adr/ADR-037-cdc-outbox-transport-ownership.md), [ADR-039](../../adr/ADR-039-frontend-mutation-shard-cost-model.md).
 
 Это дополнительный handoff к одному активному roadmap, не второй конкурирующий master plan. При расхождении статусов использовать свежий код/логи/артефакты; при расхождении требований — утверждённый goal, AGENTS и текущий quality contract, а не старые baseline-таблицы.
 

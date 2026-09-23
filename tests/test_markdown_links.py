@@ -54,3 +54,20 @@ def test_find_missing_ignores_links_in_code_spans(tmp_path: Path) -> None:
     )
 
     assert find_missing(tmp_path, [document]) == ["README.md:2 -> missing.md"]
+
+
+def test_find_missing_rejects_existing_but_untracked_targets(tmp_path: Path) -> None:
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "tracked.md").write_text("# Tracked\n", encoding="utf-8")
+    (tmp_path / "docs" / "local-draft.md").write_text("# Draft\n", encoding="utf-8")
+    document = tmp_path / "README.md"
+    document.write_text(
+        "[tracked](docs/tracked.md)\n[dir](docs)\n[draft](docs/local-draft.md)\n",
+        encoding="utf-8",
+    )
+    tracked = {"README.md", "docs/tracked.md", "docs", "."}
+
+    assert find_missing(tmp_path, [document], tracked=tracked) == [
+        "README.md:3 -> docs/local-draft.md"
+    ]
+    assert find_missing(tmp_path, [document]) == []
