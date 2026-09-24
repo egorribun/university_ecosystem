@@ -30,7 +30,8 @@
  * @returns safe same-origin pathname or fallback
  */
 export function resolveRedirectPath(redirect: unknown, fallback = "/dashboard"): string {
-  if (typeof redirect !== "string" || redirect.length === 0) return fallback
+  // An empty string fails URL parsing below and falls back as well.
+  if (typeof redirect !== "string") return fallback
 
   // Relative path-only (e.g., "/events"); protocol-relative `//evil.com` excluded
   if (redirect.startsWith("/") && !redirect.startsWith("//") && !redirect.startsWith("/\\")) {

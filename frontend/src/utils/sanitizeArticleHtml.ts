@@ -68,34 +68,33 @@ const SAFE_DECODING_VALUES = new Set(["sync", "async", "auto"])
 const SAFE_DATA_IMAGE_URL_PATTERN =
   /^data:image\/(?:avif|gif|jpeg|jpg|png|webp);base64,[a-z0-9+/=\s]+$/i
 
-const getUrlProtocol = (value: string): string | null => {
-  const compact = [...value.trim()]
+const isUnsafeUrlAttribute = (name: string, value: string): boolean => {
+  // Judge the scheme without control characters and whitespace, so an
+  // obfuscated "java\tscript:" is rejected rather than read as a relative URL.
+  const compact = [...value]
     .filter((char) => {
       const code = char.charCodeAt(0)
       return code > 0x1f && code !== 0x7f && !/\s/.test(char)
     })
     .join("")
-  if (!compact) return null
+  if (!compact) return true
 
+  let url: URL
   try {
-    return new URL(compact, "https://ue.local").protocol.toLowerCase()
+    url = new URL(compact, "https://ue.local")
   } catch {
-    return null
+    return true
   }
-}
-
-const isUnsafeUrlAttribute = (name: string, value: string): boolean => {
-  const protocol = getUrlProtocol(value)
-  if (!protocol) return true
-  if (protocol === "data:") {
+  // URL.protocol is always lower-case.
+  if (url.protocol === "data:") {
     return name !== "src" || !SAFE_DATA_IMAGE_URL_PATTERN.test(value.trim())
   }
-  return !SAFE_PROTOCOLS.has(protocol)
+  return !SAFE_PROTOCOLS.has(url.protocol)
 }
 
 const sanitizeElement = (element: Element): void => {
   const tagName = element.tagName.toLowerCase()
-  const allowedAttributes = new Set(ALLOWED_ATTRIBUTES[tagName] ?? [])
+  const allowedAttributes = new Set<string>(ALLOWED_ATTRIBUTES[tagName])
   if (HEADING_TAGS.has(tagName)) allowedAttributes.add("id")
 
   for (const attribute of Array.from(element.attributes)) {
@@ -105,12 +104,9 @@ const sanitizeElement = (element: Element): void => {
       continue
     }
 
+    // The allowlist admits URL attributes only as <a href> and <img src>.
     if (URL_ATTRIBUTES.has(name)) {
-      const isAllowedUrlAttribute =
-        (tagName === "a" && name === "href") || (tagName === "img" && name === "src")
-      if (!isAllowedUrlAttribute || isUnsafeUrlAttribute(name, attribute.value)) {
-        element.removeAttribute(attribute.name)
-      }
+      if (isUnsafeUrlAttribute(name, attribute.value)) element.removeAttribute(attribute.name)
       continue
     }
 
@@ -120,9 +116,9 @@ const sanitizeElement = (element: Element): void => {
     }
 
     if (name === "class") {
-      const safeClasses = attribute.value
-        .split(/\s+/)
-        .filter((token) => SAFE_CODE_CLASS_PATTERN.test(token))
+      const safeClasses = Array.from(element.classList).filter((token) =>
+        SAFE_CODE_CLASS_PATTERN.test(token)
+      )
       if (safeClasses.length === 0) element.removeAttribute(attribute.name)
       else element.setAttribute(attribute.name, safeClasses.join(" "))
       continue
@@ -155,8 +151,9 @@ const sanitizeElement = (element: Element): void => {
     }
   }
 
-  if (tagName === "a" && element.getAttribute("target")?.toLowerCase() === "_blank") {
-    const rel = new Set((element.getAttribute("rel") ?? "").split(/\s+/).filter(Boolean))
+  // Only <a> may keep target, and the loop above normalized it to lower case.
+  if (element.getAttribute("target") === "_blank") {
+    const rel = new Set((element as HTMLAnchorElement).relList)
     rel.delete("opener")
     rel.add("noopener")
     rel.add("noreferrer")
@@ -165,8 +162,6 @@ const sanitizeElement = (element: Element): void => {
 }
 
 export function sanitizeArticleHtml(html: string): string {
-  if (!html) return ""
-
   if (typeof document === "undefined") {
     return htmlToPlainText(html)
   }
@@ -191,9 +186,8 @@ export function sanitizeArticleHtml(html: string): string {
     element.remove()
   }
 
-  for (const element of elements) {
-    if (template.content.contains(element)) sanitizeElement(element)
-  }
+  // Descendants of removed elements are detached; sanitizing them is harmless.
+  for (const element of elements) sanitizeElement(element)
 
   return template.innerHTML
 }

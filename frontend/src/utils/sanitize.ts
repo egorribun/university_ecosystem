@@ -68,44 +68,38 @@ export const sanitizeNewsText = async (dirty: string | null | undefined): Promis
 
 const TELEGRAM_HOSTS = new Set(["t.me", "telegram.me"])
 
-export const sanitizeHttpUrl = (raw: string | null | undefined): string | null => {
+/** Parse an absolute or same-origin http(s) URL without embedded credentials. */
+const parseHttpUrl = (raw: string | null | undefined): URL | null => {
   if (!raw) return null
   try {
-    const base =
-      typeof window !== "undefined" && typeof window.location?.origin === "string"
-        ? window.location.origin
-        : "about:blank"
+    // Without a window only absolute URLs parse; relative ones fall to null.
+    const base = typeof window === "undefined" ? undefined : window.location.origin
     const parsed = new URL(raw, base)
     const protocol = parsed.protocol.toLowerCase()
     if (protocol !== "http:" && protocol !== "https:") return null
     if (parsed.username || parsed.password) return null
-    return parsed.toString()
+    return parsed
   } catch {
     return null
   }
 }
 
+export const sanitizeHttpUrl = (raw: string | null | undefined): string | null =>
+  parseHttpUrl(raw)?.toString() ?? null
+
 export const sanitizeEmailAddress = (raw: string | null | undefined): string => {
-  if (!raw) return ""
-  const email = String(raw).trim()
+  const email = String(raw ?? "").trim()
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : ""
 }
 
 export const sanitizeTelegramUrl = (raw: string | null | undefined): string => {
   if (!raw) return ""
   const trimmed = String(raw).trim()
-  if (!trimmed) return ""
 
   if (trimmed.startsWith("http")) {
-    const safe = sanitizeHttpUrl(trimmed)
-    if (!safe) return ""
-    try {
-      const parsed = new URL(safe)
-      if (!TELEGRAM_HOSTS.has(parsed.hostname.toLowerCase())) return ""
-      return parsed.toString()
-    } catch {
-      return ""
-    }
+    // URL.hostname is already lower-case.
+    const parsed = parseHttpUrl(trimmed)
+    return parsed && TELEGRAM_HOSTS.has(parsed.hostname) ? parsed.toString() : ""
   }
 
   const withoutPrefix = trimmed.replace(/^@+/, "")
