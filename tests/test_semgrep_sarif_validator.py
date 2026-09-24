@@ -90,7 +90,14 @@ def test_cdc_publication_suppressions_match_the_current_source_only(
 ) -> None:
     root = Path(__file__).resolve().parents[1]
     source_path = "app/workers/cdc_outbox.py"
-    source = ast.parse((root / source_path).read_text(encoding="utf-8"))
+    source_text = (root / source_path).read_text(encoding="utf-8")
+    if "__mutmut_" in source_text:
+        # The ledger pins line numbers of the real source; mutmut's generated
+        # copy rewrites the module with one sibling function per mutant.
+        pytest.skip(  # QUALITY-123 @egorribun — isolated mutmut copy
+            "Semgrep line ledger applies to the real source, not the mutmut copy"
+        )
+    source = ast.parse(source_text)
     calls = [
         node
         for node in ast.walk(source)
