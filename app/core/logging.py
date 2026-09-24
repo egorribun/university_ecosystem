@@ -162,8 +162,6 @@ def _redact_nested(value: Any, *, seen: set[int]) -> Any:
     replaced with the same redaction marker rather than serialized.
     """
     if isinstance(value, str):
-        if len(value) <= 5:
-            return value
         return _redact_free_text(value)
 
     if isinstance(value, dict):
