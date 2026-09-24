@@ -59,7 +59,8 @@ test.describe("University ecosystem app", () => {
     await mock.login(page)
 
     await page.getByRole("link", { name: /Посмотреть все новости|See all news/i }).click()
-    await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
+    // The card's title link: a hover quick view repeats the title as a heading.
+    await expect(page.getByRole("link", { name: /Новость дня|News of the day/i })).toBeVisible()
 
     // Wait for the cache effect to run and verify it's saved
     await expect(async () => {
@@ -83,7 +84,7 @@ test.describe("University ecosystem app", () => {
       document.dispatchEvent(new Event("visibilitychange"))
     })
     await page.reload({ waitUntil: "networkidle" })
-    await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
+    await expect(page.getByRole("link", { name: /Новость дня|News of the day/i })).toBeVisible()
 
     expect(mock.state.newsLog.some((entry) => entry.status === 304)).toBeTruthy()
     expect(mock.state.newsLog.filter((entry) => entry.status === 200).length).toBeGreaterThan(0)
@@ -112,7 +113,7 @@ test.describe("University ecosystem app", () => {
     await mock.setNewsOffline(true)
     try {
       await page.reload({ waitUntil: "domcontentloaded" })
-      await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible({
+      await expect(page.getByRole("link", { name: /Новость дня|News of the day/i })).toBeVisible({
         timeout: TEST_TIMEOUTS.long,
       })
     } finally {
