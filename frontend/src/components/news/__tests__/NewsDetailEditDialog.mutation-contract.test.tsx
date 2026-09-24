@@ -318,4 +318,77 @@ describe("NewsDetailEditDialog mutation contracts", () => {
     revokeObjectURL.mockRestore()
     expect(onError).not.toHaveBeenCalled()
   })
+
+  it("blocks saving when only the title or only the content is blank", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    const title = screen.getByDisplayValue(initialData.title)
+    const content = screen.getByDisplayValue(initialData.content)
+    const save = () => screen.getByRole("button", { name: "common:buttons.save" })
+
+    await user.clear(title)
+    await user.type(title, "   ")
+    expect(save()).toBeDisabled()
+
+    await user.type(title, "Title")
+    await user.clear(content)
+    await user.type(content, "   ")
+    expect(save()).toBeDisabled()
+
+    await user.type(content, "Body")
+    expect(save()).toBeEnabled()
+  })
+
+  it("forgets a reset image so saving keeps the current image without uploading", async () => {
+    const user = userEvent.setup()
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:reset-me")
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    renderDialog()
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["x"], "x.png", { type: "image/png" })] },
+    })
+    expect(await screen.findByText("common:buttons.changePhoto")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.reset" }))
+    expect(screen.getByText("common:buttons.uploadPhoto")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() => expect(apiMocks.updateNews).toHaveBeenCalledOnce())
+    expect(apiMocks.uploadNewsImage).not.toHaveBeenCalled()
+    expect(apiMocks.updateNews).toHaveBeenCalledWith(
+      "news-contract",
+      expect.objectContaining({ image_url: initialData.image_url })
+    )
+    vi.restoreAllMocks()
+  })
+
+  it("discards a picked image when the dialog is cancelled and reopened", async () => {
+    const user = userEvent.setup()
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cancelled")
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    const view = renderDialog()
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["x"], "x.png", { type: "image/png" })] },
+    })
+    expect(await screen.findByText("common:buttons.changePhoto")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    view.rerender(
+      <QueryClientProvider client={view.client}>
+        <NewsDetailEditDialog {...makeProps({ open: false })} />
+      </QueryClientProvider>
+    )
+    view.rerender(
+      <QueryClientProvider client={view.client}>
+        <NewsDetailEditDialog {...makeProps({ open: true })} />
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("common:buttons.uploadPhoto")).toBeInTheDocument()
+    expect(screen.getByTestId("edit-preview")).toHaveAttribute("src", initialData.image_url)
+    expect(screen.queryByRole("button", { name: "common:buttons.reset" })).not.toBeInTheDocument()
+    vi.restoreAllMocks()
+  })
 })

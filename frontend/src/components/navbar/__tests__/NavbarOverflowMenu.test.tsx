@@ -153,4 +153,31 @@ describe("NavbarOverflowMenu", () => {
     await userEvent.click(trigger)
     expect(screen.getByRole("menu")).toBeInTheDocument()
   })
+
+  it("moves ArrowUp focus to the previous item in a longer menu", async () => {
+    const user = userEvent.setup()
+    await renderMenu({
+      items: [...items, { to: "/schedule", label: "Schedule", icon: Home }],
+    })
+    await user.click(screen.getByRole("button"))
+    await user.keyboard("{ArrowDown}")
+    expect(screen.getByRole("menuitem", { name: "Events" })).toHaveFocus()
+
+    await user.keyboard("{ArrowUp}")
+
+    expect(screen.getByRole("menuitem", { name: "News" })).toHaveFocus()
+  })
+
+  it("consumes Escape and takes over item navigation from the browser", async () => {
+    const user = userEvent.setup()
+    const props = await renderMenu()
+    await user.click(screen.getByRole("button"))
+
+    expect(fireEvent.click(screen.getByRole("menuitem", { name: "Events" }))).toBe(false)
+    expect(props.go).toHaveBeenCalledWith("/events")
+
+    await user.click(screen.getByRole("button"))
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(false)
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
+  })
 })

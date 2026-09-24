@@ -189,4 +189,10 @@ describe("BackToTop mutation contract", () => {
     expect(scrollTo).toHaveBeenNthCalledWith(1, { top: 0, behavior: "smooth" })
     expect(scrollTo).toHaveBeenNthCalledWith(2, 0, 0)
   })
+
+  it("shows the button immediately when the page is already scrolled on mount", () => {
+    setScrollY(900)
+    render(<BackToTop />)
+    expect(screen.getByRole("button")).toBeInTheDocument()
+  })
 })

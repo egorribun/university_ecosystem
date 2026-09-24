@@ -334,4 +334,11 @@ describe("GroupInfoPanel (W211 G4)", () => {
     fireEvent.keyDown(document, { key: "Escape" })
     expect(onClose).toHaveBeenCalledTimes(3)
   })
+
+  it("consumes the Escape key it handles", () => {
+    render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+      wrapper,
+    })
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(false)
+  })
 })

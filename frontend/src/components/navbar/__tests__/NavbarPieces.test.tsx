@@ -5,7 +5,8 @@
  * unauthenticated / authenticated states). Mirrors the renderWithRouter +
  * stub-props pattern from NavbarOverflowMenu.test.tsx (session 9 template).
  */
-import { screen } from "@testing-library/react"
+import { act, screen } from "@testing-library/react"
+import { useState } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { Home, Calendar } from "lucide-react"
@@ -61,8 +62,10 @@ describe("DesktopNav", () => {
     expect(document.querySelector(".navbar-desktop-nav")).toHaveClass("ml-(--space-8)", "gap-1")
     // active entry carries data-active.
     const newsLink = document.getElementById("navbar-link-news")
-    expect(newsLink).toHaveAttribute("data-active")
+    expect(newsLink).toHaveAttribute("data-active", "true")
     expect(document.getElementById("navbar-link-home")).toBeInTheDocument()
+    // Inactive entries expose no active state at all (not even "false").
+    expect(document.getElementById("navbar-link-home")).not.toHaveAttribute("data-active")
     expect(screen.getByText("News").previousElementSibling).toHaveClass(
       "absolute",
       "inset-0",
@@ -260,6 +263,41 @@ describe("MobileDrawerProfile", () => {
     })
     await userEvent.click(profileButton)
     expect(onProfileClick).toHaveBeenCalledOnce()
+  })
+
+  it("uses the placeholder avatar when the user has no avatar", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <MobileDrawerProfile
+          user={{ ...testUser, avatar_url: null }}
+          onProfileClick={vi.fn()}
+          t={t}
+        />
+      ),
+      authProvider: false,
+    })
+    expect(screen.getByRole("img", { name: testUser.full_name as string })).toHaveAttribute(
+      "src",
+      expect.stringContaining("default_avatar")
+    )
+  })
+
+  it("busts the avatar cache when the user's avatar version changes", async () => {
+    const withAvatar = { ...testUser, avatar_url: "https://cdn.example.test/me.png" }
+    let setUser!: (user: typeof withAvatar) => void
+    function Harness() {
+      const [user, updateUser] = useState({ ...withAvatar, avatar_updated_at: 100 })
+      // eslint-disable-next-line react-compiler/react-compiler -- test harness exposes the state setter
+      setUser = updateUser
+      return <MobileDrawerProfile user={user} onProfileClick={vi.fn()} t={t} />
+    }
+    await renderWithRouter({ ui: Harness, authProvider: false })
+    const avatar = () => screen.getByRole("img", { name: testUser.full_name as string })
+    expect(avatar().getAttribute("src")).toContain("_v=100")
+
+    act(() => setUser({ ...withAvatar, avatar_updated_at: 200 }))
+
+    expect(avatar().getAttribute("src")).toContain("_v=200")
   })
 
   it("shows the admin role label for admin users", async () => {

@@ -753,4 +753,69 @@ describe("MapSearchBar", () => {
     const buildingOption = screen.getByRole("option", { name: "Главный учебный корпус" })
     expect(buildingOption.querySelector("span.text-xs")).not.toBeInTheDocument()
   })
+
+  it("mirrors an attached node into the parent-owned ref", () => {
+    const input = document.createElement("input")
+    const inputRef: { current: HTMLInputElement | null } = { current: null }
+    const publicRef: { current: HTMLInputElement | null } = { current: null }
+
+    updateSearchInputRef(input, inputRef, { current: null }, publicRef)
+
+    expect(publicRef.current).toBe(input)
+    updateSearchInputRef(null, inputRef, { current: null }, publicRef)
+    expect(publicRef.current).toBeNull()
+  })
+
+  it("cancels the native key action for every handled listbox key", () => {
+    render(<MapSearchBar {...baseProps} />)
+    const input = screen.getByRole("combobox")
+    fireEvent.change(input, { target: { value: "ГУК" } })
+
+    expect(fireEvent.keyDown(input, { key: "ArrowDown" })).toBe(false)
+    expect(fireEvent.keyDown(input, { key: "ArrowUp" })).toBe(false)
+    expect(fireEvent.keyDown(input, { key: "Tab" })).toBe(true)
+    expect(fireEvent.keyDown(input, { key: "Escape" })).toBe(false)
+
+    fireEvent.change(input, { target: { value: "ГУК" } })
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false)
+  })
+
+  it("drops the active descendant after a keyboard selection and moves focus away", () => {
+    render(<MapSearchBar {...baseProps} />)
+    const input = screen.getByRole("combobox")
+    act(() => input.focus())
+    fireEvent.change(input, { target: { value: "ГУК" } })
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    expect(input).toHaveAttribute("aria-activedescendant")
+
+    fireEvent.keyDown(input, { key: "Enter" })
+
+    expect(input).not.toHaveAttribute("aria-activedescendant")
+    expect(input).not.toHaveFocus()
+  })
+
+  it("drops the active descendant when Escape dismisses the list", () => {
+    render(<MapSearchBar {...baseProps} />)
+    const input = screen.getByRole("combobox")
+    fireEvent.change(input, { target: { value: "ГУК" } })
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+
+    fireEvent.keyDown(input, { key: "Escape" })
+
+    expect(input).not.toHaveAttribute("aria-activedescendant")
+  })
+
+  it("drops the active descendant when the clear button empties the query", () => {
+    render(<MapSearchBar {...baseProps} />)
+    const input = screen.getByRole("combobox")
+    fireEvent.change(input, { target: { value: "ГУК" } })
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+
+    fireEvent.click(screen.getByRole("button", { name: "search.clear" }))
+
+    expect(input).toHaveValue("")
+    expect(input).not.toHaveAttribute("aria-activedescendant")
+    expect(input).toHaveFocus()
+  })
 })

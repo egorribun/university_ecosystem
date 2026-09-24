@@ -219,4 +219,25 @@ describe("NewsComments", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
     expect(deleteComment).not.toHaveBeenCalled()
   })
+
+  it("lets a non-admin author manage only their own comment", () => {
+    render(<NewsComments {...baseProps} user={{ id: "u2", role: "student" }} />)
+
+    expect(screen.getAllByLabelText("news:actions.editComment")).toHaveLength(1)
+    expect(screen.getAllByLabelText("news:actions.deleteComment")).toHaveLength(1)
+  })
+
+  it("closes the confirmation once a deletion is confirmed", async () => {
+    const user = userEvent.setup()
+    const deleteComment = vi.fn()
+    render(<NewsComments {...baseProps} deleteComment={deleteComment} />)
+
+    await user.click(screen.getAllByLabelText("news:actions.deleteComment")[1]!)
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "common:buttons.delete" })
+    )
+
+    expect(deleteComment).toHaveBeenCalledExactlyOnceWith("c2")
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+  })
 })

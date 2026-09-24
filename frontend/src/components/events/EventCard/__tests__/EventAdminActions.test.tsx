@@ -350,4 +350,57 @@ describe("EventAdminActions", () => {
 
     expect(removeEventListener).toHaveBeenCalledWith("mousedown", listener)
   })
+
+  it("cancels native handling of the menu keys it consumes", async () => {
+    const user = userEvent.setup()
+    render(<ControlledEventAdminActions />)
+    await user.click(screen.getByRole("button", { name: "events:card.aria.actions" }))
+    const menu = screen.getByRole("menu")
+
+    expect(fireEvent.keyDown(menu, { key: "ArrowDown" })).toBe(false)
+    expect(fireEvent.keyDown(menu, { key: "ArrowUp" })).toBe(false)
+    expect(fireEvent.keyDown(menu, { key: "Tab" })).toBe(true)
+    expect(fireEvent.keyDown(menu, { key: "Escape" })).toBe(false)
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+  })
+
+  it("keeps trigger clicks from activating the surrounding event card", async () => {
+    const user = userEvent.setup()
+    const cardClick = vi.fn()
+    render(
+      <div role="presentation" onClick={cardClick}>
+        <ControlledEventAdminActions />
+      </div>
+    )
+
+    await user.click(screen.getByRole("button", { name: "events:card.aria.actions" }))
+
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+    expect(cardClick).not.toHaveBeenCalled()
+  })
+
+  it("closes the menu and returns focus to the trigger after choosing delete", async () => {
+    const user = userEvent.setup()
+    const onDelete = vi.fn()
+    function Harness() {
+      const [anchor, setAnchor] = useState<HTMLElement | null>(null)
+      return (
+        <EventAdminActions
+          {...baseProps}
+          onDelete={onDelete}
+          menuAnchor={anchor}
+          setMenuAnchor={setAnchor}
+        />
+      )
+    }
+    render(<Harness />)
+    const trigger = screen.getByRole("button", { name: "events:card.aria.actions" })
+    await user.click(trigger)
+
+    await user.click(screen.getByRole("menuitem", { name: "common:buttons.delete" }))
+
+    expect(onDelete).toHaveBeenCalledOnce()
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
 })

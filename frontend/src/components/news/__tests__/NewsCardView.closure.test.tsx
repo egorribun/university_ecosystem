@@ -1,6 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+const transitionStore = vi.hoisted(() => ({ clearNewsHeroId: vi.fn() }))
+
+vi.mock("@/utils/newsTransition", () => ({
+  clearNewsHeroId: transitionStore.clearNewsHeroId,
+  getNewsHeroId: () => null,
+  setNewsHeroId: vi.fn(),
+}))
+
 vi.mock("@/components/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({
     open,
@@ -154,6 +162,7 @@ const createProps = (): NewsCardViewProps => ({
 
 afterEach(() => {
   vi.restoreAllMocks()
+  transitionStore.clearNewsHeroId.mockReset()
 })
 
 describe("NewsCardView — interactions and optional overlays", () => {
@@ -236,6 +245,56 @@ describe("NewsCardView — interactions and optional overlays", () => {
     expect(props.onEditSuccess).toHaveBeenCalledOnce()
     expect(props.onEditClose).toHaveBeenCalledOnce()
     await waitFor(() => expect(screen.getByTestId("hero")).toHaveAttribute("data-priority", "true"))
+    view.unmount()
+  })
+
+  it("places the quick view above the card from exactly 280px below the viewport top", async () => {
+    const view = render(<NewsCardView {...createProps()} />)
+    const article = screen.getByTestId("news-card")
+    vi.spyOn(article, "getBoundingClientRect").mockReturnValue({ top: 280 } as DOMRect)
+
+    fireEvent.mouseEnter(article)
+    expect(screen.getByTestId("quick-view")).toHaveTextContent("quick:top")
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    view.unmount()
+  })
+
+  it("claims the forward transition, clearing any stale back-navigation hero, until the pointer leaves", async () => {
+    const view = render(<NewsCardView {...createProps()} />)
+    const article = screen.getByTestId("news-card")
+
+    fireEvent.pointerDown(article)
+    expect(transitionStore.clearNewsHeroId).toHaveBeenCalledOnce()
+    expect(screen.getByTestId("hero")).toHaveAttribute("data-transitioning", "true")
+
+    fireEvent.mouseLeave(article)
+    expect(screen.getByTestId("hero")).toHaveAttribute("data-transitioning", "false")
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    view.unmount()
+  })
+
+  it("stops hover and transition interactions as soon as hovering becomes disabled", async () => {
+    const props = createProps()
+    const view = render(<NewsCardView {...props} />)
+    view.rerender(<NewsCardView {...props} hoveringDisabled />)
+    const article = screen.getByTestId("news-card")
+
+    fireEvent.mouseEnter(article)
+    fireEvent.pointerDown(article)
+
+    expect(screen.queryByTestId("quick-view")).not.toBeInTheDocument()
+    expect(screen.getByTestId("hero")).toHaveAttribute("data-transitioning", "false")
+    expect(transitionStore.clearNewsHeroId).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
     view.unmount()
   })
 })

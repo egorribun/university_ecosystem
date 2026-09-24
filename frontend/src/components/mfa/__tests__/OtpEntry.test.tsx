@@ -354,4 +354,74 @@ describe("OtpEntry", () => {
 
     await waitFor(() => expect(screen.getByText("mfa.otp.validation.required")).toBeInTheDocument())
   })
+
+  it("clears the local validation error once a complete code is submitted", async () => {
+    const onSubmit = vi.fn()
+    render(<OtpEntry onSubmit={onSubmit} />)
+    const inputs = screen.getAllByRole("textbox")
+    const submit = screen.getByRole("button", { name: "mfa.otp.submit" })
+
+    fireEvent.click(submit)
+    expect(await screen.findByText("mfa.otp.validation.required")).toBeInTheDocument()
+
+    fireEvent.paste(inputs[0]!, { clipboardData: { getData: () => "123456" } })
+    await Promise.resolve()
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    fireEvent.click(submit)
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("123456"))
+    expect(screen.queryByText("mfa.otp.validation.required")).not.toBeInTheDocument()
+    expect(inputs[0]).toHaveAttribute("aria-invalid", "false")
+  })
+
+  it("does not move focus when the last field receives a single digit", () => {
+    render(<OtpEntry onSubmit={vi.fn()} />)
+    const inputs = screen.getAllByRole("textbox")
+    act(() => {
+      inputs[2]!.focus()
+    })
+
+    fireEvent.change(inputs[5]!, { target: { value: "6" } })
+
+    expect(inputs[5]).toHaveValue("6")
+    expect(document.activeElement).toBe(inputs[2])
+  })
+
+  it("cancels the native key action only when it moves focus between digits", () => {
+    render(<OtpEntry onSubmit={vi.fn()} />)
+    const inputs = screen.getAllByRole("textbox")
+
+    expect(fireEvent.keyDown(inputs[3]!, { key: "ArrowLeft" })).toBe(false)
+    expect(fireEvent.keyDown(inputs[3]!, { key: "ArrowRight" })).toBe(false)
+    expect(fireEvent.keyDown(inputs[3]!, { key: "Backspace" })).toBe(false)
+    expect(fireEvent.keyDown(inputs[0]!, { key: "ArrowLeft" })).toBe(true)
+    expect(fireEvent.keyDown(inputs[3]!, { key: "Enter" })).toBe(true)
+  })
+
+  it("owns paste only on the first digit and cancels the native paste there", () => {
+    render(<OtpEntry onSubmit={vi.fn()} />)
+    const inputs = screen.getAllByRole("textbox")
+    const values = () => inputs.map((input) => (input as HTMLInputElement).value)
+
+    expect(fireEvent.paste(inputs[3]!, { clipboardData: { getData: () => "123456" } })).toBe(true)
+    expect(values()).toEqual(["", "", "", "", "", ""])
+
+    expect(fireEvent.paste(inputs[0]!, { clipboardData: { getData: () => "12" } })).toBe(false)
+    expect(values()).toEqual(["1", "2", "", "", "", ""])
+  })
+
+  it("moves focus only to the first digit when it mounts", () => {
+    const focusedTargets: EventTarget[] = []
+    render(
+      <div onFocus={(event) => focusedTargets.push(event.target)}>
+        <OtpEntry onSubmit={vi.fn()} />
+      </div>
+    )
+    const inputs = screen.getAllByRole("textbox")
+
+    expect(document.activeElement).toBe(inputs[0])
+    expect(focusedTargets.length).toBeGreaterThan(0)
+    expect(focusedTargets.every((target) => target === inputs[0])).toBe(true)
+  })
 })

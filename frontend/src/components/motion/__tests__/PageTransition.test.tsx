@@ -329,4 +329,71 @@ describe("PageTransition", () => {
     view.unmount()
     expect(removeListener).toHaveBeenCalledOnce()
   })
+
+  it("installs exactly one reduced-motion listener for the component lifetime", async () => {
+    const REDUCED_QUERY = "(prefers-reduced-motion: reduce)"
+    const addEventListener = vi.fn()
+    const removeEventListener = vi.fn()
+    const matchMedia = vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener,
+      removeEventListener,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    }))
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: matchMedia,
+    })
+
+    const view = render(
+      <PageTransition>
+        <div>Listener child</div>
+      </PageTransition>
+    )
+    await expectAnimatedChild("Listener child")
+    view.rerender(
+      <PageTransition>
+        <div>Listener child again</div>
+      </PageTransition>
+    )
+
+    expect(matchMedia.mock.calls.every(([query]) => query === REDUCED_QUERY)).toBe(true)
+    expect(addEventListener).toHaveBeenCalledOnce()
+    expect(addEventListener).toHaveBeenCalledWith("change", expect.any(Function))
+    const handler = addEventListener.mock.calls[0]![1] as unknown
+
+    view.unmount()
+    expect(removeEventListener).toHaveBeenCalledOnce()
+    expect(removeEventListener).toHaveBeenCalledWith("change", handler)
+  })
+
+  it("starts animating when reduced motion is turned off after mount", async () => {
+    let changeHandler: ((event: MediaQueryListEvent) => void) | null = null
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: vi.fn((query: string) => ({
+        matches: true,
+        media: query,
+        addEventListener: (_event: string, handler: (event: MediaQueryListEvent) => void) => {
+          changeHandler = handler
+        },
+        removeEventListener: vi.fn(),
+      })),
+    })
+
+    render(
+      <PageTransition>
+        <div>Late motion child</div>
+      </PageTransition>
+    )
+    expect(screen.getByText("Late motion child").closest(WILL_CHANGE)).toBeNull()
+
+    act(() => changeHandler?.({ matches: false } as MediaQueryListEvent))
+
+    await expectAnimatedChild("Late motion child")
+  })
 })

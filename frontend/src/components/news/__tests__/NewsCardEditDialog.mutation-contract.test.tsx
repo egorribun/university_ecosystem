@@ -322,4 +322,59 @@ describe("NewsCardEditDialog mutation contracts", () => {
     expect(optionalContentLabel.textContent?.trim()).toBe("")
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-label", "Close")
   })
+
+  it("keeps the picked image for upload when the file picker is later dismissed", async () => {
+    const user = userEvent.setup()
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:kept")
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    apiMocks.post.mockResolvedValue({ data: { url: "https://cdn.example.test/kept.png" } })
+    render(<NewsCardEditDialog {...makeProps()} />)
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    const file = new File(["image"], "cover.png", { type: "image/png" })
+
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [] } })
+    })
+    const save = screen.getByRole("button", { name: "common:buttons.save" })
+    await waitFor(() => expect(save).toBeEnabled())
+    await user.click(save)
+
+    await waitFor(() => expect(apiMocks.patch).toHaveBeenCalledOnce())
+    expect(apiMocks.post).toHaveBeenCalledOnce()
+    expect((apiMocks.post.mock.calls[0]![1] as FormData).get("file")).toBe(file)
+    expect(apiMocks.patch).toHaveBeenCalledWith(
+      "/news/news-contract",
+      expect.objectContaining({ image_url: "https://cdn.example.test/kept.png" })
+    )
+    vi.restoreAllMocks()
+  })
+
+  it("drops a previously picked preview when the dialog is reopened", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:stale-preview")
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    const props = makeProps()
+    const view = render(<NewsCardEditDialog {...props} />)
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["image"], "cover.png", { type: "image/png" })] },
+    })
+    await waitFor(() =>
+      expect(screen.getByRole("img", { name: "news:alt.preview" })).toHaveAttribute(
+        "src",
+        "blob:stale-preview"
+      )
+    )
+
+    view.rerender(<NewsCardEditDialog {...props} open={false} />)
+    view.rerender(<NewsCardEditDialog {...props} open />)
+
+    await waitFor(() =>
+      expect(screen.getByRole("img", { name: "news:alt.preview" })).toHaveAttribute(
+        "src",
+        makeData().image_url
+      )
+    )
+    vi.restoreAllMocks()
+  })
 })

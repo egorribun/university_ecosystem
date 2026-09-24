@@ -118,6 +118,28 @@ describe("OtpEntry mutation contracts", () => {
     expect(invalidFocus).toHaveBeenCalledOnce()
   })
 
+  it("never focuses a stray ref outside the six OTP slots", () => {
+    const strayFocus = vi.fn()
+    const stray = { focus: strayFocus } as unknown as HTMLInputElement
+    const refs: { current: (HTMLInputElement | null)[] } = {
+      current: [null, null, null, null, null, null, stray, stray],
+    }
+    refs.current[-1] = stray
+
+    focusOtpInput(refs, -1)
+    focusOtpInput(refs, 6)
+    focusOtpInput(refs, 7)
+
+    expect(strayFocus).not.toHaveBeenCalled()
+  })
+
+  it("never distributes digits past the last OTP slot", () => {
+    const distributed = distributeOtpDigits(createEmptyOtpDigits(), 4, "1234")
+
+    expect(distributed).toEqual(["", "", "", "", "1", "2"])
+    expect(distributed).toHaveLength(6)
+  })
+
   it("keeps the six indexed fields and their stable keys/labels", () => {
     render(<OtpEntry onSubmit={vi.fn()} />)
     const fields = inputs()

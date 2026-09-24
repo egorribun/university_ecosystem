@@ -200,6 +200,9 @@ describe("UserMenu mutation contracts", () => {
     const avatar = screen.getByTestId("smart-image")
     const settingsButton = screen.getByRole("button", { name: "navigation:menu.settings" })
 
+    // The icon-only settings control names itself for screen readers and pointer tooltips.
+    expect(settingsButton).toHaveAttribute("aria-label", "navigation:menu.settings")
+    expect(settingsButton).toHaveAttribute("title", "navigation:menu.settings")
     expect(root).toHaveClass("gap-3", "duration-500", "ease-[var(--ease-premium)]")
     expect(inner).toHaveClass("gap-3", "ml-3", "h-10")
     expect(avatarButton).toHaveClass(

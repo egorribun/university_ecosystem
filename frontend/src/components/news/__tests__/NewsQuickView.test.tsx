@@ -14,8 +14,8 @@ const translation = vi.hoisted(() => ({
 vi.mock("react-i18next", () => ({
   useTranslation: translation.useTranslation,
 }))
-const { reducedMotion } = vi.hoisted(() => ({ reducedMotion: vi.fn(() => false) }))
-vi.mock("@/hooks/useMediaQuery", () => ({ default: () => reducedMotion() }))
+const { reducedMotion } = vi.hoisted(() => ({ reducedMotion: vi.fn((_query: string) => false) }))
+vi.mock("@/hooks/useMediaQuery", () => ({ default: (query: string) => reducedMotion(query) }))
 
 import {
   getNewsQuickViewMotion,
@@ -154,5 +154,12 @@ describe("NewsQuickView", () => {
       backgroundColor: "var(--cat-purple-text)",
     })
     expect(translation.useTranslation).toHaveBeenCalledWith(["news"])
+  })
+
+  it("reads the news namespace and the reduced-motion media query", () => {
+    render(<NewsQuickView {...baseProps} visible />)
+
+    expect(translation.useTranslation).toHaveBeenCalledWith(["news"])
+    expect(reducedMotion).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
   })
 })

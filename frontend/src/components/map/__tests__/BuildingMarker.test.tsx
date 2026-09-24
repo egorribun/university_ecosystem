@@ -22,8 +22,28 @@ const markerMocks = vi.hoisted(() => {
 
 vi.mock("react-map-gl/maplibre", async () => {
   const base = (await import("@/tests/helpers/mapGlMock")).mapGlMock()
+  const chromeReact = await import("react")
   return {
     ...base,
+    Marker: chromeReact.forwardRef<
+      { getElement: () => HTMLElement | null },
+      { children?: import("react").ReactNode }
+    >(function ChromeMarker({ children }, ref) {
+      // Reproduces maplibre-gl's wrapper chrome (generic role/label/tabindex).
+      const wrapper = chromeReact.useRef<HTMLDivElement>(null)
+      chromeReact.useImperativeHandle(ref, () => ({ getElement: () => wrapper.current }))
+      return chromeReact.createElement(
+        "div",
+        {
+          ref: wrapper,
+          role: "button",
+          "aria-label": "Map marker",
+          tabIndex: 0,
+          "data-testid": "maplibre-marker-wrapper",
+        },
+        children
+      )
+    }),
     Popup: ({ children, onClose, ...props }: { children?: ReactNode; onClose?: () => void }) => {
       markerMocks.popupProps.push(props)
       return (
@@ -272,5 +292,39 @@ describe("BuildingMarker", () => {
       color: "var(--color-rose-500)",
     })
     screen.getByRole("button", { name: "close-popup" }).click()
+  })
+})
+
+describe("BuildingMarker maplibre integration", () => {
+  it("strips maplibre's generic button chrome so the pin is the only control", () => {
+    render(<BuildingMarker {...baseProps} />)
+    const wrapper = screen.getByTestId("maplibre-marker-wrapper")
+
+    expect(wrapper).not.toHaveAttribute("role")
+    expect(wrapper).not.toHaveAttribute("aria-label")
+    expect(wrapper).not.toHaveAttribute("tabindex")
+    expect(screen.getAllByRole("button")).toHaveLength(1)
+  })
+
+  it("keeps pin clicks from reaching the map canvas", () => {
+    const mapClick = vi.fn()
+    render(
+      <div role="presentation" onClick={mapClick}>
+        <BuildingMarker {...baseProps} />
+      </div>
+    )
+
+    fireEvent.click(screen.getByTestId("maplibre-marker-wrapper").firstElementChild!)
+
+    expect(mapClick).not.toHaveBeenCalled()
+  })
+
+  it("cancels native Enter and Space handling on the pin", () => {
+    render(<BuildingMarker {...baseProps} />)
+    const pin = screen.getByTestId("maplibre-marker-wrapper").firstElementChild!
+
+    expect(fireEvent.keyDown(pin, { key: "Enter" })).toBe(false)
+    expect(fireEvent.keyDown(pin, { key: " " })).toBe(false)
+    expect(fireEvent.keyDown(pin, { key: "Tab" })).toBe(true)
   })
 })

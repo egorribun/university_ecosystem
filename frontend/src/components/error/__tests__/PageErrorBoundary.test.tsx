@@ -223,6 +223,27 @@ describe("PageErrorBoundary", () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: "/" })
   })
 
+  it("clears the error state before navigating home", () => {
+    let shouldThrow = true
+    function Flaky() {
+      if (shouldThrow) throw new Error("transient")
+      return <div>healthy page</div>
+    }
+    render(
+      <PageErrorBoundary>
+        <Flaky />
+      </PageErrorBoundary>
+    )
+    expect(screen.getByRole("alert")).toBeInTheDocument()
+
+    shouldThrow = false
+    fireEvent.click(screen.getByText("Go Home"))
+
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/" })
+    expect(screen.getByText("healthy page")).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
   it("retry re-renders children (which throw again → fallback persists)", () => {
     render(
       <PageErrorBoundary>

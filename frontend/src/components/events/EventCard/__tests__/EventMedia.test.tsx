@@ -139,4 +139,19 @@ describe("EventMedia", () => {
     fireEvent.error(image)
     expect(onReady).toHaveBeenCalledTimes(2)
   })
+
+  it("keeps image clicks from activating the surrounding event card", () => {
+    const cardClick = vi.fn()
+    const onImageClick = vi.fn()
+    const { container } = render(
+      <div role="presentation" onClick={cardClick}>
+        <EventMedia {...baseProps} onImageClick={onImageClick} />
+      </div>
+    )
+
+    fireEvent.click(container.querySelector("button")!)
+
+    expect(onImageClick).toHaveBeenCalledOnce()
+    expect(cardClick).not.toHaveBeenCalled()
+  })
 })

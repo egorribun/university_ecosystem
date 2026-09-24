@@ -154,6 +154,15 @@ describe("MessageInput", () => {
       expect(onSend).toHaveBeenCalledWith("Hello", [])
     })
 
+    it("consumes plain Enter instead of inserting a newline, but not Shift+Enter", () => {
+      render(<MessageInput onSend={vi.fn()} />)
+      const textarea = screen.getByRole("textbox", { name: "messenger:typeMessage" })
+      fireEvent.change(textarea, { target: { value: "Hello" } })
+
+      expect(fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true })).toBe(true)
+      expect(fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })).toBe(false)
+    })
+
     it("Shift+Enter does NOT trigger onSend (newline behaviour)", () => {
       const onSend = vi.fn()
       render(<MessageInput onSend={onSend} />)

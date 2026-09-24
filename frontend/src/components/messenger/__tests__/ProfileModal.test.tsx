@@ -204,4 +204,46 @@ describe("ProfileModal", () => {
     expect(document.querySelector('[data-status="offline"]')).toBeInTheDocument()
     expect(document.querySelector(".messenger-online-indicator")).toBeNull()
   })
+
+  it("consumes the Escape key it handles", () => {
+    render(<ProfileModal user={testUser} loading={false} error={null} onClose={vi.fn()} />)
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(false)
+  })
+
+  it("renders no empty error region while loading without an error", () => {
+    render(<ProfileModal user={null} loading error={null} onClose={vi.fn()} />)
+    const paragraphs = screen.getAllByRole("paragraph")
+
+    expect(paragraphs.map((paragraph) => paragraph.textContent?.trim())).toEqual([
+      "messenger:loadingProfile",
+    ])
+  })
+
+  it("labels the status and avatar tiles and colours the presence dot by state", () => {
+    const { rerender } = render(
+      <ProfileModal user={testUser} loading={false} error={null} onClose={vi.fn()} />
+    )
+    const online = document.querySelector('[data-status="online"]')!
+
+    expect(screen.getByText("messenger:status")).toBeInTheDocument()
+    expect(screen.getByText("messenger:avatar")).toBeInTheDocument()
+    expect(online).toHaveTextContent("common:active")
+    expect((online.querySelector('[aria-hidden="true"]') as HTMLElement).style.background).toBe(
+      "var(--messenger-status-online-text)"
+    )
+
+    rerender(
+      <ProfileModal
+        user={{ ...testUser, is_active: false }}
+        loading={false}
+        error={null}
+        onClose={vi.fn()}
+      />
+    )
+    const offline = document.querySelector('[data-status="offline"]')!
+    expect(offline).toHaveTextContent("common:inactive")
+    expect((offline.querySelector('[aria-hidden="true"]') as HTMLElement).style.background).toBe(
+      "var(--messenger-status-offline-text)"
+    )
+  })
 })

@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   mediaQueries: [] as string[],
   getNavigationConfig: vi.fn(() => [{ to: "/dashboard" }]),
   parseCacheVersion: vi.fn(() => "cache-v"),
+  namespaces: [] as unknown[],
+  samePathFor: null as ((pathname: string) => (to: string) => boolean) | null,
 }))
 
 vi.mock("@tanstack/react-router", () => ({
@@ -32,10 +34,13 @@ vi.mock("@tanstack/react-router", () => ({
     select({ location: { pathname: mocks.pathname } }),
 }))
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: { name?: string }) =>
-      options?.name ? `${key}:${options.name}` : key,
-  }),
+  useTranslation: (namespaces?: unknown) => {
+    mocks.namespaces.push(namespaces)
+    return {
+      t: (key: string, options?: { name?: string }) =>
+        options?.name ? `${key}:${options.name}` : key,
+    }
+  },
 }))
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: mocks.user, isAuth: Boolean(mocks.user), loading: false }),
@@ -60,10 +65,10 @@ vi.mock("@/hooks/useFocusTrap", () => ({
   },
 }))
 vi.mock("@/hooks/useScrollRestoration", () => ({
-  default: () => ({
+  default: (pathname: string) => ({
     scrollToTop: mocks.scrollToTop,
     markScrollFromBottom: mocks.markScrollFromBottom,
-    isSamePath: mocks.isSamePath,
+    isSamePath: mocks.samePathFor ? mocks.samePathFor(pathname) : mocks.isSamePath,
   }),
 }))
 vi.mock("@/hooks/ui/useScrollBehavior", () => ({
@@ -88,6 +93,8 @@ describe("useNavbarLogic", () => {
     mocks.parseCacheVersion.mockClear()
     mocks.focusOptions = undefined
     mocks.mediaQueries = []
+    mocks.namespaces.length = 0
+    mocks.samePathFor = null
   })
 
   it("derives anonymous and authenticated presentation state", async () => {
@@ -234,5 +241,60 @@ describe("useNavbarLogic", () => {
     mocks.pathname = "/events"
     rerender()
     await waitFor(() => expect(result.current.mobileMenu).toBe(false))
+  })
+
+  it("renders SSR-safe defaults on the first paint before reading media queries", async () => {
+    mocks.viewport = "phone"
+    mocks.reducedMotion = true
+    const firstPaints: Array<{ viewport: string; reduced: boolean; menu: boolean }> = []
+    const { result } = renderHook(() => {
+      const logic = useNavbarLogic()
+      firstPaints.push({
+        viewport: logic.viewport,
+        reduced: logic.prefersReducedMotion,
+        menu: logic.mobileMenu,
+      })
+      return logic
+    })
+
+    expect(firstPaints[0]).toEqual({ viewport: "desktop", reduced: false, menu: false })
+    await waitFor(() => expect(result.current.viewport).toBe("phone"))
+    expect(result.current.prefersReducedMotion).toBe(true)
+    expect(result.current.mobileMenu).toBe(false)
+  })
+
+  it("keeps an open menu while switching into the phone layout", async () => {
+    mocks.viewport = "desktop"
+    const { result, rerender } = renderHook(() => useNavbarLogic())
+    await waitFor(() => expect(result.current.isDesktop).toBe(true))
+
+    act(() => result.current.setMobileMenu(true))
+    mocks.viewport = "phone"
+    rerender()
+
+    await waitFor(() => expect(result.current.isMobile).toBe(true))
+    expect(result.current.mobileMenu).toBe(true)
+  })
+
+  it("uses the navigation namespace and translated profile title", async () => {
+    const { result } = renderHook(() => useNavbarLogic())
+    await waitFor(() => expect(result.current.isMobile).toBe(true))
+
+    expect(mocks.namespaces.at(-1)).toEqual(["navigation"])
+    expect(result.current.profileTitle).toBe("navigation:aria.openProfile")
+  })
+
+  it("compares navigation targets against the current route after it changes", async () => {
+    mocks.samePathFor = (pathname) => (to) => to === pathname
+    const { result, rerender } = renderHook(() => useNavbarLogic())
+    await waitFor(() => expect(result.current.isMobile).toBe(true))
+
+    mocks.pathname = "/news"
+    rerender()
+    expect(result.current.isSameTarget("/news")).toBe(true)
+    act(() => result.current.go("/news"))
+
+    expect(mocks.scrollToTop).toHaveBeenCalledWith("smooth")
+    expect(mocks.navigate).not.toHaveBeenCalled()
   })
 })

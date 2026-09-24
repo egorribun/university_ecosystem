@@ -882,4 +882,16 @@ describe("ContactList — populated contacts", () => {
     fireEvent.keyDown(firstRow, { key: "ArrowUp" })
     expect(document.activeElement).toBe(firstRow)
   })
+
+  it("consumes activation and navigation keys so the page does not scroll", () => {
+    render(<ContactList contacts={mockContacts} selectedId={null} onSelect={() => {}} />, {
+      wrapper,
+    })
+    const bobRow = document.getElementById("messenger-contact-2")!
+
+    expect(fireEvent.keyDown(bobRow, { key: " " })).toBe(false)
+    expect(fireEvent.keyDown(bobRow, { key: "Enter" })).toBe(false)
+    expect(fireEvent.keyDown(bobRow, { key: "ArrowDown" })).toBe(false)
+    expect(fireEvent.keyDown(bobRow, { key: "End" })).toBe(false)
+  })
 })

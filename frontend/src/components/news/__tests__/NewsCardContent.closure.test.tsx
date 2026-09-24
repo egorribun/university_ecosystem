@@ -211,4 +211,21 @@ describe("NewsCardContent closure", () => {
     expect(onToggleLike).toHaveBeenCalledTimes(1)
     expect(onToggleBookmark).toHaveBeenCalledTimes(1)
   })
+
+  it("omits the reading-time chip when the estimate is null", () => {
+    render(<NewsCardContent {...baseProps} readingTime={null} />)
+    expect(screen.queryByText(/common:time\.minuteShort/)).not.toBeInTheDocument()
+  })
+
+  it("calls the latest like handler after the parent replaces it", () => {
+    const staleToggle = vi.fn()
+    const onToggleLike = vi.fn()
+    const { rerender } = render(<NewsCardContent {...baseProps} onToggleLike={staleToggle} />)
+    rerender(<NewsCardContent {...baseProps} onToggleLike={onToggleLike} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "common:aria.like" }))
+
+    expect(onToggleLike).toHaveBeenCalledOnce()
+    expect(staleToggle).not.toHaveBeenCalled()
+  })
 })

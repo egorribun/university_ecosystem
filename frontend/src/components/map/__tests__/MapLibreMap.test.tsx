@@ -1056,4 +1056,54 @@ describe("MapLibreMap", () => {
       clearTimeout.mockRestore()
     }
   })
+
+  it("applies the sky and projects markers once a late-loading map becomes ready", () => {
+    let frame: FrameRequestCallback | undefined
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      frame = cb
+      return 7
+    })
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
+    const map = makeMap()
+    map.loaded.mockReturnValue(false)
+    try {
+      render(
+        <MapLibreMapComponent
+          {...baseProps}
+          mapRef={makeRef(map)}
+          isDark={false}
+          urlInitialViewport={{ latitude: 55.7, longitude: 37.8, zoom: 16, pitch: 0, bearing: 0 }}
+        />
+      )
+      expect(map.setSky).not.toHaveBeenCalled()
+      expect(map.project).not.toHaveBeenCalled()
+
+      map.loaded.mockReturnValue(true)
+      act(() => frame?.(0))
+
+      expect(map.setSky).toHaveBeenCalledOnce()
+      expect(map.project).toHaveBeenCalledWith([37.81165, 55.71405])
+    } finally {
+      requestFrame.mockRestore()
+      cancelFrame.mockRestore()
+    }
+  })
+
+  it("re-projects markers after every camera move, even before URL sync is latched", () => {
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 9)
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
+    const map = makeMap()
+    map.loaded.mockReturnValue(false)
+    try {
+      render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(map)} />)
+      expect(map.project).not.toHaveBeenCalled()
+
+      act(() => currentMoveEndHandler()({}))
+
+      expect(map.project).toHaveBeenCalledWith([37.81165, 55.71405])
+    } finally {
+      requestFrame.mockRestore()
+      cancelFrame.mockRestore()
+    }
+  })
 })

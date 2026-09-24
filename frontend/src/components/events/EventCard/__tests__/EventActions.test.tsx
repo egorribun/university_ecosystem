@@ -192,4 +192,21 @@ describe("EventActions", () => {
       removeItem.mockRestore()
     }
   })
+
+  it("opens the QR code without activating the surrounding event card", async () => {
+    const user = userEvent.setup()
+    const cardClick = vi.fn()
+    render(
+      <div role="presentation" onClick={cardClick}>
+        <EventActions {...baseProps} isRegistered qrToken="qr-token-123" />
+      </div>
+    )
+    const qrButton = screen
+      .getAllByRole("button")
+      .find((button) => button.textContent !== "events:card.actions.unregister")!
+
+    await user.click(qrButton)
+
+    expect(cardClick).not.toHaveBeenCalled()
+  })
 })

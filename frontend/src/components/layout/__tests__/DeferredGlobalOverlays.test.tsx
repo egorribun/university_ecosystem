@@ -20,6 +20,9 @@ function MockOfflineIndicator() {
   return mounted ? <div data-testid="deferred-offline" /> : null
 }
 
+const pushBridge = vi.hoisted(() => ({ ensure: vi.fn() }))
+vi.mock("@/push/pushMessageBus", () => ({ ensurePushMessageBridge: pushBridge.ensure }))
+
 vi.mock("@/components/search/SearchDialog", () => ({
   SearchDialog: () => <div data-testid="deferred-search" />,
 }))
@@ -410,5 +413,48 @@ describe("DeferredGlobalOverlays", () => {
 
     unsubscribe()
     expect(() => unsubscribe()).not.toThrow()
+  })
+
+  it("starts the push message bridge when the first overlay subscriber arrives", () => {
+    pushBridge.ensure.mockClear()
+    const store = createDeferredOverlayStore()
+    expect(pushBridge.ensure).not.toHaveBeenCalled()
+
+    const unsubscribe = store.subscribe(vi.fn())
+
+    expect(pushBridge.ensure).toHaveBeenCalledOnce()
+    unsubscribe()
+  })
+
+  it("forgets a promotion once the last subscriber leaves", () => {
+    const store = createDeferredOverlayStore()
+    const unsubscribe = store.subscribe(vi.fn())
+    act(() => {
+      window.dispatchEvent(new Event("keydown"))
+    })
+    expect(store.getSnapshot()).toBe(true)
+
+    unsubscribe()
+
+    expect(store.getSnapshot()).toBe(false)
+  })
+
+  it("ignores a deferred timer that fires after the last subscriber left", () => {
+    vi.useFakeTimers()
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout")
+    try {
+      const store = createDeferredOverlayStore()
+      const unsubscribe = store.subscribe(vi.fn())
+      const timerCallback = setTimeoutSpy.mock.calls.find(
+        ([, delay]) => delay === DEFERRED_OVERLAY_DELAY_MS
+      )?.[0] as () => void
+
+      unsubscribe()
+      timerCallback()
+
+      expect(store.getSnapshot()).toBe(false)
+    } finally {
+      setTimeoutSpy.mockRestore()
+    }
   })
 })

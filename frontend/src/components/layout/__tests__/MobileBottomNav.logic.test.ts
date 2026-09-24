@@ -76,6 +76,37 @@ describe("MobileBottomNav pure navigation contracts", () => {
     }
   })
 
+  it("reports an already-open virtual keyboard as soon as the first subscriber arrives", () => {
+    const originalViewport = Object.getOwnPropertyDescriptor(window, "visualViewport")
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: {
+        height: window.innerHeight - 300,
+        scale: 1,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+    })
+    const input = document.createElement("input")
+    document.body.append(input)
+    input.focus()
+
+    try {
+      const store = createMobileKeyboardStore()
+      const unsubscribe = store.subscribe(vi.fn())
+
+      expect(store.getSnapshot()).toBe(true)
+      unsubscribe()
+    } finally {
+      input.remove()
+      if (originalViewport) {
+        Object.defineProperty(window, "visualViewport", originalViewport)
+      } else {
+        Reflect.deleteProperty(window, "visualViewport")
+      }
+    }
+  })
+
   it("keeps a server-safe snapshot when Visual Viewport is unavailable", () => {
     const originalViewport = Object.getOwnPropertyDescriptor(window, "visualViewport")
     Reflect.deleteProperty(window, "visualViewport")

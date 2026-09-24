@@ -89,6 +89,14 @@ describe("Button", () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
+  it("opts every button into light haptic feedback by default", () => {
+    render(<Button>Default feedback</Button>)
+    expect(screen.getByRole("button", { name: "Default feedback" })).toHaveAttribute(
+      "data-haptic",
+      "light"
+    )
+  })
+
   it("maps haptics: string passthrough, true→light, false→omitted", () => {
     const { rerender } = render(<Button haptics="heavy">a</Button>)
     expect(screen.getByRole("button")).toHaveAttribute("data-haptic", "heavy")
@@ -163,6 +171,14 @@ describe("Card", () => {
 // --------------------------------------------------------------------------- #
 
 describe("TextField", () => {
+  it("does not flag a valid multiline field as invalid and blurs safely without a handler", () => {
+    render(<TextField multiline label="Bio" value="hello" onChange={() => {}} />)
+    const area = screen.getByRole("textbox", { name: "Bio" })
+
+    expect(area).not.toHaveAttribute("aria-invalid", "true")
+    expect(() => fireEvent.blur(area)).not.toThrow()
+  })
+
   it("keeps the documented defaults and wrapper contract", () => {
     const { container, rerender } = render(
       <TextField value="value" onChange={() => {}} data-testid="default-field" />

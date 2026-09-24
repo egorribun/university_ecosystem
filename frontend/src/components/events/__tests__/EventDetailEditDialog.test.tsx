@@ -357,6 +357,24 @@ describe("EventDetailEditDialog", () => {
     expect(title).toHaveValue(baseEvent.title)
   })
 
+  it("discards a picked image and its preview when cancelled without a parent remount", async () => {
+    const user = userEvent.setup()
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:discarded")
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    renderDialog()
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    await user.upload(fileInput, new File(["image"], "cover.png", { type: "image/png" }))
+    expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", "blob:discarded")
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+
+    expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", baseEvent.image_url)
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledOnce())
+    expect(mocks.uploadEventImage).not.toHaveBeenCalled()
+    vi.restoreAllMocks()
+  })
+
   it("keeps the save action disabled while the patch request is pending", async () => {
     let resolvePatch!: (value: unknown) => void
     const pendingPatch = new Promise((resolve) => {

@@ -97,4 +97,18 @@ describe("MediaSlot mutation contracts", () => {
     expect(image).not.toHaveClass("group-hover:scale-105")
     expect(image).toHaveClass("custom-image", "transition-all", "duration-base")
   })
+
+  it("shows the loading placeholder again when the source is replaced after a load", () => {
+    const { rerender } = render(
+      <MediaSlot src="https://img.example/first.jpg" alt="Cover" loadingPlaceholder="Loading…" />
+    )
+    fireEvent.load(screen.getByRole("img", { name: "Cover" }))
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
+
+    rerender(
+      <MediaSlot src="https://img.example/second.jpg" alt="Cover" loadingPlaceholder="Loading…" />
+    )
+
+    expect(screen.getByText("Loading…")).toBeInTheDocument()
+  })
 })
