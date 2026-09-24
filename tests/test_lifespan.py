@@ -846,6 +846,9 @@ async def test_shutdown_subsystems() -> None:
     task1 = asyncio.create_task(dummy_coro())
     task2 = asyncio.create_task(dummy_coro())
     app.state.background_tasks = {task1, task2}
+    # An embedded CDC worker must be asked to stop, closing its replication slot.
+    cdc_worker = AsyncMock()
+    app.state.cdc_outbox_worker = cdc_worker
 
     # Mock partition stopper
     mock_stopper = AsyncMock()
@@ -881,6 +884,7 @@ async def test_shutdown_subsystems() -> None:
 
             mock_probe.assert_called_once()
             mock_stop_event.set.assert_called_once()
+            cdc_worker.stop.assert_awaited_once_with()
 
             assert task1.cancelled()
             assert task2.cancelled()

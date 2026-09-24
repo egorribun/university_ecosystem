@@ -190,11 +190,15 @@ async def test_handler_skips_legacy_events_without_a_snapshot(event) -> None:
             "app.services.notifications.schedule_changes.notify_about_schedule_change",
             new=AsyncMock(),
         ) as notify,
+        patch("app.services.event_handlers.logger") as logger,
     ):
         await handle_schedule_changed(event)
 
     session_factory.assert_not_called()
     notify.assert_not_awaited()
+    logger.info.assert_called_once_with(
+        "Skipping schedule notification without a change snapshot"
+    )
 
 
 def test_topic_is_the_canonical_schedule_topic() -> None:

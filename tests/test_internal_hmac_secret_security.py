@@ -113,3 +113,15 @@ def test_internal_hmac_strength_uses_stable_repeated_value_error() -> None:
         "INTERNAL_HMAC_SECRET must contain at least 32 bytes of entropy; "
         "placeholder or repeated values are not allowed"
     )
+
+
+UPPERCASE_PLACEHOLDER = (
+    "CHANGE_ME_Q7v9Kx2Lm4Np8Rt1Wz6Yb3Hd5Fg0Js"  # pragma: allowlist secret
+)
+
+
+def test_internal_hmac_strength_matches_placeholders_case_insensitively() -> None:
+    with pytest.raises(ValueError, match="placeholder or repeated values"):
+        _validate_internal_hmac_secret_strength(
+            UPPERCASE_PLACEHOLDER, label="INTERNAL_HMAC_SECRET"
+        )

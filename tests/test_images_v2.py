@@ -673,3 +673,15 @@ def test_validate_image_dimensions_rejects_large_integer_overflow_boundary():
     assert str(exc_info.value) == (
         f"image dimensions {width}x2 exceed pixel budget of {budget}"
     )
+
+
+def test_validate_image_dimensions_stays_exact_beyond_float_precision():
+    """Integer division keeps the budget exact where float division rounds up."""
+    width, height = 2**53 + 2, 3
+    budget = 3 * (2**53 + 1) + 2  # width * height exceeds it by one pixel
+
+    with pytest.raises(img_mod.ImagePixelLimitError) as exc_info:
+        img_mod.validate_image_dimensions(width, height, max_pixels=budget)
+
+    assert (exc_info.value.width, exc_info.value.height) == (width, height)
+    assert exc_info.value.max_pixels == budget
