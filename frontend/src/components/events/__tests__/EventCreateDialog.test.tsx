@@ -364,6 +364,34 @@ describe("EventCreateDialog", () => {
     }
   })
 
+  it("discards an upload that finishes after the dialog was cancelled", async () => {
+    let resolveUpload!: (url: string) => void
+    const pendingUpload = new Promise<string>((resolve) => {
+      resolveUpload = resolve
+    })
+    uploadEventImage.mockImplementationOnce(() => pendingUpload)
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cancelled-upload")
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    try {
+      const user = userEvent.setup()
+      render(<EventCreateDialog {...baseProps} />)
+      const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(fileInput, new File(["img"], "late.png", { type: "image/png" }))
+      expect(await screen.findByText("common:statuses.uploading")).toBeInTheDocument()
+
+      await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+      await act(async () => {
+        resolveUpload("https://cdn.example.com/late.png")
+        await pendingUpload
+      })
+
+      expect(screen.queryByAltText("events:alt.preview")).not.toBeInTheDocument()
+      expect(screen.queryByText("common:statuses.uploading")).not.toBeInTheDocument()
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
   it("ignores a file-input change when no file was selected", () => {
     // Keep the invalid-file mutation deterministic: Stryker's `if (file)` ->
     // `if (true)` must reach the upload path without jsdom throwing because it
