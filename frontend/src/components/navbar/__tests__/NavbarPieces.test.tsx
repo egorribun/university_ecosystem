@@ -284,9 +284,9 @@ describe("MobileDrawerProfile", () => {
 
   it("busts the avatar cache when the user's avatar version changes", async () => {
     const withAvatar = { ...testUser, avatar_url: "https://cdn.example.test/me.png" }
-    let setUser!: (user: typeof withAvatar) => void
+    let setUser!: (user: typeof withAvatar & { avatar_version: number }) => void
     function Harness() {
-      const [user, updateUser] = useState({ ...withAvatar, avatar_updated_at: 100 })
+      const [user, updateUser] = useState({ ...withAvatar, avatar_version: 100 })
       // eslint-disable-next-line react-compiler/react-compiler -- test harness exposes the state setter
       setUser = updateUser
       return <MobileDrawerProfile user={user} onProfileClick={vi.fn()} t={t} />
@@ -295,7 +295,7 @@ describe("MobileDrawerProfile", () => {
     const avatar = () => screen.getByRole("img", { name: testUser.full_name as string })
     expect(avatar().getAttribute("src")).toContain("_v=100")
 
-    act(() => setUser({ ...withAvatar, avatar_updated_at: 200 }))
+    act(() => setUser({ ...withAvatar, avatar_version: 200 }))
 
     expect(avatar().getAttribute("src")).toContain("_v=200")
   })

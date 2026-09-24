@@ -1,6 +1,11 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import type { InternalAxiosRequestConfig } from "axios"
-type QueueConfig = InternalAxiosRequestConfig & { __clientRateLimitAcquired?: boolean }
+import { afterEach, beforeEach, expect, it, vi } from "vitest"
+
+// Mirrors the interceptor's private queue config type.
+type QueueConfig = InternalAxiosRequestConfig & {
+  __clientRateLimitAcquired?: boolean
+  signal?: AbortSignal
+}
 const makeConfig = (): QueueConfig => ({ method: "get", headers: {} }) as QueueConfig
 
 beforeEach(() => {
