@@ -70,10 +70,10 @@ def _is_async_database(db: object) -> bool:
 def _token_hmac_secret() -> str:
     """Resolve the dedicated token key, with a development-only fallback."""
 
-    hmac_secret: str | None = getattr(settings, "token_hmac_secret", None)
+    hmac_secret = settings.token_hmac_secret
     if hmac_secret:
         return hmac_secret
-    environment = str(getattr(settings, "environment", "development")).lower()
+    environment = str(settings.environment).lower()
     if environment in {"production", "staging"}:
         raise RuntimeError(
             "TOKEN_HMAC_SECRET must be set explicitly in production/staging. "

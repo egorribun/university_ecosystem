@@ -105,15 +105,15 @@ async def get_revocation_redis_client() -> Redis[Any]:
     from app.core.config.cache import DEFAULT_REVOCATION_REDIS_URL
     from app.core.ratelimit import get_shared_client
 
-    if not bool(getattr(settings, "revocation_redis_access_enabled", True)):
-        role = str(getattr(settings, "app_process_role", "unknown") or "unknown")
+    if not settings.revocation_redis_access_enabled:
         raise RuntimeError(
-            f"REVOCATION_REDIS access is disabled for this process role ({role!r})"
+            "REVOCATION_REDIS access is disabled for this process role "
+            f"({settings.app_process_role!r})"
         )
     redis_url = str(settings.revocation_redis_url).strip()
-    environment = str(
-        getattr(settings, "environment", "production") or "production"
-    ).lower()
+    # An empty or unknown environment is not a development one, so the
+    # loopback default below still fails closed for it.
+    environment = str(settings.environment).lower()
     # The loopback URL is an intentional development/testing default (the local
     # compose revocation Redis listens on 6380).  Production still fails closed
     # when the default is left in place; only an explicitly configured URL may
