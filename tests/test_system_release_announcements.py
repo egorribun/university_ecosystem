@@ -96,7 +96,9 @@ async def test_announcement_without_recipients_creates_nothing(db_session) -> No
 @pytest.mark.asyncio
 @pytest.mark.parametrize("version", ["", "1.4", "v1.4.0", "1.4.0-", "1.4.0 beta"])
 async def test_service_rejects_non_semantic_versions(version: str) -> None:
-    with pytest.raises(ValueError, match="semantic version"):
+    with pytest.raises(
+        ValueError, match=r"^release version must be a semantic version$"
+    ):
         await announce_release(AsyncMock(), version=version)
 
 
@@ -197,3 +199,38 @@ async def test_route_announces_and_commits() -> None:
     assert limit.await_args.kwargs["identifier"] == f"notifications:release:{user.id}"
     assert limit.await_args.kwargs["limit"] == 5
     assert limit.await_args.kwargs["window_seconds"] == 3600
+
+
+@pytest.mark.asyncio
+async def test_announcement_delivery_call_is_exact(db_session, user_factory) -> None:
+    member = await user_factory()
+    deliver = AsyncMock(return_value=1)
+    with patch(
+        "app.services.notifications.system_release.create_notifications_for_users",
+        deliver,
+    ):
+        result = await announce_release(
+            db_session, version="1.4.0", notes={"en": "  New messenger  "}
+        )
+
+    assert result == ReleaseAnnouncement("1.4.0", 1, already_announced=False)
+    deliver.assert_awaited_once()
+    assert deliver.await_args.kwargs == {
+        "title": "Platform version 1.4.0 is available",
+        "body": "New messenger",
+        "title_translations": {
+            "en": "Platform version 1.4.0 is available",
+            "ru": "Вышла новая версия платформы 1.4.0",
+        },
+        "body_translations": {
+            "en": "New messenger",
+            "ru": "Обновите страницу, чтобы получить последние улучшения.",
+        },
+        "type": "system.message",
+        "url": "/",
+        "tag": "system.release:1.4.0",
+        "dedupe_key": "system.release:1.4.0",
+        "payload_data": {"category": "system", "version": "1.4.0"},
+        "user_ids": [member.id],
+        "topic": "system.release",
+    }

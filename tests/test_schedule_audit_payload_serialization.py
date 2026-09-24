@@ -74,10 +74,22 @@ async def test_schedule_create_update_and_delete_record_json_payloads() -> None:
             ),
         )
         assert await service.delete_schedule(created.id) is True
+        assert await db.get(models.Schedule, created.id) is None
+        assert await service.delete_schedule(created.id) is False
 
         payloads = await _payloads(db, created.id)
+        aggregate_types = set(
+            (
+                await db.execute(
+                    select(StoredEvent.aggregate_type).where(
+                        StoredEvent.aggregate_id == str(created.id)
+                    )
+                )
+            ).scalars()
+        )
 
     assert set(payloads) == {"SCHEDULE_CREATED", "SCHEDULE_UPDATED", "SCHEDULE_DELETED"}
+    assert aggregate_types == {"schedule"}
     for payload in payloads.values():
         json.dumps(payload)
     assert _instant(payloads["SCHEDULE_CREATED"]["start_time"]) == START
@@ -88,6 +100,16 @@ async def test_schedule_create_update_and_delete_record_json_payloads() -> None:
     later = START + dt.timedelta(hours=1)
     assert _instant(updated["current_state"]["start_time"]) == later
     deleted = payloads["SCHEDULE_DELETED"]
+    assert set(deleted) == {
+        "schedule_id",
+        "deleted",
+        "subject",
+        "group_id",
+        "previous_state",
+    }
+    assert deleted["schedule_id"] == str(created.id)
+    assert deleted["deleted"] is True
+    assert deleted["subject"] == "Physics"
     assert deleted["group_id"] == str(group_id)
     assert deleted["previous_state"]["room"] == "202"
 
