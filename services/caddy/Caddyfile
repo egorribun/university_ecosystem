@@ -112,12 +112,18 @@
 		reverse_proxy imgproxy:8080
 	}
 
-	# Optional same-origin access to MinIO objects.
-	@private_storage path /storage/chat_uploads/* /storage/event_files/*
-	respond @private_storage 404
+	# Optional same-origin access to reviewed public S3 media only. Keep the
+	# deny inside an ordered route: a sibling respond is sorted after handle.
+	# Private attachments and quarantined payloads share the uploads bucket.
 	handle /storage/* {
-		uri strip_prefix /storage
-		reverse_proxy minio:9000
+		@non_public_storage {
+			not path /storage/*/avatars/* /storage/*/covers/* /storage/*/news_images/* /storage/*/story_covers/* /storage/*/tmp/event_images/*
+		}
+		route {
+			respond @non_public_storage 404
+			uri strip_prefix /storage
+			reverse_proxy minio:9000
+		}
 	}
 
 	# Service worker — must be on same origin, no cache, with broad scope.

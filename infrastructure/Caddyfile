@@ -112,13 +112,19 @@
 	# MinIO proxy.  Keep the deny-first matcher in the compose-mounted edge
 	# config in lockstep with services/caddy/Caddyfile; authorization belongs to
 	# the authenticated backend download routes.
-	@private_storage path /storage/chat_uploads/* /storage/event_files/*
-	respond @private_storage 404
-
-	# MinIO presigned URLs (optional direct access for public objects only)
+	# Direct object access is limited to reviewed public-media prefixes. The
+	# uploads bucket also contains private attachments and quarantined payloads.
+	# Caddy sorts top-level handle before respond regardless of declaration
+	# order; keep the deny inside an ordered route to fail closed.
 	handle /storage/* {
-		uri strip_prefix /storage
-		reverse_proxy minio:9000
+		@non_public_storage {
+			not path /storage/*/avatars/* /storage/*/covers/* /storage/*/news_images/* /storage/*/story_covers/* /storage/*/tmp/event_images/*
+		}
+		route {
+			respond @non_public_storage 404
+			uri strip_prefix /storage
+			reverse_proxy minio:9000
+		}
 	}
 
 	# Wave 131 SW4 — Service worker MUST come from same origin and MUST NOT

@@ -94,19 +94,26 @@ def test_general_ws_block_routes_to_ws_hub() -> None:
     ), "General /ws/* must route to ws-hub:8081"
 
 
-def test_private_storage_prefixes_are_denied_before_minio_proxy() -> None:
-    """Private attachment prefixes must not fall through to public MinIO."""
+def test_s3_proxy_allows_only_public_media_prefixes() -> None:
+    """Only public media prefixes reach S3; unknown/private keys fail closed.
+
+    Caddy sorts top-level ``handle`` before ``respond`` regardless of source
+    order, so the deny must be inside the ordered storage route.
+    """
     for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
         content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-        deny = _line_of(
+        assert re.search(
+            r"handle\s+/storage/\*\s*\{\s*"
+            r"@non_public_storage\s*\{\s*not\s+path\s+"
+            r"/storage/\*/avatars/\*\s+/storage/\*/covers/\*\s+"
+            r"/storage/\*/news_images/\*\s+"
+            r"/storage/\*/story_covers/\*\s+"
+            r"/storage/\*/tmp/event_images/\*\s*\}\s*"
+            r"route\s*\{\s*respond\s+@non_public_storage\s+404\s*"
+            r"uri\s+strip_prefix\s+/storage\s*"
+            r"reverse_proxy\s+minio:9000\s*\}\s*\}",
             content,
-            r"@private_storage\s+path\s+/storage/chat_uploads/\*\s+/storage/event_files/\*",
-        )
-        response = _line_of(content, r"respond\s+@private_storage\s+404")
-        storage = _line_of(content, r"handle\s+/storage/\*")
-        assert deny < response < storage, (
-            f"Private storage deny route must precede the general MinIO proxy in {relative_path}"
-        )
+        ), f"Public S3 allowlist must precede proxy in {relative_path}"
 
 
 def test_websocket_ticket_is_redacted_from_access_logs() -> None:
