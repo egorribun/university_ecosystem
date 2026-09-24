@@ -244,6 +244,20 @@ export const ensureCsrfCookie = (): Promise<void> => {
   return _csrfBootstrapPromise
 }
 
+/**
+ * Split a request URL into its origin and path. Only an absolute URL parses
+ * without a base; relative SDK paths (and a missing URL) throw and are kept
+ * unchanged with an empty origin.
+ */
+const splitRequestUrl = (url: string | undefined): { origin: string; path?: string } => {
+  try {
+    const parsed = new URL(url ?? "")
+    return { origin: parsed.origin, path: parsed.pathname + parsed.search }
+  } catch {
+    return { origin: "", path: url }
+  }
+}
+
 api.interceptors.request.use(async (config) => {
   const candidate = config as ApiRequestConfig
 
@@ -251,20 +265,9 @@ api.interceptors.request.use(async (config) => {
   // The @hey-api/client-axios `buildUrl()` reads our axios instance's baseURL ("/api/v1")
   // and prepends it to the SDK URL (also "/api/v1/..."), producing "/api/v1/api/v1/...".
   // It then passes `baseURL: ""` to axios, so we detect the doubled prefix in the URL itself.
-  const _url = config.url
-  const isAbsolute =
-    typeof _url === "string" && (_url.startsWith("http://") || _url.startsWith("https://"))
-  let urlPath: string | undefined = _url
-  let urlOrigin = ""
-  if (isAbsolute) {
-    try {
-      const parsed = new URL(_url)
-      urlPath = parsed.pathname + parsed.search
-      urlOrigin = parsed.origin
-    } catch {
-      // fallback if URL parsing fails
-    }
-  }
+  const split = splitRequestUrl(config.url)
+  let urlPath = split.path
+  const urlOrigin = split.origin
 
   if (urlPath?.startsWith("/api/v1/api/v1/")) {
     urlPath = urlPath.slice("/api/v1".length)
