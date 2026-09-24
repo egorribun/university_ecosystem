@@ -251,7 +251,8 @@ export const ensureCsrfCookie = (): Promise<void> => {
  */
 const splitRequestUrl = (url: string | undefined): { origin: string; path?: string } => {
   try {
-    const parsed = new URL(url ?? "")
+    // String(undefined) is "undefined", which never parses without a base.
+    const parsed = new URL(String(url))
     return { origin: parsed.origin, path: parsed.pathname + parsed.search }
   } catch {
     return { origin: "", path: url }
