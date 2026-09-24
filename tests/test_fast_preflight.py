@@ -83,6 +83,13 @@ def test_default_checks_cover_frontend_backend_harness_and_focused_contracts() -
         item.endswith("/tests/test_duration_sharding_contract.py")
         for item in normalized_command
     )
+    for ledger in (
+        "test_route_dependency_inventory.py",
+        "test_quality_configuration.py",
+        "test_domain_event_registry_contract.py",
+        "test_mfa_openapi_artifacts_contract.py",
+    ):
+        assert any(item.endswith(f"/tests/{ledger}") for item in normalized_command)
 
 
 def test_run_checks_executes_all_checks_and_preserves_spec_order(
