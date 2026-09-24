@@ -4,7 +4,114 @@
 
 **Дата снимка:** 2026-09-22, около 16:25–16:35 Europe/Moscow. GitHub timestamps — UTC.
 
-> **Статус 2026-09-24:** работа возобновлена. Разделы §3.1 (WASM), §4 (CI) и Task A–C устарели: canonical WASM сгенерирован и проверен, терминальный CI-разбор и новый локальный пакет описаны в §149 continuation-плана. Требования §6–§13 остаются в силе.
+> **Статус 2026-09-25 01:20 Europe/Moscow — снова безопасная пауза по запросу пользователя.** Актуальное состояние — только **§0 ниже**. Разделы §1–§5 описывают паузу 2026-09-22 и остаются историей (WASM, MFA, Semgrep из них давно закоммичены и опубликованы). Требования и Definition of Done §6–§13 остаются в силе, их уточняет §0.9.
+
+## 0. Снимок 2026-09-25: полное текущее состояние
+
+### 0.1 Идентичность, сохранность и что НЕ трогать
+
+| Поле | Состояние на паузе |
+| --- | --- |
+| Repository / ветка | `C:/Users/egorribun/Documents/university_ecosystem`, `egorribun` (PR [#1266](https://github.com/egorribun/university_ecosystem/pull/1266) → `main`, OPEN) |
+| HEAD | коммит этого handoff поверх `3031cd5fa`; все изменения закоммичены и запушены в `origin/egorribun` (проверять `git status` / `git log origin/egorribun..HEAD` — должно быть пусто) |
+| Рабочее дерево | чистое, кроме пользовательского untracked `docs/audits/AUDIT_PLATFORM_FULL.md` (SHA256 `902f81d4b3a904d074ed32e3e7c3a9157f92e1e45e3dc7fca646f05e8ed2887b`, не изменять и не стейджить) |
+| Коммитов с 0ec4fed3a | 46 (полный список: `git log --oneline 0ec4fed3a..HEAD`) |
+| Stash | не использовался |
+| Контейнеры | `codex-wasm-base64-0ec4fed3a` удалён с разрешения пользователя; собственный `claude-wasm-base64-0ec4fed3a` удалён ранее; других контейнеров этой работы нет |
+| Агенты | все три фоновых агента (группы A, B, C) остановлены; их работа собрана и закоммичена; фоновых процессов/мониторов нет |
+| Скрытые мутации | проверено: ни в основном дереве, ни в worktree нет файлов, оставленных мутантом; `artifacts/quality/mutation-tools/…/mutant-backups` пуст |
+
+**Дополнительные git worktree (оставлены намеренно, пустые по содержанию):** `../ue-mut-A`, `../ue-mut-B`, `../ue-mut-C` (агентские, detached на `2dc1c40e3`, их тестовые правки уже перенесены в основное дерево), `../ue-e2e` (чистый HEAD для локального E2E), `../ue-mm` (для backend-мутаций, содержит копии уже закоммиченных файлов). **Опасность:** в каждом `frontend/node_modules` и корневой `node_modules` — это NTFS-junction на `university_ecosystem/…/node_modules`. **Никогда не делать `rm -rf`/`git worktree remove --force` по такому дереву** — рекурсивное удаление через junction снесёт node_modules основного репозитория. Безопасная очистка: сначала `cmd /c rmdir <path>\frontend\node_modules` и `cmd /c rmdir <path>\node_modules` (удаляет только ссылку), затем `git worktree remove <path>`. Если worktree больше не нужны — так их и убрать; содержимого, которого нет в `egorribun`, в них нет (проверка: `git -C ../ue-mut-X status --short` показывает только тесты, совпадающие с основным деревом; `ue-mm` — только копии закоммиченных файлов).
+
+### 0.2 Решения и постоянные полномочия пользователя (действуют дальше)
+
+Зафиксированы в памяти проекта (`~/.claude/projects/…/memory/`):
+
+1. **Scope (2026-09-23):** CDC (BE-08) вне MVP, DEFERRED (ADR-037 §scope); spelling — сначала авторские docs, потом код; реального staging нет → Stage 10 на Docker Core/full + локальный kind; доставка email/push — только локальные sink'и (Mailpit, локальный VAPID).
+2. **Frontend Stryker (2026-09-24):** гибрид. Поведенческие survivors убивать тестами; косметические литералы className/style — единственный governed ignorer ADR-040 (`presentation-class-names`). Расширять ignorer — только новым ADR. До 3 параллельных агентов на непересекающихся файлах с ревью ведущего перед коммитом.
+3. **Постоянные разрешения (2026-09-24):** скачивать пинованный инструментарий из официальных источников (Playwright-браузеры из lock-версий, Docker-образы из compose/Helm по digest, kind/helm/kubectl/mkcert с checksum); скачивать CI-артефакты своего репо (`gh run download`) в ignored `artifacts/`/scratchpad; обычный `git push origin egorribun` без вопросов. **Всегда спрашивать:** merge в `main`, force-push, закрытие/merge Dependabot PR, branch protection, любые внешние/публичные действия, загрузки вне перечисленного.
+4. Коммиты без `Co-Authored-By`; scope non-wave (`fix(frontend)`, `test(quality)`, `test(security)`, `refactor(frontend)`, `docs(quality)`…); `feat(waveXX)` — только новая бизнес-функциональность (последняя — wave212).
+5. Лимит сессии аккаунта пользователя может оборвать работу (так остановился агент C 2026-09-24, сброс 23:10 MSK). Перед долгой работой помнить: при обрыве запустить восстановление из §0.7.
+
+### 0.3 Главная находка этой сессии: реальный масштаб mutation-долга
+
+- Frontend aggregate `validate-stryker-inventory` — **fail-fast**: он всегда останавливался на первом плохом мутанте (`shard-001:2 Timeout`), а producer-шарды идут с `break: null` и «зелёные» даже с survivors. Поэтому «100% frontend Stryker» ни разу не был достигнут. По 41 скачанному шарду run 35954304649: **968 поведенческих survivors в 118 файлах** после ADR-040 (145 были косметикой), всего по вселенной ожидалось ~1500 до работы.
+- Backend incremental mutmut (run 35976627864): **203 survivors** в коде ветки (schedule_changes 80, logging 49, schedule_service 22, system_release 16, auth_service 11, revocation 7, мелочи 18). **Все 203 закрыты** (см. §0.4).
+- Источник поштучных данных: CI-артефакты `frontend-mutation-shard-<run>-*` (mutation.json) и clear-text таблицы в логах jobs «Frontend mutation shard N/64»; backend — строки `🙁 <module>.<mutant>` в логах «Incremental Mutation Tests (mutmut) / execution group N».
+
+### 0.4 Что сделано в этой сессии (коммиты `ad4d2d23f` … HEAD, по темам)
+
+**Продукт (все с RED→GREEN):**
+- `ad4d2d23f` P8: sticky-бары категорий News/Events вынесены из короткого `<header>` (sticky не мог выйти из containing block и уезжал), `z-sticky` поверх бейджей карточек, матовая подложка stuck-бара Events; хук `useStableListHeight` держит высоту списка в фазе render (не layout effect), E2E `tests/e2e/category-scroll-stability.spec.ts`.
+- `92e37b007` `shouldReload: false` на роутах `/news` и `/events` (loader-префетч не перезапускается на смену search; pending UI роутера перемонтировал страницу) + ETag E2E ищет ссылку карточки, а не текст (quick view дублирует заголовок).
+- `1568c7dd2` **баг rate-limit очереди:** после grant, заполнившего rolling-window, никто не ставил таймер — оставшиеся ожидающие висели до чужого release. Теперь acquire при непустой очереди армирует таймер; тест `rateLimit.window.test.ts`.
+- `235a8d8de` **баг чётности недели:** `nowParity` считал недели от 1 января с субботы, backend — ISO (`isocalendar()`); dashboard показывал/фильтровал не ту неделю на стыках лет и выходных. Новый `isoWeekNumber`, тесты на 53-недельный год.
+- `764c5c649` **баг roomStatus:** занятие 08:00–08:00 делало аудиторию занятой весь день (`end <= start` трактовалось как переход через полночь).
+- `9451e88c3` Levenshtein без мутируемых счётчиков циклов (мутант `j++→j--` давал бесконечный цикл = Timeout).
+
+**Mutation/quality infrastructure:**
+- `2dc1c40e3` ADR-040 + `frontend/scripts/stryker-presentation-ignorer.mjs`: игнор только строковых листьев в `className`/`*ClassName`, аргументах `cn/clsx/cva/twMerge/twJoin`, биндингах `*Classes/*ClassName`, литеральных значениях `style={{…}}`. Все стадии evidence (`run-stryker.mjs`, `validate-stryker-inventory.mjs`, `verify-stryker-evidence.mjs`, `stryker.config.mjs`) используют `canonicalInstrumenterConfig`; Ignored допускается только с reason ADR-040 и только если совпадает с регенерированным preflight; `ignoredMutants` в summary и вне знаменателя. 152 node-теста скриптов зелёные; проверено на реальном `mutation.json`.
+
+**Frontend survivors (тесты + эквивалентные упрощения без смены поведения):**
+- `411d1ee58` sanitizers/redirect/Trusted Types — 100% (security-review: 0 находок): `sanitizeArticleHtml`, `sanitize.ts` (`parseHttpUrl`), `SafeHtml` (тесты теперь проходят WASM-ветку), `trustedTypes`, `redirect` (+SSR-тест).
+- `afc38343d` группа A (агент): 198/284. `1476ea7d8` группа B (агент): 157/206. `d96d6e462` + `3031cd5fa` группа C (агент): 49+3 тестовых файла, ~46 из 72 файлов проверены до остановки.
+- `2cd4e1c20` эквивалентные guard'ы удалены в weatherIcons, buildingHours, avatar, readingTime, scheduleConflicts (NaN вместо null; `Math.max(null,…)` считал null нулём), passwordStrength, authUtils (`=== -1`), highlight (`replaceAll`), htmlText, loaderLang. Весь unit-набор (5842) зелёный. **Мутационно проверены:** weatherIcons 97/97, avatar 43/43, readingTime 14/14, scheduleUtils 33/33, roomStatus 45/45, levenshtein 18/18. **Не проверены мутационно после упрощения:** buildingHours, scheduleConflicts, passwordStrength, authUtils, highlight, htmlText, loaderLang — сделать первым делом (§0.8 шаг 3).
+
+**Backend survivors — все 203 закрыты, каждый модуль проверен полным набором текущих мутантов:**
+- `abfeb7779` schedule_changes 208/208 + новый `render_registered_notification_template` 9/9 (мёртвые fallback'и убраны, точный вызов доставки и fingerprint в тестах).
+- `7660b3ad6` PII-редакция логов 107/107 (+ убран эквивалентный 5-символьный shortcut).
+- `e4abf5020` `schedule_state`/`delete_schedule` 57/57, `announce_release` 99/99.
+- `3555735ed` `_token_hmac_secret` 24/24, `get_revocation_redis_client` 26/26 (поля Settings читаются напрямую).
+- `0fd22d2fb` images 33/33 (float-граница бюджета пикселей), HMAC-strength 23/23, event handler 17/17, lifespan shutdown 33/33, DI-композиция 31/31, `get_current_user` 8/8.
+
+### 0.5 CI: текущее состояние
+
+- Последний запушенный до этого handoff SHA `5616cf778` → run [36058587950](https://github.com/egorribun/university_ecosystem/actions/runs/36058587950) был `queued/in_progress` (119 success, 5 failure, 160 queued на момент паузы). Коммиты `235a8d8de…` и этот handoff запушены после — новый run запустится на HEAD; проверять `gh run list --workflow ci.yml --branch egorribun --limit 3`.
+- **Падения run 36058587950, классификация:**
+  - `Go Integration Tests (file-processor)`: `TestIntegration_MinIOResizeImageHappyPath` — pull `quay.io/minio/minio@sha256:14cea…` вернул `unauthorized` (внешний registry). Не код; rerun при восстановлении registry, при повторе — рассмотреть mirror/кэш образа.
+  - `Chaos Engineering (ToxiProxy)`: `Docker pull failed with exit code 1` — та же внешняя причина (проверить, какой образ).
+  - `DB Migration Rollback Integrity`: `TOML parse error at line 459, column 17 … failed to parse year in date "7 days"` — **конфигурационный дефект**: `pyproject.toml [tool.uv] exclude-newer = "7 days"` читает старый uv/парсер в этом job. Выяснить, какой бинарь (не `setup-uv` с `required-version ==0.11.28`?), и привести job к канонической установке uv. Код миграций не причём.
+  - `E2E webkit` и `E2E mobile-webkit`: `/news` `category-scroll-stability` — `before=522 after=0 max=522` **даже с `shouldReload:false`**. Первопричина НЕ найдена (floor высоты держится, значит это явный scroll-to-top, а не clamp). Chromium зелёный; локальный Windows-WebKit ненадёжен (module-script preload errors → boot loader) — воспроизводить только на Linux WebKit (CI или Docker `mcr.microsoft.com/playwright`). Гипотезы для проверки: focus/scrollIntoView кнопки внутри sticky в WebKit, `useURLState` navigate с `viewTransition`/hash, перемонтирование `NewsList` (другой ключ), `PageTransition`. Скачать trace: `gh run download <run> -n playwright-traces-mobile-webkit-shard-1-of-1`.
+- Frontend Stryker на новом SHA даст первый полный инвентарь **после ADR-040**; только по нему судить об остатке. Aggregate по-прежнему fail-fast — полный список брать из шардов (§0.3).
+
+### 0.6 Инструменты мутационной проверки (долговечные копии)
+
+Лежат в ignored `artifacts/quality/mutation-tools/` (оригиналы были во временном scratchpad сессии). Инвентари — в `inventories/` (всегда передавать `--inventory <файл>`, дефолтный путь скриптов указывает на соседний `behavioural-survivors.json`).
+
+- `fresh_mutants.mjs` — генерирует все НЕигнорируемые мутанты текущих исходников тем же Instrumenter + ADR-040: `cd frontend && node ../artifacts/quality/mutation-tools/fresh_mutants.mjs --out /tmp/x.json src/utils/a.ts`.
+- `mutant_check_fast.mjs` — один in-process Vitest на все мутанты (~2–7 с/мутант), crash-backup + авто-восстановление: `node …/mutant_check_fast.mjs --inventory /tmp/x.json --file src/utils/a.ts --tests "src/utils/__tests__/a.test.ts"`. Печатает KILLED/SURVIVED/TIMEOUT. `mutant_check.mjs` — медленный эталон (npx на мутант) для перепроверки спорных.
+- Backend: `mm_check.py diff <file> <mutant…>` (дифф мутанта через ast), `mm_loop.py --file app/x.py --tests "tests/…" [--all | mutant…]` — один pytest-процесс, переключение `MUTANT_UNDER_TEST` (трамплин mutmut читает его на каждом вызове), watchdog Timeout, shim для `mutmut.__main__` (на Windows не импортируется). Запускать **в отдельном worktree** (`../ue-mm`) основным `.venv/Scripts/python.exe` и `PYTHONIOENCODING=utf-8` (имена методов содержат `ǁ`).
+- `narrow_fresh.py` — оставляет из свежих мутантов только те, у которых нет убитого близнеца в CI-отчёте (после рефакторинга позиции сдвигаются).
+- **Правила, выученные на ошибках этой сессии:**
+  1. Никогда не запускать две мутационные проверки над связанными файлами одновременно в одном дереве.
+  2. Во время мутационной проверки в основном дереве **не коммитить**: pre-commit stash и проверка «files were modified by this hook» ломаются, а результаты искажаются.
+  3. После любого прерванного прогона проверить `mutant-backups/` и `git status` на неожиданные продуктовые изменения; восстанавливать из бэкапа или `git checkout`.
+  4. При восстановлении бэкапов трогать только свои файлы (один раз ошибочно были восстановлены файлы агентов посреди их прогона).
+  5. detect-secrets реагирует на тестовые пароли/токены — выносить в константу с `# pragma: allowlist secret` / `// pragma: allowlist secret` на той же строке (ruff/prettier переносят хвостовые комментарии).
+
+### 0.7 Восстановление после обрыва сессии/лимита
+
+1. `git status --short` (ожидается только AUDIT), `git log origin/egorribun..HEAD` (пусто или локальные коммиты — тогда push после preflight).
+2. `ls artifacts/quality/mutation-tools/mutant-backups/` (и старый `C:/Temp/claude/…/scratchpad/mutant-backups/`, если существует): каждый файл — URL-кодированный абсолютный путь; сравнить с целевым файлом, восстановить или удалить.
+3. Для каждого `../ue-*` worktree: `git -C ../ue-X status --short` — продуктовые (не test) изменения там = оставленный мутант → `git -C ../ue-X checkout -- <file>`.
+4. `docker ps -a` — контейнеров этой работы быть не должно.
+
+### 0.8 Что делать дальше — по порядку
+
+1. **CI на HEAD:** дождаться run; классифицировать каждое падение (root/infra/transient). Rerun только доказанно-транзиентных (registry pull) на неизменном SHA.
+2. **DB Migration Rollback:** починить установку uv в этом job (TOML `exclude-newer = "7 days"`), контракт-тест на workflow, если есть аналог.
+3. **Мутационная проверка 7 упрощённых утилит** (§0.4): `fresh_mutants` + `mutant_check_fast` по каждому с его тестами; добить survivors.
+4. **Остаток группы A** (из отчёта агента, всё с предложенными product-диффами): `media.ts` 26 эквивалентов (избыточные early-return/guard'ы — решить удалением, это не security-граница, но аккуратно), `performance.ts` 4, `cryptoWorker.ts` 5 (только утечки map — возможно экспорт размера только для тестов или рефакторинг pending-map), `browser.ts` 4, `spotify.ts` 3, `cache.ts` @6, `api/hooks/news.ts` @66, `slugify.ts` @14, `a11y.ts` @107 ×2, `animations.ts` @48 (убрать лишний `type:"spring"`), `rateLimit.ts` @199 (удалить строку), @40, **@148 Timeout** (пустое тело `waitForClientQueueWaiter` → бесконечная асинхронная рекурсия; лучший путь — direct-handoff слота вместо повторного acquire, с тестами на abort-после-grant), `bootstrapFallback.ts` 34 инлайн-стиля (решение ведущего: НЕ расширять ADR-040, а один тест на полный `style.cssText` элементов fallback — без stylesheet это поведение).
+5. **Остаток группы C:** агент проверил ~46 из 72 файлов (`inventories/work-C.json`); остальные — начиная с `MobileBottomNav`, `MapSidebar`, `ContactList`; брать актуальный список из нового CI-инвентаря.
+6. **P8 WebKit** (§0.5) — довести до зелёного на Linux WebKit.
+7. **P8-файлы после ADR-040:** EventsFeature/NewsFeature/EventsHeader/NewsHeader имели 226 survivors по локальному focused-прогону ДО ignorer — перепроверить по новому CI-инвентарю.
+8. Затем план `C:\Users\egorribun\.claude\plans\cryptic-singing-catmull.md`: оставшиеся продуктовые P2 (push-prompt), P4 (auth shell), P6 (виртуализация ContactList), P11 (compact navbar), C0 live-E2E лейн, фаза B (BE-02 phase-four миграция, Mailpit), фаза D (spelling docs→код, zero-warning build, O-задачи), фаза E (Docker Core/full, kind, финальный аудит). Dependabot #1289–#1292 — только с разрешения. Merge в `main` — только с разрешения.
+
+### 0.9 Уточнения к Definition of Done (§13)
+
+- «100% viable» frontend = каждый мутант, кроме ADR-040-ignored и объяснённых CompileError, Killed; Timeout/RuntimeError/NoCoverage недопустимы — лечатся устранением причины (как Levenshtein, rateLimit), а не ослаблением гейта.
+- Эквивалентный мутант = сигнал на упрощение кода без смены поведения (с тестом, что поведение сохранено), а не на `// Stryker disable` (запрещено валидатором).
+- Ни один из пунктов §0.8 не считать выполненным по старым отчётам; подтверждение — свежий CI на точном SHA.
 
 **Goal:** закрыть весь действующий continuation/master scope на текущем уровне функциональности: воспроизводимый безопасный MVP, все применимые quality metrics 100%, полная продуктовая приёмка и SHA-bound Docker/staging/release evidence. Этот handoff не уменьшает scope и не заменяет критерии готовности удобным подмножеством.
 
