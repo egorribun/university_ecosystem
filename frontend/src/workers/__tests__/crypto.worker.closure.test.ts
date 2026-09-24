@@ -71,3 +71,39 @@ it("returns the WASM base64 result without a JavaScript encoding round trip", as
   expect(mocks.hmacSha256SignBase64).toHaveBeenCalledWith("key", "payload")
   expect(mocks.hmacSha256Sign).not.toHaveBeenCalled()
 })
+
+it("initialises the WASM module once and reuses it for later messages", async () => {
+  mocks.hmacSha256SignBase64.mockReturnValue("sig")
+
+  for (const id of [1, 2]) {
+    await scope.onmessage?.({
+      data: { type: "HMAC_SHA256", id, payload: { key: "key", json: "payload" } },
+    } as MessageEvent)
+  }
+
+  expect(mocks.init).toHaveBeenCalledOnce()
+  expect(scope.postMessage.mock.calls).toStrictEqual([
+    [{ id: 1, result: "sig" }],
+    [{ id: 2, result: "sig" }],
+  ])
+})
+
+it("does not sign before WASM initialisation has completed", async () => {
+  let finishInit: () => void = () => undefined
+  mocks.init.mockReturnValueOnce(
+    new Promise<void>((resolve) => {
+      finishInit = resolve
+    })
+  )
+  mocks.hmacSha256SignBase64.mockReturnValue("sig")
+
+  const handled = scope.onmessage?.({
+    data: { type: "HMAC_SHA256", id: 3, payload: { key: "key", json: "payload" } },
+  } as MessageEvent)
+  await Promise.resolve()
+  expect(mocks.hmacSha256SignBase64).not.toHaveBeenCalled()
+
+  finishInit()
+  await handled
+  expect(scope.postMessage).toHaveBeenCalledWith({ id: 3, result: "sig" })
+})

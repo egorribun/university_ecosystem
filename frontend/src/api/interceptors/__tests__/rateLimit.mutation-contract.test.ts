@@ -15,6 +15,26 @@ const flushMicrotasks = async () => {
 }
 
 /**
+ * Await a queue promise that must already be settled once fake time has been
+ * advanced.  A bounded check fails immediately instead of hanging until the
+ * Vitest timeout when a timer-arithmetic regression never fires the timer.
+ */
+const expectSettledNow = async (wait: Promise<void>) => {
+  let settled = false
+  void wait.then(
+    () => {
+      settled = true
+    },
+    () => {
+      settled = true
+    }
+  )
+  await vi.advanceTimersByTimeAsync(0)
+  expect(settled).toBe(true)
+  await wait
+}
+
+/**
  * The interceptor keeps its counters at module scope and reads its limits at
  * import time.  Loading a fresh module per test makes each contract describe a
  * single, deterministic limiter instance instead of relying on private reset
@@ -335,7 +355,7 @@ describe("rateLimit mutation contracts", () => {
     // The oldest timestamp is exactly at the expiry boundary.  The strict
     // `>` check keeps it blocked until the rolling window actually expires.
     await vi.advanceTimersByTimeAsync(59_999)
-    await secondWait
+    await expectSettledNow(secondWait)
     expect(second.__clientRateLimitAcquired).toBe(true)
     releaseClientQueueSlot(second)
   })
@@ -519,7 +539,7 @@ describe("rateLimit mutation contracts", () => {
     releaseClientQueueSlot(firstQueued)
     releaseClientQueueSlot(secondActive)
     await vi.advanceTimersByTimeAsync(60_000)
-    await secondWait
+    await expectSettledNow(secondWait)
     expect(secondQueued.__clientRateLimitAcquired).toBe(true)
     releaseClientQueueSlot(secondQueued)
   })

@@ -12,6 +12,26 @@ const config = (method = "get"): QueueConfig =>
     headers: {},
   }) as QueueConfig
 
+/**
+ * Await a queue promise that must already be settled once fake time has been
+ * advanced.  A bounded check fails immediately instead of hanging until the
+ * Vitest timeout when a timer-arithmetic regression never fires the timer.
+ */
+const expectSettledNow = async (wait: Promise<void>) => {
+  let settled = false
+  void wait.then(
+    () => {
+      settled = true
+    },
+    () => {
+      settled = true
+    }
+  )
+  await vi.advanceTimersByTimeAsync(0)
+  expect(settled).toBe(true)
+  await wait
+}
+
 describe("rateLimit interceptor — queue/window closure", () => {
   beforeEach(() => {
     vi.resetModules()
@@ -155,10 +175,10 @@ describe("rateLimit interceptor — queue/window closure", () => {
 
     expect(vi.getTimerCount()).toBe(1)
     await vi.advanceTimersByTimeAsync(60_000)
-    await secondWait
+    await expectSettledNow(secondWait)
     releaseClientQueueSlot(second)
     await vi.advanceTimersByTimeAsync(60_000)
-    await thirdWait
+    await expectSettledNow(thirdWait)
     releaseClientQueueSlot(third)
   })
 
@@ -231,10 +251,10 @@ describe("rateLimit interceptor — queue/window closure", () => {
     await waitForClientQueueSlot(trigger)
     releaseClientQueueSlot(trigger)
     await vi.advanceTimersByTimeAsync(60_000)
-    await secondWait
+    await expectSettledNow(secondWait)
     releaseClientQueueSlot(second)
     await vi.advanceTimersByTimeAsync(60_000)
-    await thirdWait
+    await expectSettledNow(thirdWait)
     releaseClientQueueSlot(third)
   })
 

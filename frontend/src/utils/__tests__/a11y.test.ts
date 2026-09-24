@@ -7,6 +7,7 @@ import {
   generateId,
   skipToMainContent,
 } from "@/utils/a11y"
+import a11yDefault from "@/utils/a11y"
 
 beforeEach(() => {
   // Clean up any leftover announcer elements
@@ -405,6 +406,153 @@ describe("a11y utilities", () => {
     it("does nothing when no main element exists", () => {
       // Should not throw
       expect(() => skipToMainContent()).not.toThrow()
+    })
+  })
+})
+
+describe("a11y behavioural contracts", () => {
+  const visibleButton = (label: string) => {
+    const button = document.createElement("button")
+    button.textContent = label
+    Object.defineProperty(button, "offsetParent", { value: document.body, configurable: true })
+    return button
+  }
+  const pressTab = (shiftKey = false) => {
+    const event = new KeyboardEvent("keydown", {
+      key: "Tab",
+      shiftKey,
+      bubbles: true,
+      cancelable: true,
+    })
+    document.dispatchEvent(event)
+    return event
+  }
+
+  it("clears the live region without exposing intermediate text before announcing", () => {
+    announce("first")
+    const region = document.getElementById("sr-announcer-polite")!
+    const observer = new MutationObserver(() => undefined)
+    observer.observe(region, { childList: true, characterData: true, subtree: true })
+
+    announce("second")
+
+    const added = observer
+      .takeRecords()
+      .flatMap((record) => Array.from(record.addedNodes, (node) => node.textContent))
+    observer.disconnect()
+    expect(added).toStrictEqual(["second"])
+    expect(region.textContent).toBe("second")
+  })
+
+  it("skips hidden elements when choosing the first focus target", () => {
+    const container = document.createElement("div")
+    const hidden = document.createElement("button")
+    const first = visibleButton("first")
+    container.append(hidden, first)
+    document.body.appendChild(container)
+
+    const trap = new FocusTrap(container)
+    trap.activate()
+
+    expect(document.activeElement).toBe(first)
+    trap.deactivate()
+    container.remove()
+  })
+
+  it("re-reads focusable elements on each Tab so newly added controls wrap", () => {
+    const container = document.createElement("div")
+    const first = visibleButton("first")
+    container.append(first, visibleButton("second"))
+    document.body.appendChild(container)
+    const trap = new FocusTrap(container)
+    trap.activate()
+
+    const added = visibleButton("added later")
+    container.appendChild(added)
+    added.focus()
+    const event = pressTab()
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(first)
+    trap.deactivate()
+    container.remove()
+  })
+
+  it("stops trapping Tab after deactivation", () => {
+    const container = document.createElement("div")
+    const last = visibleButton("last")
+    container.append(visibleButton("first"), last)
+    document.body.appendChild(container)
+    const trap = new FocusTrap(container)
+    trap.activate()
+    trap.deactivate()
+
+    last.focus()
+    const event = pressTab()
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(document.activeElement).toBe(last)
+    container.remove()
+  })
+
+  it("leaves focus in place when the previously focused element is not an HTML element", () => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    svg.setAttribute("tabindex", "0")
+    document.body.appendChild(svg)
+    svg.focus()
+    const container = document.createElement("div")
+    const button = visibleButton("inside")
+    container.appendChild(button)
+    document.body.appendChild(container)
+
+    const trap = new FocusTrap(container)
+    trap.activate()
+    trap.deactivate()
+
+    expect(document.activeElement).toBe(button)
+    container.remove()
+    svg.remove()
+  })
+
+  it("queries the reduced-motion media feature", () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList)
+
+    prefersReducedMotion()
+    onReducedMotionChange(vi.fn())
+
+    expect(matchMedia.mock.calls).toStrictEqual([
+      ["(prefers-reduced-motion: reduce)"],
+      ["(prefers-reduced-motion: reduce)"],
+    ])
+  })
+
+  it("makes main programmatically focusable only for the duration of the focus call", () => {
+    const main = document.createElement("main")
+    document.body.appendChild(main)
+    let tabindexDuringFocus: string | null = null
+    vi.spyOn(main, "focus").mockImplementation(() => {
+      tabindexDuringFocus = main.getAttribute("tabindex")
+    })
+
+    skipToMainContent()
+
+    expect(tabindexDuringFocus).toBe("-1")
+    expect(main.hasAttribute("tabindex")).toBe(false)
+    main.remove()
+  })
+
+  it("exposes the helpers through the default export", () => {
+    expect(a11yDefault).toStrictEqual({
+      announce,
+      FocusTrap,
+      prefersReducedMotion,
+      onReducedMotionChange,
+      generateId,
+      skipToMainContent,
     })
   })
 })

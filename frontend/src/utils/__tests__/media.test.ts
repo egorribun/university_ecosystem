@@ -204,3 +204,71 @@ describe("sanitizeUrl", () => {
     }
   })
 })
+
+describe("media URL edge cases", () => {
+  const ORIGIN = "https://api.example.com"
+
+  it("prefixes media paths that merely contain a double slash, colon keyword or blob marker", async () => {
+    const { resolveMediaUrl } = await import("@/utils/media")
+    expect(resolveMediaUrl("media/albums//cover.png", ORIGIN)).toBe(
+      "https://api.example.com/media/albums//cover.png"
+    )
+    expect(resolveMediaUrl("media/blob:cover.png", ORIGIN)).toBe(
+      "https://api.example.com/media/blob:cover.png"
+    )
+    expect(resolveMediaUrl("media/javascript:cover.png", ORIGIN)).toBe(
+      "https://api.example.com/media/javascript:cover.png"
+    )
+  })
+
+  it("prefixes event attachment paths only when they start with the events route", async () => {
+    const { resolveMediaUrl } = await import("@/utils/media")
+    expect(resolveMediaUrl("/api/v1/events/42/cover.png", ORIGIN)).toBe(
+      "https://api.example.com/api/v1/events/42/cover.png"
+    )
+  })
+
+  it("trims the origin and removes every trailing slash from it", async () => {
+    const { resolveMediaUrl } = await import("@/utils/media")
+    expect(resolveMediaUrl("/media/a.png", `  ${ORIGIN}  `)).toBe(
+      "https://api.example.com/media/a.png"
+    )
+    expect(resolveMediaUrl("/media/a.png", `${ORIGIN}///`)).toBe(
+      "https://api.example.com/media/a.png"
+    )
+    expect(resolveMediaUrl("/media/a.png", `${ORIGIN}/`)).toBe(
+      "https://api.example.com/media/a.png"
+    )
+  })
+
+  it("trims the raw path before choosing the image proxy", async () => {
+    const { resolveProxyImageUrl } = await import("@/utils/media")
+    expect(resolveProxyImageUrl("  media/p.png  ", undefined, ORIGIN)).toBe(
+      "https://api.example.com/api/v1/img/media/p.png"
+    )
+  })
+
+  it("trims a padded origin for proxied images", async () => {
+    const { resolveProxyImageUrl } = await import("@/utils/media")
+    expect(resolveProxyImageUrl("/media/p.png", undefined, `${ORIGIN} `)).toBe(
+      "https://api.example.com/api/v1/img/media/p.png"
+    )
+  })
+
+  it("proxies static assets and keeps already proxied paths with a width", async () => {
+    const { resolveProxyImageUrl } = await import("@/utils/media")
+    expect(resolveProxyImageUrl("/static/logo.png", 64, "")).toBe(
+      "/api/v1/img/static/logo.png?w=64"
+    )
+    expect(resolveProxyImageUrl("/api/v1/img/photo.png", 100, "")).toBe(
+      "/api/v1/img/photo.png?w=100"
+    )
+  })
+
+  it("only strips the proxy prefix when the path starts with it", async () => {
+    const { resolveProxyImageUrl } = await import("@/utils/media")
+    expect(resolveProxyImageUrl("/media/api/v1/img/x.png", undefined, "")).toBe(
+      "/api/v1/img/media/api/v1/img/x.png"
+    )
+  })
+})

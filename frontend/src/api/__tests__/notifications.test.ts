@@ -36,6 +36,7 @@ import {
   fetchNotificationsList,
   fetchPushTopics,
   getVapidPublicKey,
+  isReleaseVersion,
   markAllNotificationsRead,
   markNotificationRead,
   purgeDeadLetterJobs,
@@ -495,6 +496,21 @@ describe("announcePlatformRelease", () => {
       data: { version: "1.4.0", created: 1.5, already_announced: false },
     } as never)
 
-    await expect(announcePlatformRelease({ version: "1.4.0" })).rejects.toThrow()
+    await expect(announcePlatformRelease({ version: "1.4.0" })).rejects.toThrow(
+      /^Invalid API response for POST \/api\/v1\/push\/admin\/releases: /
+    )
   })
+})
+
+describe("isReleaseVersion pre-release suffix", () => {
+  it("accepts a suffix of exactly 32 identifier characters", () => {
+    expect(isReleaseVersion(`1.4.0-${"a".repeat(32)}`)).toBe(true)
+  })
+
+  it.each([`1.4.0-${"a".repeat(33)}`, "1.4.0-rc_1", "1.4.0-rc.1!"])(
+    "rejects a suffix with trailing invalid content: %s",
+    (value) => {
+      expect(isReleaseVersion(value)).toBe(false)
+    }
+  )
 })

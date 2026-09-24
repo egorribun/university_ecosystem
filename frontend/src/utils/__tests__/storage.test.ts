@@ -149,13 +149,17 @@ describe("storage utilities", () => {
       })
 
       it("logs warning on error", () => {
+        const error = new Error("Storage error")
         vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-          throw new Error("Storage error")
+          throw error
         })
 
         const item = new StorageItem<string>("error-log")
         item.set("data")
-        expect(mocks.logWarning).toHaveBeenCalled()
+        expect(mocks.logWarning).toHaveBeenCalledExactlyOnceWith(
+          '[Storage] Failed to set key "error-log":',
+          { error }
+        )
       })
 
       it("does not classify a non-DOMException by its error name alone", () => {
