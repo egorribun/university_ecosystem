@@ -11,9 +11,9 @@ export function isOpenNow(hours: BuildingHours): boolean {
 
   if (!todayHours) return false
 
-  const lower = todayHours.toLowerCase()
-  if (lower === "24/7") return true
-  if (lower === "closed" || lower === "закрыто") return false
+  if (todayHours === "24/7") return true
+  // "closed"/"закрыто" and any other text without a time range fall through
+  // the pattern below.
 
   const match = todayHours.match(/(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})/)
   if (!match) return false

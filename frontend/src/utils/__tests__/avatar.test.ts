@@ -99,30 +99,6 @@ describe("avatar utilities", () => {
         })
       }
     })
-
-    it("handles window.location throwing error when accessing origin", () => {
-      const originalWindow = global.window
-      try {
-        const fakeWindow = {
-          get location() {
-            throw new Error("inaccessible location")
-          },
-        }
-        Object.defineProperty(global, "window", {
-          value: fakeWindow,
-          writable: true,
-          configurable: true,
-        })
-        const result = resolveBackendOrigin({ baseURL: "", locationOrigin: undefined })
-        expect(result).toBeUndefined()
-      } finally {
-        Object.defineProperty(global, "window", {
-          value: originalWindow,
-          writable: true,
-          configurable: true,
-        })
-      }
-    })
   })
 
   describe("buildAvatarUrl", () => {

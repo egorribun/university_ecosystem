@@ -53,11 +53,9 @@ for (const { codes, meta } of CODE_GROUPS) {
   }
 }
 
-export const getWeatherIconMeta = (code: number | null | undefined): WeatherIconMeta => {
-  if (code == null || !Number.isFinite(code)) return FALLBACK_META
-  const key = Math.trunc(code)
-  return WEATHER_CODE_META[key] ?? FALLBACK_META
-}
+// A missing, NaN or infinite code truncates to a key the table never holds.
+export const getWeatherIconMeta = (code: number | null | undefined): WeatherIconMeta =>
+  WEATHER_CODE_META[Math.trunc(code ?? Number.NaN)] ?? FALLBACK_META
 
 export const getWeatherLabel = (code: number | null | undefined): string =>
   getWeatherIconMeta(code).label
