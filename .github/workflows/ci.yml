@@ -4410,14 +4410,14 @@ jobs:
         image: nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228
         ports: ["4222:4222"]
       minio:
-        image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-        # The MinIO image defaults to printing its CLI help and exiting.  The
-        # chaos job needs a long-lived object-storage server for the health
-        # probe and the ToxiProxy upstream.
-        command: server /data --console-address ":9001"
+        # Verified upstream keyless signature, immutable index, and live S3
+        # behavior. Keep port 9000 for the existing ToxiProxy test wiring.
+        image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+        command: mini -dir=/data -s3.port=9000
         env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadminsecret  # pragma: allowlist secret
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadminsecret  # pragma: allowlist secret
+          S3_BUCKET: quality-chaos
         ports: ["9000:9000"]
       toxiproxy:
         image: ghcr.io/shopify/toxiproxy:2.9.0@sha256:b44c283298cea49e2defaba1b3028783798346f2a926684e3a345fd8441af3b8
@@ -4429,7 +4429,7 @@ jobs:
         run: uv sync --frozen
       - name: Configure ToxiProxy proxies
         run: |
-          curl --fail --retry 30 --retry-delay 1 http://localhost:9000/minio/health/live
+          curl --fail --retry 30 --retry-delay 1 http://localhost:9000/status
           curl --fail --retry 30 --retry-delay 1 http://localhost:8474/version
           curl -s -X POST http://localhost:8474/proxies \
             -d '{"name":"postgres","listen":"0.0.0.0:5433","upstream":"postgres:5432"}'

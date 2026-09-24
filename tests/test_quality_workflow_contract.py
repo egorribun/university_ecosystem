@@ -4928,15 +4928,20 @@ def test_lhci_ci_uses_route_specific_ssr_preview_without_lowering_budgets() -> N
     )
 
 
-def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:
+def test_chaos_job_provisions_real_s3_through_toxiproxy() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     chaos_job = ci_workflow["jobs"]["chaos-tests"]
     minio_service = chaos_job["services"]["minio"]
-    # Docker Hub archived the upstream repository; CI consumes the same
-    # immutable manifest through the public Quay mirror instead.
-    assert minio_service["image"].startswith("quay.io/minio/minio:")
-    assert "@sha256:" in minio_service["image"]
-    assert minio_service["command"] == 'server /data --console-address ":9001"'
+    assert (
+        minio_service["image"]
+        == (
+            "ghcr.io/chrislusf/seaweedfs:4.47@sha256:"
+            "ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882"  # pragma: allowlist secret
+        )
+    )
+    assert minio_service["command"] == "mini -dir=/data -s3.port=9000"
+    assert minio_service["env"]["AWS_ACCESS_KEY_ID"] == "minioadmin"
+    assert minio_service["env"]["S3_BUCKET"] == "quality-chaos"
     assert "9003:9003" in chaos_job["services"]["toxiproxy"]["ports"]
 
     configure_text = next(
@@ -4946,6 +4951,7 @@ def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:
     )
     assert '"name":"minio"' in configure_text
     assert '"upstream":"minio:9000"' in configure_text
+    assert "http://localhost:9000/status" in configure_text
 
     chaos_env = next(
         step["env"]
@@ -4955,6 +4961,10 @@ def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:
     assert chaos_env["MINIO_PROXY_ENDPOINT"] == "http://localhost:9003"
     assert chaos_env["MINIO_DIRECT_ENDPOINT"] == "localhost:9000"
     assert chaos_env["STORAGE_S3_ENDPOINT_URL"] == "http://localhost:9003"
+    assert (
+        minio_service["env"]["AWS_SECRET_ACCESS_KEY"]
+        == chaos_env["STORAGE_S3_SECRET_ACCESS_KEY"]
+    )
 
 
 def test_actionlint_documents_github_service_command_compatibility() -> None:

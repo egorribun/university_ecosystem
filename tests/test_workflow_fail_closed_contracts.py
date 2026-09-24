@@ -42,9 +42,9 @@ EXPECTED_EXTERNAL_IMAGES = {
         "nats:2.10.25-alpine@sha256:"
         "3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228"  # pragma: allowlist secret
     ),
-    "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z": (
-        "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:"
-        "14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"  # pragma: allowlist secret
+    "ghcr.io/chrislusf/seaweedfs:4.47": (
+        "ghcr.io/chrislusf/seaweedfs:4.47@sha256:"
+        "ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882"  # pragma: allowlist secret
     ),
     "ghcr.io/shopify/toxiproxy:2.9.0": (
         "ghcr.io/shopify/toxiproxy:2.9.0@sha256:"
@@ -1322,6 +1322,30 @@ def test_external_workflow_images_use_the_audited_digests() -> None:
     for tag, pinned in EXPECTED_EXTERNAL_IMAGES.items():
         assert pinned in combined, f"expected pinned workflow image {pinned}"
         assert not re.search(rf"{re.escape(tag)}(?!@sha256:)", combined)
+
+
+def test_go_and_compose_s3_cells_use_the_audited_seaweedfs_image() -> None:
+    image = (
+        "ghcr.io/chrislusf/seaweedfs:4.47@sha256:"
+        "ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882"  # pragma: allowlist secret
+    )
+    for path in (
+        ROOT / "services/file-processor/internal/workflow/workflow_integration_test.go",
+        CI,
+        ROOT / "docker-compose.sandbox.yml",
+    ):
+        assert image in path.read_text(encoding="utf-8"), path
+
+    sandbox = _workflow(ROOT / "docker-compose.sandbox.yml")["services"]["minio"]
+    assert sandbox["command"] == ["mini", "-dir=/data", "-s3.port=9000"]
+    assert sandbox["environment"]["S3_BUCKET"] == "uploads"
+    assert "127.0.0.1:59000:9000" in sandbox["ports"]
+    assert sandbox["healthcheck"]["test"] == [
+        "CMD",
+        "wget",
+        "-qO-",
+        "http://localhost:9000/status",
+    ]
 
 
 def test_active_workflows_pin_linux_runner_version() -> None:
