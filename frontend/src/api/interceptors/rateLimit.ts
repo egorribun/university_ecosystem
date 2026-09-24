@@ -127,6 +127,9 @@ const tryAcquireClientQueueSlot = (): boolean => {
 
   clientQueueInFlight += 1
   clientQueueTimestamps.push(Date.now())
+  // A grant can fill the window while others still wait. Nothing else wakes
+  // them when the oldest timestamp expires, so arm the window timer now.
+  if (clientQueueWaiters.length > 0) scheduleClientQueueWindowReset()
   return true
 }
 
