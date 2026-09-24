@@ -4501,31 +4501,31 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: "0.7.x"
+          version-file: "pyproject.toml"
       - name: Install dependencies
         run: uv sync --frozen
       - name: Resolve fail-closed migration downgrade policy
         id: migration-policy
-        run: uv run python scripts/quality/migration_downgrade_policy.py plan >> "$GITHUB_OUTPUT"
+        run: uv run --frozen --no-sync python scripts/quality/migration_downgrade_policy.py plan >> "$GITHUB_OUTPUT"
       - name: Apply all migrations
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/migtest # pragma: allowlist secret
-        run: uv run alembic upgrade head
+        run: uv run --frozen --no-sync alembic upgrade head
       - name: Roll back the supported migration range
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/migtest # pragma: allowlist secret
           SAFE_DOWNGRADE_TARGET: ${{ steps.migration-policy.outputs.safe_target }}
-        run: uv run alembic downgrade "$SAFE_DOWNGRADE_TARGET"
+        run: uv run --frozen --no-sync alembic downgrade "$SAFE_DOWNGRADE_TARGET"
       - name: Verify declared irreversible migration boundary
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/migtest # pragma: allowlist secret
-        run: uv run python scripts/quality/migration_downgrade_policy.py assert-boundary
+        run: uv run --frozen --no-sync python scripts/quality/migration_downgrade_policy.py assert-boundary
       - name: Re-apply all migrations
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/migtest # pragma: allowlist secret
-        run: uv run alembic upgrade head
+        run: uv run --frozen --no-sync alembic upgrade head
       - name: Run migration integrity tests
-        run: uv run pytest tests/test_migrations_integrity.py -v --tb=short
+        run: uv run --frozen --no-sync pytest tests/test_migrations_integrity.py -v --tb=short
 
   # Advisory-only validation of the 10k WebSocket scenario definition. Running
   # that scenario requires a separately provisioned, rate-limit-adjusted stack;

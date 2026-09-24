@@ -604,6 +604,39 @@ def test_python_coverage_scope_and_migration_gate_are_explicit() -> None:
     assert "--cov=alembic/versions" not in pytest_runs
 
 
+def test_migration_rollback_uses_the_canonical_uv_version() -> None:
+    job = _workflow(CI)["jobs"]["db-migration-integrity"]
+    setup_uv = next(
+        step
+        for step in job["steps"]
+        if step.get("uses", "").startswith("astral-sh/setup-uv@")
+    )
+    uv_config = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["tool"]["uv"]
+
+    assert uv_config["required-version"] == "==0.11.28"
+    assert setup_uv["with"]["version-file"] == "pyproject.toml"
+    assert "version" not in setup_uv["with"]
+
+
+def test_migration_rollback_keeps_the_synced_lock_environment() -> None:
+    job = _workflow(CI)["jobs"]["db-migration-integrity"]
+    commands = [
+        (index, step["run"]) for index, step in enumerate(job["steps"]) if "run" in step
+    ]
+    sync_index = next(
+        index for index, command in commands if command == "uv sync --frozen"
+    )
+    project_runs = [
+        (index, command) for index, command in commands if command.startswith("uv run ")
+    ]
+
+    assert project_runs
+    assert all(index > sync_index for index, _ in project_runs)
+    assert all(
+        command.startswith("uv run --frozen --no-sync ") for _, command in project_runs
+    )
+
+
 def test_backend_duration_refresh_cannot_mask_a_failed_pytest_collection() -> None:
     reusable = _workflow(WORKFLOWS / "reusable-backend-tests.yml")
     duration_step = _step(
