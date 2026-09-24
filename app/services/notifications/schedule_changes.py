@@ -19,13 +19,17 @@ from sqlalchemy import select
 
 from app.core.localization import DEFAULT_LOCALE, SUPPORTED_LOCALES, translate
 from app.models import Notification, User
-from app.services.notification_templates import render_notification_template
+from app.services.notification_templates import (
+    render_registered_notification_template,
+)
 from app.services.notifications.delivery import create_notifications_for_users
 
 if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession
 
 SCHEDULE_CHANGE_TOPIC = "schedule.changed"
+# The registered template scenario, also stored as the notification type.
+_SCHEDULE_CHANGE_TYPE = "schedule.change"
 _WEEKDAYS = frozenset(
     {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
 )
@@ -65,7 +69,9 @@ def _clock(value: Any) -> str | None:
 
 
 def _weekday(value: Any, locale: str) -> str | None:
-    name = str(value or "").strip().lower()
+    if not isinstance(value, str):
+        return None
+    name = value.strip().lower()
     if name in _WEEKDAYS:
         return translate(f"schedule.weekday.{name}", locale=locale)
     return None
@@ -73,15 +79,17 @@ def _weekday(value: Any, locale: str) -> str | None:
 
 def _render(
     state: Mapping[str, Any], *, cancelled: bool, schedule_id: str, locale: str
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     start, end = _clock(state.get("start_time")), _clock(state.get("end_time"))
     summary = (
         translate("notifications.schedule.change.cancelled", locale=locale)
         if cancelled
         else translate("notifications.schedule.change.updated", locale=locale)
     )
-    return render_notification_template(
-        "schedule.change",
+    # The scenario is registered, so the builder returns title, body, tag and
+    # data; it also defaults the link to /schedule.
+    return render_registered_notification_template(
+        _SCHEDULE_CHANGE_TYPE,
         {
             "subject": state.get("subject"),
             "summary": summary,
@@ -89,7 +97,6 @@ def _render(
             "room": state.get("room"),
             "date": _weekday(state.get("weekday"), locale),
             "time": f"{start}–{end}" if start and end else start,
-            "url": "/schedule",
             "schedule_id": schedule_id,
         },
         locale=locale,
@@ -136,11 +143,10 @@ async def notify_about_schedule_change(
         return 0
     identifier = str(schedule_id)
     # One notification per distinct change: a redelivered outbox event finds
-    # the key it already wrote and notifies nobody twice.
+    # the key it already wrote and notifies nobody twice.  The snapshots are
+    # JSON already (they travel through the outbox), so no encoder fallback.
     fingerprint = hashlib.sha256(
-        json.dumps(
-            {"previous": previous, "current": current}, sort_keys=True, default=str
-        ).encode()
+        json.dumps({"previous": previous, "current": current}, sort_keys=True).encode()
     ).hexdigest()[:16]
     dedupe_key = f"schedule-change:{identifier}:{fingerprint}"
     notified = await _already_notified(db, members, dedupe_key)
@@ -156,26 +162,22 @@ async def notify_about_schedule_change(
         )
         for locale in sorted(SUPPORTED_LOCALES)
     }
-    default = rendered.get(DEFAULT_LOCALE) or {}
+    default = rendered[DEFAULT_LOCALE]
     return await create_notifications_for_users(
         db,
-        title=str(default.get("title", "")),
-        body=str(default.get("body", "")),
+        title=default["title"],
+        body=default["body"],
         title_translations={
-            locale: str(payload["title"])
-            for locale, payload in rendered.items()
-            if payload and payload.get("title")
+            locale: payload["title"] for locale, payload in rendered.items()
         },
         body_translations={
-            locale: str(payload["body"])
-            for locale, payload in rendered.items()
-            if payload and payload.get("body")
+            locale: payload["body"] for locale, payload in rendered.items()
         },
-        type="schedule.change",
+        type=_SCHEDULE_CHANGE_TYPE,
         url="/schedule",
-        tag=str(default.get("tag") or f"schedule-change:{identifier}"),
+        tag=default["tag"],
         dedupe_key=dedupe_key,
-        payload_data=dict(default.get("data") or {}),
+        payload_data=default["data"],
         user_ids=user_ids,
         topic=SCHEDULE_CHANGE_TOPIC,
     )

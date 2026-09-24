@@ -280,3 +280,127 @@ async def test_start_only_time_is_rendered_without_a_range(
     (row,) = await _notifications(db_session)
     assert "09:00" in (row.body_en or "")
     assert "–" not in (row.body_en or "")
+
+
+def _fingerprint(previous: object, current: object) -> str:
+    import hashlib
+    import json
+
+    return hashlib.sha256(
+        json.dumps({"previous": previous, "current": current}, sort_keys=True).encode()
+    ).hexdigest()[:16]
+
+
+async def _capture_delivery(db_session, *, previous, current, schedule_id):
+    deliver = AsyncMock(return_value=1)
+    with patch(
+        "app.services.notifications.schedule_changes.create_notifications_for_users",
+        deliver,
+    ):
+        created = await notify_about_schedule_change(
+            db_session, schedule_id=schedule_id, previous=previous, current=current
+        )
+    assert created == 1
+    deliver.assert_awaited_once()
+    return deliver.await_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_delivery_carries_the_exact_localized_change(
+    db_session, user_factory
+) -> None:
+    group = await _group(db_session, "EXACT")
+    member = await user_factory(group_id=group.id)
+    schedule_id = uuid.uuid4()
+    previous = _state(group.id)
+    current = _state(group.id, room="202", weekday="Monday")
+
+    kwargs = await _capture_delivery(
+        db_session, previous=previous, current=current, schedule_id=schedule_id
+    )
+
+    ru_body = (
+        "Пара перенесена или изменена\nПонедельник 09:00–10:30 · ауд. 202 · Dr. Curie"
+    )
+    en_body = "The class was rescheduled or changed\nMonday 09:00–10:30 · room 202 · Dr. Curie"
+    assert kwargs == {
+        # English is the default locale.
+        "title": "Class change: Physics",
+        "body": en_body,
+        "title_translations": {
+            "en": "Class change: Physics",
+            "ru": "Изменение пары: Physics",
+        },
+        "body_translations": {"en": en_body, "ru": ru_body},
+        "type": "schedule.change",
+        "url": "/schedule",
+        "tag": f"schedule-change:{schedule_id}",
+        "dedupe_key": (
+            f"schedule-change:{schedule_id}:{_fingerprint(previous, current)}"
+        ),
+        "payload_data": {
+            "url": "/schedule",
+            "category": "schedule",
+            "subject": "Physics",
+            "lessonId": str(schedule_id),
+        },
+        "user_ids": [member.id],
+        "topic": "schedule.changed",
+    }
+
+
+@pytest.mark.asyncio
+async def test_cancellation_describes_the_previous_lesson(
+    db_session, user_factory
+) -> None:
+    group = await _group(db_session, "EXACT-CANCEL")
+    await user_factory(group_id=group.id)
+
+    kwargs = await _capture_delivery(
+        db_session, previous=_state(group.id), current=None, schedule_id="s-9"
+    )
+
+    assert kwargs["body_translations"]["en"] == (
+        "The class was cancelled\nMonday 09:00–10:30 · room 101 · Dr. Curie"
+    )
+    assert (
+        kwargs["dedupe_key"]
+        == f"schedule-change:s-9:{_fingerprint(_state(group.id), None)}"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unusable", ["not-a-uuid", "", None])
+async def test_an_unusable_previous_group_does_not_hide_the_current_one(
+    db_session, user_factory, unusable
+) -> None:
+    group = await _group(db_session, f"FALLBACK-{unusable}")
+    member = await user_factory(group_id=group.id)
+
+    kwargs = await _capture_delivery(
+        db_session,
+        previous={**_state(group.id), "group_id": unusable},
+        current=_state(group.id, room="404"),
+        schedule_id="s-10",
+    )
+
+    assert kwargs["user_ids"] == [member.id]
+
+
+@pytest.mark.asyncio
+async def test_a_missing_weekday_is_left_out_of_the_details(
+    db_session, user_factory
+) -> None:
+    group = await _group(db_session, "NO-WEEKDAY")
+    await user_factory(group_id=group.id)
+
+    kwargs = await _capture_delivery(
+        db_session,
+        previous=_state(group.id),
+        current=_state(group.id, weekday=None),
+        schedule_id="s-11",
+    )
+
+    assert kwargs["body_translations"]["en"] == (
+        "The class was rescheduled or changed\n09:00–10:30 · room 101 · Dr. Curie"
+    )

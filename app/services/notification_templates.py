@@ -642,4 +642,18 @@ def render_notification_template(
     return builder(context, locale=locale)
 
 
-__all__ = ["render_notification_template"]
+def render_registered_notification_template(
+    notification_type: str,
+    data: Mapping[str, Any] | None,
+    *,
+    locale: str | None = None,
+) -> dict[str, Any]:
+    """Render a scenario the caller knows is registered; fail loudly otherwise."""
+
+    rendered = render_notification_template(notification_type, data, locale=locale)
+    if rendered is None:
+        raise KeyError(f"Unknown notification scenario: {notification_type}")
+    return rendered
+
+
+__all__ = ["render_notification_template", "render_registered_notification_template"]
