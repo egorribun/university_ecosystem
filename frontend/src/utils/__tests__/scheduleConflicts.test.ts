@@ -115,13 +115,21 @@ describe("scheduleConflicts — detectConflicts", () => {
     expect(result.has("3")).toBe(false)
   })
 
-  it("skips lessons with null start_time or end_time", () => {
+  it("skips lessons with null start_time", () => {
     const lessons = [
       makeLesson({ id: "1", weekday: "Monday", start_time: "09:00", end_time: "10:30" }),
       makeLesson({ id: "2", weekday: "Monday", start_time: null, end_time: "11:30" }),
     ]
     const result = detectConflicts(lessons)
     expect(result.size).toBe(0)
+  })
+
+  it.each([null, "25:00"])("skips lessons with unparseable end_time %s", (endTime) => {
+    const lessons = [
+      makeLesson({ id: "1", weekday: "Monday", start_time: "09:00", end_time: endTime }),
+      makeLesson({ id: "2", weekday: "Monday", start_time: "09:30", end_time: "10:30" }),
+    ]
+    expect(detectConflicts(lessons).size).toBe(0)
   })
 
   it("skips a later-sorted lesson whose start time is out of range", () => {
