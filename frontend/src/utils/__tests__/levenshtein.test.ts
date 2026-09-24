@@ -65,4 +65,9 @@ describe("levenshtein", () => {
     expect(levenshtein("gmail.com", "gmai.com")).toBe(1)
     expect(levenshtein("gmail.com", "gmial.com")).toBe(2)
   })
+
+  it("counts every deletion when the longer string shrinks to one character", () => {
+    expect(levenshtein("abc", "x")).toBe(3)
+    expect(levenshtein("abc", "c")).toBe(2)
+  })
 })

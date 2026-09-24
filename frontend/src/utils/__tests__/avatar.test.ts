@@ -236,7 +236,7 @@ describe("avatar utilities", () => {
           baseURL: "/api",
           locationOrigin: "https://example.com",
         })
-      ).toContain("uid=a%20user")
+      ).toBe("https://example.com/force-invalid?uid=a%20user")
     })
 
     it("uses an ampersand in the appendUid fallback when a query already exists", () => {
@@ -256,7 +256,34 @@ describe("avatar utilities", () => {
           baseURL: "/api",
           locationOrigin: "https://example.com",
         })
-      ).toContain("?size=large&uid=42")
+      ).toBe("https://example.com/force-invalid?size=large&uid=42")
+    })
+
+    it("adds the leading slash itself when URL parsing is unavailable", () => {
+      vi.stubGlobal(
+        "URL",
+        class {
+          constructor() {
+            throw new TypeError("URL parsing unavailable")
+          }
+        }
+      )
+
+      expect(
+        buildAvatarUrl("avatars/photo.jpg", 42, {
+          baseURL: "/api",
+          locationOrigin: "https://example.com",
+        })
+      ).toBe("https://example.com/avatars/photo.jpg?uid=42")
+    })
+
+    it("treats a path that merely contains an absolute URL as relative", () => {
+      expect(
+        buildAvatarUrl("/media/proxy?src=https://cdn.example.com/a.jpg", 7, {
+          baseURL: "/api",
+          locationOrigin: "https://example.com",
+        })
+      ).toBe("https://example.com/media/proxy?src=https%3A%2F%2Fcdn.example.com%2Fa.jpg&uid=7")
     })
 
     it("returns the relative URL when no backend origin is available", () => {

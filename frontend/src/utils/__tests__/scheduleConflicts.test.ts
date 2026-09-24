@@ -124,6 +124,15 @@ describe("scheduleConflicts — detectConflicts", () => {
     expect(result.size).toBe(0)
   })
 
+  it("skips a later-sorted lesson whose start time is out of range", () => {
+    // "25:00" sorts after "09:00" but is not a valid clock time.
+    const lessons = [
+      makeLesson({ id: "1", weekday: "Monday", start_time: "09:00", end_time: "10:30" }),
+      makeLesson({ id: "2", weekday: "Monday", start_time: "25:00", end_time: "11:30" }),
+    ]
+    expect(detectConflicts(lessons).size).toBe(0)
+  })
+
   it("handles conflicts across different days independently", () => {
     const lessons = [
       makeLesson({ id: "1", weekday: "Monday", start_time: "09:00", end_time: "10:30" }),

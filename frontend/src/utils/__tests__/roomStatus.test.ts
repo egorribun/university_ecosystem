@@ -74,4 +74,12 @@ describe("roomStatus utils", () => {
     status = getRoomStatus("ГУК-305", lessons, new Date("2026-07-07T02:00:00"))
     expect(status).toEqual({ status: "free" })
   })
+
+  it("marks a room busy from the exact start minute of a lesson crossing midnight", () => {
+    const lessons = [{ room: "ГУК-305", start_time: "23:00", end_time: "02:00" }]
+    expect(getRoomStatus("ГУК-305", lessons, new Date("2026-07-06T23:00:00"))).toEqual({
+      status: "busy",
+      busyUntil: "02:00",
+    })
+  })
 })

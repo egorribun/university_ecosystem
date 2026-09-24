@@ -56,6 +56,32 @@ describe("suggestEmailDomain", () => {
     expect(result).toMatch(/^johndoe@/)
   })
 
+  it("does not treat an address without @ as a domain typo", () => {
+    expect(suggestEmailDomain("gmail.co")).toBeNull()
+  })
+
+  it("returns null when the local part is only whitespace", () => {
+    expect(suggestEmailDomain("   @gmial.com")).toBeNull()
+  })
+
+  it("returns null for a typo domain without a local part", () => {
+    expect(suggestEmailDomain("@gmial.com")).toBeNull()
+  })
+
+  it("trims whitespace around the local part in the suggestion", () => {
+    expect(suggestEmailDomain(" john @gmial.com")).toBe("john@gmail.com")
+  })
+
+  it("prefers a later domain that is strictly closer", () => {
+    // yandex.ru is 2 edits away, yandex.com only 1.
+    expect(suggestEmailDomain("user@yandex.co")).toBe("user@yandex.com")
+  })
+
+  it("keeps the first listed domain when two are equally close", () => {
+    // Both yandex.ru and yandex.com are 2 edits away.
+    expect(suggestEmailDomain("user@yandex.oo")).toBe("user@yandex.ru")
+  })
+
   // ---------------------------------------------------------------------------
   // Case handling
   // ---------------------------------------------------------------------------
