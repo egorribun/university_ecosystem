@@ -2,9 +2,14 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { HttpResponse, http } from "msw"
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { isReleaseVersion } from "@/api/notifications"
+vi.mock("@/api/notifications", async () => {
+  const actual = await vi.importActual<typeof import("@/api/notifications")>("@/api/notifications")
+  return { ...actual, announcePlatformRelease: vi.fn(actual.announcePlatformRelease) }
+})
+
+import { announcePlatformRelease, isReleaseVersion } from "@/api/notifications"
 import i18n from "@/i18n/config"
 import { server } from "@/tests/mocks/server"
 import { ReleaseAnnouncementCard } from "../ReleaseAnnouncementCard"
@@ -166,8 +171,10 @@ describe("ReleaseAnnouncementCard", () => {
     expect(outcome.className).toContain("text-(--error-text)")
   })
 
-  it("treats a malformed success payload as a failure", async () => {
-    captureRelease(() => HttpResponse.json({ version: "1.4.0", created: -1 }))
+  it("reports a non-HTTP failure such as a rejected response contract", async () => {
+    // The wrapper's own contract rejection is covered in api/__tests__; MSW
+    // responses must stay contract-valid for the global validator.
+    vi.mocked(announcePlatformRelease).mockRejectedValueOnce(new Error("Invalid response"))
     const user = renderCard()
 
     await user.type(screen.getByLabelText("Version"), "1.4.0")
