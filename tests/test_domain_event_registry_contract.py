@@ -81,3 +81,40 @@ async def test_outbox_dispatches_a_recorded_schedule_deletion() -> None:
     event = bus.publish.await_args.args[0]
     assert event.EVENT_TYPE == "SCHEDULE_DELETED"
     assert event.subject == "Physics"
+
+
+def test_schedule_deletion_rebuilds_from_a_stored_payload() -> None:
+    from app.core.events import ScheduleDeleted
+
+    event = ScheduleDeleted.from_dict(
+        {
+            "_schema_version": 1,
+            "schedule_id": "s-1",
+            "subject": "Physics",
+            "group_id": "g-1",
+            "previous_state": {"room": "101"},
+            "unexpected": "ignored",
+        }
+    )
+
+    assert (event.schedule_id, event.subject, event.group_id) == (
+        "s-1",
+        "Physics",
+        "g-1",
+    )
+    assert event.previous_state == {"room": "101"}
+    assert event.deleted is True
+    assert not hasattr(event, "unexpected")
+
+
+@pytest.mark.parametrize(
+    "event_type", ["NOTIFICATION_DEAD_LETTER_RETRY", "NOTIFICATION_DEAD_LETTER_PURGE"]
+)
+def test_dead_letter_audit_events_rebuild_their_batch_count(event_type: str) -> None:
+    event_cls = _EVENT_REGISTRY[event_type]
+
+    assert (
+        event_cls.from_dict({"_schema_version": 1, "batch_count": "3"}).batch_count == 3
+    )
+    assert event_cls.from_dict({}).batch_count == 0
+    assert event_cls.EVENT_TYPE == event_type

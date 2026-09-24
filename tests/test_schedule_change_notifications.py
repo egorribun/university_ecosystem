@@ -202,3 +202,81 @@ def test_topic_is_the_canonical_schedule_topic() -> None:
 
     assert SCHEDULE_CHANGE_TOPIC == "schedule.changed"
     assert SCHEDULE_CHANGE_TOPIC in CANONICAL_NOTIFICATION_TOPICS
+
+
+@pytest.mark.asyncio
+async def test_changes_without_a_reachable_group_or_member_notify_nobody(
+    db_session,
+) -> None:
+    empty_group = await _group(db_session, "NO-MEMBERS")
+    unknown = {"subject": "Physics", "group_id": "not-a-uuid"}
+
+    assert (
+        await notify_about_schedule_change(
+            db_session, schedule_id="s-1", previous=unknown, current=None
+        )
+        == 0
+    )
+    assert (
+        await notify_about_schedule_change(
+            db_session, schedule_id="s-2", previous={"subject": "Physics"}, current=None
+        )
+        == 0
+    )
+    assert (
+        await notify_about_schedule_change(
+            db_session,
+            schedule_id="s-3",
+            previous=_state(empty_group.id),
+            current=None,
+        )
+        == 0
+    )
+    assert await _notifications(db_session) == []
+
+
+@pytest.mark.asyncio
+async def test_unparseable_times_and_unknown_weekdays_are_left_out(
+    db_session, user_factory
+) -> None:
+    group = await _group(db_session, "LOOSE-STATE")
+    await user_factory(group_id=group.id)
+    previous = _state(group.id)
+    current = _state(
+        group.id, weekday="funday", start_time="not-a-time", end_time=None, room="303"
+    )
+
+    with patch(
+        "app.services.notifications.delivery._is_push_configured", return_value=False
+    ):
+        created = await notify_about_schedule_change(
+            db_session, schedule_id="s-4", previous=previous, current=current
+        )
+
+    assert created == 1
+    (row,) = await _notifications(db_session)
+    assert "funday" not in (row.body_en or "")
+    assert "not-a-time" not in (row.body_en or "")
+    assert "room 303" in (row.body_en or "")
+
+
+@pytest.mark.asyncio
+async def test_start_only_time_is_rendered_without_a_range(
+    db_session, user_factory
+) -> None:
+    group = await _group(db_session, "START-ONLY")
+    await user_factory(group_id=group.id)
+
+    with patch(
+        "app.services.notifications.delivery._is_push_configured", return_value=False
+    ):
+        await notify_about_schedule_change(
+            db_session,
+            schedule_id="s-5",
+            previous=_state(group.id),
+            current=_state(group.id, end_time=None),
+        )
+
+    (row,) = await _notifications(db_session)
+    assert "09:00" in (row.body_en or "")
+    assert "–" not in (row.body_en or "")
