@@ -92,6 +92,17 @@ vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: invalidateSpy.fn }),
 }))
 
+const stableHeight = vi.hoisted(() => ({
+  value: undefined as number | undefined,
+  calls: [] as unknown[][],
+}))
+vi.mock("@/hooks/ui/useStableListHeight", () => ({
+  useStableListHeight: (...args: unknown[]) => {
+    stableHeight.calls.push(args)
+    return stableHeight.value
+  },
+}))
+
 vi.mock("@/hooks/useEventsKeyboardNav", () => ({
   useEventsKeyboardNav: () => ({ activeIndex: -1, registerRef: vi.fn() }),
 }))
@@ -203,6 +214,8 @@ beforeEach(() => {
   resetEtagSpy.fn = vi.fn()
   invalidateSpy.fn = vi.fn()
   auth.user = { id: "u1", role: "student" }
+  stableHeight.value = undefined
+  stableHeight.calls = []
 })
 
 afterEach(() => {
@@ -444,8 +457,7 @@ describe("EventsFeature — sort modes", () => {
       evt({ id: "high", participant_count: 99 }),
     ]
     render(<EventsFeature />)
-    // Both survive; sort branch executed without error.
-    expect(screen.getByTestId("list-count")).toHaveTextContent("2")
+    expect(screen.getByTestId("list-order")).toHaveTextContent("high,low")
   })
 
   it("filters to future events + sorts ascending when sort='upcoming' (187-192)", () => {
@@ -560,5 +572,57 @@ describe("EventsFeature — refresh + dialog + derived flags", () => {
     render(<EventsFeature />)
     expect(screen.getByTestId("header-admin")).toHaveTextContent("false")
     expect(queryCalls.mine.at(-1)).toEqual([{ language: "en", userId: null }, { enabled: false }])
+  })
+})
+
+describe("EventsFeature — list height hold across filter changes", () => {
+  const lastHoldCall = () => stableHeight.calls.at(-1) as [{ current: unknown }, string, boolean]
+
+  it("keys the hold by tab, category, date range and sort around the list", () => {
+    search.params = { tab: "archive", cat: "lecture", dr: "today", sort: "popular" }
+    render(<EventsFeature />)
+
+    const [ref, resetKey] = lastHoldCall()
+    expect(resetKey).toBe("archive|lecture|today|popular")
+    expect(ref.current).toBe(screen.getByTestId("list").parentElement)
+  })
+
+  it("uses the default filters in the key", () => {
+    render(<EventsFeature />)
+    expect(lastHoldCall()[1]).toBe("active|all||newest")
+  })
+
+  it.each([
+    ["a refetch", { isFetching: true }, {}, true],
+    ["a narrowed list with more pages", { hasNextPage: true }, { cat: "lecture" }, true],
+    ["an unfiltered list with more pages", { hasNextPage: true }, {}, false],
+    ["a narrowed complete list", { hasNextPage: false }, { cat: "lecture" }, false],
+  ])("settles during %s: %s", (_label, flags, params, settling) => {
+    Object.assign(listQuery, flags)
+    search.params = params
+    render(<EventsFeature />)
+    expect(lastHoldCall()[2]).toBe(settling)
+  })
+
+  it("follows the my-events fetch on the my tab", () => {
+    search.params = { tab: "my" }
+    listQuery.isFetching = true
+    render(<EventsFeature />)
+    expect(lastHoldCall()[2]).toBe(false)
+
+    myQuery.isFetching = true
+    render(<EventsFeature />)
+    expect(lastHoldCall()[2]).toBe(true)
+  })
+
+  it("applies the held floor to the list container only while one is returned", () => {
+    stableHeight.value = 321
+    const { unmount } = render(<EventsFeature />)
+    expect(screen.getByTestId("list").parentElement).toHaveStyle({ minHeight: "321px" })
+    unmount()
+
+    stableHeight.value = undefined
+    render(<EventsFeature />)
+    expect(screen.getByTestId("list").parentElement?.style.minHeight).toBe("")
   })
 })

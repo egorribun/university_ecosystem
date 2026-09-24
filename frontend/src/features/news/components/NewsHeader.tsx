@@ -51,72 +51,77 @@ export const NewsHeader = ({
     return () => observer.disconnect()
   }, [])
 
+  // The sticky category bar is a sibling of <header>, not a child: a sticky
+  // box never leaves its containing block, so inside the short header it
+  // scrolled away with it instead of staying above the list (MVP spec §4).
   return (
-    <header className="mb-6 sm:mb-8 space-y-4">
-      {/* Row 1: Title + search + admin button */}
-      <FadeSection delay="60ms" className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <div className="news-badge-matte hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-primary shrink-0">
-            <Newspaper size={20} strokeWidth={2.2} />
+    <>
+      <header className="space-y-4">
+        {/* Row 1: Title + search + admin button */}
+        <FadeSection delay="60ms" className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="news-badge-matte hidden sm:flex h-11 w-11 items-center justify-center rounded-xl text-text-primary shrink-0">
+              <Newspaper size={20} strokeWidth={2.2} />
+            </div>
+            <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary whitespace-nowrap">
+              {t("news:pageTitle")}
+              {newsCount != null && (
+                <span
+                  className="news-badge-matte ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 align-middle font-bold tabular-nums leading-none"
+                  style={{ fontSize: "0.45em" }}
+                >
+                  {newsCount}
+                </span>
+              )}
+            </h1>
           </div>
-          <h1 className="text-fluid-h1 font-extrabold tracking-tight text-text-primary whitespace-nowrap">
-            {t("news:pageTitle")}
-            {newsCount != null && (
-              <span
-                className="news-badge-matte ml-2 inline-flex items-center justify-center rounded-full px-2 py-0.5 align-middle font-bold tabular-nums leading-none"
-                style={{ fontSize: "0.45em" }}
+
+          {/* Search */}
+          <div className="relative ml-auto w-full sm:w-64 lg:w-72">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-(--text-secondary) pointer-events-none"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder={t("news:search.placeholder")}
+              className="w-full rounded-xl matte-input py-2 pl-9 pr-14 text-sm text-text-primary placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none transition-shadow"
+              aria-label={t("news:search.placeholder")}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => onSearchChange("")}
+                className="absolute right-1 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand"
+                aria-label={t("common:buttons.clear")}
               >
-                {newsCount}
-              </span>
+                <X size={14} />
+              </button>
             )}
-          </h1>
-        </div>
+          </div>
 
-        {/* Search */}
-        <div className="relative ml-auto w-full sm:w-64 lg:w-72">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-(--text-secondary) pointer-events-none"
-          />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={t("news:search.placeholder")}
-            className="w-full rounded-xl matte-input py-2 pl-9 pr-14 text-sm text-text-primary placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none transition-shadow"
-            aria-label={t("news:search.placeholder")}
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => onSearchChange("")}
-              className="absolute right-1 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand"
-              aria-label={t("common:buttons.clear")}
+          {isAdmin && (
+            <Button
+              id="news-header-add-btn"
+              variant="glass"
+              size="sm"
+              onClick={onAddClick}
+              leadingIcon={<Plus size={16} />}
+              className="shrink-0"
             >
-              <X size={14} />
-            </button>
+              {t("news:actions.add")}
+            </Button>
           )}
-        </div>
-
-        {isAdmin && (
-          <Button
-            id="news-header-add-btn"
-            variant="glass"
-            size="sm"
-            onClick={onAddClick}
-            leadingIcon={<Plus size={16} />}
-            className="shrink-0"
-          >
-            {t("news:actions.add")}
-          </Button>
-        )}
-      </FadeSection>
+        </FadeSection>
+      </header>
 
       {/* Sentinel for sticky detection */}
-      <div ref={sentinelRef} className="h-0" aria-hidden="true" />
+      <div ref={sentinelRef} className="mt-4 h-0" aria-hidden="true" />
 
       {/* Row 2: Category pills + sort toggle — sticky on scroll */}
-      <div ref={stickyRef} className="news-sticky-categories" data-stuck={isStuck}>
+      <div ref={stickyRef} className="news-sticky-categories mb-6 sm:mb-8" data-stuck={isStuck}>
         <FadeSection
           delay="100ms"
           className="flex items-center gap-2 sm:flex-wrap max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:scrollbar-none max-sm:pb-1 max-sm:-mx-4 max-sm:px-4"
@@ -218,6 +223,6 @@ export const NewsHeader = ({
           })()}
         </FadeSection>
       </div>
-    </header>
+    </>
   )
 }

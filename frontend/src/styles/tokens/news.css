@@ -309,7 +309,8 @@
   .news-sticky-categories {
     position: sticky;
     top: var(--news-sticky-top);
-    z-index: var(--z-surface, 10);
+    /* Above card badges (z-surface) so a stuck bar stays readable and clickable. */
+    z-index: var(--z-sticky, 100);
     transition:
       backdrop-filter var(--motion-duration-base, 0.3s) var(--ease-premium, ease),
       background-color var(--motion-duration-base, 0.3s) var(--ease-premium, ease),
