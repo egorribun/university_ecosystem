@@ -907,7 +907,9 @@ def test_stryker_speed_optimisations_preserve_the_complete_viable_gate() -> None
     assert 'coverageAnalysis: "perTest"' in config
     assert "incremental: false" in config
     assert "excludedMutations: []" in config
-    assert "ignorers: []" in config
+    # ADR-040: one governed presentation ignorer, never an open-ended list.
+    assert "ignorers: [PRESENTATION_IGNORER]" in config
+    assert '"./scripts/stryker-presentation-ignorer.mjs"' in config
     assert "ignoreStatic" not in config
     assert "STRYKER_MAX_TEST_RUNNER_REUSE" in config
     assert 'cleanTempDir: "always"' in config

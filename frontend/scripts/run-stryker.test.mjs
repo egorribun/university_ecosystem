@@ -8,6 +8,10 @@ import path from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import {
+  PRESENTATION_IGNORER,
+  canonicalInstrumenterConfig,
+} from "./stryker-presentation-ignorer.mjs"
 
 const runnerUrl = new URL("./run-stryker.mjs", import.meta.url)
 const expectedPatterns = ["src/**/*.{ts,tsx}", "!src/**/__tests__/**/*"]
@@ -3818,7 +3822,7 @@ test("merges split mutation-range reports without duplicate or misplaced mutants
           coverageAnalysis: "perTest",
           incremental: false,
           mutator: { plugins: null, excludedMutations: [] },
-          ignorers: [],
+          ignorers: [PRESENTATION_IGNORER],
         },
         files: {
           "src/heavy.ts": {
@@ -3887,7 +3891,7 @@ test("historical Stryker costs are bound to the exact source SHA, config, and vi
   const config = {
     path: "frontend/stryker.config.mjs",
     sha256: "1".repeat(64),
-    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+    instrumenterOptions: canonicalInstrumenterConfig,
   }
   const preflightByFile = new Map(
     [...sourceByFile.entries()].map(([file, source]) => [
@@ -3941,7 +3945,7 @@ test("historical Stryker cost candidates fail closed for stale data and unsafe p
   const config = {
     path: "frontend/stryker.config.mjs",
     sha256: "1".repeat(64),
-    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+    instrumenterOptions: canonicalInstrumenterConfig,
   }
   const preflightByFile = new Map([
     [
@@ -4059,7 +4063,7 @@ test("historical shard timings produce a complete exact file-cost artifact", asy
   const config = {
     path: "frontend/stryker.config.mjs",
     sha256: "1".repeat(64),
-    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+    instrumenterOptions: canonicalInstrumenterConfig,
   }
   const mutant = (file, replacement) => ({
     fileName: file,
@@ -4155,7 +4159,7 @@ test("historical shard timings aggregate disjoint ranges of one source", async (
   const config = {
     path: "frontend/stryker.config.mjs",
     sha256: "1".repeat(64),
-    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+    instrumenterOptions: canonicalInstrumenterConfig,
   }
   const mutants = Array.from({ length: 4 }, (_, index) => ({
     fileName: "src/heavy.ts",
@@ -4256,7 +4260,7 @@ test("preflight artifact binds a complete deterministic shard universe to one wo
   const config = {
     path: "frontend/stryker.config.mjs",
     sha256: "2".repeat(64),
-    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+    instrumenterOptions: canonicalInstrumenterConfig,
   }
   const mutant = (replacement, file) => ({
     fileName: file,
@@ -4365,7 +4369,7 @@ test("preflight artifact fails closed for provenance, source, and shard-plan tam
   const config = {
     path: "frontend/stryker.config.mjs",
     sha256: "2".repeat(64),
-    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+    instrumenterOptions: canonicalInstrumenterConfig,
   }
   const preflightByFile = new Map(
     sourceFiles.map((file) => [
@@ -4503,7 +4507,7 @@ async function preflightCandidateFixture() {
   const config = {
     path: "frontend/stryker.config.mjs",
     sha256: "2".repeat(64),
-    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+    instrumenterOptions: canonicalInstrumenterConfig,
   }
   const preflightByFile = new Map([
     [
@@ -4658,7 +4662,7 @@ test("merges exact shard reports and namespaces otherwise colliding mutant ids",
     coverageAnalysis: "perTest",
     incremental: false,
     mutator: { plugins: null, excludedMutations: [] },
-    ignorers: [],
+    ignorers: [PRESENTATION_IGNORER],
   }
   const file = (id, replacement) => ({
     source: `export const value = ${replacement === "false" ? "true" : "false"}\n`,

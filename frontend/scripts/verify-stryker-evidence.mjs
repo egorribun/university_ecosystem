@@ -20,13 +20,14 @@ import {
   mutationSignature,
   parseMutationPattern,
 } from "./run-stryker.mjs"
+import { canonicalInstrumenterConfig } from "./stryker-presentation-ignorer.mjs"
 
 const execFileAsync = promisify(execFile)
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url))
 const mutationEvidenceRoot = path.join(repositoryRoot, "frontend", "reports", "mutation")
 const markerPath = path.join(mutationEvidenceRoot, "VALIDATED.json")
 const evidencePathPrefix = "frontend/reports/mutation/"
-const instrumenterOptions = { plugins: null, excludedMutations: [], ignorers: [] }
+const instrumenterOptions = canonicalInstrumenterConfig
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex")
 const normalizePath = (value) => value.replaceAll("\\", "/").replace(/^\.\//u, "")
@@ -630,7 +631,8 @@ function reconstructMergedReport({ inventory, reportTexts, preflightByFile, expe
       report.config?.incremental !== false ||
       JSON.stringify(report.config?.mutator) !==
         JSON.stringify({ plugins: null, excludedMutations: [] }) ||
-      JSON.stringify(report.config?.ignorers) !== JSON.stringify([])
+      JSON.stringify(report.config?.ignorers) !==
+        JSON.stringify(canonicalInstrumenterConfig.ignorers)
     ) {
       throw new Error(`Mutation shard configuration is malformed: ${evidence.shardId}`)
     }
@@ -739,7 +741,7 @@ function reconstructMergedReport({ inventory, reportTexts, preflightByFile, expe
       coverageAnalysis: "perTest",
       incremental: false,
       mutator: { plugins: null, excludedMutations: [] },
-      ignorers: [],
+      ignorers: [...canonicalInstrumenterConfig.ignorers],
     },
     files: reconstructedFiles,
   }
@@ -882,14 +884,13 @@ export async function verifyEvidenceDocuments({
   const preflightByFile = await generateInstrumenterPreflight({
     sourceFiles,
     sourceByFile,
-    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+    instrumenterOptions,
   })
   if (
     preflight.schemaVersion !== "1.0" ||
     preflight.revision !== inventory.revision ||
     preflight.sourceEvidenceDigest !== inventory.sourceRevision.evidenceDigest ||
-    JSON.stringify(preflight.instrumenterOptions) !==
-      JSON.stringify({ plugins: null, excludedMutations: [], ignorers: [] })
+    JSON.stringify(preflight.instrumenterOptions) !== JSON.stringify(canonicalInstrumenterConfig)
   ) {
     throw new Error("Mutation preflight identity or instrumenter configuration is malformed")
   }

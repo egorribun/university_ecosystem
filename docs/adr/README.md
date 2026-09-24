@@ -39,3 +39,4 @@ This directory contains architectural decision records (ADRs) for the University
 37. [ADR-037: CDC Outbox Transport Ownership and Lifecycle Boundary](ADR-037-cdc-outbox-transport-ownership.md)
 38. [ADR-038: Go Mutation Diagnostic Boundary](ADR-038-go-mutation-diagnostic-boundary.md)
 39. [ADR-039: Frontend Mutation Shard Cost Model](ADR-039-frontend-mutation-shard-cost-model.md)
+40. [ADR-040: Frontend Mutation Presentation Ignorer](ADR-040-frontend-mutation-presentation-ignorer.md)

@@ -29,6 +29,7 @@ import {
   mutantSignature,
   mutationPatternsFromPolicy,
 } from "./validate-stryker-inventory.mjs"
+import { canonicalInstrumenterConfig } from "./stryker-presentation-ignorer.mjs"
 
 const execFileAsync = promisify(execFile)
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url))
@@ -53,7 +54,7 @@ const strykerEntry = path.join(
 export const strykerSafeErrorStringPreloadOption = `--import=${
   pathToFileURL(path.join(frontendRoot, "scripts", "stryker-safe-error-string.mjs")).href
 }`
-const instrumenterOptions = { plugins: null, excludedMutations: [], ignorers: [] }
+const instrumenterOptions = canonicalInstrumenterConfig
 const preflightArtifactSchemaVersion = "1.0"
 const historicalCostArtifactSchemaVersion = "1.0"
 // A shard cannot legitimately run longer than the job that hosts it, so this
@@ -1274,7 +1275,7 @@ function assertShardReportConfig(report, files, id) {
     report.config?.incremental !== false ||
     JSON.stringify(report.config?.mutator) !==
       JSON.stringify({ plugins: null, excludedMutations: [] }) ||
-    JSON.stringify(report.config?.ignorers) !== JSON.stringify([])
+    JSON.stringify(report.config?.ignorers) !== JSON.stringify(canonicalInstrumenterConfig.ignorers)
   ) {
     throw new Error(`Stryker ${id} effective configuration differs from its assignment`)
   }
@@ -1405,7 +1406,7 @@ export function mergeShardReports({ shards, expectedPatterns, preflightByFile, s
       coverageAnalysis: "perTest",
       incremental: false,
       mutator: { plugins: null, excludedMutations: [] },
-      ignorers: [],
+      ignorers: [...canonicalInstrumenterConfig.ignorers],
     },
     files: mergedFiles,
   }

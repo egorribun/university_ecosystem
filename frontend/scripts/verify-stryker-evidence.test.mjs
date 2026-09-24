@@ -16,10 +16,14 @@ import {
   selectValidatedEvidenceCandidate,
   verifyEvidenceDocuments,
 } from "./verify-stryker-evidence.mjs"
+import {
+  PRESENTATION_IGNORER,
+  canonicalInstrumenterConfig,
+} from "./stryker-presentation-ignorer.mjs"
 
 const hash = (value) => createHash("sha256").update(value).digest("hex")
 const jsonText = (value) => `${JSON.stringify(value, null, 2)}\n`
-const instrumenterOptions = { plugins: null, excludedMutations: [], ignorers: [] }
+const instrumenterOptions = canonicalInstrumenterConfig
 const toolchain = {
   node: "v24.15.0",
   platform: "linux",
@@ -37,7 +41,7 @@ function reportConfig(mutate) {
     coverageAnalysis: "perTest",
     incremental: false,
     mutator: { plugins: null, excludedMutations: [] },
-    ignorers: [],
+    ignorers: [PRESENTATION_IGNORER],
   }
 }
 

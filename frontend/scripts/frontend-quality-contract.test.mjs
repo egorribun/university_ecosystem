@@ -40,7 +40,12 @@ test("Stryker mutation scope is derived from the complete frontend coverage deno
     "Stryker must discover the complete Vitest suite instead of a hand-picked test allow-list"
   )
   assert.deepEqual(strykerConfig.mutator, { plugins: null, excludedMutations: [] })
-  assert.deepEqual(strykerConfig.ignorers, [])
+  // ADR-040: exactly one governed ignore policy, loaded from the repository.
+  assert.deepEqual(strykerConfig.ignorers, ["presentation-class-names"])
+  assert.deepEqual(strykerConfig.plugins, [
+    "@stryker-mutator/*",
+    "./scripts/stryker-presentation-ignorer.mjs",
+  ])
   assert.equal(strykerConfig.incremental, false)
   assert.equal(
     strykerConfig.vitest?.related,

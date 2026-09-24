@@ -3,6 +3,7 @@ import path from "node:path"
 import process from "node:process"
 
 import coverageSourcePolicy from "../quality/coverage-source-policy.json" with { type: "json" }
+import { PRESENTATION_IGNORER } from "./scripts/stryker-presentation-ignorer.mjs"
 
 const strykerTempRoot =
   process.env.STRYKER_TEMP_DIR ?? path.join(os.tmpdir(), "university-ecosystem-stryker-unscoped")
@@ -112,7 +113,10 @@ export default {
     plugins: null,
     excludedMutations: [],
   },
-  ignorers: [],
+  // ADR-040: the only governed ignore policy. It skips presentation-only class
+  // and literal style leaves; every other Ignored mutant fails the inventory.
+  plugins: ["@stryker-mutator/*", "./scripts/stryker-presentation-ignorer.mjs"],
+  ignorers: [PRESENTATION_IGNORER],
   // Canonical release evidence is always a fresh run. Incremental reports are
   // useful for local feedback only and must never enter this evidence path.
   incremental: false,
