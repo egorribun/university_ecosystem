@@ -37,6 +37,33 @@ if (ENABLED) {
               page.locator('button[aria-controls="mobile-drawer"]'),
               `${viewport.width}px navbar mobile-menu action`
             )
+
+            const nav = page.locator("nav.vt-navbar")
+            const expandedHeight = (await nav.boundingBox())?.height
+            await page.locator("#main-content").evaluate((main) => {
+              main.style.minHeight = "2000px"
+              window.scrollTo(0, 600)
+            })
+            await expect(nav).toHaveClass(/bg-transparent/)
+            const compact = await nav.evaluate((element) => {
+              const shell = element.getBoundingClientRect()
+              const pill = element.firstElementChild!.getBoundingClientRect()
+              return {
+                shellHeight: shell.height,
+                pillHeight: pill.height,
+                left: pill.left,
+                right: pill.right,
+                viewportWidth: window.innerWidth,
+              }
+            })
+            expect(compact.shellHeight).toBe(expandedHeight)
+            expect(compact.pillHeight).toBeLessThan(compact.shellHeight)
+            expect(compact.left).toBeGreaterThanOrEqual(8)
+            expect(compact.right).toBeLessThanOrEqual(compact.viewportWidth - 8)
+            await assertControlTarget(
+              page.locator('button[aria-controls="mobile-drawer"]'),
+              `${viewport.width}px compact navbar mobile-menu action`
+            )
           } finally {
             await context.close()
           }

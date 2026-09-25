@@ -259,7 +259,7 @@ describe("Navbar", () => {
     await waitFor(() => expect(screen.getByText("News route")).toBeInTheDocument())
   })
 
-  it("uses the scrolled mobile style and scrolls home to the top", async () => {
+  it("uses a compact inset pill on mobile without changing shell height", async () => {
     const user = userEvent.setup()
     Object.defineProperty(window, "scrollY", { configurable: true, value: 200 })
     const scrollTo = vi.fn()
@@ -269,7 +269,10 @@ describe("Navbar", () => {
     })
 
     await renderNavbar()
-    await waitFor(() => expect(screen.getByRole("navigation")).toHaveClass("bg-(--pill-bg)"))
+    const nav = screen.getByRole("navigation")
+    await waitFor(() => expect(nav).toHaveClass("bg-transparent"))
+    expect(nav).toHaveClass("h-(--navbar-height)")
+    expect(nav.firstElementChild).toHaveClass("h-(--navbar-pill-h)", "w-[calc(100%-1rem)]")
 
     await user.click(screen.getByRole("link", { name: "Home" }))
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
