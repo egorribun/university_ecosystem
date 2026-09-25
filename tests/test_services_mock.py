@@ -436,6 +436,7 @@ async def test_handle_notifications_requested_with_ids() -> None:
     mock_event = MagicMock()
     mock_event.notification_ids = [uuid.uuid4(), uuid.uuid4()]
     mock_event.channel = "push"
+    mock_event.payload_data = None
     db = MagicMock()
     db.commit = AsyncMock()
     session_context = MagicMock()
@@ -455,6 +456,7 @@ async def test_handle_notifications_requested_with_ids() -> None:
         db,
         notification_ids=mock_event.notification_ids,
         channel="push",
+        payload_data=None,
     )
     db.commit.assert_awaited_once()
 
@@ -503,7 +505,7 @@ async def test_handle_attachment_cleanup_with_urls() -> None:
     ):
         await handle_attachment_cleanup_requested(mock_event)
         mock_attachment_svc.cleanup_files.assert_awaited_once_with(
-            mock_event.attachment_urls
+            mock_event.attachment_urls, durable=True
         )
 
 
@@ -542,9 +544,7 @@ async def test_generate_event_embedding_not_found() -> None:
         patch(
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
-        patch(
-            "app.services.event_handlers.get_vector_service", return_value=MagicMock()
-        ),
+        patch("app.services.event_handlers.VectorService", return_value=MagicMock()),
     ):
         await generate_event_embedding(mock_event)  # returns early when not found
 
@@ -567,9 +567,7 @@ async def test_generate_news_embedding_not_found() -> None:
         patch(
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
-        patch(
-            "app.services.event_handlers.get_vector_service", return_value=MagicMock()
-        ),
+        patch("app.services.event_handlers.VectorService", return_value=MagicMock()),
     ):
         await generate_news_embedding(mock_event)
 
@@ -602,7 +600,7 @@ async def test_generate_event_embedding_found() -> None:
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
         patch(
-            "app.services.event_handlers.get_vector_service",
+            "app.services.event_handlers.VectorService",
             return_value=mock_vector_svc,
         ),
     ):

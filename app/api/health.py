@@ -75,16 +75,18 @@ def reset_health_cache() -> None:
 
 
 async def _lightweight_storage_probe(backend: Any) -> str | None:
-    """Perform a lightweight existence check on the storage backend."""
-    from app.services.storage import StorageBackend
+    """Check storage availability without treating an empty key as an object."""
+    from app.services.storage import S3Storage, StaticFSStorage, StorageBackend
 
     if not isinstance(backend, StorageBackend):
         return None
 
-    # Use a well-known path or root to check availability
-    # For S3, exists("/") usually checks bucket connectivity/existence
-    # For local FS, it checks the base_dir
     try:
+        if isinstance(backend, S3Storage):
+            await backend.probe_bucket()
+            return "ok"
+        if isinstance(backend, StaticFSStorage):
+            return "ok" if await asyncio.to_thread(backend.base_dir.is_dir) else "error"
         exists = await backend.exists("/")
         return "ok" if exists else "error"
     except Exception:  # RZ-22-01-JUSTIFIED: health probe — storage probe returns "error" on any failure (reviewed TD-27-04)
@@ -95,13 +97,14 @@ async def _write_delete_storage_probe(backend: Any) -> str:
     probe_name = f"healthz/{uuid.uuid4().hex}.txt"
     try:
         probe_url = await backend.save_file(probe_name, b"", content_type="text/plain")
-    except Exception:  # RZ-22-01-JUSTIFIED: health probe — write probe returns "error" on any failure (reviewed TD-27-04)
+        try:
+            existed_after_write = await backend.exists(probe_url)
+        finally:
+            await backend.delete_file(probe_url)
+        still_exists = await backend.exists(probe_url)
+    except Exception:  # RZ-22-01-JUSTIFIED: fail-closed health probe with best-effort cleanup on verification failure
         return "error"
-    try:
-        await backend.delete_file(probe_url)
-    except Exception:  # RZ-22-01-JUSTIFIED: health probe — delete probe returns "error" on any failure (reviewed TD-27-04)
-        return "error"
-    return "ok"
+    return "ok" if existed_after_write and not still_exists else "error"
 
 
 async def _check_queue(conn: AsyncConnection) -> None:
@@ -129,10 +132,6 @@ async def _probe_storage() -> tuple[str, float]:
                 _status = lightweight_status
             else:
                 _status = "disabled"
-        elif _status == "error":
-            lightweight_status = await _lightweight_storage_probe(backend)
-            if lightweight_status is not None:
-                _status = lightweight_status
     except Exception:  # RZ-22-01-JUSTIFIED: health probe — storage probe returns "error" on any failure (reviewed TD-27-04)
         _status = "error"
     elapsed = time.perf_counter() - start

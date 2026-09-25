@@ -1,5 +1,5 @@
 import { memo } from "react"
-import { Skeleton } from "@/components/ui"
+import { Skeleton } from "@/components/ui/Skeleton"
 import { cn } from "@/utils/cn"
 
 interface NewsCardSkeletonProps {

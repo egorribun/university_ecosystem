@@ -6,12 +6,13 @@ import { fileURLToPath } from "node:url"
 
 import { Instrumenter } from "@stryker-mutator/instrumenter"
 
+import {
+  canonicalInstrumenterConfig,
+  isGovernedIgnoredMutant,
+  resolveInstrumenterOptions,
+} from "./stryker-presentation-ignorer.mjs"
+
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url))
-const expectedInstrumenterOptions = {
-  plugins: null,
-  excludedMutations: [],
-  ignorers: [],
-}
 
 function normalizePath(value) {
   if (typeof value !== "string" || value.includes("\0")) {
@@ -131,9 +132,16 @@ export async function generateInstrumenterPreflight({
       }
       return { name: file, content: source, mutate: true }
     })
-    const result = await instrumenter.instrument(files, instrumenterOptions)
+    const result = await instrumenter.instrument(
+      files,
+      resolveInstrumenterOptions(instrumenterOptions)
+    )
+    // Only the ADR-040 presentation policy may ignore a mutant; source
+    // directives such as `// Stryker disable` stay forbidden.
     const ignored = result.mutants.find(
-      (mutant) => mutant.status === "Ignored" || typeof mutant.statusReason === "string"
+      (mutant) =>
+        (mutant.status === "Ignored" || typeof mutant.statusReason === "string") &&
+        !isGovernedIgnoredMutant(mutant)
     )
     if (ignored) {
       throw new Error(
@@ -183,7 +191,7 @@ export function buildMutationInventory({
     excludedMutations: report.config?.mutator?.excludedMutations,
     ignorers: report.config?.ignorers,
   }
-  if (JSON.stringify(reportInstrumenterOptions) !== JSON.stringify(expectedInstrumenterOptions)) {
+  if (JSON.stringify(reportInstrumenterOptions) !== JSON.stringify(canonicalInstrumenterConfig)) {
     throw new Error("Stryker report instrumenter options do not match the fail-closed contract")
   }
   if (report.config?.coverageAnalysis !== "perTest") {
@@ -231,6 +239,7 @@ export function buildMutationInventory({
   let totalMutants = 0
   let killedMutants = 0
   let nonViableMutants = 0
+  let ignoredMutants = 0
   const mutantIds = new Set()
   const files = normalizedSources.map((file) => {
     const currentSource = sourceByFile.get(file)
@@ -276,6 +285,17 @@ export function buildMutationInventory({
         `Stryker mutant signatures differ from the instrumenter preflight for ${file}`
       )
     }
+    const ignoredSignatures = (mutants) =>
+      mutants
+        .filter((mutant) => mutant?.status === "Ignored")
+        .map((mutant) => mutantSignature(mutant, file))
+        .sort()
+    if (
+      JSON.stringify(ignoredSignatures(fileReport.mutants)) !==
+      JSON.stringify(ignoredSignatures(preflight.mutants))
+    ) {
+      throw new Error(`Stryker ignored mutants differ from the instrumenter preflight for ${file}`)
+    }
 
     for (const mutant of fileReport.mutants) {
       if (!mutant || typeof mutant !== "object" || typeof mutant.id !== "string") {
@@ -297,6 +317,10 @@ export function buildMutationInventory({
         nonViableMutants += 1
         continue
       }
+      if (isGovernedIgnoredMutant(mutant)) {
+        ignoredMutants += 1
+        continue
+      }
       throw new Error(`Stryker mutant ${mutant.id} has unacceptable status ${mutant.status}`)
     }
 
@@ -311,7 +335,7 @@ export function buildMutationInventory({
   if (killedMutants === 0) {
     throw new Error("Stryker report contains no viable mutants")
   }
-  const viableMutants = totalMutants - nonViableMutants
+  const viableMutants = totalMutants - nonViableMutants - ignoredMutants
   const viableMutantScore = (killedMutants / viableMutants) * 100
   if (viableMutantScore !== 100) {
     throw new Error(`Stryker viable mutation score is ${viableMutantScore}, expected 100`)
@@ -327,6 +351,7 @@ export function buildMutationInventory({
       totalMutants,
       killedMutants,
       nonViableMutants,
+      ignoredMutants,
       viableMutantScore,
     },
   }

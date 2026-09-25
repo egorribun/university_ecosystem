@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -38,20 +39,32 @@ class DeadLetterJob(Base):
     job_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     payload: Mapped[str] = mapped_column(Text, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    retry_count: Mapped[int] = mapped_column(default=0, nullable=False)
-    max_retries: Mapped[int] = mapped_column(default=3, nullable=False)
+    retry_count: Mapped[int] = mapped_column(
+        default=0, server_default="0", nullable=False
+    )
+    max_retries: Mapped[int] = mapped_column(
+        default=3, server_default="3", nullable=False
+    )
     status: Mapped[str] = mapped_column(
-        String(20), default=JobStatus.PENDING.value, nullable=False, index=True
+        String(20),
+        default=JobStatus.PENDING.value,
+        server_default="pending",
+        nullable=False,
+        index=True,
     )
     next_retry_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
+        server_default=func.now(),
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )

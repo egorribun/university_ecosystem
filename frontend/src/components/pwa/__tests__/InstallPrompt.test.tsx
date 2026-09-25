@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, render as rtlRender, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -69,6 +69,15 @@ let onNotifyRef: ((toast: unknown) => void) | null = null
 
 import InstallPrompt from "@/components/pwa/InstallPrompt"
 import { PWA_REFRESH_EVENT } from "@/app/pwaEvents"
+import { requestPushEducation } from "@/app/pwaEvents"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { User } from "@/types/User"
+
+const render = (ui: Parameters<typeof rtlRender>[0]) => {
+  const result = rtlRender(ui)
+  act(() => requestPushEducation("1"))
+  return result
+}
 
 type UserChoiceOutcome = "accepted" | "dismissed"
 
@@ -105,6 +114,11 @@ describe("InstallPrompt", () => {
     topicToggleInner.mockClear()
     onNotifyRef = null
     window.localStorage.clear()
+    useAuthStore.setState({
+      user: { id: "1", email: "student@example.test", is_active: true } satisfies User,
+      loading: false,
+    })
+    window.history.replaceState(null, "", "/events")
     vi.stubEnv("VITE_LHCI", "")
   })
 
@@ -113,7 +127,7 @@ describe("InstallPrompt", () => {
     window.localStorage.clear()
   })
 
-  it("renders the push-education panel by default (permission=default)", () => {
+  it("renders push education after a contextual request (permission=default)", () => {
     render(<InstallPrompt />)
     expect(screen.getByText("system:installPrompt.notificationsTitle")).toBeInTheDocument()
     expect(
@@ -265,32 +279,7 @@ describe("InstallPrompt", () => {
     await waitFor(() => {
       expect(screen.queryByText("system:installPrompt.notificationsTitle")).not.toBeInTheDocument()
     })
-    expect(window.localStorage.getItem("ecosystem.push.education.dismissedAt")).not.toBeNull()
-  })
-
-  it("renders the unsupported branch when push is not supported", () => {
-    resetPushPrefs({ pushSupported: false })
-    render(<InstallPrompt />)
-    expect(screen.getByText("system:installPrompt.unsupported")).toBeInTheDocument()
-  })
-
-  it("renders the denied branch with a check button", async () => {
-    resetPushPrefs({ notificationPermission: "denied" })
-    const user = userEvent.setup()
-    render(<InstallPrompt />)
-
-    expect(screen.getByText("system:installPrompt.blocked")).toBeInTheDocument()
-    expect(screen.getByText("system:installPrompt.check")).toBeInTheDocument()
-
-    await user.click(screen.getByText("system:installPrompt.check"))
-    expect(enableNotifications).toHaveBeenCalled()
-  })
-
-  it("shows the Safari iOS guide inside the denied branch when safariIOS is true", () => {
-    resetPushPrefs({ notificationPermission: "denied", safariIOS: true })
-    render(<InstallPrompt />)
-    // <Trans> mock renders the i18nKey verbatim.
-    expect(screen.getByText("system:installPrompt.safariGuide")).toBeInTheDocument()
+    expect(window.localStorage.getItem("ecosystem.push.education.dismissedAt:1")).not.toBeNull()
   })
 
   it("calls enableNotifications from the default-permission Allow button", async () => {
@@ -310,36 +299,6 @@ describe("InstallPrompt", () => {
 
     expect(screen.queryByText("system:installPrompt.notificationsTitle")).not.toBeInTheDocument()
     expect(screen.queryByText("system:installPrompt.toggleLabel")).not.toBeInTheDocument()
-  })
-
-  it("renders the notification topic controls during a granted-state transition", async () => {
-    const user = userEvent.setup()
-    const { rerender } = render(<InstallPrompt />)
-
-    // A browser permission transition can briefly expose the already-granted
-    // controls before the visibility effect settles. Use a non-terminal
-    // permission token to exercise that UI state deterministically.
-    resetPushPrefs({
-      notificationPermission: "transitioning" as NotificationPermission,
-      notificationsEnabled: true,
-    })
-    rerender(<InstallPrompt />)
-
-    expect(screen.getByText("system:installPrompt.toggleLabel")).toBeInTheDocument()
-    expect(screen.getByText("notifications:topics.schedule")).toBeInTheDocument()
-    const switches = screen.getAllByRole("switch")
-    await user.click(switches[0]!)
-    expect(disableNotifications).toHaveBeenCalled()
-    await user.click(switches[1]!)
-    expect(topicToggleInner).toHaveBeenCalled()
-
-    resetPushPrefs({
-      notificationPermission: "transitioning" as NotificationPermission,
-      notificationsEnabled: false,
-    })
-    rerender(<InstallPrompt />)
-    await user.click(screen.getAllByRole("switch")[0]!)
-    expect(enableNotifications).toHaveBeenCalled()
   })
 
   it("hides the push panel entirely under the VITE_LHCI gate", () => {

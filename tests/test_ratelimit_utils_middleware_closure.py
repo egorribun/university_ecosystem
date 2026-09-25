@@ -152,6 +152,25 @@ async def test_middleware_head_static_path_returns_empty_success():
 
 
 @pytest.mark.asyncio
+async def test_middleware_head_dynamic_path_remains_rate_limited():
+    """HEAD must bypass only public static assets, never dynamic endpoints."""
+    app = AsyncMock()
+    middleware = RateLimitMiddleware(app, storage_backend="memory")
+    middleware._check_limit = AsyncMock(
+        return_value=RateLimitInfo(allowed=True, remaining=119, retry_after=0)
+    )
+
+    await middleware(
+        _http_scope(path="/api/v1/news", method="HEAD"),
+        AsyncMock(),
+        AsyncMock(),
+    )
+
+    middleware._check_limit.assert_awaited_once()
+    app.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_middleware_redis_failure_uses_stricter_memory_fallback(monkeypatch):
     app = AsyncMock()
     middleware = RateLimitMiddleware(

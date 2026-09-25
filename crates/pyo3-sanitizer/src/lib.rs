@@ -8,9 +8,10 @@
 //! run the same ammonia configuration, so a given HTML string will always
 //! produce the same sanitized output on both sides.
 
-use ammonia::Builder;
 use pyo3::prelude::*;
-use std::collections::{HashMap, HashSet};
+
+mod sanitizer;
+pub use sanitizer::{sanitize_html_basic, sanitize_rich_text, strip_html};
 
 fn catch_sanitizer_unwind(sanitizer: fn(&str) -> String, html: &str) -> PyResult<String> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| sanitizer(html))).map_err(|err| {
@@ -25,103 +26,16 @@ fn catch_sanitizer_unwind(sanitizer: fn(&str) -> String, html: &str) -> PyResult
     })
 }
 
-/// Remove dangerous HTML while preserving rich-text formatting.
-///
-/// Allowed elements: paragraphs, headings, lists, inline formatting,
-/// blockquotes, code/pre, and anchors (href/title/target only).
-/// All URLs must use http or https. Links automatically get
-/// `rel="noopener noreferrer"`.
-pub fn sanitize_rich_text(html: &str) -> String {
-    let allowed_tags: HashSet<&str> = [
-        "p",
-        "br",
-        "b",
-        "i",
-        "em",
-        "strong",
-        "u",
-        "s",
-        "strike",
-        "h1",
-        "h2",
-        "h3",
-        "h4",
-        "h5",
-        "h6",
-        "ul",
-        "ol",
-        "li",
-        "a",
-        "blockquote",
-        "code",
-        "pre",
-    ]
-    .iter()
-    .copied()
-    .collect();
-
-    let mut attributes: HashMap<&str, HashSet<&str>> = HashMap::new();
-    attributes.insert("a", ["href", "title", "target"].iter().copied().collect());
-
-    let url_schemes: HashSet<&str> = ["http", "https"].iter().copied().collect();
-
-    // WHY: html5ever (used internally by ammonia) processes null bytes (\0)
-    // as part of text nodes rather than removing them outright.  When \0
-    // precedes U+FEFF, the tokeniser leaves FEFF in the first-pass output but
-    // removes it on the second pass — breaking idempotency.  Stripping both
-    // characters post-ammonia is the minimal correct fix.
-    Builder::new()
-        .tags(allowed_tags)
-        .tag_attributes(attributes)
-        .url_schemes(url_schemes)
-        .link_rel(Some("noopener noreferrer"))
-        .clean(html)
-        .to_string()
-        .replace(['\0', '\u{feff}'], "")
-}
-
 #[pyfunction]
 #[pyo3(name = "sanitize_rich_text")]
 pub fn py_sanitize_rich_text(html: &str) -> PyResult<String> {
     catch_sanitizer_unwind(sanitize_rich_text, html)
 }
 
-/// Strip all HTML except basic inline formatting (bold, italic, emphasis).
-///
-/// Use this for short user-supplied strings (e.g. display names, titles)
-/// where rich formatting is unwanted.
-pub fn sanitize_html_basic(html: &str) -> String {
-    let allowed_tags: HashSet<&str> = ["b", "i", "em", "strong"].iter().copied().collect();
-    // WHY: same html5ever null-byte + BOM idempotency issue as strip_html.
-    Builder::new()
-        .tags(allowed_tags)
-        .clean(html)
-        .to_string()
-        .replace(['\0', '\u{feff}'], "")
-}
-
 #[pyfunction]
 #[pyo3(name = "sanitize_html_basic")]
 pub fn py_sanitize_html_basic(html: &str) -> PyResult<String> {
     catch_sanitizer_unwind(sanitize_html_basic, html)
-}
-
-/// Remove all HTML tags, returning plain text.
-///
-/// Use this when storing or indexing content where markup must be absent.
-pub fn strip_html(html: &str) -> String {
-    // Run ammonia's tag-stripping pass first.
-    let cleaned = Builder::new().tags(HashSet::new()).clean(html).to_string();
-
-    // WHY: html5ever (used internally by ammonia) processes null bytes (\0)
-    // as part of text nodes rather than removing them outright.  When \0
-    // precedes a BOM/ZWNBSP (U+FEFF), the presence of \0 changes how the
-    // HTML5 tokeniser handles U+FEFF on the *first* call (leaving it in the
-    // output) while the *second* call (now without \0) removes it — breaking
-    // idempotency.  Stripping both characters after ammonia runs is the
-    // minimal, correct fix that restores the invariant:
-    //   strip_html(strip_html(x)) == strip_html(x)  for all x.
-    cleaned.replace(['\0', '\u{feff}'], "")
 }
 
 #[pyfunction]

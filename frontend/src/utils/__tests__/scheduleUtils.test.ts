@@ -49,6 +49,19 @@ describe("fmtTime", () => {
     expect(fmtTime("09:00:00")).toBe("09:00")
   })
 
+  it("takes the time from a datetime exactly as long as YYYY-MM-DDTHH:MM", () => {
+    expect(fmtTime("2025-06-15T14:30")).toBe("14:30")
+  })
+
+  it("only reads the time part when the 11th character is the ISO 'T' separator", () => {
+    // A 16+ character value without the separator is treated as a plain time.
+    expect(fmtTime("14:30:00.000000Z")).toBe("14:30")
+  })
+
+  it("does not read a time part from a truncated datetime", () => {
+    expect(fmtTime("2025-06-15T14")).toBe("2025-")
+  })
+
   it("returns correct value for midnight", () => {
     expect(fmtTime("00:00")).toBe("00:00")
     expect(fmtTime("2025-01-01T00:00:00")).toBe("00:00")
@@ -89,6 +102,16 @@ describe("nowParity", () => {
   it("returns 'even' for week 2 of the year", () => {
     // January 6, 2025 → week 2 → even
     vi.setSystemTime(new Date(2025, 0, 6, 12, 0, 0))
+    expect(nowParity()).toBe("even")
+  })
+
+  it("matches the ISO week parity on weekdays across the year", () => {
+    // ISO weeks 3, 16 and 20 of 2024 (the year starts on a Monday).
+    vi.setSystemTime(new Date(2024, 0, 15, 12, 0, 0))
+    expect(nowParity()).toBe("odd")
+    vi.setSystemTime(new Date(2024, 3, 15, 12, 0, 0))
+    expect(nowParity()).toBe("even")
+    vi.setSystemTime(new Date(2024, 4, 15, 12, 0, 0))
     expect(nowParity()).toBe("even")
   })
 })

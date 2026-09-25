@@ -13,6 +13,13 @@ permissions:
   actions: read
   contents: read
 
+# Promotion evidence is canonical for main.  Serializing manual dispatches
+# avoids duplicate API scans and keeps the most recent evidence queued rather
+# than cancelling an in-flight decision.
+concurrency:
+  group: quality-promotion-main
+  cancel-in-progress: false
+
 jobs:
   verify-canonical-ref:
     name: Verify canonical promotion ref

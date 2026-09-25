@@ -20,6 +20,7 @@ from app.services.partition_manager import (
     start_partition_management_scheduler,
 )
 from app.tasks.cleanups import setup_periodic_cleanups
+from app.workers.cdc_outbox import CdcOutboxWorker, require_supported_cdc_transport
 from app.workers.outbox import OutboxWorker
 
 _logger = get_logger(__name__)
@@ -165,26 +166,39 @@ async def _handle_schema_and_extensions() -> None:
 
     try:
         async with engine.begin() as conn:
-            if conn.dialect.name == "postgresql":
-                try:
-                    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-                except (
-                    OSError,
-                    ConnectionError,
-                ) as e:  # RZ-22-01: narrowed — DB extension creation errors
-                    _logger.warning("pgvector unavailable: %s", e)
-                    runtime_flags.disable("semantic_search_enabled")
-            else:
-                # Patch SQLite for tests
-                for table in Base.metadata.tables.values():
-                    for column in table.columns:
-                        if column.computed is not None and "to_tsvector" in str(
-                            column.computed.sqltext
-                        ):
-                            column.computed = None
-                            column.nullable = True
+            sqlite_metadata_snapshot: list[tuple[Any, Any, bool | None]] = []
+            try:
+                if conn.dialect.name == "postgresql":
+                    try:
+                        await conn.execute(
+                            text("CREATE EXTENSION IF NOT EXISTS vector")
+                        )
+                    except (
+                        OSError,
+                        ConnectionError,
+                    ) as e:  # RZ-22-01: narrowed — DB extension creation errors
+                        _logger.warning("pgvector unavailable: %s", e)
+                        runtime_flags.disable("semantic_search_enabled")
+                else:
+                    # SQLite cannot compile PostgreSQL's tsvector expression.
+                    # Adapt the shared metadata only for create_all, then restore it
+                    # so later startup cycles and tests see the canonical model.
+                    for table in Base.metadata.tables.values():
+                        for column in table.columns:
+                            if column.computed is not None and "to_tsvector" in str(
+                                column.computed.sqltext
+                            ):
+                                sqlite_metadata_snapshot.append(
+                                    (column, column.computed, column.nullable)
+                                )
+                                column.computed = None
+                                column.nullable = True
 
-            await conn.run_sync(Base.metadata.create_all)
+                await conn.run_sync(Base.metadata.create_all)
+            finally:
+                for column, computed, nullable in sqlite_metadata_snapshot:
+                    column.computed = computed
+                    column.nullable = nullable
     except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises in non-dev envs (reviewed TD-27-04)
         if settings.environment not in {"development", "local", "testing"}:
             raise
@@ -226,6 +240,9 @@ async def _validate_di_container(app: FastAPI) -> None:
 
 async def _startup_background_workers(app: FastAPI) -> None:
     """Stage 5: Pub/Sub workers, Outbox, and NATS task processors."""
+    if settings.embedded_cdc_outbox_worker_enabled:
+        require_supported_cdc_transport()
+
     from app.core.nats_broker import NatsTaskBroker
 
     await setup_periodic_cleanups()
@@ -250,7 +267,23 @@ async def _startup_background_workers(app: FastAPI) -> None:
 
     # Boot components from DI container
     if settings.environment != "testing":
-        if settings.embedded_outbox_worker_enabled:
+        # BE-08: CDC and polling are two implementations of the same outbox
+        # delivery, so exactly one may run. CDC wins when enabled because it is
+        # the explicit opt-in; the polling default would otherwise silently
+        # double-publish every DomainEvent.
+        if settings.embedded_cdc_outbox_worker_enabled:
+            cdc_broker = await app.state.dishka_container.get(NatsTaskBroker)
+            cdc_outbox_worker = CdcOutboxWorker(nats_broker=cdc_broker)
+            app.state.cdc_outbox_worker = cdc_outbox_worker
+            app.state.background_tasks.add(
+                asyncio.create_task(
+                    cdc_outbox_worker.run_forever(), name="cdc_outbox_worker"
+                )
+            )
+            _logger.info(
+                "Embedded CdcOutboxWorker enabled; polling OutboxWorker suppressed"
+            )
+        elif settings.embedded_outbox_worker_enabled:
             outbox_worker = await app.state.dishka_container.get(OutboxWorker)
             outbox_task = asyncio.create_task(
                 outbox_worker.run_forever(), name="outbox_worker"
@@ -445,6 +478,11 @@ def _reset_closed_dishka_container(app: FastAPI) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Granular startup and shutdown orchestration (TD-004 decomposition)."""
+    # Reject unsupported transport selection before opening resources or
+    # displacing polling. This applies in testing as well as production.
+    if settings.embedded_cdc_outbox_worker_enabled:
+        require_supported_cdc_transport()
+
     # RZ-33-14: Clear the stop event so the scheduler works after hot-reload.
     _SCHEDULER_STOP.clear()
     _reset_closed_dishka_container(app)
@@ -474,9 +512,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         configure_event_handlers()
         _LISTENERS_REGISTERED = True
     else:
-        import logging as _llog
-
-        _llog.getLogger(__name__).debug(
+        _logger.debug(
             "TD-NEW-003: Skipping event listener registration (already registered in this process)."
         )
 
@@ -521,6 +557,13 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     # TD-3: Signal the periodic scheduler to stop before cancelling tasks,
     # so it exits its current sleep immediately via asyncio.Event.
     _SCHEDULER_STOP.set()
+
+    # BE-08: ask the CDC worker to stop before cancelling, so it closes its
+    # logical-replication connection and fallback worker itself. A bare cancel
+    # would leave the replication slot held open by a detached connection.
+    cdc_outbox_worker = getattr(app.state, "cdc_outbox_worker", None)
+    if cdc_outbox_worker is not None:
+        await cdc_outbox_worker.stop()
 
     # Cancel background noise first
     _bg_tasks = list(getattr(app.state, "background_tasks", set()))

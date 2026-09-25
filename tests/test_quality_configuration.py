@@ -111,8 +111,22 @@ def test_agent_instruction_surface_has_one_canonical_source() -> None:
     assert "docs/audits/AUDIT_WAVE" not in claude_adapter
 
 
+def _tracked_targets() -> set[str]:
+    """Every tracked file plus its parent directories, as POSIX repo paths."""
+    targets: set[str] = set()
+    for name in _tracked_files():
+        path = PurePosixPath(name)
+        targets.add(path.as_posix())
+        targets.update(parent.as_posix() for parent in path.parents)
+    return targets
+
+
 def test_canonical_markdown_internal_links_resolve() -> None:
     tracked = _tracked_files("*.md")
+    # A link must reach a tracked path: an untracked local file (such as a
+    # user-owned draft) exists on disk yet is absent from every CI checkout.
+    tracked_targets = _tracked_targets()
+    repository = ROOT.resolve()
     excluded_prefixes = (
         ".agents/",
         ".opencode/",
@@ -151,7 +165,10 @@ def test_canonical_markdown_internal_links_resolve() -> None:
                     if path_text.startswith("/")
                     else document.parent / path_text
                 )
-                if not candidate.exists():
+                resolved = candidate.resolve()
+                if not resolved.is_relative_to(repository) or (
+                    resolved.relative_to(repository).as_posix() not in tracked_targets
+                ):
                     line = text.count("\n", 0, match.start()) + 1
                     missing.append(f"{relative_name}:{line} -> {target}")
 
@@ -266,6 +283,33 @@ def test_governance_quality_configuration_matches_contract() -> None:
     ):
         assert f"{protected_path} @egorribun" in codeowners
 
+    # Every scanner input and release-quality policy must remain owner-reviewed
+    # and is checked against the immutable pull-request base before execution.
+    for protected_path in (
+        ".github/CODEOWNERS",
+        ".github/actionlint.yaml",
+        ".github/codeql/",
+        ".github/dependency-review-config.yml",
+        ".checkov.yml",
+        ".semgrep.yml",
+        ".semgrepignore",
+        ".trivyignore",
+        ".trivyignore.yaml",
+        ".zap/rules.tsv",
+        "budget.json",
+        "quality/",
+        "security/audit-allowlist.yaml",
+        "security/trivy-*.yaml",
+        "security/semgrep-suppression-policy.json",
+    ):
+        assert f"{protected_path} @egorribun" in codeowners
+
+    security_workflow = _read_text(".github/workflows/reusable-security-audit.yml")
+    assert "Verify security policy inputs against protected base" in security_workflow
+    assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in security_workflow
+    assert 'git diff --quiet "$BASE_SHA" -- "$path"' in security_workflow
+    assert '"$PR_AUTHOR" != "egorribun"' in security_workflow
+
     codecov = yaml.safe_load(_read_text("codecov.yml"))
     expected_flags = {
         "python": ["app/"],
@@ -275,6 +319,7 @@ def test_governance_quality_configuration_matches_contract() -> None:
         "go-file-processor": ["services/file-processor/"],
         "go-shared": [
             "services/cmd/uni-cli/",
+            "services/pkg/logging/",
             "services/pkg/spiffe/",
             "services/pkg/spicedb/",
         ],
@@ -300,12 +345,27 @@ def test_governance_quality_configuration_matches_contract() -> None:
     assert codecov["comment"]["layout"] == "condensed_header, diff, flags, files"
 
     checkov = yaml.safe_load(_read_text(".github/workflows/checkov.yml"))
-    checkov_with = checkov["jobs"]["checkov"]["steps"][1]["with"]
+    checkov_step = next(
+        step
+        for step in checkov["jobs"]["checkov"]["steps"]
+        if step.get("name") == "Run Checkov"
+    )
+    checkov_with = checkov_step["with"]
     assert checkov_with.get("soft_fail") is not True
     assert checkov["jobs"]["checkov"]["timeout-minutes"] == 20
 
     mutation_exclusions = json.loads(_read_text("quality/mutation-exclusions.json"))
     assert mutation_exclusions == {"version": 1, "exclusions": []}
+
+
+def test_bandit_scope_is_explicitly_production_code_only() -> None:
+    """Keep the required Bandit gate aligned with its deployable source scope."""
+
+    bandit = _read_pyproject()["tool"]["bandit"]
+
+    assert bandit["targets"] == ["app"]
+    assert bandit["exclude_dirs"] == ["alembic"]
+    assert set(bandit["skips"]) == {"B101", "B104"}
 
 
 def test_uv_version_is_pinned_for_reproducible_ci_bootstrap() -> None:
@@ -367,6 +427,7 @@ def test_docker_context_excludes_local_quality_virtualenv() -> None:
     dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
 
     assert ".quality-venv/" in dockerignore.splitlines()
+    assert "/.tmp*/" in dockerignore.splitlines()
 
 
 def test_test_image_context_preserves_required_and_safe_inputs() -> None:
@@ -390,6 +451,7 @@ def test_test_image_context_preserves_required_and_safe_inputs() -> None:
         ".opencode/",
         ".superpowers/",
         ".quality-pytest-tmp*/",
+        "/.tmp*/",
         ".worktrees/",
         ".pytest_tmp*/",
         ".uv-cache*/",
@@ -515,6 +577,161 @@ def test_test_duration_updater_aggregates_junit_cases_and_preserves_schema() -> 
         "tests/test_stale.py": 9.0,
     }
     assert payload["default_duration_seconds"] == 1.0
+
+
+def test_test_duration_updater_maps_classified_junit_classnames_to_module_files() -> (
+    None
+):
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuite name='unit'>
+              <testcase classname='tests.test_auth.TestLogin' time='1.25' />
+              <testcase classname='tests.test_auth.TestLogin' time='0.75' />
+              <testcase classname='tests.test_plain' time='2.0' />
+            </testsuite>""",
+            encoding="utf-8",
+        )
+
+        payload = build_duration_payload(report_path, existing={}, replace=True)
+
+    assert payload["durations"] == {
+        "tests/test_auth.py": 2.0,
+        "tests/test_plain.py": 2.0,
+    }
+
+
+def test_test_duration_updater_replace_preserves_positive_estimate_for_skips() -> None:
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuite name='unit'>
+              <testcase file='tests/test_skipped.py' time='0.001'>
+                <skipped />
+              </testcase>
+              <testcase file='tests/test_measured.py' time='1.5' />
+            </testsuite>""",
+            encoding="utf-8",
+        )
+        existing = {
+            "version": 1,
+            "default_duration_seconds": 1.0,
+            "durations": {"tests/test_skipped.py": 12.0},
+        }
+
+        payload = build_duration_payload(report_path, existing=existing, replace=True)
+
+    assert payload["durations"] == {
+        "tests/test_measured.py": 1.5,
+        "tests/test_skipped.py": 12.0,
+    }
+
+
+def test_test_duration_updater_partial_refresh_preserves_unmeasured_history() -> None:
+    """Weekly's intentionally partial report must retain excluded test files."""
+
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuite name='weekly-unit'>
+              <testcase file='tests/test_measured.py' time='1.5' />
+            </testsuite>""",
+            encoding="utf-8",
+        )
+        existing = {
+            "version": 1,
+            "default_duration_seconds": 2.0,
+            "durations": {
+                "tests/chaos/test_resilience.py": 20.0,
+                "tests/test_measured.py": 9.0,
+            },
+        }
+
+        payload = build_duration_payload(report_path, existing=existing)
+
+    assert payload["durations"] == {
+        "tests/chaos/test_resilience.py": 20.0,
+        "tests/test_measured.py": 1.5,
+    }
+
+
+def test_test_duration_updater_replace_omits_new_all_skipped_file() -> None:
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuite name='unit'>
+              <testcase file='tests/test_skipped.py' time='0.001'>
+                <skipped />
+              </testcase>
+            </testsuite>""",
+            encoding="utf-8",
+        )
+
+        payload = build_duration_payload(report_path, existing={}, replace=True)
+
+    assert payload["durations"] == {}
+    assert payload["default_duration_seconds"] == 1.0
+
+
+def test_test_duration_updater_replace_keeps_measured_partial_file_without_history() -> (
+    None
+):
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuite name='unit'>
+              <testcase file='tests/test_partial.py' time='12.5' />
+              <testcase file='tests/test_partial.py' time='0.001'>
+                <skipped />
+              </testcase>
+            </testsuite>""",
+            encoding="utf-8",
+        )
+
+        payload = build_duration_payload(report_path, existing={}, replace=True)
+
+    assert payload["durations"] == {"tests/test_partial.py": 12.5}
+
+
+def test_test_duration_updater_preserves_estimate_for_partial_skips() -> None:
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuite name='unit'>
+              <testcase file='tests/test_partial.py' time='1.5' />
+              <testcase file='tests/test_partial.py' time='0.001'>
+                <skipped />
+              </testcase>
+            </testsuite>""",
+            encoding="utf-8",
+        )
+        existing = {
+            "version": 1,
+            "default_duration_seconds": 1.0,
+            "durations": {"tests/test_partial.py": 12.0},
+        }
+
+        payload = build_duration_payload(report_path, existing=existing, replace=True)
+
+    assert payload["durations"] == {"tests/test_partial.py": 12.0}
 
 
 def test_test_duration_updater_rejects_negative_or_non_numeric_times() -> None:
@@ -690,7 +907,9 @@ def test_stryker_speed_optimisations_preserve_the_complete_viable_gate() -> None
     assert 'coverageAnalysis: "perTest"' in config
     assert "incremental: false" in config
     assert "excludedMutations: []" in config
-    assert "ignorers: []" in config
+    # ADR-040: one governed presentation ignorer, never an open-ended list.
+    assert "ignorers: [PRESENTATION_IGNORER]" in config
+    assert '"./scripts/stryker-presentation-ignorer.mjs"' in config
     assert "ignoreStatic" not in config
     assert "STRYKER_MAX_TEST_RUNNER_REUSE" in config
     assert 'cleanTempDir: "always"' in config

@@ -7,7 +7,6 @@ Wave 13 additions:
   - chat.deleted event
   - user.created domain event
   - notification.sent event
-  - files.process task envelope
   - task envelope schema validation (id, name, args, kwargs, trace_context)
 
 WHY pact-python on non-Windows only: pact requires a native Pact binary that
@@ -118,16 +117,6 @@ def _nats_notification_sent_handler(
     return payload
 
 
-def _nats_files_process_handler(
-    msg: str | bytes | None, context: dict[str, Any]
-) -> dict[str, Any]:
-    assert msg is not None
-    payload = json.loads(msg)
-    assert "id" in payload
-    assert "name" in payload
-    return payload
-
-
 def _nats_task_envelope_handler(
     msg: str | bytes | None, context: dict[str, Any]
 ) -> dict[str, Any]:
@@ -153,9 +142,6 @@ def _nats_router_handler(
     elif "notification_type" in payload:
         return _nats_notification_sent_handler(msg, context)
     elif "args" in payload:
-        # Both files.process and tasks.* have args/kwargs
-        if "name" in payload and payload["name"] == "process_uploaded_file":
-            return _nats_files_process_handler(msg, context)
         return _nats_task_envelope_handler(msg, context)
     elif "chat_id" in payload:
         if "content_preview" in payload:
@@ -242,23 +228,7 @@ def test_nats_message_contracts(pact: Pact) -> None:
         .with_metadata({"nats_subject": "notification.sent"})
     )
 
-    # 6. files.process
-    (
-        pact.upon_receiving("a files.process task envelope", "Async")
-        .with_body(
-            {
-                "id": match.like("task-uuid-001"),
-                "name": match.like("process_uploaded_file"),
-                "args": match.like([]),
-                "kwargs": match.like({"file_id": "file-uuid-001"}),
-                "trace_context": match.like({}),
-            },
-            "application/json",
-        )
-        .with_metadata({"nats_subject": "files.process"})
-    )
-
-    # 7. tasks.*
+    # 6. tasks.*
     (
         pact.upon_receiving("a generic NATS task envelope", "Async")
         .with_body(

@@ -1,7 +1,8 @@
 import { memo, CSSProperties, useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
-import { Skeleton, StoryCircle } from "@/components/ui"
+import { Skeleton } from "@/components/ui/Skeleton"
+import { StoryCircle } from "@/components/ui/StoryCircle"
 import SmartImage from "@/components/media/SmartImage"
 import type { StoryItem } from "@/types/Story"
 

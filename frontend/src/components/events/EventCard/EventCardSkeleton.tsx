@@ -1,5 +1,6 @@
 import { type FC } from "react"
-import { ContentCard, Skeleton } from "@/components/ui"
+import { ContentCard } from "@/components/ui/ContentCard"
+import { Skeleton } from "@/components/ui/Skeleton"
 
 export const EventCardSkeleton: FC = () => {
   return (

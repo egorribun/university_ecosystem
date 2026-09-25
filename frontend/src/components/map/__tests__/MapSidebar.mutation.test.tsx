@@ -354,6 +354,17 @@ describe("MapSidebar mutation contracts", () => {
     expect(handle).toHaveAttribute("aria-valuenow", "680")
   })
 
+  it("consumes resize keys only when they move the sheet", () => {
+    const handle = render(<MapSidebar {...baseProps} isMobile />).getByRole("slider", {
+      name: "sidebar.dragToResize",
+    })
+
+    expect(fireEvent.keyDown(handle, { key: "End" })).toBe(false)
+    expect(fireEvent.keyDown(handle, { key: "ArrowUp" })).toBe(true)
+    expect(fireEvent.keyDown(handle, { key: "Escape" })).toBe(true)
+    expect(fireEvent.keyDown(handle, { key: "Home" })).toBe(false)
+  })
+
   it("uses the lower keyboard snap point on an exact midpoint", () => {
     const handle = render(<MapSidebar {...baseProps} isMobile />).getByRole("slider", {
       name: "sidebar.dragToResize",

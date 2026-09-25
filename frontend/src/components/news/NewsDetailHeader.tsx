@@ -8,7 +8,7 @@ import {
   Clock,
   Calendar,
 } from "lucide-react"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
 

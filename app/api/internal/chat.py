@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from dishka.integrations.fastapi import FromDishka, inject
+from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import get_db
+from app.core.protocols import AsyncDatabaseSession
 from app.repositories.chat_repository import ChatRepository
 
 router = APIRouter(prefix="/chat", tags=["internal-chat"])
@@ -24,10 +24,11 @@ router = APIRouter(prefix="/chat", tags=["internal-chat"])
     status_code=status.HTTP_200_OK,
     include_in_schema=False,
 )
+@inject
 async def check_participant(
+    db: FromDishka[AsyncDatabaseSession],
     user_id: uuid.UUID = Query(..., description="User to authorize"),
     room_id: uuid.UUID = Query(..., description="Chat room UUID"),
-    db: AsyncSession = Depends(get_db),
 ) -> dict[str, bool]:
     """Return 200 if the user is a participant of the chat room, else 403.
 

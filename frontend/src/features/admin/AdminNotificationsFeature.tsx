@@ -21,6 +21,7 @@ import {
   adminDeadLetterQueueQueryOptions,
 } from "@/api/hooks/adminNotifications"
 import PageFadeIn from "@/components/motion/PageFadeIn"
+import { ReleaseAnnouncementCard } from "./components/ReleaseAnnouncementCard"
 import { useLocaleFormatters } from "@/i18n/formatters"
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -528,6 +529,10 @@ export function AdminNotificationsFeature() {
               </div>
             )}
           </SectionCard>
+
+          <div className="mt-6">
+            <ReleaseAnnouncementCard />
+          </div>
 
           <SectionCard className="mt-6 p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

@@ -52,3 +52,101 @@ async def test_di_app_singletons_are_same_instance() -> None:
         assert worker_a is worker_b, "OutboxWorker must be a Scope.APP singleton"
     finally:
         await container.close()
+
+
+@pytest.mark.asyncio
+async def test_read_component_resolves_query_services_against_the_replica() -> None:
+    """BE-04: the read component expresses what the type system cannot.
+
+    ``get_db`` and ``get_read_db`` both yield ``AsyncDatabaseSession``, so the
+    container cannot distinguish a read service from a write one by type. The
+    ``read`` component registers the same providers a second time over the
+    replica session, which is what lets endpoints drop the legacy
+    ``get_read_*`` factories.
+    """
+    from app.core.di.read_replica import READ_COMPONENT
+    from app.core.protocols import AsyncDatabaseSession
+    from app.services.news_service import NewsService
+
+    container = create_dishka_container()
+    try:
+        async with container() as request_container:
+            write_service = await request_container.get(NewsService)
+            read_service = await request_container.get(
+                NewsService, component=READ_COMPONENT
+            )
+            write_session = await request_container.get(AsyncDatabaseSession)
+            read_session = await request_container.get(
+                AsyncDatabaseSession, component=READ_COMPONENT
+            )
+
+            assert isinstance(read_service, NewsService)
+            # Distinct objects, or the component would be decorative.
+            assert read_service is not write_service
+            assert read_session is not write_session
+    finally:
+        await container.close()
+
+
+@pytest.mark.asyncio
+async def test_read_component_shares_app_singletons_instead_of_rebuilding_them() -> (
+    None
+):
+    """Components do not fall back, so the bridges must re-expose, not rebuild.
+
+    A second ``AuditService`` or cache inside the read component would be a
+    silent duplicate: two audit sinks, two cache clients, one application.
+    """
+    from app.core.di.read_replica import READ_COMPONENT
+    from app.services.audit_service import AuditService
+
+    container = create_dishka_container()
+    try:
+        default_audit = await container.get(AuditService)
+        read_audit = await container.get(AuditService, component=READ_COMPONENT)
+        assert read_audit is default_audit
+
+        async with container() as request_container:
+            default_cache = await request_container.get(BaseCache)
+            read_cache = await request_container.get(
+                BaseCache, component=READ_COMPONENT
+            )
+            assert read_cache is default_cache
+    finally:
+        await container.close()
+
+
+@pytest.mark.asyncio
+async def test_read_component_covers_every_legacy_read_factory() -> None:
+    """The read component must reach as far as the ``get_read_*`` factories did.
+
+    ``ContentProvider`` alone left four call sites without a replica-backed
+    provider: ``get_read_chat_query_service``, ``get_read_chat_service``,
+    ``get_read_stats_handler`` and ``get_read_schedule_handler``.  Registering
+    ``ChatProvider`` and ``CQRSProvider`` into the component closes them, and
+    each must resolve to its own instance over the replica session rather than
+    quietly sharing the primary one.
+    """
+    from app.core.di.read_replica import READ_COMPONENT
+    from app.cqrs.queries import GetScheduleHandler, GetStatsHandler
+    from app.services.chat.query_service import ChatQueryService
+
+    container = create_dishka_container()
+    try:
+        async with container() as request_container:
+            for dependency, session_attribute in (
+                (ChatQueryService, "session"),
+                (GetStatsHandler, "db"),
+                (GetScheduleHandler, "db"),
+            ):
+                write = await request_container.get(dependency)
+                read = await request_container.get(dependency, component=READ_COMPONENT)
+
+                assert isinstance(read, dependency)
+                assert read is not write
+                # The component exists to change the session, so prove it did.
+                assert getattr(read, session_attribute) is not getattr(
+                    write, session_attribute
+                )
+    finally:
+        await container.close()

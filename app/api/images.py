@@ -4,17 +4,30 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 
 from app.api.validation import raise_http_error, raise_not_found
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.core.ratelimit import sensitive_route_limit
-from app.services.image_proxy import get_transformed_image
+from app.core.static import is_private_static_path
+from app.services.image_proxy import _sanitize_path_input, get_transformed_image
+from app.services.private_attachments import is_private_attachment_path
+from app.services.storage import S3Storage
 from app.utils.files import _get_storage_backend
+from app.utils.images import ImagePixelLimitError
 
 router = APIRouter(tags=["images"])
+logger = get_logger(__name__)
 
 # LOW-W19: moved from inside the handler body to module level so the tuple is
 # constructed once at import time rather than on every image request.
-# TD-W5-05: User-generated content (avatars, uploads) must use a short TTL so
-# GDPR deletion requests are honoured within a reasonable window.
-_USER_CONTENT_PREFIXES = ("avatars/", "users/", "uploads/", "profile/")
+# User-generated content must be revalidated on every use so a deleted image
+# cannot remain fresh in the browser after the backing object is removed.
+_PUBLIC_S3_IMAGE_PREFIXES = (
+    "avatars/",
+    "covers/",
+    "news_images/",
+    "story_covers/",
+    "tmp/event_images/",
+)
+_USER_CONTENT_PREFIXES = ("users/", "uploads/", "profile/", *_PUBLIC_S3_IMAGE_PREFIXES)
 
 
 @router.get(
@@ -63,27 +76,50 @@ async def proxy_image(
         elif "image/webp" in accept:
             format_pref = "webp"
 
-    backend = _get_storage_backend()
-    try:
-        # Path might have leading slash from URL capturing,
-        # strip it for backend compatibility
-        normalized_path = path.lstrip("/")
+    normalized_path = path.lstrip("/")
 
+    # Private chat/event blobs must be downloaded through their parent
+    # resource's authorization boundary, never through this public image
+    # transformation endpoint.
+    if is_private_attachment_path(normalized_path) or is_private_static_path(
+        normalized_path
+    ):
+        raise_not_found("image", "en", resource_id=path)
+
+    backend = _get_storage_backend()
+    media_path = normalized_path
+    if isinstance(backend, S3Storage):
+        try:
+            public_path = _sanitize_path_input(normalized_path).lstrip("/")
+        except ValueError:
+            raise_not_found("image", "en", resource_id=path)
+        if "\\" in public_path or not public_path.startswith(_PUBLIC_S3_IMAGE_PREFIXES):
+            raise_not_found("image", "en", resource_id=path)
+        media_path = public_path
+    try:
         data, mime = await get_transformed_image(
             backend, normalized_path, width=target_width, format_preference=format_pref
         )
 
         # ETag: 16 hex chars of SHA-256 (64 bits) — sufficient for cache discrimination.
         etag = f'"{hashlib.sha256(data).hexdigest()[:16]}"'
+        is_user_content = media_path.startswith(_USER_CONTENT_PREFIXES)
+        cache_control = (
+            "private, no-cache, must-revalidate"
+            if is_user_content
+            else "public, max-age=31536000, immutable"
+        )
         if request.headers.get("if-none-match") == etag:
-            return Response(status_code=304, headers={"ETag": etag})
+            return Response(
+                status_code=304,
+                headers={
+                    "ETag": etag,
+                    "Cache-Control": cache_control,
+                    "Vary": "Accept",
+                },
+            )
 
         # Static/system assets (no user PII) can keep the long immutable TTL.
-        is_user_content = normalized_path.startswith(_USER_CONTENT_PREFIXES)
-        if is_user_content:
-            cache_control = "private, max-age=86400"  # 1 day — GDPR-safe
-        else:
-            cache_control = "public, max-age=31536000, immutable"
 
         return Response(
             content=data,
@@ -97,13 +133,17 @@ async def proxy_image(
                 ),  # Simplified indication
             },
         )
+    except ImagePixelLimitError:
+        raise_http_error(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            "errors.files.too_large",
+            "en",
+        )
     except ValueError:
         # Often file not found in storage
         raise_not_found("image", "en", resource_id=path)
     except Exception:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts any proxy error to HTTP 500 (reviewed TD-27-04)
-        from logging import getLogger
-
-        getLogger(__name__).exception("Image proxy error for %s", path)
+        logger.exception("Image proxy error for %s", path)
         raise_http_error(
             status.HTTP_500_INTERNAL_SERVER_ERROR, "errors.common.internal_error", "en"
         )

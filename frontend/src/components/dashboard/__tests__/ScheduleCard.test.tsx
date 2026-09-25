@@ -77,26 +77,37 @@ vi.mock("@/utils/scheduleUtils", () => ({
   },
 }))
 
-vi.mock("@/components/ui", () => {
-  const Card = ({ children, ...props }: { children?: ReactNode } & Record<string, unknown>) => (
+vi.mock("@/components/ui/Card", () => ({
+  Card: ({ children, ...props }: { children?: ReactNode } & Record<string, unknown>) => (
     <article {...props}>{children}</article>
-  )
-  const Badge = ({ label }: { label: string }) => <span>{label}</span>
-  const Button = ({
+  ),
+}))
+
+vi.mock("@/components/ui/Badge", () => ({
+  Badge: ({ label }: { label: string }) => <span>{label}</span>,
+}))
+
+vi.mock("@/components/ui/Button", () => ({
+  Button: ({
     as: Component = "button",
     children,
     ...props
   }: { as?: ElementType; children?: ReactNode } & Record<string, unknown>) => (
     <Component {...props}>{children}</Component>
-  )
-  const ProgressBar = ({ value, ariaLabel }: { value: number; ariaLabel: string }) => (
+  ),
+}))
+
+vi.mock("@/components/ui/ProgressBar", () => ({
+  ProgressBar: ({ value, ariaLabel }: { value: number; ariaLabel: string }) => (
     <progress aria-label={ariaLabel} max={100} value={value} />
-  )
-  const Skeleton = ({ width, height }: { width: number | string; height: number }) => (
+  ),
+}))
+
+vi.mock("@/components/ui/Skeleton", () => ({
+  Skeleton: ({ width, height }: { width: number | string; height: number }) => (
     <span data-testid="schedule-skeleton" data-width={width} data-height={height} />
-  )
-  return { Badge, Button, Card, ProgressBar, Skeleton }
-})
+  ),
+}))
 
 import {
   calculateLessonProgress,

@@ -41,7 +41,8 @@ const auth = vi.hoisted(() => ({
 }))
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: auth.user }) }))
 vi.mock("@/contexts/LanguageContext", () => ({ useLanguage: () => ({ language: "en" }) }))
-vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => true }))
+const online = vi.hoisted(() => ({ value: true }))
+vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => online.value }))
 /* Debounce → identity so client-side filters run synchronously off searchQuery. */
 vi.mock("@/hooks/useDebounced", () => ({ useDebounced: (v: string) => v }))
 
@@ -67,10 +68,20 @@ const myQuery = vi.hoisted(() => ({
   isLoading: false,
   isFetching: false,
 }))
+const queryCalls = vi.hoisted(() => ({
+  list: [] as unknown[][],
+  mine: [] as unknown[][],
+}))
 vi.mock("@/api/hooks/events", () => ({
   EVENTS_PAGE_SIZE: 12,
-  useEventsListQuery: () => listQuery,
-  useMyEventsQuery: () => myQuery,
+  useEventsListQuery: (...args: unknown[]) => {
+    queryCalls.list.push(args)
+    return listQuery
+  },
+  useMyEventsQuery: (...args: unknown[]) => {
+    queryCalls.mine.push(args)
+    return myQuery
+  },
 }))
 
 const resetEtagSpy = vi.hoisted(() => ({ fn: vi.fn() }))
@@ -79,6 +90,17 @@ vi.mock("@/api/client", () => ({ resetEtagCache: () => resetEtagSpy.fn() }))
 const invalidateSpy = vi.hoisted(() => ({ fn: vi.fn() }))
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: invalidateSpy.fn }),
+}))
+
+const stableHeight = vi.hoisted(() => ({
+  value: undefined as number | undefined,
+  calls: [] as unknown[][],
+}))
+vi.mock("@/hooks/ui/useStableListHeight", () => ({
+  useStableListHeight: (...args: unknown[]) => {
+    stableHeight.calls.push(args)
+    return stableHeight.value
+  },
 }))
 
 vi.mock("@/hooks/useEventsKeyboardNav", () => ({
@@ -93,6 +115,7 @@ vi.mock("../components/EventsHeader", () => ({
   EventsHeader: (props: Record<string, unknown>) => (
     <div data-testid="header">
       <span data-testid="events-count">{String(props.eventsCount)}</span>
+      <span data-testid="header-admin">{String(props.isAdmin)}</span>
       <button onClick={() => (props.onTabChange as (v: string) => void)("my")}>tab-my</button>
       <button onClick={() => (props.onTabChange as (v: string) => void)("archive")}>
         tab-archive
@@ -185,9 +208,14 @@ beforeEach(() => {
   myQuery.data = undefined
   myQuery.isLoading = false
   myQuery.isFetching = false
+  online.value = true
+  queryCalls.list = []
+  queryCalls.mine = []
   resetEtagSpy.fn = vi.fn()
   invalidateSpy.fn = vi.fn()
   auth.user = { id: "u1", role: "student" }
+  stableHeight.value = undefined
+  stableHeight.calls = []
 })
 
 afterEach(() => {
@@ -267,6 +295,17 @@ describe("EventsFeature — tab-driven data + loading flags", () => {
     listQuery.events = [evt({ id: "a" }), evt({ id: "b" })]
     render(<EventsFeature />)
     expect(screen.getByTestId("list-count")).toHaveTextContent("2")
+    expect(queryCalls.list.at(-1)).toEqual([
+      {
+        language: "en",
+        is_active: true,
+        search: "",
+        location: "",
+        limit: 12,
+      },
+      { enabled: true },
+    ])
+    expect(queryCalls.mine.at(-1)).toEqual([{ language: "en", userId: "u1" }, { enabled: false }])
   })
 
   it("uses myEvents data + loading flags when tab is 'my' (156, 159-160)", () => {
@@ -278,6 +317,8 @@ describe("EventsFeature — tab-driven data + loading flags", () => {
     expect(screen.getByTestId("list-count")).toHaveTextContent("1")
     expect(screen.getByTestId("list-initial-loading")).toHaveTextContent("true")
     expect(screen.getByTestId("list-fetching")).toHaveTextContent("true")
+    expect(queryCalls.list.at(-1)?.[1]).toEqual({ enabled: false })
+    expect(queryCalls.mine.at(-1)).toEqual([{ language: "en", userId: "u1" }, { enabled: true }])
   })
 
   it("falls back to an empty array when myEvents data is undefined", () => {
@@ -300,6 +341,7 @@ describe("EventsFeature — tab-driven data + loading flags", () => {
     listQuery.events = [evt()]
     render(<EventsFeature />)
     expect(screen.getByTestId("list-count")).toHaveTextContent("1")
+    expect(queryCalls.list.at(-1)?.[0]).toMatchObject({ is_active: false })
   })
 })
 
@@ -365,6 +407,21 @@ describe("EventsFeature — client-side category + date filters", () => {
     }
   })
 
+  it("uses the weekday offset for a non-Sunday week start", () => {
+    vi.useFakeTimers()
+    const dayOfWeekSpy = vi.spyOn(Date.prototype, "getDay").mockReturnValue(1)
+    search.params = { dr: "week" }
+    listQuery.events = [evt({ id: "weekday-week" })]
+
+    try {
+      render(<EventsFeature />)
+      expect(screen.getByTestId("list-count")).toHaveTextContent("0")
+    } finally {
+      dayOfWeekSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it("filters by the 'month' date range", () => {
     const now = new Date()
     const thisMonthIso = new Date(now.getFullYear(), now.getMonth(), 15, 9).toISOString()
@@ -400,8 +457,7 @@ describe("EventsFeature — sort modes", () => {
       evt({ id: "high", participant_count: 99 }),
     ]
     render(<EventsFeature />)
-    // Both survive; sort branch executed without error.
-    expect(screen.getByTestId("list-count")).toHaveTextContent("2")
+    expect(screen.getByTestId("list-order")).toHaveTextContent("high,low")
   })
 
   it("filters to future events + sorts ascending when sort='upcoming' (187-192)", () => {
@@ -475,6 +531,24 @@ describe("EventsFeature — refresh + dialog + derived flags", () => {
     expect(listQuery.fetchNextPage).toHaveBeenCalled()
   })
 
+  it("does not prefetch an incomplete filtered dataset while loading, fetching, or offline", () => {
+    search.params = { cat: "lecture" }
+    listQuery.hasNextPage = true
+    listQuery.isLoading = true
+    render(<EventsFeature />)
+    expect(listQuery.fetchNextPage).not.toHaveBeenCalled()
+
+    listQuery.isLoading = false
+    listQuery.isFetchingNextPage = true
+    render(<EventsFeature />)
+    expect(listQuery.fetchNextPage).not.toHaveBeenCalled()
+
+    listQuery.isFetchingNextPage = false
+    online.value = false
+    render(<EventsFeature />)
+    expect(listQuery.fetchNextPage).not.toHaveBeenCalled()
+  })
+
   it("keeps pagination available and completes the dataset for a category filter", () => {
     search.params = { cat: "lecture" }
     listQuery.hasNextPage = true
@@ -486,16 +560,69 @@ describe("EventsFeature — refresh + dialog + derived flags", () => {
   it("treats teacher + admin roles as admins (isAdmin derivation)", () => {
     auth.user = { id: "u2", role: "admin" }
     const { unmount } = render(<EventsFeature />)
-    expect(screen.getByTestId("header")).toBeInTheDocument()
+    expect(screen.getByTestId("header-admin")).toHaveTextContent("true")
     unmount()
     auth.user = { id: "u3", role: "teacher" }
     render(<EventsFeature />)
-    expect(screen.getByTestId("header")).toBeInTheDocument()
+    expect(screen.getByTestId("header-admin")).toHaveTextContent("true")
   })
 
   it("handles a null user (user?.id ?? null + isAdmin false)", () => {
     auth.user = null
     render(<EventsFeature />)
-    expect(screen.getByTestId("header")).toBeInTheDocument()
+    expect(screen.getByTestId("header-admin")).toHaveTextContent("false")
+    expect(queryCalls.mine.at(-1)).toEqual([{ language: "en", userId: null }, { enabled: false }])
+  })
+})
+
+describe("EventsFeature — list height hold across filter changes", () => {
+  const lastHoldCall = () => stableHeight.calls.at(-1) as [{ current: unknown }, string, boolean]
+
+  it("keys the hold by tab, category, date range and sort around the list", () => {
+    search.params = { tab: "archive", cat: "lecture", dr: "today", sort: "popular" }
+    render(<EventsFeature />)
+
+    const [ref, resetKey] = lastHoldCall()
+    expect(resetKey).toBe("archive|lecture|today|popular")
+    expect(ref.current).toBe(screen.getByTestId("list").parentElement)
+  })
+
+  it("uses the default filters in the key", () => {
+    render(<EventsFeature />)
+    expect(lastHoldCall()[1]).toBe("active|all||newest")
+  })
+
+  it.each([
+    ["a refetch", { isFetching: true }, {}, true],
+    ["a narrowed list with more pages", { hasNextPage: true }, { cat: "lecture" }, true],
+    ["an unfiltered list with more pages", { hasNextPage: true }, {}, false],
+    ["a narrowed complete list", { hasNextPage: false }, { cat: "lecture" }, false],
+  ])("settles during %s: %s", (_label, flags, params, settling) => {
+    Object.assign(listQuery, flags)
+    search.params = params
+    render(<EventsFeature />)
+    expect(lastHoldCall()[2]).toBe(settling)
+  })
+
+  it("follows the my-events fetch on the my tab", () => {
+    search.params = { tab: "my" }
+    listQuery.isFetching = true
+    render(<EventsFeature />)
+    expect(lastHoldCall()[2]).toBe(false)
+
+    myQuery.isFetching = true
+    render(<EventsFeature />)
+    expect(lastHoldCall()[2]).toBe(true)
+  })
+
+  it("applies the held floor to the list container only while one is returned", () => {
+    stableHeight.value = 321
+    const { unmount } = render(<EventsFeature />)
+    expect(screen.getByTestId("list").parentElement).toHaveStyle({ minHeight: "321px" })
+    unmount()
+
+    stableHeight.value = undefined
+    render(<EventsFeature />)
+    expect(screen.getByTestId("list").parentElement?.style.minHeight).toBe("")
   })
 })

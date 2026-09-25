@@ -45,6 +45,22 @@ describe("resolveRedirectPath (W179 SW4)", () => {
     expect(resolveRedirectPath("//evil.com/phishing")).toBe("/dashboard")
   })
 
+  it("rejects backslash-prefixed paths that browsers normalize to protocol-relative URLs", () => {
+    expect(resolveRedirectPath("/\\evil.com/phishing")).toBe("/dashboard")
+    expect(resolveRedirectPath("/\\\\evil.com/phishing")).toBe("/dashboard")
+  })
+
+  it("preserves query and hash fragments for same-origin deep links", () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { origin: "http://localhost" },
+    })
+
+    expect(resolveRedirectPath("http://localhost/events?view=agenda#today")).toBe(
+      "/events?view=agenda#today"
+    )
+  })
+
   it("returns fallback for malformed URL", () => {
     expect(resolveRedirectPath("not-a-url")).toBe("/dashboard")
     expect(resolveRedirectPath("javascript:alert(1)")).toBe("/dashboard") // XSS attempt

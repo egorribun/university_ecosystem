@@ -26,4 +26,18 @@ This directory contains architectural decision records (ADRs) for the University
 20. [ADR-020: SpiceDB Watch API for Real-time Permissions](ADR-020-spicedb-watch-api.md)
 21. [ADR-021: Go Circuit Breaker Pattern](ADR-021-go-circuit-breaker.md)
 22. [ADR-022: Go Services Integration Testing with Testcontainers](ADR-022-go-services-integration-testing-with-testcontainers.md)
+
+> ADR-023–ADR-031 are reserved/retired numbers from earlier planning and have
+> no corresponding files in this repository. They are intentionally omitted;
+> do not infer an architectural decision from a missing number.
+
 32. [ADR-032: KEDA Event-Driven Auto-Scaling and Off-Peak Resource Hibernation](ADR-032-keda-autoscale-and-hibernation.md)
+33. [ADR-033: Dishka Request-Scoped Database Session Ownership](ADR-033-request-scoped-database-session-ownership.md)
+34. [ADR-034: Helm as the Canonical Application Deployment Artifact](ADR-034-helm-canonical-application-deployment.md)
+35. [ADR-035: Python Dependency Compatibility Policy](ADR-035-python-dependency-compatibility-policy.md)
+36. [ADR-036: SQLAlchemy Dual-Defaults Migration Policy](ADR-036-sqlalchemy-dual-default-migration-policy.md)
+37. [ADR-037: CDC Outbox Transport Ownership and Lifecycle Boundary](ADR-037-cdc-outbox-transport-ownership.md)
+38. [ADR-038: Go Mutation Diagnostic Boundary](ADR-038-go-mutation-diagnostic-boundary.md)
+39. [ADR-039: Frontend Mutation Shard Cost Model](ADR-039-frontend-mutation-shard-cost-model.md)
+40. [ADR-040: Frontend Mutation Presentation Ignorer](ADR-040-frontend-mutation-presentation-ignorer.md)
+41. [ADR-041: Canonical Push Topic Preferences](ADR-041-canonical-push-topic-preferences.md)

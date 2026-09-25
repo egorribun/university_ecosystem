@@ -12,6 +12,7 @@ from app.api.deps import (
     get_locale,
 )
 from app.models import ActiveSession, User
+from tests.conftest import call_injected
 
 
 @pytest.fixture
@@ -322,7 +323,12 @@ async def test_require_fresh_mfa_confirmed(mock_request, db_session):
             with patch("app.api.deps.auth._enforce_fresh_mfa") as mock_enforce:
                 from app.api.deps import require_fresh_mfa
 
-                await require_fresh_mfa(mock_request, user, db_session)
+                await call_injected(
+                    require_fresh_mfa,
+                    request=mock_request,
+                    user=user,
+                    provides={"AsyncDatabaseSession": db_session},
+                )
                 mock_enforce.assert_called_once()
 
 
@@ -340,20 +346,41 @@ async def test_require_fresh_mfa_not_confirmed(mock_request, db_session):
         with patch("app.api.deps.auth._enforce_fresh_mfa") as mock_enforce:
             from app.api.deps import require_fresh_mfa
 
-            await require_fresh_mfa(mock_request, user, db_session)
+            await call_injected(
+                require_fresh_mfa,
+                request=mock_request,
+                user=user,
+                provides={"AsyncDatabaseSession": db_session},
+            )
             mock_enforce.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_get_chat_service(db_session):
-    """TD-W9-05: ChatService wrapper removed — get_chat_service returns ChatMessageDispatcher."""
-    from app.api import deps
+async def test_chat_dispatcher_resolves_from_the_container():
+    """BE-04: the dispatcher comes from Dishka, not a ``Depends`` factory.
+
+    This replaces a test of ``deps.get_chat_message_dispatcher``, one of the
+    43 legacy factories BE-04 deleted.  The property it asserted still holds
+    and still matters: the dispatcher a route receives is built over the
+    session the container resolved for that request.
+    """
+
+    from app.core.di_provider import create_dishka_container
+    from app.core.protocols import AsyncDatabaseSession
     from app.services.chat.command_service import ChatMessageDispatcher
 
-    service = deps.get_chat_message_dispatcher(db_session)
-    assert isinstance(service, ChatMessageDispatcher)
-    # The service delegates session management to the repository (architectural boundary).
-    assert service.repository.db == db_session
+    container = create_dishka_container()
+    try:
+        async with container() as request_container:
+            service = await request_container.get(ChatMessageDispatcher)
+            session = await request_container.get(AsyncDatabaseSession)
+
+            assert isinstance(service, ChatMessageDispatcher)
+            # The service delegates session management to the repository
+            # (architectural boundary).
+            assert service.repository.db is session
+    finally:
+        await container.close()
 
 
 @pytest.mark.asyncio

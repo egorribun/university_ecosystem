@@ -5,8 +5,8 @@
  * W181-W183 messenger arc + paired with ProfileBackdrop W184 SW5.
  *
  * Pattern mirrors ProfileBackdrop.tsx (W184 SW5) which itself mirrors
- * MessengerBackdrop.tsx (W181 SW2) which mirrors FooterBackdrop.tsx
- * (W176 SW2 / EventsBackdrop W118 SW3 CLS-118-03 lesson).
+ * MessengerBackdrop.tsx (W181 SW2) which mirrors EventsBackdrop
+ * (W118 SW3 CLS-118-03 lesson).
  *
  * DIFFERENCES vs Profile/Messenger Backdrops:
  * - 4 orbs (vs 3) — Settings has a 4-tab horizontal layout so the visual

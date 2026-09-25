@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
 import { getPersistedTopics, setPersistedTopics } from "../subscribe"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { UserState } from "@/types/Auth"
 
-const PROFILE_CACHE_KEY = "sub-profile-cache"
 const TOPICS_KEY = "push:last_topics"
 
 vi.mock("@/push/subscribe", async (importOriginal) => {
@@ -15,17 +16,12 @@ vi.mock("@/push/subscribe", async (importOriginal) => {
       .mockImplementation((topics, options) => actual.setPersistedTopics(topics, options)),
   }
 })
+// The active topic namespace follows the confirmed authenticated identity.
 const setActiveUser = (id: string | number | null) => {
-  if (typeof localStorage === "undefined") return
-  if (id == null) {
-    localStorage.removeItem(PROFILE_CACHE_KEY)
-    return
-  }
-
-  localStorage.setItem(
-    PROFILE_CACHE_KEY,
-    JSON.stringify({ data: { id }, savedAt: new Date().toISOString() })
-  )
+  useAuthStore.setState({
+    user: id == null ? null : ({ id } as unknown as UserState),
+    loading: false,
+  })
 }
 
 const readTopicsStorage = () => {
@@ -36,6 +32,7 @@ const readTopicsStorage = () => {
 describe("push topic persistence", () => {
   beforeEach(() => {
     localStorage.clear()
+    setActiveUser(null)
   })
 
   it("returns undefined when nothing is stored", () => {

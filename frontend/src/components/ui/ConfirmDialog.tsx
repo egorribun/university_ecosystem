@@ -20,7 +20,7 @@ export function ConfirmDialog({
   message,
   confirmText,
   cancelText,
-  variant = "default",
+  variant,
   onConfirm,
   onCancel,
   isLoading = false,
@@ -61,7 +61,7 @@ export function ConfirmDialog({
               <div className="flex justify-end gap-3 pt-4">
                 <m.button
                   type="button"
-                  whileHover={{ scale: 1.05, backgroundColor: "var(--bg-surface-hover)" }}
+                  whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={onCancel}
                   disabled={isLoading}

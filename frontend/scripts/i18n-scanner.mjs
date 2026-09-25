@@ -36,6 +36,15 @@ const DEFAULT_BACKEND_TEMPLATE_FILES = [
 const DEFAULT_BACKEND_ROOT = path.join(REPOSITORY_ROOT, "app")
 const DEFAULT_BACKEND_DYNAMIC_REGISTRY = {
   "stats.period.${query.period_key}": ["stats.period.30d", "stats.period.90d", "stats.period.180d"],
+  "schedule.weekday.${name}": [
+    "schedule.weekday.monday",
+    "schedule.weekday.tuesday",
+    "schedule.weekday.wednesday",
+    "schedule.weekday.thursday",
+    "schedule.weekday.friday",
+    "schedule.weekday.saturday",
+    "schedule.weekday.sunday",
+  ],
   "password.class.${class_name}": [
     "password.class.uppercase",
     "password.class.lowercase",

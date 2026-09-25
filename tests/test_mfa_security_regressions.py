@@ -1792,11 +1792,13 @@ def _smtp_settings(*, security: str) -> SimpleNamespace:
         smtp_starttls=False,
         smtp_user="mailer",
         smtp_password="smtp-password",  # pragma: allowlist secret
+        smtp_mfa_total_timeout_seconds=60,
         mail_from="security@example.edu",
     )
 
 
-def test_smtp_sender_fails_closed_when_transport_is_unconfigured() -> None:
+@pytest.mark.asyncio
+async def test_smtp_sender_fails_closed_when_transport_is_unconfigured() -> None:
     settings = _smtp_settings(security="none")
     settings.smtp_host = ""
     settings.smtp_port = 0
@@ -1805,42 +1807,46 @@ def test_smtp_sender_fails_closed_when_transport_is_unconfigured() -> None:
         patch("app.core.config.settings", settings),
         pytest.raises(OSError, match="SMTP unavailable"),
     ):
-        email_otp_module.SmtpMfaEmailSender._send_sync(
+        await email_otp_module.SmtpMfaEmailSender().send(
             to_email="student@example.edu",
             subject="Verification",
             plain="Code: 123456",
-            html_body="<p>Code: 123456</p>",
+            html="<p>Code: 123456</p>",
             message_id="<challenge@example.edu>",
         )
 
 
 @pytest.mark.parametrize("security", ["starttls", "ssl"])
-def test_smtp_sender_applies_transport_security_and_authentication(
+@pytest.mark.asyncio
+async def test_smtp_sender_applies_transport_security_and_authentication(
     security: str,
 ) -> None:
     settings = _smtp_settings(security=security)
     client = MagicMock()
+    client.connect = AsyncMock()
+    client.login = AsyncMock()
+    client.send_message = AsyncMock()
     transport = MagicMock()
-    transport.return_value.__enter__.return_value = client
-    transport_name = "SMTP_SSL" if security == "ssl" else "SMTP"
+    transport.return_value = client
 
     with (
         patch("app.core.config.settings", settings),
-        patch.object(email_otp_module.smtplib, transport_name, transport),
+        patch.object(email_otp_module.aiosmtplib, "SMTP", transport),
         patch.object(
             email_otp_module.ssl, "create_default_context", return_value="tls"
         ),
     ):
-        email_otp_module.SmtpMfaEmailSender._send_sync(
+        await email_otp_module.SmtpMfaEmailSender().send(
             to_email="student@example.edu",
             subject="Verification",
             plain="Code: 123456",
-            html_body="<p>Code: 123456</p>",
+            html="<p>Code: 123456</p>",
             message_id="<challenge@example.edu>",
         )
 
-    client.login.assert_called_once_with("mailer", "smtp-password")
-    client.send_message.assert_called_once()
+    client.connect.assert_awaited_once()
+    client.login.assert_awaited_once_with("mailer", "smtp-password")
+    client.send_message.assert_awaited_once()
     message = client.send_message.call_args.args[0]
     assert message["To"] == "student@example.edu"
     assert next(name for name, _ in message.items() if name.lower() == "to") == "To"
@@ -1851,34 +1857,36 @@ def test_smtp_sender_applies_transport_security_and_authentication(
     assert "message-id" not in raw_headers
     assert message.get_payload()[1].get_content_subtype() == "html"
     transport.assert_called_once_with(
-        settings.smtp_host,
-        settings.smtp_port,
-        **({"context": "tls"} if security == "ssl" else {}),
+        hostname=settings.smtp_host,
+        port=settings.smtp_port,
         timeout=10,
+        use_tls=security == "ssl",
+        start_tls=security == "starttls",
+        tls_context="tls",
     )
-    if security == "starttls":
-        assert client.ehlo.call_count == 2
-        client.starttls.assert_called_once_with(context="tls")
-    else:
-        client.starttls.assert_not_called()
+    client.close.assert_called_once()
 
 
-def test_smtp_sender_uses_safe_default_sender_address() -> None:
+@pytest.mark.asyncio
+async def test_smtp_sender_uses_safe_default_sender_address() -> None:
     settings = _smtp_settings(security="none")
     settings.mail_from = ""
     client = MagicMock()
+    client.connect = AsyncMock()
+    client.login = AsyncMock()
+    client.send_message = AsyncMock()
     transport = MagicMock()
-    transport.return_value.__enter__.return_value = client
+    transport.return_value = client
 
     with (
         patch("app.core.config.settings", settings),
-        patch.object(email_otp_module.smtplib, "SMTP", transport),
+        patch.object(email_otp_module.aiosmtplib, "SMTP", transport),
     ):
-        email_otp_module.SmtpMfaEmailSender._send_sync(
+        await email_otp_module.SmtpMfaEmailSender().send(
             to_email="student@example.edu",
             subject="Verification",
             plain="Code: 123456",
-            html_body="<p>Code: 123456</p>",
+            html="<p>Code: 123456</p>",
             message_id="<challenge@example.edu>",
         )
 
@@ -1886,49 +1894,60 @@ def test_smtp_sender_uses_safe_default_sender_address() -> None:
     assert message["From"] == "no-reply@example.com"
 
 
-def test_smtp_sender_legacy_starttls_flag_selects_canonical_security_mode() -> None:
+@pytest.mark.asyncio
+async def test_smtp_sender_legacy_starttls_flag_selects_canonical_security_mode() -> (
+    None
+):
     settings = _smtp_settings(security="")
     settings.smtp_starttls = True
     client = MagicMock()
+    client.connect = AsyncMock()
+    client.login = AsyncMock()
+    client.send_message = AsyncMock()
     transport = MagicMock()
-    transport.return_value.__enter__.return_value = client
+    transport.return_value = client
 
     with (
         patch("app.core.config.settings", settings),
-        patch.object(email_otp_module.smtplib, "SMTP", transport),
+        patch.object(email_otp_module.aiosmtplib, "SMTP", transport),
         patch.object(
             email_otp_module.ssl, "create_default_context", return_value="tls"
         ),
     ):
-        email_otp_module.SmtpMfaEmailSender._send_sync(
+        await email_otp_module.SmtpMfaEmailSender().send(
             to_email="student@example.edu",
             subject="Verification",
             plain="Code: 123456",
-            html_body="<p>Code: 123456</p>",
+            html="<p>Code: 123456</p>",
             message_id="<challenge@example.edu>",
         )
 
-    client.starttls.assert_called_once_with(context="tls")
+    assert transport.call_args.kwargs["start_tls"] is True
+    assert transport.call_args.kwargs["use_tls"] is False
+    assert transport.call_args.kwargs["tls_context"] == "tls"
 
 
-def test_smtp_sender_redacts_transport_failure() -> None:
+@pytest.mark.asyncio
+async def test_smtp_sender_redacts_transport_failure() -> None:
     settings = _smtp_settings(security="none")
     transport = MagicMock()
-    client = transport.return_value.__enter__.return_value
-    client.send_message.side_effect = email_otp_module.smtplib.SMTPException(
-        "provider details"
+    client = transport.return_value
+    client.connect = AsyncMock()
+    client.login = AsyncMock()
+    client.send_message = AsyncMock(
+        side_effect=email_otp_module.aiosmtplib.SMTPException("provider details")
     )
 
     with (
         patch("app.core.config.settings", settings),
-        patch.object(email_otp_module.smtplib, "SMTP", transport),
+        patch.object(email_otp_module.aiosmtplib, "SMTP", transport),
         pytest.raises(OSError) as exc_info,
     ):
-        email_otp_module.SmtpMfaEmailSender._send_sync(
+        await email_otp_module.SmtpMfaEmailSender().send(
             to_email="sensitive.student@example.edu",
             subject="Verification",
             plain="Code: 123456",
-            html_body="<p>Code: 123456</p>",
+            html="<p>Code: 123456</p>",
             message_id="<challenge@example.edu>",
         )
 
@@ -1937,36 +1956,50 @@ def test_smtp_sender_redacts_transport_failure() -> None:
     assert "provider details" not in str(exc_info.value)
 
 
-def test_smtp_sender_sends_without_authentication_when_credentials_are_absent() -> None:
+@pytest.mark.asyncio
+async def test_smtp_sender_sends_without_authentication_when_credentials_are_absent() -> (
+    None
+):
     settings = _smtp_settings(security="none")
     settings.smtp_user = ""
     settings.smtp_password = ""
     client = MagicMock()
+    client.connect = AsyncMock()
+    client.login = AsyncMock()
+    client.send_message = AsyncMock()
     transport = MagicMock()
-    transport.return_value.__enter__.return_value = client
+    transport.return_value = client
 
     with (
         patch("app.core.config.settings", settings),
-        patch.object(email_otp_module.smtplib, "SMTP", transport),
+        patch.object(email_otp_module.aiosmtplib, "SMTP", transport),
     ):
-        email_otp_module.SmtpMfaEmailSender._send_sync(
+        await email_otp_module.SmtpMfaEmailSender().send(
             to_email="student@example.edu",
             subject="Verification",
             plain="Code: 123456",
-            html_body="<p>Code: 123456</p>",
+            html="<p>Code: 123456</p>",
             message_id="<challenge@example.edu>",
         )
 
     client.login.assert_not_called()
-    client.send_message.assert_called_once()
+    client.send_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_async_smtp_sender_offloads_blocking_transport() -> None:
+async def test_async_smtp_sender_does_not_offload_a_blocking_transport() -> None:
     sender = email_otp_module.SmtpMfaEmailSender()
-    to_thread = AsyncMock()
+    settings = _smtp_settings(security="none")
+    client = MagicMock()
+    client.connect = AsyncMock()
+    client.login = AsyncMock()
+    client.send_message = AsyncMock()
 
-    with patch("asyncio.to_thread", to_thread):
+    with (
+        patch("app.core.config.settings", settings),
+        patch.object(email_otp_module.aiosmtplib, "SMTP", return_value=client),
+        patch("asyncio.to_thread") as to_thread,
+    ):
         await sender.send(
             to_email="student@example.edu",
             subject="Verification",
@@ -1975,14 +2008,8 @@ async def test_async_smtp_sender_offloads_blocking_transport() -> None:
             message_id="<challenge@example.edu>",
         )
 
-    to_thread.assert_awaited_once_with(
-        sender._send_sync,
-        to_email="student@example.edu",
-        subject="Verification",
-        plain="Code: 123456",
-        html_body="<p>Code: 123456</p>",
-        message_id="<challenge@example.edu>",
-    )
+    to_thread.assert_not_called()
+    client.send_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -2540,6 +2567,7 @@ async def test_delivery_cancellation_fails_closed_after_cas_loss() -> None:
         now=now,
     )
     delivery.lease_token = "worker-lease"
+    delivery.lease_expires_at = now + timedelta(minutes=2)
     claim = MagicMock()
     claim.one_or_none.return_value = (delivery.id,)
     challenge_result = MagicMock()
@@ -2583,6 +2611,7 @@ async def test_delivery_cancels_when_challenge_expires_at_validation_boundary() 
         now=now,
     )
     delivery.lease_token = "worker-lease"
+    delivery.lease_expires_at = now + timedelta(minutes=2)
     claim = SimpleNamespace(one_or_none=MagicMock(return_value=(delivery.id,)))
     challenge_result = SimpleNamespace(
         scalar_one_or_none=MagicMock(return_value=challenge)
@@ -2619,6 +2648,7 @@ async def test_delivery_completion_fails_closed_after_cas_loss() -> None:
         now=now,
     )
     delivery.lease_token = "worker-lease"
+    delivery.lease_expires_at = now + timedelta(minutes=2)
     claim = MagicMock()
     claim.one_or_none.return_value = (delivery.id,)
     challenge_result = MagicMock()

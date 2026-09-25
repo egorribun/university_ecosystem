@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { analyzePasswordStrength, createPasswordStrengthAnalyzer } from "./passwordStrength"
+import {
+  analyzePasswordStrength,
+  createPasswordStrengthAnalyzer,
+  normalizePasswordStrengthLocale,
+} from "./passwordStrength"
 
 describe("createPasswordStrengthAnalyzer", () => {
   it("shares one analyzer load per locale across concurrent first checks", async () => {
@@ -58,6 +62,15 @@ describe("createPasswordStrengthAnalyzer", () => {
   })
 })
 
+describe("normalizePasswordStrengthLocale", () => {
+  it("maps English variants to en and everything else, including no language, to ru", () => {
+    expect(normalizePasswordStrengthLocale("EN-gb")).toBe("en")
+    expect(normalizePasswordStrengthLocale("ru-RU")).toBe("ru")
+    expect(normalizePasswordStrengthLocale("de")).toBe("ru")
+    expect(normalizePasswordStrengthLocale()).toBe("ru")
+  })
+})
+
 describe("real localized password analyzer", () => {
   it.each([
     ["en-US", /[A-Za-z]/],
@@ -70,5 +83,12 @@ describe("real localized password analyzer", () => {
 
     expect(feedback).not.toMatch(/\b(?:topTen|anotherWord)\b/)
     expect(feedback).toMatch(script)
+  })
+
+  it("recognizes a common password through the bundled dictionaries", async () => {
+    const result = await analyzePasswordStrength("password", "en")
+
+    expect(result.score).toBe(0)
+    expect(result.sequence.map((match) => match.pattern)).toContain("dictionary")
   })
 })

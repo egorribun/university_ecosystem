@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, String
+from sqlalchemy import DateTime, Float, ForeignKey, Index, String, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,7 +25,7 @@ class Grade(Base, UUID7PrimaryKeyMixin):
     subject: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     score: Mapped[float] = mapped_column(Float, nullable=False)
     assessment_type: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="exam"
+        String(50), nullable=False, default="exam", server_default="exam"
     )
     assigned_by: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
@@ -34,11 +34,15 @@ class Grade(Base, UUID7PrimaryKeyMixin):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
+        server_default=func.now(),
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )

@@ -2074,6 +2074,44 @@ export type RecoveryCodesGenerateOut = {
 }
 
 /**
+ * ReleaseAnnouncementRequest
+ */
+export type ReleaseAnnouncementRequest = {
+  /**
+   * Notes En
+   */
+  notes_en?: string | null
+  /**
+   * Notes Ru
+   */
+  notes_ru?: string | null
+  /**
+   * Version
+   *
+   * Released semantic version, announced once
+   */
+  version: string
+}
+
+/**
+ * ReleaseAnnouncementResponse
+ */
+export type ReleaseAnnouncementResponse = {
+  /**
+   * Already Announced
+   */
+  already_announced: boolean
+  /**
+   * Created
+   */
+  created: number
+  /**
+   * Version
+   */
+  version: string
+}
+
+/**
  * RenameChat
  *
  * Wave 209 G1 — rename a group's display title.
@@ -4184,6 +4222,39 @@ export type RenameChatApiV1ChatsChatIdPatchResponses = {
 export type RenameChatApiV1ChatsChatIdPatchResponse =
   RenameChatApiV1ChatsChatIdPatchResponses[keyof RenameChatApiV1ChatsChatIdPatchResponses]
 
+export type DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetData = {
+  body?: never
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+    /**
+     * Filename
+     */
+    filename: string
+  }
+  query?: never
+  url: "/api/v1/chats/{chat_id}/attachments/{filename}"
+}
+
+export type DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetError =
+  DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetErrors[keyof DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetErrors]
+
+export type DownloadChatAttachmentApiV1ChatsChatIdAttachmentsFilenameGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
 export type ClearChatHistoryApiV1ChatsChatIdClearPostData = {
   body?: never
   path: {
@@ -5195,6 +5266,39 @@ export type GetEventFilesApiV1EventsEventIdFilesGetResponses = {
 export type GetEventFilesApiV1EventsEventIdFilesGetResponse =
   GetEventFilesApiV1EventsEventIdFilesGetResponses[keyof GetEventFilesApiV1EventsEventIdFilesGetResponses]
 
+export type DownloadEventFileApiV1EventsEventIdFilesFilenameGetData = {
+  body?: never
+  path: {
+    /**
+     * Event Id
+     */
+    event_id: string | number
+    /**
+     * Filename
+     */
+    filename: string
+  }
+  query?: never
+  url: "/api/v1/events/{event_id}/files/{filename}"
+}
+
+export type DownloadEventFileApiV1EventsEventIdFilesFilenameGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DownloadEventFileApiV1EventsEventIdFilesFilenameGetError =
+  DownloadEventFileApiV1EventsEventIdFilesFilenameGetErrors[keyof DownloadEventFileApiV1EventsEventIdFilesFilenameGetErrors]
+
+export type DownloadEventFileApiV1EventsEventIdFilesFilenameGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
 export type UploadEventFileApiV1EventsEventIdUploadFilePostData = {
   body: BodyUploadEventFileApiV1EventsEventIdUploadFilePost
   path: {
@@ -6119,6 +6223,33 @@ export type DisableUserPushApiV1PushAdminDisableUserPostResponses = {
 
 export type DisableUserPushApiV1PushAdminDisableUserPostResponse =
   DisableUserPushApiV1PushAdminDisableUserPostResponses[keyof DisableUserPushApiV1PushAdminDisableUserPostResponses]
+
+export type AnnouncePlatformReleaseApiV1PushAdminReleasesPostData = {
+  body: ReleaseAnnouncementRequest
+  path?: never
+  query?: never
+  url: "/api/v1/push/admin/releases"
+}
+
+export type AnnouncePlatformReleaseApiV1PushAdminReleasesPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AnnouncePlatformReleaseApiV1PushAdminReleasesPostError =
+  AnnouncePlatformReleaseApiV1PushAdminReleasesPostErrors[keyof AnnouncePlatformReleaseApiV1PushAdminReleasesPostErrors]
+
+export type AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: ReleaseAnnouncementResponse
+}
+
+export type AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponse =
+  AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponses[keyof AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponses]
 
 export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetData = {
   body?: never

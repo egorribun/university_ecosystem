@@ -3,6 +3,11 @@
 
 export function hmac_sha256_sign(key: string, message: string): string;
 
+/**
+ * Sign UTF-8 input and return standard RFC 4648 base64 with padding.
+ */
+export function hmac_sha256_sign_base64(key: string, message: string): string;
+
 export function pbkdf2_derive(password: string, salt: string, iterations: number, key_size: number): string;
 
 export function scrypt_derive(password: Uint8Array, salt: Uint8Array, n: number, r: number, p: number, dk_len: number): Uint8Array;
@@ -12,7 +17,8 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly hmac_sha256_sign: (a: number, b: number, c: number, d: number) => [number, number];
-    readonly pbkdf2_derive: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+    readonly hmac_sha256_sign_base64: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly pbkdf2_derive: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly scrypt_derive: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

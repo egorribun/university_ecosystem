@@ -1,4 +1,5 @@
 mode: count
 services/cmd/uni-cli/main.go:1.1,1.10 2 1
+services/pkg/logging/logging.go:1.1,1.10 2 1
 services/pkg/spiffe/spiffe.go:1.1,1.10 2 1
 services/pkg/spicedb/client.go:1.1,1.10 2 1

@@ -16,13 +16,16 @@ metadata:
     nginx.ingress.kubernetes.io/limit-rps: "50"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
     nginx.ingress.kubernetes.io/limit-connections: "20"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Set CERT_MANAGER_ISSUER_NAME in the deployment environment; do not bake
+    # a cluster-specific issuer into this reusable manifest.
+    cert-manager.io/cluster-issuer: "${CERT_MANAGER_ISSUER_NAME}"
 spec:
   ingressClassName: nginx
   tls:
-    # TD-31-02 (supersedes TD-28-03): Parameterized via envsubst in the deploy
-    # pipeline.  Set FRONTEND_HOST, API_HOST, TLS_SECRET_NAME env vars before
-    # running: envsubst < ingress.yaml | kubectl apply -f -
+    # TD-31-02 (supersedes TD-28-03): Parameterized through the repository
+    # wrapper. Set CERT_MANAGER_ISSUER_NAME, FRONTEND_HOST, API_HOST and
+    # TLS_SECRET_NAME before running:
+    # bash scripts/apply_raw_k8s.sh k8s/ingress.yaml
     - hosts:
         - ${FRONTEND_HOST}
         - ${API_HOST}
@@ -38,6 +41,12 @@ spec:
                 name: frontend
                 port:
                   number: 80
+    # The `gateway` Service is rendered by charts/university-ecosystem, not by
+    # this raw tree -- see k8s/README.md, which makes the Helm chart the single
+    # canonical deployment artifact and states that `k8s/` deliberately does not
+    # duplicate the Go service workloads. Applying this file on its own
+    # therefore leaves this backend unresolved, which is why the README forbids
+    # the raw tree as a staging or production release path.
     - host: ${API_HOST}
       http:
         paths:

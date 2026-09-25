@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useEffect, useState } from "react"
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { motion as motionTokens } from "@/theme/tokens"
 
 type PageFadeInProps = {
@@ -16,9 +16,21 @@ export default function PageFadeIn({
 
   const [ready, setReady] = useState(() => isTestEnvironment)
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+  const mediaInitializedRef = useRef(false)
+  const mediaCleanupRef = useRef<(() => void) | null>(null)
+  const lifecycleRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node === null) {
+        mediaCleanupRef.current?.()
+        mediaCleanupRef.current = null
+        mediaInitializedRef.current = false
+      }
+    },
+    [mediaCleanupRef, mediaInitializedRef]
+  )
 
   useEffect(() => {
-    if (isTestEnvironment) return
+    if (isTestEnvironment || ready) return
 
     const markReady = () => setReady(true)
 
@@ -29,13 +41,14 @@ export default function PageFadeIn({
 
     const timeout = window.setTimeout(markReady, 16)
     return () => window.clearTimeout(timeout)
-  }, [isTestEnvironment])
+  })
 
   useEffect(() => {
-    if (isTestEnvironment) return
+    if (isTestEnvironment || mediaInitializedRef.current) return
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
       return
     }
+    mediaInitializedRef.current = true
 
     const query = window.matchMedia("(prefers-reduced-motion: reduce)")
     const updatePreference = () => setPrefersReducedMotion(query.matches)
@@ -44,16 +57,18 @@ export default function PageFadeIn({
 
     if (typeof query.addEventListener === "function") {
       query.addEventListener("change", updatePreference)
-      return () => query.removeEventListener("change", updatePreference)
+      mediaCleanupRef.current = () => query.removeEventListener("change", updatePreference)
+      return
     }
 
     if (typeof query.addListener === "function") {
       query.addListener(updatePreference)
-      return () => query.removeListener(updatePreference)
+      mediaCleanupRef.current = () => query.removeListener(updatePreference)
+      return
     }
 
     return
-  }, [isTestEnvironment])
+  })
 
   const resolvedEffect = prefersReducedMotion
     ? undefined
@@ -63,6 +78,7 @@ export default function PageFadeIn({
 
   return (
     <div
+      ref={lifecycleRef}
       data-page-fade
       data-ready={ready ? "true" : "false"}
       data-effect={resolvedEffect}

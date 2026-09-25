@@ -629,9 +629,9 @@ class TestHierarchicalRules(unittest.TestCase):
         self.assertIn("ARIA", content)
 
     def test_services_agents_md_invariants(self) -> None:
-        """Verify services/AGENTS.md enforces Go 1.22+, channel error propagation, frame limits."""
+        """Verify services/AGENTS.md enforces Go 1.26.4+, channel error propagation, frame limits."""
         content = (REPO_ROOT / "services" / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("Go 1.22", content)
+        self.assertIn("Go 1.26.4", content)
         self.assertIn("os.Exit", content)
         self.assertIn("channel", content.lower())
         self.assertIn("Hub.mu", content)

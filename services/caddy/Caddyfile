@@ -112,10 +112,22 @@
 		reverse_proxy imgproxy:8080
 	}
 
-	# Optional same-origin access to MinIO objects.
+	# Optional legacy same-origin GET/HEAD access to reviewed public uploads
+	# in the exact bucket. Never expose S3 writes or other buckets. Keep the
+	# deny inside an ordered route: a sibling respond is sorted after handle.
+	# Private attachments and quarantined payloads share the uploads bucket.
 	handle /storage/* {
-		uri strip_prefix /storage
-		reverse_proxy minio:9000
+		@non_public_storage {
+			not {
+				method GET HEAD
+				path /storage/uploads/avatars/* /storage/uploads/covers/* /storage/uploads/news_images/* /storage/uploads/story_covers/* /storage/uploads/tmp/event_images/*
+			}
+		}
+		route {
+			respond @non_public_storage 404
+			uri strip_prefix /storage
+			reverse_proxy minio:9000
+		}
 	}
 
 	# Service worker — must be on same origin, no cache, with broad scope.
@@ -159,7 +171,14 @@
 	# --- Logging -----------------------------------------------------------
 	log {
 		output stderr
-		format json
+		# The WebSocket one-time ticket is intentionally carried in the browser
+		# query string for the upgrade, but it is a bearer credential. Keep the
+		# request shape for diagnostics while never persisting the token value.
+		format filter {
+			request>uri query {
+				replace ticket REDACTED
+			}
+		}
 		level INFO
 	}
 }

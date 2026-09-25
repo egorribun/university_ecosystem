@@ -5,7 +5,8 @@
  * unauthenticated / authenticated states). Mirrors the renderWithRouter +
  * stub-props pattern from NavbarOverflowMenu.test.tsx (session 9 template).
  */
-import { screen } from "@testing-library/react"
+import { act, screen } from "@testing-library/react"
+import { useState } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { Home, Calendar } from "lucide-react"
@@ -61,8 +62,10 @@ describe("DesktopNav", () => {
     expect(document.querySelector(".navbar-desktop-nav")).toHaveClass("ml-(--space-8)", "gap-1")
     // active entry carries data-active.
     const newsLink = document.getElementById("navbar-link-news")
-    expect(newsLink).toHaveAttribute("data-active")
+    expect(newsLink).toHaveAttribute("data-active", "true")
     expect(document.getElementById("navbar-link-home")).toBeInTheDocument()
+    // Inactive entries expose no active state at all (not even "false").
+    expect(document.getElementById("navbar-link-home")).not.toHaveAttribute("data-active")
     expect(screen.getByText("News").previousElementSibling).toHaveClass(
       "absolute",
       "inset-0",
@@ -169,6 +172,80 @@ describe("NavbarLogo", () => {
 
     expect(document.getElementById("navbar-logo-link")).toHaveClass("gap-fluid-gap")
   })
+
+  it("keeps compact, phone and reduced-motion variants aligned with the image contract", async () => {
+    let view = await renderWithRouter({
+      ui: () => (
+        <NavbarLogo
+          t={t}
+          isMobile={false}
+          isCompact
+          isPhone={false}
+          prefersReducedMotion={false}
+          onLogoClick={vi.fn()}
+          markScrollFromBottom={vi.fn()}
+        />
+      ),
+      authProvider: false,
+    })
+
+    const link = () => document.getElementById("navbar-logo-link")!
+    const circle = () => link().firstElementChild!
+    const image = () => screen.getByRole("img")
+    expect(link()).toHaveClass(
+      "gap-0",
+      "px-1",
+      "py-1",
+      "duration-500",
+      "ease-[var(--ease-premium)]"
+    )
+    expect(circle()).toHaveClass("w-8", "h-8", "hover:scale-105", "active:scale-95")
+    expect(link().querySelector(".navbar-brand-name")).toHaveClass("max-w-0", "opacity-0")
+    expect(image()).toHaveAttribute("alt", "navigation:brandAlt")
+    expect(image()).toHaveAttribute("loading", "eager")
+    expect(image()).toHaveAttribute("fetchpriority", "high")
+    expect(image()).toHaveAttribute("sizes", expect.stringContaining("min-width"))
+    expect(image()).toHaveAttribute("srcset")
+
+    view.unmount()
+    view = await renderWithRouter({
+      ui: () => (
+        <NavbarLogo
+          t={t}
+          isMobile={false}
+          isCompact={false}
+          isPhone
+          prefersReducedMotion={false}
+          onLogoClick={vi.fn()}
+          markScrollFromBottom={vi.fn()}
+        />
+      ),
+      authProvider: false,
+    })
+    expect(link()).toHaveClass("gap-0", "px-1", "py-1")
+    expect(circle()).toHaveClass("w-(--nav-action-size)", "h-(--nav-action-size)")
+    expect(link().querySelector(".navbar-brand-name")).toHaveClass("max-w-0", "opacity-0")
+
+    view.unmount()
+    await renderWithRouter({
+      ui: () => (
+        <NavbarLogo
+          t={t}
+          isMobile
+          isCompact={false}
+          isPhone={false}
+          prefersReducedMotion
+          onLogoClick={vi.fn()}
+          markScrollFromBottom={vi.fn()}
+        />
+      ),
+      authProvider: false,
+    })
+    expect(link()).toHaveClass("gap-fluid-gap", "px-3", "py-1.5", "duration-0")
+    expect(circle()).toHaveClass("w-11", "h-11")
+    expect(circle()).not.toHaveClass("hover:scale-105", "active:scale-95")
+    expect(link().querySelector(".navbar-brand-name")).toHaveClass("max-w-40", "opacity-100")
+  })
 })
 
 describe("MobileDrawerProfile", () => {
@@ -186,6 +263,41 @@ describe("MobileDrawerProfile", () => {
     })
     await userEvent.click(profileButton)
     expect(onProfileClick).toHaveBeenCalledOnce()
+  })
+
+  it("uses the placeholder avatar when the user has no avatar", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <MobileDrawerProfile
+          user={{ ...testUser, avatar_url: null }}
+          onProfileClick={vi.fn()}
+          t={t}
+        />
+      ),
+      authProvider: false,
+    })
+    expect(screen.getByRole("img", { name: testUser.full_name as string })).toHaveAttribute(
+      "src",
+      expect.stringContaining("default_avatar")
+    )
+  })
+
+  it("busts the avatar cache when the user's avatar version changes", async () => {
+    const withAvatar = { ...testUser, avatar_url: "https://cdn.example.test/me.png" }
+    let setUser!: (user: typeof withAvatar & { avatar_version: number }) => void
+    function Harness() {
+      const [user, updateUser] = useState({ ...withAvatar, avatar_version: 100 })
+      // eslint-disable-next-line react-compiler/react-compiler -- test harness exposes the state setter
+      setUser = updateUser
+      return <MobileDrawerProfile user={user} onProfileClick={vi.fn()} t={t} />
+    }
+    await renderWithRouter({ ui: Harness, authProvider: false })
+    const avatar = () => screen.getByRole("img", { name: testUser.full_name as string })
+    expect(avatar().getAttribute("src")).toContain("_v=100")
+
+    act(() => setUser({ ...withAvatar, avatar_version: 200 }))
+
+    expect(avatar().getAttribute("src")).toContain("_v=200")
   })
 
   it("shows the admin role label for admin users", async () => {

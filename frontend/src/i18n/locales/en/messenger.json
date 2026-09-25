@@ -134,6 +134,7 @@
   },
   "aria": {
     "messageList": "Chat messages",
+    "conversationList": "Conversations",
     "removeAttachment": "Remove attachment",
     "attachments": "Attachments",
     "sendMessage": "Send message",

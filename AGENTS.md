@@ -5,7 +5,7 @@ Welcome to the **University Ecosystem Platform** repository. This document defin
 Subsystem-specific rules are hierarchically partitioned into domain `AGENTS.md` files:
 - **Backend Domain (`app/`)**: [`app/AGENTS.md`](app/AGENTS.md) — Python 3.14, FastAPI, SQLAlchemy 2.0 async (`lazy="noload"`), Dishka DI, Argon2id, Outbox pattern.
 - **Frontend Domain (`frontend/`)**: [`frontend/AGENTS.md`](frontend/AGENTS.md) — React 19, TypeScript strict, TanStack Router/Query, Zustand, Valibot-only, SSR, ARIA standards.
-- **Go Microservices (`services/`)**: [`services/AGENTS.md`](services/AGENTS.md) — Go 1.22+, `ws-hub`, `gateway`, `file-processor`, `caddy` edge proxy.
+- **Go Microservices (`services/`)**: [`services/AGENTS.md`](services/AGENTS.md) — Go 1.26.4+ (CI pins 1.26.6; fuzz jobs may use 1.27.1), `ws-hub`, `gateway`, `file-processor`, `caddy` edge proxy.
 
 ---
 
@@ -100,6 +100,10 @@ python verify_harness.py
   - `feat(waveXX): description`
   - `fix(waveXX): description`
   - `refactor(waveXX): description`
+- Quality, security, CI, documentation, and testing maintenance are explicit
+  non-wave scopes. Use a scope such as `fix(quality):`, `fix(security):`,
+  `test(contracts):`, or `docs(quality):`; the `waveXX` form is reserved for
+  core business-feature work.
 - **STRICT PROHIBITION**: NEVER include `Co-Authored-By` trailers under any circumstances.
 - **Testing & Waves Association**: Testing coverage and roadmaps do **NOT** belong to waves (waves are strictly reserved for main business features). Do not associate testing work with waves in commit messages, branch names, or logs.
 - **Clean Git State**: After running `detect-secrets` or pre-commit hooks, always re-stage `.secrets.baseline` via `git add .secrets.baseline`.
@@ -153,7 +157,7 @@ GitHub admin bypass on the main-branch ruleset is intentionally left enabled for
   - Tempo / Loki: HTTP health endpoints
   - Temporal dev server: binds `0.0.0.0` bridge network
 - **Kubernetes Variable Interpolation**:
-  - `${FRONTEND_HOST}`, `${API_HOST}`, `${TLS_SECRET_NAME}`, `${VAULT_URL}` must be processed with `envsubst` before executing `kubectl apply` (TD-31-02, TD-31-03).
+  - `${FRONTEND_HOST}`, `${API_HOST}`, `${TLS_SECRET_NAME}`, `${VAULT_URL}`, `${IMAGE_REGISTRY}` and `${IMAGE_TAG}` must be processed with `envsubst` through `scripts/apply_raw_k8s.sh` before executing `kubectl apply` (TD-31-02, TD-31-03). The wrapper allowlists supporting manifests, requires all variables, validates the registry path, and accepts `IMAGE_TAG` only as a 40-character commit SHA or semantic version. Direct raw `envsubst | kubectl apply` is forbidden.
 - **Kyverno Security Policies**:
   - **Policy 9**: Rejects any deployment with empty or `:latest` image tags. All image references must use semantic versions or immutable image digests.
 - **Helm Configuration**:
@@ -170,7 +174,7 @@ GitHub admin bypass on the main-branch ruleset is intentionally left enabled for
   - Grafana Loki + Fluent Bit aggregation.
   - Structlog processor `_redact_pii` automatically masks email addresses (>=2-char TLD) and phone numbers across all backend logs.
 - **Path Traversal Defense**:
-  - Backend: `StaticFSStorage._validate_resolved_path()` checks symlinks and `is_relative_to(base_dir)`.
+  - Backend: `StaticFSStorage._resolve_validated_path()` checks symlinks and `is_relative_to(base_dir)`.
   - Frontend SSR: `server-prod.mjs` validates `filePath.startsWith(staticRoot)`.
   - Go File Processor: `sourceKey` and `destKey` sanitized against directory traversal.
 - **Cross-Service Identity Assertion**:

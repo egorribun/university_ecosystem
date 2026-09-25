@@ -19,7 +19,8 @@ import { NewsCard } from "@/components/dashboard/NewsCard"
 import { EventsCard } from "@/components/dashboard/EventsCard"
 import DashboardSkeleton from "@/components/dashboard/DashboardSkeleton"
 import { SkeletonMorph } from "@/components/ui/SkeletonMorph"
-import { Card, Skeleton } from "@/components/ui"
+import { Card } from "@/components/ui/Card"
+import { Skeleton } from "@/components/ui/Skeleton"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { useDashboardSchedule } from "@/hooks/useDashboardSchedule"
@@ -239,9 +240,11 @@ export default function Dashboard() {
               Eliminates the "ScheduleCard `<a href="/schedule">` shift" the
               W123 SW3 LHR identified as 0.0335 dominant — the link itself
               wasn't growing, it was being pushed down by DashboardStories
-              transitioning from skeleton to loaded state. */}
+              transitioning from skeleton to loaded state. The reservation is
+              held only while loading or showing stories: a loaded empty set
+              renders its compact status card without dead space below it. */}
           {!isStoriesInHero && !E2E_MODE && (
-            <div className="mb-2 min-h-[120px]">
+            <div className={loadingStories || stories.length > 0 ? "mb-2 min-h-[120px]" : "mb-2"}>
               <DashboardStories stories={stories} loading={loadingStories} />
             </div>
           )}

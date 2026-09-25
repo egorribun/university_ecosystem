@@ -15,6 +15,23 @@ interface NavbarOverflowMenuProps {
   isCompact: boolean
 }
 
+/** Focus the first menu item when the overflow menu opens. Null-safe for SSR/tests. */
+export const focusFirstOverflowItem = (menu: HTMLElement | null): void => {
+  const firstItem = menu?.querySelector<HTMLElement>("[role='menuitem']")
+  firstItem?.focus()
+}
+
+/** Restore focus to the trigger after closing with Escape. */
+export const focusOverflowTrigger = (trigger: HTMLButtonElement | null): void => {
+  trigger?.focus()
+}
+
+/** Preserve the undefined sentinel instead of indexing an array with "undefined". */
+export const getOverflowItemAt = <T,>(
+  items: readonly T[],
+  index: number | undefined
+): T | undefined => (index === undefined ? undefined : items[index])
+
 export function NavbarOverflowMenu({
   items,
   isActive,
@@ -28,7 +45,7 @@ export function NavbarOverflowMenu({
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (open) menuRef.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus()
+    if (open) focusFirstOverflowItem(menuRef.current)
   }, [open])
 
   // Close on outside click
@@ -48,7 +65,7 @@ export function NavbarOverflowMenu({
       if (e.key === "Escape") {
         e.preventDefault()
         setOpen(false)
-        triggerRef.current?.focus()
+        focusOverflowTrigger(triggerRef.current)
       }
     }
     document.addEventListener("keydown", handler)
@@ -107,7 +124,7 @@ export function NavbarOverflowMenu({
                 nextIndex = (currentIndex - 1 + menuItems.length) % menuItems.length
               if (event.key === "Home") nextIndex = 0
               if (event.key === "End") nextIndex = menuItems.length - 1
-              const nextItem = nextIndex === undefined ? undefined : menuItems[nextIndex]
+              const nextItem = getOverflowItemAt(menuItems, nextIndex)
               if (nextItem) {
                 event.preventDefault()
                 nextItem.focus()

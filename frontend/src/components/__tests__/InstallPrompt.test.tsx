@@ -1,10 +1,18 @@
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, render as rtlRender, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type ReactNode } from "react"
 import InstallPrompt from "@/components/pwa/InstallPrompt"
+import { requestPushEducation } from "@/app/pwaEvents"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { User } from "@/types/User"
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 const DISMISS_TTL = 1000 * 60 * 60 * 24 * 7
+const render = (ui: Parameters<typeof rtlRender>[0]) => {
+  const result = rtlRender(ui)
+  act(() => requestPushEducation("1"))
+  return result
+}
 
 const mockUsePushPreferences = vi.fn()
 
@@ -69,6 +77,11 @@ beforeAll(() => {
 
 beforeEach(() => {
   localStorage.clear()
+  useAuthStore.setState({
+    user: { id: "1", email: "student@example.test", is_active: true } satisfies User,
+    loading: false,
+  })
+  window.history.replaceState(null, "", "/events")
   mockUsePushPreferences.mockReturnValue(createPushPreferencesState())
 })
 

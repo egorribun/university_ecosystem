@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next"
 import { Clock as AccessTimeIcon, MapPin as RoomIcon, User as TeacherIcon } from "lucide-react"
-import { Badge, Button } from "@/components/ui"
+import { Badge } from "@/components/ui/Badge"
+import { Button } from "@/components/ui/Button"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import { getTimeStr, getEndTimeStr } from "@/components/schedule/scheduleUtils"
 import { useSchedulePage } from "@/contexts/SchedulePageContext"

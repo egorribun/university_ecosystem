@@ -8,8 +8,9 @@
 # runs the full local test suite.
 #
 # Self-contained: no .env dependency, no external networks, no auth on the test
-# brokers (isolated + ephemeral — torn down with `down -v`). Image pins match
-# ADR-022 / docker-compose.full.yml so the sandbox mirrors production wire formats.
+# brokers (isolated + ephemeral — torn down with `down -v`). The S3 sandbox
+# uses SeaweedFS; persistent Core/full Compose stacks still require a separate
+# explicit object-data export/import before their MinIO service can be replaced.
 services:
   postgres:
     image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
@@ -68,16 +69,16 @@ services:
           memory: 128M
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    command: server /data --console-address ":9001"
+    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    command: ["mini", "-dir=/data", "-s3.port=9000"]
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin  # pragma: allowlist secret
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin  # pragma: allowlist secret
+      S3_BUCKET: uploads
     ports:
       - "127.0.0.1:59000:9000"
-      - "127.0.0.1:59001:9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/status"]
       interval: 10s
       timeout: 5s
       retries: 12

@@ -7,17 +7,18 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user_from_dishka
 from app.core.config import settings
-from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
+from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import (
     RateLimitExceeded,
     RateLimitInfo,
@@ -38,15 +39,18 @@ from app.schemas.notifications import (
     PushSubscriptionTopicsUpdate,
     PushTestRequest,
     PushTopicsResponse,
+    ReleaseAnnouncementRequest,
+    ReleaseAnnouncementResponse,
     SendTestResponse,
 )
 from app.services.notifications.delivery import deliver_and_process_push_results
+from app.services.notifications.system_release import announce_release
 from app.services.push_service import deliver_push_to_subscriptions
 from app.services.push_topics import (
     get_allowed_topics,
     normalize_topic,
     normalize_topics,
-    resolve_topics,
+    resolve_subscription_topics_for_user,
     sort_topics,
     synchronize_user_topics,
 )
@@ -95,56 +99,43 @@ def _aggregate_results(
     )
 
 
-async def _refresh_user_topic_preferences(
-    db: AsyncSession, *, user_id: uuid.UUID
+async def _bind_subscription_to_user(
+    db: AsyncSession,
+    subscription: PushSubscription,
+    *,
+    user_id: uuid.UUID,
+    p256dh: str,
+    auth: str,
+    user_agent: str,
+    now: datetime,
+    requested_topics: list[str] | None,
 ) -> None:
-    """
-    Synchronize stored user topic preferences with subscription data
-    with robust upsert.
+    """Bind an endpoint to the caller and mirror the caller's preference.
+
+    ADR-041: a transferred endpoint never keeps the previous owner's topics,
+    and the previous owner's canonical preference is left untouched.
     """
 
-    topics_rows = (
-        await db.execute(
-            select(PushSubscription.topics).where(PushSubscription.user_id == user_id)
+    if subscription.user_id is not None and subscription.user_id != user_id:
+        logger.info(
+            "push.subscribe.owner_changed",
+            extra={
+                "subscription_id": subscription.id,
+                "endpoint_prefix": subscription.endpoint[:50],
+            },
         )
-    ).scalars()
-    aggregated: list[str] = []
-    for row in topics_rows:
-        if row:
-            aggregated.extend(str(item) for item in row if item)
-    normalized = sort_topics(aggregated, settings_obj=settings)
-
-    try:
-        # Avoid creating multiple topics records for the same user in parallel
-        async with db.begin_nested():
-            record = (
-                await db.execute(
-                    select(UserPushTopic).where(UserPushTopic.user_id == user_id)
-                )
-            ).scalar_one_or_none()
-
-            if normalized:
-                topics_copy = list(normalized)
-                if record is None:
-                    db.add(UserPushTopic(user_id=user_id, topics=topics_copy))
-                else:
-                    record.topics = topics_copy
-            elif record is not None:
-                await db.delete(record)
-            await db.flush()
-    except IntegrityError:
-        # Another process might have inserted it between select and flush
-        record = (
-            await db.execute(
-                select(UserPushTopic).where(UserPushTopic.user_id == user_id)
-            )
-        ).scalar_one_or_none()
-        if record:
-            if normalized:
-                record.topics = list(normalized)
-            else:
-                await db.delete(record)
-            await db.flush()
+    subscription.p256dh = p256dh
+    subscription.auth = auth
+    subscription.user_id = user_id
+    subscription.user_agent = user_agent or None
+    subscription.last_seen_at = now
+    # Flush first so an explicit update mirrors to this row as the caller's.
+    await db.flush()
+    subscription.topics = list(
+        await resolve_subscription_topics_for_user(
+            db, user_id=user_id, requested_topics=requested_topics
+        )
+    )
 
 
 async def _validate_subscription_payload(
@@ -233,11 +224,12 @@ async def get_vapid_public_key() -> dict[str, str | None]:
 
 
 @router.post("/subscribe", response_model=PushSubscriptionOut)
+@inject
 async def subscribe(
     payload: PushSubscriptionIn,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> PushSubscriptionOut:
     locale = resolve_locale(request=request, user=user)
     endpoint, p256dh, auth = await _validate_subscription_payload(
@@ -305,37 +297,23 @@ async def subscribe(
             )
 
             if existing:
-                # Transfer ownership or update existing subscription
-                payload_topics = payload.topics
-                normalized_topics = resolve_topics(payload_topics, existing.topics)
-                topics_copy = list(normalized_topics)
-
-                existing.p256dh = p256dh
-                existing.auth = auth
-                existing.user_id = user.id
-                existing.user_agent = user_agent or None
-                existing.last_seen_at = now
-                if getattr(existing, "created_at", None) is None:
-                    existing.created_at = now
-                existing.topics = topics_copy
                 subscription = existing
             else:
-                # Try to create a new one
-                normalized_topics = resolve_topics(payload.topics, None)
                 subscription = PushSubscription(
-                    endpoint=endpoint,
-                    p256dh=p256dh,
-                    auth=auth,
-                    user_id=user.id,
-                    user_agent=user_agent or None,
-                    last_seen_at=now,
-                    created_at=now,
-                    topics=list(normalized_topics),
+                    endpoint=endpoint, created_at=now, topics=[]
                 )
                 db.add(subscription)
 
-            await db.flush()
-            await _refresh_user_topic_preferences(db, user_id=user.id)
+            await _bind_subscription_to_user(
+                db,
+                subscription,
+                user_id=user.id,
+                p256dh=p256dh,
+                auth=auth,
+                user_agent=user_agent,
+                now=now,
+                requested_topics=payload.topics,
+            )
             await db.commit()
             await db.refresh(subscription)
             logger.info(
@@ -374,15 +352,16 @@ async def subscribe(
             ).scalar_one_or_none()
 
             if existing:
-                normalized_topics = resolve_topics(payload.topics, existing.topics)
-                existing.p256dh = p256dh
-                existing.auth = auth
-                existing.user_id = user.id
-                existing.user_agent = user_agent or None
-                existing.last_seen_at = now
-                existing.topics = list(normalized_topics)
-                await db.flush()
-                await _refresh_user_topic_preferences(db, user_id=user.id)
+                await _bind_subscription_to_user(
+                    db,
+                    existing,
+                    user_id=user.id,
+                    p256dh=p256dh,
+                    auth=auth,
+                    user_agent=user_agent,
+                    now=now,
+                    requested_topics=payload.topics,
+                )
                 await db.commit()
                 await db.refresh(existing)
                 subscription = existing
@@ -423,11 +402,12 @@ async def subscribe(
 
 
 @router.patch("/subscribe/topics", response_model=PushSubscriptionOut)
+@inject
 async def update_subscription_topics(
     payload: PushSubscriptionTopicsUpdate,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> PushSubscriptionOut:
     locale = resolve_locale(request=request, user=user)
     endpoint = payload.endpoint.strip()
@@ -474,11 +454,12 @@ async def update_subscription_topics(
 
 
 @router.post("/unsubscribe")
+@inject
 async def unsubscribe(
     payload: PushSubscriptionDelete,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     endpoint = payload.endpoint.strip()
@@ -532,17 +513,17 @@ async def unsubscribe(
     if not existing:
         return {"ok": True, "removed": False}
 
+    # ADR-041: removing a device never changes the user's canonical topics.
     await db.delete(existing)
-    await db.flush()
-    await _refresh_user_topic_preferences(db, user_id=user.id)
     await db.commit()
     return {"ok": True, "removed": True}
 
 
 @router.get("/topics", response_model=PushTopicsResponse)
+@inject
 async def get_push_topics(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> PushTopicsResponse:
     record = (
         await db.execute(select(UserPushTopic).where(UserPushTopic.user_id == user.id))
@@ -556,14 +537,16 @@ async def get_push_topics(
         allowed=allowed,
         topics=topics,
         has_preferences=record is not None,
+        updated_at=record.updated_at if record else None,
     )
 
 
 @router.post("/test", response_model=SendTestResponse)
+@inject
 async def send_test(
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
     payload: PushTestRequest | None = None,
 ) -> SendTestResponse:
     locale = resolve_locale(request=request, user=user)
@@ -698,11 +681,12 @@ async def send_test(
 
 
 @router.get("/admin/topics/{user_id}", response_model=AdminUserTopicsResponse)
+@inject
 async def admin_get_user_topics(
     user_id: uuid.UUID,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
     if user.role != UserRole.ADMIN:
@@ -741,12 +725,13 @@ async def admin_get_user_topics(
 
 
 @router.put("/admin/topics/{user_id}", response_model=AdminUserTopicsResponse)
+@inject
 async def admin_update_user_topics(
     user_id: uuid.UUID,
     payload: AdminUserTopicsUpdate,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
     if user.role != UserRole.ADMIN:
@@ -792,11 +777,12 @@ async def admin_update_user_topics(
 
 
 @router.post("/admin/disable-user")
+@inject
 async def disable_user_push(
     payload: DisableUserPushRequest,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> dict[str, int | bool]:
     locale = resolve_locale(request=request, user=user)
     if user.role != UserRole.ADMIN:
@@ -845,12 +831,70 @@ async def disable_user_push(
     return {"ok": True, "removed": len(existing)}
 
 
+@router.post("/admin/releases", response_model=ReleaseAnnouncementResponse)
+@inject
+async def announce_platform_release(
+    data: ReleaseAnnouncementRequest,
+    request: Request,
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
+) -> ReleaseAnnouncementResponse:
+    """Announce a released platform version once to every active user."""
+    locale = resolve_locale(request=request, user=user)
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "forbidden",
+                "message": translate("errors.forbidden", locale=locale),
+            },
+        )
+    try:
+        await enforce_rate_limit(
+            strategy=get_default_strategy(),
+            identifier=f"notifications:release:{user.id}",
+            limit=5,
+            window_seconds=3600,
+        )
+    except RateLimitExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": "rate_limited",
+                "message": translate("errors.rate_limit.push_broadcast", locale=locale),
+                "retry_after": exc.info.retry_after,
+            },
+        ) from None
+
+    result = await announce_release(
+        db,
+        version=data.version,
+        notes={"ru": data.notes_ru, "en": data.notes_en},
+    )
+    await db.commit()
+    logger.info(
+        "notifications.release.announced",
+        extra={
+            "user_id": user.id,
+            "version": result.version,
+            "created": result.created,
+            "already_announced": result.already_announced,
+        },
+    )
+    return ReleaseAnnouncementResponse(
+        version=result.version,
+        created=result.created,
+        already_announced=result.already_announced,
+    )
+
+
 @router.post("/broadcast", response_model=SendTestResponse)
+@inject
 async def broadcast(
     data: NotifyBody,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> SendTestResponse:
     locale = resolve_locale(request=request, user=user)
     # RZ-33-18: Auth check BEFORE rate limit — prevents unauthenticated users

@@ -53,6 +53,10 @@ const options = {
     "eslint-plugin-storybook",
     // Testing / Tools
     "@axe-core/playwright",
+    // E2E and visual audits load node_modules/axe-core/axe.min.js directly via
+    // addInitScript; depcheck cannot detect asset-path dependencies. The
+    // contract test requires those source references to remain present.
+    "axe-core",
     "@babel/core",
     "@rolldown/plugin-babel",
     "@testing-library/react",

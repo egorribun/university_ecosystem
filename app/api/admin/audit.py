@@ -1,15 +1,14 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 import app.models as models
-from app.api.deps import get_current_admin_user
-from app.core.container import get_secure_audit_service_dep
-from app.core.database import get_db
+from app.api.deps import get_current_admin_user_from_dishka
+from app.core.protocols import AsyncDatabaseSession
 from app.models.logs import DataAccessLog
 from app.schemas import schemas
 from app.services.audit_service import SecureAuditService
@@ -57,16 +56,17 @@ _ALLOWED_ACTIONS: frozenset[str] = frozenset(
 
 
 @router.get("", response_model=schemas.AuditLogListOut)
+@inject
 async def list_audit_logs(
+    db: FromDishka[AsyncDatabaseSession],
+    secure_audit: FromDishka[SecureAuditService],
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     actor_id: UUID | None = None,
     subject_id: UUID | None = None,
     resource_type: str | None = None,
     action: str | None = None,
-    db: AsyncSession = Depends(get_db),
-    secure_audit: SecureAuditService = Depends(get_secure_audit_service_dep),
-    _: models.User = Depends(get_current_admin_user),
+    _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.AuditLogListOut:
     """List audit logs with filtering and integrity verification."""
 
@@ -162,7 +162,10 @@ async def list_audit_logs(
 
 
 @router.get("/time-travel", response_model=schemas.TimeTravelResponse)
+@inject
 async def get_time_travel_state(
+    db: FromDishka[AsyncDatabaseSession],
+    secure_audit: FromDishka[SecureAuditService],
     aggregate_type: str = Query(
         ..., description="Aggregate type: 'schedule', 'grade', 'user', 'assessment'"
     ),
@@ -176,9 +179,7 @@ async def get_time_travel_state(
     verify_chain: bool = Query(
         True, description="Verify HMAC chain integrity up to target timestamp"
     ),
-    db: AsyncSession = Depends(get_db),
-    secure_audit: SecureAuditService = Depends(get_secure_audit_service_dep),
-    _: models.User = Depends(get_current_admin_user),
+    _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.TimeTravelResponse:
     """Reconstruct state of an aggregate entity at a target timestamp in history."""
     ts = target_timestamp or timestamp

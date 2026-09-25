@@ -7,6 +7,17 @@
  * they pass whether the dev server is running or not (by checking for redirect).
  */
 import { test, expect } from "./test"
+import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
+import path from "node:path"
+
+const AXE_SOURCE = readFileSync(
+  path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../node_modules/axe-core/axe.min.js"
+  ),
+  "utf-8"
+)
 
 test.describe("Schedule View — Wave 11", () => {
   test("schedule route resolves without uncaught JS errors", async ({ page }) => {
@@ -40,11 +51,10 @@ test.describe("Schedule View — Wave 11", () => {
 
   test("schedule route has no critical axe violations on the landing page", async ({ page }) => {
     // Wave 11: a11y gate — even on unauthenticated shell, wcag2a must pass
+    // The audit must not depend on a third-party CDN being reachable in CI.
+    await page.route("https://cdnjs.cloudflare.com/**", (route) => route.abort())
+    await page.addInitScript({ content: AXE_SOURCE })
     await page.goto("/schedule")
-    // Inject axe-core from CDN (no dependency on local package)
-    await page.addScriptTag({
-      url: "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.3/axe.min.js",
-    })
 
     type AxeViolation = { impact: string; description: string }
     const violations = await page.evaluate<AxeViolation[]>(async () => {

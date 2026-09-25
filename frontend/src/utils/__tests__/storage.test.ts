@@ -75,6 +75,18 @@ describe("storage utilities", () => {
         // logWarning called once with descriptive message
         expect(mocks.logWarning).toHaveBeenCalled()
       })
+
+      it("preserves the storage key and original parse error in diagnostics", () => {
+        localStorage.setItem("bad-json", "not-json")
+        const item = new StorageItem<string>("bad-json")
+
+        item.get()
+
+        expect(mocks.logWarning).toHaveBeenCalledWith(
+          '[Storage] Failed to parse key "bad-json":',
+          expect.objectContaining({ error: expect.any(SyntaxError) })
+        )
+      })
     })
 
     describe("set()", () => {
@@ -137,13 +149,45 @@ describe("storage utilities", () => {
       })
 
       it("logs warning on error", () => {
+        const error = new Error("Storage error")
         vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-          throw new Error("Storage error")
+          throw error
         })
 
         const item = new StorageItem<string>("error-log")
         item.set("data")
-        expect(mocks.logWarning).toHaveBeenCalled()
+        expect(mocks.logWarning).toHaveBeenCalledExactlyOnceWith(
+          '[Storage] Failed to set key "error-log":',
+          { error }
+        )
+      })
+
+      it("does not classify a non-DOMException by its error name alone", () => {
+        vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+          throw Object.assign(new Error("storage denied"), { name: "QuotaExceededError" })
+        })
+        const listener = vi.fn()
+        window.addEventListener("storage", listener)
+
+        const item = new StorageItem<string>("named-error")
+        expect(item.set("data")).toBe(false)
+        expect(listener).not.toHaveBeenCalled()
+
+        window.removeEventListener("storage", listener)
+      })
+
+      it("does not classify other DOMException names as quota failures", () => {
+        vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+          throw new DOMException("Security denied", "SecurityError")
+        })
+        const listener = vi.fn()
+        window.addEventListener("storage", listener)
+
+        const item = new StorageItem<string>("security-error")
+        expect(item.set("data")).toBe(false)
+        expect(listener).not.toHaveBeenCalled()
+
+        window.removeEventListener("storage", listener)
       })
     })
 
@@ -182,6 +226,21 @@ describe("storage utilities", () => {
         // Should not throw
         expect(() => item.remove()).not.toThrow()
         expect(mocks.logWarning).toHaveBeenCalled()
+      })
+
+      it("keeps the key and original error in remove diagnostics", () => {
+        const error = new Error("Remove failed")
+        vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+          throw error
+        })
+
+        const item = new StorageItem<string>("remove-error")
+        item.remove()
+
+        expect(mocks.logWarning).toHaveBeenCalledWith(
+          '[Storage] Failed to remove key "remove-error":',
+          { error }
+        )
       })
     })
 

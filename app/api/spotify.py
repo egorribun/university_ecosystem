@@ -9,10 +9,11 @@ from uuid import uuid4
 
 import httpx
 import jwt
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user_from_dishka
 from app.api.validation import (
     ensure_exists,
     raise_http_error,
@@ -25,7 +26,6 @@ from app.core.circuit_breaker import (
     CircuitBreakerOpenError,
 )
 from app.core.config import settings
-from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
@@ -296,7 +296,7 @@ async def _ensure_access_token(
 
 @router.get("/auth-url", response_model=SpotifyAuthURL)
 async def spotify_auth_url(
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> SpotifyAuthURL | dict[str, str]:
     state_token = _mint_state_token(str(user.id), expires_minutes=10)
     params = {
@@ -317,12 +317,14 @@ async def spotify_auth_url(
         503: {"description": "Service Unavailable"},
         400: {"description": "Bad Request"},
     },
+    response_model=None,
 )
+@inject
 async def spotify_callback(
     request: Request,
+    db: FromDishka[AsyncDatabaseSession],
     code: str = Query(...),
     state: str = Query(...),
-    db: AsyncDatabaseSession = Depends(get_db),
 ) -> RedirectResponse:
     locale = resolve_locale(request=request)
     # RZ-W19-07: decode state with the SAME key used to mint it
@@ -391,10 +393,11 @@ async def spotify_callback(
 
 
 @router.get("/now-playing", response_model=SpotifyNowPlayingOut)
+@inject
 async def now_playing(
     request: Request,
-    db: AsyncDatabaseSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    db: FromDishka[AsyncDatabaseSession],
+    user: User = Depends(get_current_user_from_dishka),
 ) -> SpotifyNowPlayingOut | Response:
     locale = resolve_locale(request=request, user=user)
 
@@ -504,8 +507,10 @@ async def now_playing(
 
 
 @router.post("/disconnect")
+@inject
 async def disconnect(
-    db: AsyncDatabaseSession = Depends(get_db), user: User = Depends(get_current_user)
+    db: FromDishka[AsyncDatabaseSession],
+    user: User = Depends(get_current_user_from_dishka),
 ) -> dict[str, bool]:
     _disconnect_user(user, clear_refresh=True, clear_profile=True)
     await db.commit()
@@ -513,10 +518,11 @@ async def disconnect(
 
 
 @router.get("/playlists")
+@inject
 async def list_playlists(
     request: Request,
-    db: AsyncDatabaseSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    db: FromDishka[AsyncDatabaseSession],
+    user: User = Depends(get_current_user_from_dishka),
 ) -> Any:
     locale = resolve_locale(request=request, user=user)
     token = await _ensure_access_token(db, user, locale=locale)

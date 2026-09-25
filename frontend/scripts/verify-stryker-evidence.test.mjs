@@ -12,13 +12,18 @@ import {
   mutationPatternsFromPolicy,
 } from "./validate-stryker-inventory.mjs"
 import {
+  resolveEvidencePath,
   selectValidatedEvidenceCandidate,
   verifyEvidenceDocuments,
 } from "./verify-stryker-evidence.mjs"
+import {
+  PRESENTATION_IGNORER,
+  canonicalInstrumenterConfig,
+} from "./stryker-presentation-ignorer.mjs"
 
 const hash = (value) => createHash("sha256").update(value).digest("hex")
 const jsonText = (value) => `${JSON.stringify(value, null, 2)}\n`
-const instrumenterOptions = { plugins: null, excludedMutations: [], ignorers: [] }
+const instrumenterOptions = canonicalInstrumenterConfig
 const toolchain = {
   node: "v24.15.0",
   platform: "linux",
@@ -36,7 +41,7 @@ function reportConfig(mutate) {
     coverageAnalysis: "perTest",
     incremental: false,
     mutator: { plugins: null, excludedMutations: [] },
-    ignorers: [],
+    ignorers: [PRESENTATION_IGNORER],
   }
 }
 
@@ -352,6 +357,15 @@ function candidateSelectionOptions(evidence, candidateRoot, expectedWorkflowRunA
     toolchain: evidence.toolchain,
   }
 }
+
+test("resolves repository evidence when the root has a trailing separator", () => {
+  const root = `${path.join(os.tmpdir(), "stryker-evidence-repository")}${path.sep}`
+
+  assert.equal(
+    resolveEvidencePath("frontend/.depcheckrc", root),
+    path.join(root, "frontend", ".depcheckrc")
+  )
+})
 
 test("independently accepts SHA-bound complete release evidence", async () => {
   const evidence = await fixture()

@@ -1,7 +1,8 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use base64ct::{Base64, Encoding};
 use proptest::prelude::*;
-use uni_wasm_crypto::{hmac_sha256_sign, pbkdf2_derive, scrypt_derive};
+use uni_wasm_crypto::{hmac_sha256_sign, hmac_sha256_sign_base64, pbkdf2_derive, scrypt_derive};
 
 // Native Known-Answer-Test (KAT) suite. The #[wasm_bindgen] functions are
 // callable as plain Rust on a non-wasm target; PBKDF2/HMAC return hex Strings
@@ -24,14 +25,27 @@ const SCRYPT_V3: &str = "7023bdcb3afd7348461c06cd81fd38ebfda8fbba904f8e3ea9b543f
 #[test]
 fn pbkdf2_hmac_sha256_rfc7914_vector() {
     assert_eq!(
-        pbkdf2_derive("passwd", "salt", 1, 64),
+        pbkdf2_derive("passwd", "salt", 1, 64).expect("valid PBKDF2 parameters"),
         PBKDF2_PASSWD_SALT_C1
     );
 }
 
 #[test]
 fn pbkdf2_length_tracks_key_size() {
-    assert_eq!(pbkdf2_derive("pw", "salt", 2, 20).len(), 40);
+    assert_eq!(
+        pbkdf2_derive("pw", "salt", 2, 20)
+            .expect("valid PBKDF2 parameters")
+            .len(),
+        40
+    );
+}
+
+#[test]
+fn pbkdf2_rejects_unbounded_parameters() {
+    assert!(pbkdf2_derive("pw", "salt", 0, 32).is_err());
+    assert!(pbkdf2_derive("pw", "salt", 1_000_001, 32).is_err());
+    assert!(pbkdf2_derive("pw", "salt", 1, 0).is_err());
+    assert!(pbkdf2_derive("pw", "salt", 1, 1_025).is_err());
 }
 
 #[test]
@@ -54,6 +68,34 @@ fn hmac_sha256_is_deterministic() {
     let b = hmac_sha256_sign("k", "m");
     assert_eq!(a, b);
     assert_eq!(a.len(), 64, "SHA-256 HMAC is 32 bytes = 64 hex chars");
+}
+
+#[test]
+fn hmac_base64_matches_rfc4231_vectors() {
+    for (key, message, expected_hex) in [
+        ("\u{0b}".repeat(20), "Hi There", HMAC_TC1),
+        ("Jefe".to_string(), "what do ya want for nothing?", HMAC_TC2),
+    ] {
+        let encoded = hmac_sha256_sign_base64(&key, message);
+        assert_eq!(encoded.len(), 44);
+        assert!(encoded.ends_with('='));
+        assert_eq!(
+            hex::encode(Base64::decode_vec(&encoded).unwrap()),
+            expected_hex
+        );
+    }
+}
+
+#[test]
+fn hmac_base64_handles_empty_and_unicode_utf8_inputs() {
+    for (key, message) in [("", ""), ("ключ🔑", "сообщение🌍")] {
+        let encoded = hmac_sha256_sign_base64(key, message);
+        assert_eq!(encoded, hmac_sha256_sign_base64(key, message));
+        assert_eq!(
+            hex::encode(Base64::decode_vec(&encoded).unwrap()),
+            hmac_sha256_sign(key, message)
+        );
+    }
 }
 
 #[test]
@@ -120,6 +162,14 @@ fn scrypt_invalid_params_and_output_len() {
 
 proptest! {
     #[test]
+    fn hmac_base64_and_hex_encode_the_same_digest(key in any::<String>(), message in any::<String>()) {
+        let encoded = hmac_sha256_sign_base64(&key, &message);
+        prop_assert_eq!(encoded.len(), 44);
+        prop_assert!(encoded.ends_with('='));
+        prop_assert_eq!(hex::encode(Base64::decode_vec(&encoded).unwrap()), hmac_sha256_sign(&key, &message));
+    }
+
+    #[test]
     fn hmac_always_emits_a_sha256_hex_digest(key in any::<String>(), message in any::<String>()) {
         let digest = hmac_sha256_sign(&key, &message);
         prop_assert_eq!(digest.len(), 64);
@@ -127,8 +177,9 @@ proptest! {
     }
 
     #[test]
-    fn pbkdf2_output_size_is_exact(key_size in 0usize..=128) {
-        let digest = pbkdf2_derive("property-password", "property-salt", 1, key_size);
+    fn pbkdf2_output_size_is_exact(key_size in 1usize..=128) {
+        let digest = pbkdf2_derive("property-password", "property-salt", 1, key_size)
+            .expect("bounded PBKDF2 key size is valid");
         prop_assert_eq!(digest.len(), key_size * 2);
     }
 

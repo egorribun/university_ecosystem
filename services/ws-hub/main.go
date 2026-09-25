@@ -24,6 +24,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/university-ecosystem/services/pkg/logging"
 	"github.com/university-ecosystem/services/pkg/spiffe"
 	"github.com/university-ecosystem/ws-hub/internal/telemetry"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
@@ -71,11 +72,19 @@ func main() {
 
 func run() error {
 	logger := initLogger()
+	// Install the redacting logger as the process default before any helper
+	// that may fall back to slog.Default is invoked. This keeps startup and
+	// third-party diagnostics on the same PII/credential-safe boundary.
+	slog.SetDefault(logger)
 
 	cfg := config.LoadConfig()
 	if cfg.InternalSecret == "" {
 		logger.ErrorContext(context.Background(), "WS_HUB_INTERNAL_SECRET is not set — generate with: openssl rand -hex 32")
 		return errors.New("WS_HUB_INTERNAL_SECRET is not set")
+	}
+	if err := validateInternalAuthToken(cfg); err != nil {
+		logger.ErrorContext(context.Background(), "Internal callback authentication is not configured", "err", err)
+		return err
 	}
 	if err := validateListenPorts(cfg); err != nil {
 		logger.ErrorContext(context.Background(), "Listen port configuration is invalid", "err", err)
@@ -120,6 +129,17 @@ func run() error {
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, cfg, logger, nc, rdb, revocationRDB)
 	return runServerFunc(cfg, logger, h, mux)
+}
+
+func validateInternalAuthToken(cfg *config.Config) error {
+	environment := strings.ToLower(strings.TrimSpace(cfg.Environment))
+	if environment != "staging" && environment != "production" {
+		return nil
+	}
+	if strings.TrimSpace(cfg.InternalAuthToken) == "" {
+		return errors.New("INTERNAL_AUTH_TOKEN is not set for staging/production")
+	}
+	return nil
 }
 
 func validateListenPorts(cfg *config.Config) error {
@@ -198,16 +218,7 @@ func initSpiffeClient(ctx context.Context, cfg *config.Config, logger *slog.Logg
 }
 
 func initLogger() *slog.Logger {
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey {
-				a.Value = slog.StringValue(a.Value.Time().UTC().Format(time.RFC3339Nano))
-			}
-			return a
-		},
-	})
-	return slog.New(handler)
+	return logging.NewJSONLogger(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
 }
 
 var (
@@ -347,7 +358,7 @@ func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slo
 	if len(spiffeClients) > 0 {
 		spiffeClient = spiffeClients[0]
 	}
-	authClient := hub.NewInternalAPIAuthClient(cfg.BackendURL, rdb)
+	authClient := hub.NewInternalAPIAuthClientWithToken(cfg.BackendURL, cfg.InternalAuthToken, rdb)
 	if cfg.SpiffeEnabled {
 		if spiffeClient == nil {
 			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")

@@ -125,7 +125,8 @@ def test_mint_pure_jwt_emits_required_claims(monkeypatch) -> None:
     assert jwt.get_unverified_header(token)["kid"] == "tier0"
     assert payload["sub"] == "security-user"
     assert payload["role"] == "student"
-    assert {"aud", "iat", "nbf", "exp", "jti"} <= payload.keys()
+    assert {"aud", "iss", "iat", "nbf", "exp", "jti"} <= payload.keys()
+    assert payload["iss"] == settings.jwt_issuer
 
 
 @pytest.mark.asyncio

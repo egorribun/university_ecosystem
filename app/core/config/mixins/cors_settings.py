@@ -46,7 +46,10 @@ class CorsSettingsMixin:
     def _validate_internal_auth_token(
         cls, value: str | None, info: ValidationInfo
     ) -> str | None:
-        # Require token in production to prevent IP-only access (spoofable)
+        # Require a shared token outside development.  IP-only access is not an
+        # authentication mechanism: a request that reaches the process through
+        # a proxy or SSRF path can otherwise satisfy the allowlist without
+        # proving caller identity.
         if not value:
             import os
 
@@ -58,14 +61,11 @@ class CorsSettingsMixin:
                 or "development"
             ).lower()
             if env not in _DEVELOPMENT_ENVIRONMENTS:
-                from app.core.logging import get_logger
-
-                logger = get_logger(__name__)
-                logger.warning(
-                    "Internal route shared guard is not configured in %s "
-                    "environment. Internal API routes are vulnerable to IP spoofing.",
-                    env,
-                )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                raise ValueError(
+                    "INTERNAL_AUTH_TOKEN must be configured in production/staging "
+                    f"environments (environment={env}); IP-only internal route "
+                    "fallback is disabled outside development"
+                )
         return value
 
     @cached_property

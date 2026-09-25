@@ -7,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.main import app
+from tests.conftest import install_dishka_override
 
 
 @pytest.fixture
@@ -27,11 +28,7 @@ async def test_chat_api_exhaustive(mock_user, mock_db):
     from datetime import UTC, datetime
 
     from app.api.deps import (
-        get_chat_creation_service,
-        get_chat_maintenance_service,
-        get_chat_message_dispatcher,
         get_locale,
-        get_read_chat_query_service,
     )
     from app.schemas.chat import (
         ChatMaintenanceResult,
@@ -90,11 +87,11 @@ async def test_chat_api_exhaustive(mock_user, mock_db):
 
     app.dependency_overrides[get_current_user] = lambda: mock_user
     app.dependency_overrides[get_db] = lambda: mock_db
-    app.dependency_overrides[get_chat_maintenance_service] = lambda: mock_maintenance
-    app.dependency_overrides[get_read_chat_query_service] = lambda: mock_query
+    install_dishka_override(app, ChatMaintenanceService=mock_maintenance)
+    install_dishka_override(app, ChatQueryService=mock_query)
     app.dependency_overrides[get_locale] = lambda: "en"
-    app.dependency_overrides[get_chat_message_dispatcher] = lambda: mock_dispatcher
-    app.dependency_overrides[get_chat_creation_service] = lambda: mock_creation
+    install_dishka_override(app, ChatMessageDispatcher=mock_dispatcher)
+    install_dishka_override(app, ChatCreationService=mock_creation)
 
     try:
         async with AsyncClient(
@@ -190,8 +187,4 @@ async def test_chat_api_exhaustive(mock_user, mock_db):
     finally:
         del app.dependency_overrides[get_current_user]
         del app.dependency_overrides[get_db]
-        del app.dependency_overrides[get_chat_maintenance_service]
-        del app.dependency_overrides[get_read_chat_query_service]
         del app.dependency_overrides[get_locale]
-        del app.dependency_overrides[get_chat_message_dispatcher]
-        del app.dependency_overrides[get_chat_creation_service]

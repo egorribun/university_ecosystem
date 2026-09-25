@@ -12,7 +12,17 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 CI = WORKFLOWS / "ci.yml"
 SECURITY_AUDIT = WORKFLOWS / "reusable-security-audit.yml"
+STANDALONE_SECURITY_WORKFLOWS = {
+    "checkov.yml": "checkov",
+    "codeql.yml": "analyze",
+    "dependency-review.yml": "dependency-review",
+    "gitleaks.yml": "gitleaks",
+    "zizmor.yml": "zizmor",
+}
 DETECT_SECRETS_REQUIREMENTS = ROOT / "security" / "detect-secrets-requirements.txt"
+DETECT_SECRETS_SCAN_EXCLUSION = (
+    r"^(?:\.secrets\.baseline|frontend/WASM_SOURCE_PROVENANCE\.json)$"
+)
 
 ACTIONLINT_SHA256 = "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"  # pragma: allowlist secret -- release checksum
 HADOLINT_SHA256 = "56de6d5e5ec427e17b74fa48d51271c7fc0d61244bf5c90e828aab8362d55010"  # pragma: allowlist secret -- release checksum
@@ -22,6 +32,7 @@ CARGO_BINSTALL_SCRIPT_SHA256 = "d3a93702160e0ec03e2a4e996855db1f01adee801fb84a43
 SLSA_VERIFIER_SHA256 = "499befb675efcca9001afe6e5156891b91e71f9c07ab120a8943979f85cc82e6"  # pragma: allowlist secret -- release checksum
 KUBECONFORM_SHA256 = "95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73"  # pragma: allowlist secret -- release checksum
 K6_SHA256 = "c7f03434854f837b6790ee81572e4b0f955241974c79a43cbb9f8d0fef069589"  # pragma: allowlist secret -- release checksum
+TRIVY_SHA256 = "2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b"  # pragma: allowlist secret -- release checksum
 CRD_CATALOG_COMMIT = "866b2653a5334db9aed20ad74701e20fd464471b"  # pragma: allowlist secret -- immutable schema revision
 
 
@@ -100,17 +111,216 @@ def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_lock
     expected = {
         "detect-secrets==1.5.0": "e24e7b9b5a35048c313e983f76c4bd09dad89f045ff059e354f9943bf45aa060",  # pragma: allowlist secret -- wheel checksum
         "PyYAML==6.0.3": "c458b6d084f9b935061bc36216e8a69a7e293a2f1e68bf956dcd9e6cbcd143f5",  # pragma: allowlist secret -- wheel checksum
-        "requests==2.33.1": "4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a",  # pragma: allowlist secret -- wheel checksum
-        "certifi==2026.4.22": "3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a",  # pragma: allowlist secret -- wheel checksum
-        "charset-normalizer==3.4.7": "bd6c2a1c7573c64738d716488d2cdd3c00e340e4835707d8fdb8dc1a66ef164e",  # pragma: allowlist secret -- wheel checksum
-        "idna==3.18": "7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2",  # pragma: allowlist secret -- wheel checksum
+        "requests==2.34.2": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",  # pragma: allowlist secret -- wheel checksum
+        "certifi==2026.7.22": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",  # pragma: allowlist secret -- wheel checksum
+        "charset-normalizer==3.5.1": "00668ebb0609751758682eb0b5857e7c35b9f00e84dfdef062e103244ec94d45",  # pragma: allowlist secret -- wheel checksum
+        "idna==3.19": "5e0811a4383b21dc5838069f801c4fb62113b7447663d2530d2bd6e77b49bf15",  # pragma: allowlist secret -- wheel checksum
         "urllib3==2.7.0": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",  # pragma: allowlist secret -- wheel checksum
     }
+    requirement_lines = {
+        line.split(maxsplit=1)[0]: line
+        for line in requirements.splitlines()
+        if line and not line.startswith("#") and not line.startswith("--")
+    }
+    assert set(requirement_lines) == set(expected)
     for requirement, digest in expected.items():
-        assert re.search(
-            rf"(?m)^{re.escape(requirement)}\s+--hash=sha256:{digest}\s*$",
-            requirements,
+        line = requirement_lines[requirement]
+        hashes = re.findall(r"--hash=sha256:([0-9a-f]{64})", line)
+        assert hashes
+        assert digest in hashes
+        assert len(line.split()) == 1 + len(hashes)
+
+
+def test_every_security_scanner_waits_for_the_shared_policy_integrity_gate() -> None:
+    """PR-controlled scanner inputs are checked before any consumer runs."""
+
+    jobs = _workflow(SECURITY_AUDIT)["jobs"]
+    integrity = jobs["policy-integrity"]
+    assert integrity["name"] == "Security policy integrity"
+    assert integrity["permissions"] == {"contents": "read"}
+    verify = _step(integrity, "Verify security policy inputs against protected base")
+    assert verify["if"] == "${{ github.event_name == 'pull_request' }}"
+    run = verify["run"]
+    assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in run
+    assert 'git diff --quiet "$BASE_SHA" -- "$path"' in run
+    assert "BASE_REPOSITORY" in run
+    assert 'BASE_REPOSITORY" != "$GITHUB_REPOSITORY"' in run
+    assert 'PR_AUTHOR" != "egorribun"' in run
+    for protected_input in (
+        ".github/workflows",
+        "scripts/osv_batch_audit.py",
+        "scripts/check_dependency_audit_report.py",
+        "scripts/audit_dependencies.py",
+        "scripts/ci/helm_dependency_build.py",
+        "scripts/quality/filter_checkov_sarif.py",
+        "scripts/verify_secrets_baseline.py",
+        "scripts/quality/validate_semgrep_sarif.py",
+        "security/detect-secrets-requirements.txt",
+        "native/rust_ext/deny.toml",
+        "frontend/package.json",
+        "frontend/.npmrc",
+        "frontend/scripts/ensure-wasm.mjs",
+        "frontend/scripts/setup-husky.cjs",
+        "frontend/scripts/setup-lhci-binaries.cjs",
+    ):
+        assert f'"{protected_input}"' in run
+
+    consumers = (
+        "pip-audit",
+        "npm-audit",
+        "docker-security",
+        "govulncheck",
+        "sbom",
+        "detect-secrets-baseline",
+        "semgrep",
+    )
+    for consumer in consumers:
+        needs = jobs[consumer].get("needs", [])
+        if isinstance(needs, str):
+            needs = [needs]
+        assert "policy-integrity" in needs, consumer
+
+
+def test_npm_audit_install_disables_pr_lifecycle_scripts() -> None:
+    """The dependency audit must not execute package lifecycle hooks."""
+
+    job = _workflow(SECURITY_AUDIT)["jobs"]["npm-audit"]
+    install = _step(job, "Install dependencies")["run"]
+    assert "npm ci --ignore-scripts --no-audit --no-fund" in install
+
+
+def test_weekly_cleanup_scopes_credentials_to_operation_steps() -> None:
+    """Cleanup credentials must not leak into checkout or dependency setup."""
+
+    cleanup = _workflow(WORKFLOWS / "weekly-cleanup.yml")["jobs"]["cleanup"]
+    assert "DATABASE_URL" not in cleanup.get("env", {})
+    assert "SECRET_KEY" not in cleanup.get("env", {})
+
+    steps = cleanup["steps"]
+    source_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Verify trusted main source"
+    )
+    validate_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Validate cleanup configuration"
+    )
+    run_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Run weekly cleanup"
+    )
+    assert source_index < validate_index < run_index
+
+    secret_steps = {
+        step.get("name")
+        for step in steps
+        if {"DATABASE_URL", "SECRET_KEY"}.intersection(step.get("env", {}))
+    }
+    assert secret_steps == {"Validate cleanup configuration", "Run weekly cleanup"}
+    validation = steps[validate_index]
+    assert validation["env"] == {
+        "DATABASE_URL": "${{ secrets.DATABASE_URL }}",
+        "SECRET_KEY": "${{ secrets.SECRET_KEY }}",
+    }
+    assert "set -euo pipefail" in validation["run"]
+    assert '[[ -z "$DATABASE_URL" || -z "$SECRET_KEY" ]]' in validation["run"]
+
+
+def test_standalone_security_scanners_verify_trusted_base_before_consuming_policy() -> (
+    None
+):
+    """Standalone scanners must fail closed before reading PR-controlled config."""
+
+    for workflow_name, job_name in STANDALONE_SECURITY_WORKFLOWS.items():
+        workflow = _workflow(WORKFLOWS / workflow_name)
+        job = workflow["jobs"][job_name]
+        steps = job["steps"]
+        checkout = next(
+            step for step in steps if "actions/checkout@" in step.get("uses", "")
         )
+        assert checkout.get("with", {}).get("persist-credentials") is False
+        verify_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name")
+            == "Verify security policy inputs against protected base"
+        )
+        verify = steps[verify_index]
+        assert verify["if"] == "${{ github.event_name == 'pull_request' }}"
+        assert verify["env"] == {
+            "BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+            "BASE_REPOSITORY": "${{ github.event.pull_request.base.repo.full_name }}",
+            "PR_AUTHOR": "${{ github.event.pull_request.user.login }}",
+        }
+        run = verify["run"]
+        assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in run
+        assert 'git diff --quiet "$BASE_SHA" -- "$path"' in run
+        assert 'BASE_REPOSITORY" != "$GITHUB_REPOSITORY"' in run
+        assert 'PR_AUTHOR" != "egorribun"' in run
+
+        scanner_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name", "").startswith(
+                (
+                    "Run Checkov",
+                    "Initialize CodeQL",
+                    "Dependency Review",
+                    "Run Gitleaks",
+                    "Run zizmor",
+                )
+            )
+        )
+        assert verify_index < scanner_index, workflow_name
+
+
+def test_security_audit_trivy_bootstrap_is_immutable_and_checksum_verified() -> None:
+    """The security gate must verify Trivy before the scanner can execute."""
+
+    job = _workflow(SECURITY_AUDIT)["jobs"]["docker-security"]
+    install = _step(job, "Install checksum-pinned Trivy")
+    assert install["name"] == "Install checksum-pinned Trivy"
+    assert install["env"] == {
+        "TRIVY_VERSION": "0.73.0",
+        "TRIVY_ARCHIVE_SHA256": TRIVY_SHA256,
+    }
+
+    run = install["run"]
+    assert "set -euo pipefail" in run
+    assert '[[ "$TRIVY_VERSION" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]]' in run
+    assert '[[ "$TRIVY_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]' in run
+    assert "mktemp -d" in run
+    assert "trap 'rm -rf -- \"$trivy_dir\"' EXIT" in run
+    assert "curl --fail --silent --show-error --location" in run
+    assert "--proto '=https'" in run
+    assert "--tlsv1.2" in run
+    assert (
+        "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+        in run
+    )
+    assert "sha256sum --check --strict" in run
+    assert "sudo install --mode 0755" in run
+    assert "trivy --version" in run
+    assert "aquasecurity.github.io/trivy-repo" not in run
+    assert "apt-get install" not in run
+    assert "wget" not in run
+
+    lines = [line.strip() for line in run.splitlines()]
+    verify_index = next(
+        index
+        for index, line in enumerate(lines)
+        if "sha256sum --check --strict" in line
+    )
+    extract_index = next(
+        index for index, line in enumerate(lines) if line.startswith("tar --extract")
+    )
+    install_index = next(
+        index for index, line in enumerate(lines) if line.startswith("sudo install")
+    )
+    assert verify_index < extract_index < install_index
 
 
 def test_cargo_udeps_bootstrap_is_immutable_and_checksum_verified() -> None:
@@ -188,7 +398,13 @@ def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
 
     scan = _step(job, "Scan repo (no baseline)")["run"]
     assert "--exclude-files" in scan
-    assert "^\\.secrets\\.baseline$" in scan
+    assert f"--exclude-files '{DETECT_SECRETS_SCAN_EXCLUSION}'" in scan
+    exclusion = re.compile(DETECT_SECRETS_SCAN_EXCLUSION)
+    assert exclusion.fullmatch(".secrets.baseline")
+    assert exclusion.fullmatch("frontend/WASM_SOURCE_PROVENANCE.json")
+    assert not exclusion.search("frontend/WASM_SOURCE_PROVENANCE.json.bak")
+    assert not exclusion.search("frontend/WASM_INVENTORY.json")
+    assert not exclusion.search("frontend/src/generated.json")
 
     verify = _step(job, "Verify baseline has not regressed")
     assert verify["env"] == {
@@ -200,4 +416,24 @@ def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
     assert "current_scan.json" in verify_run
 
     scan = _step(job, "Scan repo (no baseline)")["run"]
-    assert "detect-secrets scan --exclude-files '^\\.secrets\\.baseline$'" in scan
+    assert (
+        f"detect-secrets scan --exclude-files '{DETECT_SECRETS_SCAN_EXCLUSION}'" in scan
+    )
+
+
+def test_semgrep_ce_scan_always_covers_the_suppression_ledger() -> None:
+    """The CE fallback must scan all sources on every event.
+
+    A diff-aware baseline can hide an unchanged in-source suppression. The
+    blocking validator intentionally requires every reviewed ledger entry to
+    be observed, so the unauthenticated CE path must use a complete scan.
+    """
+
+    job = _workflow(SECURITY_AUDIT)["jobs"]["semgrep"]
+    run = _step(job, "Run Semgrep SAST")["run"]
+    full_scan = (
+        "semgrep scan --config auto \\\n"
+        "    --error --sarif --sarif-output=semgrep.sarif"
+    )
+    assert full_scan in run
+    assert "--baseline-commit" not in run

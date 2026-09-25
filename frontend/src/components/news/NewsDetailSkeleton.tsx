@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/ui"
+import { Skeleton } from "@/components/ui/Skeleton"
 import { NewsBackdrop } from "./NewsBackdrop"
 
 interface NewsDetailSkeletonProps {

@@ -2,9 +2,8 @@
 
 // Package workflow integration tests, gated behind the `integration` build tag.
 //
-// Per ADR-022, these tests use real MinIO containers via testcontainers-go to
-// cover storage behavior the in-process fakes do not (real MinIO multipart,
-// versioning, presigned URL TTLs). They are NOT part of the default `go test`
+// Per ADR-022, these tests use a real S3-compatible server via testcontainers-go
+// to cover storage behavior the in-process fakes do not. They are NOT part of the default `go test`
 // run (which uses the existing unit tests). Run via:
 //
 //	make test-integration
@@ -29,36 +28,41 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tclog "github.com/testcontainers/testcontainers-go/log"
-	tcminio "github.com/testcontainers/testcontainers-go/modules/minio"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// startMinIOContainer spins up a real MinIO server in a Docker container and
+// startS3Container spins up a real S3-compatible server in a Docker container and
 // returns a configured *minio.Client + bucket name + cleanup function. Mirrors
 // the startNATSContainer pattern from ws-hub.
 //
-// Image tag is pinned to match the prod docker-compose (RELEASE.2025-09-07).
-// Pinning ensures reproducibility — `latest` would drift between runs.
-func startMinIOContainer(t *testing.T) (*minio.Client, string, func()) {
+// Use the audited SeaweedFS image, pinned to its signed index.
+func startS3Container(t *testing.T) (*minio.Client, string, func()) {
 	t.Helper()
 	ctx := context.Background()
 
-	mc, err := tcminio.Run(ctx, "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
+	mc, err := testcontainers.Run(ctx, "ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882",
+		testcontainers.WithExposedPorts("8333/tcp"),
+		testcontainers.WithWaitStrategy(wait.ForHTTP("/status").WithPort("8333/tcp")),
+		testcontainers.WithEnv(map[string]string{
+			"AWS_ACCESS_KEY_ID":     "integrationuser",
+			"AWS_SECRET_ACCESS_KEY": "integrationsecret",
+			"S3_BUCKET":             "bootstrap",
+		}),
+		testcontainers.WithCmd("mini", "-dir=/data"),
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	if err != nil {
-		t.Fatalf("minio container start: %v", err)
+		t.Fatalf("S3 container start: %v", err)
 	}
 
-	endpoint, err := mc.ConnectionString(ctx)
+	endpoint, err := mc.PortEndpoint(ctx, "8333/tcp", "")
 	if err != nil {
 		_ = mc.Terminate(ctx) //nolint:errcheck // best-effort cleanup on test setup error
-		t.Fatalf("minio connection string: %v", err)
+		t.Fatalf("S3 connection string: %v", err)
 	}
 
-	// MinioContainer.Username / .Password are populated by testcontainers via
-	// MINIO_ROOT_USER / MINIO_ROOT_PASSWORD env vars (defaults: minioadmin).
 	client, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(mc.Username, mc.Password, ""),
+		Creds:  credentials.NewStaticV4("integrationuser", "integrationsecret", ""),
 		Secure: false,
 	})
 	if err != nil {
@@ -95,15 +99,15 @@ func makeTestPNG(t *testing.T) []byte {
 //
 // Re-scoped from "MinIO + ClamAV" — ClamAV is not in production code (workflow.go:57
 // has only "v2: reserved — add e.g. a ClamAV scan activity here" comment). This
-// test validates the MinIO portion only; the ClamAV scan test is deferred per
+// test validates the S3 storage portion only; the ClamAV scan test is deferred per
 // ADR-022 §Implementation Notes until the scan activity lands.
 //
 // Activity is exercised directly (not via Temporal) because the production
-// production code path through ResizeImageActivity is what touches MinIO —
+// production code path through ResizeImageActivity is what touches S3 storage —
 // Temporal orchestration is incidental and would add a 200 MB+ container pull
 // for no additional coverage.
 func TestIntegration_MinIOResizeImageHappyPath(t *testing.T) {
-	mc, bucket, cleanup := startMinIOContainer(t)
+	mc, bucket, cleanup := startS3Container(t)
 	t.Cleanup(cleanup)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -116,7 +120,7 @@ func TestIntegration_MinIOResizeImageHappyPath(t *testing.T) {
 		minio.PutObjectOptions{ContentType: "image/png"})
 	require.NoError(t, err)
 
-	// Build FileActivities pointing at the test MinIO client. This is the
+	// Build FileActivities pointing at the test S3 client. This is the
 	// production struct (workflow.go:109-112), so the test exercises the same
 	// code path as the deployed Temporal worker.
 	a := &FileActivities{
@@ -140,7 +144,7 @@ func TestIntegration_MinIOResizeImageHappyPath(t *testing.T) {
 	require.Equal(t, "output/test-50x50.png", result.DestKey)
 	require.Equal(t, "test-job-1", result.JobID)
 
-	// Verify dest object exists in MinIO with correct content type.
+	// Verify dest object exists in S3 storage with correct content type.
 	info, err := mc.StatObject(ctx, bucket, result.DestKey, minio.StatObjectOptions{})
 	require.NoError(t, err)
 	require.Greater(t, info.Size, int64(0), "dest object must have non-empty content")

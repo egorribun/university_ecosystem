@@ -8,7 +8,8 @@ vi.mock("framer-motion", async () =>
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, options?: Record<string, unknown>) =>
+      typeof options?.offset === "string" ? `${key}:${options.offset}` : key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
@@ -61,10 +62,28 @@ describe("ScheduleSettingsPanel closure paths", () => {
       />
     )
 
-    expect(screen.getByText("schedule:toolbar.weekOffset")).toBeInTheDocument()
+    const positiveWeek = screen.getByRole("button", { name: "schedule:toolbar.weekOffset:+1" })
+    expect(positiveWeek).toHaveClass("sched-settings-btn")
     expect(screen.getByRole("button", { name: "schedule:toolbar.goToToday" })).toBeInTheDocument()
     expect(screen.getByRole("checkbox", { name: "schedule:settings.compactMode" })).toBeChecked()
     expect(screen.getByRole("checkbox", { name: "schedule:settings.showPast" })).not.toBeChecked()
+    expect(screen.getByRole("button", { name: "Monday" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: "Tuesday" })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByRole("button", { name: "Monday" }).querySelector("svg")).toHaveClass(
+      "text-brand"
+    )
+    expect(screen.getByRole("button", { name: "Tuesday" }).querySelector("svg")).toHaveClass(
+      "text-text-muted-subtle"
+    )
+    expect(
+      screen.getByRole("button", { name: "schedule:parity.even" }).querySelector("span.absolute")
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "schedule:parity.even" })).toHaveClass(
+      "text-[var(--sched-on-accent)]"
+    )
+    expect(screen.getByRole("button", { name: "schedule:parity.odd" })).toHaveClass(
+      "sched-settings-btn"
+    )
 
     await user.click(screen.getByRole("button", { name: "schedule:toolbar.prevWeek" }))
     await user.click(screen.getByRole("button", { name: "schedule:toolbar.nextWeek" }))
@@ -98,6 +117,23 @@ describe("ScheduleSettingsPanel closure paths", () => {
         setCurrentParity={setCurrentParity}
       />
     )
-    expect(screen.getByText("schedule:toolbar.weekOffset")).toBeInTheDocument()
+    const negativeWeek = screen.getByRole("button", { name: "schedule:toolbar.weekOffset:-1" })
+    expect(negativeWeek).toHaveClass("sched-settings-btn")
+
+    storeState.weekOffset = 0
+    rerender(
+      <ScheduleSettingsPanel
+        open
+        onClose={onClose}
+        weekdayLabels={["Monday", "Tuesday", "Wednesday"]}
+        currentParity="odd"
+        setCurrentParity={setCurrentParity}
+      />
+    )
+    const currentWeek = screen.getByRole("button", { name: "schedule:toolbar.thisWeek" })
+    expect(currentWeek).toHaveClass("bg-brand")
+    expect(
+      screen.queryByRole("button", { name: "schedule:toolbar.goToToday" })
+    ).not.toBeInTheDocument()
   })
 })

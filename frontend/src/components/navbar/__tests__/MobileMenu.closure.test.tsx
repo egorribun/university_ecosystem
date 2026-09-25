@@ -148,7 +148,7 @@ vi.mock("@/components/navbar/MobileDrawerQuickActions", () => ({
   ),
 }))
 
-import { MobileMenu } from "../MobileMenu"
+import { clickGlobalNotifications, getMobileDrawerOffset, MobileMenu } from "../MobileMenu"
 
 const links = [
   { to: "/", label: "Home" },
@@ -186,6 +186,14 @@ function renderMenu(overrides: Partial<React.ComponentProps<typeof MobileMenu>> 
 }
 
 describe("MobileMenu closure paths", () => {
+  it("keeps drawer offsets non-negative and tolerates a missing shell trigger", () => {
+    expect(getMobileDrawerOffset(12)).toBe(12)
+    expect(getMobileDrawerOffset(0)).toBe(0)
+    expect(getMobileDrawerOffset(-12)).toBe(0)
+    expect(getMobileDrawerOffset(Number.NaN)).toBe(0)
+    expect(() => clickGlobalNotifications()).not.toThrow()
+  })
+
   it("renders authenticated navigation and wires every drawer action", async () => {
     const user = userEvent.setup()
     const searchEvents: KeyboardEvent[] = []
@@ -390,5 +398,108 @@ describe("MobileMenu closure paths", () => {
     event.preventDefault()
     window.dispatchEvent(event)
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("clears the overlay both when closing and when an open drawer unmounts", () => {
+    const view = renderMenu()
+
+    expect(overlayState.setOverlayState).toHaveBeenNthCalledWith(1, "mobile-drawer", {
+      scrollLocked: true,
+      blurred: true,
+    })
+
+    view.rerender(
+      <MobileMenu
+        isOpen={false}
+        onClose={vi.fn()}
+        menuLinks={links}
+        isActive={() => false}
+        go={vi.fn()}
+        user={null}
+        isAuth={false}
+        prefersReducedMotion={false}
+        drawerTrapRef={{ current: null }}
+      />
+    )
+
+    // The previous effect cleanup and the closed-state effect must both clear
+    // the shared overlay; relying only on cleanup leaves stale state when the
+    // drawer remains mounted in a closed state.
+    expect(overlayState.setOverlayState).toHaveBeenNthCalledWith(2, "mobile-drawer", null)
+    expect(overlayState.setOverlayState).toHaveBeenNthCalledWith(3, "mobile-drawer", null)
+
+    overlayState.setOverlayState.mockClear()
+    const openView = renderMenu()
+    openView.unmount()
+    expect(overlayState.setOverlayState).toHaveBeenCalledTimes(2)
+    expect(overlayState.setOverlayState).toHaveBeenLastCalledWith("mobile-drawer", null)
+
+    view.unmount()
+  })
+
+  it("removes the Escape listener on unmount and registers a keydown cleanup", () => {
+    const removeEventListener = vi.spyOn(window, "removeEventListener")
+    const { onClose, unmount } = renderMenu()
+
+    unmount()
+
+    expect(removeEventListener).toHaveBeenCalledWith("keydown", expect.any(Function))
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    expect(onClose).not.toHaveBeenCalled()
+    removeEventListener.mockRestore()
+  })
+
+  it("dispatches a bubbling Cmd+K event with the modifier preserved", async () => {
+    const user = userEvent.setup()
+    const events: KeyboardEvent[] = []
+    const listener = (event: KeyboardEvent) => {
+      if (event.key === "k") events.push(event)
+    }
+    window.addEventListener("keydown", listener)
+
+    renderMenu({ isAuth: false, user: null })
+    await user.click(screen.getByRole("button", { name: "search-action" }))
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ key: "k", metaKey: true, bubbles: true })
+    window.removeEventListener("keydown", listener)
+  })
+
+  it("exposes the drawer description, backdrop semantics, safe width, and accent", () => {
+    renderMenu({ isAuth: false, user: null })
+
+    const backdrop = screen.getByTestId("mobile-menu-backdrop")
+    expect(backdrop).toHaveAttribute("aria-label", "navigation:aria.closeMenu")
+    expect(backdrop).toHaveAttribute("tabindex", "-1")
+
+    const drawer = screen.getByRole("dialog", { name: "navigation:aria.mobileMenu" })
+    expect(drawer).toHaveClass(
+      "w-(--drawer-w)",
+      "max-w-(--drawer-w-max)",
+      "pt-[env(safe-area-inset-top,0px)]",
+      "pr-[env(safe-area-inset-right,0px)]",
+      "pb-[env(safe-area-inset-bottom,0px)]"
+    )
+    expect(screen.getByText("navigation:aria.mobileMenuDescription")).toBeInTheDocument()
+    expect(document.querySelector('[style*="var(--drawer-accent-gradient)"]')).toBeInTheDocument()
+  })
+
+  it("clamps a negative swipe offset instead of translating the drawer left", () => {
+    swipeState.dragOffset = -12
+    renderMenu()
+
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-motion-animate", '{"x":0}')
+  })
+
+  it("keeps the reduced-motion close transition explicit", () => {
+    renderMenu({ prefersReducedMotion: true, isAuth: false, user: null })
+
+    const reducedTransitions = motionState.entries.filter(
+      ({ tag, props }) => tag === "button" && props.transition !== undefined
+    )
+    expect(reducedTransitions.map(({ props }) => props.transition)).toEqual([
+      { duration: 0 },
+      { duration: 0 },
+    ])
   })
 })

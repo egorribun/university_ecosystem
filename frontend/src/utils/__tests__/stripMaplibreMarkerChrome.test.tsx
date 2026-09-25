@@ -52,3 +52,38 @@ describe("stripMaplibreMarkerChrome", () => {
     expect(() => render(<HookProbe marker={null} />)).not.toThrow()
   })
 })
+
+function RefProbe({ markerRef }: { markerRef: { current: MarkerInstance | null } }) {
+  useStripMaplibreMarkerChrome(markerRef)
+  return null
+}
+
+function chromedElement() {
+  const element = document.createElement("div")
+  element.setAttribute("role", "button")
+  element.setAttribute("aria-label", "Map marker")
+  element.setAttribute("tabindex", "0")
+  return element
+}
+
+describe("useStripMaplibreMarkerChrome", () => {
+  it("strips role, label and tab stop from the wrapper on mount", () => {
+    const element = chromedElement()
+    render(<RefProbe markerRef={{ current: markerFor(element) }} />)
+
+    expect(element).not.toHaveAttribute("role")
+    expect(element).not.toHaveAttribute("aria-label")
+    expect(element).not.toHaveAttribute("tabindex")
+  })
+
+  it("strips the wrapper of a replacement marker ref", () => {
+    const first = chromedElement()
+    const second = chromedElement()
+    const view = render(<RefProbe markerRef={{ current: markerFor(first) }} />)
+
+    view.rerender(<RefProbe markerRef={{ current: markerFor(second) }} />)
+
+    expect(second).not.toHaveAttribute("role")
+    expect(second).not.toHaveAttribute("tabindex")
+  })
+})

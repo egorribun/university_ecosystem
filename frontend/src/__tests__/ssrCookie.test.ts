@@ -104,10 +104,12 @@ describe("Wave 133 SW1 — axios interceptor SSR cookie forwarding", () => {
   const record: RecordingAdapterRecord = { config: null }
   let originalAdapter: typeof api.defaults.adapter
   let originalGetter: typeof globalThis.__ssrCookieGetter__
+  let originalFingerprintGetter: typeof globalThis.__ssrFingerprintHeadersGetter__
 
   beforeEach(() => {
     originalAdapter = api.defaults.adapter
     originalGetter = globalThis.__ssrCookieGetter__
+    originalFingerprintGetter = globalThis.__ssrFingerprintHeadersGetter__
     record.config = null
     installRecordingAdapter(record)
   })
@@ -115,6 +117,7 @@ describe("Wave 133 SW1 — axios interceptor SSR cookie forwarding", () => {
   afterEach(() => {
     api.defaults.adapter = originalAdapter
     globalThis.__ssrCookieGetter__ = originalGetter
+    globalThis.__ssrFingerprintHeadersGetter__ = originalFingerprintGetter
   })
 
   it("sets Cookie header when getter returns a non-empty string", async () => {
@@ -212,4 +215,31 @@ describe("Wave 133 SW1 — axios interceptor SSR cookie forwarding", () => {
         : (secondHeaders as Record<string, string>)?.Cookie
     expect(secondCookie).toBe("access_token_v2=second_request")
   })
+
+  const fingerprintCases: Array<[{ userAgent: string; acceptLanguage: string }, boolean, boolean]> =
+    [
+      [{ userAgent: "Browser/123", acceptLanguage: "en-GB,en;q=0.9" }, true, true],
+      [{ userAgent: "", acceptLanguage: "en-GB,en;q=0.9" }, false, true],
+      [{ userAgent: "Browser/123", acceptLanguage: "" }, true, false],
+      [{ userAgent: "", acceptLanguage: "" }, false, false],
+    ]
+
+  it.each(fingerprintCases)(
+    "forwards only present SSR fingerprint headers (%j)",
+    async (fingerprint, expectUserAgent, expectAcceptLanguage) => {
+      globalThis.__ssrCookieGetter__ = () => undefined
+      globalThis.__ssrFingerprintHeadersGetter__ = () => fingerprint
+
+      await api.get("/users/me", { skipRateLimitQueue: true } as ApiRequestConfig)
+
+      const headers = AxiosHeaders.from(
+        record.config?.headers as Parameters<typeof AxiosHeaders.from>[0]
+      )
+      expect(headers.get("Cookie")).toBeUndefined()
+      expect(headers.get("User-Agent")).toBe(expectUserAgent ? fingerprint.userAgent : undefined)
+      expect(headers.get("Accept-Language")).toBe(
+        expectAcceptLanguage ? fingerprint.acceptLanguage : "en"
+      )
+    }
+  )
 })

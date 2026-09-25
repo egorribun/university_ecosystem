@@ -1,8 +1,19 @@
 # University Ecosystem Platform — Master MCP Integration & Recipes Guide
 
+> **Scope and reproducibility:** This is an optional, legacy, local-only recipe
+> catalog for the historical Antigravity/Gemini integration. It is not a
+> CI/release configuration and does not assert that any server is installed or
+> available in the current Codex runtime. Context7 and Memory are optional
+> capabilities; verify their availability in the active runtime before use.
+>
+> Every command below uses the literal `PINNED_VERSION` placeholder. Replace
+> it with an exact, reviewed package/module version before running. Do not
+> substitute `latest`; mutable package resolution is not acceptable for release
+> or privileged workflows.
+
 ## 1. Executive Overview & Architecture
 
-The Model Context Protocol (MCP) standardizes how autonomous agents and human developers interface with external services, runtimes, persistent storage, and diagnostic tooling. Within the **University Ecosystem Platform**, MCP provides a deterministic, zero-trust verification layer across 13 configured server processes. The `s3` entry below is a logical permission alias for the `minio` server, not a separate process.
+The Model Context Protocol (MCP) standardizes how autonomous agents and human developers interface with external services, runtimes, persistent storage, and diagnostic tooling. This document describes an optional, local-only verification layer across 13 server recipes; it is not a repository-managed runtime inventory. The `s3` entry below is a logical permission alias for the `minio` server, not a separate process.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -24,30 +35,30 @@ The Model Context Protocol (MCP) standardizes how autonomous agents and human de
                                                                     └──────────────────────┘
 ```
 
-All servers are declared in `~/.gemini/config/mcp_config.json` and authorized through granular wildcard permission grants in `~/.gemini/config/config.json`.
+The historical Antigravity/Gemini setup used `~/.gemini/config/mcp_config.json` and granular wildcard permission grants in `~/.gemini/config/config.json`. This repository does not provision or validate those files; treat them as optional local configuration and verify the active runtime before use.
 
 ---
 
-## 2. Master MCP Server Catalog (13 Servers + 1 Alias)
+## 2. Master MCP Server Catalog (Optional Historical Recipes: 13 + 1 Alias)
 
-The following table provides the exhaustive catalog of the 13 configured MCP servers plus the `s3` alias, detailing their transport type, execution command, endpoints, authentication mechanisms, and primary responsibilities within the repository.
+The following table describes the historical recipes for the 13 MCP servers plus the `s3` alias, including transport type, execution command, endpoints, authentication mechanisms, and intended repository responsibilities. It is not a claim of current installation or availability.
 
 | # | Server Name | Transport / Type | Command / Endpoint | Environment & Authentication | Primary Tool Capabilities | Repository Responsibility |
 |---|---|---|---|---|---|---|
-| 1 | `chrome-devtools-mcp` | stdio (`npx`) | `npx -y chrome-devtools-mcp@latest` | Local Chromium session | `navigate_page`, `click`, `fill_form`, `take_screenshot`, `lighthouse_audit`, `list_console_messages`, `performance_analyze_insight`, `take_heapsnapshot` | Low-level browser diagnostics, Core Web Vitals (LCP, INP, CLS <= 0.05), heap profiling, Lighthouse accessibility & WCAG 2.2 AA scoring. |
+| 1 | `chrome-devtools-mcp` | stdio (`npx`) | `npx -y chrome-devtools-mcp@PINNED_VERSION` | Local Chromium session | `navigate_page`, `click`, `fill_form`, `take_screenshot`, `lighthouse_audit`, `list_console_messages`, `performance_analyze_insight`, `take_heapsnapshot` | Low-level browser diagnostics, Core Web Vitals (LCP, INP, CLS <= 0.05), heap profiling, Lighthouse accessibility & WCAG 2.2 AA scoring. |
 | 2 | `context7` | HTTP SSE | `https://mcp.context7.com/mcp` | Header: `CONTEXT7_API_KEY: ${CONTEXT7_API_KEY}` | `resolve-library-id`, `query-docs` | Real-time library and framework API documentation retrieval for FastAPI, SQLAlchemy 2.0, Dishka DI, Valibot, TanStack Router, React 19. |
-| 3 | `docker` | stdio (`npx`) | `npx -y mcp-server-docker@latest` | Docker Engine Daemon (`//./pipe/docker_engine` / Unix socket) | `run_command` | Inspect container health, inspect compose cluster topologies (`docker-compose.full.yml`, `docker-compose.observability.yml`), verify live logs. |
-| 4 | `elasticsearch` | stdio (`npx`) | `npx -y @elastic/mcp-server-elasticsearch@latest` | `ELASTICSEARCH_URL: http://127.0.0.1:9200`<br>`ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}`<br>`ELASTICSEARCH_USERNAME: elastic` | `list_indices`, `get_mappings`, `search`, `get_shards` | Inspect search indices, verify mappings for full-text search, monitor shard allocations and cluster health status. |
-| 5 | `github` | stdio (`npx`) | `npx -y @modelcontextprotocol/server-github@latest` | `GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN}` | `create_issue`, `get_pull_request`, `list_pull_requests`, `create_pull_request_review`, `merge_pull_request`, `search_code`, `get_file_contents` | GitHub workflow automation, automated PR reviews, issue management, branch status inspections. |
-| 6 | `gopls-mcp-server` | stdio (`go`) | `go run golang.org/x/tools/gopls@latest mcp` | Go 1.22+ SDK toolchain | `go_diagnostics`, `go_file_context`, `go_package_api`, `go_rename_symbol`, `go_search`, `go_symbol_references`, `go_vulncheck`, `go_workspace` | Go language server protocol diagnostics for microservices (`services/ws-hub`, `services/gateway`, `services/file-processor`). |
-| 7 | `kubernetes` | stdio (`npx`) | `npx -y mcp-server-kubernetes@latest` | Local `~/.kube/config` context | `kubectl_get`, `kubectl_describe`, `kubectl_apply`, `kubectl_logs`, `kubectl_scale`, `kubectl_rollout`, `install_helm_chart`, `port_forward` | Kubernetes deployment verification, ingress routing assertions, Kyverno policy validation, Helm chart tests (`charts/university-ecosystem`). |
-| 8 | `memory` | stdio (`npx`) | `npx -y @modelcontextprotocol/server-memory@latest` | Local persistent JSON graph storage | `create_entities`, `create_relations`, `add_observations`, `read_graph`, `search_nodes`, `open_nodes`, `delete_entities` | Persistent cross-turn architectural memory, ADR tracking, inter-service dependency graphs, invariant persistence. |
-| 9 | `minio` | stdio (`npx`) | `npx -y mcp-server-s3@latest` | `AWS_ENDPOINT_URL: http://127.0.0.1:9000`<br>`AWS_ACCESS_KEY_ID: minioadmin`<br>`AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}`<br>`AWS_FORCE_PATH_STYLE: true` | `list_buckets`, `list_objects`, `get_object`, `put_object`, `delete_object`, `presigned_url`, `bucket_info` | S3-compatible object storage verification, static asset uploads, profile pictures, PDF exports, presigned URL testing. |
-| 10 | `playwright` | stdio (`npx`) | `npx -y @executeautomation/playwright-mcp-server@latest` | Headless Chromium engine | `playwright_navigate`, `playwright_click`, `playwright_fill`, `playwright_screenshot`, `playwright_evaluate`, `playwright_expect_response`, `playwright_assert_response` | End-to-end user journey simulation, form submissions, network interception, automated authentication flow verification. |
-| 11 | `postgres` | stdio (`npx`) | `npx -y @modelcontextprotocol/server-postgres@latest postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:15433/university` | Direct TCP connection to Postgres (Port 15433) | `query` | SQL query execution, Alembic migration verification (`alembic_version`), `EXPLAIN (ANALYZE, BUFFERS)` execution plans, RLS verification. |
-| 12 | `redis` | stdio (`npx`) | `npx -y @gongrzhe/server-redis-mcp@latest redis://:${REDIS_PASSWORD}@127.0.0.1:63791` | Direct TCP connection to Redis/Valkey (Port 63791) | `get`, `set`, `delete`, `list` | Cache key verification, TTL validation, session revocation inspection (`session:revocations`, `revoked:jti:*`), cache stampede test. |
+| 3 | `docker` | stdio (`npx`) | `npx -y mcp-server-docker@PINNED_VERSION` | Docker Engine Daemon (`//./pipe/docker_engine` / Unix socket) | `run_command` | Inspect container health, inspect compose cluster topologies (`docker-compose.full.yml`, `docker-compose.observability.yml`), verify live logs. |
+| 4 | `elasticsearch` | stdio (`npx`) | `npx -y @elastic/mcp-server-elasticsearch@PINNED_VERSION` | `ELASTICSEARCH_URL: http://127.0.0.1:9200`<br>`ELASTIC_PASSWORD: ${ELASTIC_PASSWORD}`<br>`ELASTICSEARCH_USERNAME: elastic` | `list_indices`, `get_mappings`, `search`, `get_shards` | Inspect search indices, verify mappings for full-text search, monitor shard allocations and cluster health status. |
+| 5 | `github` | stdio (`npx`) | `npx -y @modelcontextprotocol/server-github@PINNED_VERSION` | `GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN}` | `create_issue`, `get_pull_request`, `list_pull_requests`, `create_pull_request_review`, `merge_pull_request`, `search_code`, `get_file_contents` | GitHub workflow automation, automated PR reviews, issue management, branch status inspections. |
+| 6 | `gopls-mcp-server` | stdio (`go`) | `go run golang.org/x/tools/gopls@PINNED_VERSION mcp` | Go 1.26.4+ SDK toolchain (CI pins 1.26.6) | `go_diagnostics`, `go_file_context`, `go_package_api`, `go_rename_symbol`, `go_search`, `go_symbol_references`, `go_vulncheck`, `go_workspace` | Go language server protocol diagnostics for microservices (`services/ws-hub`, `services/gateway`, `services/file-processor`). |
+| 7 | `kubernetes` | stdio (`npx`) | `npx -y mcp-server-kubernetes@PINNED_VERSION` | Local `~/.kube/config` context | `kubectl_get`, `kubectl_describe`, `kubectl_apply`, `kubectl_logs`, `kubectl_scale`, `kubectl_rollout`, `install_helm_chart`, `port_forward` | Kubernetes deployment verification, ingress routing assertions, Kyverno policy validation, Helm chart tests (`charts/university-ecosystem`). |
+| 8 | `memory` | stdio (`npx`) | `npx -y @modelcontextprotocol/server-memory@PINNED_VERSION` | Local persistent JSON graph storage | `create_entities`, `create_relations`, `add_observations`, `read_graph`, `search_nodes`, `open_nodes`, `delete_entities` | Persistent cross-turn architectural memory, ADR tracking, inter-service dependency graphs, invariant persistence. |
+| 9 | `minio` | stdio (`npx`) | `npx -y mcp-server-s3@PINNED_VERSION` | `AWS_ENDPOINT_URL: http://127.0.0.1:9000`<br>`AWS_ACCESS_KEY_ID: minioadmin (local non-production placeholder)`<br>`AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}`<br>`AWS_FORCE_PATH_STYLE: true` | `list_buckets`, `list_objects`, `get_object`, `put_object`, `delete_object`, `presigned_url`, `bucket_info` | S3-compatible object storage verification, static asset uploads, profile pictures, PDF exports, presigned URL testing. |
+| 10 | `playwright` | stdio (`npx`) | `npx -y @executeautomation/playwright-mcp-server@PINNED_VERSION` | Headless Chromium engine | `playwright_navigate`, `playwright_click`, `playwright_fill`, `playwright_screenshot`, `playwright_evaluate`, `playwright_expect_response`, `playwright_assert_response` | End-to-end user journey simulation, form submissions, network interception, automated authentication flow verification. |
+| 11 | `postgres` | stdio (`npx`) | `npx -y @modelcontextprotocol/server-postgres@PINNED_VERSION postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:15433/university` | Direct TCP connection to Postgres (Port 15433) | `query` | SQL query execution, Alembic migration verification (`alembic_version`), `EXPLAIN (ANALYZE, BUFFERS)` execution plans, RLS verification. |
+| 12 | `redis` | stdio (`npx`) | `npx -y @gongrzhe/server-redis-mcp@PINNED_VERSION redis://:${REDIS_PASSWORD}@127.0.0.1:63791` | Direct TCP connection to Redis/Valkey (Port 63791) | `get`, `set`, `delete`, `list` | Cache key verification, TTL validation, session revocation inspection (`session:revocations`, `revoked:jti:*`), cache stampede test. |
 | 13 | `s3` | stdio (`npx`) | S3/MinIO operations mapped via MCP S3 Server | Compatible with AWS S3 / MinIO backend | Native S3 object APIs via `minio` namespace | S3 bucket permissions, multipart uploads, policy enforcement. |
-| 14 | `sequential-thinking`| stdio (`npx`) | `npx -y @modelcontextprotocol/server-sequential-thinking@latest` | Node.js runtime process | `sequentialthinking` | Dynamic, multi-step structured reasoning, hypothesis formulation, alternative branch tracking during complex debugging. |
+| 14 | `sequential-thinking`| stdio (`npx`) | `npx -y @modelcontextprotocol/server-sequential-thinking@PINNED_VERSION` | Node.js runtime process | `sequentialthinking` | Dynamic, multi-step structured reasoning, hypothesis formulation, alternative branch tracking during complex debugging. |
 
 ---
 
@@ -55,14 +66,14 @@ The following table provides the exhaustive catalog of the 13 configured MCP ser
 
 ### 3.1 Server Definition Configuration (`~/.gemini/config/mcp_config.json`)
 
-All MCP servers are configured under the `mcpServers` object in `~/.gemini/config/mcp_config.json`:
+For the optional historical setup, server definitions were configured under the `mcpServers` object in `~/.gemini/config/mcp_config.json`; this repository does not provision or validate that file. The `minioadmin` value in the example is a local non-production placeholder only; use environment substitution for any real deployment and never commit credentials:
 
 ```json
 {
   "mcpServers": {
     "chrome-devtools-mcp": {
       "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest"]
+      "args": ["-y", "chrome-devtools-mcp@PINNED_VERSION"]
     },
     "context7": {
       "serverUrl": "https://mcp.context7.com/mcp",
@@ -72,11 +83,11 @@ All MCP servers are configured under the `mcpServers` object in `~/.gemini/confi
     },
     "docker": {
       "command": "npx",
-      "args": ["-y", "mcp-server-docker@latest"]
+      "args": ["-y", "mcp-server-docker@PINNED_VERSION"]
     },
     "elasticsearch": {
       "command": "npx",
-      "args": ["-y", "@elastic/mcp-server-elasticsearch@latest"],
+      "args": ["-y", "@elastic/mcp-server-elasticsearch@PINNED_VERSION"],
       "env": {
         "ELASTICSEARCH_URL": "http://127.0.0.1:9200",
         "ES_URL": "http://127.0.0.1:9200",
@@ -88,26 +99,26 @@ All MCP servers are configured under the `mcpServers` object in `~/.gemini/confi
     },
     "github": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github@latest"],
+      "args": ["-y", "@modelcontextprotocol/server-github@PINNED_VERSION"],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
       }
     },
     "gopls-mcp-server": {
       "command": "go",
-      "args": ["run", "golang.org/x/tools/gopls@latest", "mcp"]
+      "args": ["run", "golang.org/x/tools/gopls@PINNED_VERSION", "mcp"]
     },
     "kubernetes": {
       "command": "npx",
-      "args": ["-y", "mcp-server-kubernetes@latest"]
+      "args": ["-y", "mcp-server-kubernetes@PINNED_VERSION"]
     },
     "memory": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory@latest"]
+      "args": ["-y", "@modelcontextprotocol/server-memory@PINNED_VERSION"]
     },
     "minio": {
       "command": "npx",
-      "args": ["-y", "mcp-server-s3@latest"],
+      "args": ["-y", "mcp-server-s3@PINNED_VERSION"],
       "env": {
         "AWS_ACCESS_KEY_ID": "minioadmin",
         "AWS_SECRET_ACCESS_KEY": "${AWS_SECRET_ACCESS_KEY}",
@@ -121,13 +132,13 @@ All MCP servers are configured under the `mcpServers` object in `~/.gemini/confi
     },
     "playwright": {
       "command": "npx",
-      "args": ["-y", "@executeautomation/playwright-mcp-server@latest"]
+      "args": ["-y", "@executeautomation/playwright-mcp-server@PINNED_VERSION"]
     },
     "postgres": {
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-postgres@latest",
+        "@modelcontextprotocol/server-postgres@PINNED_VERSION",
         "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:15433/university"
       ]
     },
@@ -135,13 +146,13 @@ All MCP servers are configured under the `mcpServers` object in `~/.gemini/confi
       "command": "npx",
       "args": [
         "-y",
-        "@gongrzhe/server-redis-mcp@latest",
+        "@gongrzhe/server-redis-mcp@PINNED_VERSION",
         "redis://:${REDIS_PASSWORD}@127.0.0.1:63791"
       ]
     },
     "sequential-thinking": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking@latest"]
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking@PINNED_VERSION"]
     }
   }
 }
@@ -227,7 +238,7 @@ pwsh scripts/dc.ps1 -f docker-compose.full.yml up -d
 ```
 
 ### 5.2 Node.js & `npx` Process Management on Windows
-- `npx -y <pkg>@latest` downloads and caches packages in `%LOCALAPPDATA%\npm-cache\_npx`.
+- `npx -y <pkg>@PINNED_VERSION` downloads and caches a reviewed package version in `%LOCALAPPDATA%\npm-cache\_npx`; never use a mutable `latest` tag in release or privileged workflows.
 - In case of lock errors, clear stale locks or terminate dangling `node.exe` worker processes.
 - Ensure PowerShell execution policy allows local scripts (`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`).
 

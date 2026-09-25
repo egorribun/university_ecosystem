@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from app.api import sessions
 from app.models.enums import UserRole
+from tests.conftest import call_injected
 
 
 def _request(headers: list[tuple[bytes, bytes]] | None = None):
@@ -131,7 +132,12 @@ async def test_list_sessions_marks_current_token():
         patch.object(sessions, "resolve_locale", return_value="en"),
         patch.object(sessions, "decode_token", return_value={"jti": "current"}),
     ):
-        result = await sessions.list_sessions(request, user, AsyncMock(), service)
+        result = await call_injected(
+            sessions.list_sessions,
+            request=request,
+            current_user=user,
+            provides={"AsyncDatabaseSession": AsyncMock(), "SessionService": service},
+        )
 
     assert [item.is_current for item in result] == [True, False]
     service.get_active_sessions_for_user.assert_awaited_once_with(user.id)
@@ -147,8 +153,8 @@ async def test_revoke_session_handles_service_returning_none():
 
     with patch.object(sessions, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await sessions.revoke_session(
-                uuid.uuid4(), _request(), None, user, AsyncMock(), service
+            await sessions.revoke_session.__dishka_orig_func__(
+                uuid.uuid4(), _request(), AsyncMock(), service, None, user
             )
 
     assert exc.value.status_code == 404
@@ -162,8 +168,8 @@ async def test_revoke_session_reports_missing_session():
 
     with patch.object(sessions, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await sessions.revoke_session(
-                uuid.uuid4(), _request(), None, user, AsyncMock(), service
+            await sessions.revoke_session.__dishka_orig_func__(
+                uuid.uuid4(), _request(), AsyncMock(), service, None, user
             )
 
     assert exc.value.status_code == 404
@@ -183,8 +189,8 @@ async def test_revoke_session_serializes_success_and_current_flag():
         patch.object(sessions, "resolve_locale", return_value="en"),
         patch.object(sessions, "decode_token", return_value={"jti": "current"}),
     ):
-        result = await sessions.revoke_session(
-            existing.id, request, None, user, AsyncMock(), service
+        result = await sessions.revoke_session.__dishka_orig_func__(
+            existing.id, request, AsyncMock(), service, None, user
         )
 
     assert result.id == revoked.id
@@ -202,8 +208,8 @@ async def test_revoke_other_sessions_returns_bulk_count_and_current_jti():
         patch.object(sessions, "resolve_locale", return_value="en"),
         patch.object(sessions, "decode_token", return_value={"jti": "current"}),
     ):
-        result = await sessions.revoke_other_sessions(
-            request, None, user, AsyncMock(), service
+        result = await sessions.revoke_other_sessions.__dishka_orig_func__(
+            request, AsyncMock(), service, None, user
         )
 
     assert result.revoked == 2

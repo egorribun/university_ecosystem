@@ -116,6 +116,25 @@ describe("logger closure paths", () => {
     consoleWarn.mockRestore()
   })
 
+  it("does not invoke a non-function message sink in the error fallback", () => {
+    resetLoggerMocks()
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    setLoggerClient({
+      captureException: undefined,
+      captureMessage: null as unknown as typeof captureMessage,
+    })
+
+    expect(() => logError(new Error("no usable sink"), "fallback")).not.toThrow()
+    expect(consoleWarn).not.toHaveBeenCalledWith(
+      "[logger] Failed to forward error to Sentry",
+      expect.anything()
+    )
+    expect(consoleError).toHaveBeenCalledWith(expect.any(Error), "fallback")
+    consoleWarn.mockRestore()
+    consoleError.mockRestore()
+  })
+
   it("fails closed when Sentry forwarding throws", () => {
     resetLoggerMocks()
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {})

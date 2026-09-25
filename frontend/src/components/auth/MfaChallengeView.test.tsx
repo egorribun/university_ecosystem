@@ -244,6 +244,16 @@ describe("MfaChallengeView — recovery interaction", () => {
     expect(handleRecoveryVerify).not.toHaveBeenCalled()
   })
 
+  it("keeps recovery submission in the SPA instead of a native form post", () => {
+    const handleRecoveryVerify = vi.fn()
+    render(<MfaChallengeView {...props} mfa={{ ...recoveryMfa, handleRecoveryVerify }} />)
+    const input = screen.getByRole("textbox", { name: "Recovery code" })
+    fireEvent.change(input, { target: { value: "ABC-123" } })
+
+    expect(fireEvent.submit(input.closest("form")!)).toBe(false)
+    expect(handleRecoveryVerify).toHaveBeenCalledExactlyOnceWith("ABC-123")
+  })
+
   it("ignores an empty recovery code on the enabled submit button", () => {
     const handleRecoveryVerify = vi.fn()
     render(<MfaChallengeView {...props} mfa={{ ...recoveryMfa, handleRecoveryVerify }} />)

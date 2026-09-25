@@ -1,7 +1,7 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { axe } from "jest-axe"
 
 import Register, { resolveRegistrationEmailErrorKey } from "../Register"
@@ -50,10 +50,20 @@ const renderRegister = () =>
     ui: Register,
     path: "/register",
     initialPath: "/register",
+    // Registration is a public form and does not consume auth state. Avoid
+    // mounting the real AuthProvider's profile-sync effect in these tests;
+    // its asynchronous store update is unrelated to this page contract.
+    authProvider: false,
     extraRoutes: [{ path: "/login", Component: () => <div>Sign in page</div> }],
   })
 
 describe("Register page", () => {
+  afterEach(() => {
+    // Unmount before setupTests changes i18next's language; otherwise the
+    // external-store notification updates a detached AuthProvider/Select.
+    cleanup()
+  })
+
   beforeEach(() => {
     passwordAnalysis.mode = "normal"
     passwordAnalysis.calls = 0
@@ -70,6 +80,26 @@ describe("Register page", () => {
       expect(screen.getByRole("button", { name: tAuth("actions.signUp") })).toBeInTheDocument()
     } finally {
       i18n.resolvedLanguage = resolvedLanguage
+    }
+  })
+
+  it("presents one centered registration form with a concise university identity", async () => {
+    await renderRegister()
+
+    const main = screen.getByRole("main", { name: tAuth("register.title") })
+    expect(main).toHaveClass("auth-shell")
+    expect(main.querySelectorAll("form")).toHaveLength(1)
+    expect(main.querySelectorAll(".auth-card-matte")).toHaveLength(1)
+    expect(screen.getByText(tAuth("register.hero.badge"))).toBeInTheDocument()
+    expect(
+      screen.getByRole("heading", { level: 1, name: tAuth("register.title") })
+    ).toBeInTheDocument()
+    expect(screen.getByText(tAuth("register.hero.description"))).toBeInTheDocument()
+    for (const perk of ["community", "secure", "experience"]) {
+      expect(screen.queryByText(tAuth(`register.hero.perks.${perk}.title`))).not.toBeInTheDocument()
+      expect(
+        screen.queryByText(tAuth(`register.hero.perks.${perk}.description`))
+      ).not.toBeInTheDocument()
     }
   })
 
@@ -188,6 +218,54 @@ describe("Register page", () => {
     )
     await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
     expect(inviteInput).toBeInTheDocument()
+  })
+
+  it("opens the role selector when its visible label is clicked", async () => {
+    const user = userEvent.setup()
+    await renderRegister()
+
+    const roleLabel = screen.getByText(tAuth("fields.role"), { selector: "label" })
+    const roleSelector = screen.getByRole("combobox")
+    await user.click(roleLabel)
+
+    expect(roleSelector).toHaveAttribute("aria-expanded", "true")
+  })
+
+  it("requires an invite code for administrator accounts and removes it for students", async () => {
+    const user = userEvent.setup()
+    await renderRegister()
+
+    const selector = screen.getByRole("combobox")
+    await user.click(selector)
+    await user.click(screen.getByRole("option", { name: tAuth("register.role.admin") }))
+    expect(screen.getByLabelText(matchText(tAuth("fields.inviteCode")))).toBeInTheDocument()
+    expect(screen.getByText(tAuth("register.inviteRequired"))).toBeInTheDocument()
+
+    await user.click(selector)
+    await user.click(screen.getByRole("option", { name: tAuth("register.role.student") }))
+    expect(screen.queryByLabelText(matchText(tAuth("fields.inviteCode")))).toBeNull()
+    expect(screen.getByText(tAuth("register.inviteOptional"))).toBeInTheDocument()
+  })
+
+  it("uses strict password chip boundaries and exposes the selected strength", async () => {
+    const user = userEvent.setup()
+    await renderRegister()
+    const password = screen.getByLabelText(matchText(tAuth("fields.password")))
+    const confirm = screen.getByLabelText(matchText(tAuth("fields.confirmPassword")))
+    const minLengthChip = screen.getByText(tAuth("register.passwordChip.minLength"))
+    const matchChip = screen.getByText(tAuth("register.passwordChip.match"))
+
+    await user.type(password, "1234567")
+    expect(minLengthChip).toHaveClass("text-text-muted-subtle")
+    await user.type(password, "8")
+    expect(minLengthChip).toHaveClass("text-brand")
+    expect(document.querySelector('[style="width: 75%;"]')).toBeInTheDocument()
+    expect(screen.getByText(tAuth("register.passwordStrengthLevel.good"))).toBeInTheDocument()
+
+    await user.type(confirm, "12345678")
+    expect(matchChip).toHaveClass("text-brand")
+    await user.clear(confirm)
+    expect(matchChip).toHaveClass("text-text-muted-subtle")
   })
 
   it("suggests and accepts a corrected email domain", async () => {
@@ -385,6 +463,22 @@ describe("Register page", () => {
     await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
 
     expect(await screen.findByText("Name is invalid; Email is invalid")).toBeInTheDocument()
+  })
+
+  it("uses the generic translated error when an object has no response detail", async () => {
+    const post = vi.spyOn(api, "post").mockRejectedValueOnce({ response: {} })
+    const user = userEvent.setup()
+    await renderRegister()
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.name"))), "Test User")
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.email"))), "user@example.com")
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.password"))), "password123")
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.confirmPassword"))),
+      "password123"
+    )
+    await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
+    expect(await screen.findByText(tAuth("register.error"))).toBeInTheDocument()
+    post.mockRestore()
   })
 
   it("falls back to the translated error for an unstructured API failure", async () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 
+import { BUILDING_COLORS } from "@/data/campusBuildings"
 import { parseBuildingRoom, uniqueBuildings } from "../buildingIcons"
 
 describe("parseBuildingRoom", () => {
@@ -28,6 +29,22 @@ describe("parseBuildingRoom", () => {
 
   it("returns null when the room does not start with a digit", () => {
     expect(parseBuildingRoom("А-абв")).toBeNull()
+  })
+
+  it("parses a single-letter building id", () => {
+    expect(parseBuildingRoom("А-101")).toEqual({ building: "А", room: "101", ...BUILDING_COLORS.А })
+  })
+
+  it("ignores surrounding whitespace", () => {
+    expect(parseBuildingRoom("  ПА-201 ")).toEqual({
+      building: "ПА",
+      room: "201",
+      ...BUILDING_COLORS.ПА,
+    })
+  })
+
+  it("returns null when the room only contains a digit after a letter", () => {
+    expect(parseBuildingRoom("ГУК-А305")).toBeNull()
   })
 
   it("uses the default color for an unknown building id", () => {

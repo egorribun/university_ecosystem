@@ -3,6 +3,8 @@ import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
+import { validateSourceProvenance } from "./wasm-source-provenance.mjs"
+
 const WASM_MAGIC = Buffer.from([0x00, 0x61, 0x73, 0x6d])
 const MINIMUM_WASM_BYTES = 32
 
@@ -32,7 +34,13 @@ const ARTIFACTS = [
     packageName: "uni-wasm-crypto",
     jsFile: "uni_wasm_crypto.js",
     wasmFile: "uni_wasm_crypto_bg.wasm",
-    exports: ["default", "pbkdf2_derive", "scrypt_derive", "hmac_sha256_sign"],
+    exports: [
+      "default",
+      "pbkdf2_derive",
+      "scrypt_derive",
+      "hmac_sha256_sign",
+      "hmac_sha256_sign_base64",
+    ],
     placeholderPatterns: [
       {
         pattern: /function\s+pbkdf2_derive\s*\([^)]*\)\s*\{\s*return\s+["']{2}\s*;\s*\}/,
@@ -110,7 +118,8 @@ async function readPackageArtifact(root, artifact) {
   assertGeneratedExports(source, artifact)
 }
 
-export async function validateWasmArtifacts(root) {
+export async function validateWasmArtifacts(root, { requireSourceProvenance = false } = {}) {
+  if (requireSourceProvenance) await validateSourceProvenance(root)
   await Promise.all(ARTIFACTS.map((artifact) => readPackageArtifact(root, artifact)))
 }
 
@@ -119,7 +128,7 @@ const invokedFile = process.argv[1] ? path.resolve(process.argv[1]) : ""
 
 if (currentFile === invokedFile) {
   const frontendRoot = path.dirname(path.dirname(currentFile))
-  validateWasmArtifacts(frontendRoot)
+  validateWasmArtifacts(frontendRoot, { requireSourceProvenance: true })
     .then(() => {
       console.log("WASM artifacts are valid.")
     })

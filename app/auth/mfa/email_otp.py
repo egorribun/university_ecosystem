@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
 import hmac
 import html
 import secrets
-import smtplib
 import ssl
 import string
 import uuid
@@ -16,14 +16,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from operator import attrgetter
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
+import aiosmtplib
 import orjson
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy import delete, or_, select, update
 
 from app.auth.constants import CHALLENGE_TYPE_EMAIL_OTP, MFA_METHOD_EMAIL_OTP
+from app.core.events import DurableEventDeferred
 from app.core.logging import get_logger
 from app.core.ratelimit import RateLimitExceeded
 from app.models import (
@@ -116,60 +118,10 @@ class RuntimeMfaRateLimiter:
 
 
 class SmtpMfaEmailSender:
-    """Narrow SMTP boundary that never logs recipient or message content."""
+    """Cancellable SMTP delivery with a wall-clock bound below the worker lease."""
 
-    @staticmethod
-    def _send_sync(
-        *, to_email: str, subject: str, plain: str, html_body: str, message_id: str
-    ) -> None:
-        from app.core.config import settings
-
-        host = settings.smtp_host or ""
-        port = int(settings.smtp_port or 0)
-        if not host or not port:
-            raise OSError("SMTP unavailable")
-        message = EmailMessage()
-        message["Subject"] = subject
-        message["From"] = settings.mail_from or "no-reply@example.com"
-        message["To"] = to_email
-        message["Message-ID"] = message_id
-        message.set_content(plain)
-        message.add_alternative(html_body, subtype="html")
-        configured_security = settings.smtp_security
-        if configured_security:
-            security = configured_security.lower()
-        elif settings.smtp_starttls:
-            # Keep the legacy boolean fallback canonical so a configured
-            # ``smtp_security`` value can remain case-insensitive without
-            # making this security-sensitive branch depend on string casing.
-            security = "starttls"
-        else:
-            security = "none"
-        if security not in {"none", "starttls", "ssl"}:
-            # Do not silently downgrade a malformed setting to unauthenticated
-            # SMTP.  Configuration normally validates this value, but this
-            # boundary also runs in workers and must fail closed when settings
-            # are injected or loaded from an unexpected source.
-            raise OSError("SMTP unavailable")
-        context = ssl.create_default_context()
-        try:
-            client_context: smtplib.SMTP
-            if security == "ssl":
-                client_context = smtplib.SMTP_SSL(
-                    host, port, context=context, timeout=10
-                )
-            else:
-                client_context = smtplib.SMTP(host, port, timeout=10)
-            with client_context as client:
-                if security == "starttls":
-                    client.ehlo()
-                    client.starttls(context=context)
-                    client.ehlo()
-                if settings.smtp_user:
-                    client.login(settings.smtp_user, settings.smtp_password or "")
-                client.send_message(message)
-        except smtplib.SMTPException as exc:
-            raise OSError("SMTP unavailable") from exc
+    def __init__(self, *, total_timeout_seconds: float | None = None) -> None:
+        self._total_timeout_seconds = total_timeout_seconds
 
     async def send(
         self,
@@ -180,16 +132,60 @@ class SmtpMfaEmailSender:
         html: str,
         message_id: str,
     ) -> None:
-        import asyncio
+        from app.core.config import settings
 
-        await asyncio.to_thread(
-            self._send_sync,
-            to_email=to_email,
-            subject=subject,
-            plain=plain,
-            html_body=html,
-            message_id=message_id,
+        host = settings.smtp_host or ""
+        port = int(settings.smtp_port or 0)
+        timeout = self._total_timeout_seconds
+        if timeout is None:
+            timeout = settings.smtp_mfa_total_timeout_seconds
+        # The outbox lease is 120 seconds. A sender must never be capable of
+        # outliving that lease and racing a second worker's retry.
+        if not host or not port or not 0 < timeout <= 90:
+            raise OSError("SMTP unavailable")
+        configured_security = settings.smtp_security
+        if configured_security:
+            security = configured_security.lower()
+        elif settings.smtp_starttls:
+            security = "starttls"
+        else:
+            security = "none"
+        if security not in {"none", "starttls", "ssl"}:
+            raise OSError("SMTP unavailable")
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = settings.mail_from or "no-reply@example.com"
+        message["To"] = to_email
+        message["Message-ID"] = message_id
+        message.set_content(plain)
+        message.add_alternative(html, subtype="html")
+        client = aiosmtplib.SMTP(
+            hostname=host,
+            port=port,
+            timeout=10,
+            use_tls=security == "ssl",
+            start_tls=security == "starttls",
+            tls_context=ssl.create_default_context() if security != "none" else None,
         )
+        delivered = False
+        try:
+            async with asyncio.timeout(timeout):
+                await client.connect()
+                if settings.smtp_user:
+                    await client.login(settings.smtp_user, settings.smtp_password or "")
+                await client.send_message(message)
+                delivered = True
+        except (aiosmtplib.SMTPException, OSError, TimeoutError, ValueError):
+            # Provider responses can contain recipient or OTP data. The public
+            # delivery boundary exposes only a stable, PII-free error and
+            # suppresses the raw provider traceback.
+            raise OSError("SMTP unavailable") from None
+        finally:
+            # A timeout or caller cancellation must abort queued bytes, not
+            # leave a detached send running beyond the delivery lease.
+            if not delivered and client.transport is not None:
+                cast(asyncio.Transport, client.transport).abort()
+            client.close()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1112,11 +1108,14 @@ class EmailOtpService:
                     MfaEmailDelivery.id == delivery_id
                 )
             )
-            if status_value in {"sent", "sending"}:
+            if status_value in {"sent", "cancelled"}:
                 return
+            if status_value == "sending":
+                raise DurableEventDeferred()
             raise MfaDeliveryError()
-        # This is a worker lease boundary: commit before network I/O so no row
-        # lock or transaction remains open while SMTP is unavailable or slow.
+        # Commit the claim before network I/O. The challenge and delivery locks
+        # acquired below are intentionally held through bounded SMTP I/O so a
+        # resend or a second worker cannot race the in-flight OTP.
         await db.commit()
         delivery = await db.get(
             MfaEmailDelivery,
@@ -1133,11 +1132,38 @@ class EmailOtpService:
                 .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
+        # The challenge lock can take most of the lease. Re-read and lock the
+        # delivery row after it: an expired lease may already have been claimed
+        # by another worker while this one waited. Holding this row lock until
+        # completion also prevents reclaim during the bounded SMTP exchange.
+        delivery = await db.get(
+            MfaEmailDelivery,
+            delivery_id,
+            populate_existing=True,
+            with_for_update=True,
+        )
         # A contended challenge lock can outlive the timestamp captured for the
         # lease CAS. Re-read the wall clock after acquiring it so an OTP that
         # expires while waiting is never sent. Explicit test clocks remain
         # deterministic by design.
         validation_time = now if now is not None else datetime.now(UTC)
+        from app.core.config import settings
+
+        sender_timeout = (
+            sender._total_timeout_seconds
+            if isinstance(sender, SmtpMfaEmailSender)
+            else None
+        )
+        if sender_timeout is None:
+            sender_timeout = settings.smtp_mfa_total_timeout_seconds
+        if (
+            delivery is None
+            or delivery.lease_token != lease_token
+            or delivery.lease_expires_at is None
+            or _aware(delivery.lease_expires_at)
+            <= validation_time + timedelta(seconds=sender_timeout + 5)
+        ):
+            raise DurableEventDeferred()
         if (
             challenge is None
             or challenge.method != MFA_METHOD_EMAIL_OTP

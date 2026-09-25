@@ -1,6 +1,7 @@
 import { createElement } from "react"
 import { createRouter } from "@tanstack/react-router"
 import { QueryClient } from "@tanstack/react-query"
+import { createQueryClient } from "./app/queryClient"
 import { routeTree } from "./routeTree.gen"
 
 export interface RouterContext {
@@ -20,6 +21,13 @@ export interface RouterContext {
 // removes those contributors from the measurement without touching
 // real-user navigation UX — prod tree-shakes the branch to `true`.
 const LHCI_VIEW_TRANSITION = import.meta.env.VITE_LHCI !== "true"
+// Mobile WebKit can leave the old route snapshot composited over the new page
+// indefinitely after a cross-route transition. The new route is in the DOM,
+// but links beneath that snapshot never become actionable. Keep normal route
+// navigation and reserve View Transitions for engines without this failure.
+const MOBILE_WEBKIT_VIEW_TRANSITION =
+  typeof window === "undefined" ||
+  !("WebKitPoint" in window && window.matchMedia("(hover: none) and (pointer: coarse)").matches)
 
 // Wave 126 Phase 3 SW4 — auth-at-edge replaces the W125 Phase 2 stub.
 //
@@ -68,15 +76,16 @@ const createAppRouter = () => {
     routeTree,
     context: {
       auth: ssrAuth ?? DEFAULT_AUTH,
-      // Per-call QueryClient instance — SSR + client never share cache state
-      // (would cause hydration mismatches). Phase 4+ may add proper
-      // dehydrate/hydrate transfer via TanStack Query's persister.
-      queryClient: new QueryClient(),
+      // Per-call QueryClient instance — SSR + client never share cache state,
+      // while both still use the same offline/retry/cache policy.  Constructing
+      // a bare QueryClient here silently diverges from the provider's defaults
+      // during SSR loader resolution and causes redundant refetches.
+      queryClient: createQueryClient(),
     },
     defaultPreload: "intent",
     defaultPreloadStaleTime: 0,
     scrollRestoration: true,
-    defaultViewTransition: LHCI_VIEW_TRANSITION,
+    defaultViewTransition: LHCI_VIEW_TRANSITION && MOBILE_WEBKIT_VIEW_TRANSITION,
     // Wave 152 Phase 1.5 + Wave 153 SW2 — provide a visible default pending
     // UI for ANY suspending route on the CLIENT, but return null during SSR.
     //
@@ -175,5 +184,9 @@ export const router = createAppRouter()
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router
+  }
+  interface HistoryState {
+    /** Set when a chat is opened from the messenger list, so mobile back pops it. */
+    messengerOpenedFromList?: boolean
   }
 }

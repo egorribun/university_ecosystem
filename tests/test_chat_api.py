@@ -4,13 +4,13 @@ from datetime import UTC, datetime
 import pytest
 from httpx import AsyncClient
 
-from app.api.deps import get_read_chat_query_service
 from app.auth.security import get_password_hash
 from app.core.database import get_db, get_read_db
 from app.main import app
 from app.models.chat import Chat, Message
 from app.services.chat.query_service import ChatQueryService
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
+from tests.conftest import install_dishka_override
 
 
 async def _login(
@@ -403,7 +403,7 @@ async def test_messaging_flow_success(async_client, user_factory, db_session):
         return ChatQueryService(db_session, uow.chats)
 
     app.dependency_overrides[get_read_db] = lambda: db_session
-    app.dependency_overrides[get_read_chat_query_service] = _get_mock_query_service
+    install_dishka_override(app, ChatQueryService=_get_mock_query_service)
     app.dependency_overrides[get_db] = lambda: db_session
 
     try:
@@ -435,7 +435,6 @@ async def test_messaging_flow_success(async_client, user_factory, db_session):
 
     finally:
         app.dependency_overrides.pop(get_read_db, None)
-        app.dependency_overrides.pop(get_read_chat_query_service, None)
         app.dependency_overrides.pop(get_db, None)
 
 

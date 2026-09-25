@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, time
+from datetime import UTC, datetime, time
 from typing import Any
 
 from sqlalchemy import (
@@ -56,6 +56,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         ),
         nullable=False,
         default=UserRole.STUDENT,
+        server_default=UserRole.STUDENT.value,
         index=True,
     )
     group_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -64,9 +65,18 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         index=True,
         nullable=True,
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true",
+        index=True,
+    )
     mfa_required: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, index=True
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+        index=True,
     )
     mfa_default_method: Mapped[str | None] = mapped_column(String(64))
     mfa_last_verified_at: Mapped[datetime | None] = mapped_column(
@@ -76,7 +86,10 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         Integer, nullable=False, default=0, server_default="0"
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        index=True,
     )
 
     preferences = relationship(
@@ -221,6 +234,15 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         passive_deletes=True,
         lazy="noload",
     )
+    # Chat membership is an explicit bidirectional relation.  Do not use a
+    # dynamically generated backref here: its implicit ``lazy="select"``
+    # strategy performs synchronous IO when accessed from an async request.
+    chats = relationship(
+        "Chat",
+        secondary="chat_participants",
+        back_populates="participants",
+        lazy="noload",
+    )
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.pop("_allow_system_managed_assignment", False)
@@ -311,7 +333,9 @@ class UserPreferences(Base):
     # TD-2: Use timezone-aware Time so the application can correctly compare DnD
     # window boundaries against UTC server time regardless of the user's locale.
     # Requires a new Alembic migration (ALTER COLUMN ... TYPE TIMETZ).
-    dnd_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    dnd_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     dnd_start: Mapped[time | None] = mapped_column(Time(timezone=True), nullable=True)
     dnd_end: Mapped[time | None] = mapped_column(Time(timezone=True), nullable=True)
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -380,10 +404,23 @@ class InviteCode(Base, UUID7PrimaryKeyMixin):
 
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     role: Mapped[str] = mapped_column(String(50))  # LOW-W19: bounded String
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    is_used: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true",
+        index=True,
+    )
+    is_used: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        index=True,
     )
     used_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -417,24 +454,47 @@ class UserStats(Base):
     # TD-1: Migrated from legacy Column() to typed Mapped[] for consistency with
     # the rest of the codebase and to benefit from SQLAlchemy 2.x type inference.
     # Attendance metrics
-    attendance_percent: Mapped[float] = mapped_column(Float, default=0.0)
-    attendance_present: Mapped[int] = mapped_column(Integer, default=0)
-    attendance_total: Mapped[int] = mapped_column(Integer, default=0)
-    attendance_trend: Mapped[float] = mapped_column(Float, default=0.0)
+    attendance_percent: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
+    )
+    attendance_present: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    attendance_total: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    attendance_trend: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
+    )
 
     # Grade metrics
-    grades_average: Mapped[float] = mapped_column(Float, default=0.0)
-    grades_trend: Mapped[float] = mapped_column(Float, default=0.0)
+    grades_average: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
+    )
+    grades_trend: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
+    )
 
     # Participation metrics
-    participation_events: Mapped[int] = mapped_column(Integer, default=0)
-    participation_hours: Mapped[float] = mapped_column(Float, default=0.0)
-    participation_groups: Mapped[int] = mapped_column(Integer, default=0)
-    participation_trend: Mapped[int] = mapped_column(Integer, default=0)
+    participation_events: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    participation_hours: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
+    )
+    participation_groups: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    participation_trend: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
 
     # General metadata
     last_computed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     user = relationship("User", back_populates="stats", lazy="noload")  # RZ-33-06

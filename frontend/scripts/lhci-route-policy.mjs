@@ -441,7 +441,9 @@ async function readLighthouseReports(reportsDir) {
   try {
     entries = await readdir(reportsDir, { withFileTypes: true })
   } catch (error) {
-    throw new Error(`Unable to read Lighthouse report directory ${reportsDir}: ${error.message}`)
+    throw new Error(`Unable to read Lighthouse report directory ${reportsDir}: ${error.message}`, {
+      cause: error,
+    })
   }
 
   const reportFiles = entries
@@ -460,7 +462,9 @@ async function readLighthouseReports(reportsDir) {
       try {
         parsed = JSON.parse(await readFile(reportPath, "utf8"))
       } catch (error) {
-        throw new Error(`Unable to parse Lighthouse report ${reportPath}: ${error.message}`)
+        throw new Error(`Unable to parse Lighthouse report ${reportPath}: ${error.message}`, {
+          cause: error,
+        })
       }
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new Error(`Lighthouse report ${reportPath} is not a JSON object`)
@@ -482,7 +486,9 @@ export async function assertLhciRoutePolicy({
     try {
       robotsText = await readFile(robotsPath, "utf8")
     } catch (error) {
-      throw new Error(`Unable to read canonical robots.txt ${robotsPath}: ${error.message}`)
+      throw new Error(`Unable to read canonical robots.txt ${robotsPath}: ${error.message}`, {
+        cause: error,
+      })
     }
   }
 

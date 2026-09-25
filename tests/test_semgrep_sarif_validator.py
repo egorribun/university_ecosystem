@@ -83,6 +83,33 @@ def test_approved_suppression_is_valid_even_when_semgrep_returns_findings(
     validator.validate_report(report, policy, scanner_status=1)
 
 
+def test_cdc_publication_has_no_semgrep_suppression_exception(
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    source_path = "app/workers/cdc_outbox.py"
+    source_text = (root / source_path).read_text(encoding="utf-8")
+    assert "nosemgrep" not in source_text
+    policy_path = root / "security/semgrep-suppression-policy.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    assert all(entry["path"] != source_path for entry in policy["entries"])
+
+    report, _ = _write_inputs(
+        tmp_path,
+        _report(
+            _result(
+                rule_id="python.lang.security.audit.formatted-sql-query.formatted-sql-query",
+                path=source_path,
+                start_line=528,
+                end_line=530,
+                suppressed=True,
+            )
+        ),
+    )
+    with pytest.raises(validator.ValidationError, match="not covered"):
+        validator.validate_report(report, policy_path, scanner_status=0)
+
+
 def test_unapproved_result_is_rejected(tmp_path: Path) -> None:
     report, policy = _write_inputs(
         tmp_path, _report(_result(path="scripts/other.py", suppressed=False))

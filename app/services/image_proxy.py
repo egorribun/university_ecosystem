@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 from io import BytesIO
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal, cast
+from typing import Literal
 from urllib.parse import unquote
 
 from app.core.logging import get_logger
@@ -35,8 +35,13 @@ except ImportError:
 
 from PIL import Image
 
-from app.services.storage import StorageBackend
-from app.utils.images import _resolve_resample_filter
+from app.core.config import settings
+from app.services.storage import S3Storage, StorageBackend
+from app.utils.images import (
+    ImagePixelLimitError,
+    _resolve_resample_filter,
+    validate_image_dimensions,
+)
 
 try:
     import pillow_avif  # noqa: F401 - registers AVIF handler with Pillow
@@ -45,8 +50,39 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-# Redis cache TTL for transformed images (7 days)
-_CACHE_TTL = 7 * 24 * 60 * 60
+# Bound retained transformed bytes to one day. User media is revalidated on
+# every cache hit, but expired entries should not linger in Redis for a week.
+_CACHE_TTL = 24 * 60 * 60
+
+
+def _configured_image_max_pixels() -> int:
+    """Return the bounded image pixel budget used by proxy transformations."""
+    from app.utils.images import DEFAULT_MAX_IMAGE_PIXELS
+
+    configured = getattr(settings, "image_max_pixels", None)
+    if configured is None:
+        return DEFAULT_MAX_IMAGE_PIXELS
+    # ``StorageSettings`` validates this field as an integer.  Keep the
+    # defensive fallback for lightweight test/config objects without using a
+    # runtime-no-op typing cast that can hide invalid values.
+    if not isinstance(configured, int) or configured == 0:
+        return DEFAULT_MAX_IMAGE_PIXELS
+    return configured
+
+
+def _validate_image_payload(data: bytes, *, max_pixels: int) -> None:
+    """Validate raster dimensions without turning malformed legacy bytes into 500s."""
+    try:
+        with Image.open(BytesIO(data)) as image:
+            validate_image_dimensions(*image.size, max_pixels=max_pixels)
+    except ImagePixelLimitError:
+        raise
+    except Image.DecompressionBombError as exc:
+        raise ImagePixelLimitError.from_decompression_bomb(max_pixels) from exc
+    except OSError:
+        # Existing proxy behavior maps corrupt/missing image data to a safe
+        # fallback/404.  The explicit pixel-limit error remains fail-closed.
+        return
 
 
 async def get_transformed_image(
@@ -72,8 +108,18 @@ async def get_transformed_image(
         redis_client = await get_cache_client()
         cached_payload = await redis_client.get(redis_key)
         if cached_payload:
+            # A deleted user image must not remain publicly retrievable merely
+            # because its transformed bytes are still present in Redis.
+            source_path = _backend_source_path(backend, path)
+            if not await backend.exists(source_path):
+                try:
+                    await redis_client.delete(redis_key)
+                except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
+                    logger.warning("Redis stale image eviction failed: %s", exc)
+                raise ValueError(f"Could not load image: {path}")
             # Safe deserialization via msgspec — no code execution risk.
             data, mime = _cache_decode(cached_payload)
+            _validate_image_payload(data, max_pixels=_configured_image_max_pixels())
             return data, mime
     except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
         # RZ-20-04: Narrowed from bare Exception — Redis unavailability.
@@ -98,12 +144,21 @@ async def get_transformed_image(
         raise ValueError(f"Could not load image: {path}") from exc
 
     if format_preference == "original" and width is None:
-        # No transformation needed, but we might still want to cache it or just return
+        # No transformation is needed, but original mode still cannot bypass
+        # the application-level decompression/resource boundary.
+        _validate_image_payload(
+            source_bytes,
+            max_pixels=_configured_image_max_pixels(),
+        )
         return source_bytes, _guess_mime(path)
 
     try:
         transformed_data, mime = await asyncio.to_thread(
-            _process_image, source_bytes, width, format_preference
+            _process_image,
+            source_bytes,
+            width,
+            format_preference,
+            _configured_image_max_pixels(),
         )
 
         try:
@@ -119,6 +174,8 @@ async def get_transformed_image(
 
         return transformed_data, mime
 
+    except ImagePixelLimitError:
+        raise
     except (OSError, ValueError) as exc:
         # RZ-20-04: Narrowed — PIL/image transformation errors.
         logger.error("Failed to transform image %s: %s", path, exc)
@@ -132,12 +189,7 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
     instead of branching on implementation types. This preserves SRP and
     eliminates brittle hacks involving internal client access.
     """
-    # Security: Early validation of user input to block path traversal.
-    sanitized_path = _sanitize_path_input(path)
-
-    # Normalize path: ensure it doesn't have double slashes and has a
-    # leading slash for extraction logic if needed by the backend.
-    normalized_path = "/" + sanitized_path.lstrip("/")
+    normalized_path = _backend_source_path(backend, path)
 
     try:
         return await backend.read_file(normalized_path)
@@ -147,6 +199,12 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
             underscored = normalized_path.replace(" ", "_")
             return await backend.read_file(underscored)
         raise
+
+
+def _backend_source_path(backend: StorageBackend, path: str) -> str:
+    """Use a raw key for S3, preserving StaticFS's public-prefix URL contract."""
+    key = _sanitize_path_input(path).lstrip("/")
+    return key if isinstance(backend, S3Storage) else f"/{key}"
 
 
 def _sanitize_path_input(path: str) -> str:
@@ -222,43 +280,53 @@ def _validate_path_within_base(base_dir: Path, rel_path: Path) -> Path:
 
 
 def _process_image(
-    data: bytes, width: int | None, format_pref: Literal["avif", "webp", "original"]
+    data: bytes,
+    width: int | None,
+    format_pref: Literal["avif", "webp", "original"],
+    max_pixels: int | None = None,
 ) -> tuple[bytes, str]:
     """Synchronous image processing block for thread executor."""
 
-    with Image.open(BytesIO(data)) as img:
-        # Preserve aspect ratio
-        w, h = img.size
+    resolved_max_pixels = max_pixels or _configured_image_max_pixels()
+    try:
+        with Image.open(BytesIO(data)) as img:
+            validate_image_dimensions(*img.size, max_pixels=resolved_max_pixels)
+            # Preserve aspect ratio
+            w, h = img.size
+            output_img: Image.Image = img
 
-        if width and width < w:
-            new_h = int(h * (width / w))
-            # LOW-W19: img.resize() returns a new Image object.  Reassigning
-            # `img` inside a `with` block means the context manager's __exit__
-            # will call .close() on the *new* object, not the original one
-            # opened above — the original is closed here explicitly before the
-            # reassignment to avoid leaking the file handle.
-            _resized = img.resize((width, new_h), resample=_resolve_resample_filter())
-            img.close()
-            img = cast(Any, _resized)
+            if width and width < w:
+                new_h = int(h * (width / w))
+                # LOW-W19: img.resize() returns a new Image object.  Keep the
+                # source image bound to the context manager and close it before
+                # switching the output reference so the resized object is not
+                # accidentally closed by the source context manager.
+                _resized = img.resize(
+                    (width, new_h), resample=_resolve_resample_filter()
+                )
+                img.close()
+                output_img = _resized
 
-        buffer = BytesIO()
-        if format_pref == "avif":
-            try:
-                img.save(buffer, format="AVIF", quality=60)
-                return buffer.getvalue(), "image/avif"
-            except (OSError, ValueError):
-                # RZ-20-04: Narrowed — AVIF plugin missing or encoding error.
-                logger.warning("AVIF encoding failed, falling back to WebP")
-                format_pref = "webp"
+            buffer = BytesIO()
+            if format_pref == "avif":
+                try:
+                    output_img.save(buffer, format="AVIF", quality=60)
+                    return buffer.getvalue(), "image/avif"
+                except (OSError, ValueError):
+                    # RZ-20-04: Narrowed — AVIF plugin missing or encoding error.
+                    logger.warning("AVIF encoding failed, falling back to WebP")
+                    format_pref = "webp"
 
-        if format_pref == "webp":
-            img.save(buffer, format="WEBP", quality=80, method=6)
-            return buffer.getvalue(), "image/webp"
+            if format_pref == "webp":
+                output_img.save(buffer, format="WEBP", quality=80, method=6)
+                return buffer.getvalue(), "image/webp"
 
-        # If original or fallback
-        original_format = img.format or "JPEG"
-        img.save(buffer, format=original_format)
-        return buffer.getvalue(), f"image/{str(original_format).lower()}"
+            # If original or fallback
+            original_format = output_img.format or "JPEG"
+            output_img.save(buffer, format=original_format)
+            return buffer.getvalue(), f"image/{str(original_format).lower()}"
+    except Image.DecompressionBombError as exc:
+        raise ImagePixelLimitError.from_decompression_bomb(resolved_max_pixels) from exc
 
 
 def _guess_mime(path: str) -> str:

@@ -42,7 +42,14 @@ class Chat(Base, UUID7PrimaryKeyMixin):
 ```
 
 ### 2.2. Dual Default Declarations (Python Default + SQL Server Default)
-- **Invariant**: Any model column with default values must provide **BOTH** Python-level default (`default=...`) AND DDL server default (`server_default=...`).
+- **Invariant**: Any effective model default that may be supplied by an ORM,
+  direct SQL, or microservice writer must provide **BOTH** Python-level
+  (`default=...`) and DDL server (`server_default=...`) declarations.
+- **Explicit exceptions**: inherited UUIDv7 primary-key defaults,
+  `active_sessions.signing_key`, JSON topic defaults, `Computed` expressions,
+  and `default=None` are intentionally application-only or non-effective.
+  They must be recorded with an owner and reason in ADR-036 and the generated
+  quality inventory; adding an unreviewed exception is forbidden.
 - **Rationale**: Freshly inserted ORM entities validated against Pydantic DTOs (`model_validate(from_attributes=True)`) will fail with `MissingGreenlet` if the Python-side attribute is unpopulated and requires a DB roundtrip to resolve.
 
 ```python
@@ -177,7 +184,7 @@ except Exception as err:  # RZ-22-01-JUSTIFIED: fail-closed auth fallback with a
 - Cookies: `access_token_v2` must be issued as an `HttpOnly` cookie with `cookie_samesite="lax"`.
 
 ### 6.3. Storage Path Traversal Prevention
-- `StaticFSStorage._validate_resolved_path()` resolves symlinks and verifies `is_relative_to(base_dir)`.
+- `StaticFSStorage._resolve_validated_path()` resolves symlinks and verifies `is_relative_to(base_dir)`.
 
 ---
 
@@ -223,7 +230,7 @@ GraphQL queries (via Strawberry GraphQL) pass through 5 protective middleware la
 | Anti-Pattern | Why It Is Forbidden | Correct Pattern |
 |---|---|---|
 | `relationship(..., lazy="select")` | Causes unmonitored N+1 queries and async MissingGreenlet | `relationship(..., lazy="noload")` + explicit `selectinload` |
-| Column default without DDL `server_default` | Causes MissingGreenlet during Pydantic validation of new instances | Provide both `default=val` and `server_default=val` |
+| Applicable column default without DDL `server_default` | Causes MissingGreenlet during Pydantic validation of new instances | Provide both `default=val` and `server_default=val`, or record an ADR-036 exception |
 | `from app.deps.user import NotificationService` | Violates DI encapsulation rule TD-33-08 (AST linter fails) | `from app.deps.content import NotificationService` |
 | `except Exception:` without tag | Swallows unexpected bugs and violates exception policy | Use narrowed exceptions or tag `# RZ-22-01-JUSTIFIED: <reason>` |
 | `except A, B:` | Python 2 syntax rejected by `no-python2-except` hook | `except (A, B):` |

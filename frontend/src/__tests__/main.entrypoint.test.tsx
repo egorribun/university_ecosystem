@@ -12,8 +12,8 @@ const mocks = vi.hoisted(() => ({
   initWebVitals: vi.fn(),
   reportBootstrapTTI: vi.fn(),
   registerServiceWorker: vi.fn(),
+  syncPushForConfirmedIdentity: vi.fn(),
   recoverPushConsentFromBrowser: vi.fn(),
-  hasPushConsent: vi.fn(),
   ensurePushSubscription: vi.fn(),
 }))
 
@@ -43,8 +43,8 @@ vi.mock("../push/register-sw", () => ({
   registerServiceWorker: mocks.registerServiceWorker,
 }))
 vi.mock("../push/subscribe", () => ({
+  syncPushForConfirmedIdentity: mocks.syncPushForConfirmedIdentity,
   recoverPushConsentFromBrowser: mocks.recoverPushConsentFromBrowser,
-  hasPushConsent: mocks.hasPushConsent,
   ensurePushSubscription: mocks.ensurePushSubscription,
 }))
 
@@ -100,9 +100,7 @@ beforeEach(() => {
 
   mocks.initWebVitals.mockReturnValue(true)
   mocks.registerServiceWorker.mockResolvedValue({ scope: "/" })
-  mocks.recoverPushConsentFromBrowser.mockResolvedValue(false)
-  mocks.hasPushConsent.mockReturnValue(false)
-  mocks.ensurePushSubscription.mockResolvedValue(undefined)
+  mocks.syncPushForConfirmedIdentity.mockResolvedValue(null)
   mocks.createRoot.mockReturnValue({ render: mocks.render })
   vi.spyOn(performance, "now").mockReturnValueOnce(100).mockReturnValueOnce(145)
 })
@@ -177,47 +175,51 @@ describe("browser entrypoint", () => {
     await importMain()
 
     await vi.waitFor(() => expect(mocks.registerServiceWorker).toHaveBeenCalledWith("/sw.js"))
-    expect(mocks.recoverPushConsentFromBrowser).not.toHaveBeenCalled()
+    await Promise.resolve()
+    expect(mocks.syncPushForConfirmedIdentity).not.toHaveBeenCalled()
   })
 
-  it("recovers browser consent but does not subscribe without explicit consent", async () => {
+  it("delegates push sync to the confirmed-identity gate instead of persisting directly", async () => {
     vi.stubEnv("PROD", true)
     setServiceWorkerSupport(true)
-
-    await importMain()
-
-    await vi.waitFor(() => expect(mocks.recoverPushConsentFromBrowser).toHaveBeenCalledOnce())
-    expect(mocks.ensurePushSubscription).not.toHaveBeenCalled()
-  })
-
-  it("silently refreshes a consented push subscription", async () => {
-    vi.stubEnv("PROD", true)
-    setServiceWorkerSupport(true)
-    mocks.hasPushConsent.mockReturnValue(true)
     const registration = { scope: "/sw.js" }
     mocks.registerServiceWorker.mockResolvedValue(registration)
 
     await importMain()
 
     await vi.waitFor(() =>
-      expect(mocks.ensurePushSubscription).toHaveBeenCalledWith({
-        registration,
-        requestPermission: false,
-      })
+      expect(mocks.syncPushForConfirmedIdentity).toHaveBeenCalledWith({ registration })
     )
+    expect(mocks.syncPushForConfirmedIdentity).toHaveBeenCalledOnce()
+    expect(mocks.recoverPushConsentFromBrowser).not.toHaveBeenCalled()
+    expect(mocks.ensurePushSubscription).not.toHaveBeenCalled()
   })
 
-  it("logs push refresh errors without failing bootstrap", async () => {
+  it("does not hold service-worker bootstrap on the identity-gated push sync", async () => {
     vi.stubEnv("PROD", true)
     setServiceWorkerSupport(true)
-    mocks.hasPushConsent.mockReturnValue(true)
-    const failure = new Error("push refresh failed")
-    mocks.ensurePushSubscription.mockRejectedValue(failure)
+    mocks.syncPushForConfirmedIdentity.mockReturnValue(new Promise(() => {}))
+
+    await importMain()
+
+    await vi.waitFor(() => expect(mocks.syncPushForConfirmedIdentity).toHaveBeenCalledOnce())
+    expect(mocks.logError).not.toHaveBeenCalled()
+  })
+
+  it("logs push sync errors without failing bootstrap", async () => {
+    vi.stubEnv("PROD", true)
+    setServiceWorkerSupport(true)
+    const failure = new Error("push sync failed")
+    mocks.syncPushForConfirmedIdentity.mockRejectedValue(failure)
 
     await importMain()
 
     await vi.waitFor(() =>
-      expect(mocks.logError).toHaveBeenCalledWith("Failed to ensure push subscription", failure)
+      expect(mocks.logError).toHaveBeenCalledWith("Failed to sync push subscription", failure)
+    )
+    expect(mocks.logError).not.toHaveBeenCalledWith(
+      "Service worker registration failed",
+      expect.anything()
     )
   })
 

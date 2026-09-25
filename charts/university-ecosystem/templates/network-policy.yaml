@@ -120,6 +120,14 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
+    {{- if or (eq .Values.global.environment "staging") (eq .Values.global.environment "production") }}
+    # Release JWKS discovery uses the canonical HTTPS API origin. The egress
+    # rule is intentionally protocol/port scoped; the destination host is
+    # selected by the release's TLS ingress and JWT issuer configuration.
+    - ports:
+        - protocol: TCP
+          port: 443
+    {{- end }}
     # DNS — required for service discovery and hostname resolution.
     - ports:
         - protocol: UDP
@@ -306,8 +314,9 @@ spec:
 {{- end }}
 
 ---
-# Backend: accepts traffic from the gateway only; calls postgres, redis, NATS,
-# and external HTTPS endpoints (HIBP, Spotify OAuth, etc.).
+# Backend: accepts traffic from the gateway and the ingress controller for the
+# public JWKS discovery path; calls postgres, redis, NATS, and external HTTPS
+# endpoints (HIBP, Spotify OAuth, etc.).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -328,6 +337,23 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/component: gateway
+      ports:
+        - protocol: TCP
+          port: 8000
+    # The ingress controller terminates TLS for the public API origin and
+    # forwards only the explicitly routed /.well-known discovery path here.
+    # Keep the selector configurable for nginx, Traefik, AWS ALB, or Istio.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.ingressController.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.ingressController.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
       ports:
         - protocol: TCP
           port: 8000

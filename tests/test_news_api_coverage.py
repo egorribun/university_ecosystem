@@ -5,10 +5,9 @@ import pytest
 from httpx import AsyncClient
 
 import app.models as models
-from app.api.deps import get_news_service
-from app.core.container import get_notification_service
 from app.main import app
 from app.schemas import schemas
+from tests.conftest import install_dishka_override
 
 
 @pytest.fixture
@@ -84,9 +83,7 @@ def mock_vector_service():
 
 @pytest.mark.asyncio
 async def test_news_interactions_endpoint(async_client: AsyncClient, mock_news_service):
-    from app.api.deps import get_read_news_service
-
-    app.dependency_overrides[get_read_news_service] = lambda: mock_news_service
+    install_dishka_override(app, NewsService=mock_news_service)
 
     mock_news_service.get_interactions.return_value = {
         "likes_count": 10,
@@ -124,11 +121,9 @@ async def test_create_comment(
     mock_profile.full_name = "Test User"
     mock_user.profile = mock_profile
 
-    app.dependency_overrides[get_news_service] = lambda: mock_news_service
+    install_dishka_override(app, NewsService=mock_news_service)
     app.dependency_overrides[get_current_user] = lambda: mock_user
-    app.dependency_overrides[get_notification_service] = lambda: (
-        mock_notification_service
-    )
+    install_dishka_override(app, NotificationService=mock_notification_service)
 
     resp = await async_client.post(
         f"/news/{uuid.UUID(int=1)}/comment", json={"content": "Test Comment"}
@@ -138,9 +133,7 @@ async def test_create_comment(
     assert data["content"] == "Test Comment"
 
     # Clean up
-    del app.dependency_overrides[get_news_service]
     del app.dependency_overrides[get_current_user]
-    del app.dependency_overrides[get_notification_service]
 
 
 @pytest.mark.asyncio
@@ -154,7 +147,7 @@ async def test_update_comment(async_client: AsyncClient, mock_news_service):
 
     from app.api.deps import get_current_user
 
-    app.dependency_overrides[get_news_service] = lambda: mock_news_service
+    install_dishka_override(app, NewsService=mock_news_service)
     app.dependency_overrides[get_current_user] = lambda: mock_user
 
     resp = await async_client.patch(
@@ -189,7 +182,7 @@ async def test_delete_comment(async_client: AsyncClient, mock_news_service):
 
     from app.api.deps import get_current_user
 
-    app.dependency_overrides[get_news_service] = lambda: mock_news_service
+    install_dishka_override(app, NewsService=mock_news_service)
     app.dependency_overrides[get_current_user] = lambda: mock_user
 
     # Success
@@ -218,15 +211,14 @@ async def test_semantic_search(
     # If semantic search relies on get_vector_service, it was probably injected directly
     # Wait, what does the router inject? Let me just mock the VectorService class in DI if it's Dishka
     # But this uses dependency_overrides, so it's FastAPI DI.
-    from app.api.deps import get_current_user, get_read_news_service
-    from app.core.container import get_vector_service
+    from app.api.deps import get_current_user
 
     mock_user = MagicMock(spec=models.User)
     mock_user.id = uuid.uuid4()
     mock_user.role = "student"
     app.dependency_overrides[get_current_user] = lambda: mock_user
-    app.dependency_overrides[get_read_news_service] = lambda: mock_news_service
-    app.dependency_overrides[get_vector_service] = lambda: mock_vector_service
+    install_dishka_override(app, NewsService=mock_news_service)
+    install_dishka_override(app, VectorService=mock_vector_service)
 
     resp = await async_client.get(
         "/news/search/semantic", params={"query": "test query", "limit": 5}

@@ -92,16 +92,16 @@ const badgeVariants = cva(
   }
 )
 
-type BadgeOwnProps = VariantProps<typeof badgeVariants> & {
-  as?: ElementType
+type BadgeOwnProps<T extends ElementType> = VariantProps<typeof badgeVariants> & {
+  as?: T
   leadingIcon?: ReactNode
   trailingIcon?: ReactNode
   label?: ReactNode
   className?: string
 }
 
-export type BadgeProps<T extends ElementType = "span"> = BadgeOwnProps &
-  Omit<ComponentPropsWithoutRef<T>, keyof BadgeOwnProps>
+export type BadgeProps<T extends ElementType = "span"> = BadgeOwnProps<T> &
+  Omit<ComponentPropsWithoutRef<T>, keyof BadgeOwnProps<T>>
 
 export const Badge = <T extends ElementType = "span">({
   as,
@@ -118,9 +118,17 @@ export const Badge = <T extends ElementType = "span">({
 }: BadgeProps<T>) => {
   const Component = (as ?? "span") as ElementType
   const content = children ?? label
+  const isInteractive = as === "button" || as === "a"
 
   return (
-    <Component className={cn(badgeVariants({ variant, tone, shape, size }), className)} {...rest}>
+    <Component
+      className={cn(
+        badgeVariants({ variant, tone, shape, size }),
+        isInteractive && "min-h-11 min-w-11",
+        className
+      )}
+      {...rest}
+    >
       {leadingIcon ? <span className="inline-flex items-center">{leadingIcon}</span> : null}
       <span>{content}</span>
       {trailingIcon ? <span className="inline-flex items-center">{trailingIcon}</span> : null}

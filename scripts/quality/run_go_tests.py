@@ -7,6 +7,7 @@ modules = [
     "services/ws-hub",
     "services/file-processor",
     "services/cmd/uni-cli",
+    "services/pkg/logging",
     "services/pkg/spiffe",
     "services/pkg/spicedb",
 ]

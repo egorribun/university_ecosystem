@@ -3,21 +3,35 @@ name: Weekly Test Duration Refresh
 on:
   schedule:
     - cron: "0 4 * * 1"
-  workflow_dispatch:
+  # Manual reruns must use repository_dispatch; unlike workflow_dispatch this
+  # event always resolves the workflow from the repository default branch.
+  repository_dispatch:
+    types: [run-weekly-test-durations]
 
 permissions:
-  contents: write
-  pull-requests: write
+  actions: read
+  contents: read
 
 concurrency:
   group: weekly-test-duration-refresh
   cancel-in-progress: true
 
 jobs:
-  refresh:
-    name: Refresh pytest duration map
+  refresh-shard:
+    name: Refresh pytest duration map (shard ${{ matrix.shard }}/4)
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      # The historical file-duration planner keeps each shard's test graph
+      # whole. Four bounded callers cut wall time without creating an
+      # unbounded matrix or changing the measurable test population.
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3]
     env:
       SECRET_KEY: dummy_secret_key_for_ci_tests_at_least_32_chars
       ENVIRONMENT: testing
@@ -59,12 +73,103 @@ jobs:
           --ignore=tests/performance
           --ignore=tests/chaos
           --ignore=tests/test_schemathesis_api.py
+          --shard-id=${{ matrix.shard }}
+          --num-shards=4
           --junitxml=pytest-report.xml
+
+      - name: Upload shard JUnit report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: weekly-test-duration-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: pytest-report.xml
+          if-no-files-found: error
+
+  refresh:
+    name: Refresh pytest duration map
+    needs: refresh-shard
+    if: ${{ always() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Fail if a duration shard failed
+        if: ${{ needs.refresh-shard.result != 'success' }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          echo "::error::At least one weekly duration shard did not pass."
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify trusted main source
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Test duration refresh refuses to run outside protected main."
+            exit 1
+          fi
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          trusted_sha="$(git rev-parse refs/remotes/origin/main)"
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [[ ! "$trusted_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Protected main did not resolve to a full commit SHA."
+            exit 1
+          fi
+          if [[ "$checked_out_sha" != "$trusted_sha" || "$EVENT_SHA" != "$trusted_sha" || "$WORKFLOW_SHA" != "$trusted_sha" ]]; then
+            echo "::error::Workflow source is not the current immutable protected-main commit."
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Download shard JUnit reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: weekly-test-duration-shard-*-attempt-${{ github.run_attempt }}
+          path: junit-reports
+          merge-multiple: false
+
+      - name: Merge shard JUnit reports
+        run: >-
+          uv run python scripts/quality/merge_junit_reports.py
+          --input junit-reports
+          --output pytest-report.xml
+          --expected-shards 4
+
+      - name: Upload merged JUnit report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: weekly-test-duration-merged-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: pytest-report.xml
+          if-no-files-found: error
 
       - name: Rewrite duration map
         run: >-
           uv run python scripts/quality/update_test_durations.py pytest-report.xml
-          --output quality/test-durations.json --replace
+          --output quality/test-durations.json
 
       - name: Open update pull request
         env:

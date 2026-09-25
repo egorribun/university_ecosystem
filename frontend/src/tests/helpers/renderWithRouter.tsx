@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-router"
 import { LazyMotion, domAnimation } from "framer-motion"
 
+import { AppShellProvider } from "@/contexts/AppShellContext"
 import { AuthProvider } from "@/contexts/AuthContext"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 
@@ -195,7 +196,10 @@ export async function renderWithRouter({
     <QueryClientProvider client={client}>
       <LanguageProvider>
         <LazyMotion features={domAnimation}>
-          {authProvider ? <AuthProvider>{routerNode}</AuthProvider> : routerNode}
+          {/* Production mounts every page under the app shell (AppProviders). */}
+          <AppShellProvider>
+            {authProvider ? <AuthProvider>{routerNode}</AuthProvider> : routerNode}
+          </AppShellProvider>
         </LazyMotion>
       </LanguageProvider>
     </QueryClientProvider>

@@ -675,7 +675,11 @@ export function useChatWebSocket({
         return
       } finally {
         clearTimeout(ticketTimeout) // TD-26-03: clean up timeout
-        if (ticketRequestRef.current?.generation === requestGeneration) {
+        // A disconnect can clear the ref while the ticket promise is settling.
+        // Snapshot the nullable request before reading its generation so a late
+        // completion remains harmless even when cleanup wins the race.
+        const activeTicketRequest = ticketRequestRef.current
+        if (activeTicketRequest !== null && activeTicketRequest.generation === requestGeneration) {
           ticketRequestRef.current = null
         }
       }

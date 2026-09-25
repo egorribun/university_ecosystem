@@ -29,8 +29,104 @@ on:
         default: true
 
 jobs:
+  # Scanner configuration, ignore lists and release-quality policies are
+  # executable security inputs.  Keep their integrity check as a separate
+  # prerequisite so every consumer waits for the same fail-closed decision;
+  # checking only one scanner leaves the parallel consumers exposed to a
+  # policy change in the pull-request checkout.
+  policy-integrity:
+    name: Security policy integrity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify security policy inputs against protected base
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::pull-request base SHA is not an immutable 40-hex commit" >&2
+            exit 1
+          fi
+          if [[ "$BASE_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
+            echo "::error::security policy check refuses a cross-repository pull request" >&2
+            exit 1
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          policy_paths=(
+            ".github/workflows"
+            ".github/CODEOWNERS"
+            ".github/actionlint.yaml"
+            ".github/codeql/codeql-config.yml"
+            ".github/dependency-review-config.yml"
+            ".checkov.yml"
+            ".gitleaks.toml"
+            ".semgrep.yml"
+            ".semgrepignore"
+            ".trivyignore"
+            ".trivyignore.yaml"
+            ".zap/rules.tsv"
+            "budget.json"
+            "quality/quality-contract.json"
+            "quality/release-required-checks.json"
+            "quality/ci-check-catalog.json"
+            "quality/coverage-source-policy.json"
+            "quality/mutation-exclusions.json"
+            "security/audit-allowlist.yaml"
+            "security/semgrep-suppression-policy.json"
+            "security/trivy-university-config.yaml"
+            "security/trivy-revocation-config.yaml"
+            "security/trivy-revocation-values.yaml"
+            "zizmor.yml"
+            "trivy.yaml"
+            ".pre-commit-config.yaml"
+            "pyproject.toml"
+            "frontend/scripts/lhci-route-policy.mjs"
+            "frontend/scripts/lhci-route-policy-config.cjs"
+            "scripts/osv_batch_audit.py"
+            "scripts/check_dependency_audit_report.py"
+            "scripts/audit_dependencies.py"
+            "scripts/ci/helm_dependency_build.py"
+            "scripts/quality/filter_checkov_sarif.py"
+            "scripts/verify_secrets_baseline.py"
+            "scripts/quality/validate_semgrep_sarif.py"
+            "security/detect-secrets-requirements.txt"
+            "native/rust_ext/deny.toml"
+            "frontend/package.json"
+            "frontend/.npmrc"
+            "frontend/scripts/ensure-wasm.mjs"
+            "frontend/scripts/setup-husky.cjs"
+            "frontend/scripts/setup-lhci-binaries.cjs"
+          )
+          changed=()
+          for path in "${policy_paths[@]}"; do
+            if ! git diff --quiet "$BASE_SHA" -- "$path"; then
+              changed+=("$path")
+            fi
+          done
+          if ((${#changed[@]} > 0)); then
+            if [[ "$PR_AUTHOR" != "egorribun" ]]; then
+              printf '::error::security policy changes require an owner-authored PR: %s\n' "${changed[*]}" >&2
+              exit 1
+            fi
+            printf '::notice::owner-authored policy update accepted for review: %s\n' "${changed[*]}"
+          fi
+
   pip-audit:
     name: Python Dependency Audit
+    needs: policy-integrity
     if: ${{ inputs.run-pip-audit }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -39,6 +135,75 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Verify security policy inputs against protected base
+        # Scanner configuration, ignore lists and release-quality policy are
+        # executable security inputs.  On pull requests, compare their exact
+        # bytes with the immutable base commit before any scanner consumes
+        # them.  A policy change is accepted only when the PR itself is
+        # authored by the trusted repository owner; external contributors must
+        # propose policy changes through an owner-authored follow-up so a
+        # review cannot silently weaken a required gate.
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::pull-request base SHA is not an immutable 40-hex commit" >&2
+            exit 1
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          policy_paths=(
+            ".github/workflows"
+            ".github/CODEOWNERS"
+            ".github/actionlint.yaml"
+            ".github/codeql/codeql-config.yml"
+            ".github/dependency-review-config.yml"
+            ".checkov.yml"
+            ".semgrep.yml"
+            ".semgrepignore"
+            ".trivyignore"
+            ".trivyignore.yaml"
+            ".zap/rules.tsv"
+            "budget.json"
+            "quality/quality-contract.json"
+            "quality/release-required-checks.json"
+            "quality/ci-check-catalog.json"
+            "quality/coverage-source-policy.json"
+            "quality/mutation-exclusions.json"
+            "security/audit-allowlist.yaml"
+            "security/semgrep-suppression-policy.json"
+            "security/trivy-university-config.yaml"
+            "security/trivy-revocation-config.yaml"
+            "security/trivy-revocation-values.yaml"
+            "frontend/scripts/lhci-route-policy.mjs"
+            "frontend/scripts/lhci-route-policy-config.cjs"
+            "scripts/osv_batch_audit.py"
+            "scripts/check_dependency_audit_report.py"
+            "scripts/audit_dependencies.py"
+            "scripts/ci/helm_dependency_build.py"
+            "scripts/quality/filter_checkov_sarif.py"
+            "scripts/verify_secrets_baseline.py"
+            "scripts/quality/validate_semgrep_sarif.py"
+            "security/detect-secrets-requirements.txt"
+            "native/rust_ext/deny.toml"
+          )
+          changed=()
+          for path in "${policy_paths[@]}"; do
+            if ! git diff --quiet "$BASE_SHA" -- "$path"; then
+              changed+=("$path")
+            fi
+          done
+          if ((${#changed[@]} > 0)); then
+            if [[ "$PR_AUTHOR" != "egorribun" ]]; then
+              printf '::error::security policy changes require an owner-authored PR: %s\n' "${changed[*]}" >&2
+              exit 1
+            fi
+            printf '::notice::owner-authored policy update accepted for review: %s\n' "${changed[*]}"
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -81,6 +246,7 @@ jobs:
 
   npm-audit:
     name: Node.js Dependency Audit
+    needs: policy-integrity
     if: ${{ inputs.run-npm-audit }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -114,7 +280,7 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: |
-          npm ci
+          npm ci --ignore-scripts --no-audit --no-fund
           Set-Location ..
           uv sync --frozen
 
@@ -128,6 +294,7 @@ jobs:
 
   docker-security:
     name: Container Security Scan
+    needs: policy-integrity
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -146,33 +313,31 @@ jobs:
       - name: Build Helm dependencies for Trivy
         shell: bash
         run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem/; then
-              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
-              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
-              exit 0
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
+          python3 scripts/ci/helm_dependency_build.py \
+            charts/university-ecosystem \
+            redis-20.13.4.tgz nats-8.5.4.tgz
 
-      - name: Install Trivy (via apt repo)
-        # GitHub-Releases downloads are unreliable on this runner;
-        # the Aqua apt repository is the stable fallback.
+      - name: Install checksum-pinned Trivy
+        env:
+          TRIVY_VERSION: 0.73.0
+          # Official immutable GitHub release asset digest for
+          # trivy_0.73.0_Linux-64bit.tar.gz.
+          TRIVY_ARCHIVE_SHA256: 2edd39da482bb4e9831962487b68f68e3928ec3137794757f54d00383d79547b # pragma: allowlist secret -- official public release checksum
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends wget apt-transport-https gnupg
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
-            | gpg --dearmor \
-            | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
-          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
-            | sudo tee /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update -qq
-          sudo apt-get install -y trivy
+          set -euo pipefail
+          [[ "$TRIVY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$TRIVY_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          trivy_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$trivy_dir"' EXIT
+          archive="$trivy_dir/trivy.tar.gz"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            --output "$archive" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          printf '%s  %s\n' "$TRIVY_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict -
+          tar --extract --gzip --file "$archive" --directory "$trivy_dir" trivy
+          sudo install --mode 0755 "$trivy_dir/trivy" /usr/local/bin/trivy
+          trivy --version
 
       - name: Run Trivy vulnerability scanner (filesystem)
         id: trivy_fs
@@ -187,7 +352,7 @@ jobs:
           # SARIF otherwise contains every severity even when the scan filter
           # is restricted. Keep Code Scanning aligned with the blocking policy.
           limit-severities-for-sarif: true
-          # skip-setup-trivy: use the binary we installed above via apt
+          # Use the checksum-verified binary installed above.
           skip-setup-trivy: true
           # Preserve SARIF upload, then re-assert this blocking result below.
           exit-code: "1"
@@ -331,6 +496,7 @@ jobs:
   # ── Go vulnerability scanning ──────────────────────────────────────────────
   govulncheck:
     name: Go Vulnerability Scan
+    needs: policy-integrity
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -366,6 +532,7 @@ jobs:
   # ── SBOM generation ────────────────────────────────────────────────────────
   sbom:
     name: Generate SBOM
+    needs: policy-integrity
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -399,6 +566,7 @@ jobs:
   # security-team approval.
   detect-secrets-baseline:
     name: detect-secrets Baseline Integrity
+    needs: policy-integrity
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -424,8 +592,12 @@ jobs:
       - name: Scan repo (no baseline)
         # The baseline is scanner metadata, not application input. Scanning it
         # would recursively flag every stored digest and keyword entry and
-        # make finding-level verification impossible.
-        run: detect-secrets scan --exclude-files '^\.secrets\.baseline$' > /tmp/current_scan.json
+        # make finding-level verification impossible. The checked-in WASM
+        # provenance file is likewise a generated SHA-256 inventory; the
+        # provenance validator binds every listed source/package byte before
+        # the artifact is consumed. Keep both exclusions exact: all other
+        # repository files remain scan-covered.
+        run: detect-secrets scan --exclude-files '^(?:\.secrets\.baseline|frontend/WASM_SOURCE_PROVENANCE\.json)$' > /tmp/current_scan.json
 
       - name: Fetch trusted base baseline (pull requests)
         if: ${{ github.event_name == 'pull_request' }}
@@ -471,6 +643,7 @@ jobs:
   # (MOD-5: audit 2026-02-24)
   semgrep:
     name: Semgrep SAST
+    needs: policy-integrity
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     if: github.actor != 'dependabot[bot]'
@@ -484,7 +657,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The CE fallback uses --baseline-commit for diff-aware PR scans.
+          # The CE fallback performs a complete repository scan so the
+          # suppression ledger is observed and validated on every event.
           fetch-depth: 0
           persist-credentials: false
 
@@ -492,16 +666,18 @@ jobs:
         # Keep the SARIF upload alive when findings make the scanner return 1;
         # the follow-up gate fails the job after GitHub has received findings.
         # Without the AppSec token, use the documented CE command instead of
-        # `semgrep ci`, which requires `semgrep login`. The baseline keeps the
-        # PR gate focused on newly introduced findings; scheduled/full scans
-        # remain responsible for existing repository debt.
+        # `semgrep ci`, which requires `semgrep login`. Always run a complete
+        # local scan when the token is absent: the reviewed suppression ledger
+        # must be observed on every event, while a diff-only baseline can hide
+        # an unchanged suppression and make the fail-closed validator reject
+        # otherwise valid evidence.
         run: |
           set -u
           scan_status=0
           if [ -n "${SEMGREP_APP_TOKEN:-}" ]; then
             semgrep ci --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
           else
-            semgrep scan --config auto --baseline-commit origin/main \
+            semgrep scan --config auto \
               --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
           fi
           if [ ! -s semgrep.sarif ]; then

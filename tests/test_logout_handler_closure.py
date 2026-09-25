@@ -7,6 +7,7 @@ import pytest
 from starlette.responses import Response
 
 from app.auth.handlers.logout import logout
+from tests.conftest import call_injected
 
 
 @pytest.mark.asyncio
@@ -29,7 +30,12 @@ async def test_logout_revokes_redis_when_database_session_is_missing():
             "app.services.auth.redis_session.RedisSessionService", return_value=redis
         ),
     ):
-        payload = await logout(Response(), request, db)
+        payload = await call_injected(
+            logout,
+            response=Response(),
+            request=request,
+            provides={"AsyncDatabaseSession": db, "AuditService": MagicMock()},
+        )
 
     assert payload["message"] == "Logged out successfully"
     redis.revoke_session.assert_awaited_once_with("missing-jti", expires_at=None)
@@ -72,11 +78,15 @@ async def test_logout_revokes_database_session_from_bearer_token_and_audits():
         patch(
             "app.services.auth.redis_session.RedisSessionService", return_value=redis
         ),
-        patch("app.core.container.get_audit_service", return_value=audit),
         patch("app.auth.handlers.logout.secrets.token_urlsafe", return_value="new-key"),
     ):
         response = Response()
-        payload = await logout(response, request, db)
+        payload = await call_injected(
+            logout,
+            response=response,
+            request=request,
+            provides={"AsyncDatabaseSession": db, "AuditService": audit},
+        )
 
     assert payload["message"] == "Logged out successfully"
     assert session.revoked_at is not None
@@ -118,7 +128,12 @@ async def test_logout_redis_failure_rolls_back_database_revocation():
         ),
     ):
         with pytest.raises(ConnectionError, match="offline"):
-            await logout(Response(), request, db)
+            await call_injected(
+                logout,
+                response=Response(),
+                request=request,
+                provides={"AsyncDatabaseSession": db, "AuditService": MagicMock()},
+            )
 
     db.commit.assert_not_awaited()
     db.rollback.assert_awaited_once()
@@ -143,7 +158,12 @@ async def test_logout_redis_failure_without_database_session_skips_rollback():
         ),
     ):
         with pytest.raises(ConnectionError, match="offline"):
-            await logout(Response(), request, db)
+            await call_injected(
+                logout,
+                response=Response(),
+                request=request,
+                provides={"AsyncDatabaseSession": db, "AuditService": MagicMock()},
+            )
 
     db.commit.assert_not_awaited()
     db.rollback.assert_not_awaited()
@@ -177,10 +197,14 @@ async def test_logout_keeps_existing_revocation_and_ignores_non_bearer_or_empty_
         patch(
             "app.services.auth.redis_session.RedisSessionService", return_value=redis
         ),
-        patch("app.core.container.get_audit_service", return_value=audit),
         patch("app.auth.handlers.logout.secrets.token_urlsafe", return_value="rotated"),
     ):
-        payload = await logout(Response(), request, db)
+        payload = await call_injected(
+            logout,
+            response=Response(),
+            request=request,
+            provides={"AsyncDatabaseSession": db, "AuditService": audit},
+        )
 
     assert payload["message"] == "Logged out successfully"
     assert session.revoked_at == revoked_at
@@ -192,7 +216,12 @@ async def test_logout_keeps_existing_revocation_and_ignores_non_bearer_or_empty_
     empty_request.cookies = {}
     empty_request.headers = {}
     with patch("app.auth.handlers.logout.decode_token") as decode:
-        empty_payload = await logout(Response(), empty_request, AsyncMock())
+        empty_payload = await call_injected(
+            logout,
+            response=Response(),
+            request=empty_request,
+            provides={"AsyncDatabaseSession": AsyncMock(), "AuditService": MagicMock()},
+        )
 
     assert empty_payload["message"] == "Logged out successfully"
     decode.assert_not_called()

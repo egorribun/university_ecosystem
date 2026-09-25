@@ -95,6 +95,52 @@ const mfaLogin = (resendAvailableAt = "2020-01-01T00:00:00Z"): PendingMfaState =
   ],
 })
 
+const pendingLoginWithMethods = (methods: PendingMfaState["methods"]): PendingMfaState => ({
+  status: "mfa_required",
+  user_id: "u-1",
+  reason: "login",
+  methods,
+})
+
+describe("useMfaFlow post-login redirect", () => {
+  it.each(["totp", "email_otp", "recovery_code"] as const)(
+    "preserves search.redirect after %s verification without legacy route state",
+    async (method) => {
+      mocks.pendingMfa = mfaLogin()
+      mocks.routerSearch = { redirect: "/events" }
+      const { result } = renderHook(() => useMfaFlow())
+
+      await act(async () => {
+        if (method === "totp") await result.current.handleOtpVerify("123456")
+        else if (method === "email_otp") await result.current.handleEmailOtpVerify("123456")
+        else await result.current.handleRecoveryVerify("RECOVERY-123")
+      })
+
+      expect(mocks.submitMfaChallenge).toHaveBeenCalledWith(expect.objectContaining({ method }))
+      expect(mocks.navigate).toHaveBeenCalledWith({ to: "/events", replace: true })
+    }
+  )
+
+  it.each(["totp", "email_otp", "recovery_code"] as const)(
+    "rejects a cross-origin search.redirect after %s verification",
+    async (method) => {
+      mocks.pendingMfa = mfaLogin()
+      mocks.routerSearch = { redirect: "https://attacker.example/phishing" }
+      mocks.routerState = { from: { pathname: "https://attacker.example/phishing" } }
+      const { result } = renderHook(() => useMfaFlow())
+
+      await act(async () => {
+        if (method === "totp") await result.current.handleOtpVerify("123456")
+        else if (method === "email_otp") await result.current.handleEmailOtpVerify("123456")
+        else await result.current.handleRecoveryVerify("RECOVERY-123")
+      })
+
+      expect(mocks.submitMfaChallenge).toHaveBeenCalledWith(expect.objectContaining({ method }))
+      expect(mocks.navigate).toHaveBeenCalledWith({ to: "/dashboard", replace: true })
+    }
+  )
+})
+
 // ---------------------------------------------------------------------------
 // useLoginForm.onSubmit — lines 121-146
 // ---------------------------------------------------------------------------
@@ -218,6 +264,29 @@ describe("useLoginForm.onSubmit", () => {
 
     await waitFor(() => expect(result.current.submitError).toBe("auth:login.error"))
   })
+
+  it("does not dereference a missing Axios response while mapping login errors", async () => {
+    const error = new AxiosError("transport failure")
+    mocks.login.mockRejectedValue(error)
+    const { result } = renderHook(() => useLoginForm())
+    act(() => {
+      result.current.form.setValue("email", "a@b.dev")
+      result.current.form.setValue("password", "Password123!")
+    })
+
+    await act(async () => {
+      await result.current.onSubmit()
+    })
+
+    await waitFor(() => expect(result.current.submitError).toBe("transport failure"))
+  })
+
+  it("uses the persisted email when the current form value is empty", () => {
+    window.localStorage.setItem("auth:lastEmail", JSON.stringify("saved@example.com"))
+    const { result } = renderHook(() => useLoginForm())
+
+    expect(result.current.activeEmail).toBe("saved@example.com")
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -234,9 +303,16 @@ describe("useLoginForm suggestion", () => {
     await act(async () => {
       await result.current.handleEmailBlur()
     })
-    expect(result.current.emailSuggestion).toBe("user@gmail.com")
-    act(() => {
+    // React Hook Form publishes the resolver result through its subscription
+    // after `trigger` resolves.  Wait for that observable state transition so
+    // the subsequent suggestion assertions do not race a post-act update.
+    await waitFor(() => expect(result.current.emailSuggestion).toBe("user@gmail.com"))
+    await act(async () => {
       result.current.applySuggestion()
+      // `setValue(..., { shouldValidate: true })` starts RHF's resolver
+      // asynchronously.  Await an equivalent trigger in the same act scope
+      // so that both the value write and its subscription update are drained.
+      await result.current.form.trigger("email")
     })
     expect(result.current.emailSuggestion).toBeNull()
     expect(result.current.form.getValues("email")).toBe("user@gmail.com")
@@ -259,6 +335,9 @@ describe("useLoginForm suggestion", () => {
     await act(async () => {
       await result.current.handleEmailBlur()
     })
+    // The empty value is rejected by the resolver; waiting for the surfaced
+    // error also drains React Hook Form's asynchronous state notification.
+    await waitFor(() => expect(result.current.form.formState.errors.email).toBeDefined())
 
     expect(mocks.suggestEmailDomain).not.toHaveBeenCalled()
     expect(result.current.emailSuggestion).toBeNull()
@@ -300,7 +379,7 @@ describe("useMfaFlow.handleRecoveryVerify", () => {
 
   it("submits a recovery code and redirects on success", async () => {
     mocks.pendingMfa = mfaLogin()
-    mocks.routerState = { from: { pathname: "/secure" } }
+    mocks.routerSearch = { redirect: "/secure" }
     const { result } = renderHook(() => useMfaFlow())
 
     await act(async () => {
@@ -377,6 +456,57 @@ describe("useMfaFlow.handleRecoveryVerify", () => {
   })
 })
 
+describe("useMfaFlow challenge guards", () => {
+  it("treats a login MFA challenge without a TOTP method as expired", async () => {
+    mocks.pendingMfa = pendingLoginWithMethods([
+      {
+        method: "email_otp",
+        challenge_token: "ct-email",
+      } as PendingMfaState["methods"][number],
+    ])
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleOtpVerify("123456")
+    })
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.expired")
+    expect(result.current.mfaErrorSource).toBe("general")
+    expect(mocks.submitMfaChallenge).not.toHaveBeenCalled()
+  })
+
+  it("treats a login MFA challenge without an email method as expired", async () => {
+    mocks.pendingMfa = pendingLoginWithMethods([
+      {
+        method: "totp",
+        challenge_token: "ct-totp",
+      } as PendingMfaState["methods"][number],
+    ])
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleEmailOtpVerify("123456")
+    })
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.expired")
+    expect(result.current.mfaErrorSource).toBe("general")
+    expect(mocks.submitMfaChallenge).not.toHaveBeenCalled()
+  })
+
+  it("treats a challenge with no methods as expired for recovery verification", async () => {
+    mocks.pendingMfa = pendingLoginWithMethods([])
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleRecoveryVerify("RECOVERY")
+    })
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.expired")
+    expect(result.current.mfaErrorSource).toBe("general")
+    expect(mocks.submitMfaChallenge).not.toHaveBeenCalled()
+  })
+})
+
 // ---------------------------------------------------------------------------
 // useMfaFlow.handleOtpVerify — lines 269-309
 // ---------------------------------------------------------------------------
@@ -395,7 +525,7 @@ describe("useMfaFlow.handleOtpVerify", () => {
 
   it("verifies the otp challenge then redirects (lines 277-288)", async () => {
     mocks.pendingMfa = mfaLogin()
-    mocks.routerState = { from: { pathname: "/secure" } }
+    mocks.routerSearch = { redirect: "/secure" }
     const { result } = renderHook(() => useMfaFlow())
     await act(async () => {
       await result.current.handleOtpVerify("654321")

@@ -11,6 +11,7 @@ import pytest
 from fastapi import HTTPException, UploadFile
 
 import app.utils.files as files_module
+from app.core.localization import translate
 from app.utils.files import detect_mime_type, save_attachment, save_image
 
 
@@ -144,6 +145,160 @@ async def test_save_image_success_writes_optimized_payload():
 
 
 @pytest.mark.asyncio
+async def test_save_image_forwards_all_configured_optimizer_bounds():
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(b"raw"),
+        headers={"content-type": "image/png"},
+    )
+    backend = AsyncMock()
+    backend.save_file.return_value = "/static/avatar.webp"
+
+    with (
+        patch.object(files_module.settings, "image_max_width", 640),
+        patch.object(files_module.settings, "image_max_height", 480),
+        patch.object(files_module.settings, "image_max_pixels", 307_200),
+        patch.object(files_module, "_read_limited", new=AsyncMock(return_value=b"raw")),
+        patch.object(files_module, "_detect_image_mime", return_value="image/png"),
+        patch.object(files_module, "_looks_like_polyglot", return_value=False),
+        patch.object(
+            files_module,
+            "optimize_image",
+            return_value=(b"optimized", "image/webp"),
+        ) as optimizer,
+        patch.object(files_module, "_get_storage_backend", return_value=backend),
+        patch.object(files_module, "_prepare_local_storage", new=AsyncMock()),
+    ):
+        result = await save_image(upload, "avatars", "user")
+
+    assert result == "/static/avatar.webp"
+    optimizer.assert_called_once_with(
+        b"raw",
+        max_width=640,
+        max_height=480,
+        max_pixels=307_200,
+        content_type="image/png",
+    )
+
+
+@pytest.mark.asyncio
+async def test_save_image_defaults_missing_pixel_budget_to_zero():
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(b"raw"),
+        headers={"content-type": "image/png"},
+    )
+    backend = AsyncMock()
+    backend.save_file.return_value = "/static/avatar.webp"
+    legacy_settings = SimpleNamespace(image_max_width=640, image_max_height=480)
+
+    with (
+        patch.object(files_module, "settings", legacy_settings),
+        patch.object(files_module, "_read_limited", new=AsyncMock(return_value=b"raw")),
+        patch.object(files_module, "_detect_image_mime", return_value="image/png"),
+        patch.object(files_module, "_looks_like_polyglot", return_value=False),
+        patch.object(
+            files_module,
+            "optimize_image",
+            return_value=(b"optimized", "image/webp"),
+        ) as optimizer,
+        patch.object(files_module, "_get_storage_backend", return_value=backend),
+        patch.object(files_module, "_prepare_local_storage", new=AsyncMock()),
+    ):
+        result = await save_image(upload, "avatars", "user")
+
+    assert result == "/static/avatar.webp"
+    optimizer.assert_called_once_with(
+        b"raw",
+        max_width=640,
+        max_height=480,
+        max_pixels=0,
+        content_type="image/png",
+    )
+
+
+@pytest.mark.asyncio
+async def test_save_image_maps_pixel_budget_to_payload_too_large():
+    from app.utils.images import ImagePixelLimitError
+
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(b"raw"),
+        headers={"content-type": "image/png"},
+    )
+    with (
+        patch.object(files_module, "_read_limited", new=AsyncMock(return_value=b"raw")),
+        patch.object(files_module, "_detect_image_mime", return_value="image/png"),
+        patch.object(files_module, "_looks_like_polyglot", return_value=False),
+        patch.object(
+            files_module,
+            "optimize_image",
+            side_effect=ImagePixelLimitError(10_000, 10_000, 25_000_000),
+        ),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await save_image(upload, "avatars", "user")
+
+    assert exc_info.value.status_code == 413
+    assert exc_info.value.detail == translate("errors.files.too_large")
+
+
+@pytest.mark.asyncio
+async def test_save_image_pixel_limit_error_preserves_requested_locale():
+    from app.utils.images import ImagePixelLimitError
+
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(b"raw"),
+        headers={"content-type": "image/png"},
+    )
+    with (
+        patch.object(files_module, "_read_limited", new=AsyncMock(return_value=b"raw")),
+        patch.object(files_module, "_detect_image_mime", return_value="image/png"),
+        patch.object(files_module, "_looks_like_polyglot", return_value=False),
+        patch.object(
+            files_module,
+            "optimize_image",
+            side_effect=ImagePixelLimitError(10_000, 10_000, 25_000_000),
+        ),
+        patch.object(
+            files_module, "translate", return_value="localized-too-large"
+        ) as translate_mock,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await save_image(upload, "avatars", "user", locale="ru")
+
+    assert exc_info.value.status_code == 413
+    assert exc_info.value.detail == "localized-too-large"
+    translate_mock.assert_any_call("errors.files.too_large", locale="ru")
+
+
+@pytest.mark.asyncio
+async def test_save_image_maps_pillow_decompression_bomb_to_payload_too_large():
+    from PIL import Image as PILImage
+
+    upload = UploadFile(
+        filename="avatar.png",
+        file=io.BytesIO(b"raw"),
+        headers={"content-type": "image/png"},
+    )
+    with (
+        patch.object(files_module, "_read_limited", new=AsyncMock(return_value=b"raw")),
+        patch.object(files_module, "_detect_image_mime", return_value="image/png"),
+        patch.object(files_module, "_looks_like_polyglot", return_value=False),
+        patch("app.utils.images.VIPS_AVAILABLE", False),
+        patch(
+            "app.utils.images.Image.open",
+            side_effect=PILImage.DecompressionBombError("decoder bomb"),
+        ),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await save_image(upload, "avatars", "user")
+
+    assert exc_info.value.status_code == 413
+
+
+@pytest.mark.asyncio
 async def test_save_image_rejects_polyglot_after_mime_detection():
     upload = UploadFile(
         filename="avatar.png",
@@ -257,6 +412,100 @@ async def test_save_attachment_rejects_polyglot_and_returns_metadata_on_success(
 
     assert result["url"] == "/static/document"
     assert result["detected_type"] == "application/pdf"
+    assert backend.save_file.await_args.kwargs["cache_control"] == (
+        "public, max-age=31536000, immutable"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "subdir", ["chat_uploads", "event_files", "chat_uploads/archive"]
+)
+async def test_save_attachment_marks_private_prefixes_non_cacheable(subdir: str):
+    upload = UploadFile(
+        filename="document.pdf",
+        file=io.BytesIO(b"%PDF-1.7"),
+        headers={"content-type": "application/pdf"},
+    )
+    backend = AsyncMock()
+    backend.save_file.return_value = "/static/document.pdf"
+
+    with (
+        patch.object(files_module, "detect_mime_type", return_value="application/pdf"),
+        patch.object(files_module, "_looks_like_polyglot", return_value=False),
+        patch.object(files_module, "scan_for_malware", new=AsyncMock()),
+        patch.object(files_module, "_get_storage_backend", return_value=backend),
+        patch.object(files_module, "_prepare_local_storage", new=AsyncMock()),
+    ):
+        await save_attachment(
+            upload,
+            subdir,
+            "doc",
+            allowed_mime_types={"application/pdf"},
+            allowed_extensions={"pdf"},
+            max_size_bytes=100,
+        )
+
+    assert backend.save_file.await_args.kwargs["cache_control"] == "private, no-store"
+
+
+@pytest.mark.parametrize(
+    ("subdir", "expected"),
+    [
+        ("chat_uploads", "private, no-store"),
+        ("event_files/archive", "private, no-store"),
+        ("documents", "public, max-age=31536000, immutable"),
+        ("/documents/", "public, max-age=31536000, immutable"),
+    ],
+)
+def test_cache_control_helper_normalizes_prefix_without_type_errors(
+    subdir: str, expected: str
+):
+    assert files_module._cache_control_for_subdir(subdir) == expected
+
+
+PRIVATE_CACHE_CONTROL = "private, no-store"
+PUBLIC_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+
+@pytest.mark.parametrize(
+    ("subdir", "expected"),
+    [
+        # Only the first path segment selects the policy, however deep the
+        # remainder goes: a private root stays private...
+        ("chat_uploads/2026/03/thread-1", PRIVATE_CACHE_CONTROL),
+        ("event_files/archive/2026/agenda", PRIVATE_CACHE_CONTROL),
+        ("quarantine/news_images/rejected.bin", PRIVATE_CACHE_CONTROL),
+        # ...and a public root is not made private by a deeper segment that
+        # happens to be named after a private prefix.
+        ("documents/chat_uploads/report", PUBLIC_CACHE_CONTROL),
+        # Windows-style separators must normalize before the root is taken,
+        # otherwise the whole path reads as a single non-private segment.
+        ("chat_uploads\\2026\\thread-1", PRIVATE_CACHE_CONTROL),
+        ("event_files\\archive", PRIVATE_CACHE_CONTROL),
+        # Leading and trailing separators and spaces are stripped, so a private
+        # root keeps its policy no matter how the caller spells the prefix.
+        ("/chat_uploads/2026", PRIVATE_CACHE_CONTROL),
+        (" event_files ", PRIVATE_CACHE_CONTROL),
+        # Stripping is confined to separators and spaces: a sibling directory
+        # whose name merely extends a private prefix is a different root and
+        # must not inherit the private policy.
+        ("chat_uploadsX", PUBLIC_CACHE_CONTROL),
+        ("chat_uploads_archive", PUBLIC_CACHE_CONTROL),
+        ("Xchat_uploads", PUBLIC_CACHE_CONTROL),
+    ],
+)
+def test_cache_control_policy_is_decided_by_the_normalized_root_segment(
+    subdir: str, expected: str
+):
+    """Pin the exact root-segment rule the object-layer privacy policy relies on.
+
+    Every case here distinguishes the implementation from a mutation that
+    weakens normalization: dropping the backslash rewrite, widening or
+    narrowing the strip set, or taking the last segment instead of the first.
+    """
+
+    assert files_module._cache_control_for_subdir(subdir) == expected
 
 
 @pytest.mark.asyncio

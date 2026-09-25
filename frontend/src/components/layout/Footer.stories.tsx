@@ -10,11 +10,9 @@ import Footer from "./Footer"
 //   • Default — light theme (preview backgrounds default)
 //   • DarkMode — adds `dark` class on body via decorator, uses dark
 //     backgrounds parameter
-//   • Narrow — emulates ≤900px viewport (matches breakpoints.content used
-//     by Footer's `useMediaQuery` hook → FooterBackdrop's `isNarrow` prop
-//     triggers smaller orb dimensions). Container queries (`@sm`/`@lg`)
-//     also collapse columns from 5→2→1.
-//   • ReducedMotion — entrance + stagger + orb blur drop via OS preference
+//   • Narrow — emulates a ≤900px viewport; container queries (`@sm`/`@lg`)
+//     collapse columns from 5→2→1.
+//   • ReducedMotion — entrance + stagger animations drop via OS preference
 //     simulation (Tailwind `motion-reduce:` + CSS @media)
 
 const meta: Meta<typeof Footer> = {

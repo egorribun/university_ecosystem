@@ -842,15 +842,19 @@ def test_launcher_seed_commands_are_compose_project_safe() -> None:
 
     assert "university_ecosystem-backend-1" not in launcher
     assert "docker compose -f `$ComposeFile --env-file `$EnvFile cp" not in launcher
+    assert (
+        "$ComposeCommand = \"docker compose $($ComposeArgs -join ' ') "
+        '--env-file .env.docker"'
+    ) in launcher
     expected_commands = (
-        "docker compose -f $ComposeFile --env-file $EnvFile cp "
-        "scripts/seed_demo_data.py backend:/app/seed_demo_data.py",
-        "docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app "
-        "backend python seed_demo_data.py",
-        "docker compose -f $ComposeFile --env-file $EnvFile cp "
-        "scripts/seed_admin_data.py backend:/app/seed_admin_data.py",
-        "docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app "
-        "backend python seed_admin_data.py",
+        'Write-Host "       $ComposeCommand cp '
+        'scripts/seed_demo_data.py backend:/app/seed_demo_data.py"',
+        'Write-Host "       $ComposeCommand exec -T -w /app '
+        'backend python seed_demo_data.py"',
+        'Write-Host "       $ComposeCommand cp '
+        'scripts/seed_admin_data.py backend:/app/seed_admin_data.py"',
+        'Write-Host "       $ComposeCommand exec -T -w /app '
+        'backend python seed_admin_data.py"',
     )
     for command in expected_commands:
         assert launcher.count(command) == 1, (
@@ -875,8 +879,31 @@ def test_smoke_script_is_printable_in_the_windows_launcher_console() -> None:
     _read("scripts/smoke_test.py").encode("cp1251")
 
 
-def test_local_temporal_and_spicedb_opt_out_of_external_auth_telemetry_noise() -> None:
-    assert "--allow-no-auth" in _read("services/temporal/entrypoint.sh")
+def test_production_temporal_entrypoint_never_enables_no_auth() -> None:
+    """The shared Compose entrypoint must not opt Temporal out of auth.
+
+    Both supported Compose stacks mount this same entrypoint, so a flag that
+    enables the no-authorizer mode here would also be active in the
+    production-like stack.  Local development can use an explicit override
+    when needed; the production-capable path must remain fail-closed.
+    """
+    entrypoint = _read("services/temporal/entrypoint.sh")
+    assert "--allow-no-auth" not in entrypoint
+    assert "TEMPORAL_ALLOW_NO_AUTH" not in entrypoint
+
+    temporal_config = yaml.safe_load(_read("services/temporal/config.yaml"))
+    authorization = temporal_config["global"]["authorization"]
+    assert authorization["claimMapper"] == "default"
+    assert authorization["jwtKeyProvider"]["keySourceURIs"]
+
+    for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
+        temporal = _compose(relative_path)["services"]["temporal"]
+        assert temporal["entrypoint"] == [
+            "/bin/sh",
+            "/etc/temporal/wave144-entrypoint.sh",
+        ]
+        assert "TEMPORAL_ALLOW_NO_AUTH" not in temporal.get("environment", {})
+
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
         command = _compose(relative_path)["services"]["spicedb"]["command"]
         assert "--telemetry-endpoint=" in command
@@ -916,6 +943,7 @@ def test_launcher_manages_independent_application_secrets() -> None:
     launcher = _read("start-docker.ps1")
     example = _env_values(".env.docker.example")
     managed = {
+        "TOKEN_HMAC_SECRET",
         "CSRF_HMAC_SECRET",
         "INTERNAL_HMAC_SECRET",
         "IDEMPOTENCY_HMAC_SECRET",
@@ -931,6 +959,9 @@ def test_launcher_manages_independent_application_secrets() -> None:
 
     gateway = _compose("docker-compose.full.yml")["services"]["gateway"]
     assert gateway["environment"]["INTERNAL_HMAC_SECRET"] == (
+        "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
+    )
+    assert gateway["environment"]["FILE_PROCESSING_CAPABILITY_SECRET"] == (
         "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
     )
 
@@ -1059,6 +1090,20 @@ def test_compose_has_no_hardcoded_or_optional_secret_fallbacks() -> None:
 def test_go_overlay_uses_the_base_nats_credential_contract() -> None:
     services = _compose("docker-compose.go.yml")["services"]
 
+    expected_internal_token = "${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - set in .env file}"
+    assert (
+        services["backend"]["environment"]["INTERNAL_AUTH_TOKEN"]
+        == expected_internal_token
+    )
+    assert (
+        services["ws-hub"]["environment"]["WS_HUB_INTERNAL_SECRET"]
+        == expected_internal_token
+    )
+    assert (
+        services["ws-hub"]["environment"]["INTERNAL_AUTH_TOKEN"]
+        == expected_internal_token
+    )
+
     for service_name, env_name in (
         ("ws-hub", "NATS_URL"),
         ("file-processor", "FP_NATS_URL"),
@@ -1072,10 +1117,27 @@ def test_go_overlay_uses_the_base_nats_credential_contract() -> None:
     ]["NATS_URL"]
     assert "${NATS_PASSWORD:?" in ci_ws_hub_url
     assert "NATS_AUTH_TOKEN" not in ci_ws_hub_url
+    ci_services = _compose("docker-compose.ci-loadtest.yml")["services"]
+    assert (
+        ci_services["backend"]["environment"]["INTERNAL_AUTH_TOKEN"]
+        == "${WS_HUB_INTERNAL_SECRET}"
+    )
+    assert (
+        ci_services["ws-hub"]["environment"]["INTERNAL_AUTH_TOKEN"]
+        == "${WS_HUB_INTERNAL_SECRET}"
+    )
 
     nightly = _read(".github/workflows/nightly-full-gate.yml")
     load_job = nightly.split("  load-and-chaos:", maxsplit=1)[1]
     assert "NATS_PASSWORD: nightly-nats-token" in load_job
+
+
+def test_full_compose_propagates_internal_chat_auth_token() -> None:
+    services = _compose("docker-compose.full.yml")["services"]
+    expected_token = "${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - run start-docker.ps1}"
+
+    assert services["backend"]["environment"]["INTERNAL_AUTH_TOKEN"] == expected_token
+    assert services["ws-hub"]["environment"]["INTERNAL_AUTH_TOKEN"] == expected_token
 
 
 def test_postgres_does_not_enable_retired_cdc_replication_settings() -> None:
@@ -1099,10 +1161,31 @@ def test_file_processor_uses_prefixed_env_and_file_based_rs256_verification() ->
         assert environment["FP_RSA_PUBLIC_KEY_FILE"] == (
             "/app/.secrets/jwt_rs256.pub.pem"
         )
+        assert (
+            environment["FP_JWT_AUDIENCE"]
+            == "${JWT_AUDIENCE:-university-ecosystem-api}"
+        )
+        assert environment["FP_JWT_ISSUER"] == "${JWT_ISSUER:-university-ecosystem}"
+        assert environment["FP_JWKS_URL"] == "http://backend:8000/.well-known/jwks.json"
+        assert (
+            environment["FP_JWKS_REFRESH_INTERVAL"] == "${JWKS_REFRESH_INTERVAL:-300}"
+        )
+        assert environment["FP_JWT_ACTIVE_KID"] == "${JWT_ACTIVE_KID:-primary}"
+        assert "FP_REVOCATION_REDIS_URL" in environment
         assert all(
             not key.startswith(("NATS_", "MINIO_", "JWT_")) for key in environment
         )
         assert "./.secrets:/app/.secrets:ro" in service["volumes"]
+
+        revocation_service = (
+            "revocation-redis"
+            if relative_path == "docker-compose.full.yml"
+            else "revocation-valkey"
+        )
+        assert (
+            service["depends_on"][revocation_service]["condition"] == "service_healthy"
+        )
+        assert "revocation_net" in service["networks"]
 
 
 def test_outbox_healthcheck_requires_a_recent_event_loop_heartbeat() -> None:
@@ -1297,6 +1380,8 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "--set",
         "backend.config.auditLogSecret=ci-placeholder",
         "--set",
+        "backend.config.tokenHMACSecret=ci-placeholder",
+        "--set",
         "backend.config.idempotencyHMACSecret=ci-placeholder",
         "--set",
         "backend.config.mfaEmailOtpHMACKeys=test-key:ci-placeholder",
@@ -1464,6 +1549,9 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "name": "contract-secrets",
         "key": "internal-hmac-secret",
     }
+    assert gateway_env["FILE_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
+        "secretKeyRef"
+    ] == {"name": "contract-secrets", "key": "internal-hmac-secret"}
     outbox = deployments["contract-university-ecosystem-outbox-worker"]
     outbox_env = {
         entry["name"]: entry
@@ -1517,6 +1605,9 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     assert file_processor_env["FP_OTLP_INSECURE"]["value"] == "true"
     assert file_processor_env["FP_TEMPORAL_TLS_DISABLED"]["value"] == "true"
     assert file_processor_env["FP_MINIO_SECURE"]["value"] == "false"
+    assert file_processor_env["FP_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
+        "secretKeyRef"
+    ] == {"name": "contract-secrets", "key": "internal-hmac-secret"}
 
     for item in resources:
         if item.get("kind") == "Service" and (
@@ -1731,7 +1822,7 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     assert "--replace golang.org/x/net=golang.org/x/net@v0.56.0" in dockerfile
     assert "--replace golang.org/x/text=golang.org/x/text@v0.39.0" in dockerfile
     assert (
-        "--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.1" in dockerfile
+        "--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.2" in dockerfile
     )
     for package in (
         "libapk=3.0.7-r0",
@@ -2020,7 +2111,7 @@ def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
     assert "GRPC_HEALTH_PROBE_VERSION=v0.4.51" in health_probe
     for dependency in (
         "github.com/spiffe/go-spiffe/v2@v2.7.0",
-        "google.golang.org/grpc@v1.83.1",
+        "google.golang.org/grpc@v1.83.2",
         "golang.org/x/net@v0.57.0",
         "golang.org/x/text@v0.40.0",
     ):

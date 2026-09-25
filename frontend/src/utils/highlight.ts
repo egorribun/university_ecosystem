@@ -36,13 +36,7 @@ export function renderHighlight(raw: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#x27;")
 
-  return (
-    escaped
-      // eslint-disable-next-line security/detect-non-literal-regexp -- MARK_OPEN/CLOSE are module-level constants, not user input
-      .replace(new RegExp(escapeRegExp(MARK_OPEN), "g"), "<mark>")
-      // eslint-disable-next-line security/detect-non-literal-regexp -- MARK_OPEN/CLOSE are module-level constants, not user input
-      .replace(new RegExp(escapeRegExp(MARK_CLOSE), "g"), "</mark>")
-  )
+  return escaped.replaceAll(MARK_OPEN, "<mark>").replaceAll(MARK_CLOSE, "</mark>")
 }
 
 /**
@@ -53,8 +47,4 @@ export function renderHighlight(raw: string): string {
  */
 export function renderHighlightFragments(fragments: string[]): string {
   return fragments.map(renderHighlight).join(" … ")
-}
-
-function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }

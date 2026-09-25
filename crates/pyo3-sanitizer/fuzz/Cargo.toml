@@ -9,9 +9,10 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-
-[dependencies.pyo3-sanitizer]
-path = ".."
+# Fuzz binaries exercise the pure sanitizer module directly. Depending on the
+# PyO3 extension crate would make cargo-fuzz link a CPython extension's
+# unresolved symbols into a standalone executable.
+ammonia = "4.1.4"
 
 # Prevent this from interfering with workspaces
 [workspace]

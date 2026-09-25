@@ -29,6 +29,7 @@ if TYPE_CHECKING:
         ChatMaintenanceResult,
         MessageResponse,
     )
+    from app.schemas.dtos.chat import AttachmentDTO
 
     from .notification_service import ChatNotificationService
 
@@ -45,6 +46,7 @@ from app.api.ws.presence import (
 )
 from app.core.config import settings
 from app.core.events import EventEmitterMixin, MessageSent
+from app.core.logging import get_logger
 from app.models import Message
 from app.models.chat import Attachment
 from app.models.enums import UserRole
@@ -54,6 +56,8 @@ from app.schemas.chat import (
     PresenceStatus,
     ReplyPreview,
 )
+
+logger = get_logger(__name__)
 
 
 def _make_idempotency_key(
@@ -89,6 +93,9 @@ class AttachmentProcessorProtocol(Protocol):
         self, upload: UploadFile, chat_id: uuid.UUID, *, locale: str | None
     ) -> dict[str, str | int]: ...  # pragma: no branch
     async def cleanup_files(self, urls: list[str]) -> None: ...  # pragma: no branch
+    async def copy_for_forward(
+        self, attachment: AttachmentDTO, chat_id: uuid.UUID, *, locale: str | None
+    ) -> dict[str, str | int]: ...  # pragma: no branch
     async def collect_urls(
         self, chat: Any
     ) -> list[str]: ...  # pragma: no branch  # Any: accepts Chat or ChatDTO
@@ -510,53 +517,84 @@ class ChatMessageDispatcher:
             list({src.sender_id for src in sources.values()})
         )
 
+        # A forwarded message must own its own object. Sharing the source URL
+        # lets source-chat cleanup delete the destination's live attachment.
+        total_size = sum(
+            attachment.size
+            for mid in ordered_ids
+            for attachment in sources[mid].attachments
+        )
+        if total_size > settings.chat_attachment_max_total_bytes:
+            raise_validation_error("errors.files.total_size_exceeded", locale)
+
+        copied: dict[uuid.UUID, list[dict[str, str | int]]] = {}
+        copied_urls: list[str] = []
         now = datetime.now(UTC)
         created: list[Message] = []
-        for mid in ordered_ids:
-            src = sources[mid]
-            message = Message(
-                chat_id=dest_chat_id,
-                sender_id=user.id,
-                content=src.content,
-                # Snapshot the ORIGINAL sender's name (the only forwarded-from datum
-                # the FE renders), resolved via the profile-loaded batch above. The
-                # audit-only *_id columns record provenance but are never serialized
-                # / dereferenced cross-chat (privacy).
-                forwarded_from_name=sender_names.get(src.sender_id),
-                forwarded_from_chat_id=source_chat_id,
-                forwarded_from_message_id=src.id,
-            )
-            await self.repository.create_message(message)
-            # Record the event right after the flush (see send_message ARCH-BE-01 /
-            # W205 SW-A): central capture tracks the emitter on session.info, so the
-            # outbox lands regardless of later autoflush ordering. sender = the
-            # FORWARDER, chat = the DEST — a forward is a normal new message.
-            cast(EventEmitterMixin, message).record_event(
-                MessageSent(
-                    message_id=message.id,
-                    chat_id=message.chat_id,
-                    sender_id=message.sender_id,
-                    content_preview=message.content[:50],
+        try:
+            for mid in ordered_ids:
+                copied[mid] = []
+                for attachment in sources[mid].attachments:
+                    metadata = await self.attachment_service.copy_for_forward(
+                        attachment, dest_chat_id, locale=locale
+                    )
+                    copied_urls.append(str(metadata["url"]))
+                    copied[mid].append(metadata)
+
+            for mid in ordered_ids:
+                src = sources[mid]
+                message = Message(
+                    chat_id=dest_chat_id,
+                    sender_id=user.id,
+                    content=src.content,
+                    # Snapshot the ORIGINAL sender's name (the only forwarded-from datum
+                    # the FE renders), resolved via the profile-loaded batch above. The
+                    # audit-only *_id columns record provenance but are never serialized
+                    # / dereferenced cross-chat (privacy).
+                    forwarded_from_name=sender_names.get(src.sender_id),
+                    forwarded_from_chat_id=source_chat_id,
+                    forwarded_from_message_id=src.id,
                 )
-            )
-            # Copy the source attachments — same blob url (no re-upload), fresh rows
-            # pointing at the new message. Makes the forward self-contained.
-            for att in src.attachments:
-                self.repository.add(
-                    Attachment(
-                        message=message,
-                        url=att.url,
-                        file_type=att.file_type,
-                        filename=att.filename,
-                        size=att.size,
+                await self.repository.create_message(message)
+                # Record the event right after the flush (see send_message ARCH-BE-01 /
+                # W205 SW-A): central capture tracks the emitter on session.info, so the
+                # outbox lands regardless of later autoflush ordering. sender = the
+                # FORWARDER, chat = the DEST — a forward is a normal new message.
+                cast(EventEmitterMixin, message).record_event(
+                    MessageSent(
+                        message_id=message.id,
+                        chat_id=message.chat_id,
+                        sender_id=message.sender_id,
+                        content_preview=message.content[:50],
                     )
                 )
-            created.append(message)
+                for metadata in copied[mid]:
+                    self.repository.add(
+                        Attachment(
+                            message=message,
+                            url=str(metadata["url"]),
+                            file_type=str(metadata["file_type"]),
+                            filename=str(metadata["filename"]),
+                            size=int(metadata["size"]),
+                        )
+                    )
+                created.append(message)
 
-        # One timestamp bump (dest re-sorts to top) + one atomic commit for all N.
-        await self.repository.update_timestamp_by_id(dest_chat_id, now)
-        async with self.uow:
-            await self.uow.commit()
+            # One timestamp bump and one atomic commit for all N messages.
+            await self.repository.update_timestamp_by_id(dest_chat_id, now)
+            async with self.uow:
+                await self.uow.commit()
+        except (Exception, asyncio.CancelledError):
+            try:
+                await self.uow.rollback()
+            except Exception:  # RZ-22-01-JUSTIFIED: preserve original failure and continue storage rollback
+                logger.warning("chat_forward_rollback_failed")
+            if copied_urls:
+                try:
+                    await self.attachment_service.cleanup_files(copied_urls)
+                except Exception:  # RZ-22-01-JUSTIFIED: best-effort file cleanup must not mask original failure
+                    logger.warning("chat_forward_copy_cleanup_failed")
+            raise
 
         # Reload all created messages (attachments selectinload'd) for the response,
         # preserving source order. forwarded_from_name auto-carries via model_dump;

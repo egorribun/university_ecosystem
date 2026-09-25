@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 type InteractionState = {
@@ -9,6 +9,8 @@ type InteractionState = {
 
 const mocks = vi.hoisted(() => ({
   user: null as { role: string } | null,
+  language: "en",
+  translationNamespaces: [] as unknown[],
   interactions: undefined as InteractionState | undefined,
   toggleLike: vi.fn(),
   isBookmarked: vi.fn(() => false),
@@ -16,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   deleteNews: vi.fn(),
   onChange: vi.fn(),
   sanitizeNewsText: vi.fn(async (value: string) => `sanitized:${value}`),
+  viewRender: vi.fn(),
+  interactionArgs: [] as unknown[][],
 }))
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -23,11 +27,14 @@ vi.mock("@/contexts/AuthContext", () => ({
 }))
 
 vi.mock("@/contexts/LanguageContext", () => ({
-  useLanguage: () => ({ language: "en" }),
+  useLanguage: () => ({ language: mocks.language }),
 }))
 
 vi.mock("@/hooks/useNewsInteraction", () => ({
-  useNewsInteraction: () => ({ interactions: mocks.interactions, toggleLike: mocks.toggleLike }),
+  useNewsInteraction: (...args: unknown[]) => {
+    mocks.interactionArgs.push(args)
+    return { interactions: mocks.interactions, toggleLike: mocks.toggleLike }
+  },
 }))
 
 vi.mock("@/hooks/useBookmarks", () => ({
@@ -51,11 +58,11 @@ vi.mock("@/utils/localize", () => ({
 }))
 
 vi.mock("@/features/news/categories", () => ({
-  inferCategory: () => "general",
+  inferCategory: (title: string, content: string) => `category:${title}|${content}`,
 }))
 
 vi.mock("@/utils/readingTime", () => ({
-  estimateReadingTime: () => 3,
+  estimateReadingTime: (content: string) => content.length,
 }))
 
 vi.mock("@/api/client", () => ({
@@ -63,13 +70,15 @@ vi.mock("@/api/client", () => ({
 }))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
+  useTranslation: (namespaces?: unknown) => {
+    mocks.translationNamespaces.push(namespaces)
+    return { t: (key: string) => key }
+  },
 }))
 
 vi.mock("@/components/news/NewsCardView", () => ({
   NewsCardView: (props: {
+    id: string
     title: string
     previewText: string
     isAdmin: boolean
@@ -89,61 +98,79 @@ vi.mock("@/components/news/NewsCardView", () => ({
     onEditSuccess: () => void
     onErrorClose: () => void
     error: string
-  }) => (
-    <div data-testid="news-card-view">
-      <span data-testid="card-title">{props.title}</span>
-      <span data-testid="card-preview">{props.previewText}</span>
-      <span data-testid="card-stats">
-        {props.isLiked ? "liked" : "not-liked"}:{props.likesCount}:{props.commentsCount}:
-        {props.isBookmarked ? "bookmarked" : "not-bookmarked"}
-      </span>
-      <button type="button" onClick={props.onToggleLike}>
-        toggle like
-      </button>
-      <button type="button" onClick={props.onToggleBookmark}>
-        toggle bookmark
-      </button>
-      <button type="button" onClick={props.onEditOpen}>
-        open edit
-      </button>
-      {props.editOpen && (
-        <div role="dialog">
-          <button type="button" onClick={props.onEditClose}>
-            close edit
-          </button>
-          <button type="button" onClick={props.onEditSuccess}>
-            edit success
-          </button>
-        </div>
-      )}
-      {props.isAdmin && (
-        <button type="button" onClick={props.onDeleteOpen}>
-          open delete
+    loading: boolean
+    editData: {
+      title: string
+      content: string
+      title_en: string
+      content_en: string
+      image_url: string
+    }
+    t: {
+      deleteTitle: string
+      deleteDesc: string
+      confirm: string
+      cancel: string
+    }
+    priority?: boolean
+  }) => {
+    mocks.viewRender(props)
+    return (
+      <div data-testid="news-card-view">
+        <span data-testid="card-title">{props.title}</span>
+        <span data-testid="card-preview">{props.previewText}</span>
+        <span data-testid="card-stats">
+          {props.isLiked ? "liked" : "not-liked"}:{props.likesCount}:{props.commentsCount}:
+          {props.isBookmarked ? "bookmarked" : "not-bookmarked"}
+        </span>
+        <button type="button" onClick={props.onToggleLike}>
+          toggle like
         </button>
-      )}
-      {props.confirmDeleteOpen && (
-        <div role="alertdialog">
-          <button type="button" onClick={props.onDeleteConfirm}>
-            confirm delete
+        <button type="button" onClick={props.onToggleBookmark}>
+          toggle bookmark
+        </button>
+        <button type="button" onClick={props.onEditOpen}>
+          open edit
+        </button>
+        {props.editOpen && (
+          <div role="dialog">
+            <button type="button" onClick={props.onEditClose}>
+              close edit
+            </button>
+            <button type="button" onClick={props.onEditSuccess}>
+              edit success
+            </button>
+          </div>
+        )}
+        {props.isAdmin && (
+          <button type="button" onClick={props.onDeleteOpen}>
+            open delete
           </button>
-          <button type="button" onClick={props.onDeleteClose}>
-            close delete
-          </button>
-        </div>
-      )}
-      {props.error && (
-        <div role="status">
-          <span>{props.error}</span>
-          <button type="button" onClick={props.onErrorClose}>
-            close error
-          </button>
-        </div>
-      )}
-    </div>
-  ),
+        )}
+        {props.confirmDeleteOpen && (
+          <div role="alertdialog">
+            <button type="button" onClick={props.onDeleteConfirm}>
+              confirm delete
+            </button>
+            <button type="button" onClick={props.onDeleteClose}>
+              close delete
+            </button>
+          </div>
+        )}
+        {props.error && (
+          <div role="status">
+            <span>{props.error}</span>
+            <button type="button" onClick={props.onErrorClose}>
+              close error
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  },
 }))
 
-import NewsCard from "@/components/news/NewsCard"
+import NewsCard, { type NewsCardProps } from "@/components/news/NewsCard"
 
 const baseProps = {
   id: "news-1",
@@ -161,6 +188,9 @@ const baseProps = {
 
 beforeEach(() => {
   mocks.user = null
+  mocks.language = "en"
+  mocks.translationNamespaces.length = 0
+  mocks.interactionArgs.length = 0
   mocks.interactions = { likes_count: 9, comments_count: 8, is_liked: true }
   mocks.deleteNews.mockResolvedValue(undefined)
   vi.clearAllMocks()
@@ -180,13 +210,141 @@ describe("NewsCard — state orchestration", () => {
     rerender(<NewsCard {...baseProps} onChange={mocks.onChange} />)
 
     await waitFor(() => expect(screen.getByTestId("card-preview")).toHaveTextContent("sanitized:"))
+    expect(mocks.translationNamespaces.at(-1)).toEqual(["news", "common"])
     expect(screen.getByTestId("card-title")).toHaveTextContent("en:Campus update")
     expect(screen.getByTestId("card-stats")).toHaveTextContent("not-liked:4:2:not-bookmarked")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "toggle like" }))
     fireEvent.click(screen.getByRole("button", { name: "toggle bookmark" }))
     expect(mocks.toggleLike).toHaveBeenCalledOnce()
     expect(mocks.toggleBookmark).toHaveBeenCalledWith("news-1")
+  })
+
+  it("uses interaction data when available and keeps bookmark callbacks bound to the current id", async () => {
+    const { rerender } = render(<NewsCard {...baseProps} onChange={mocks.onChange} />)
+
+    await waitFor(() => expect(screen.getByTestId("card-stats")).toHaveTextContent("liked:9:8"))
+
+    mocks.toggleBookmark.mockClear()
+    rerender(<NewsCard {...baseProps} id="news-2" onChange={mocks.onChange} />)
+    await waitFor(() => expect(screen.getByTestId("card-stats")).toHaveTextContent("liked:9:8"))
+    fireEvent.click(screen.getByRole("button", { name: "toggle bookmark" }))
+
+    expect(mocks.toggleBookmark).toHaveBeenCalledWith("news-2")
+  })
+
+  it("forwards normalized edit data, dialog translations, and default interaction state", async () => {
+    mocks.user = { role: "admin" }
+    mocks.interactions = undefined
+    render(
+      <NewsCard
+        {...baseProps}
+        title_en={null}
+        content_en={null}
+        image_url={undefined}
+        likes_count={undefined}
+        comments_count={undefined}
+        is_liked={undefined}
+        priority={undefined}
+      />
+    )
+
+    await waitFor(() => expect(mocks.viewRender).toHaveBeenCalled())
+    const props = mocks.viewRender.mock.calls.at(-1)?.[0] as {
+      editData: Record<string, string>
+      t: Record<string, string>
+      isLiked: boolean
+      likesCount: number
+      commentsCount: number
+      priority?: boolean
+    }
+
+    expect(props.editData).toEqual({
+      title: "Campus update",
+      content: "The campus library is open.",
+      title_en: "",
+      content_en: "",
+      image_url: "",
+    })
+    expect(props.t).toEqual({
+      deleteTitle: "news:dialogs.delete.title",
+      deleteDesc: "news:dialogs.delete.description",
+      confirm: "common:buttons.delete",
+      cancel: "common:buttons.cancel",
+    })
+    expect(props.isLiked).toBe(false)
+    expect(props.likesCount).toBe(0)
+    expect(props.commentsCount).toBe(0)
+    expect(props.priority).toBeUndefined()
+  })
+
+  it("keeps the loading state visible until an asynchronous delete settles", async () => {
+    mocks.user = { role: "admin" }
+    let resolveDelete!: () => void
+    mocks.deleteNews.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDelete = resolve
+        })
+    )
+    render(<NewsCard {...baseProps} onChange={mocks.onChange} />)
+
+    await waitFor(() => expect(mocks.viewRender).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole("button", { name: "open delete" }))
+    fireEvent.click(screen.getByRole("button", { name: "confirm delete" }))
+
+    await waitFor(() => {
+      const props = mocks.viewRender.mock.calls.at(-1)?.[0] as { loading: boolean }
+      expect(props.loading).toBe(true)
+    })
+    resolveDelete()
+    await waitFor(() => {
+      const props = mocks.viewRender.mock.calls.at(-1)?.[0] as {
+        loading: boolean
+        confirmDeleteOpen: boolean
+      }
+      expect(props.loading).toBe(false)
+      expect(props.confirmDeleteOpen).toBe(false)
+    })
+  })
+
+  it("rerenders when identity props change but ignores interaction counters", async () => {
+    const onChange = vi.fn()
+    const { rerender } = render(<NewsCard {...baseProps} onChange={onChange} />)
+    await waitFor(() => expect(mocks.viewRender).toHaveBeenCalled())
+
+    const identityChanges: Array<[string, unknown]> = [
+      ["id", "news-2"],
+      ["title", "A new title"],
+      ["title_en", "A new English title"],
+      ["content", "A new body"],
+      ["content_en", "A new English body"],
+      ["created_at", "2026-08-04T12:00:00Z"],
+      ["image_url", "/new-image.png"],
+      ["onChange", vi.fn()],
+      ["priority", false],
+    ]
+
+    for (const [key, value] of identityChanges) {
+      const before = mocks.viewRender.mock.calls.length
+      const changedProps = { ...baseProps, onChange, [key]: value } as NewsCardProps
+      rerender(<NewsCard {...changedProps} />)
+      await waitFor(() => expect(mocks.viewRender.mock.calls.length).toBeGreaterThan(before))
+
+      const changed = mocks.viewRender.mock.calls.length
+      rerender(<NewsCard {...baseProps} onChange={onChange} />)
+      await waitFor(() => expect(mocks.viewRender.mock.calls.length).toBeGreaterThan(changed))
+    }
+
+    const beforeCounters = mocks.viewRender.mock.calls.length
+    rerender(
+      <NewsCard {...baseProps} onChange={onChange} likes_count={99} comments_count={77} is_liked />
+    )
+    await Promise.resolve()
+    expect(mocks.viewRender.mock.calls.length).toBe(beforeCounters)
   })
 
   it("handles successful admin delete and edit callbacks", async () => {
@@ -233,5 +391,147 @@ describe("NewsCard — state orchestration", () => {
     await Promise.resolve()
 
     expect(screen.queryByTestId("news-card-view")).not.toBeInTheDocument()
+  })
+})
+
+describe("NewsCard — derived state follows props", () => {
+  const lastViewProps = () =>
+    mocks.viewRender.mock.calls.at(-1)?.[0] as {
+      loading: boolean
+      category: string
+      readingTime: number
+      previewText: string
+      title: string
+      editData: Record<string, string>
+    }
+
+  it("seeds the interaction query with the card's initial counters", async () => {
+    render(<NewsCard {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId("card-preview")).toHaveTextContent("sanitized:"))
+
+    expect(mocks.interactionArgs.at(-1)).toEqual([
+      "news-1",
+      { initialData: { likes_count: 4, comments_count: 2, is_liked: false } },
+    ])
+  })
+
+  it("starts idle, without a preview until sanitizing finishes", async () => {
+    let resolveSanitizer!: (value: string) => void
+    mocks.sanitizeNewsText.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        resolveSanitizer = resolve
+      })
+    )
+    render(<NewsCard {...baseProps} />)
+
+    expect(lastViewProps().loading).toBe(false)
+    expect(screen.getByTestId("card-preview")).toHaveTextContent(/^$/)
+
+    resolveSanitizer("clean preview")
+    expect(await screen.findByText("clean preview")).toBeInTheDocument()
+  })
+
+  it("recomputes title, preview, category, reading time and edit data on prop changes", async () => {
+    const { rerender } = render(<NewsCard {...baseProps} />)
+    await waitFor(() =>
+      expect(screen.getByTestId("card-preview")).toHaveTextContent(
+        "sanitized:en:The campus library is open."
+      )
+    )
+
+    rerender(
+      <NewsCard
+        {...baseProps}
+        title="Exam week"
+        title_en="Exam week EN"
+        content="Library hours extended."
+        content_en="Library hours extended EN."
+        image_url="/exam.png"
+      />
+    )
+
+    await waitFor(() =>
+      expect(screen.getByTestId("card-preview")).toHaveTextContent(
+        "sanitized:en:Library hours extended."
+      )
+    )
+    const props = lastViewProps()
+    expect(props.title).toBe("en:Exam week")
+    expect(props.category).toBe("category:Exam week|Library hours extended.")
+    expect(props.readingTime).toBe("en:Library hours extended.".length)
+    expect(props.editData).toEqual({
+      title: "Exam week",
+      content: "Library hours extended.",
+      title_en: "Exam week EN",
+      content_en: "Library hours extended EN.",
+      image_url: "/exam.png",
+    })
+  })
+
+  it("keeps the newest preview when an older sanitizer run settles late", async () => {
+    let resolveFirst!: (value: string) => void
+    mocks.sanitizeNewsText.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        resolveFirst = resolve
+      })
+    )
+    const { rerender } = render(<NewsCard {...baseProps} />)
+    rerender(<NewsCard {...baseProps} content="Second body" />)
+    await waitFor(() =>
+      expect(screen.getByTestId("card-preview")).toHaveTextContent("sanitized:en:Second body")
+    )
+
+    await act(async () => {
+      resolveFirst("stale first preview")
+      await Promise.resolve()
+    })
+
+    expect(screen.getByTestId("card-preview")).toHaveTextContent("sanitized:en:Second body")
+  })
+
+  it("hides admin-only controls from non-admin readers", async () => {
+    mocks.user = { role: "student" }
+    render(<NewsCard {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId("card-preview")).toHaveTextContent("sanitized:"))
+    expect(screen.queryByRole("button", { name: "open delete" })).not.toBeInTheDocument()
+  })
+
+  it("closes the edit dialog when the view asks to", async () => {
+    render(<NewsCard {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId("card-preview")).toHaveTextContent("sanitized:"))
+    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "close edit" }))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("deletes successfully without an onChange listener and shows no error", async () => {
+    mocks.user = { role: "admin" }
+    render(<NewsCard {...baseProps} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "open delete" }))
+    fireEvent.click(screen.getByRole("button", { name: "confirm delete" }))
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument())
+    expect(mocks.deleteNews).toHaveBeenCalledWith("/news/news-1")
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+
+  it("deletes and notifies using the latest id and onChange", async () => {
+    mocks.user = { role: "admin" }
+    const staleOnChange = vi.fn()
+    const onChange = vi.fn()
+    const { rerender } = render(<NewsCard {...baseProps} onChange={staleOnChange} />)
+    rerender(<NewsCard {...baseProps} id="news-9" onChange={onChange} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "open edit" }))
+    fireEvent.click(screen.getByRole("button", { name: "edit success" }))
+    fireEvent.click(screen.getByRole("button", { name: "open delete" }))
+    fireEvent.click(screen.getByRole("button", { name: "confirm delete" }))
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledTimes(2))
+    expect(mocks.deleteNews).toHaveBeenCalledWith("/news/news-9")
+    expect(staleOnChange).not.toHaveBeenCalled()
   })
 })

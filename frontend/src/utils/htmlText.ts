@@ -18,8 +18,8 @@ const stripTagsByState = (html: string): string => {
 }
 
 export const htmlToPlainText = (html: string | null | undefined): string => {
+  // Both paths return "" for an empty source.
   const source = html ?? ""
-  if (!source) return ""
 
   if (typeof DOMParser !== "undefined") {
     return new DOMParser().parseFromString(source, "text/html").body.textContent ?? ""

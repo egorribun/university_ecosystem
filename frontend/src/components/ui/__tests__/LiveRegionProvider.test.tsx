@@ -2,6 +2,8 @@ import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { act, renderHook, screen } from "@testing-library/react"
 
+import { renderToString } from "react-dom/server"
+
 import { LiveRegionProvider, useAnnouncer } from "@/components/ui/LiveRegionProvider"
 
 const wrapper = ({ children }: { children: ReactNode }) => (
@@ -44,5 +46,39 @@ describe("LiveRegionProvider / useAnnouncer", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("urgent")
     act(() => vi.advanceTimersByTime(3000))
     expect(screen.getByRole("alert").textContent).toBe("")
+  })
+
+  it("announces politely when no politeness is given", () => {
+    const { result } = renderHook(() => useAnnouncer(), { wrapper })
+
+    act(() => result.current.announce("saved"))
+
+    expect(screen.getByRole("status")).toHaveTextContent("saved")
+    expect(screen.getByRole("alert").textContent).toBe("")
+  })
+
+  it("restarts the assertive timeout when a newer urgent message arrives", () => {
+    vi.useFakeTimers()
+    const { result } = renderHook(() => useAnnouncer(), { wrapper })
+
+    act(() => result.current.announce("first alert", "assertive"))
+    act(() => vi.advanceTimersByTime(2000))
+    act(() => result.current.announce("second alert", "assertive"))
+    act(() => vi.advanceTimersByTime(1500))
+
+    expect(screen.getByRole("alert")).toHaveTextContent("second alert")
+    act(() => vi.advanceTimersByTime(1500))
+    expect(screen.getByRole("alert").textContent).toBe("")
+  })
+
+  it("renders no live regions in server markup, only the children", () => {
+    const html = renderToString(
+      <LiveRegionProvider>
+        <p>server child</p>
+      </LiveRegionProvider>
+    )
+
+    expect(html).toContain("server child")
+    expect(html).not.toContain("aria-live")
   })
 })

@@ -1,11 +1,30 @@
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException, status
 
 from app.api.deps import get_current_admin_user
+from app.auth import rbac
 from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
 from app.core.cache import MultiLayerCache
+
+
+@pytest.fixture(autouse=True)
+async def reset_spicedb_state() -> AsyncIterator[None]:
+    """Keep the process-global SpiceDB breaker isolated between chaos tests.
+
+    These tests intentionally exercise consecutive failures.  Resetting the
+    breaker and permission cache around each case prevents an OPEN state from
+    short-circuiting a later test before its transport mock is reached.
+    """
+    await rbac._spicedb_breaker.reset()
+    rbac._permission_cache.clear()
+    try:
+        yield
+    finally:
+        await rbac._spicedb_breaker.reset()
+        rbac._permission_cache.clear()
 
 
 @pytest.mark.asyncio

@@ -42,12 +42,12 @@ W150 is the **first wave of a 4-6 wave /admin polish arc** (per `feedback_planni
 - Extra: Read `_admin.tsx` (18 LoC, line 17 `component: () => <Outlet />`). Read `MainLayout.tsx:37` to confirm `min-h-dvh` W118 SW1 pattern.
 
 **Files created**:
-- [`frontend/src/styles/tokens/admin.css`](../../frontend/src/styles/tokens/admin.css) — 280 LoC scoped `.admin-theme` palette using indigo/slate primitives (`--color-indigo-500` + `--color-slate-{50..900}` already in primitives.css). Mirrors activity.css 505 LoC structure: 4 `@property` registrations, `:root` + `.dark` overrides, `.admin-card-matte` 4-layer shadow recipe, `.admin-table` semantic styling for SW2 ARIA headers, `.admin-stagger-item` CSS-only entry animation, `prefers-reduced-motion` block, print stylesheet with doubled-class specificity per FIX-72-04.
-- [`frontend/src/features/admin/components/AdminBackdrop.tsx`](../../frontend/src/features/admin/components/AdminBackdrop.tsx) — 53 LoC mirroring ActivityBackdrop EXACTLY: 4 orbs (indigo hero + slate highlight + conic drift + indigo bottom), **pixel-based** sizing per W118 SW3 CLS-118-03 fix (% values relative to absolute containers shift dramatically as admin pages scroll long), `aria-hidden + pointer-events-none + position: absolute -z-1` discipline, conic drift suppressed under reduced-motion.
+- [`frontend/src/styles/tokens/admin.css`](../../../frontend/src/styles/tokens/admin.css) — 280 LoC scoped `.admin-theme` palette using indigo/slate primitives (`--color-indigo-500` + `--color-slate-{50..900}` already in primitives.css). Mirrors activity.css 505 LoC structure: 4 `@property` registrations, `:root` + `.dark` overrides, `.admin-card-matte` 4-layer shadow recipe, `.admin-table` semantic styling for SW2 ARIA headers, `.admin-stagger-item` CSS-only entry animation, `prefers-reduced-motion` block, print stylesheet with doubled-class specificity per FIX-72-04.
+- [`frontend/src/features/admin/components/AdminBackdrop.tsx`](../../../frontend/src/features/admin/components/AdminBackdrop.tsx) — 53 LoC mirroring ActivityBackdrop EXACTLY: 4 orbs (indigo hero + slate highlight + conic drift + indigo bottom), **pixel-based** sizing per W118 SW3 CLS-118-03 fix (% values relative to absolute containers shift dramatically as admin pages scroll long), `aria-hidden + pointer-events-none + position: absolute -z-1` discipline, conic drift suppressed under reduced-motion.
 
 **Files modified**:
-- [`frontend/src/styles/theme.css`](../../frontend/src/styles/theme.css) — append `@import "./tokens/admin.css"` (1 line).
-- [`frontend/src/routes/_admin.tsx`](../../frontend/src/routes/_admin.tsx) — replace `component: () => <Outlet />` with `AdminLayout` component wrapping `.admin-theme` div + AdminBackdrop. Uses `useReducedMotion` + `useMediaQuery(breakpoints.dashboard)` pattern from ActivityFeature.tsx:57-77. Auth + role gating preserved unchanged.
+- [`frontend/src/styles/theme.css`](../../../frontend/src/styles/theme.css) — append `@import "./tokens/admin.css"` (1 line).
+- [`frontend/src/routes/_admin.tsx`](../../../frontend/src/routes/_admin.tsx) — replace `component: () => <Outlet />` with `AdminLayout` component wrapping `.admin-theme` div + AdminBackdrop. Uses `useReducedMotion` + `useMediaQuery(breakpoints.dashboard)` pattern from ActivityFeature.tsx:57-77. Auth + role gating preserved unchanged.
 
 **Verification**:
 - tsc 0; eslint 0; vitest **1052p/12s/0f** (W149 baseline EXACT).
@@ -60,16 +60,16 @@ W150 is the **first wave of a 4-6 wave /admin polish arc** (per `feedback_planni
 **Goal**: Bring 3 raw-table admin pages up to AdminUsers/DataTable parity per W120 polish-v2 aria-sort baseline + fix 44px touch target violation.
 
 **Phase 0 empirical probes**:
-- Read [`DataTableColumnHeader.tsx`](../../frontend/src/components/ui/data-table/DataTableColumnHeader.tsx) 1-52 → verified W120 pattern (aria-sort on parent `<th>`, button aria-label announces sort state).
+- Read [`DataTableColumnHeader.tsx`](../../../frontend/src/components/ui/data-table/DataTableColumnHeader.tsx) 1-52 → verified W120 pattern (aria-sort on parent `<th>`, button aria-label announces sort state).
 - `grep 'useState.*sort\|sortBy' Admin*.tsx` → 0 matches. **None of AdminAudit/FeatureFlags/Notifications has sort state.** `scope="col"` is the semantic fix; aria-sort N/A.
 - Counted `<th>` elements pre-fix: AdminAudit 6, AdminFeatureFlags 4, AdminNotifications 8 = **18 total**.
 
 **Files modified** (6):
-- [`AdminAudit.tsx`](../../frontend/src/pages/AdminAudit.tsx) — 6 `<th scope="col">` + table `aria-label={t("audit.table.aria")}`. Row expand button (line 47): `type="button"` + `aria-expanded={open}` + `aria-label` switches per open state + `h-8 w-8` (32px) → `min-h-[44px] min-w-[44px]` (WCAG 2.5.8 fix) + `focus-visible:ring-2 focus-visible:ring-brand`. Chevron icons `aria-hidden`.
-- [`AdminFeatureFlags.tsx`](../../frontend/src/pages/AdminFeatureFlags.tsx) — 4 `<th scope="col">` + table aria-label. Info button (line 166, `h-8 w-8` = 32px): bumped to 44px + `type="button"` + `aria-label={t("featureFlags.actions.viewMetadata")}` + focus-visible ring. Info icon `aria-hidden`.
-- [`AdminNotifications.tsx`](../../frontend/src/pages/AdminNotifications.tsx) — 8 `<th scope="col">` (table already had `aria-label` per Wave 21). Retry button (`p-1.5` ≈ 28px): bumped to 44px + `aria-label` + `focus-visible:ring-brand`. Purge button: same + `focus-visible:ring-error` for destructive semantic. Icons `aria-hidden`.
-- [`AdminUsers.tsx`](../../frontend/src/pages/AdminUsers.tsx) — DataTable already covers aria-sort (W120 polish-v2). Delete button (`p-2` ≈ 36px): bumped to 44px + `focus-visible:ring-error`. Trash2 icon `aria-hidden`.
-- [`en/admin.json`](../../frontend/src/i18n/locales/en/admin.json) + [`ru/admin.json`](../../frontend/src/i18n/locales/ru/admin.json) — 4 NEW keys in each locale: `audit.table.aria`, `audit.table.expandColumn`, `audit.table.expandRow`, `audit.table.collapseRow`, `featureFlags.table.aria`, `featureFlags.actions.viewMetadata` (6 total per locale, parity preserved).
+- [`AdminAudit.tsx`](../../../frontend/src/pages/AdminAudit.tsx) — 6 `<th scope="col">` + table `aria-label={t("audit.table.aria")}`. Row expand button (line 47): `type="button"` + `aria-expanded={open}` + `aria-label` switches per open state + `h-8 w-8` (32px) → `min-h-[44px] min-w-[44px]` (WCAG 2.5.8 fix) + `focus-visible:ring-2 focus-visible:ring-brand`. Chevron icons `aria-hidden`.
+- [`AdminFeatureFlags.tsx`](../../../frontend/src/pages/AdminFeatureFlags.tsx) — 4 `<th scope="col">` + table aria-label. Info button (line 166, `h-8 w-8` = 32px): bumped to 44px + `type="button"` + `aria-label={t("featureFlags.actions.viewMetadata")}` + focus-visible ring. Info icon `aria-hidden`.
+- [`AdminNotifications.tsx`](../../../frontend/src/pages/AdminNotifications.tsx) — 8 `<th scope="col">` (table already had `aria-label` per Wave 21). Retry button (`p-1.5` ≈ 28px): bumped to 44px + `aria-label` + `focus-visible:ring-brand`. Purge button: same + `focus-visible:ring-error` for destructive semantic. Icons `aria-hidden`.
+- [`AdminUsers.tsx`](../../../frontend/src/pages/AdminUsers.tsx) — DataTable already covers aria-sort (W120 polish-v2). Delete button (`p-2` ≈ 36px): bumped to 44px + `focus-visible:ring-error`. Trash2 icon `aria-hidden`.
+- [`en/admin.json`](../../../frontend/src/i18n/locales/en/admin.json) + [`ru/admin.json`](../../../frontend/src/i18n/locales/ru/admin.json) — 4 NEW keys in each locale: `audit.table.aria`, `audit.table.expandColumn`, `audit.table.expandRow`, `audit.table.collapseRow`, `featureFlags.table.aria`, `featureFlags.actions.viewMetadata` (6 total per locale, parity preserved).
 
 **Verification**:
 - tsc 0; eslint 0; vitest 1052p/12s/0f preserved.
@@ -84,12 +84,12 @@ W150 is the **first wave of a 4-6 wave /admin polish arc** (per `feedback_planni
 **Phase 0 finding** (informed scope tightening): `translationParity.test.ts` at `frontend/src/tests/` (W112 SW1) ALREADY walks `i18n/locales/<lng>/*.json` recursively per file and flattens keys. Both admin.json + stories.json are covered by existing parity test. **Originally planned "admin namespace parity test" creation NOT needed** — removed from plan after Phase 0 verification.
 
 **Files modified** (6 + 1 new):
-- [`AdminUsers.tsx:333-335`](../../frontend/src/pages/AdminUsers.tsx) — removed `defaultValue:` literal from `t()` call. Now reads `t("users.confirmDeleteDescription")` cleanly.
-- [`StoriesAdmin.tsx:371-373`](../../frontend/src/pages/StoriesAdmin.tsx) — same fix on the story-delete ConfirmDialog. **NEWLY SURFACED** by post-SW3-step Phase-0 grep, NOT in original plan; «безупречно?» catch per `feedback_perfectionism.md` exhaustiveness principle.
-- [`StoriesAdmin.tsx:620,623`](../../frontend/src/pages/StoriesAdmin.tsx) — replaced `text-white` × 2 with theme-aware `text-[var(--text-inverse)]`. Pattern matches W116 SW3 dark-mode contrast convention (sky-400 in dark + slate-950 inverse = 9.9:1 contrast, well above WCAG AA 4.5:1).
-- [`en/admin.json`](../../frontend/src/i18n/locales/en/admin.json) + [`ru/admin.json`](../../frontend/src/i18n/locales/ru/admin.json) — NEW `users.confirmDeleteDescription` key (parity preserved 132 → 133 lines each).
-- [`en/stories.json`](../../frontend/src/i18n/locales/en/stories.json) + [`ru/stories.json`](../../frontend/src/i18n/locales/ru/stories.json) — NEW `list.confirmDeleteDescription` key in both locales.
-- [`AdminFeatureFlags.test.tsx`](../../frontend/src/pages/__tests__/AdminFeatureFlags.test.tsx) — **NEW** 175 LoC, mirrors AdminAudit.test.tsx 148 LoC structure: 3 mockFlags fixture (enabled/percentage/disabled) + AuthContext.Provider admin user + renderWithRouter + msw http.get + http.patch handlers. 6 tests covering heading + column headers, flag rendering, ARIA table semantics (scope="col" verified), Info button 44px touch target + type="button" verified, rollout percentage slider, toggle switch click → PATCH.
+- [`AdminUsers.tsx:333-335`](../../../frontend/src/pages/AdminUsers.tsx) — removed `defaultValue:` literal from `t()` call. Now reads `t("users.confirmDeleteDescription")` cleanly.
+- [`StoriesAdmin.tsx:371-373`](../../../frontend/src/pages/StoriesAdmin.tsx) — same fix on the story-delete ConfirmDialog. **NEWLY SURFACED** by post-SW3-step Phase-0 grep, NOT in original plan; «безупречно?» catch per `feedback_perfectionism.md` exhaustiveness principle.
+- [`StoriesAdmin.tsx:620,623`](../../../frontend/src/pages/StoriesAdmin.tsx) — replaced `text-white` × 2 with theme-aware `text-[var(--text-inverse)]`. Pattern matches W116 SW3 dark-mode contrast convention (sky-400 in dark + slate-950 inverse = 9.9:1 contrast, well above WCAG AA 4.5:1).
+- [`en/admin.json`](../../../frontend/src/i18n/locales/en/admin.json) + [`ru/admin.json`](../../../frontend/src/i18n/locales/ru/admin.json) — NEW `users.confirmDeleteDescription` key (parity preserved 132 → 133 lines each).
+- [`en/stories.json`](../../../frontend/src/i18n/locales/en/stories.json) + [`ru/stories.json`](../../../frontend/src/i18n/locales/ru/stories.json) — NEW `list.confirmDeleteDescription` key in both locales.
+- [`AdminFeatureFlags.test.tsx`](../../../frontend/src/pages/__tests__/AdminFeatureFlags.test.tsx) — **NEW** 175 LoC, mirrors AdminAudit.test.tsx 148 LoC structure: 3 mockFlags fixture (enabled/percentage/disabled) + AuthContext.Provider admin user + renderWithRouter + msw http.get + http.patch handlers. 6 tests covering heading + column headers, flag rendering, ARIA table semantics (scope="col" verified), Info button 44px touch target + type="button" verified, rollout percentage slider, toggle switch click → PATCH.
 
 **Verification**:
 - tsc 0; eslint 0; vitest **1058p/12s/0f** (+6 from W149 baseline 1052; matches expected for 6 new tests).
@@ -114,8 +114,8 @@ W150 is the **first wave of a 4-6 wave /admin polish arc** (per `feedback_planni
 ```
 
 **Files modified** (2):
-- [`AdminAudit.tsx`](../../frontend/src/pages/AdminAudit.tsx) — added `useReducedMotion` to framer-motion import. Row component (function Row at line 21) + main AdminAudit component (line 202) both call `useReducedMotion` after useTranslation. Row expand m.div: `initial` + `exit` + `transition` gated. Page header m.div: `initial` + `transition` gated.
-- [`AdminFeatureFlags.tsx`](../../frontend/src/pages/AdminFeatureFlags.tsx) — same import + hook pattern. Page header m.div + table row m.tr stagger both gated. Under reduced motion the `index*0.05s` stagger delay collapses to 0.
+- [`AdminAudit.tsx`](../../../frontend/src/pages/AdminAudit.tsx) — added `useReducedMotion` to framer-motion import. Row component (function Row at line 21) + main AdminAudit component (line 202) both call `useReducedMotion` after useTranslation. Row expand m.div: `initial` + `exit` + `transition` gated. Page header m.div: `initial` + `transition` gated.
+- [`AdminFeatureFlags.tsx`](../../../frontend/src/pages/AdminFeatureFlags.tsx) — same import + hook pattern. Page header m.div + table row m.tr stagger both gated. Under reduced motion the `index*0.05s` stagger delay collapses to 0.
 
 **Verification**:
 - tsc 0; eslint 0; vitest **1058p/12s/0f** preserved (SW3 baseline).
@@ -260,19 +260,19 @@ Per the 4-6 wave /admin polish arc trajectory:
 ## Critical files reference (for W151 implementer)
 
 **W150 SW1 templates** (now production):
-- [`tokens/admin.css`](../../frontend/src/styles/tokens/admin.css) — admin palette + matte-card + stagger system
-- [`features/admin/components/AdminBackdrop.tsx`](../../frontend/src/features/admin/components/AdminBackdrop.tsx) — pixel-sized 4-orb backdrop
-- [`routes/_admin.tsx`](../../frontend/src/routes/_admin.tsx) — `.admin-theme` scope wrapper pattern
+- [`tokens/admin.css`](../../../frontend/src/styles/tokens/admin.css) — admin palette + matte-card + stagger system
+- [`features/admin/components/AdminBackdrop.tsx`](../../../frontend/src/features/admin/components/AdminBackdrop.tsx) — pixel-sized 4-orb backdrop
+- [`routes/_admin.tsx`](../../../frontend/src/routes/_admin.tsx) — `.admin-theme` scope wrapper pattern
 
 **W150 SW2-SW4 modified pages** (now WCAG 2.5.8 + 4.1.2 + 2.4.7 compliant):
-- [`pages/AdminAudit.tsx`](../../frontend/src/pages/AdminAudit.tsx) — 339 LoC
-- [`pages/AdminFeatureFlags.tsx`](../../frontend/src/pages/AdminFeatureFlags.tsx) — 184 LoC (smallest)
-- [`pages/AdminNotifications.tsx`](../../frontend/src/pages/AdminNotifications.tsx) — 536 LoC
-- [`pages/AdminUsers.tsx`](../../frontend/src/pages/AdminUsers.tsx) — 346 LoC
-- [`pages/StoriesAdmin.tsx`](../../frontend/src/pages/StoriesAdmin.tsx) — 705 LoC (largest, only partial polish in W150)
+- [`pages/AdminAudit.tsx`](../../../frontend/src/pages/AdminAudit.tsx) — 339 LoC
+- [`pages/AdminFeatureFlags.tsx`](../../../frontend/src/pages/AdminFeatureFlags.tsx) — 184 LoC (smallest)
+- [`pages/AdminNotifications.tsx`](../../../frontend/src/pages/AdminNotifications.tsx) — 536 LoC
+- [`pages/AdminUsers.tsx`](../../../frontend/src/pages/AdminUsers.tsx) — 346 LoC
+- [`pages/StoriesAdmin.tsx`](../../../frontend/src/pages/StoriesAdmin.tsx) — 705 LoC (largest, only partial polish in W150)
 
 **Tests added**:
-- [`pages/__tests__/AdminFeatureFlags.test.tsx`](../../frontend/src/pages/__tests__/AdminFeatureFlags.test.tsx) — 175 LoC, 6 tests
+- [`pages/__tests__/AdminFeatureFlags.test.tsx`](../../../frontend/src/pages/__tests__/AdminFeatureFlags.test.tsx) — 175 LoC, 6 tests
 
 **Reference convention**:
 - Events W82 polish patterns: `features/events/EventsFeature.tsx`, `features/events/components/`
@@ -370,20 +370,20 @@ Per `feedback_perfectionism.md`: the «безупречно?» probe surfaced ho
 
 **Ground-truth diagnosis** (chrome-devtools-mcp on a fresh page open, 2026-05-14):
 - All **105 of 105** page resources (HTML, bundle, CSS, manifest, code-split chunks) load **200 OK**
-- Console: ONLY `[GlobalErrors] Handlers registered` (info-level, from [main.tsx:24](../../frontend/src/main.tsx:24)) — NO React #418, NO crashes
+- Console: ONLY `[GlobalErrors] Handlers registered` (info-level, from [main.tsx:24](../../../frontend/src/main.tsx:24)) — NO React #418, NO crashes
 - `GET /api/v1/users/me` stays `[pending]` for >2 minutes (full duration of the diagnostic session)
 - Direct `curl http://localhost/api/v1/users/me` returns **401 in 3 ms** (backend healthy via Caddy chain)
 - Real Chrome on user side reproduces identically → NOT the W138 Windows MCP wall, it's a real browser-side hang
 
-**Root cause**: [`frontend/src/sw/api.ts:107-134`](../../frontend/src/sw/api.ts:107) registers `/api/*` (excluding `/public/`, `/news`, `/events`, non-GET) with `NetworkFirst({ networkTimeoutSeconds: 5, ... })`. `/api/v1/users/me` matches the matcher. Workbox's 5 s timeout empirically does NOT fire here — most likely a cache+plugin interaction where `CacheableResponsePlugin({ statuses: [0, 200] })` rejects the 401 response in a way that wedges the strategy.handle Promise. Precise workbox internal mechanism not investigated — fix bypasses the buggy code path.
+**Root cause**: [`frontend/src/sw/api.ts:107-134`](../../../frontend/src/sw/api.ts:107) registers `/api/*` (excluding `/public/`, `/news`, `/events`, non-GET) with `NetworkFirst({ networkTimeoutSeconds: 5, ... })`. `/api/v1/users/me` matches the matcher. Workbox's 5 s timeout empirically does NOT fire here — most likely a cache+plugin interaction where `CacheableResponsePlugin({ statuses: [0, 200] })` rejects the 401 response in a way that wedges the strategy.handle Promise. Precise workbox internal mechanism not investigated — fix bypasses the buggy code path.
 
-**Why it blocks the whole app**: [`useProfileSync.ts:1043-1046`](../../frontend/src/hooks/auth/useProfileSync.ts:1043) fires `queryClient.fetchQuery(currentUserQueryOptions())` during AuthProvider mount. `setInitializing(false)` only fires in the `finally` block at [`useProfileSync.ts:1086`](../../frontend/src/hooks/auth/useProfileSync.ts:1086). While `/users/me` is pending, `initializing=true` keeps `AuthContext` children from rendering → blank screen + DevTools can't attach (renderer wedged).
+**Why it blocks the whole app**: [`useProfileSync.ts:1043-1046`](../../../frontend/src/hooks/auth/useProfileSync.ts:1043) fires `queryClient.fetchQuery(currentUserQueryOptions())` during AuthProvider mount. `setInitializing(false)` only fires in the `finally` block at [`useProfileSync.ts:1086`](../../../frontend/src/hooks/auth/useProfileSync.ts:1086). While `/users/me` is pending, `initializing=true` keeps `AuthContext` children from rendering → blank screen + DevTools can't attach (renderer wedged).
 
 **Why this is also a security correctness issue**: `/users/me` is auth-state-critical. A cached 200 response could let an unauthenticated user appear authenticated. Excluding it from SW interception is the production-correct fix per OWASP cache-control guidance, not just a UX hack.
 
 ### Fix (single commit `fix(wave150-polish-followup-v2)`)
 
-[`frontend/src/sw/api.ts`](../../frontend/src/sw/api.ts) — two-pronged structural change:
+[`frontend/src/sw/api.ts`](../../../frontend/src/sw/api.ts) — two-pronged structural change:
 
 1. **Route matcher exclusion** (lines 108-122): add `!url.pathname.includes("/users/me")`, `!url.pathname.includes("/auth/")`, `!url.pathname.includes("/csrf")` to the matcher. These paths now bypass the SW entirely and go direct to network. No cache, no timeout risk, no race.
 
@@ -405,7 +405,7 @@ Per `feedback_perfectionism.md`: the «безупречно?» probe surfaced ho
 
 - **`/users/me` now ALWAYS goes to network** (no offline cache fallback). Acceptable — auth state must be fresh by design; offline users hit `handleUnauthorized` → `/login` redirect, which is the correct UX.
 - **Promise.race wrapper adds a 6 s timeout ceiling on all remaining `/api/*` requests under NetworkFirst**. Acceptable — synthetic 504 is observable + actionable in console; far better than indefinite pending.
-- **Stale SWs in user browsers require a one-time hard-reload (Ctrl+Shift+R)** after this deploys. [`sw.ts:45-46`](../../frontend/src/sw.ts:45) already has `clientsClaim()` + `self.skipWaiting()` so the new SW takes over automatically on next reload — no manual unregister needed.
+- **Stale SWs in user browsers require a one-time hard-reload (Ctrl+Shift+R)** after this deploys. [`sw.ts:45-46`](../../../frontend/src/sw.ts:45) already has `clientsClaim()` + `self.skipWaiting()` so the new SW takes over automatically on next reload — no manual unregister needed.
 
 ### §Honesty trajectory update (HONEST CORRECTION post user-verification)
 
@@ -413,11 +413,11 @@ Per `feedback_perfectionism.md`: the «безупречно?» probe surfaced ho
 
 **HONEST CORRECTION (post-user-verification, 2026-05-14)**: user reported `/login` STILL BLANK in BOTH regular Chrome AND fresh Chrome Incognito after deploy + cleared site data. This DEFINITIVELY rules out Service Worker / state pollution as the user-facing blocker — Incognito has no SW. The SW fix targeted the WRONG root cause.
 
-Verified from source: [`AuthContext.tsx:145`](../../frontend/src/contexts/AuthContext.tsx:145) renders `<AuthContext.Provider value={value}>{children}</AuthContext.Provider>` UNCONDITIONALLY. There is NO gate on `initializing`. So `/users/me` pending forever does NOT block React from rendering children. The blank screen is caused by something OTHER than the SW intercepting `/users/me`.
+Verified from source: [`AuthContext.tsx:145`](../../../frontend/src/contexts/AuthContext.tsx:145) renders `<AuthContext.Provider value={value}>{children}</AuthContext.Provider>` UNCONDITIONALLY. There is NO gate on `initializing`. So `/users/me` pending forever does NOT block React from rendering children. The blank screen is caused by something OTHER than the SW intercepting `/users/me`.
 
 **Likely actual root cause** (W150 polish-followup caveat #14, NOT addressed by this fix):
-- [`__root.tsx:148`](../../frontend/src/routes/__root.tsx:148) `ssr: false` + [`_public.tsx:10`](../../frontend/src/routes/_public.tsx:10) `ssr: false` make `/login` 100% client-only with empty SPA shell
-- [`App.tsx:24`](../../frontend/src/App.tsx:24) `<Suspense>` has NO `fallback` prop → defaults to `null` while route's lazy `Login` chunk loads
+- [`__root.tsx:148`](../../../frontend/src/routes/__root.tsx:148) `ssr: false` + [`_public.tsx:10`](../../../frontend/src/routes/_public.tsx:10) `ssr: false` make `/login` 100% client-only with empty SPA shell
+- [`App.tsx:24`](../../../frontend/src/App.tsx:24) `<Suspense>` has NO `fallback` prop → defaults to `null` while route's lazy `Login` chunk loads
 - chrome-devtools-mcp diagnostic on the rebuilt dist showed 17 chunks pending (including `Login-DHFvelK1.js` page-component lazy chunk) + V8 main thread wedged (evaluate_script times out — likely ParticleAuthBackground 1000-particle canvas starving CPU OR sync-throw at module init in some chunk OR React render infinite-loop)
 - Or: there's a sync-throwing module init somewhere in the AppProviders / RouterProvider chain
 - W150 polish-followup commit `7c97de583` body explicitly documented: "Hydration mismatch root cause NOT isolatable from production-minified bundle without source maps; suspected candidates: useId() reconciliation, MainLayout SSR-vs-client provider tree subtle differences, ParticleAuthBackground canvas ref timing"

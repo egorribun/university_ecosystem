@@ -1,10 +1,11 @@
 import { render, screen, fireEvent, act } from "@testing-library/react"
-import { describe, it, expect, vi } from "vitest"
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 import { ReactionPill } from "@/components/messenger/ReactionPill"
 import { reactorsQueryKey, reactorsQueryOptions } from "@/api/hooks/messenger"
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
 /**
  * Wave 207 SW9 (coverage follow-up) — ReactionPill unit tests.
@@ -26,7 +27,9 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
-  default: ({ alt }: { alt?: string }) => <img alt={alt ?? ""} />,
+  default: ({ alt, srcRaw }: { alt?: string; srcRaw?: string }) => (
+    <img alt={alt ?? ""} src={srcRaw} />
+  ),
 }))
 
 const getReactors = vi.fn()
@@ -224,5 +227,116 @@ describe("ReactionPill", () => {
     const result = await queryFn({ signal })
     expect(getReactors).toHaveBeenCalledWith("c", "m", "😮", signal)
     expect(result).toEqual([{ user_id: "u1", name: "Bob", avatar_url: null }])
+  })
+})
+
+describe("ReactionPill long-press gesture and reactor list", () => {
+  const pressFor = (btn: HTMLElement, pointerType: string, ms: number) => {
+    fireEvent.pointerDown(btn, { pointerType })
+    act(() => {
+      vi.advanceTimersByTime(ms)
+    })
+  }
+
+  const renderSeeded = (reactors: unknown[]) => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    queryClient.setQueryData(reactorsQueryKey("chat-1", "msg-1", "👍"), reactors)
+    const onToggle = vi.fn()
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ReactionPill
+          chatId="chat-1"
+          messageId="msg-1"
+          emoji="👍"
+          count={2}
+          reactedByMe={false}
+          onToggle={onToggle}
+        />
+      </QueryClientProvider>
+    )
+    return { ...view, onToggle }
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("never opens the reactor list from a mouse press-and-hold", () => {
+    renderPill()
+    pressFor(screen.getByRole("button"), "mouse", 600)
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+  })
+
+  it("cancels the long-press when the touch ends early", () => {
+    renderPill()
+    const btn = screen.getByRole("button")
+    fireEvent.pointerDown(btn, { pointerType: "touch" })
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+    fireEvent.pointerUp(btn, { pointerType: "touch" })
+    act(() => {
+      vi.advanceTimersByTime(600)
+    })
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+  })
+
+  it("restarts the long-press timer on a repeated touch instead of stacking timers", () => {
+    renderPill()
+    const btn = screen.getByRole("button")
+    fireEvent.pointerDown(btn, { pointerType: "touch" })
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+    fireEvent.pointerDown(btn, { pointerType: "touch" })
+    act(() => {
+      vi.advanceTimersByTime(100)
+    })
+    fireEvent.pointerUp(btn, { pointerType: "touch" })
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+  })
+
+  it("suppresses only the click that follows a long-press", () => {
+    const { onToggle } = renderSeeded([])
+    const btn = screen.getByRole("button")
+    pressFor(btn, "touch", 600)
+
+    fireEvent.click(btn)
+    expect(onToggle).not.toHaveBeenCalled()
+    fireEvent.click(btn)
+    expect(onToggle).toHaveBeenCalledExactlyOnceWith("👍")
+  })
+
+  it("names the emoji in the popover heading", () => {
+    renderSeeded([])
+    pressFor(screen.getByRole("button"), "touch", 600)
+    expect(screen.getByRole("tooltip")).toBeInTheDocument()
+    expect(screen.getByText('messenger:reactions.whoReacted|{"emoji":"👍"}')).toBeInTheDocument()
+  })
+
+  it("shows the empty state, not phantom reactors, when no chat is selected", () => {
+    renderPill({ chatId: undefined })
+    pressFor(screen.getByRole("button"), "touch", 600)
+    expect(screen.getByText("messenger:reactions.reactorsEmpty")).toBeInTheDocument()
+    expect(screen.queryByRole("listitem")).not.toBeInTheDocument()
+  })
+
+  it("uses each reactor's avatar and the placeholder when a reactor has none", () => {
+    renderSeeded([
+      { user_id: "u1", name: "Alice", avatar_url: "https://cdn.example.test/alice.png" },
+      { user_id: "u2", name: "Bob", avatar_url: null },
+    ])
+    pressFor(screen.getByRole("button"), "touch", 600)
+
+    const avatars = screen
+      .getAllByRole("listitem")
+      .map((item) => item.querySelector("img")?.getAttribute("src"))
+    expect(avatars).toEqual(["https://cdn.example.test/alice.png", AVATAR_PLACEHOLDER_URL])
   })
 })

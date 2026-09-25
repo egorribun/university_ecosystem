@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest"
 import { AuthBackdrop } from "../auth/AuthBackdrop"
 import { DashboardBackdrop } from "../dashboard/DashboardBackdrop"
 import { EventsBackdrop } from "../events/EventsBackdrop"
-import { FooterBackdrop } from "../layout/FooterBackdrop"
 import { NewsBackdrop } from "../news/NewsBackdrop"
 import { ProfileBackdrop } from "../profile/ProfileBackdrop"
 import { SettingsBackdrop } from "../settings/SettingsBackdrop"
@@ -160,55 +159,6 @@ describe("Presentational Backdrops Coverage Sweep", () => {
         "33da_5c02_35c9",
         "4038_d6f6_d09d",
         "05b0"
-      ),
-    ])
-  })
-
-  it("renders FooterBackdrop under all branches", () => {
-    const { rerender, container } = render(<FooterBackdrop />)
-    const digests = [markupDigest(container.innerHTML)]
-
-    rerender(<FooterBackdrop isNarrow={true} prefersReducedMotion={true} />)
-    digests.push(markupDigest(container.innerHTML))
-
-    rerender(<FooterBackdrop isNarrow={false} prefersReducedMotion={true} />)
-    digests.push(markupDigest(container.innerHTML))
-
-    rerender(<FooterBackdrop isNarrow={true} prefersReducedMotion={false} />)
-    digests.push(markupDigest(container.innerHTML))
-
-    expect(digests).toEqual([
-      expectedDigest(
-        "b9c2_f2b7_d939",
-        "d85b_311c_aa85",
-        "b0d1_e860_9533",
-        "dead_8132_a912",
-        "c550_1a68_89a9",
-        "bba8"
-      ),
-      expectedDigest(
-        "f225_6ef2_97d8",
-        "1ff9_4561_1eef",
-        "fbee_ae6b_c64a",
-        "2254_cb50_ded5",
-        "83d0_166c_ad60",
-        "b736"
-      ),
-      expectedDigest(
-        "8ebd_9577_fde3",
-        "8287_d827_2f83",
-        "cc71_491a_7473",
-        "fd9f_a248_4c56",
-        "77bc_a334_cd2a",
-        "3055"
-      ),
-      expectedDigest(
-        "166e_7adc_822a",
-        "c0db_4e5c_932b",
-        "a4d0_07c3_cd0d",
-        "5f1e_1c74_7701",
-        "6e6f_cec9_a6dd",
-        "4326"
       ),
     ])
   })

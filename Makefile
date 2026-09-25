@@ -1,7 +1,7 @@
 FRONTEND_DIR := $(CURDIR)/frontend
 ENV_FILE ?= $(CURDIR)/.env
 
-.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage go-test-gates helm-lint docker-lint sbom-local db-validate pre-commit-all renovate-config-validate test-trace-driven
+.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage go-test-gates helm-lint docker-lint sbom-local db-validate pre-commit-all renovate-config-validate test-trace-driven fast-preflight
 
 install: backend-install frontend-install
 
@@ -154,6 +154,12 @@ audit-metrics:
 verify-all: lint backend-typecheck frontend-test backend-test
 	@echo "All verifications passed!"
 
+# Fast local feedback for the high-signal pre-push checks.  The helper keeps
+# all lanes independent, writes an ignored aggregate report, and fails closed
+# when any lane cannot be launched, fails, or times out.
+fast-preflight:
+	uv run python scripts/fast_preflight.py
+
 # MOD-W15-09 (audit 2026-03-23 Wave 15): Developer-facing quality gates
 # that mirror what CI runs, so issues can be caught locally before push.
 
@@ -216,4 +222,5 @@ help:
 	@echo "  security-check - Run security audits"
 	@echo "  k8s-lint       - Validate Kubernetes manifests"
 	@echo "  verify-all     - Full verification suite"
+	@echo "  fast-preflight - Parallel typecheck, lint, harness and focused contracts"
 	@echo "  clean          - Remove build artifacts"

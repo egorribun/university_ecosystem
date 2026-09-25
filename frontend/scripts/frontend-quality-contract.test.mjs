@@ -40,7 +40,12 @@ test("Stryker mutation scope is derived from the complete frontend coverage deno
     "Stryker must discover the complete Vitest suite instead of a hand-picked test allow-list"
   )
   assert.deepEqual(strykerConfig.mutator, { plugins: null, excludedMutations: [] })
-  assert.deepEqual(strykerConfig.ignorers, [])
+  // ADR-040: exactly one governed ignore policy, loaded from the repository.
+  assert.deepEqual(strykerConfig.ignorers, ["presentation-class-names"])
+  assert.deepEqual(strykerConfig.plugins, [
+    "@stryker-mutator/*",
+    "./scripts/stryker-presentation-ignorer.mjs",
+  ])
   assert.equal(strykerConfig.incremental, false)
   assert.equal(
     strykerConfig.vitest?.related,
@@ -65,7 +70,7 @@ test("Stryker mutation scope is derived from the complete frontend coverage deno
   }
   assert.equal(
     strykerConfig.dryRunTimeoutMinutes,
-    15,
+    30,
     "Stryker's initial test run deadline must be explicit and long enough for the full suite"
   )
 })
@@ -119,6 +124,50 @@ test("canonical test:ci executes the frontend quality contract tests", async () 
   assert.match(command, /scripts\/visual-smoke-auth\.test\.mjs/u)
   assert.match(command, /scripts\/visual-smoke-contract\.test\.mjs/u)
   assert.match(command, /scripts\/lhci-route-policy\.test\.mjs/u)
+})
+
+test("profile bootstrap keeps the LHCI branch compile-time tree-shakeable", async () => {
+  const profileSyncSource = await readFile(
+    new URL("src/hooks/auth/useProfileSync.ts", frontendRoot),
+    "utf8"
+  )
+  const hookStart = profileSyncSource.indexOf("export const useProfileSync")
+  assert.ok(hookStart >= 0, "useProfileSync export must remain discoverable")
+  const initializerStart = profileSyncSource.indexOf("useState<UserState>", hookStart)
+  const initializerEnd = profileSyncSource.indexOf("const [pendingMfaState", initializerStart)
+  assert.ok(initializerStart >= 0 && initializerEnd > initializerStart)
+  const initializer = profileSyncSource.slice(initializerStart, initializerEnd)
+
+  assert.match(
+    initializer,
+    /if \(import\.meta\.env\.VITE_LHCI === "true"\)/u,
+    "the production initializer must expose a static VITE_LHCI guard"
+  )
+  assert.match(
+    initializer,
+    /resolveInitialUserStateWithoutLhci\(/u,
+    "the non-LHCI initializer must delegate to the covered cache resolver"
+  )
+  assert.doesNotMatch(
+    initializer,
+    /resolveInitialUserState\(/u,
+    "the production initializer must not route through a runtime LHCI boolean"
+  )
+
+  const initializingStart = profileSyncSource.indexOf("const [initializing", initializerEnd)
+  const initializingEnd = profileSyncSource.indexOf("const [authOperation", initializingStart)
+  assert.ok(initializingStart >= 0 && initializingEnd > initializingStart)
+  const initializingInitializer = profileSyncSource.slice(initializingStart, initializingEnd)
+  assert.match(
+    initializingInitializer,
+    /if \(import\.meta\.env\.VITE_LHCI === "true"\)/u,
+    "the loading initializer must expose a static VITE_LHCI guard"
+  )
+  assert.match(
+    initializingInitializer,
+    /resolveInitialInitializingStateWithoutLhci\(/u,
+    "the non-LHCI loading initializer must delegate to the covered resolver"
+  )
 })
 
 test("Lighthouse configuration keeps SEO route-aware and invokes the privacy policy", async () => {

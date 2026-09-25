@@ -61,7 +61,6 @@ export type ChallengeWithAttempts = ChallengeMethod &
  *  - email blur → ``trigger("email")`` then debounced suggestion
  *    population; ``applySuggestion()`` writes the suggested address
  *    back into the form and clears the suggestion banner.
- *    ``navigator.credentials`` then redirect.
  *
  * @returns Surface consumed by ``LoginCredentialForm`` —
  *   form instance + caps/showPassword UI flags + suggestion handles
@@ -211,11 +210,10 @@ export function useLoginForm() {
 export function useMfaFlow() {
   const { t } = useTranslation(["auth"])
   const navigate = useNavigate()
-  const locationState = useRouterState({ select: (s) => s.location.state })
+  const search = useRouterState({ select: (s) => s.location.search })
   const { pendingMfa, submitMfaChallenge } = useAuth()
 
-  const state = locationState as { from?: { pathname: string } } | null
-  const redirectPath = state?.from?.pathname || "/dashboard"
+  const redirectPath = resolveRedirectPath((search as { redirect?: unknown } | null)?.redirect)
 
   const [mfaBusy, setMfaBusy] = useState(false)
   const [mfaError, setMfaError] = useState<string | null>(null)

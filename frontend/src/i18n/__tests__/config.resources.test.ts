@@ -58,6 +58,41 @@ describe("bundled i18n resources", () => {
     ).toEqual({ en: { common: resource } })
   })
 
+  it("accepts only complete locale module paths", () => {
+    const resource = { greeting: "hello" }
+
+    expect(
+      buildResources({
+        "prefix/./locales/en/common.json": resource,
+        "./locales/en/common.json.extra": resource,
+        "./locales/en/common.json": resource,
+      })
+    ).toEqual({ en: { common: resource } })
+  })
+
+  it("keeps the i18next initialization contract explicit", () => {
+    const instance = createI18nInstance("en")
+    expect(instance.options).toMatchObject({
+      defaultNS: "common",
+      fallbackLng: ["ru"],
+      ns: namespaces,
+      resources,
+      lng: "en",
+      load: "currentOnly",
+      nonExplicitSupportedLngs: false,
+      interpolation: { escapeValue: false },
+      react: { useSuspense: false },
+      returnNull: false,
+      saveMissing: false,
+      cleanCode: true,
+      partialBundledLanguages: false,
+      pluralSeparator: "_",
+      keySeparator: ".",
+      initAsync: false,
+    })
+    expect(instance.options.supportedLngs).toEqual([...supportedLngs, "cimode"])
+  })
+
   it("resolves the bootstrap language from supported and unsupported selections", () => {
     window.__UE_SELECTED_LANG__ = "en"
     expect(resolveBootstrapLanguage()).toBe("en")

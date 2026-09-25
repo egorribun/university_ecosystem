@@ -93,7 +93,12 @@ def classify_file(relative_path: str, generated_patterns: list[str]) -> str:
         return "test"
 
     # Source classifications
-    source_dirs = {"app", "frontend/src", "services", "native", "crates"}
+    # ``gen/go`` contains generated protobuf transport files as well as the
+    # authored capability contract that lives beside them.  Generated files
+    # are classified first by ``generated_patterns``; the authored capability
+    # source must remain a real source so its focused tests have an ownership
+    # and orphan relationship.
+    source_dirs = {"app", "frontend/src", "services", "native", "crates", "gen/go"}
     for s_dir in source_dirs:
         if posix_path.startswith(s_dir + "/"):
             # Ensure it is a source code file extension

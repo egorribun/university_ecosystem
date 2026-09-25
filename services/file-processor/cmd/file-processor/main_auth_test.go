@@ -22,6 +22,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
@@ -58,6 +59,18 @@ func signedToken(t *testing.T, method jwt.SigningMethod, key any, claims jwt.Map
 	return signed
 }
 
+func validAuthClaims(sub, jti string) jwt.MapClaims {
+	now := time.Now().UTC()
+	return jwt.MapClaims{
+		"sub":       sub,
+		"jti":       jti,
+		"aud":       defaultJWTAudience,
+		"iat":       now.Add(-time.Minute).Unix(),
+		"exp":       now.Add(time.Hour).Unix(),
+		"is_active": true,
+	}
+}
+
 // ---------------------------------------------------------------------------
 // parseRSAPublicKey
 // ---------------------------------------------------------------------------
@@ -92,6 +105,22 @@ func TestParseRSAPublicKey_Errors(t *testing.T) {
 		_, err = parseRSAPublicKey(ecPEM)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not an RSA key")
+	})
+
+	t.Run("weak modulus is rejected", func(t *testing.T) {
+		weakKey, err := rsa.GenerateKey(rand.Reader, 1024)
+		require.NoError(t, err)
+		_, err = parseRSAPublicKey(rsaPublicPEM(t, &weakKey.PublicKey))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "at least 2048 bits")
+	})
+
+	t.Run("unexpected exponent is rejected", func(t *testing.T) {
+		key := generateRSAKey(t)
+		key.E = 3
+		_, err := parseRSAPublicKey(rsaPublicPEM(t, &key.PublicKey))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exponent must be 65537")
 	})
 }
 
@@ -184,7 +213,7 @@ func TestHTTPJWTMiddleware_DowngradeRejectedWhenRS256Configured(t *testing.T) {
 
 func TestHTTPJWTMiddleware_ValidRS256SetsUserContext(t *testing.T) {
 	rsaKey := generateRSAKey(t)
-	rs := signedToken(t, jwt.SigningMethodRS256, rsaKey, jwt.MapClaims{"sub": "user-42"})
+	rs := signedToken(t, jwt.SigningMethodRS256, rsaKey, validAuthClaims("user-42", "session-rs"))
 	rec, sub := runMiddleware(t, "", &rsaKey.PublicKey, "Bearer "+rs)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	require.NotNil(t, sub)
@@ -192,7 +221,7 @@ func TestHTTPJWTMiddleware_ValidRS256SetsUserContext(t *testing.T) {
 }
 
 func TestHTTPJWTMiddleware_ValidHS256WhenNoRSA(t *testing.T) {
-	hs := signedToken(t, jwt.SigningMethodHS256, []byte("hmac-secret"), jwt.MapClaims{"sub": "user-h"})
+	hs := signedToken(t, jwt.SigningMethodHS256, []byte("hmac-secret"), validAuthClaims("user-h", "session-h"))
 	rec, sub := runMiddleware(t, "hmac-secret", nil, "Bearer "+hs)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	require.NotNil(t, sub)
@@ -222,6 +251,11 @@ func TestHTTPJWTMiddleware_TenantContextUsesSignedClaimOnly(t *testing.T) {
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("hmac-secret"), jwt.MapClaims{
 		"sub":       "tenant-user",
 		"tenant_id": "claim-tenant",
+		"jti":       "tenant-session",
+		"aud":       defaultJWTAudience,
+		"iat":       time.Now().UTC().Add(-time.Minute).Unix(),
+		"exp":       time.Now().UTC().Add(time.Hour).Unix(),
+		"is_active": true,
 	})
 
 	for _, tc := range []struct {
@@ -256,7 +290,7 @@ func TestHTTPJWTMiddleware_TenantContextUsesSignedClaimOnly(t *testing.T) {
 			t,
 			jwt.SigningMethodHS256,
 			[]byte("hmac-secret"),
-			jwt.MapClaims{"sub": "tenant-user"},
+			validAuthClaims("tenant-user", "tenant-session-no-tenant"),
 		)
 		var tenant string
 		next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -285,7 +319,7 @@ func metadataCtx(token string) context.Context {
 
 func TestAuthFunc_ValidTokenPutsSubInContext(t *testing.T) {
 	fn := authFunc("grpc-secret", nil, testLogger()) // pragma: allowlist secret
-	token := signedToken(t, jwt.SigningMethodHS256, []byte("grpc-secret"), jwt.MapClaims{"sub": "grpc-user"})
+	token := signedToken(t, jwt.SigningMethodHS256, []byte("grpc-secret"), validAuthClaims("grpc-user", "grpc-session"))
 
 	ctx, err := fn(metadataCtx(token))
 	require.NoError(t, err)
@@ -298,6 +332,11 @@ func TestAuthFunc_TenantContextUsesSignedClaimOnly(t *testing.T) {
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("grpc-secret"), jwt.MapClaims{
 		"sub":       "grpc-tenant-user",
 		"tenant_id": "claim-tenant",
+		"jti":       "grpc-tenant-session",
+		"aud":       defaultJWTAudience,
+		"iat":       time.Now().UTC().Add(-time.Minute).Unix(),
+		"exp":       time.Now().UTC().Add(time.Hour).Unix(),
+		"is_active": true,
 	})
 
 	withMetadata, err := fn(metadata.NewIncomingContext(
@@ -318,7 +357,7 @@ func TestAuthFunc_TenantContextUsesSignedClaimOnly(t *testing.T) {
 		t,
 		jwt.SigningMethodHS256,
 		[]byte("grpc-secret"),
-		jwt.MapClaims{"sub": "grpc-tenant-user"},
+		validAuthClaims("grpc-tenant-user", "grpc-tenant-session-no-tenant"),
 	)
 	claimless, err := fn(metadata.NewIncomingContext(
 		context.Background(),

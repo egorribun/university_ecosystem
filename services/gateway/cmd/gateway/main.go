@@ -50,6 +50,7 @@ import (
 	"github.com/university-ecosystem/gateway/internal/handlers"
 	"github.com/university-ecosystem/gateway/internal/tlsutil"
 	"github.com/university-ecosystem/gateway/middleware"
+	"github.com/university-ecosystem/services/pkg/logging"
 	"github.com/university-ecosystem/services/pkg/spiffe"
 )
 
@@ -392,16 +393,7 @@ func run() error {
 }
 
 func initLogger() *slog.Logger {
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey {
-				a.Value = slog.StringValue(a.Value.Time().UTC().Format(time.RFC3339Nano))
-			}
-			return a
-		},
-	})
-	return slog.New(handler).With("service", "gateway")
+	return logging.NewJSONLogger(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}).With("service", "gateway")
 }
 
 func initSentry(cfg *config.Config, logger *slog.Logger) {
@@ -597,6 +589,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 			"X-Requested-With",
 			"X-Tenant-ID",
 			"X-Profile-Cache-Envelope",
+			pb.ProcessingCapabilityHeader,
 		},
 		ExposeHeaders:    []string{"X-Request-ID", "X-RateLimit-Remaining"},
 		AllowCredentials: true,
@@ -757,7 +750,15 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 
 	// All API routes under a single wildcard to avoid gin tree conflicts.
 	// Auth logic is handled inside the handler based on path prefix.
-	fileFn := handlers.ProxyOrFileHandler(proxy, internalSecret, ctx, grpcConn, fileClient, logger)
+	fileFn := handlers.ProxyOrFileHandler(
+		proxy,
+		internalSecret,
+		ctx,
+		grpcConn,
+		fileClient,
+		logger,
+		[]byte(strings.TrimSpace(cfg.FileProcessingCapabilitySecret)),
+	)
 	api := router.Group("/api")
 	{
 		api.Any("/v1/*path", func(c *gin.Context) {
@@ -769,8 +770,12 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 				fileFn(c)
 				return
 			}
-			if strings.HasPrefix(subPath, "/auth/") {
+			if strings.HasPrefix(subPath, "/auth/") ||
+				(strings.HasPrefix(subPath, "/img/") &&
+					(c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead)) {
 				// Auth routes: optional JWT
+				// Public media reads also need optional JWT so browser image tags can
+				// reach the backend's positive-prefix S3 image proxy without a token.
 				jwtMiddleware.Optional(ctx)(c)
 			} else {
 				// All other v1 routes: require JWT

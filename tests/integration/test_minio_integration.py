@@ -1,4 +1,4 @@
-"""Real MinIO storage-cell contract tests.
+"""Real S3-compatible storage-cell contract tests.
 
 These tests are intentionally opt-in because they need a Docker daemon. The
 fast unit suite keeps its deterministic fake-storage coverage; this module
@@ -8,24 +8,37 @@ proves the async wrapper against the actual S3-compatible server.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import os
+import re
 from io import BytesIO
+from urllib.error import HTTPError
+from urllib.parse import urlsplit, urlunsplit
+from urllib.request import urlopen
 
 import pytest
 from minio.error import S3Error
 
 from app.services.minio_storage import MinIOClient
+from tests.conftest import minio_container
 
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        os.environ.get("USE_TESTCONTAINERS_MINIO") != "1",
-        reason="Set USE_TESTCONTAINERS_MINIO=1 to run the MinIO cell",
-    ),
-]
+pytestmark = pytest.mark.integration
+
+
+def test_disposable_s3_cell_uses_pinned_seaweedfs() -> None:
+    fixture_source = inspect.getsource(minio_container)
+    assert re.search(
+        r"ghcr\.io/chrislusf/seaweedfs:4\.47@sha256:[0-9a-f]{64}", fixture_source
+    )
+    assert '.with_command("mini -dir=/data -s3.port=9000")' in fixture_source
+    assert '.with_env("S3_BUCKET", "quality-tests")' in fixture_source
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    os.environ.get("USE_TESTCONTAINERS_MINIO") != "1",
+    reason="Set USE_TESTCONTAINERS_MINIO=1 to run the disposable S3 cell",
+)
 async def test_minio_upload_presign_and_delete_round_trip(
     minio_container: dict[str, str],
 ) -> None:
@@ -43,6 +56,16 @@ async def test_minio_upload_presign_and_delete_round_trip(
 
     signed_url = await storage.get_presigned_url(object_name)
     assert "/quality-tests/integration/round-trip.txt" in signed_url
+    parsed_url = urlsplit(signed_url)
+    assert parsed_url.query
+    with await asyncio.to_thread(urlopen, signed_url, timeout=10) as signed_response:
+        assert signed_response.read() == b"quality-cell"
+
+    unsigned_url = urlunsplit(parsed_url._replace(query=""))
+    with pytest.raises(HTTPError) as unsigned_error:
+        await asyncio.to_thread(urlopen, unsigned_url, timeout=10)
+    with unsigned_error.value:
+        assert unsigned_error.value.code == 403
 
     response = await asyncio.to_thread(
         storage._client.get_object, "quality-tests", object_name

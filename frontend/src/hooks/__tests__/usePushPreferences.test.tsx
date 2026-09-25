@@ -1,4 +1,6 @@
 import { renderHook, act, waitFor } from "@testing-library/react"
+import type { PushTopicsResponse } from "@/types/notifications"
+import { useAuthStore } from "@/stores/useAuthStore"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 import type { ReactNode } from "react"
@@ -6,9 +8,22 @@ import { createElement } from "react"
 
 // ---- Module mocks (NEVER hit MSW for /api/ paths) ----
 const mockDeleteSubscription = vi.fn(async (..._a: unknown[]) => undefined)
+const mockFetchPushTopics = vi.fn(async (): Promise<PushTopicsResponse> => serverTopics(false))
+const mockUpdatePushTopics = vi.fn(async (..._a: unknown[]) => undefined)
 vi.mock("@/api/notifications", () => ({
   deleteSubscription: (...args: unknown[]) => mockDeleteSubscription(...args),
+  fetchPushTopics: () => mockFetchPushTopics(),
+  updatePushTopics: (...args: unknown[]) => mockUpdatePushTopics(...args),
 }))
+
+function serverTopics(hasPreferences: boolean, topics: string[] = []): PushTopicsResponse {
+  return {
+    allowed: [...ALL_TOPICS],
+    topics,
+    has_preferences: hasPreferences,
+    updated_at: null,
+  }
+}
 
 const mockLogError = vi.fn((..._a: unknown[]) => undefined)
 const mockLogWarning = vi.fn((..._a: unknown[]) => undefined)
@@ -32,16 +47,32 @@ vi.mock("@/push/subscribe", () => ({
   ensurePushSubscription: (...args: unknown[]) => mockEnsurePushSubscription(...args),
   setPushConsent: (...args: unknown[]) => mockSetPushConsent(...args),
   getPersistedTopics: (...args: unknown[]) => mockGetPersistedTopics(...args),
-  getExistingPushSubscription: (...args: unknown[]) => mockGetExistingPushSubscription(...args),
+  getOwnedPushSubscription: (...args: unknown[]) => mockGetExistingPushSubscription(...args),
   hasPushConsent: () => mockHasPushConsent(),
   setPersistedTopics: (...args: unknown[]) => mockSetPersistedTopics(...args),
 }))
 
-const mockUseAuth = vi.fn(() => ({ user: { id: 7 } }) as any)
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => mockUseAuth(),
   currentUserQueryKey: ["users", "me"] as const,
 }))
+
+const ALL_TOPICS = [
+  "news.published",
+  "schedule.changed",
+  "events.published",
+  "chat.message.created",
+  "system.release",
+] as const
+
+const setIdentity = (id: unknown, loading = false) =>
+  useAuthStore.setState({ user: id === null ? null : ({ id } as any), loading })
+
+const topicStateOf = (enabled: readonly string[]) =>
+  Object.fromEntries(ALL_TOPICS.map((topic) => [topic, enabled.includes(topic)]))
+
+function never<T>(): Promise<T> {
+  return new Promise<T>(() => {})
+}
 
 const mockIsSafariIOS = vi.fn(() => false)
 vi.mock("@/utils/browser", () => ({
@@ -75,10 +106,20 @@ function wrapper({ children }: { children: ReactNode }) {
 
 // Helper to install a Notification global with a controllable permission
 function installNotification(permission: NotificationPermission) {
-  ;(globalThis as any).Notification = { permission }
+  ;(globalThis as any).Notification = {
+    permission,
+    requestPermission: vi.fn(async () => permission),
+  }
 }
 
 describe("usePushPreferences", () => {
+  const renderReady = async (options?: Parameters<typeof usePushPreferences>[0]) => {
+    mockFetchPushTopics.mockResolvedValue(serverTopics(false))
+    const rendered = renderHook(() => usePushPreferences(options), { wrapper })
+    await waitFor(() => expect(rendered.result.current.topicsReady).toBe(true))
+    return rendered
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsPushSupported.mockReturnValue(true)
@@ -88,7 +129,10 @@ describe("usePushPreferences", () => {
     mockGetExistingPushSubscription.mockResolvedValue(null)
     mockHasPushConsent.mockReturnValue(false)
     mockIsSafariIOS.mockReturnValue(false)
-    mockUseAuth.mockReturnValue({ user: { id: 7 } } as any)
+    // Hydration is exercised explicitly; elsewhere it must not race toggles.
+    mockFetchPushTopics.mockReturnValue(never())
+    mockUpdatePushTopics.mockResolvedValue(undefined)
+    setIdentity(7)
     installNotification("default")
     // Clean navigator.permissions to a no-op so the permission effect doesn't query.
     delete (globalThis.navigator as any).permissions
@@ -114,6 +158,36 @@ describe("usePushPreferences", () => {
   })
 
   // ---- enableNotifications branches (lines 150-216) ----
+
+  it("requests native permission before awaiting service-worker readiness", async () => {
+    const notification = {
+      permission: "default" as NotificationPermission,
+      requestPermission: vi.fn(async () => {
+        notification.permission = "granted"
+        return "granted" as NotificationPermission
+      }),
+    }
+    vi.stubGlobal("Notification", notification)
+    let permissionRequestsAtReadiness = -1
+    mockResolveServiceWorkerRegistration.mockImplementation(async () => {
+      permissionRequestsAtReadiness = notification.requestPermission.mock.calls.length
+      return {} as ServiceWorkerRegistration
+    })
+    mockEnsurePushSubscription.mockResolvedValue(null)
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await act(async () => {
+      const enabling = result.current.enableNotifications()
+      expect(notification.requestPermission).toHaveBeenCalledOnce()
+      await enabling
+    })
+
+    expect(permissionRequestsAtReadiness).toBe(1)
+    expect(notification.requestPermission).toHaveBeenCalledOnce()
+    expect(mockEnsurePushSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({ requestPermission: false })
+    )
+  })
 
   it("enableNotifications: unsupported push → warning + setPushSupported(false) (152-159)", async () => {
     mockIsPushSupported.mockReturnValue(false)
@@ -147,7 +221,7 @@ describe("usePushPreferences", () => {
   })
 
   it("enableNotifications: no SW registration → workerNotReady (167-171)", async () => {
-    installNotification("default")
+    installNotification("granted")
     mockResolveServiceWorkerRegistration.mockResolvedValue(null)
     const onNotify = vi.fn()
     const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
@@ -199,6 +273,31 @@ describe("usePushPreferences", () => {
     )
   })
 
+  it.each([
+    ["denied", "notifications:messages.enableInSettings"],
+    ["default", "notifications:messages.confirmPermission"],
+  ] as const)(
+    "reports a %s permission revoked while subscription was pending",
+    async (permission, text) => {
+      installNotification("granted")
+      mockResolveServiceWorkerRegistration.mockResolvedValue({} as ServiceWorkerRegistration)
+      mockEnsurePushSubscription.mockImplementation(async () => {
+        ;(globalThis as any).Notification.permission = permission
+        return null
+      })
+      const onNotify = vi.fn()
+      const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+
+      await act(async () => {
+        await result.current.enableNotifications()
+      })
+
+      expect(onNotify).toHaveBeenCalledWith(expect.objectContaining({ text, severity: "info" }))
+      expect(result.current.pushSubscription).toBeNull()
+      expect(result.current.notificationPermission).toBe(permission)
+    }
+  )
+
   it("enableNotifications: subscription null + undecided permission asks for confirmation", async () => {
     installNotification("default")
     mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
@@ -218,10 +317,37 @@ describe("usePushPreferences", () => {
     )
   })
 
+  it("does not await service-worker readiness when the native permission request rejects", async () => {
+    const onNotify = vi.fn()
+    const notification = {
+      permission: "default" as NotificationPermission,
+      requestPermission: vi.fn(async () => {
+        throw new DOMException("Not allowed", "NotAllowedError")
+      }),
+    }
+    vi.stubGlobal("Notification", notification)
+    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+
+    expect(notification.requestPermission).toHaveBeenCalledOnce()
+    expect(mockResolveServiceWorkerRegistration).not.toHaveBeenCalled()
+    expect(onNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "notifications:messages.enableFailed", severity: "error" })
+    )
+    expect(result.current.pushBusy).toBe(false)
+    expect(result.current.notificationsEnabled).toBe(false)
+  })
+
   it("enableNotifications: subscription present but permission not granted → enableInSettings (191-199)", async () => {
-    installNotification("default")
+    installNotification("granted")
     mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
-    mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://x" } as any)
+    mockEnsurePushSubscription.mockImplementation(async () => {
+      ;(globalThis as any).Notification.permission = "denied"
+      return { endpoint: "https://x" } as any
+    })
     const onNotify = vi.fn()
     const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
 
@@ -239,7 +365,8 @@ describe("usePushPreferences", () => {
 
   it("enableNotifications: full success path → enabled + setPushConsent (200-205)", async () => {
     installNotification("granted")
-    mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
+    const registration = {} as ServiceWorkerRegistration
+    mockResolveServiceWorkerRegistration.mockResolvedValue(registration)
     mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://x" } as any)
     mockGetPersistedTopics.mockReturnValue(["news", "events"])
     const onNotify = vi.fn()
@@ -249,6 +376,13 @@ describe("usePushPreferences", () => {
       await result.current.enableNotifications()
     })
 
+    // Enabling never chooses topics implicitly: the server keeps the
+    // account's canonical preference, including an explicit opt-out.
+    expect(mockEnsurePushSubscription).toHaveBeenCalledWith({
+      registration,
+      requestPermission: false,
+    })
+    expect(mockUpdatePushTopics).not.toHaveBeenCalled()
     expect(mockSetPushConsent).toHaveBeenCalledWith(true)
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({ text: "notifications:messages.enabled", severity: "success" })
@@ -267,6 +401,137 @@ describe("usePushPreferences", () => {
     })
 
     expect(mockLogError).toHaveBeenCalledWith("Failed to enable notifications", expect.anything())
+    expect(onNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "notifications:messages.enableFailed", severity: "error" })
+    )
+  })
+
+  it("sends topics toggled while disabled as an explicit update after binding", async () => {
+    installNotification("granted")
+    mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
+    mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://x" } as any)
+    const { result } = await renderReady()
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+
+    await act(async () => {
+      await result.current.handleTopicToggle("news.published")({} as any, false)
+    })
+    expect(mockUpdatePushTopics).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+
+    expect(mockEnsurePushSubscription).toHaveBeenCalledWith(
+      expect.not.objectContaining({ topics: expect.anything() })
+    )
+    expect(mockUpdatePushTopics).toHaveBeenCalledOnce()
+    expect(mockUpdatePushTopics).toHaveBeenCalledWith(
+      "https://x",
+      ALL_TOPICS.filter((topic) => topic !== "news.published")
+    )
+    expect(mockSetPushConsent).toHaveBeenCalledWith(true)
+
+    // The pending choice is consumed once it reached the server.
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+    expect(mockUpdatePushTopics).toHaveBeenCalledOnce()
+  })
+
+  it("sends an all-off choice made while disabled as an explicit empty update", async () => {
+    installNotification("granted")
+    mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
+    mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://x" } as any)
+    const { result } = await renderReady()
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+
+    for (const topic of ALL_TOPICS) {
+      await act(async () => {
+        await result.current.handleTopicToggle(topic)({} as any, false)
+      })
+    }
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+
+    expect(mockUpdatePushTopics).toHaveBeenCalledWith("https://x", [])
+  })
+
+  it("drops a pending topic choice when another account is confirmed", async () => {
+    installNotification("granted")
+    mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
+    mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://x" } as any)
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+    await act(async () => {
+      await result.current.handleTopicToggle("news.published")({} as any, false)
+    })
+
+    act(() => {
+      setIdentity(8)
+    })
+    await waitFor(() => expect(mockGetExistingPushSubscription).toHaveBeenCalledTimes(2))
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+
+    expect(mockEnsurePushSubscription).toHaveBeenCalledOnce()
+    expect(mockUpdatePushTopics).not.toHaveBeenCalled()
+  })
+
+  it("keeps a pending topic choice when its explicit update fails", async () => {
+    installNotification("granted")
+    mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
+    mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://x" } as any)
+    mockUpdatePushTopics.mockRejectedValueOnce(new Error("patch failed"))
+    const onNotify = vi.fn()
+    const { result } = await renderReady({ onNotify })
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+    await act(async () => {
+      await result.current.handleTopicToggle("system.release")({} as any, false)
+    })
+
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+
+    // The endpoint is already bound: push stays on and the topic failure
+    // is reported as such, so the UI never hides active delivery.
+    expect(onNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "notifications:messages.updateFailed", severity: "error" })
+    )
+    expect(onNotify).not.toHaveBeenCalledWith(
+      expect.objectContaining({ text: "notifications:messages.enabled" })
+    )
+    expect(mockSetPushConsent).toHaveBeenCalledWith(true)
+    expect(result.current.pushSubscription).toEqual({ endpoint: "https://x" })
+    expect(mockLogError).toHaveBeenCalledWith("Failed to update topics", expect.any(Error))
+    // The server copy is re-read so the UI shows the preference actually kept.
+    await waitFor(() => expect(mockFetchPushTopics).toHaveBeenCalledTimes(2))
+
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+    expect(mockUpdatePushTopics).toHaveBeenCalledTimes(2)
+    expect(mockUpdatePushTopics).toHaveBeenLastCalledWith(
+      "https://x",
+      ALL_TOPICS.filter((topic) => topic !== "system.release")
+    )
+  })
+
+  it("does not grant push consent when subscription persistence fails", async () => {
+    installNotification("granted")
+    mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
+    mockEnsurePushSubscription.mockRejectedValue(new Error("persistence failed"))
+    const onNotify = vi.fn()
+    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+
+    expect(mockSetPushConsent).not.toHaveBeenCalledWith(true)
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({ text: "notifications:messages.enableFailed", severity: "error" })
     )
@@ -311,7 +576,7 @@ describe("usePushPreferences", () => {
       pushManager: { getSubscription: vi.fn(async () => null) },
     } as any)
     const onNotify = vi.fn()
-    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+    const { result } = await renderReady({ onNotify })
 
     await act(async () => {
       await result.current.disableNotifications()
@@ -321,6 +586,8 @@ describe("usePushPreferences", () => {
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({ text: "notifications:messages.disabled", severity: "success" })
     )
+    // Disabling refreshes the server-backed push state.
+    await waitFor(() => expect(mockFetchPushTopics).toHaveBeenCalledTimes(2))
   })
 
   it("disableNotifications: unsubscribe + delete success → disabled (245-266)", async () => {
@@ -334,7 +601,7 @@ describe("usePushPreferences", () => {
     } as any)
     mockDeleteSubscription.mockResolvedValue(undefined)
     const onNotify = vi.fn()
-    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+    const { result } = await renderReady({ onNotify })
 
     await act(async () => {
       await result.current.disableNotifications()
@@ -344,6 +611,7 @@ describe("usePushPreferences", () => {
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({ text: "notifications:messages.disabled", severity: "success" })
     )
+    await waitFor(() => expect(mockFetchPushTopics).toHaveBeenCalledTimes(2))
   })
 
   it("disableNotifications: an endpoint-free subscription disables locally without deletion", async () => {
@@ -418,120 +686,69 @@ describe("usePushPreferences", () => {
 
   // ---- handleTopicToggle branches (lines 289-332) ----
 
-  it("handleTopicToggle: persists + early-returns when notifications disabled", async () => {
-    // notificationsEnabled is false (no subscription) → returns after persisting (line 287)
-    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+  it("handleTopicToggle: records the choice locally without any server call while disabled", async () => {
+    const { result } = await renderReady()
     await waitFor(() => expect(result.current.pushInitializing).toBe(false))
 
     await act(async () => {
       await result.current.handleTopicToggle("news.published")({} as any, false)
     })
 
-    expect(mockSetPersistedTopics).toHaveBeenCalled()
     expect(result.current.topicState["news.published"]).toBe(false)
-  })
-
-  it("handleTopicToggle: unsupported reverts topic state (288-291)", async () => {
-    // First enable notifications so notificationsEnabled becomes true, then make push unsupported.
-    installNotification("granted")
-    mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
-    mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://x" } as any)
-    const { result } = renderHook(() => usePushPreferences(), { wrapper })
-    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
-    await act(async () => {
-      await result.current.enableNotifications()
-    })
-    await waitFor(() => expect(result.current.notificationsEnabled).toBe(true))
-
-    mockIsPushSupported.mockReturnValue(false)
-    await act(async () => {
-      await result.current.handleTopicToggle("news.published")({} as any, false)
-    })
-
-    // state reverted to previous (true) after unsupported guard
-    await waitFor(() => expect(result.current.topicState["news.published"]).toBe(true))
-  })
-
-  it("handleTopicToggle: enabled, no SW → workerUnavailable + revert (296-300)", async () => {
-    installNotification("granted")
-    mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
-    mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://x" } as any)
-    const onNotify = vi.fn()
-    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
-    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
-    await act(async () => {
-      await result.current.enableNotifications()
-    })
-    await waitFor(() => expect(result.current.notificationsEnabled).toBe(true))
-    onNotify.mockClear()
-
-    mockResolveServiceWorkerRegistration.mockResolvedValue(null)
-    await act(async () => {
-      await result.current.handleTopicToggle("news.published")({} as any, false)
-    })
-
-    expect(onNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ text: "notifications:messages.workerUnavailable" })
+    expect(mockUpdatePushTopics).not.toHaveBeenCalled()
+    expect(mockEnsurePushSubscription).not.toHaveBeenCalled()
+    expect(mockSetPersistedTopics).not.toHaveBeenCalledWith(
+      expect.arrayContaining(["schedule.changed"]),
+      expect.anything()
     )
   })
 
-  it("handleTopicToggle: enabled, subscription null → permission hint + revert (306-315)", async () => {
+  const enableWith = async (
+    result: { current: ReturnType<typeof usePushPreferences> },
+    endpoint = "https://x"
+  ) => {
     installNotification("granted")
     mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
-    mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://x" } as any)
-    const onNotify = vi.fn()
-    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+    mockEnsurePushSubscription.mockResolvedValue({ endpoint } as any)
     await waitFor(() => expect(result.current.pushInitializing).toBe(false))
     await act(async () => {
       await result.current.enableNotifications()
     })
     await waitFor(() => expect(result.current.notificationsEnabled).toBe(true))
+  }
+
+  it("handleTopicToggle: enabled success → explicit PATCH + label notification (316-328)", async () => {
+    mockFetchPushTopics.mockResolvedValue(serverTopics(false))
+    const onNotify = vi.fn()
+    const { result } = await renderReady({ onNotify })
+    await enableWith(result, "https://endpoint")
+    await waitFor(() => expect(mockFetchPushTopics).toHaveBeenCalledTimes(2))
     onNotify.mockClear()
 
-    mockEnsurePushSubscription.mockResolvedValue(null)
     await act(async () => {
       await result.current.handleTopicToggle("news.published")({} as any, false)
     })
 
-    expect(onNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: "notifications:messages.subscriptionPermissionHint",
-        severity: "warning",
-      })
+    expect(mockUpdatePushTopics).toHaveBeenCalledWith(
+      "https://endpoint",
+      ALL_TOPICS.filter((topic) => topic !== "news.published")
     )
-  })
-
-  it("handleTopicToggle: enabled success → topicDisabled label notification (316-328)", async () => {
-    installNotification("granted")
-    mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
-    mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://x" } as any)
-    mockGetPersistedTopics.mockReturnValue(["schedule", "events", "system"])
-    const onNotify = vi.fn()
-    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
-    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
-    await act(async () => {
-      await result.current.enableNotifications()
-    })
-    await waitFor(() => expect(result.current.notificationsEnabled).toBe(true))
-    onNotify.mockClear()
-
-    await act(async () => {
-      await result.current.handleTopicToggle("news.published")({} as any, false)
-    })
-
+    expect(mockEnsurePushSubscription).toHaveBeenCalledOnce()
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
         text: "notifications:messages.topicDisabled:notifications:topics.newsPublished",
         severity: "success",
       })
     )
+    // The server copy is refreshed after an explicit update.
+    await waitFor(() => expect(mockFetchPushTopics).toHaveBeenCalledTimes(3))
 
     onNotify.mockClear()
-    mockGetPersistedTopics.mockReturnValue(undefined)
     await act(async () => {
       await result.current.handleTopicToggle("news.published")({} as any, true)
     })
 
+    expect(mockUpdatePushTopics).toHaveBeenLastCalledWith("https://endpoint", [...ALL_TOPICS])
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
         text: "notifications:messages.topicEnabled:notifications:topics.newsPublished",
@@ -540,20 +757,46 @@ describe("usePushPreferences", () => {
     )
   })
 
-  it("handleTopicToggle: enabled, ensure throws → updateFailed + revert + logError (329-332)", async () => {
+  it("handleTopicToggle: turning every topic off sends an explicit empty PATCH", async () => {
+    const { result } = await renderReady()
+    await enableWith(result)
+
+    for (const topic of ALL_TOPICS) {
+      await act(async () => {
+        await result.current.handleTopicToggle(topic)({} as any, false)
+      })
+    }
+
+    expect(mockUpdatePushTopics).toHaveBeenLastCalledWith("https://x", [])
+    expect(mockEnsurePushSubscription).toHaveBeenCalledOnce()
+  })
+
+  it("handleTopicToggle: ignores toggles while another push operation is running", async () => {
     installNotification("granted")
     mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
-    mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://x" } as any)
-    const onNotify = vi.fn()
-    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+    mockEnsurePushSubscription.mockReturnValue(never())
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
     await waitFor(() => expect(result.current.pushInitializing).toBe(false))
-    await act(async () => {
-      await result.current.enableNotifications()
+
+    act(() => {
+      void result.current.enableNotifications()
     })
-    await waitFor(() => expect(result.current.notificationsEnabled).toBe(true))
+    await waitFor(() => expect(result.current.pushBusy).toBe(true))
+    await act(async () => {
+      await result.current.handleTopicToggle("news.published")({} as any, false)
+    })
+
+    expect(result.current.topicState["news.published"]).toBe(true)
+    expect(mockUpdatePushTopics).not.toHaveBeenCalled()
+  })
+
+  it("handleTopicToggle: enabled, PATCH throws → updateFailed + revert + logError (329-332)", async () => {
+    const onNotify = vi.fn()
+    const { result } = await renderReady({ onNotify })
+    await enableWith(result)
     onNotify.mockClear()
 
-    mockEnsurePushSubscription.mockRejectedValue(new Error("ensure boom"))
+    mockUpdatePushTopics.mockRejectedValue(new Error("patch boom"))
     await act(async () => {
       await result.current.handleTopicToggle("news.published")({} as any, false)
     })
@@ -562,6 +805,190 @@ describe("usePushPreferences", () => {
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({ text: "notifications:messages.updateFailed", severity: "error" })
     )
+    expect(result.current.topicState["news.published"]).toBe(true)
+    expect(result.current.pushBusy).toBe(false)
+  })
+
+  // ---- server topic hydration (ADR-041) ----
+
+  it.each([
+    ["an explicit topic list", serverTopics(true, ["news.published"]), ["news.published"]],
+    ["an explicit opt-out of every topic", serverTopics(true, []), []],
+    ["no stored preference (default all on)", serverTopics(false, ["news.published"]), ALL_TOPICS],
+  ] as const)("hydrates topic state from %s", async (_label, response, expected) => {
+    mockFetchPushTopics.mockResolvedValue(response)
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await waitFor(() => expect(result.current.topicState).toEqual(topicStateOf(expected)))
+    expect(mockSetPersistedTopics).toHaveBeenCalledWith(
+      response.has_preferences ? response.topics : null,
+      { userId: "7" }
+    )
+  })
+
+  it("lets the server response override the cached placeholder", async () => {
+    let resolveTopics!: (value: PushTopicsResponse) => void
+    mockFetchPushTopics.mockReturnValue(
+      new Promise<PushTopicsResponse>((resolve) => {
+        resolveTopics = resolve
+      })
+    )
+    mockGetPersistedTopics.mockReturnValue(["news.published"])
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    expect(result.current.topicState).toEqual(topicStateOf(["news.published"]))
+    expect(mockGetPersistedTopics).toHaveBeenCalledWith({ userId: "7" })
+
+    await act(async () => {
+      resolveTopics(serverTopics(false))
+    })
+
+    await waitFor(() => expect(result.current.topicState).toEqual(topicStateOf(ALL_TOPICS)))
+  })
+
+  it.each([
+    ["an SSR stub", "ssr-stub", false],
+    ["an encrypted-cache placeholder", "-1", false],
+    ["a loading real user", 7, true],
+    ["a signed-out user", null, false],
+  ] as const)("does not fetch server topics for %s", async (_label, id, loading) => {
+    setIdentity(id, loading)
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+    expect(mockFetchPushTopics).not.toHaveBeenCalled()
+    expect(result.current.topicState).toEqual(topicStateOf(ALL_TOPICS))
+  })
+
+  it("does not fetch server topics when push is unsupported", async () => {
+    mockIsPushSupported.mockReturnValue(false)
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await waitFor(() => expect(result.current.pushSupported).toBe(false))
+    expect(mockFetchPushTopics).not.toHaveBeenCalled()
+  })
+
+  it("never stores a topic answer for an account that changed during the request", async () => {
+    let answer: (response: PushTopicsResponse) => void = () => undefined
+    mockFetchPushTopics.mockReturnValueOnce(
+      new Promise<PushTopicsResponse>((resolve) => {
+        answer = resolve
+      })
+    )
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    act(() => {
+      setIdentity(8)
+    })
+    await act(async () => {
+      answer(serverTopics(true, ["system.release"]))
+    })
+
+    expect(mockSetPersistedTopics).not.toHaveBeenCalledWith(["system.release"], { userId: "7" })
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+  })
+
+  it("describes an explicit opt-out of every topic", async () => {
+    mockFetchPushTopics.mockResolvedValue(serverTopics(true, []))
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await waitFor(() =>
+      expect(result.current.selectedTopicsDescription).toBe("notifications:messages.noTopics")
+    )
+  })
+
+  it("reports whether the canonical preference has loaded", async () => {
+    const { result } = await renderReady()
+
+    expect(result.current.topicsReady).toBe(true)
+  })
+
+  it("caches the server preference under the account-scoped push-topics key", async () => {
+    const response = serverTopics(true, ["events.published"])
+    mockFetchPushTopics.mockResolvedValue(response)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const withClient = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children)
+
+    const { result } = renderHook(() => usePushPreferences(), { wrapper: withClient })
+
+    await waitFor(() =>
+      expect(result.current.topicState).toEqual(topicStateOf(["events.published"]))
+    )
+    expect(client.getQueryData(["notifications", "push-topics", "7"])).toEqual(response)
+  })
+
+  it("shows the next account's cached topics while its server copy is loading", async () => {
+    mockGetPersistedTopics.mockImplementation((...args: unknown[]) =>
+      (args[0] as { userId?: string } | undefined)?.userId === "8"
+        ? ["system.release"]
+        : ["news.published"]
+    )
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+    expect(result.current.topicState).toEqual(topicStateOf(["news.published"]))
+
+    act(() => {
+      setIdentity(8)
+    })
+
+    expect(result.current.topicState).toEqual(topicStateOf(["system.release"]))
+    expect(mockFetchPushTopics).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+  })
+
+  it("reports through the latest onNotify callback", async () => {
+    mockIsPushSupported.mockReturnValue(false)
+    const first = vi.fn()
+    const latest = vi.fn()
+    const { result, rerender } = renderHook(({ onNotify }) => usePushPreferences({ onNotify }), {
+      wrapper,
+      initialProps: { onNotify: first },
+    })
+
+    rerender({ onNotify: latest })
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+
+    expect(latest).toHaveBeenCalledWith(expect.objectContaining({ severity: "warning" }))
+    expect(first).not.toHaveBeenCalled()
+  })
+
+  it("handleTopicToggle: marks push as busy until the explicit update settles", async () => {
+    const { result } = await renderReady()
+    await enableWith(result)
+    let finish: () => void = () => undefined
+    mockUpdatePushTopics.mockReturnValue(
+      new Promise<undefined>((resolve) => {
+        finish = () => resolve(undefined)
+      })
+    )
+
+    let pending: Promise<void> = Promise.resolve()
+    act(() => {
+      pending = result.current.handleTopicToggle("news.published")({} as any, false)
+    })
+    expect(result.current.pushBusy).toBe(true)
+
+    await act(async () => {
+      finish()
+      await pending
+    })
+    expect(result.current.pushBusy).toBe(false)
+  })
+
+  it("re-hydrates topics for a newly confirmed account", async () => {
+    mockFetchPushTopics.mockResolvedValueOnce(serverTopics(true, ["news.published"]))
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+    await waitFor(() => expect(result.current.topicState).toEqual(topicStateOf(["news.published"])))
+
+    mockFetchPushTopics.mockResolvedValueOnce(serverTopics(true, ["system.release"]))
+    act(() => {
+      setIdentity(8)
+    })
+
+    await waitFor(() => expect(result.current.topicState).toEqual(topicStateOf(["system.release"])))
+    expect(mockSetPersistedTopics).toHaveBeenLastCalledWith(["system.release"], { userId: "8" })
   })
 
   // ---- permission-query effect (lines 369-402) ----
@@ -661,18 +1088,21 @@ describe("usePushPreferences", () => {
     await waitFor(() => expect(result.current.pushInitializing).toBe(false))
   })
 
-  it("detectSubscription: consented + granted → ensurePushSubscription path (428-450)", async () => {
+  it("detectSubscription is read-only even with consent and granted permission", async () => {
     installNotification("granted")
     mockIsPushSupported.mockReturnValue(true)
     mockHasPushConsent.mockReturnValue(true)
     mockGetPersistedTopics.mockReturnValue(["news"])
-    mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://detected" } as any)
+    const subscription = { endpoint: "https://detected" } as PushSubscription
+    mockGetExistingPushSubscription.mockResolvedValue(subscription)
 
     const { result } = renderHook(() => usePushPreferences(), { wrapper })
 
-    await waitFor(() => expect(result.current.pushSubscription).not.toBeNull())
-    expect(mockSetPushConsent).toHaveBeenCalledWith(true)
+    await waitFor(() => expect(result.current.pushSubscription).toBe(subscription))
     await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+    expect(mockEnsurePushSubscription).not.toHaveBeenCalled()
+    expect(mockUpdatePushTopics).not.toHaveBeenCalled()
+    expect(mockSetPushConsent).not.toHaveBeenCalled()
   })
 
   it("detectSubscription: keeps an existing subscription without local consent or topics", async () => {
@@ -685,7 +1115,17 @@ describe("usePushPreferences", () => {
 
     await waitFor(() => expect(result.current.pushSubscription).toBe(subscription))
     expect(mockSetPushConsent).not.toHaveBeenCalledWith(true)
-    expect(mockGetPersistedTopics).toHaveBeenCalledTimes(2)
+  })
+
+  it("detectSubscription asks only for the confirmed account's own subscription", async () => {
+    setIdentity("user-7")
+    mockGetExistingPushSubscription.mockResolvedValue(null)
+
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+    expect(mockGetExistingPushSubscription).toHaveBeenLastCalledWith("user-7")
+    expect(result.current.notificationsEnabled).toBe(false)
   })
 
   // ---- invalidatePushQueries predicate (lines 86-95) ----
@@ -716,12 +1156,13 @@ describe("usePushPreferences", () => {
     const predicate = invalidateSpy.mock.calls[0]![0]!.predicate as (q: any) => boolean
     expect(predicate({ queryKey: ["users", "me"] })).toBe(true)
     expect(predicate({ queryKey: ["notifications", "list"] })).toBe(true)
+    expect(predicate({ queryKey: ["notifications", "push-topics", "7"] })).toBe(true)
     expect(predicate({ queryKey: ["unrelated", "thing"] })).toBe(false)
     expect(predicate({ queryKey: "not-an-array" })).toBe(false)
   })
 
-  it("supports an anonymous user and reports when every topic is disabled", async () => {
-    mockUseAuth.mockReturnValue({ user: null } as any)
+  it("ignores topic toggles for an anonymous user whose preference cannot load", async () => {
+    setIdentity(null)
     const { result } = renderHook(() => usePushPreferences(), { wrapper })
 
     await waitFor(() => expect(result.current.pushInitializing).toBe(false))
@@ -731,7 +1172,9 @@ describe("usePushPreferences", () => {
       })
     }
 
-    expect(result.current.selectedTopicsDescription).toBe("notifications:messages.noTopics")
+    expect(result.current.topicsReady).toBe(false)
+    expect(result.current.topicState).toEqual(topicStateOf([...NOTIFICATION_TOPIC_KEYS]))
+    expect(mockUpdatePushTopics).not.toHaveBeenCalled()
   })
 
   it("ignores a null persisted-topic payload", async () => {

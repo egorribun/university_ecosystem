@@ -15,6 +15,7 @@ from starlette.responses import Response
 from app.core.event_registry import reconstruct_event, register_event
 from app.core.events import DomainEvent
 from app.core.middleware.response_hardening import http_response_hardening
+from tests.conftest import call_injected
 
 
 @register_event
@@ -128,11 +129,11 @@ async def test_schedule_ics_omits_content_language_without_locale():
         patch.object(schedule, "resolve_locale", return_value=None),
         patch.object(schedule, "generate_schedule_ics", return_value="BEGIN:VCALENDAR"),
     ):
-        response = await schedule.download_schedule_ics(
-            request,
-            schedule_service,
+        response = await call_injected(
+            schedule.download_schedule_ics,
+            request=request,
             group=group_id,
-            db=db,
+            provides={"ScheduleService": schedule_service, "AsyncDatabaseSession": db},
         )
 
     assert response.headers.get("content-language") is None

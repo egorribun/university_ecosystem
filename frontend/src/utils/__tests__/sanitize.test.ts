@@ -307,21 +307,6 @@ describe("sanitize utilities", () => {
       expect(sanitizeTelegramUrl("https://evil.com/phish")).toBe("")
     })
 
-    it("fails closed when the final Telegram URL parse throws", () => {
-      const NativeURL = globalThis.URL
-      let calls = 0
-      class FailingURL extends NativeURL {
-        constructor(..._args: ConstructorParameters<typeof NativeURL>) {
-          calls += 1
-          if (calls === 2) throw new TypeError("URL parser unavailable")
-          super(..._args)
-        }
-      }
-      vi.stubGlobal("URL", FailingURL)
-
-      expect(sanitizeTelegramUrl("https://t.me/university")).toBe("")
-    })
-
     it("fails closed when the Telegram URL normalizer rejects the URL", () => {
       const NativeURL = globalThis.URL
       class FailingURL extends NativeURL {

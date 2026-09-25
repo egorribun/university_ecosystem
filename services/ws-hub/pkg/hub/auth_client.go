@@ -55,8 +55,9 @@ type call struct {
 
 // InternalAPIAuthClient implements RoomAuthClient using backend HTTP calls.
 type InternalAPIAuthClient struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL           string
+	internalAuthToken string
+	httpClient        *http.Client
 
 	cache *lru.Cache[string, cacheEntry]
 	redis *redis.Client
@@ -86,7 +87,21 @@ var authClientTLSConfigFunc = func(client *spiffe.Client, backendSpiffeID string
 var newAuthLRUFunc = lru.New[string, cacheEntry]
 
 // NewInternalAPIAuthClient creates a client with L1/L2 caching.
+//
+// The token-aware constructor should be used by production startup.  This
+// compatibility constructor intentionally keeps the development/test client
+// usable without an internal callback token.
 func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *InternalAPIAuthClient {
+	return newInternalAPIAuthClient(baseURL, "", redisClient)
+}
+
+// NewInternalAPIAuthClientWithToken creates a client that authenticates the
+// internal participant callback with X-Internal-Token.
+func NewInternalAPIAuthClientWithToken(baseURL, internalAuthToken string, redisClient *redis.Client) *InternalAPIAuthClient {
+	return newInternalAPIAuthClient(baseURL, internalAuthToken, redisClient)
+}
+
+func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *redis.Client) *InternalAPIAuthClient {
 	cache, err := newAuthLRUFunc(100000)
 	if err != nil {
 		// FP-P2-03: Panic if LRU fails to initialize (should never happen with valid size)
@@ -108,8 +123,9 @@ func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *Intern
 	})
 
 	return &InternalAPIAuthClient{
-		baseURL: baseURL,
-		redis:   redisClient,
+		baseURL:           baseURL,
+		internalAuthToken: internalAuthToken,
+		redis:             redisClient,
 		// WSH-04 (audit 2026-03-08 Wave 5): Explicit transport configuration.
 		// Go's default transport has MaxIdleConnsPerHost=0 (unlimited), which
 		// can accumulate idle sockets to the backend under reconnect storms.
@@ -244,6 +260,9 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 	req, err := http.NewRequestWithContext(callCtx, http.MethodGet, fullURL, nil)
 	if err != nil {
 		return false, err
+	}
+	if c.internalAuthToken != "" {
+		req.Header.Set("X-Internal-Token", c.internalAuthToken)
 	}
 	resp, err := authHTTPDoFunc(c.httpClient, req)
 	if err != nil {

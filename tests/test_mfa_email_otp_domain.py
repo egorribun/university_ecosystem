@@ -732,6 +732,50 @@ async def test_delivery_lease_covers_the_network_send_window(
 
 
 @pytest.mark.asyncio
+async def test_active_delivery_lease_defers_outbox_until_it_can_be_reclaimed(
+    db_session: AsyncSession,
+    test_user: User,
+    otp_service: EmailOtpService,
+) -> None:
+    issued = await _issue(otp_service, db_session, test_user)
+    delivery = (
+        await db_session.execute(
+            select(MfaEmailDelivery).where(
+                MfaEmailDelivery.challenge_id == issued.challenge_id
+            )
+        )
+    ).scalar_one()
+    delivery.status = "sending"
+    delivery.lease_token = "interrupted-worker"
+    delivery.lease_expires_at = NOW + timedelta(minutes=2)
+    await db_session.commit()
+
+    sender = RecordingSender()
+    with pytest.raises(RuntimeError, match="Durable event deferred"):
+        await otp_service.deliver(
+            db_session, delivery_id=delivery.id, sender=sender, now=NOW
+        )
+    await db_session.refresh(delivery)
+    assert delivery.status == "sending"
+    assert sender.messages == []
+
+    # A retry runs in a new worker session; avoid SQLite's in-memory timezone
+    # evaluator acting on the prior session's refreshed lease timestamp.
+    db_session.expunge(delivery)
+    await otp_service.deliver(
+        db_session,
+        delivery_id=delivery.id,
+        sender=sender,
+        now=NOW + timedelta(minutes=2, seconds=1),
+    )
+    delivery = await db_session.get(MfaEmailDelivery, delivery.id)
+    assert delivery is not None
+    assert delivery.status == "sent"
+    assert len(sender.messages) == 1
+    assert sender.messages[0]["message_id"] == delivery.message_id
+
+
+@pytest.mark.asyncio
 async def test_worker_delivery_builder_needs_only_kek_ring_and_cannot_issue_otp(
     db_session: AsyncSession,
     test_user: User,
@@ -798,9 +842,13 @@ async def test_delivery_failure_preserves_retry_envelope_without_pii_logs(
     assert delivery.status == "pending"
     assert delivery.lease_token is None
     assert delivery.lease_expires_at is None
-    assert "message=mfa_email_delivery_failed" in caplog.text
-    assert issued.otp not in caplog.text
-    assert test_user.email not in caplog.text
+    # Assert the structured event contract from the raw LogRecords rather
+    # than renderer output.  Renderers are environment-specific (and may be
+    # replaced by tests), while getMessage() is the stable stdlib contract.
+    log_text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "mfa_email_delivery_failed" in log_text
+    assert issued.otp not in log_text
+    assert test_user.email not in log_text
 
 
 @pytest.mark.asyncio
@@ -1154,7 +1202,7 @@ async def test_recovery_opaque_uses_utc_for_default_consumption_time(
 
 
 @pytest.mark.asyncio
-async def test_leased_old_revision_is_shredded_without_smtp_send(
+async def test_leased_old_revision_is_shredded_and_retry_is_idempotent_without_smtp_send(
     db_session: AsyncSession,
     test_user: User,
     otp_service: EmailOtpService,
@@ -1192,6 +1240,13 @@ async def test_leased_old_revision_is_shredded_without_smtp_send(
     assert delivery.lease_expires_at is None
     assert delivery.shredded_at is not None
     assert delivery.shredded_at.replace(tzinfo=UTC) == NOW
+    await otp_service.deliver(
+        db_session,
+        delivery_id=delivery.id,
+        sender=sender,
+        now=NOW + timedelta(seconds=1),
+    )
+    assert sender.messages == []
 
 
 @pytest.mark.asyncio

@@ -86,8 +86,13 @@ vi.mock("@/contexts/MessengerContext", () => ({
 
 // useNavigate — only used by the mobile back button onClick.
 const navigateMock = vi.fn()
+const historyBackMock = vi.fn()
+const routerLocationState: { messengerOpenedFromList?: boolean } = {}
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => navigateMock,
+  useRouter: () => ({ history: { back: historyBackMock } }),
+  useRouterState: ({ select }: { select: (s: { location: { state: object } }) => unknown }) =>
+    select({ location: { state: routerLocationState } }),
 }))
 
 // Mock child components — ChatArea's tests focus on ChatArea's own rendering
@@ -633,6 +638,25 @@ describe("ChatArea — mobile vs desktop", () => {
 
     fireEvent.click(backButton)
     expect(navigateMock).toHaveBeenCalledWith({ to: "/messenger", replace: true })
+    expect(historyBackMock).not.toHaveBeenCalled()
+
+    // A chat opened from the list pops its own entry instead of duplicating the list.
+    navigateMock.mockClear()
+    routerLocationState.messengerOpenedFromList = true
+    // The real hook subscribes to the router; the mock needs a fresh mount.
+    rerender(
+      <ChatArea
+        key="from-list"
+        {...baseProps}
+        selectedChatId={chat.id}
+        activeChat={chat}
+        isMobile
+      />
+    )
+    fireEvent.click(screen.getByRole("button", { name: "messenger:backToChats" }))
+    expect(historyBackMock).toHaveBeenCalledTimes(1)
+    expect(navigateMock).not.toHaveBeenCalled()
+    delete routerLocationState.messengerOpenedFromList
 
     prefersReducedMotionMock.mockReturnValue(true)
     rerender(

@@ -187,3 +187,53 @@ describe("cryptoWorker wrapper", () => {
     }
   })
 })
+
+describe("cryptoWorker wrapper lifecycle", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it("spawns the crypto worker script as an ES module worker", async () => {
+    const constructed: unknown[][] = []
+    class RecordingWorker {
+      constructor(...args: unknown[]) {
+        constructed.push(args)
+        return mockWorker
+      }
+    }
+    vi.resetModules()
+    vi.stubGlobal("Worker", RecordingWorker)
+    await import("../cryptoWorker")
+
+    expect(constructed).toHaveLength(1)
+    const [url, options] = constructed[0]!
+    expect(url).toBeInstanceOf(URL)
+    expect((url as URL).pathname).toMatch(/\/workers\/crypto\.worker\.ts$/)
+    expect(options).toStrictEqual({ type: "module" })
+  })
+
+  it.each([
+    ["result", { result: "ok" }],
+    ["error", { error: "boom" }],
+  ])("cancels the 30-second timeout once the worker replies with %s", async (_label, reply) => {
+    vi.resetModules()
+    vi.useFakeTimers()
+    vi.stubGlobal("Worker", MockWorker)
+    const { cryptoWorker } = await import("../cryptoWorker")
+
+    const pending = cryptoWorker.pbkdf2({ value: "a", salt: "b", keySize: 128, iterations: 1 })
+    const settled = pending.then(
+      (value) => ({ value }),
+      (error: Error) => ({ error: error.message })
+    )
+    expect(vi.getTimerCount()).toBe(1)
+    const { id } = mockWorker.postMessage.mock.calls.at(-1)![0] as { id: string }
+    mockWorker.onmessage({ data: { id, ...reply } } as MessageEvent)
+
+    expect(vi.getTimerCount()).toBe(0)
+    await expect(settled).resolves.toStrictEqual(
+      "result" in reply ? { value: reply.result } : { error: reply.error }
+    )
+  })
+})

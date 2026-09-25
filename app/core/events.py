@@ -32,6 +32,13 @@ EventMiddleware = Callable[
 ]
 
 
+class DurableEventDeferred(RuntimeError):
+    """A PII-free signal to keep a durable event pending without using retries."""
+
+    def __init__(self) -> None:
+        super().__init__("Durable event deferred")
+
+
 @dataclass
 class EventMetadata:
     """Metadata attached to every event for tracing and retry tracking."""
@@ -272,9 +279,10 @@ class ScheduleUpdated(DomainEvent):
 
     EVENT_VERSION: ClassVar[int] = 1
 
-    schedule_id: UUID | None = None
+    schedule_id: UUID | str | None = None
     group_id: UUID | None = None
     changes: dict[str, Any] = field(default_factory=dict)
+    previous_state: dict[str, Any] = field(default_factory=dict)
     current_state: dict[str, Any] = field(default_factory=dict)
 
     EVENT_TYPE: ClassVar[str] = "SCHEDULE_UPDATED"
@@ -288,6 +296,66 @@ class ScheduleUpdated(DomainEvent):
             if f.name not in ("event_id", "occurred_at", "metadata")
         }
         return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
+class ScheduleDeleted(DomainEvent):
+    """Fired when a schedule item is deleted (the lesson is cancelled)."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    schedule_id: str | None = None
+    deleted: bool = True
+    subject: str = ""
+    group_id: str | None = None
+    previous_state: dict[str, Any] = field(default_factory=dict)
+
+    EVENT_TYPE: ClassVar[str] = "SCHEDULE_DELETED"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ScheduleDeleted:
+        data.pop("_schema_version", 1)
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
+class NotificationDeadLetterRetried(DomainEvent):
+    """Audited administrator retry of a dead-lettered notification batch."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    batch_count: int = 0
+
+    EVENT_TYPE: ClassVar[str] = "NOTIFICATION_DEAD_LETTER_RETRY"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NotificationDeadLetterRetried:
+        data.pop("_schema_version", 1)
+        return cls(batch_count=int(data.get("batch_count", 0)))
+
+
+@register_domain_event
+@dataclass
+class NotificationDeadLetterPurged(DomainEvent):
+    """Audited administrator purge of a dead-lettered notification batch."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    batch_count: int = 0
+
+    EVENT_TYPE: ClassVar[str] = "NOTIFICATION_DEAD_LETTER_PURGE"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> NotificationDeadLetterPurged:
+        data.pop("_schema_version", 1)
+        return cls(batch_count=int(data.get("batch_count", 0)))
 
 
 @register_domain_event
@@ -596,15 +664,16 @@ class NotificationSent(DomainEvent):
 class NotificationsRequested(DomainEvent):
     """Fired when notifications need to be delivered to users.
 
-    RED-02 (audit 2026-03-14): Replaces direct push dispatch in
-    create_notifications_for_users(). The OutboxWorker picks this up and
-    triggers push delivery with at-least-once semantics.
+    The OutboxWorker picks this up and triggers push delivery with at-least-once
+    semantics. Some producers also dispatch directly; deduplicated producers
+    opt into outbox-only delivery so network I/O runs after their transaction.
     """
 
     EVENT_VERSION: ClassVar[int] = 1
 
     notification_ids: list[str] = field(default_factory=list)
     channel: str = "push"
+    payload_data: dict[str, Any] | None = None
 
     EVENT_TYPE: ClassVar[str] = "notification.delivery_requested"
 
@@ -860,15 +929,20 @@ class EventBus:
             return len(self._handlers.get(event_type, [])) + len(self._all_handlers)
         return sum(len(h) for h in self._handlers.values()) + len(self._all_handlers)
 
-    async def publish(self, event: DomainEvent) -> None:
+    async def publish(self, event: DomainEvent, *, durable: bool = False) -> None:
         """
         Publish an event through the middleware pipeline to all handlers.
 
-        Handlers are executed concurrently.
+        Handlers are executed concurrently. Durable outbox dispatch propagates
+        handler failure to the worker instead of acknowledging a lost event.
+        Durable handlers must be idempotent by event_id: after partial success,
+        a retry invokes every handler again, including those already successful.
         """
         event_type = event.event_type
         handlers = self._handlers.get(event_type, []) + self._all_handlers
 
+        if durable and not self._handlers.get(event_type):
+            raise RuntimeError("No durable event handler registered")
         if not handlers:
             logger.debug("No handlers for event %s", event_type)
             return
@@ -877,6 +951,29 @@ class EventBus:
 
         # Define the core handler execution
         async def execute_handlers(evt: DomainEvent) -> None:
+            if durable:
+                # Await every handler before reporting a failure. The outbox
+                # owns retry/DLQ for durable events; routing the same failure
+                # through the event-bus DLQ would duplicate dead letters.
+                outcomes = await asyncio.gather(
+                    *(handler(evt) for handler in handlers),
+                    return_exceptions=True,
+                )
+                deferred = False
+                for outcome in outcomes:
+                    if isinstance(outcome, DurableEventDeferred):
+                        deferred = True
+                        continue
+                    if isinstance(outcome, Exception):
+                        # Handler errors may contain recipient addresses or OTPs.
+                        # Keep the durable retry signal without persisting raw
+                        # handler exception text in the outbox audit trail.
+                        raise RuntimeError("Durable event handler failed") from None
+                    if isinstance(outcome, BaseException):
+                        raise outcome
+                if deferred:
+                    raise DurableEventDeferred()
+                return
             tasks = [
                 asyncio.create_task(self._safe_handle(handler, evt))
                 for handler in handlers
@@ -909,6 +1006,22 @@ class EventBus:
         try:
             _done, pending = await asyncio.wait({chain_task}, timeout=10.0)
             if pending:
+                if durable and event_type in {
+                    MfaEmailDeliveryRequested.EVENT_TYPE,
+                    AttachmentCleanupRequested.EVENT_TYPE,
+                }:
+                    # SMTP runs in a thread, and a large attachment cleanup
+                    # may require multiple bounded storage operations. Both
+                    # have idempotent durable handlers; cancelling at this
+                    # generic request timer can report failure after external
+                    # work succeeded or starve a large cleanup indefinitely.
+                    # Their own I/O policies govern operation timeouts.
+                    logger.warning(
+                        "Durable external delivery exceeded event dispatch timer",
+                        extra={"event_type": event_type, "event_id": event.event_id},
+                    )
+                    await chain_task
+                    return
                 # Timeout — cancel the task (and, transitively, any tasks it awaited)
                 chain_task.cancel()
                 try:
@@ -922,11 +1035,19 @@ class EventBus:
                         "event_id": event.event_id,
                     },
                 )
+                if durable:
+                    raise TimeoutError("Durable event dispatch timed out")
             elif chain_task.exception() is not None:
                 # Propagate unexpected exceptions that escaped _safe_handle
                 raise chain_task.exception()  # type: ignore[misc]
         except asyncio.CancelledError:
             chain_task.cancel()
+            try:
+                # Await the chain so gather can finish cancelling its owned
+                # handler tasks before the caller observes cancellation.
+                await chain_task
+            except (asyncio.CancelledError, Exception):  # noqa: S110  # RZ-27-01  # RZ-22-01-JUSTIFIED: suppress cleanup exception after cancelling externally-cancelled event handler chain
+                pass
             raise
 
     async def _safe_handle(self, handler: EventHandler, event: DomainEvent) -> None:
@@ -978,8 +1099,11 @@ __all__ = [
     "MfaEnabled",
     "NewsCreated",
     "NewsUpdated",
+    "NotificationDeadLetterPurged",
+    "NotificationDeadLetterRetried",
     "NotificationSent",
     "NotificationsRequested",
+    "ScheduleDeleted",
     "UserCreated",
     "UserDeleted",
     "UserLoggedIn",

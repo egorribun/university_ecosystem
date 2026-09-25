@@ -1,0 +1,1751 @@
+{
+  "routes": [
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[SecureAuditService]",
+        "inject"
+      ],
+      "id": "app.api.admin.audit:get_time_travel_state:GET:/time-travel",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[SecureAuditService]",
+        "inject"
+      ],
+      "id": "app.api.admin.audit:list_audit_logs:GET:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [],
+      "id": "app.api.admin.feature_flags:list_feature_flags:GET:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [],
+      "id": "app.api.admin.feature_flags:reject_feature_flag_update:PATCH:/{name}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
+      "id": "app.api.auth.login:get_csrf_cookie:GET:/csrf-cookie",
+      "legacy_dependencies": [],
+      "ownership": "public_no_db"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [],
+      "id": "app.api.auth.login:get_session_signing_key:GET:/session/signing-key",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[LoginService]",
+        "inject"
+      ],
+      "id": "app.api.auth.login:login:POST:/login",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[LoginService]",
+        "inject"
+      ],
+      "id": "app.api.auth.login:login_json:POST:/login/json",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[LoginService]",
+        "FromDishka[UserComplianceService]",
+        "inject"
+      ],
+      "id": "app.api.auth.login:register:POST:/register",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[LoginService]",
+        "inject"
+      ],
+      "id": "app.api.auth.login:resend_email_mfa_challenge:POST:/mfa/email/resend",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[LoginService]",
+        "inject"
+      ],
+      "id": "app.api.auth.login:verify_mfa_challenge:POST:/mfa/verify",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.auth.require_fresh_mfa"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[AuditService]",
+        "inject"
+      ],
+      "id": "app.api.auth.mfa:confirm_totp_enrollment:POST:/mfa/totp/confirm",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[AuditService]",
+        "inject"
+      ],
+      "id": "app.api.auth.mfa:delete_pending_totp_enrollment:DELETE:/mfa/totp/pending/{enrollment_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.auth.require_fresh_mfa"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[AuditService]",
+        "inject"
+      ],
+      "id": "app.api.auth.mfa:delete_totp_enrollment:DELETE:/mfa/totp/{enrollment_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.auth.require_fresh_mfa"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[AuditService]",
+        "inject"
+      ],
+      "id": "app.api.auth.mfa:disable_email_mfa_endpoint:DELETE:/mfa/email",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.auth.require_fresh_mfa"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[AuditService]",
+        "inject"
+      ],
+      "id": "app.api.auth.mfa:generate_recovery_codes_endpoint:POST:/mfa/recovery-codes",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.auth.mfa:list_totp_enrollments:GET:/mfa/totp",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[AuditService]",
+        "FromDishka[LoginService]",
+        "inject"
+      ],
+      "id": "app.api.auth.mfa:request_step_up:POST:/mfa/step-up",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.auth.require_fresh_mfa"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[LoginService]",
+        "inject"
+      ],
+      "id": "app.api.auth.mfa:start_email_mfa_enablement:POST:/mfa/email/enable",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[LoginService]",
+        "inject"
+      ],
+      "id": "app.api.auth.mfa:start_email_verification:POST:/mfa/email/verification/start",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.auth.require_fresh_mfa"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[AuditService]",
+        "inject"
+      ],
+      "id": "app.api.auth.mfa:start_totp_enrollment_endpoint:POST:/mfa/totp/start",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMaintenanceService]",
+        "inject"
+      ],
+      "id": "app.api.chat:add_participant:POST:/{chat_id}/participants",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMaintenanceService]",
+        "inject"
+      ],
+      "id": "app.api.chat:add_reaction:POST:/{chat_id}/messages/{message_id}/reactions",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMaintenanceService]",
+        "inject"
+      ],
+      "id": "app.api.chat:clear_chat_history:POST:/{chat_id}/clear",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatCreationService]",
+        "inject"
+      ],
+      "id": "app.api.chat:create_chat:POST:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatCreationService]",
+        "inject"
+      ],
+      "id": "app.api.chat:create_group:POST:/groups",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMaintenanceService]",
+        "inject"
+      ],
+      "id": "app.api.chat:delete_chat:DELETE:/{chat_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMaintenanceService]",
+        "inject"
+      ],
+      "id": "app.api.chat:delete_message:DELETE:/{chat_id}/messages/{message_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.chat:download_chat_attachment:GET:/{chat_id}/attachments/{filename:path}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMaintenanceService]",
+        "inject"
+      ],
+      "id": "app.api.chat:edit_message:PATCH:/{chat_id}/messages/{message_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMessageDispatcher]",
+        "inject"
+      ],
+      "id": "app.api.chat:forward_messages:POST:/{dest_chat_id}/forward",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.chat:get_chat:GET:/{chat_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.chat:get_chats:GET:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.chat:get_messages:GET:/{chat_id}/messages",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.chat:get_reactors:GET:/{chat_id}/messages/{message_id}/reactions",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMaintenanceService]",
+        "inject"
+      ],
+      "id": "app.api.chat:mark_read:POST:/{chat_id}/read",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMaintenanceService]",
+        "inject"
+      ],
+      "id": "app.api.chat:remove_participant:DELETE:/{chat_id}/participants/{user_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMaintenanceService]",
+        "inject"
+      ],
+      "id": "app.api.chat:remove_reaction:DELETE:/{chat_id}/messages/{message_id}/reactions",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMaintenanceService]",
+        "inject"
+      ],
+      "id": "app.api.chat:rename_chat:PATCH:/{chat_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMessageDispatcher]",
+        "inject"
+      ],
+      "id": "app.api.chat:send_message:POST:/{chat_id}/messages",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[ChatMaintenanceService]",
+        "inject"
+      ],
+      "id": "app.api.chat:typing_indicator:POST:/{chat_id}/typing",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [],
+      "id": "app.api.cwv:create_cwv_envelope:POST:/envelope",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.cwv:export_cwv_report:GET:/export",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.cwv:ingest_cwv_observation:POST:/observations",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.dlq:cleanup_dlq:DELETE:/cleanup",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.dlq:get_dlq_stats:GET:/stats",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.dlq:get_dlq_status:GET:/status",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.dlq:list_dlq_jobs:GET:/jobs",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.dlq:retry_dlq_job:POST:/retry/{job_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka",
+        "app.api.deps.localization.get_locale"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.dlq:trigger_dlq_replay:POST:/replay",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.events:all_events:GET:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[EventService]",
+        "inject"
+      ],
+      "id": "app.api.events:attend:POST:/attendance",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[EventService]",
+        "FromDishka[NotificationService]",
+        "inject"
+      ],
+      "id": "app.api.events:create_event:POST:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[EventService]",
+        "inject"
+      ],
+      "id": "app.api.events:delete_event:DELETE:/{event_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.events:delete_event_file:DELETE:/file/{file_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.events:download_event_file:GET:/{event_id}/files/{filename:path}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.events:get_event:GET:/{event_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.events:get_event_files:GET:/{event_id}/files",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.events:my_events:GET:/my",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[VectorService]",
+        "inject"
+      ],
+      "id": "app.api.events:semantic_search:GET:/search/semantic",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[EventService]",
+        "inject"
+      ],
+      "id": "app.api.events:unregister_event:DELETE:/attendance",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[EventService]",
+        "inject"
+      ],
+      "id": "app.api.events:update_event:PATCH:/{event_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.events:upload_event_file:POST:/{event_id}/upload_file",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.events:upload_event_image:POST:/upload_image",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
+      "id": "app.api.health:healthz:GET:/healthz",
+      "legacy_dependencies": [],
+      "ownership": "public_no_db"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
+      "id": "app.api.health:liveness:GET:/health/live",
+      "legacy_dependencies": [],
+      "ownership": "public_no_db"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
+      "id": "app.api.health:ready:GET:/health/ready",
+      "legacy_dependencies": [],
+      "ownership": "public_no_db"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
+      "id": "app.api.health:ready:GET:/ready",
+      "legacy_dependencies": [],
+      "ownership": "public_no_db"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
+      "id": "app.api.images:proxy_image:GET:/img/{path:path}",
+      "legacy_dependencies": [],
+      "ownership": "public_no_db"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.internal.chat:check_participant:GET:/check-participant",
+      "legacy_dependencies": [],
+      "ownership": "worker_internal"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
+      "id": "app.api.internal.csp_report:receive_csp_report:POST:",
+      "legacy_dependencies": [],
+      "ownership": "worker_internal"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
+      "id": "app.api.internal.jwks:get_jwks:GET:/.well-known/jwks.json",
+      "legacy_dependencies": [],
+      "ownership": "worker_internal"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[NewsService]",
+        "FromDishka[NotificationService]",
+        "inject"
+      ],
+      "id": "app.api.news:comment_on_news:POST:/{id}/comment",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[NewsService]",
+        "FromDishka[NotificationService]",
+        "inject"
+      ],
+      "id": "app.api.news:create_news:POST:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[NewsService]",
+        "inject"
+      ],
+      "id": "app.api.news:delete_comment:DELETE:/comments/{comment_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[NewsService]",
+        "inject"
+      ],
+      "id": "app.api.news:delete_news:DELETE:/{id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_optional_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.news:get_news:GET:/{id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_optional_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.news:get_news_interact:GET:/{id}/interactions",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[NewsService]",
+        "inject"
+      ],
+      "id": "app.api.news:like_news:POST:/{id}/like",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_optional_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.news:news_list:GET:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[VectorService]",
+        "inject"
+      ],
+      "id": "app.api.news:semantic_search:GET:/search/semantic",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[NewsService]",
+        "inject"
+      ],
+      "id": "app.api.news:update_comment:PATCH:/comments/{comment_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[NewsService]",
+        "inject"
+      ],
+      "id": "app.api.news:update_news:PATCH:/{id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [],
+      "id": "app.api.news:upload_news_image:POST:/upload_image",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.notification_dead_letters:list_notification_dead_letters:GET:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[SecureAuditService]",
+        "inject"
+      ],
+      "id": "app.api.notification_dead_letters:purge_notification_dead_letters:POST:/purge",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[SecureAuditService]",
+        "inject"
+      ],
+      "id": "app.api.notification_dead_letters:retry_notification_dead_letters:POST:/retry",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.notifications:check_schedule_and_generate:POST:/check-schedule",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.notifications:clear_notifications:DELETE:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.notifications:delete_notification:DELETE:/{notif_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.notifications:list_notifications:GET:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.notifications:mark_all_read:POST:/read-all",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.notifications:mark_read_single:PATCH:/{notif_id}/read",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[CommandBus]",
+        "inject"
+      ],
+      "id": "app.api.schedule:add_schedule:POST:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[CommandBus]",
+        "inject"
+      ],
+      "id": "app.api.schedule:delete_schedule:DELETE:/{id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_optional_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[QueryBus]",
+        "inject"
+      ],
+      "id": "app.api.schedule:get_schedule:GET:/{id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[CommandBus]",
+        "inject"
+      ],
+      "id": "app.api.schedule:update_schedule:PATCH:/{id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[SearchService]",
+        "inject"
+      ],
+      "id": "app.api.search:unified_search:GET:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[SessionService]",
+        "inject"
+      ],
+      "id": "app.api.sessions:list_sessions:GET:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.auth.require_fresh_mfa"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[SessionService]",
+        "inject"
+      ],
+      "id": "app.api.sessions:revoke_other_sessions:POST:/revoke-others",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka",
+        "app.api.deps.auth.require_fresh_mfa"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[SessionService]",
+        "inject"
+      ],
+      "id": "app.api.sessions:revoke_session:DELETE:/{session_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.spotify:disconnect:POST:/disconnect",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.spotify:list_playlists:GET:/playlists",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.spotify:now_playing:GET:/now-playing",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [],
+      "id": "app.api.spotify:spotify_auth_url:GET:/auth-url",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.api.spotify:spotify_callback:GET:/callback",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.stats:attendance_summary:GET:/attendance",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.stats:grade_summary:GET:/grades",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.stats:participation_summary:GET:/participation",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.stats:stats_summary:GET:/summary",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[StoryService]",
+        "inject"
+      ],
+      "id": "app.api.stories:create_story:POST:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[StoryService]",
+        "inject"
+      ],
+      "id": "app.api.stories:delete_story:DELETE:/{story_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.api.stories:list_stories:GET:",
+      "legacy_dependencies": [],
+      "ownership": "public_no_db"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[StoryService]",
+        "inject"
+      ],
+      "id": "app.api.stories:update_story:PATCH:/{story_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [],
+      "id": "app.api.stories:upload_story_cover:POST:/upload_cover",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_auth_dto",
+        "app.api.deps.auth.require_fresh_mfa"
+      ],
+      "dishka_signals": [
+        "FromDishka[AuthService]",
+        "inject"
+      ],
+      "id": "app.api.users:change_email:POST:/me/email",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_auth_dto",
+        "app.api.deps.auth.require_fresh_mfa"
+      ],
+      "dishka_signals": [
+        "FromDishka[AuthService]",
+        "inject"
+      ],
+      "id": "app.api.users:change_password:POST:/me/password",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_auth_dto"
+      ],
+      "dishka_signals": [
+        "FromDishka[UserComplianceService]",
+        "inject"
+      ],
+      "id": "app.api.users:create_user:POST:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_auth_dto"
+      ],
+      "dishka_signals": [
+        "FromDishka[UserMediaService]",
+        "inject"
+      ],
+      "id": "app.api.users:delete_avatar:DELETE:/me/avatar",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_auth_dto"
+      ],
+      "dishka_signals": [
+        "FromDishka[UserMediaService]",
+        "inject"
+      ],
+      "id": "app.api.users:delete_cover:DELETE:/me/cover",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_auth_dto",
+        "app.api.deps.auth.require_fresh_mfa"
+      ],
+      "dishka_signals": [
+        "FromDishka[UserComplianceService]",
+        "inject"
+      ],
+      "id": "app.api.users:delete_current_user_account:POST:/me/delete",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[UserComplianceService]",
+        "inject"
+      ],
+      "id": "app.api.users:delete_user_admin:DELETE:/{user_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AuditService]",
+        "inject"
+      ],
+      "id": "app.api.users:export_access_audit:GET:/audit/export",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_auth_dto",
+        "app.api.deps.auth.require_fresh_mfa"
+      ],
+      "dishka_signals": [
+        "FromDishka[UserComplianceService]",
+        "inject"
+      ],
+      "id": "app.api.users:export_current_user_data:POST:/me/export",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "FromDishka[AuthService]",
+        "inject"
+      ],
+      "id": "app.api.users:forgot_password:POST:/forgot",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "FromDishka[GroupService]",
+        "inject"
+      ],
+      "id": "app.api.users:get_groups:GET:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_dto"
+      ],
+      "dishka_signals": [
+        "FromDishka[UserProfileService]",
+        "inject"
+      ],
+      "id": "app.api.users:get_users:GET:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_full"
+      ],
+      "dishka_signals": [
+        "FromDishka[AuthService]",
+        "inject"
+      ],
+      "id": "app.api.users:me:GET:/me",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "FromDishka[AuthService]",
+        "inject"
+      ],
+      "id": "app.api.users:reset_password:POST:/reset",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_auth_dto"
+      ],
+      "dishka_signals": [
+        "FromDishka[UserProfileService]",
+        "inject"
+      ],
+      "id": "app.api.users:update_me:PUT:/me",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[UserProfileService]",
+        "inject"
+      ],
+      "id": "app.api.users:update_user_admin:PATCH:/{user_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_auth_dto"
+      ],
+      "dishka_signals": [
+        "FromDishka[UserMediaService]",
+        "inject"
+      ],
+      "id": "app.api.users:upload_avatar:POST:/me/avatar",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_auth_dto"
+      ],
+      "dishka_signals": [
+        "FromDishka[UserMediaService]",
+        "inject"
+      ],
+      "id": "app.api.users:upload_cover:POST:/me/cover",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_auth_dto"
+      ],
+      "dishka_signals": [
+        "FromDishka[AuthService]",
+        "inject"
+      ],
+      "id": "app.api.users:verify_email_change:POST:/me/email/confirm",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
+      "id": "app.api.websocket:websocket_chat:WEBSOCKET:/chat",
+      "legacy_dependencies": [],
+      "ownership": "worker_internal"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
+      "id": "app.api.well_known:get_jwks:GET:/jwks.json",
+      "legacy_dependencies": [],
+      "ownership": "public_no_db"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [],
+      "id": "app.api.ws.ticket:issue_ws_upgrade_ticket:POST:/ticket",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[AuditService]",
+        "inject"
+      ],
+      "id": "app.auth.handlers.logout:logout:POST:/logout",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
+      "id": "app.main:get_root:GET:/",
+      "legacy_dependencies": [],
+      "ownership": "public_no_db"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.routers.notifications:admin_get_user_topics:GET:/admin/topics/{user_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.routers.notifications:admin_update_user_topics:PUT:/admin/topics/{user_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.routers.notifications:announce_platform_release:POST:/admin/releases",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.routers.notifications:broadcast:POST:/broadcast",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.routers.notifications:disable_user_push:POST:/admin/disable-user",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.routers.notifications:get_push_topics:GET:/topics",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [],
+      "id": "app.routers.notifications:get_vapid_public_key:GET:/vapid-public-key",
+      "legacy_dependencies": [],
+      "ownership": "public_no_db"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.routers.notifications:send_test:POST:/test",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.routers.notifications:subscribe:POST:/subscribe",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.routers.notifications:unsubscribe:POST:/unsubscribe",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "inject"
+      ],
+      "id": "app.routers.notifications:update_subscription_topics:PATCH:/subscribe/topics",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [],
+      "dishka_signals": [
+        "inject"
+      ],
+      "id": "app.routers.schedule:download_schedule_ics:GET:/ics",
+      "legacy_dependencies": [],
+      "ownership": "public_no_db"
+    }
+  ],
+  "schema_version": 1,
+  "summary": {
+    "canonical_dishka": 136,
+    "public_no_db": 11,
+    "worker_internal": 4
+  }
+}

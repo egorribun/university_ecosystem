@@ -24,6 +24,7 @@ import app.core.metrics as metrics_core
 import app.core.observability as observability_core
 import app.graphql.extensions as graphql_extensions
 import app.routers.notifications as push_router
+from tests.conftest import call_injected
 
 
 # Helper to mock Dishka container on request
@@ -56,8 +57,8 @@ async def test_mfa_delete_pending_totp_enrollment_errors():
     # 1. Enrollment not found
     db.get = AsyncMock(return_value=None)
     with pytest.raises(HTTPException) as exc:
-        await mfa_api.delete_pending_totp_enrollment(
-            enrollment_id=uuid.uuid4(), request=request, db=db, user=user
+        await mfa_api.delete_pending_totp_enrollment.__dishka_orig_func__(
+            enrollment_id=uuid.uuid4(), request=request, db=db, audit=audit, user=user
         )
     assert exc.value.status_code == 404
 
@@ -66,8 +67,8 @@ async def test_mfa_delete_pending_totp_enrollment_errors():
     other_enrollment.user_id = uuid.uuid4()
     db.get = AsyncMock(return_value=other_enrollment)
     with pytest.raises(HTTPException) as exc:
-        await mfa_api.delete_pending_totp_enrollment(
-            enrollment_id=uuid.uuid4(), request=request, db=db, user=user
+        await mfa_api.delete_pending_totp_enrollment.__dishka_orig_func__(
+            enrollment_id=uuid.uuid4(), request=request, db=db, audit=audit, user=user
         )
     assert exc.value.status_code == 404
 
@@ -78,8 +79,8 @@ async def test_mfa_delete_pending_totp_enrollment_errors():
     confirmed_enrollment.revoked_at = None
     db.get = AsyncMock(return_value=confirmed_enrollment)
     with pytest.raises(HTTPException) as exc:
-        await mfa_api.delete_pending_totp_enrollment(
-            enrollment_id=uuid.uuid4(), request=request, db=db, user=user
+        await mfa_api.delete_pending_totp_enrollment.__dishka_orig_func__(
+            enrollment_id=uuid.uuid4(), request=request, db=db, audit=audit, user=user
         )
     assert exc.value.status_code == 400
 
@@ -110,8 +111,8 @@ async def test_mfa_confirm_totp_enrollment_failure():
         side_effect=HTTPException(400, "invalid_code"),
     ):
         with pytest.raises(HTTPException) as exc:
-            await mfa_api.confirm_totp_enrollment(
-                payload=payload, request=request, db=db, user=user
+            await mfa_api.confirm_totp_enrollment.__dishka_orig_func__(
+                payload=payload, request=request, db=db, audit=audit, user=user
             )
         assert exc.value.status_code == 400
         audit.log.assert_called_once()
@@ -145,8 +146,8 @@ async def test_mfa_start_totp_enrollment_endpoint():
             AsyncMock(return_value=(enrollment, "secret", "url")),
         ),
     ):
-        res = await mfa_api.start_totp_enrollment_endpoint(
-            request=request, db=db, payload=payload, user=user
+        res = await mfa_api.start_totp_enrollment_endpoint.__dishka_orig_func__(
+            request=request, db=db, audit=audit, payload=payload, user=user
         )
         assert res.secret == "secret"  # pragma: allowlist secret
         assert res.otpauth_url == "url"
@@ -202,15 +203,25 @@ async def test_list_notifications_bad_cursor():
     user = MagicMock()
     response = MagicMock()
     with pytest.raises(HTTPException) as exc:
-        await notifications_api.list_notifications(
-            request, response, db=db, user=user, cursor="invalid_base64_string"
+        await call_injected(
+            notifications_api.list_notifications,
+            request,
+            response,
+            user=user,
+            cursor="invalid_base64_string",
+            provides={"AsyncDatabaseSession": db},
         )
     assert exc.value.status_code == 400
 
     bad_cursor = base64.b64encode(b"2026-01-01T00:00:00,not-a-uuid").decode()
     with pytest.raises(HTTPException) as exc:
-        await notifications_api.list_notifications(
-            request, response, db=db, user=user, cursor=bad_cursor
+        await call_injected(
+            notifications_api.list_notifications,
+            request,
+            response,
+            user=user,
+            cursor=bad_cursor,
+            provides={"AsyncDatabaseSession": db},
         )
     assert exc.value.status_code == 400
 
@@ -252,8 +263,8 @@ async def test_subscribe_integrity_error_retry():
         patch("app.routers.notifications.enforce_rate_limit", AsyncMock()),
         patch("app.routers.notifications.resolve_locale", MagicMock(return_value="en")),
         patch(
-            "app.routers.notifications.resolve_topics",
-            MagicMock(return_value={"general"}),
+            "app.routers.notifications.resolve_subscription_topics_for_user",
+            AsyncMock(return_value=[]),
         ),
     ):
         db = AsyncMock()
@@ -290,7 +301,13 @@ async def test_subscribe_integrity_error_retry():
         db.refresh = mock_refresh
 
         with patch("asyncio.sleep", AsyncMock()):
-            res = await push_router.subscribe(payload, request, db, user)
+            res = await call_injected(
+                push_router.subscribe,
+                payload=payload,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
             assert res is not None
             assert call_count >= 2
 
@@ -312,7 +329,13 @@ async def test_update_subscription_topics_not_found():
     db.execute.return_value = mock_res
 
     with pytest.raises(HTTPException) as exc:
-        await push_router.update_subscription_topics(payload, request, db, user)
+        await call_injected(
+            push_router.update_subscription_topics,
+            payload=payload,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
     assert exc.value.status_code == 404
 
 
@@ -328,7 +351,13 @@ async def test_unsubscribe_errors():
 
     payload = PushSubscriptionDelete(endpoint="")
     with pytest.raises(HTTPException) as exc:
-        await push_router.unsubscribe(payload, request, db, user)
+        await call_injected(
+            push_router.unsubscribe,
+            payload=payload,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
     assert exc.value.status_code == 400
 
     from app.core.ratelimit import RateLimitExceeded, RateLimitInfo
@@ -340,7 +369,13 @@ async def test_unsubscribe_errors():
         side_effect=RateLimitExceeded(info),
     ):
         with pytest.raises(HTTPException) as exc:
-            await push_router.unsubscribe(payload2, request, db, user)
+            await call_injected(
+                push_router.unsubscribe,
+                payload=payload2,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 429
 
 
@@ -398,7 +433,12 @@ async def test_now_playing_endpoint_error_states():
             AsyncMock(return_value=Response(204)),
         ),
     ):
-        res = await spotify_api.now_playing(request=request, db=db, user=user)
+        res = await call_injected(
+            spotify_api.now_playing,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert res.status_code == 204
         assert not user.spotify.is_playing
 
@@ -410,7 +450,12 @@ async def test_now_playing_endpoint_error_states():
         ),
     ):
         with pytest.raises(HTTPException) as exc:
-            await spotify_api.now_playing(request=request, db=db, user=user)
+            await call_injected(
+                spotify_api.now_playing,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 401
         assert not user.spotify.is_connected
 
@@ -424,7 +469,12 @@ async def test_now_playing_endpoint_error_states():
         ),
     ):
         with pytest.raises(HTTPException) as exc:
-            await spotify_api.now_playing(request=request, db=db, user=user)
+            await call_injected(
+                spotify_api.now_playing,
+                request=request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 429
 
     from app.core.circuit_breaker import CircuitBreakerOpenError
@@ -438,7 +488,12 @@ async def test_now_playing_endpoint_error_states():
             ),
         ),
     ):
-        res = await spotify_api.now_playing(request=request, db=db, user=user)
+        res = await call_injected(
+            spotify_api.now_playing,
+            request=request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
         assert not res.is_playing
 
 

@@ -1,5 +1,7 @@
 import uuid
 from collections.abc import Sequence
+from datetime import date, time
+from typing import Any
 
 from app.core.localization import translate
 from app.repositories.unit_of_work import UnitOfWork
@@ -9,6 +11,28 @@ from app.services.schedule_optimizer import (
     ScheduleItemInternal,
     ScheduleOptimizerService,
 )
+
+
+def _json_value(value: Any) -> Any:
+    """Serialize temporal values: outbox payloads are hashed with plain JSON."""
+    if isinstance(value, date | time):
+        return value.isoformat()
+    return value
+
+
+def schedule_state(schedule: ScheduleDTO) -> dict[str, Any]:
+    """JSON-safe snapshot of the schedule fields recorded in domain events."""
+    return {
+        "group_id": str(schedule.group_id),
+        "subject": schedule.subject,
+        "teacher": schedule.teacher,
+        "room": schedule.room,
+        "weekday": _json_value(schedule.weekday),
+        "start_time": _json_value(schedule.start_time),
+        "end_time": _json_value(schedule.end_time),
+        "parity": schedule.parity,
+        "lesson_type": schedule.lesson_type,
+    }
 
 
 class ScheduleService:
@@ -63,17 +87,7 @@ class ScheduleService:
             )
 
         schedule = await self.repo.create(data, creator_id=creator_id)
-        payload = {
-            "group_id": str(schedule.group_id),
-            "subject": schedule.subject,
-            "teacher": schedule.teacher,
-            "room": schedule.room,
-            "weekday": schedule.weekday,
-            "start_time": schedule.start_time,
-            "end_time": schedule.end_time,
-            "parity": schedule.parity,
-            "lesson_type": schedule.lesson_type,
-        }
+        payload = schedule_state(schedule)
         from app.services.audit_service import get_secure_audit_service
 
         await get_secure_audit_service().record_domain_event(
@@ -101,23 +115,17 @@ class ScheduleService:
         sched = await self.repo.get(schedule_id)
         if not sched:
             raise ValueError(translate("errors.schedule.not_found"))
+        # Snapshot before the update: the repository may mutate this object.
+        previous_state = schedule_state(sched)
 
         updated = await self.repo.update(schedule_id, data)
         if updated is None:
             raise ValueError(translate("errors.schedule.not_found"))
 
         payload = {
-            "current_state": {
-                "group_id": str(updated.group_id),
-                "subject": updated.subject,
-                "teacher": updated.teacher,
-                "room": updated.room,
-                "weekday": updated.weekday,
-                "start_time": updated.start_time,
-                "end_time": updated.end_time,
-                "parity": updated.parity,
-                "lesson_type": updated.lesson_type,
-            }
+            "schedule_id": str(updated.id),
+            "previous_state": previous_state,
+            "current_state": schedule_state(updated),
         }
         from app.services.audit_service import get_secure_audit_service
 
@@ -137,7 +145,13 @@ class ScheduleService:
         if not sched:
             return False
 
-        payload = {"deleted": True, "subject": sched.subject}
+        payload = {
+            "schedule_id": str(schedule_id),
+            "deleted": True,
+            "subject": sched.subject,
+            "group_id": str(sched.group_id),
+            "previous_state": schedule_state(sched),
+        }
         from app.services.audit_service import get_secure_audit_service
 
         await get_secure_audit_service().record_domain_event(

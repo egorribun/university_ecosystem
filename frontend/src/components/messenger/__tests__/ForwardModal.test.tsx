@@ -190,7 +190,8 @@ describe("ForwardModal", () => {
 
     fireEvent.keyDown(document, { key: "ArrowLeft" })
     expect(onClose).not.toHaveBeenCalled()
-    fireEvent.keyDown(document, { key: "Escape" })
+    // The modal consumes the Escape it handles so outer layers do not also react.
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(false)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 

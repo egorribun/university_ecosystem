@@ -174,6 +174,13 @@ class Settings(
         at runtime due to missing counterparts.
         """
         env = str(getattr(self, "environment", "production") or "production").lower()
+        if env in {"staging", "production"} and not getattr(
+            self, "event_file_scanner_enabled", False
+        ):
+            raise ValueError(
+                "EVENT_FILE_SCANNER_ENABLED must be true in staging/production; "
+                "uploads cannot be persisted without malware scanning"
+            )
         process_role = str(getattr(self, "app_process_role", "api") or "api")
         revocation_access_enabled = bool(
             getattr(self, "revocation_redis_access_enabled", True)

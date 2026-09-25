@@ -8,7 +8,7 @@
 
 #![cfg(target_arch = "wasm32")]
 
-use uni_wasm_crypto::{hmac_sha256_sign, pbkdf2_derive, scrypt_derive};
+use uni_wasm_crypto::{hmac_sha256_sign, hmac_sha256_sign_base64, pbkdf2_derive, scrypt_derive};
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -17,7 +17,7 @@ wasm_bindgen_test_configure!(run_in_browser);
 fn pbkdf2_parity_rfc7914() {
     // RFC 7914 §11: P="passwd", S="salt", c=1, dkLen=64.
     assert_eq!(
-        pbkdf2_derive("passwd", "salt", 1, 64),
+        pbkdf2_derive("passwd", "salt", 1, 64).expect("valid PBKDF2 parameters"),
         "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783" // pragma: allowlist secret
     );
 }
@@ -28,6 +28,14 @@ fn hmac_parity_rfc4231_tc2() {
     assert_eq!(
         hmac_sha256_sign("Jefe", "what do ya want for nothing?"),
         "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843" // pragma: allowlist secret
+    );
+}
+
+#[wasm_bindgen_test]
+fn hmac_base64_parity_rfc4231_tc2() {
+    assert_eq!(
+        hmac_sha256_sign_base64("Jefe", "what do ya want for nothing?"),
+        "W9zBRr9gdU5qBCQmCJV1x1oAPwidJzmDnexYuWTsOEM=" // pragma: allowlist secret
     );
 }
 

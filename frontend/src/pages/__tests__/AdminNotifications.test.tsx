@@ -275,7 +275,8 @@ describe("AdminNotifications page", () => {
 
     const { queryClient } = await renderPage()
 
-    await userEvent.type(await screen.findByRole("textbox"), topicsResponse.user_id)
+    // The user-topics ID field is the first textbox; the release form follows it.
+    await userEvent.type((await screen.findAllByRole("textbox"))[0]!, topicsResponse.user_id)
     await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
 
     expect(await screen.findByText(/Topics loaded for student@example.com/i)).toBeInTheDocument()
@@ -307,7 +308,7 @@ describe("AdminNotifications page", () => {
     )
     const { queryClient } = await renderPage()
 
-    await userEvent.type(await screen.findByRole("textbox"), "empty-user-id")
+    await userEvent.type((await screen.findAllByRole("textbox"))[0]!, "empty-user-id")
     await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
 
     expect(await screen.findByText("No topics are currently available.")).toBeInTheDocument()
@@ -329,7 +330,7 @@ describe("AdminNotifications page", () => {
     )
     const { queryClient } = await renderPage()
 
-    await userEvent.type(await screen.findByRole("textbox"), "unknown-topic-user-id")
+    await userEvent.type((await screen.findAllByRole("textbox"))[0]!, "unknown-topic-user-id")
     await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
 
     expect(await screen.findByText(/experimental/)).toBeInTheDocument()
@@ -356,7 +357,7 @@ describe("AdminNotifications page", () => {
 
     const { queryClient } = await renderPage()
 
-    await userEvent.type(await screen.findByRole("textbox"), "some-user-id")
+    await userEvent.type((await screen.findAllByRole("textbox"))[0]!, "some-user-id")
     await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
     await waitFor(() => expect(screen.getAllByRole("alert").length).toBeGreaterThan(0))
     expect(screen.queryByText(/Topics loaded for/i)).not.toBeInTheDocument()

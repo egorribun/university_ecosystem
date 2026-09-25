@@ -1,8 +1,8 @@
-import { render, screen, fireEvent } from "@testing-library/react"
+import { createEvent, render, screen, fireEvent } from "@testing-library/react"
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 import { createElement, forwardRef, type ReactNode } from "react"
 
-import { ContactList } from "@/components/messenger/ContactList"
+import { ContactList, getContactNavigationIndex } from "@/components/messenger/ContactList"
 import { GroupAvatar } from "@/components/messenger/GroupAvatar"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
@@ -25,6 +25,42 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 const { translationMock, mediaQueryMock } = vi.hoisted(() => ({
   translationMock: vi.fn(),
   mediaQueryMock: vi.fn(),
+}))
+
+// jsdom has no scrolling layout. Model a 10-row viewport while keeping the
+// component's count, stable-key and bounded-render contracts observable.
+const virtualizerMock = vi.hoisted(() => ({
+  startIndex: 0,
+  options: undefined as
+    | {
+        count: number
+        getItemKey: (index: number) => string | number | bigint
+        estimateSize: () => number
+      }
+    | undefined,
+  scrollToIndex: vi.fn(),
+}))
+
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: (options: NonNullable<typeof virtualizerMock.options>) => {
+    virtualizerMock.options = options
+    return {
+      getVirtualItems: () =>
+        Array.from(
+          { length: Math.min(options.count - virtualizerMock.startIndex, 10) },
+          (_, offset) => {
+            const index = virtualizerMock.startIndex + offset
+            return { index, key: options.getItemKey(index), start: index * options.estimateSize() }
+          }
+        ),
+      getTotalSize: () => options.count * options.estimateSize(),
+      measureElement: () => {},
+      scrollToIndex: (index: number, options: { align: string }) => {
+        virtualizerMock.startIndex = Math.max(index - 9, 0)
+        virtualizerMock.scrollToIndex(index, options)
+      },
+    }
+  },
 }))
 
 vi.mock("react-i18next", () => ({
@@ -96,6 +132,8 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 )
 
 afterEach(() => {
+  virtualizerMock.startIndex = 0
+  virtualizerMock.scrollToIndex.mockClear()
   mockReducedMotion.mockReturnValue(false)
   translationMock.mockClear()
   mediaQueryMock.mockClear()
@@ -168,6 +206,10 @@ describe("ContactList — empty state (W183 SW1)", () => {
     const iconContainer = container.querySelector(".messenger-card-matte")
     expect(iconContainer).toHaveStyle({ background: "var(--messenger-card-bg)" })
     expect(iconContainer?.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+    expect(entrance).toHaveAttribute(
+      "data-motion-animate",
+      JSON.stringify({ scale: 1, opacity: 1, y: 0 })
+    )
   })
 
   it("omits empty-state animation objects under reduced motion while keeping the state visible", () => {
@@ -397,6 +439,17 @@ describe("ContactList — empty state (W183 SW1)", () => {
     expect(retry).toHaveAttribute("data-motion-while-tap", JSON.stringify({ scale: 0.96 }))
   })
 
+  it("uses a zero-duration transition for the reduced-motion error state", () => {
+    mockReducedMotion.mockReturnValue(true)
+    const { container } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isError />,
+      { wrapper }
+    )
+
+    const panel = container.querySelector("[data-motion-animate]")
+    expect(panel).toHaveAttribute("data-motion-transition", JSON.stringify({ duration: 0 }))
+  })
+
   it("removes retry hover/tap animation objects under reduced motion", () => {
     mockReducedMotion.mockReturnValue(true)
     render(
@@ -417,6 +470,84 @@ describe("ContactList — empty state (W183 SW1)", () => {
 })
 
 describe("ContactList — keyboard navigation (W183 SW4)", () => {
+  it("renders a bounded number of rows for 1000 conversations", () => {
+    const contacts = Array.from({ length: 1000 }, (_, index) => ({
+      ...mockContacts[0]!,
+      id: `conversation-${index}`,
+      name: `Conversation ${index}`,
+    }))
+
+    const { container } = render(
+      <ContactList contacts={contacts} selectedId={null} onSelect={() => {}} />,
+      { wrapper }
+    )
+
+    expect(virtualizerMock.options?.count).toBe(1000)
+    expect(virtualizerMock.options?.getItemKey(999)).toBe("conversation-999")
+    expect(virtualizerMock.options?.estimateSize()).toBe(80)
+    expect(
+      screen.getByRole("list", { name: "messenger:aria.conversationList" })
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole("listitem")).toHaveLength(10)
+    expect(screen.getAllByRole("listitem")[0]).toHaveAttribute("aria-posinset", "1")
+    expect(screen.getAllByRole("listitem")[0]).toHaveAttribute("aria-setsize", "1000")
+    expect(container.querySelectorAll('[id^="messenger-contact-"]').length).toBeLessThan(30)
+    expect(document.getElementById("messenger-contact-conversation-0")).toBeInTheDocument()
+    expect(document.getElementById("messenger-contact-conversation-999")).not.toBeInTheDocument()
+  })
+
+  it("scrolls to and restores focus on a virtualized End target", () => {
+    const contacts = Array.from({ length: 1000 }, (_, index) => ({
+      ...mockContacts[0]!,
+      id: `conversation-${index}`,
+    }))
+    const props = { contacts, selectedId: null, onSelect: vi.fn() }
+    const { rerender } = render(<ContactList {...props} />, { wrapper })
+    const first = document.getElementById("messenger-contact-conversation-0")!
+    first.focus()
+
+    fireEvent.keyDown(first, { key: "End" })
+    expect(virtualizerMock.scrollToIndex).toHaveBeenCalledWith(999, { align: "auto" })
+
+    // Real Virtual Core issues a render when its observed range changes.
+    // The jsdom mock has no observer, so trigger that render explicitly.
+    rerender(<ContactList {...props} selectedId="conversation-999" />)
+    expect(document.activeElement).toBe(
+      document.getElementById("messenger-contact-conversation-999")
+    )
+  })
+
+  it("keeps pending focus until the virtualized target row is actually mounted", () => {
+    const contacts = Array.from({ length: 1000 }, (_, index) => ({
+      ...mockContacts[0]!,
+      id: `conversation-${index}`,
+    }))
+    const props = { contacts, selectedId: null, onSelect: vi.fn() }
+    const { rerender } = render(<ContactList {...props} />, { wrapper })
+    const first = document.getElementById("messenger-contact-conversation-0")!
+    first.focus()
+
+    fireEvent.keyDown(first, { key: "End" })
+    virtualizerMock.startIndex = 0
+    rerender(<ContactList {...props} selectedId="not-yet-mounted" />)
+    expect(document.activeElement).toBe(first)
+
+    virtualizerMock.startIndex = 990
+    rerender(<ContactList {...props} selectedId="conversation-999" />)
+    expect(document.activeElement).toBe(
+      document.getElementById("messenger-contact-conversation-999")
+    )
+  })
+
+  it("clamps every navigation target to the contact list bounds", () => {
+    expect(getContactNavigationIndex(2, "ArrowDown", 3)).toBe(2)
+    expect(getContactNavigationIndex(0, "ArrowUp", 3)).toBe(0)
+    expect(getContactNavigationIndex(1, "ArrowDown", 3)).toBe(2)
+    expect(getContactNavigationIndex(1, "Home", 3)).toBe(0)
+    expect(getContactNavigationIndex(1, "End", 3)).toBe(2)
+    expect(getContactNavigationIndex(1, "PageDown", 3)).toBe(1)
+  })
+
   it("renders unread badges without entrance motion when reduced motion is enabled", () => {
     mockReducedMotion.mockReturnValue(true)
     render(<ContactList contacts={mockContacts} selectedId={null} onSelect={() => {}} />, {
@@ -501,6 +632,24 @@ describe("ContactList — keyboard navigation (W183 SW4)", () => {
 
     fireEvent.keyDown(aliceRow, { key: "PageDown" })
 
+    expect(document.activeElement).toBe(aliceRow)
+  })
+
+  it("does not consume unrelated key events", () => {
+    render(<ContactList contacts={mockContacts} selectedId={null} onSelect={() => {}} />, {
+      wrapper,
+    })
+    const aliceRow = document.getElementById("messenger-contact-1")!
+    aliceRow.focus()
+    const event = createEvent.keyDown(aliceRow, {
+      key: "PageDown",
+      bubbles: true,
+      cancelable: true,
+    })
+
+    fireEvent(aliceRow, event)
+
+    expect(event.defaultPrevented).toBe(false)
     expect(document.activeElement).toBe(aliceRow)
   })
 
@@ -747,7 +896,7 @@ describe("ContactList — populated contacts", () => {
 
     expect(bob.querySelector("img")).toHaveAttribute("src", "/fallbacks/default_avatar.png")
     expect(bob.querySelector(".messenger-online-indicator")).not.toBeInTheDocument()
-    expect(screen.getByLabelText('messenger:aria.unread|{"count":99}')).toHaveTextContent("99")
+    expect(screen.getByLabelText('messenger:aria.unread|{"count":99}')).toHaveTextContent(/^99$/)
     expect(screen.getByLabelText('messenger:aria.unread|{"count":100}')).toHaveTextContent("99+")
   })
 
@@ -823,5 +972,33 @@ describe("ContactList — populated contacts", () => {
     ;(contacts as unknown as Array<unknown>)[1] = undefined
     fireEvent.keyDown(firstRow, { key: "ArrowDown" })
     expect(document.activeElement).toBe(firstRow)
+  })
+
+  it("clamps keyboard navigation at both list boundaries", () => {
+    const contacts = [mockContacts[0]!, mockContacts[1]!]
+    render(<ContactList contacts={contacts} selectedId={null} onSelect={() => {}} />, { wrapper })
+
+    const firstRow = document.getElementById("messenger-contact-1")!
+    const lastRow = document.getElementById("messenger-contact-2")!
+
+    lastRow.focus()
+    fireEvent.keyDown(lastRow, { key: "ArrowDown" })
+    expect(document.activeElement).toBe(lastRow)
+
+    firstRow.focus()
+    fireEvent.keyDown(firstRow, { key: "ArrowUp" })
+    expect(document.activeElement).toBe(firstRow)
+  })
+
+  it("consumes activation and navigation keys so the page does not scroll", () => {
+    render(<ContactList contacts={mockContacts} selectedId={null} onSelect={() => {}} />, {
+      wrapper,
+    })
+    const bobRow = document.getElementById("messenger-contact-2")!
+
+    expect(fireEvent.keyDown(bobRow, { key: " " })).toBe(false)
+    expect(fireEvent.keyDown(bobRow, { key: "Enter" })).toBe(false)
+    expect(fireEvent.keyDown(bobRow, { key: "ArrowDown" })).toBe(false)
+    expect(fireEvent.keyDown(bobRow, { key: "End" })).toBe(false)
   })
 })

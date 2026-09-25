@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -239,7 +239,9 @@ describe("Settings container closure", () => {
 
   it("handles Spotify callback statuses and removes the query parameter", async () => {
     const { rerender } = render(<Settings />)
-    mocks.setSearch?.(() => ({ tab: 0, spotify: "connected" }))
+    act(() => {
+      mocks.setSearch?.(() => ({ tab: 0, spotify: "connected" }))
+    })
 
     await waitFor(() =>
       expect(
@@ -251,7 +253,9 @@ describe("Settings container closure", () => {
     )
     expect(mocks.navigate).toHaveBeenCalled()
 
-    mocks.setSearch?.(() => ({ tab: 0, spotify: "error" }))
+    act(() => {
+      mocks.setSearch?.(() => ({ tab: 0, spotify: "error" }))
+    })
     await waitFor(() =>
       expect(
         screen.getByText("settings:integrations.spotify.snackbar.connectFailed")
@@ -269,6 +273,7 @@ describe("Settings container closure", () => {
   it("runs step-up actions, closes the dialog, and handles an empty callback", async () => {
     const user = userEvent.setup()
     render(<Settings />)
+    expect(screen.queryByRole("dialog", { name: "step up" })).not.toBeInTheDocument()
     await user.click(screen.getByRole("tab", { name: "settings:tabs.security" }))
 
     await user.click(await screen.findByRole("button", { name: "open step up" }))
@@ -291,5 +296,30 @@ describe("Settings container closure", () => {
     expect(screen.getByText("info message")).toHaveClass("bg-surface-raised")
     await user.click(screen.getByRole("button", { name: "dismiss snackbar" }))
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+
+  it("renders exactly one content panel for every selected settings tab", async () => {
+    const user = userEvent.setup()
+    render(<Settings />)
+
+    const panels = [
+      ["settings:tabs.general", "general panel"],
+      ["settings:tabs.account", "profile panel"],
+      ["settings:tabs.security", "security panel"],
+      ["settings:tabs.notifications", "notifications panel"],
+      ["settings:tabs.sessions", "sessions panel"],
+      ["settings:tabs.integrations", "integrations panel"],
+    ] as const
+
+    for (const [tabLabel, panelName] of panels) {
+      await user.click(screen.getByRole("tab", { name: tabLabel }))
+      expect(await screen.findByRole("heading", { name: panelName })).toBeInTheDocument()
+
+      for (const [, otherPanelName] of panels) {
+        if (otherPanelName !== panelName) {
+          expect(screen.queryByRole("heading", { name: otherPanelName })).not.toBeInTheDocument()
+        }
+      }
+    }
   })
 })

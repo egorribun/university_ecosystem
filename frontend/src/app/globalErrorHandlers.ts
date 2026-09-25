@@ -11,14 +11,13 @@ const LOGGER_TAGS = {
 }
 
 function serializeReason(reason: unknown): unknown {
-  if (typeof reason === "object" && reason !== null) {
-    try {
-      return JSON.parse(JSON.stringify(reason))
-    } catch {
-      return Object.assign({}, reason as Record<string, unknown>)
-    }
+  if (reason === null) return reason
+  if (typeof reason !== "object") return reason
+  try {
+    return JSON.parse(JSON.stringify(reason))
+  } catch {
+    return Object.assign({}, reason as Record<string, unknown>)
   }
-  return reason
 }
 
 function handlePromiseRejection(event: PromiseRejectionEvent) {

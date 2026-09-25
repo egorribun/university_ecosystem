@@ -58,7 +58,7 @@ This re-shaped the original SW1=SkeletonMorph plan into SW1=footer.
 
 ## SW1 — `perf(wave118-sw1-footer-anchor)`: MainLayout main `flex-1` → `min-h-dvh`
 
-**File**: [`frontend/src/components/layout/MainLayout.tsx:48`](frontend/src/components/layout/MainLayout.tsx)
+**File**: [`frontend/src/components/layout/MainLayout.tsx:48`](../../../frontend/src/components/layout/MainLayout.tsx)
 
 **Root cause**: `<main flex-1>` inside `<div className="flex min-h-dvh flex-col">` sized main to fill remaining column space (~`dvh − navbar(64) − footer(~100)` = `dvh − 164` on short content). Footer sat at y ≈ `dvh − 100` — **visible at viewport bottom on first paint**. As content streamed in (cards, feed, etc.), main grew, footer shifted from visible (~y=567) past viewport bottom (~y=1264). Per web.dev CLS spec, shifts crossing the viewport boundary count.
 
@@ -80,7 +80,7 @@ Footer (`body.dark > div#root > div.flex > footer.bg-footer`) absent from `layou
 
 ## SW2 — `perf(wave118-sw2-install-prompt-cls)`: InstallPrompt min-h + opacity-only
 
-**File**: [`frontend/src/components/pwa/InstallPrompt.tsx`](frontend/src/components/pwa/InstallPrompt.tsx)
+**File**: [`frontend/src/components/pwa/InstallPrompt.tsx`](../../../frontend/src/components/pwa/InstallPrompt.tsx)
 
 **Root cause** (LHR `nodeLabel: "Установить «Экосистема ГУУ»"` confirmed identity): motion.div had `bottom-24` anchoring + NO fixed height. Content mounted progressively (i18n translations, push permission state, panel-type swap), grew from 0 → 532 px. Bottom-anchored variable-height element **shifted its TOP edge UP from y=727 to y=195** — a 532 px top-edge travel that LHCI counts as 0.234 CLS.
 
@@ -105,7 +105,7 @@ Footer (`body.dark > div#root > div.flex > footer.bg-footer`) absent from `layou
 
 ## SW3 — `perf(wave118-sw3-events-backdrop-orbs)`: % → px sizing
 
-**File**: [`frontend/src/components/events/EventsBackdrop.tsx`](frontend/src/components/events/EventsBackdrop.tsx)
+**File**: [`frontend/src/components/events/EventsBackdrop.tsx`](../../../frontend/src/components/events/EventsBackdrop.tsx)
 
 **Root cause**: orbs used `height: "55%"`, `top: "-10%"`, `bottom: "10%"` relative to absolute-positioned wrapper at `inset-0` of `div.events-theme`. As events content streamed in (cards N=0 → N=20+), `events-theme` height grew ~600 → ~3000 px. %-based dimensions scaled proportionally:
 - Orb 1 height: 55% × 600 = 330 → 55% × 3000 = 1650 px
@@ -127,9 +127,9 @@ Backdrop orb absent from `layout-shifts` on /events post-SW3. Isolated SW3 contr
 ## SW4 — `perf(wave118-sw4-dashboard-residual-cls)`: hero/dash-tilt/push-panel min-h
 
 **Files**:
-- [`frontend/src/components/dashboard/DashboardHero.tsx:53`](frontend/src/components/dashboard/DashboardHero.tsx)
-- [`frontend/src/pages/Dashboard.tsx`](frontend/src/pages/Dashboard.tsx) — 3× `dash-tilt-card` divs
-- [`frontend/src/components/pwa/InstallPrompt.tsx`](frontend/src/components/pwa/InstallPrompt.tsx) — push panel inner
+- [`frontend/src/components/dashboard/DashboardHero.tsx:53`](../../../frontend/src/components/dashboard/DashboardHero.tsx)
+- [`frontend/src/pages/Dashboard.tsx`](../../../frontend/src/pages/Dashboard.tsx) — 3× `dash-tilt-card` divs
+- [`frontend/src/components/pwa/InstallPrompt.tsx`](../../../frontend/src/components/pwa/InstallPrompt.tsx) — push panel inner
 
 **Root cause**: After SW1 (footer fix) eliminated 0.813 main culprit, the residual 0.226 on /dashboard broke down across THREE separate growing-content shifts that surface sequentially as content streams in:
 1. **DashboardHero** — hero grew ~50 → ~250 px during content load (greeting + weather + stories slot), pushing aurora-mesh content wrapper down. Fixed via `min-h-[260px]`.
@@ -153,7 +153,7 @@ Backdrop orb absent from `layout-shifts` on /events post-SW3. Isolated SW3 contr
 
 ## SW5 — `chore(wave118-sw5-perf-gate-ratchet)`: error@0.15 → error@0.30
 
-**File**: [`frontend/scripts/run-lhci.mjs:125-145`](frontend/scripts/run-lhci.mjs)
+**File**: [`frontend/scripts/run-lhci.mjs:125-145`](../../../frontend/scripts/run-lhci.mjs)
 
 Per Wave 117 SW8 ratchet methodology: floor = `floor(min measured median) − safety − variance margin`.
 

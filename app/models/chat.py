@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Table,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,11 +50,12 @@ chat_participants = Table(
 class Chat(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "chats"
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utc_now,
+        server_default=func.now(),
         onupdate=utc_now,
     )
     # Wave 209 G1 — group-chat identity. chat_type discriminates a 1-on-1 DM
@@ -98,7 +100,10 @@ class Chat(Base, UUID7PrimaryKeyMixin):
     # explicit at the call site: query paths that need participants add
     # .options(selectinload(Chat.participants)) themselves.
     participants = relationship(
-        "User", secondary=chat_participants, backref="chats", lazy="noload"
+        "User",
+        secondary=chat_participants,
+        back_populates="chats",
+        lazy="noload",
     )
     # Wave 211 — foreign_keys="Message.chat_id" disambiguates the join: Message
     # now has TWO chats.id FKs (chat_id + the audit-only forwarded_from_chat_id),
@@ -130,9 +135,11 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         String(CHAT_MAX_MESSAGE_LENGTH), nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
     )
-    read_status: Mapped[bool] = mapped_column(Boolean, default=False)
+    read_status: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
     # Wave 203 SW2 — read-receipt timestamp. NULL until the message is marked
     # read; set to utc_now() by ChatRepository.mark_messages_read. A column (not
     # a relationship), so the MOD-30-01 explicit-lazy CI gate does not apply.
@@ -279,7 +286,7 @@ class Attachment(Base, UUID7PrimaryKeyMixin):
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     size: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
     )
 
     # Relationships
@@ -321,7 +328,7 @@ class MessageReaction(Base, UUID7PrimaryKeyMixin):
     # matches the POST /reactions Form(max_length=16) cap.
     emoji: Mapped[str] = mapped_column(String(16), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
     )
 
     __table_args__ = (

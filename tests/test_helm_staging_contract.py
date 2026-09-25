@@ -35,6 +35,7 @@ def _resolved_staging_args() -> list[str]:
     digest = "sha256:" + ("a" * 64)
     overrides = {
         "global.imageTag": "9d08136558b95d1182f889574f67b1b1d21abc9f",  # pragma: allowlist secret
+        "global.jwtIssuer": "https://api.university.staging.example.org",
         "backend.image.repository": "ghcr.io/example/university/backend",
         "backend.image.digest": digest,
         "frontend.image.repository": "ghcr.io/example/university/frontend",
@@ -52,6 +53,7 @@ def _resolved_staging_args() -> list[str]:
         "nats.image.digest": digest,
         "backend.config.elasticsearchURL": "https://elasticsearch.staging.internal",
         "backend.config.flagdHost": "flagd.staging.internal",
+        "backend.config.storageS3EndpointURL": ("https://minio.staging.internal:443"),
         "gateway.config.otelEndpoint": "otel-collector.staging.internal:4317",
         "fileProcessor.config.minioEndpoint": "minio.staging.internal:443",
         "fileProcessor.config.temporalHost": "temporal.staging.internal:7233",
@@ -102,6 +104,71 @@ def _render_staging(
         encoding="utf-8",
     )
     return [resource for resource in yaml.safe_load_all(result.stdout) if resource]
+
+
+def test_release_gateway_uses_tls_for_jwks_and_routes_discovery_to_backend() -> None:
+    """Release gateways must never fetch signing keys over plaintext HTTP."""
+
+    resources = _render_staging(release_name="jwks-transport-contract")
+    gateway = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "Deployment"
+        and resource["metadata"]["name"].endswith("-gateway")
+    )
+    gateway_env = {
+        item["name"]: item["value"]
+        for item in gateway["spec"]["template"]["spec"]["containers"][0]["env"]
+        if "value" in item
+    }
+    assert gateway_env["JWKS_ENDPOINT"] == (
+        "https://api.university.staging.example.org/.well-known/jwks.json"
+    )
+
+    ingress = next(
+        resource for resource in resources if resource.get("kind") == "Ingress"
+    )
+    api_rule = next(
+        rule
+        for rule in ingress["spec"]["rules"]
+        if rule["host"] == "api.university.staging.example.org"
+    )
+    discovery_route = next(
+        path for path in api_rule["http"]["paths"] if path["path"] == "/.well-known"
+    )
+    assert discovery_route["pathType"] == "Prefix"
+    assert discovery_route["backend"]["service"]["name"].endswith("-backend")
+
+    gateway_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == "jwks-transport-contract-gateway-policy"
+    )
+    assert any(
+        port.get("port") == 443
+        for rule in gateway_policy["spec"]["egress"]
+        for port in rule.get("ports", [])
+    )
+
+    backend_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == "jwks-transport-contract-backend-policy"
+    )
+    ingress_controller_rule = next(
+        rule
+        for rule in backend_policy["spec"]["ingress"]
+        if any(
+            source.get("podSelector", {})
+            .get("matchLabels", {})
+            .get("app.kubernetes.io/name")
+            == "ingress-nginx"
+            for source in rule.get("from", [])
+        )
+    )
+    assert ingress_controller_rule["ports"] == [{"protocol": "TCP", "port": 8000}]
 
 
 def _resolved_revocation_store_args(release_name: str) -> list[str]:
@@ -191,11 +258,14 @@ def test_default_nats_values_use_upstream_jetstream_and_persistence_tree() -> No
 def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
     values = _values(STAGING_VALUES)
 
+    assert values["backend"]["config"]["eventFileScannerEnabled"] is True
+
     assert values["global"] == {
         "environment": "staging",
         "imageRegistry": "",
         "imageTag": "REQUIRED_GIT_SHA",
         "imagePullSecrets": ["ghcr-pull"],
+        "jwtIssuer": "https://REQUIRED_API_HOST",
         "security": {"allowInsecureImages": False},
     }
     assert values["fullnameOverride"] == "university-ecosystem"
@@ -251,6 +321,12 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
     assert values["ingress"]["enabled"] is True
     assert values["ingress"]["tls"]
     assert values["backend"]["config"]["minioSecure"] is True
+    assert values["backend"]["config"]["storageBackend"] == "s3"
+    assert values["backend"]["config"]["storageS3Bucket"] == "uploads"
+    assert values["backend"]["config"]["storageS3EndpointURL"] == (
+        "https://REQUIRED_MINIO_ENDPOINT"
+    )
+    assert values["backend"]["config"]["storageS3BaseURL"] == "/api/v1/img"
     assert values["gateway"]["config"]["grpcUseTLS"] is True
     assert (
         values["internalGrpcMTLS"]
@@ -276,6 +352,8 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
         }
     )
     assert values["fileProcessor"]["config"]["temporalTLSDisabled"] is False
+    assert values["fileProcessor"]["config"]["jwksRefreshInterval"] == 300
+    assert values["fileProcessor"]["config"]["jwtActiveKID"] == "primary"
     assert values["fileProcessor"]["config"]["otlpInsecure"] is False
 
 
@@ -367,6 +445,137 @@ def test_values_schema_closes_staging_sensitive_configuration_trees() -> None:
     assert "revocationRedis" not in properties
     assert properties["nats"]["additionalProperties"] is False
 
+    backend_config = properties["backend"]["properties"]["config"]
+    assert backend_config["additionalProperties"] is False
+    assert backend_config["properties"]["storageBackend"]["enum"] == [
+        "static",
+        "s3",
+        "minio",
+    ]
+    for field in (
+        "storageS3Bucket",
+        "storageS3Region",
+        "storageS3EndpointURL",
+        "storageS3BaseURL",
+    ):
+        assert backend_config["properties"][field]["type"] == "string"
+
+
+def test_staging_backend_uses_external_s3_storage_with_secret_credentials() -> None:
+    resources = _render_staging(release_name="university-ecosystem")
+    backend = _component_resource(resources, "Deployment", "backend")
+    container = backend["spec"]["template"]["spec"]["containers"][0]
+    env = {entry["name"]: entry for entry in container["env"]}
+
+    assert container["securityContext"]["readOnlyRootFilesystem"] is True
+    assert env["STORAGE_BACKEND"]["value"] == "s3"
+    assert env["STORAGE_S3_BUCKET"]["value"] == "uploads"
+    assert env["STORAGE_S3_ENDPOINT_URL"]["value"] == (
+        "https://minio.staging.internal:443"
+    )
+    assert env["STORAGE_S3_BASE_URL"]["value"] == "/api/v1/img"
+    assert env["STORAGE_S3_ACCESS_KEY_ID"]["valueFrom"]["secretKeyRef"] == {
+        "name": "university-application",
+        "key": "minio-access-key",
+    }
+    assert env["STORAGE_S3_SECRET_ACCESS_KEY"]["valueFrom"]["secretKeyRef"] == {
+        "name": "university-application",
+        "key": "minio-secret-key",
+    }
+    assert env["JWT_AUDIENCE"]["value"] == "university-ecosystem-api"
+    assert env["JWT_ISSUER"]["value"] == "https://api.university.staging.example.org"
+    assert not any(
+        mount["mountPath"].startswith("/app/static")
+        for mount in container.get("volumeMounts", [])
+    )
+
+
+def test_deploy_helm_supplies_backend_s3_endpoint_from_reviewed_minio_input() -> None:
+    script = (ROOT / ".github/scripts/deploy-helm.sh").read_text(encoding="utf-8")
+
+    assert "MINIO_ENDPOINT" in script
+    assert (
+        '--set-string "backend.config.storageS3EndpointURL=https://$MINIO_ENDPOINT"'
+        in script
+    )
+
+
+def test_backend_s3_credentials_remain_in_preflight_when_file_processor_is_off() -> (
+    None
+):
+    resources = _render_staging(
+        "--set",
+        "fileProcessor.enabled=false",
+        "--set",
+        "deploymentContract.enabled=true",
+    )
+    contract = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "ConfigMap"
+        and resource["metadata"]["name"].endswith("-deployment-contract")
+    )
+
+    required_keys = json.loads(contract["data"]["application-secret-keys.json"])
+    assert "minio-access-key" in required_keys
+    assert "minio-secret-key" in required_keys
+
+
+@pytest.mark.parametrize("environment", ["staging", "production"])
+@pytest.mark.parametrize(
+    ("flag", "override", "message"),
+    [
+        (
+            "--set-string",
+            "backend.config.storageBackend=static",
+            "backend.config.storageBackend",
+        ),
+        (
+            "--set-string",
+            "backend.config.storageS3Bucket=",
+            "backend.config.storageS3Bucket",
+        ),
+        (
+            "--set-string",
+            "backend.config.storageS3EndpointURL=http://minio.internal:9000",
+            "backend.config.storageS3EndpointURL",
+        ),
+        (
+            "--set-string",
+            "backend.config.storageS3BaseURL=",
+            "backend.config.storageS3BaseURL",
+        ),
+        (
+            "--set-string",
+            "backend.config.storageS3BaseURL=https://minio.staging.internal/uploads",
+            "backend.config.storageS3BaseURL",
+        ),
+        (
+            "--set-string",
+            "backend.config.storageS3BaseURL=http://public.example.org/images",
+            "backend.config.storageS3BaseURL",
+        ),
+        (
+            "--set-string",
+            "backend.config.storageS3BaseURL=/storage/uploads",
+            "backend.config.storageS3BaseURL",
+        ),
+    ],
+)
+def test_release_rejects_non_s3_backend_storage_contract(
+    environment: str, flag: str, override: str, message: str
+) -> None:
+    result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
+        _existing_secret_command(environment, flag, override),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode != 0
+    assert message in result.stderr
+
 
 @pytest.mark.parametrize(
     "invalid_override",
@@ -423,6 +632,30 @@ def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
 
     assert result.returncode != 0
     assert "unresolved REQUIRED_ marker" in result.stderr
+
+
+def test_validate_config_requires_file_scanning_in_release_environments() -> None:
+    template = (CHART / "templates" / "validate-config.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "backend.config.eventFileScannerEnabled" in template
+
+
+def test_outbox_worker_receives_release_file_scanner_guard() -> None:
+    resources = _render_staging(release_name="outbox-scanner-contract")
+    outbox = _component_resource(resources, "Deployment", "outbox-worker")
+    scanner_values = [
+        item.get("value")
+        for item in outbox["spec"]["template"]["spec"]["containers"][0]["env"]
+        if item.get("name") == "EVENT_FILE_SCANNER_ENABLED"
+    ]
+    assert scanner_values == ["true"]
+
+    template = (CHART / "templates" / "outbox-worker-deployment.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "EVENT_FILE_SCANNER_ENABLED" in template
+    assert "backend.config.eventFileScannerEnabled" in template
 
 
 def test_staging_render_rejects_a_missing_first_party_digest() -> None:
@@ -669,6 +902,7 @@ INLINE_SECRET_OVERRIDES = (
     "backend.config.elasticsearchPassword=inline",
     "backend.config.spicedbPresharedKey=inline",
     "backend.config.auditLogSecret=inline",
+    "backend.config.tokenHMACSecret=inline",
     "backend.config.idempotencyHMACSecret=inline",
     "backend.config.mfaEmailOtpHMACKeys=inline",
     "backend.config.mfaEmailOtpActiveHMACKeyId=inline",
@@ -890,6 +1124,8 @@ def test_staging_mounts_conventional_mtls_secrets_read_only() -> None:
 
     gateway_container = gateway["spec"]["template"]["spec"]["containers"][0]
     processor_container = processor["spec"]["template"]["spec"]["containers"][0]
+    gateway_env_entries = {item["name"]: item for item in gateway_container["env"]}
+    processor_env_entries = {item["name"]: item for item in processor_container["env"]}
     gateway_env = {item["name"]: item.get("value") for item in gateway_container["env"]}
     processor_env = {
         item["name"]: item.get("value") for item in processor_container["env"]
@@ -908,12 +1144,21 @@ def test_staging_mounts_conventional_mtls_secrets_read_only() -> None:
     assert gateway_env["GRPC_CA_FILE"].endswith("/ca.crt")
     assert gateway_env["GRPC_CLIENT_CERT_FILE"].endswith("/tls.crt")
     assert gateway_env["GRPC_CLIENT_KEY_FILE"].endswith("/tls.key")
+    assert gateway_env_entries["FILE_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
+        "secretKeyRef"
+    ] == {"name": "university-application", "key": "internal-hmac-secret"}
     assert processor_env["FP_GRPC_TLS_CERT_FILE"].endswith("/tls.crt")
     assert processor_env["FP_GRPC_TLS_KEY_FILE"].endswith("/tls.key")
     assert processor_env["FP_GRPC_CLIENT_CA_FILE"].endswith("/ca.crt")
     assert processor_env["FP_GRPC_ALLOWED_CLIENT_URIS"] == (
         "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway"
     )
+    assert processor_env_entries["FP_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
+        "secretKeyRef"
+    ] == {"name": "university-application", "key": "internal-hmac-secret"}
+    assert processor_env["FP_JWKS_URL"].endswith("-backend:8000/.well-known/jwks.json")
+    assert processor_env["FP_JWKS_REFRESH_INTERVAL"] == "300"
+    assert processor_env["FP_JWT_ACTIVE_KID"] == "primary"
     assert all(mount["readOnly"] is True for mount in gateway_container["volumeMounts"])
     assert all(
         mount["readOnly"] is True for mount in processor_container["volumeMounts"]
@@ -955,6 +1200,40 @@ def _component_resource(
         .get("app.kubernetes.io/component")
         == component
     )
+
+
+def test_auth_token_hmac_secret_is_wired_from_application_secret() -> None:
+    resources = _render_staging(release_name="university-ecosystem")
+    expected_ref = {
+        "name": "university-application",
+        "key": "token-hmac-secret",
+    }
+
+    for component in ("backend", "outbox-worker"):
+        deployment = _component_resource(resources, "Deployment", component)
+        env = {
+            item["name"]: item
+            for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+        }
+        assert env["TOKEN_HMAC_SECRET"]["valueFrom"]["secretKeyRef"] == expected_ref
+
+
+def test_internal_chat_auth_token_is_shared_by_backend_and_ws_hub() -> None:
+    resources = _render_staging(release_name="university-ecosystem")
+    expected_ref = {
+        "name": "university-application",
+        "key": "ws-hub-internal-secret",
+    }
+
+    for component in ("backend", "ws-hub"):
+        deployment = _component_resource(resources, "Deployment", component)
+        container = next(
+            item
+            for item in deployment["spec"]["template"]["spec"]["containers"]
+            if item["name"] == component
+        )
+        env = {item["name"]: item for item in container["env"]}
+        assert env["INTERNAL_AUTH_TOKEN"]["valueFrom"]["secretKeyRef"] == expected_ref
 
 
 def test_ws_hub_is_a_restricted_helm_managed_atomic_workload() -> None:

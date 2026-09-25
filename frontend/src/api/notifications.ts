@@ -1,7 +1,9 @@
 import * as v from "valibot"
+import { isAxiosError } from "axios"
 
 import {
   adminGetUserTopicsApiV1PushAdminTopicsUserIdGet,
+  announcePlatformReleaseApiV1PushAdminReleasesPost,
   adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut,
   checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost,
   clearNotificationsApiV1NotificationsDelete,
@@ -9,6 +11,7 @@ import {
   getPushTopicsApiV1PushTopicsGet,
   getVapidPublicKeyApiV1PushVapidPublicKeyGet,
   listNotificationsApiV1NotificationsGet,
+  meApiV1UsersMeGet,
   markAllReadApiV1NotificationsReadAllPost,
   markReadSingleApiV1NotificationsNotifIdReadPatch,
   listNotificationDeadLetters,
@@ -16,6 +19,7 @@ import {
   retryNotificationDeadLetters,
   subscribeApiV1PushSubscribePost,
   sendTestApiV1PushTestPost,
+  updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch,
 } from "@/api/generated"
 import type {
   AdminUserTopicsResponse,
@@ -63,6 +67,30 @@ const deadLetterListSchema = v.object({
   items: v.array(deadLetterJobSchema),
   total: v.pipe(v.number(), v.integer()),
 })
+
+const RELEASE_CORE = /^\d{1,4}\.\d{1,4}\.\d{1,6}$/u
+const RELEASE_PRERELEASE = /^[0-9A-Za-z][0-9A-Za-z.-]{0,31}$/u
+
+/**
+ * Mirrors the backend RELEASE_VERSION_PATTERN: a semantic version with an
+ * optional pre-release suffix and no build metadata.
+ */
+export const isReleaseVersion = (value: string): boolean => {
+  const separator = value.indexOf("-")
+  if (separator === -1) return RELEASE_CORE.test(value)
+  return (
+    RELEASE_CORE.test(value.slice(0, separator)) &&
+    RELEASE_PRERELEASE.test(value.slice(separator + 1))
+  )
+}
+
+const releaseAnnouncementSchema = v.object({
+  version: v.string(),
+  created: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  already_announced: v.boolean(),
+})
+
+export type ReleaseAnnouncementResult = v.InferOutput<typeof releaseAnnouncementSchema>
 
 export type NotificationEntry = v.InferOutput<typeof notificationSchema>
 export type NotificationsListResult = v.InferOutput<typeof notificationsListSchema>
@@ -124,12 +152,50 @@ export const retryDeadLetterJobs = async (jobIds: string[]) => {
   })
 }
 
+export const announcePlatformRelease = async (input: {
+  version: string
+  notesRu?: string
+  notesEn?: string
+}): Promise<ReleaseAnnouncementResult> => {
+  await import("@/api/client")
+  const notesRu = input.notesRu?.trim()
+  const notesEn = input.notesEn?.trim()
+  const response = await announcePlatformReleaseApiV1PushAdminReleasesPost({
+    body: {
+      version: input.version,
+      ...(notesRu ? { notes_ru: notesRu } : {}),
+      ...(notesEn ? { notes_en: notesEn } : {}),
+    },
+    throwOnError: true,
+  })
+  return ensureValidResponse(
+    releaseAnnouncementSchema,
+    response.data,
+    "POST /api/v1/push/admin/releases"
+  )
+}
+
 export const purgeDeadLetterJobs = async (jobIds: string[]) => {
   await import("@/api/client")
   return purgeNotificationDeadLetters({
     body: { job_ids: jobIds },
     throwOnError: true,
   })
+}
+
+/**
+ * Axios errors retain request config, including the endpoint and Web Push
+ * keys. Preserve only the status needed by the bounded retry policy; callers
+ * may send this error to both console and remote telemetry.
+ */
+function sanitizePushRequestError(error: unknown): Error {
+  const status = isAxiosError(error) ? error.response?.status : undefined
+  const safeError = new Error("Push subscription request failed")
+  safeError.name = "PushSubscriptionPersistenceError"
+  if (status !== undefined) {
+    Object.assign(safeError, { response: { status } })
+  }
+  return safeError
 }
 
 export async function saveSubscription(
@@ -152,15 +218,49 @@ export async function saveSubscription(
     user_agent: userAgent,
     ...(Array.isArray(topics) ? { topics } : {}),
   }
-  const { data } = await subscribeApiV1PushSubscribePost({ body: payload })
+  let data: PushSubscriptionResponse | undefined
+  try {
+    const response = await subscribeApiV1PushSubscribePost({ body: payload, throwOnError: true })
+    data = response.data
+  } catch (error) {
+    throw sanitizePushRequestError(error)
+  }
   if (!data) {
     throw new Error("Failed to save subscription")
   }
   return data
 }
 
+/**
+ * Explicit topic preference update for this endpoint (ADR-041). Unlike
+ * POST /push/subscribe, an empty list here is an explicit opt-out of every
+ * topic; the server mirrors the preference to all of the user's endpoints.
+ */
+export async function updatePushTopics(endpoint: string, topics: string[]): Promise<void> {
+  try {
+    await updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch({
+      body: { endpoint, topics },
+      throwOnError: true,
+    })
+  } catch (error) {
+    throw sanitizePushRequestError(error)
+  }
+}
+
 export async function deleteSubscription(endpoint: string): Promise<void> {
-  await unsubscribeApiV1PushUnsubscribePost({ body: { endpoint } })
+  try {
+    // A silently failed unbind would leave this endpoint delivering another
+    // account's notifications, so callers must see the failure.
+    await unsubscribeApiV1PushUnsubscribePost({ body: { endpoint }, throwOnError: true })
+  } catch (error) {
+    throw sanitizePushRequestError(error)
+  }
+}
+
+/** Id of the account that owns the current session cookie (GET /users/me). */
+export async function fetchSessionUserId(): Promise<string> {
+  const { data } = await meApiV1UsersMeGet({ throwOnError: true })
+  return String(data.id)
 }
 
 export async function sendTest(): Promise<SendTestNotificationResponse> {
@@ -176,7 +276,7 @@ export async function getVapidPublicKey(): Promise<string | null> {
   const schema = v.object({ publicKey: v.optional(v.nullable(v.string())) })
   const parsed = ensureValidResponse(schema, data, "GET /api/v1/push/vapid-public-key")
   const normalized = parsed.publicKey?.trim()
-  return normalized && normalized.length > 0 ? normalized : null
+  return normalized || null
 }
 
 const pushTopicsSchema = v.object({

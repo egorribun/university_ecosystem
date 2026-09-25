@@ -73,7 +73,10 @@ export function useAvatarUpload(setSnackbar: SetSnackbar) {
           headers: { "Content-Type": "multipart/form-data" },
         })
         await refreshUser()
-        setVersion(Date.now())
+        // Keep cache-busting monotonic even when an upload and the initial
+        // render happen within the same clock tick.  A repeated timestamp
+        // would leave the browser serving the stale avatar URL.
+        setVersion((current) => Math.max(Date.now(), current + 1))
         setSnackbar({
           text: t("settings:media.avatar.updated"),
           severity: "success",
@@ -96,7 +99,7 @@ export function useAvatarUpload(setSnackbar: SetSnackbar) {
     try {
       await api.delete("/users/me/avatar")
       await refreshUser()
-      setVersion(Date.now())
+      setVersion((current) => Math.max(Date.now(), current + 1))
       setSnackbar({
         text: t("settings:media.avatar.deleted"),
         severity: "success",

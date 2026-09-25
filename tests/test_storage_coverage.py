@@ -140,7 +140,8 @@ class TestS3Storage:
 
         s3 = S3Storage(bucket="b")
         assert s3._normalize_key("path/to/file.txt") == "path/to/file.txt"
-        assert s3._normalize_key("  /file.txt/  ") == "file.txt"
+        with pytest.raises(ValueError):
+            s3._normalize_key("  /file.txt/  ")
 
     def test_normalize_key_traversal(self):
         from app.services.storage import S3Storage
@@ -505,15 +506,15 @@ class TestS3StorageMissingBranches:
         await s3.delete_file("http://minio:9000/test/file.txt")
 
     @pytest.mark.asyncio
-    async def test_exists_empty_key_fallback(self):
-        """Line 313: exists() with empty key uses raw path."""
+    async def test_exists_with_raw_key(self):
+        """A raw key remains a valid input to exists()."""
         from app.services.storage import S3Storage
 
         mock_client = AsyncMock()
         mock_client.head_object = AsyncMock(return_value={})
         s3 = S3Storage(bucket="test", client=mock_client)
 
-        # Use a path that doesn't match any prefix - falls back to raw path
+        # Raw keys do not need the configured public URL prefix.
         result = await s3.exists("some/raw/path.txt")
         assert result is True
 
@@ -536,8 +537,8 @@ class TestS3StorageMissingBranches:
             await s3.exists("secure/file.txt")
 
     @pytest.mark.asyncio
-    async def test_read_file_empty_key_fallback(self):
-        """Line 336: read_file() with empty key uses raw path."""
+    async def test_read_file_with_raw_key(self):
+        """A raw key remains a valid input to read_file()."""
         from contextlib import asynccontextmanager
 
         from app.services.storage import S3Storage
@@ -607,48 +608,31 @@ class TestS3StorageMissingBranches:
         assert key is None
 
     @pytest.mark.asyncio
-    async def test_exists_with_empty_url_hits_fallback_path(self):
-        """Line 313: exists() with empty key from _extract_key falls through to raw path."""
-        from botocore.exceptions import ClientError
-
+    async def test_exists_with_empty_url_does_not_probe_bucket(self):
+        """The public URL root cannot become an object key."""
         from app.services.storage import S3Storage
 
         mock_client = AsyncMock()
-        # Return 404 - file doesn't exist
-        mock_client.head_object = AsyncMock(
-            side_effect=ClientError({"Error": {"Code": "NoSuchKey"}}, "HeadObject")
-        )
         s3 = S3Storage(bucket="test", endpoint_url="http://minio:9000")
         # Inject client after creation
         s3._injected_client = mock_client  # type: ignore[attr-defined]
 
-        # Pass an http URL with different netloc to get None key → fallback to lstrip path
-        # Actually use a URL that makes _extract_key return empty string → None
-        # The URL "http://minio:9000/test/" would extract key as "" → None → fallback
         result = await s3.exists("http://minio:9000/test/")
         assert result is False
+        mock_client.head_object.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_read_file_with_different_netloc_hits_fallback(self):
-        """Line 336: read_file() with URL that has different netloc falls back to raw path."""
-        from contextlib import asynccontextmanager
-
+    async def test_read_file_with_empty_url_does_not_fetch_object(self):
+        """The public URL root cannot become an object key."""
         from app.services.storage import S3Storage
 
-        @asynccontextmanager
-        async def _mock_stream():
-            stream = AsyncMock()
-            stream.read = AsyncMock(return_value=b"data")
-            yield stream
-
         mock_client = AsyncMock()
-        mock_client.get_object = AsyncMock(return_value={"Body": _mock_stream()})
         s3 = S3Storage(bucket="test", endpoint_url="http://minio:9000")
         s3._injected_client = mock_client  # type: ignore[attr-defined]
 
-        # URL with trailing slash makes key empty → fallback to raw path
-        data = await s3.read_file("http://minio:9000/test/")
-        assert data == b"data"
+        with pytest.raises(FileNotFoundError):
+            await s3.read_file("http://minio:9000/test/")
+        mock_client.get_object.assert_not_awaited()
 
 
 # ===========================================================================
@@ -756,6 +740,13 @@ class TestS3StorageBranchEdgeCases:
         # HTTP URL with same netloc but no base_path prefix to strip
         key = s3._extract_key("https://my-bucket.s3.amazonaws.com/path/to/file.txt")
         assert key == "path/to/file.txt"
+
+    def test_extract_key_rejects_origin_without_object_path(self):
+        from app.services.storage import S3Storage
+
+        s3 = S3Storage(bucket="my-bucket")
+
+        assert s3._extract_key("https://my-bucket.s3.amazonaws.com") is None
 
     @pytest.mark.asyncio
     async def test_exists_reraises_non_client_error(self):

@@ -9,6 +9,7 @@ export function estimateReadingTime(content: string): number | null {
     .replace(/\s+/g, " ")
     .trim()
   if (!text) return null
-  const words = text.split(/\s+/).filter(Boolean).length
+  // The text is already collapsed to single spaces and trimmed.
+  const words = text.split(" ").length
   return Math.max(1, Math.round(words / 220))
 }

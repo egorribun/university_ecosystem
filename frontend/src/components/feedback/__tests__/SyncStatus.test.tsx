@@ -159,6 +159,7 @@ describe("SyncStatus", () => {
     renderSyncStatus()
     const status = await screen.findByRole("status")
     expect(status).toBeInTheDocument()
+    await flushQueue()
 
     await act(async () => {
       setOnline(false)

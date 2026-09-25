@@ -11,6 +11,7 @@ from fastapi import HTTPException, Response
 from sqlalchemy.exc import NoSuchTableError, SQLAlchemyError
 
 from app.api import notifications as api
+from tests.conftest import call_injected
 
 
 def _user(*, group_id: uuid.UUID | None = None) -> SimpleNamespace:
@@ -266,8 +267,14 @@ async def test_list_notifications_headers_cursor_and_empty_schema() -> None:
             api, "_fetch_notification_rows", AsyncMock(return_value=([], set()))
         ),
     ):
-        result = await api.list_notifications(
-            _request(), response, db=db, user=user, cursor=None, limit=20
+        result = await call_injected(
+            api.list_notifications,
+            _request(),
+            response,
+            user=user,
+            cursor=None,
+            limit=20,
+            provides={"AsyncDatabaseSession": db},
         )
     assert result.items == []
     assert result.unread_count == 0
@@ -278,8 +285,13 @@ async def test_list_notifications_headers_cursor_and_empty_schema() -> None:
     bad_cursor = base64.b64encode(b"2026-01-01T00:00:00,not-a-uuid").decode()
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.list_notifications(
-                _request(), Response(), db=db, user=user, cursor=bad_cursor
+            await call_injected(
+                api.list_notifications,
+                _request(),
+                Response(),
+                user=user,
+                cursor=bad_cursor,
+                provides={"AsyncDatabaseSession": db},
             )
     assert exc.value.status_code == 400
 
@@ -288,13 +300,14 @@ async def test_list_notifications_headers_cursor_and_empty_schema() -> None:
     )
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.list_notifications(
+            await call_injected(
+                api.list_notifications,
                 _request(),
                 Response(),
-                db=db,
                 user=user,
                 cursor=valid_shape_bad_id,
                 limit=20,
+                provides={"AsyncDatabaseSession": db},
             )
     assert exc.value.status_code == 400
 
@@ -315,8 +328,14 @@ async def test_list_notifications_unread_count_and_next_cursor() -> None:
             AsyncMock(return_value=(rows, {"read", "id", "user_id"})),
         ) as fetch,
     ):
-        result = await api.list_notifications(
-            _request(), Response(), db=db, user=user, cursor=cursor, limit=1
+        result = await call_injected(
+            api.list_notifications,
+            _request(),
+            Response(),
+            user=user,
+            cursor=cursor,
+            limit=1,
+            provides={"AsyncDatabaseSession": db},
         )
     assert len(result.items) == 1
     assert result.unread_count == 3
@@ -340,8 +359,14 @@ async def test_list_notifications_count_fallback_branches() -> None:
             AsyncMock(return_value=(rows, {"read", "id"})),
         ),
     ):
-        result = await api.list_notifications(
-            _request(), Response(), db=db, user=user, cursor=None, limit=20
+        result = await call_injected(
+            api.list_notifications,
+            _request(),
+            Response(),
+            user=user,
+            cursor=None,
+            limit=20,
+            provides={"AsyncDatabaseSession": db},
         )
     assert result.unread_count == 1
 
@@ -355,8 +380,14 @@ async def test_list_notifications_count_fallback_branches() -> None:
             AsyncMock(return_value=(rows, {"id", "user_id"})),
         ),
     ):
-        result = await api.list_notifications(
-            _request(), Response(), db=db, user=user, cursor=None, limit=20
+        result = await call_injected(
+            api.list_notifications,
+            _request(),
+            Response(),
+            user=user,
+            cursor=None,
+            limit=20,
+            provides={"AsyncDatabaseSession": db},
         )
     assert result.unread_count == 1
 
@@ -371,8 +402,14 @@ async def test_list_notifications_count_fallback_branches() -> None:
         ),
     ):
         with pytest.raises(SQLAlchemyError):
-            await api.list_notifications(
-                _request(), Response(), db=db, user=user, cursor=None, limit=20
+            await call_injected(
+                api.list_notifications,
+                _request(),
+                Response(),
+                user=user,
+                cursor=None,
+                limit=20,
+                provides={"AsyncDatabaseSession": db},
             )
 
 
@@ -385,18 +422,26 @@ async def test_mark_read_single_all_read_and_not_found_paths() -> None:
     db = AsyncMock()
     db.execute.return_value = _db_result(already)
     with patch.object(api, "resolve_locale", return_value="en"):
-        assert await api.mark_read_single(already.id, request, db=db, user=user) == {
-            "ok": True
-        }
+        assert await call_injected(
+            api.mark_read_single,
+            already.id,
+            request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        ) == {"ok": True}
     db.commit.assert_not_awaited()
 
     unread = _notification(user.id)
     db = AsyncMock()
     db.execute.return_value = _db_result(unread)
     with patch.object(api, "resolve_locale", return_value="en"):
-        assert await api.mark_read_single(unread.id, request, db=db, user=user) == {
-            "ok": True
-        }
+        assert await call_injected(
+            api.mark_read_single,
+            unread.id,
+            request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        ) == {"ok": True}
     assert unread.read is True
     assert unread.read_at is not None
     db.commit.assert_awaited_once()
@@ -406,14 +451,26 @@ async def test_mark_read_single_all_read_and_not_found_paths() -> None:
     db.execute.return_value = _db_result(other)
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.mark_read_single(other.id, request, db=db, user=user)
+            await call_injected(
+                api.mark_read_single,
+                other.id,
+                request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
     assert exc.value.status_code == 404
 
     db = AsyncMock()
     db.execute.return_value = _db_result(None)
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.mark_read_single(uuid.uuid4(), request, db=db, user=user)
+            await call_injected(
+                api.mark_read_single,
+                uuid.uuid4(),
+                request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
     assert exc.value.status_code == 404
 
 
@@ -422,12 +479,16 @@ async def test_mark_all_read_rowcount_and_missing_rowcount() -> None:
     user = _user()
     db = AsyncMock()
     db.execute.return_value = _db_result(rowcount=4)
-    assert await api.mark_all_read(db=db, user=user) == {"ok": True, "updated": 4}
+    assert await call_injected(
+        api.mark_all_read, user=user, provides={"AsyncDatabaseSession": db}
+    ) == {"ok": True, "updated": 4}
     db.commit.assert_awaited_once()
 
     db = AsyncMock()
     db.execute.return_value = SimpleNamespace()
-    assert await api.mark_all_read(db=db, user=user) == {"ok": True, "updated": 0}
+    assert await call_injected(
+        api.mark_all_read, user=user, provides={"AsyncDatabaseSession": db}
+    ) == {"ok": True, "updated": 0}
 
 
 @pytest.mark.asyncio
@@ -438,8 +499,12 @@ async def test_delete_and_clear_notification_paths() -> None:
     db = AsyncMock()
     db.execute.return_value = _db_result(notification)
     with patch.object(api, "resolve_locale", return_value="en"):
-        assert await api.delete_notification(
-            notification.id, request, db=db, user=user
+        assert await call_injected(
+            api.delete_notification,
+            notification.id,
+            request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
         ) == {"ok": True}
     db.delete.assert_awaited_once_with(notification)
     db.commit.assert_awaited_once()
@@ -449,26 +514,42 @@ async def test_delete_and_clear_notification_paths() -> None:
     db.execute.return_value = _db_result(other)
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.delete_notification(other.id, request, db=db, user=user)
+            await call_injected(
+                api.delete_notification,
+                other.id,
+                request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
     assert exc.value.status_code == 404
 
     db = AsyncMock()
     db.execute.return_value = _db_result(None)
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await api.delete_notification(uuid.uuid4(), request, db=db, user=user)
+            await call_injected(
+                api.delete_notification,
+                uuid.uuid4(),
+                request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
     assert exc.value.status_code == 404
 
     db = AsyncMock()
     db.execute.return_value = _db_result(rowcount=2)
-    assert await api.clear_notifications(db=db, user=user) == {
+    assert await call_injected(
+        api.clear_notifications, user=user, provides={"AsyncDatabaseSession": db}
+    ) == {
         "ok": True,
         "deleted": 2,
     }
 
     db = AsyncMock()
     db.execute.return_value = SimpleNamespace()
-    assert await api.clear_notifications(db=db, user=user) == {
+    assert await call_injected(
+        api.clear_notifications, user=user, provides={"AsyncDatabaseSession": db}
+    ) == {
         "ok": True,
         "deleted": 0,
     }
@@ -482,11 +563,15 @@ async def test_check_schedule_without_group_delegates_to_list() -> None:
     with (
         patch.object(api, "resolve_locale", return_value="en"),
         patch.object(
-            api, "list_notifications", AsyncMock(return_value=expected)
+            api, "_collect_notifications", AsyncMock(return_value=expected)
         ) as listed,
     ):
-        result = await api.check_schedule_and_generate(
-            _request(), response, db=AsyncMock(), user=user
+        result = await call_injected(
+            api.check_schedule_and_generate,
+            _request(),
+            response,
+            user=user,
+            provides={"AsyncDatabaseSession": AsyncMock()},
         )
     assert result is expected
     listed.assert_awaited_once()
@@ -524,10 +609,15 @@ async def test_check_schedule_skips_duplicate_and_creates_new() -> None:
         ),
         patch.object(api, "create_notifications_for_users", AsyncMock()) as create,
         patch.object(api, "translate", return_value="Open schedule"),
-        patch.object(api, "list_notifications", AsyncMock(return_value=expected)),
+        patch.object(api, "_collect_notifications", AsyncMock(return_value=expected)),
     ):
-        result = await api.check_schedule_and_generate(
-            _request(), response, db=db, user=user, lookahead_minutes=15
+        result = await call_injected(
+            api.check_schedule_and_generate,
+            _request(),
+            response,
+            user=user,
+            lookahead_minutes=15,
+            provides={"AsyncDatabaseSession": db},
         )
     assert result is expected
     create.assert_awaited_once()
@@ -562,10 +652,15 @@ async def test_check_schedule_uses_scalar_one_legacy_count_fallback() -> None:
         patch.object(api, "build_schedule_reminder_message", return_value=message),
         patch.object(api, "create_notifications_for_users", AsyncMock()) as create,
         patch.object(api, "translate", return_value="Open schedule"),
-        patch.object(api, "list_notifications", AsyncMock(return_value=expected)),
+        patch.object(api, "_collect_notifications", AsyncMock(return_value=expected)),
     ):
-        result = await api.check_schedule_and_generate(
-            _request(), response, db=db, user=user, lookahead_minutes=15
+        result = await call_injected(
+            api.check_schedule_and_generate,
+            _request(),
+            response,
+            user=user,
+            lookahead_minutes=15,
+            provides={"AsyncDatabaseSession": db},
         )
 
     assert result is expected

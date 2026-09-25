@@ -51,7 +51,7 @@ export function SessionsSection({
             color="error"
             disabled={revokeAllPending}
             onClick={() => void onRevokeAllSessions()}
-            startIcon={
+            leadingIcon={
               revokeAllPending ? <CircularProgress size={18} color="inherit" /> : undefined
             }
           >

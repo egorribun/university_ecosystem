@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.routers.schedule import _build_filename
+from tests.conftest import build_dishka_app, call_injected
 
 # ---------------------------------------------------------------------------
 # _build_filename unit tests
@@ -104,13 +105,11 @@ class TestBuildFilename:
 # ---------------------------------------------------------------------------
 
 
-def _build_schedule_app() -> FastAPI:
-    """Build a test app with the schedule router."""
+def _build_schedule_app(**provides: object) -> FastAPI:
+    """Build a test app with the schedule router wired to a container."""
     from app.routers.schedule import router
 
-    test_app = FastAPI()
-    test_app.include_router(router)
-    return test_app
+    return build_dishka_app(router, **provides)
 
 
 class TestDownloadScheduleIcs:
@@ -132,13 +131,11 @@ class TestDownloadScheduleIcs:
 
         ics_content = "BEGIN:VCALENDAR\nEND:VCALENDAR"
 
-        app = _build_schedule_app()
+        app = _build_schedule_app(ScheduleService=mock_service)
 
-        from app.api.deps import get_read_schedule_service
         from app.core.database import get_read_db
 
         app.dependency_overrides[get_read_db] = lambda: mock_db
-        app.dependency_overrides[get_read_schedule_service] = lambda: mock_service
 
         with patch(
             "app.routers.schedule.generate_schedule_ics",
@@ -164,13 +161,11 @@ class TestDownloadScheduleIcs:
 
         mock_service = MagicMock()
 
-        app = _build_schedule_app()
+        app = _build_schedule_app(ScheduleService=mock_service)
 
-        from app.api.deps import get_read_schedule_service
         from app.core.database import get_read_db
 
         app.dependency_overrides[get_read_db] = lambda: mock_db
-        app.dependency_overrides[get_read_schedule_service] = lambda: mock_service
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -192,13 +187,11 @@ class TestDownloadScheduleIcs:
         mock_service = MagicMock()
         mock_service.get_schedule = AsyncMock(return_value=[])
 
-        app = _build_schedule_app()
+        app = _build_schedule_app(ScheduleService=mock_service)
 
-        from app.api.deps import get_read_schedule_service
         from app.core.database import get_read_db
 
         app.dependency_overrides[get_read_db] = lambda: mock_db
-        app.dependency_overrides[get_read_schedule_service] = lambda: mock_service
 
         with (
             patch(
@@ -236,13 +229,11 @@ class TestDownloadScheduleIcs:
         mock_service = MagicMock()
         mock_service.get_schedule = AsyncMock(return_value=[])
 
-        app = _build_schedule_app()
+        app = _build_schedule_app(ScheduleService=mock_service)
 
-        from app.api.deps import get_read_schedule_service
         from app.core.database import get_read_db
 
         app.dependency_overrides[get_read_db] = lambda: mock_db
-        app.dependency_overrides[get_read_schedule_service] = lambda: mock_service
 
         with patch(
             "app.routers.schedule.generate_schedule_ics",
@@ -279,13 +270,11 @@ class TestDownloadScheduleIcs:
         mock_service = MagicMock()
         mock_service.get_schedule = AsyncMock(return_value=[])
 
-        app = _build_schedule_app()
+        app = _build_schedule_app(ScheduleService=mock_service)
 
-        from app.api.deps import get_read_schedule_service
         from app.core.database import get_read_db
 
         app.dependency_overrides[get_read_db] = lambda: mock_db
-        app.dependency_overrides[get_read_schedule_service] = lambda: mock_service
 
         with patch(
             "app.routers.schedule.generate_schedule_ics",
@@ -321,7 +310,12 @@ class TestDownloadScheduleIcs:
                 return_value="BEGIN:VCALENDAR\nEND:VCALENDAR",
             ),
         ):
-            response = await download_schedule_ics(request, service, group_id, db)
+            response = await call_injected(
+                download_schedule_ics,
+                request=request,
+                group=group_id,
+                provides={"ScheduleService": service, "AsyncDatabaseSession": db},
+            )
 
         assert response.status_code == 200
         assert "content-language" not in response.headers

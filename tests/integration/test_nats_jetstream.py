@@ -458,8 +458,15 @@ async def test_outbox_worker_promotes_to_dlq_after_max_retries() -> None:
 
 async def test_cdc_outbox_worker_publishes_to_jetstream_with_dedup_header() -> None:
     """CdcOutboxWorker must publish CDC insert events to JetStream stream OUTBOX_EVENTS
-    (subject outbox.events.<event_type>) with Nats-Msg-Id: <stored_event.id> header and sub-5ms latency.
+    (subject outbox.events.<event_type>) with Nats-Msg-Id: <stored_event.id> header
+    and sub-5ms steady-state latency.
+
+    The latency contract samples a short burst instead of timing one await.  A
+    single wall-clock sample can include an unrelated scheduler pre-emption
+    when the full xdist suite is saturated; the median retains the sub-5ms
+    product target while the p95 bound still catches sustained regressions.
     """
+    import math
     import time
 
     from app.workers.cdc_outbox import CDCInsertRecord, CdcOutboxWorker
@@ -467,34 +474,55 @@ async def test_cdc_outbox_worker_publishes_to_jetstream_with_dedup_header() -> N
     broker, mock_js = _build_broker_with_mocked_js()
     worker = CdcOutboxWorker(nats_broker=broker)
 
-    event_id = str(uuid.uuid4())
-    record = CDCInsertRecord(
-        relation_id=1,
-        relation_name="stored_events",
-        data={
-            "id": event_id,
-            "event_type": "UserCreated",
-            "aggregate_type": "User",
-            "aggregate_id": "usr-int-1",
-            "payload": {"user_id": "usr-int-1", "email": "cdc_integration@test.com"},
-            "metadata_": {"correlation_id": "corr-cdc-int"},
-        },
-        lsn=99999,
+    def make_record() -> tuple[str, CDCInsertRecord]:
+        event_id = str(uuid.uuid4())
+        return event_id, CDCInsertRecord(
+            relation_id=1,
+            relation_name="stored_events",
+            data={
+                "id": event_id,
+                "event_type": "UserCreated",
+                "aggregate_type": "User",
+                "aggregate_id": "usr-int-1",
+                "payload": {
+                    "user_id": "usr-int-1",
+                    "email": "cdc_integration@test.com",
+                },
+                "metadata_": {"correlation_id": "corr-cdc-int"},
+            },
+            lsn=99999,
+        )
+
+    # Prime tracing/metric lazy initialization outside the measured burst.
+    _, warmup_record = make_record()
+    assert await worker.dispatch_insert_record(warmup_record) is not None
+    mock_js.reset_mock()
+
+    elapsed_ms: list[float] = []
+    events: list[object | None] = []
+    event_ids: list[str] = []
+    for _ in range(20):
+        event_id, record = make_record()
+        event_ids.append(event_id)
+        t0 = time.perf_counter()
+        events.append(await worker.dispatch_insert_record(record))
+        elapsed_ms.append((time.perf_counter() - t0) * 1000)
+
+    assert all(event is not None for event in events)
+    ordered = sorted(elapsed_ms)
+    median_ms = ordered[len(ordered) // 2]
+    p95_ms = ordered[math.ceil(len(ordered) * 0.95) - 1]
+    assert median_ms < 5.0, (
+        f"CDC dispatch median latency was {median_ms:.3f}ms (expected < 5ms)"
     )
-
-    t0 = time.perf_counter()
-    event = await worker.dispatch_insert_record(record)
-    elapsed_ms = (time.perf_counter() - t0) * 1000
-
-    assert elapsed_ms < 50.0, (
-        f"CDC dispatch latency was {elapsed_ms:.3f}ms (expected < 50ms)"
+    assert p95_ms < 50.0, (
+        f"CDC dispatch p95 latency was {p95_ms:.3f}ms (expected < 50ms)"
     )
-    assert event is not None
-    mock_js.publish.assert_called_once()
+    assert mock_js.publish.call_count == len(events)
 
-    call_args = mock_js.publish.call_args
+    call_args = mock_js.publish.call_args_list[-1]
     call_subject = call_args[0][0]
     headers = call_args.kwargs.get("headers", {})
 
     assert call_subject == "outbox.events.UserCreated"
-    assert headers.get("Nats-Msg-Id") == event_id
+    assert headers.get("Nats-Msg-Id") == event_ids[-1]

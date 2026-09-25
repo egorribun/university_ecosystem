@@ -8,9 +8,7 @@ import (
 )
 
 func TestResolver_Health_ReturnsOK(t *testing.T) {
-	resolver := &Resolver{
-		MinioBucket: "test-bucket",
-	}
+	resolver := &Resolver{}
 
 	result := resolver.Health()
 
@@ -18,9 +16,7 @@ func TestResolver_Health_ReturnsOK(t *testing.T) {
 }
 
 func TestResolver_File_ReturnsFileResolver(t *testing.T) {
-	resolver := &Resolver{
-		MinioBucket: "uploads",
-	}
+	resolver := &Resolver{}
 
 	// W140 (z) #1: args.ID is gql.ID (not string) per schema `file(id: ID!)`.
 	args := struct{ ID gql.ID }{ID: gql.ID("test-file-123")}
@@ -28,8 +24,7 @@ func TestResolver_File_ReturnsFileResolver(t *testing.T) {
 
 	assert.NotNil(t, result)
 	assert.Equal(t, gql.ID("test-file-123"), result.ID())
-	assert.Contains(t, result.URL(), "uploads")
-	assert.Contains(t, result.URL(), "test-file-123")
+	assert.Equal(t, "/api/v1/img/test-file-123", result.URL())
 }
 
 func TestFileResolver_ID_ReturnsID(t *testing.T) {

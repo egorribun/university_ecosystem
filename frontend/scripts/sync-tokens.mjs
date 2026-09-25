@@ -303,8 +303,10 @@ GROUPS.forEach((group) => {
     }
   }
 
-  // Sort for stability
-  entries.sort((a, b) => a.key.localeCompare(b.key))
+  // Sort by Unicode code points rather than the host locale.  `localeCompare`
+  // is platform/locale dependent (notably between Windows and Linux), which
+  // can make the generated mirror drift only in CI even when CSS is identical.
+  entries.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
 
   if (entries.length === 0) {
     output += `export const ${group.name} = {} as const\n\n`

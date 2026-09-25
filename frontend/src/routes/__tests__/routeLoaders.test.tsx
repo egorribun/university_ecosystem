@@ -48,6 +48,14 @@ vi.mock("@/api/hooks/sessions", () => ({
 }))
 
 describe("Route Loaders & validateSearch validation", () => {
+  it.each([
+    ["news", NewsIndexRoute],
+    ["events", EventsIndexRoute],
+  ])("keeps the %s feed mounted across client-side filter changes", (_name, route) => {
+    // A reload on every search change let the pending UI replace the page.
+    expect(route.options.shouldReload).toBe(false)
+  })
+
   let mockQueryClient: any
 
   beforeEach(() => {

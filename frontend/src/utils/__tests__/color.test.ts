@@ -74,6 +74,29 @@ describe("color utilities", () => {
       expect(result).toMatch(/^#[0-9a-f]{6}$/)
     })
 
+    it("builds the exact color-mix expression for the requested white share", () => {
+      vi.stubGlobal("CSS", {
+        supports: (property: string, value: string) =>
+          property === "color" && value.startsWith("color-mix("),
+      })
+
+      expect(mixColorWithWhite("#ff0000", 0.3)).toBe("color-mix(in srgb, #ff0000 70%, white 30%)")
+      expect(mixColorWithWhite(" rebeccapurple ", 0.125)).toBe(
+        "color-mix(in srgb, rebeccapurple 87.5%, white 12.5%)"
+      )
+    })
+
+    it("uses the hex fallback when CSS exists without a supports function", () => {
+      vi.stubGlobal("CSS", {})
+
+      expect(mixColorWithWhite("#000000", 0.5)).toBe("#808080")
+    })
+
+    it("leaves colors that are not exactly 3 or 6 hex digits untouched", () => {
+      expect(mixColorWithWhite("#ff000080", 0.5)).toBe("#ff000080")
+      expect(mixColorWithWhite("#0000", 0.5)).toBe("#0000")
+    })
+
     it("handles case-insensitive hex", () => {
       const result = mixColorWithWhite("#FF0000", 0)
       expect(result).toBe("#ff0000")

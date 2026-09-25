@@ -1,4 +1,4 @@
-// go.work — mono-repo workspace (Go 1.22+)
+// go.work — mono-repo workspace (Go 1.26.4+; CI pins 1.26.6)
 //
 // MOD-3 (audit 2026-03-05): Replaces the fragile `replace` directive in
 // services/gateway/go.mod that pointed to ../../gen/go via a relative filesystem
@@ -17,6 +17,7 @@ use (
 	./services/file-processor
 	./services/gateway
 	./services/pkg/spicedb
+	./services/pkg/logging
 	./services/pkg/spiffe
 	./services/ws-hub
 )

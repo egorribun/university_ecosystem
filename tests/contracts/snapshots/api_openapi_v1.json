@@ -3598,6 +3598,66 @@
         "title": "RecoveryCodesGenerateOut",
         "type": "object"
       },
+      "ReleaseAnnouncementRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "notes_en": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes En"
+          },
+          "notes_ru": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes Ru"
+          },
+          "version": {
+            "description": "Released semantic version, announced once",
+            "maxLength": 48,
+            "minLength": 5,
+            "pattern": "^\\d{1,4}\\.\\d{1,4}\\.\\d{1,6}(?:-[0-9A-Za-z][0-9A-Za-z.-]{0,31})?$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": ["version"],
+        "title": "ReleaseAnnouncementRequest",
+        "type": "object"
+      },
+      "ReleaseAnnouncementResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "already_announced": {
+            "title": "Already Announced",
+            "type": "boolean"
+          },
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": ["version", "created", "already_announced"],
+        "title": "ReleaseAnnouncementResponse",
+        "type": "object"
+      },
       "RenameChat": {
         "additionalProperties": false,
         "description": "Wave 209 G1 \u2014 rename a group's display title.",
@@ -7592,6 +7652,60 @@
         "tags": ["chats"]
       }
     },
+    "/api/v1/chats/{chat_id}/attachments/{filename}": {
+      "get": {
+        "description": "Download a chat attachment after live membership authorization.",
+        "operationId": "download_chat_attachment_api_v1_chats__chat_id__attachments__filename__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chat Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "title": "Filename",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Download Chat Attachment",
+        "tags": ["chats"]
+      }
+    },
     "/api/v1/chats/{chat_id}/clear": {
       "post": {
         "description": "Remove all messages (and attachments) from a chat for its participants.",
@@ -9271,7 +9385,73 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "summary": "Get Event Files",
+        "tags": ["events"]
+      }
+    },
+    "/api/v1/events/{event_id}/files/{filename}": {
+      "get": {
+        "description": "Download an event file after checking the event's view permission.",
+        "operationId": "download_event_file_api_v1_events__event_id__files__filename__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Event Id"
+            }
+          },
+          {
+            "in": "path",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "title": "Filename",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Download Event File",
         "tags": ["events"]
       }
     },
@@ -10745,6 +10925,51 @@
           }
         ],
         "summary": "Disable User Push",
+        "tags": ["push"]
+      }
+    },
+    "/api/v1/push/admin/releases": {
+      "post": {
+        "description": "Announce a released platform version once to every active user.",
+        "operationId": "announce_platform_release_api_v1_push_admin_releases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseAnnouncementRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseAnnouncementResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Announce Platform Release",
         "tags": ["push"]
       }
     },

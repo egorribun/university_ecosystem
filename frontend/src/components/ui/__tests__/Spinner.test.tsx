@@ -21,6 +21,7 @@ describe("Spinner", () => {
     const { container } = render(<Spinner className="extra" />)
     const span = container.querySelector("span")
     expect(span?.className).toContain("h-5")
+    expect(span?.className).toContain("animate-spin")
     expect(span?.className).toContain("extra")
   })
 })

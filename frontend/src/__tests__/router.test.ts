@@ -12,7 +12,7 @@
  * simulate what server.ts would set at runtime, then assert the factory
  * reads from it.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { getRouter, type RouterContext } from "../router"
 
 type SsrAuthGetter = (() => RouterContext["auth"] | undefined) | undefined
@@ -101,6 +101,24 @@ describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 60000 },
     expect(r1.options.context.queryClient).not.toBe(r2.options.context.queryClient)
   })
 
+  it("uses the shared offline-first QueryClient policy during SSR", () => {
+    globalThis.__ssrAuthGetter__ = undefined
+    const queryClient = getRouter().options.context.queryClient
+    const defaults = queryClient.getDefaultOptions()
+
+    expect(defaults.queries).toMatchObject({
+      staleTime: 5 * 60_000,
+      gcTime: 30 * 60_000,
+      retry: 1,
+      networkMode: "offlineFirst",
+    })
+    expect(defaults.mutations).toMatchObject({
+      retry: 0,
+      gcTime: 0,
+      networkMode: "offlineFirst",
+    })
+  })
+
   it("provides an accessible visible pending component for suspended routes", () => {
     globalThis.__ssrAuthGetter__ = undefined
     const pending = getRouter().options.defaultPendingComponent?.({})
@@ -122,5 +140,21 @@ describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 60000 },
     const options = getRouter().options
     expect(options.scrollRestoration).toBe(true)
     expect(options.getScrollRestorationKey).toBeUndefined()
+  })
+
+  it("disables view transitions on touch WebKit so the old snapshot cannot block links", async () => {
+    vi.stubGlobal("WebKitPoint", class WebKitPoint {})
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({ matches: query === "(hover: none) and (pointer: coarse)" }))
+    )
+    try {
+      vi.resetModules()
+      const { getRouter: getWebKitRouter } = await import("../router")
+      expect(getWebKitRouter().options.defaultViewTransition).toBe(false)
+      expect(window.matchMedia).toHaveBeenCalledWith("(hover: none) and (pointer: coarse)")
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

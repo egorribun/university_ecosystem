@@ -53,7 +53,7 @@ async def test_event_and_news_embedding_handlers_cover_missing_and_success():
     missing_db.get.return_value = None
     with (
         patch.object(event_handlers, "async_session", lambda: _session(missing_db)),
-        patch.object(event_handlers, "get_vector_service", return_value=AsyncMock()),
+        patch.object(event_handlers, "VectorService", return_value=AsyncMock()),
     ):
         await event_handlers.generate_event_embedding(
             EventCreated(event_id_entity=uuid4())
@@ -72,7 +72,7 @@ async def test_event_and_news_embedding_handlers_cover_missing_and_success():
     vector.get_embedding = AsyncMock(return_value=[0.1, 0.2])
     with (
         patch.object(event_handlers, "async_session", lambda: _session(db)),
-        patch.object(event_handlers, "get_vector_service", return_value=vector),
+        patch.object(event_handlers, "VectorService", return_value=vector),
     ):
         await event_handlers.generate_event_embedding(
             EventCreated(event_id_entity=uuid4())
@@ -85,7 +85,7 @@ async def test_event_and_news_embedding_handlers_cover_missing_and_success():
     news_db.get.return_value = db_news
     with (
         patch.object(event_handlers, "async_session", lambda: _session(news_db)),
-        patch.object(event_handlers, "get_vector_service", return_value=vector),
+        patch.object(event_handlers, "VectorService", return_value=vector),
     ):
         await event_handlers.generate_news_embedding(NewsCreated(news_id=uuid4()))
     assert db_news.embedding == [0.1, 0.2]
@@ -177,7 +177,7 @@ async def test_chat_delete_notifications_and_attachment_handlers():
         )
         await event_handlers.handle_attachment_cleanup_requested(event)
     attachment_class.return_value.cleanup_files.assert_awaited_once_with(
-        ["/static/a.png"]
+        ["/static/a.png"], durable=True
     )
 
 
@@ -210,6 +210,41 @@ async def test_notification_redelivery_commits_partial_results_before_retry():
         db,
         notification_ids=event.notification_ids,
         channel="push",
+        payload_data=None,
+    )
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_notification_outbox_event_replays_original_payload_metadata():
+    event = NotificationsRequested.from_dict(
+        {
+            "notification_ids": [str(uuid4())],
+            "channel": "push",
+            "payload_data": {"category": "system", "version": "9.0.0"},
+        }
+    )
+    assert event.payload_data == {"category": "system", "version": "9.0.0"}
+
+    db = MagicMock()
+    db.commit = AsyncMock()
+    session_context = MagicMock()
+    session_context.__aenter__ = AsyncMock(return_value=db)
+    session_context.__aexit__ = AsyncMock(return_value=False)
+    with (
+        patch.object(event_handlers, "async_session", return_value=session_context),
+        patch(
+            "app.services.notifications.delivery.redeliver_notifications",
+            new=AsyncMock(return_value=SimpleNamespace(retryable_failures=0)),
+        ) as redeliver,
+    ):
+        await event_handlers.handle_notifications_requested(event)
+
+    redeliver.assert_awaited_once_with(
+        db,
+        notification_ids=event.notification_ids,
+        channel="push",
+        payload_data={"category": "system", "version": "9.0.0"},
     )
     db.commit.assert_awaited_once()
 
@@ -222,8 +257,48 @@ def test_configure_event_handlers_registers_global_subscriptions():
         event_handlers.configure_event_handlers()
 
     subscribe_all.assert_called_once_with(event_handlers.log_all_events)
-    assert subscribe.call_count == 15
+    assert subscribe.call_count == 22
+    subscribe.assert_any_call(
+        "SCHEDULE_UPDATED", event_handlers.handle_schedule_changed
+    )
+    subscribe.assert_any_call(
+        "SCHEDULE_DELETED", event_handlers.handle_schedule_changed
+    )
     subscribe.assert_any_call(
         "notification.delivery_requested",
         event_handlers.handle_notifications_requested,
     )
+
+
+@pytest.mark.asyncio
+async def test_audit_only_producers_have_explicit_durable_acknowledgement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.events import EventBus
+    from app.models.domain_events import StoredEvent
+    from app.workers import outbox as outbox_module
+
+    audit_only = {
+        "SCHEDULE_CREATED",
+        "GRADE_ASSIGNED",
+        "GRADE_MODIFIED",
+        "NOTIFICATION_DEAD_LETTER_RETRY",
+        "NOTIFICATION_DEAD_LETTER_PURGE",
+    }
+    bus = EventBus()
+    monkeypatch.setattr(event_handlers, "event_bus", bus)
+    monkeypatch.setattr(outbox_module, "event_bus", bus)
+    event_handlers.configure_event_handlers()
+    worker = outbox_module.OutboxWorker()
+
+    for event_type in sorted(audit_only):
+        await worker._dispatch_event(
+            StoredEvent(
+                id=uuid4(),
+                event_type=event_type,
+                aggregate_type="audit",
+                aggregate_id="test",
+                payload={},
+                metadata_={},
+            )
+        )

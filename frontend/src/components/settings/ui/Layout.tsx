@@ -20,7 +20,6 @@ export function SectionCard({
         "relative flex flex-col gap-3 overflow-hidden rounded-2xl px-6 py-6",
         "border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass text-text-primary",
         "transition-all duration-slow",
-        "transition-all duration-slow",
         "before:pointer-events-none before:absolute before:inset-0 before-rounded-inherit before:opacity-soft",
         "before:bg-radial-gradient-primary",
         "dark:before:bg-radial-gradient-primary-dark",
