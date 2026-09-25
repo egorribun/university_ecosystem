@@ -45,7 +45,9 @@ class StorageBackend(Protocol):
     async def exists(self, file_url_or_path: str) -> bool:
         """Check if file exists."""
 
-    async def read_file(self, file_url_or_path: str) -> bytes:
+    async def read_file(
+        self, file_url_or_path: str, *, max_bytes: int | None = None
+    ) -> bytes:
         """Read file content as bytes."""
 
 
@@ -139,7 +141,9 @@ class StaticFSStorage(StorageBackend):
         except FileNotFoundError:
             return
         except OSError:
-            logger.warning("Failed to remove file at %s", path, exc_info=True)
+            # Paths and OS exception messages can carry user data. Durable
+            # callers verify that the file still exists before acknowledging.
+            logger.warning("static_delete_failed")
 
     async def delete_file(self, file_url: str) -> None:
         relative = self._extract_relative_path(file_url)
@@ -156,7 +160,16 @@ class StaticFSStorage(StorageBackend):
         target = self._resolve_validated_path(relative)  # RZ-30-02
         return await asyncio.to_thread(target.exists)
 
-    async def read_file(self, file_url_or_path: str) -> bytes:
+    @staticmethod
+    def _read_bounded(path: Path, max_bytes: int) -> bytes:
+        with path.open("rb") as file:
+            return file.read(max_bytes + 1)
+
+    async def read_file(
+        self, file_url_or_path: str, *, max_bytes: int | None = None
+    ) -> bytes:
+        if max_bytes is not None and max_bytes < 0:
+            raise ValueError("max_bytes must be nonnegative")
         relative = self._extract_relative_path(file_url_or_path)
         if relative is None:
             # Fallback for raw paths
@@ -164,7 +177,9 @@ class StaticFSStorage(StorageBackend):
         target = self._resolve_validated_path(relative)  # RZ-30-02
         if not await asyncio.to_thread(target.exists):
             raise FileNotFoundError(f"File not found: {file_url_or_path}")
-        return await asyncio.to_thread(target.read_bytes)
+        if max_bytes is None:
+            return await asyncio.to_thread(target.read_bytes)
+        return await asyncio.to_thread(self._read_bounded, target, max_bytes)
 
 
 class S3Storage(StorageBackend):
@@ -350,9 +365,9 @@ class S3Storage(StorageBackend):
                     await s3.delete_object(Bucket=self.bucket, Key=key)
         except (ConnectionError, TimeoutError, OSError):
             # RZ-20-04: Narrowed — S3 delete is best-effort (fire-and-forget).
-            logger.warning(
-                "Failed to delete %s from bucket %s", key, self.bucket, exc_info=True
-            )
+            # Object keys and provider exception messages may contain private
+            # user data. Durable callers verify object absence and retry.
+            logger.warning("s3_delete_failed")
 
     async def exists(self, file_url_or_path: str) -> bool:
         key = self._extract_key(file_url_or_path)
@@ -375,7 +390,11 @@ class S3Storage(StorageBackend):
                     return False
             raise
 
-    async def read_file(self, file_url_or_path: str) -> bytes:
+    async def read_file(
+        self, file_url_or_path: str, *, max_bytes: int | None = None
+    ) -> bytes:
+        if max_bytes is not None and max_bytes < 0:
+            raise ValueError("max_bytes must be nonnegative")
         key = self._extract_key(file_url_or_path)
         if not key:
             raise FileNotFoundError(f"S3 file not found: {file_url_or_path}")
@@ -384,7 +403,17 @@ class S3Storage(StorageBackend):
                 async with self._build_aioboto3_client() as s3:
                     response = await s3.get_object(Bucket=self.bucket, Key=key)
                     async with response["Body"] as stream:
-                        return cast(bytes, await stream.read())
+                        if max_bytes is None:
+                            return cast(bytes, await stream.read())
+                        content = bytearray()
+                        limit = max_bytes + 1
+                        while len(content) < limit:
+                            remaining = limit - len(content)
+                            chunk = cast(bytes, await stream.read(remaining))
+                            if not chunk:
+                                break
+                            content.extend(chunk[:remaining])
+                        return bytes(content)
         except ClientError as exc:
             error_code = exc.response.get("Error", {}).get("Code", "")
             if error_code in ("404", "NoSuchKey"):
@@ -395,7 +424,7 @@ class S3Storage(StorageBackend):
         except (FileNotFoundError, OSError, ConnectionError) as exc:
             # RZ-20-04: Narrowed — S3 read errors. Converts to FileNotFoundError
             # for uniform caller interface.
-            logger.error("Failed to read %s from bucket %s: %s", key, self.bucket, exc)
+            logger.error("s3_read_failed")
             raise FileNotFoundError(f"S3 file not found: {file_url_or_path}") from exc
 
 

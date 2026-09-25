@@ -280,6 +280,121 @@ async def test_event_bus_timeout_awaits_child_handler_cleanup() -> None:
 
 
 @pytest.mark.asyncio
+async def test_durable_event_requires_specific_handler_even_with_wildcard() -> None:
+    event = UserCreated(email="user@example.test")
+    bus = EventBus()
+    observed: list[str] = []
+
+    async def wildcard(_event: object) -> None:
+        observed.append("wildcard")
+
+    bus.subscribe_all(wildcard)
+    with pytest.raises(RuntimeError, match="No durable event handler registered"):
+        await bus.publish(event, durable=True)
+    assert observed == []
+    await bus.publish(event)
+    assert observed == ["wildcard"]
+
+
+@pytest.mark.asyncio
+async def test_durable_event_failure_is_sanitized_and_retryable() -> None:
+    event = UserCreated(email="user@example.test")
+    bus = EventBus()
+    completed_event_ids: set[str] = set()
+    delivered: list[str] = []
+    attempts = 0
+
+    async def idempotent_handler(evt: UserCreated) -> None:
+        if evt.event_id not in completed_event_ids:
+            delivered.append(evt.event_id)
+            completed_event_ids.add(evt.event_id)
+
+    async def flaky_handler(_event: UserCreated) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("recipient user@example.test, code 123456")
+
+    bus.subscribe(event.event_type, idempotent_handler)
+    bus.subscribe(event.event_type, flaky_handler)
+    with pytest.raises(RuntimeError, match="Durable event handler failed") as error:
+        await bus.publish(event, durable=True)
+    assert error.value.__cause__ is None
+    assert "user@example.test" not in str(error.value)
+    assert "123456" not in str(error.value)
+    await bus.publish(event, durable=True)
+    assert attempts == 2
+    assert delivered == [event.event_id]
+
+
+@pytest.mark.asyncio
+async def test_durable_event_deferral_is_not_collapsed_into_handler_failure() -> None:
+    event = UserCreated(email="user@example.test")
+    bus = EventBus()
+
+    async def deferred(_event: object) -> None:
+        raise events.DurableEventDeferred()
+
+    bus.subscribe(event.event_type, deferred)
+    with pytest.raises(events.DurableEventDeferred):
+        await bus.publish(event, durable=True)
+
+
+@pytest.mark.asyncio
+async def test_durable_event_timeout_is_retryable_after_child_cleanup() -> None:
+    event = UserCreated(email="user@example.test")
+    bus = EventBus()
+    started = asyncio.Event()
+    cleaned = asyncio.Event()
+
+    async def hanging_handler(_event: object) -> None:
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            await asyncio.sleep(0)
+            cleaned.set()
+
+    async def pending_wait(
+        tasks: set[asyncio.Task[object]], *, timeout: float
+    ) -> tuple[set[asyncio.Task[object]], set[asyncio.Task[object]]]:
+        del timeout
+        await started.wait()
+        return set(), tasks
+
+    bus.subscribe(event.event_type, hanging_handler)
+    with patch.object(events.asyncio, "wait", side_effect=pending_wait):
+        with pytest.raises(TimeoutError, match="Durable event dispatch timed out"):
+            await bus.publish(event, durable=True)
+    assert cleaned.is_set()
+
+
+@pytest.mark.asyncio
+async def test_durable_attachment_cleanup_waits_for_bounded_storage_work() -> None:
+    event = events.AttachmentCleanupRequested(attachment_urls=["/static/chat/one"])
+    bus = EventBus()
+    started = asyncio.Event()
+    completed = asyncio.Event()
+
+    async def cleanup(_event: object) -> None:
+        started.set()
+        await asyncio.sleep(0)
+        completed.set()
+
+    async def pending_wait(
+        tasks: set[asyncio.Task[object]], *, timeout: float
+    ) -> tuple[set[asyncio.Task[object]], set[asyncio.Task[object]]]:
+        del timeout
+        await started.wait()
+        return set(), tasks
+
+    bus.subscribe(event.event_type, cleanup)
+    with patch.object(events.asyncio, "wait", side_effect=pending_wait):
+        await bus.publish(event, durable=True)
+    assert completed.is_set()
+
+
+@pytest.mark.asyncio
 async def test_event_bus_successful_chain_and_handler_registry_lifecycle() -> None:
     event = UserCreated(email="success@example.com")
     bus = EventBus()

@@ -185,7 +185,7 @@ async def test_handle_attachment_cleanup_requested(monkeypatch):
     await handle_attachment_cleanup_requested(
         AttachmentCleanupRequested(chat_id="chat1", attachment_urls=["url1"])
     )
-    mock_service.cleanup_files.assert_called_once_with(["url1"])
+    mock_service.cleanup_files.assert_awaited_once_with(["url1"], durable=True)
 
 
 def test_configure_event_handlers(monkeypatch):

@@ -386,6 +386,13 @@ jobs:
                     --health-interval 10s
                     --health-timeout 5s
                     --health-retries 5
+            mailpit:
+                # Official GHCR mirror, immutable v1.31.1 manifest-list digest.
+                # Both unauthenticated endpoints stay bound to the runner loopback.
+                image: ghcr.io/axllent/mailpit:v1.31.1@sha256:98b916bd3c8d61f7633a52d3ea2f58d00620cb01ca57ab59edde68c347a95365
+                ports:
+                    - "127.0.0.1:8025:8025"
+                    - "127.0.0.1:1025:1025"
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
@@ -434,6 +441,58 @@ jobs:
                   uv run alembic downgrade -1
                   uv run alembic upgrade head
                   echo "Migration round-trip succeeded"
+
+            - name: Wait for Mailpit
+              shell: bash
+              timeout-minutes: 2
+              run: |
+                  set -euo pipefail
+                  python3 - <<'PY'
+                  import smtplib
+                  import time
+                  from urllib.request import urlopen
+
+                  for attempt in range(30):
+                      try:
+                          with urlopen("http://127.0.0.1:8025/readyz", timeout=2) as response:
+                              if response.status != 200:
+                                  raise OSError("Mailpit HTTP readiness failed")
+                          with smtplib.SMTP("127.0.0.1", 1025, timeout=2) as smtp:
+                              if smtp.noop()[0] != 250:
+                                  raise OSError("Mailpit SMTP readiness failed")
+                          break
+                      except (OSError, smtplib.SMTPException):
+                          if attempt == 29:
+                              raise SystemExit("Mailpit HTTP/SMTP readiness did not pass") from None
+                          time.sleep(1)
+                  PY
+
+            - name: Verify email MFA outbox delivery
+              shell: bash
+              timeout-minutes: 10
+              env:
+                  MFA_TEST_MAILPIT_API: http://127.0.0.1:8025
+                  MFA_TEST_SMTP_PORT: "1025"
+              run: |
+                  set -euo pipefail
+                  uv run pytest -q -p no:cacheprovider \
+                    tests/integration/test_mfa_mailpit_outbox.py \
+                    --junitxml=mfa-mailpit-report.xml
+                  python3 - <<'PY'
+                  from xml.etree import ElementTree
+
+                  suite = ElementTree.parse("mfa-mailpit-report.xml").getroot().find("testsuite")
+                  if suite is None or any(
+                      int(suite.get(name, "0")) != expected
+                      for name, expected in (
+                          ("tests", 1),
+                          ("skipped", 0),
+                          ("failures", 0),
+                          ("errors", 0),
+                      )
+                  ):
+                      raise SystemExit("Required Mailpit acceptance did not execute successfully")
+                  PY
 
             - name: Pre-pull testcontainer images with bounded retries
               shell: pwsh
@@ -518,5 +577,7 @@ jobs:
               if: failure()
               with:
                   name: postgres-test-failures-${{ inputs.test-group-name }}
-                  path: pytest-report.xml
+                  path: |
+                      pytest-report.xml
+                      mfa-mailpit-report.xml
                   if-no-files-found: ignore

@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import func, select
 
 import app.core.database as database
+import app.services.chat.notification_service as chat_notifications
 import app.services.notifications.schedule_changes as schedule_changes
 import app.services.notifications.system_release as system_release
 from app.models import Group, Notification, PushSubscription
@@ -148,3 +150,64 @@ async def test_concurrent_schedule_change_creates_one_notification(
     assert sorted(created) == [0, 1]
     send.assert_not_called()
     assert await _notification_count(f"schedule-change:{schedule_id}:") == 1
+
+
+async def test_concurrent_chat_event_creates_one_notification_per_recipient(
+    user_factory,
+) -> None:
+    """Separate outbox workers must serialize a replayed message before insert."""
+    _require_postgres()
+    sender = await user_factory()
+    recipient = await user_factory()
+    message = SimpleNamespace(
+        id=uuid.uuid4(),
+        chat_id=uuid.uuid4(),
+        sender_id=sender.id,
+        content="hello",
+        attachments=[],
+    )
+    sender_dto = SimpleNamespace(
+        id=sender.id, profile=SimpleNamespace(full_name="Sender")
+    )
+    recipient_dto = SimpleNamespace(id=recipient.id, profile=None)
+    key = f"chat-message:{message.id}"
+    read = chat_notifications._already_notified
+    both_read = asyncio.Event()
+    read_calls = 0
+
+    async def synchronized_read(session, keys):
+        nonlocal read_calls
+        result = await read(session, keys)
+        read_calls += 1
+        if read_calls == 2:
+            both_read.set()
+        try:
+            await asyncio.wait_for(both_read.wait(), timeout=0.5)
+        except TimeoutError:
+            # With the advisory lock, the second worker cannot read until the
+            # first commits. Without it, both see an empty set and race.
+            pass
+        return result
+
+    async def announce() -> None:
+        async with database.async_session() as session:
+            service = chat_notifications.ChatNotificationService(session)
+            await service.notify_new_message(
+                message, [sender_dto, recipient_dto], sender_dto
+            )
+            await session.commit()
+
+    with (
+        patch.object(chat_notifications, "_already_notified", synchronized_read),
+        patch.object(
+            chat_notifications, "build_presence_map", new=AsyncMock(return_value={})
+        ),
+        patch.object(chat_notifications, "serialize_message", return_value={}),
+        patch.object(
+            chat_notifications.ws_manager, "broadcast_to_chat", new=AsyncMock()
+        ),
+    ):
+        await asyncio.gather(announce(), announce())
+
+    assert read_calls == 2
+    assert await _notification_count(key) == 1

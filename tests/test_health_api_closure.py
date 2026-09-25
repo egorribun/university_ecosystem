@@ -69,20 +69,25 @@ class _Storage(StorageBackend):
         self.exists_error = exists_error
         self.save_error = save_error
         self.delete_error = delete_error
+        self.probe_present = False
 
     async def exists(self, path: str) -> bool:
         if self.exists_error is not None:
             raise self.exists_error
+        if path == "healthz/probe.txt":
+            return self.probe_present
         return self.exists_value
 
     async def save_file(self, relative_path: str, data: bytes, *, content_type=None):
         if self.save_error is not None:
             raise self.save_error
+        self.probe_present = True
         return "healthz/probe.txt"
 
     async def delete_file(self, file_url: str) -> None:
         if self.delete_error is not None:
             raise self.delete_error
+        self.probe_present = False
 
 
 def _patch_common(monkeypatch, *, environment: str = "testing"):
@@ -201,6 +206,39 @@ async def test_lightweight_static_probe_checks_storage_directory(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_write_delete_probe_rejects_silently_failed_deletion(tmp_path):
+    backend = StaticFSStorage(tmp_path)
+    backend.delete_file = AsyncMock(return_value=None)
+
+    assert await health._write_delete_storage_probe(backend) == "error"
+    assert len(list((tmp_path / "healthz").glob("*.txt"))) == 1
+
+
+@pytest.mark.asyncio
+async def test_write_delete_probe_rejects_swallowed_s3_delete_error():
+    client = AsyncMock()
+    client.delete_object.side_effect = ConnectionError("storage unavailable")
+    backend = S3Storage(bucket="uploads", client=client)
+
+    assert await health._write_delete_storage_probe(backend) == "error"
+
+
+@pytest.mark.asyncio
+async def test_enabled_storage_probe_keeps_write_delete_error(monkeypatch):
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(health.settings, "health_storage_probe_enabled", True)
+    monkeypatch.setattr(health, "_get_storage_backend", lambda: object())
+    monkeypatch.setattr(
+        health, "_write_delete_storage_probe", AsyncMock(return_value="error")
+    )
+    monkeypatch.setattr(
+        health, "_lightweight_storage_probe", AsyncMock(return_value="ok")
+    )
+
+    assert (await health._probe_storage())[0] == "error"
+
+
+@pytest.mark.asyncio
 async def test_probe_storage_cache_and_fallback_paths(monkeypatch):
     _patch_common(monkeypatch)
     backend = object()
@@ -228,7 +266,7 @@ async def test_probe_storage_cache_and_fallback_paths(monkeypatch):
         health, "_lightweight_storage_probe", AsyncMock(return_value="ok")
     )
     status_value, _ = await health._probe_storage()
-    assert status_value == "ok"
+    assert status_value == "error"
 
     health._storage_probe_cache["expires_at"] = 0.0
     monkeypatch.setattr(

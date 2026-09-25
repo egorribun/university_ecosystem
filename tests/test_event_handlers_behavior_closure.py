@@ -177,7 +177,7 @@ async def test_chat_delete_notifications_and_attachment_handlers():
         )
         await event_handlers.handle_attachment_cleanup_requested(event)
     attachment_class.return_value.cleanup_files.assert_awaited_once_with(
-        ["/static/a.png"]
+        ["/static/a.png"], durable=True
     )
 
 
@@ -257,7 +257,7 @@ def test_configure_event_handlers_registers_global_subscriptions():
         event_handlers.configure_event_handlers()
 
     subscribe_all.assert_called_once_with(event_handlers.log_all_events)
-    assert subscribe.call_count == 17
+    assert subscribe.call_count == 22
     subscribe.assert_any_call(
         "SCHEDULE_UPDATED", event_handlers.handle_schedule_changed
     )
@@ -268,3 +268,37 @@ def test_configure_event_handlers_registers_global_subscriptions():
         "notification.delivery_requested",
         event_handlers.handle_notifications_requested,
     )
+
+
+@pytest.mark.asyncio
+async def test_audit_only_producers_have_explicit_durable_acknowledgement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.events import EventBus
+    from app.models.domain_events import StoredEvent
+    from app.workers import outbox as outbox_module
+
+    audit_only = {
+        "SCHEDULE_CREATED",
+        "GRADE_ASSIGNED",
+        "GRADE_MODIFIED",
+        "NOTIFICATION_DEAD_LETTER_RETRY",
+        "NOTIFICATION_DEAD_LETTER_PURGE",
+    }
+    bus = EventBus()
+    monkeypatch.setattr(event_handlers, "event_bus", bus)
+    monkeypatch.setattr(outbox_module, "event_bus", bus)
+    event_handlers.configure_event_handlers()
+    worker = outbox_module.OutboxWorker()
+
+    for event_type in sorted(audit_only):
+        await worker._dispatch_event(
+            StoredEvent(
+                id=uuid4(),
+                event_type=event_type,
+                aggregate_type="audit",
+                aggregate_id="test",
+                payload={},
+                metadata_={},
+            )
+        )

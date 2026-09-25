@@ -24,6 +24,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy import delete, or_, select, update
 
 from app.auth.constants import CHALLENGE_TYPE_EMAIL_OTP, MFA_METHOD_EMAIL_OTP
+from app.core.events import DurableEventDeferred
 from app.core.logging import get_logger
 from app.core.ratelimit import RateLimitExceeded
 from app.models import (
@@ -182,14 +183,34 @@ class SmtpMfaEmailSender:
     ) -> None:
         import asyncio
 
-        await asyncio.to_thread(
-            self._send_sync,
-            to_email=to_email,
-            subject=subject,
-            plain=plain,
-            html_body=html,
-            message_id=message_id,
+        send_task = asyncio.create_task(
+            asyncio.to_thread(
+                self._send_sync,
+                to_email=to_email,
+                subject=subject,
+                plain=plain,
+                html_body=html,
+                message_id=message_id,
+            )
         )
+        finished = asyncio.Event()
+        send_task.add_done_callback(lambda _task: finished.set())
+        # asyncio cannot stop a running SMTP thread. Keep its delivery
+        # coroutine attached through cancellation, including repeated cancel
+        # requests, then retrieve the transport result exactly once. An Event
+        # waiter avoids an orphaned shield Future that could otherwise log a
+        # raw SMTP exception (recipient/OTP) after cancellation.
+        while not finished.is_set():
+            try:
+                await finished.wait()
+            except asyncio.CancelledError:
+                continue
+        # This is at-least-once delivery: an SMTP peer may accept a message
+        # while its acknowledgement is lost, despite a stable Message-ID.
+        # The callback signals only after completion. Reading the result
+        # synchronously avoids a final cancellation point between completion
+        # and retrieval of a potentially sensitive SMTP exception.
+        send_task.result()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1112,8 +1133,10 @@ class EmailOtpService:
                     MfaEmailDelivery.id == delivery_id
                 )
             )
-            if status_value in {"sent", "sending"}:
+            if status_value in {"sent", "cancelled"}:
                 return
+            if status_value == "sending":
+                raise DurableEventDeferred()
             raise MfaDeliveryError()
         # This is a worker lease boundary: commit before network I/O so no row
         # lock or transaction remains open while SMTP is unavailable or slow.

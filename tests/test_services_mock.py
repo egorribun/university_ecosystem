@@ -505,7 +505,7 @@ async def test_handle_attachment_cleanup_with_urls() -> None:
     ):
         await handle_attachment_cleanup_requested(mock_event)
         mock_attachment_svc.cleanup_files.assert_awaited_once_with(
-            mock_event.attachment_urls
+            mock_event.attachment_urls, durable=True
         )
 
 
