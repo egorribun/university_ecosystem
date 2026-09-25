@@ -50,6 +50,10 @@ export function NotificationsSection({
     permissionText,
     enableNotifications,
     disableNotifications,
+    topicKeys,
+    topicState,
+    topicLabels,
+    handleTopicToggle,
   } = usePushPreferences({ onNotify: setSnackbar })
 
   const handleNotificationsToggle = useCallback(
@@ -105,6 +109,31 @@ export function NotificationsSection({
                 {t("settings:notifications.toggles.notifications.label")}
               </span>
             </label>
+
+            <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
+              <legend className="mb-1 font-semibold text-text-soft">
+                {t("settings:notifications.topics.legend")}
+              </legend>
+              <p className="text-sm text-text-muted">
+                {notificationsEnabled
+                  ? t("settings:notifications.topics.hint")
+                  : t("settings:notifications.topics.disabledHint")}
+              </p>
+              {topicKeys.map((topic) => (
+                <label
+                  key={topic}
+                  className="m-0 flex min-h-(--min-h-touch) items-center gap-2.5 cursor-pointer"
+                >
+                  <SwitchControl
+                    checked={topicState[topic]}
+                    onChange={handleTopicToggle(topic)}
+                    disabled={pushBusy || pushInitializing}
+                    aria-label={topicLabels[topic]}
+                  />
+                  <span className="text-text-soft">{topicLabels[topic]}</span>
+                </label>
+              ))}
+            </fieldset>
 
             <label className="m-0 flex min-h-(--min-h-touch) items-center gap-2.5 cursor-pointer">
               <SwitchControl

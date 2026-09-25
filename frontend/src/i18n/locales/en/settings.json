@@ -68,6 +68,11 @@
         "label": "Turn on quiet hours",
         "aria": "Turn on quiet hours"
       }
+    },
+    "topics": {
+      "legend": "Notification topics",
+      "hint": "Choose what push notifications are about. Your choice applies to all your devices.",
+      "disabledHint": "Your topic choice applies once you turn notifications on."
     }
   },
   "dnd": {

@@ -3,6 +3,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
+const topicApi = vi.hoisted(() => () => {
+  const topicKeys = [
+    "news.published",
+    "schedule.changed",
+    "events.published",
+    "chat.message.created",
+    "system.release",
+  ] as const
+  const toggle = vi.fn()
+  return {
+    topicKeys: [...topicKeys],
+    topicState: Object.fromEntries(topicKeys.map((key) => [key, key !== "chat.message.created"])),
+    topicLabels: Object.fromEntries(topicKeys.map((key) => [key, `Topic ${key}`])),
+    topicToggle: toggle,
+    handleTopicToggle: vi.fn(
+      (key: string) => (_event: unknown, checked: boolean) => toggle(key, checked)
+    ),
+  }
+})
+
 const pushState = vi.hoisted(() => ({
   value: {
     pushSupported: true,
@@ -13,6 +33,7 @@ const pushState = vi.hoisted(() => ({
     permissionText: "not requested",
     enableNotifications: vi.fn(),
     disableNotifications: vi.fn(),
+    ...topicApi(),
   },
 }))
 
@@ -69,6 +90,7 @@ beforeEach(async () => {
     permissionText: "not requested",
     enableNotifications: vi.fn(),
     disableNotifications: vi.fn(),
+    ...topicApi(),
   }
 })
 
@@ -100,26 +122,25 @@ describe("NotificationsSection — push and quiet-hours branches", () => {
 
   it("toggles notifications, handles busy guards, and updates DND controls", async () => {
     const { props, rerender, openNotificationAccordion } = await renderSection()
-    const switches = screen.getAllByRole("switch")
-    expect(switches).toHaveLength(2)
+    expect(screen.getAllByRole("switch")).toHaveLength(7)
 
-    fireEvent.click(switches[0]!)
+    fireEvent.click(screen.getByRole("switch", { name: "Turn on notifications" }))
     expect(pushState.value.enableNotifications).toHaveBeenCalledOnce()
 
     pushState.value = { ...pushState.value, notificationsEnabled: true, pushBusy: true }
     rerender(<NotificationsSection {...props} />)
     openNotificationAccordion()
-    expect(screen.getAllByRole("switch")[0]).toBeDisabled()
-    fireEvent.click(screen.getAllByRole("switch")[0]!)
+    expect(screen.getByRole("switch", { name: "Turn on notifications" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("switch", { name: "Turn on notifications" }))
     expect(pushState.value.disableNotifications).not.toHaveBeenCalled()
 
     pushState.value = { ...pushState.value, pushBusy: false }
     rerender(<NotificationsSection {...props} />)
     openNotificationAccordion()
-    fireEvent.click(screen.getAllByRole("switch")[0]!)
+    fireEvent.click(screen.getByRole("switch", { name: "Turn on notifications" }))
     expect(pushState.value.disableNotifications).toHaveBeenCalledOnce()
 
-    fireEvent.click(screen.getAllByRole("switch")[1]!)
+    fireEvent.click(screen.getByRole("switch", { name: "Turn on quiet hours" }))
     expect(props.onDndToggle).toHaveBeenCalledWith(expect.anything(), false)
 
     const timeInputs = screen.getAllByDisplayValue(/:/)
@@ -135,7 +156,44 @@ describe("NotificationsSection — push and quiet-hours branches", () => {
 
     rerender(<NotificationsSection {...props} dndEnabled={false} dndSaving />)
     openNotificationAccordion()
-    expect(screen.getAllByRole("switch")[1]).toBeDisabled()
+    expect(screen.getByRole("switch", { name: "Turn on quiet hours" })).toBeDisabled()
     expect(screen.getAllByDisplayValue(/:/)[0]).toBeDisabled()
+  })
+
+  it("groups the five canonical topics and toggles each one", async () => {
+    await renderSection()
+
+    const group = screen.getByRole("group", { name: "Notification topics" })
+    expect(group).toBeInTheDocument()
+    expect(
+      screen.getByText("Your topic choice applies once you turn notifications on.")
+    ).toBeInTheDocument()
+    const chat = screen.getByRole("switch", { name: "Topic chat.message.created" })
+    expect(chat).not.toBeChecked()
+    expect(chat).toBeEnabled()
+    expect(screen.getByRole("switch", { name: "Topic news.published" })).toBeChecked()
+
+    fireEvent.click(chat)
+
+    expect(pushState.value.handleTopicToggle).toHaveBeenCalledWith("chat.message.created")
+    expect(pushState.value.topicToggle).toHaveBeenCalledWith("chat.message.created", true)
+  })
+
+  it("explains that topics apply to every device once notifications are on", async () => {
+    pushState.value = { ...pushState.value, notificationsEnabled: true }
+    await renderSection()
+
+    expect(
+      screen.getByText(
+        "Choose what push notifications are about. Your choice applies to all your devices."
+      )
+    ).toBeInTheDocument()
+  })
+
+  it("locks topic toggles while push is busy", async () => {
+    pushState.value = { ...pushState.value, pushBusy: true }
+    await renderSection()
+
+    expect(screen.getByRole("switch", { name: "Topic system.release" })).toBeDisabled()
   })
 })
