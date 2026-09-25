@@ -8484,3 +8484,220 @@ Remaining before publication: focused Stryker evidence for `client.ts`, full
 frontend and backend regression, independent review, then coherent commits and
 a fresh exact-SHA matrix. P3 notification producers, BE-02 phase four and the
 Stage 10 environments remain open.
+
+## 150. Published recertification candidate and live blockers (2026-09-25)
+
+The preceding §149 is historical. The exact PR #1266 source head published on
+2026-09-25 is `813824f0114cae8556bbaccfc6234ba47a5812b7`; the fresh Matrix
+run is `36097930554`. This run is not terminal evidence at this checkpoint.
+The first independent producer failure is Frontend Tests / Lint & Format,
+job `107954844554`: `npm run lint:depcheck` reported unused `axe-core`.
+Its E2E and visual-audit callers load `node_modules/axe-core/axe.min.js` as an
+asset, a use the import detector cannot see. A source-bound contract and narrow
+depcheck declaration were reproduced RED and then verified locally GREEN in
+`337cf7b10`; that local fix is **not** part of the published SHA above. The
+remaining jobs must be inspected for additional independent failures before
+replacing this run. Do not count downstream skips or the aggregate as producers.
+
+Published commits `20d985507`, `c155f220a`, `93670655e` and `813824f01`
+respectively close the frontend unit-coverage holes, S3 key/URL and bucket
+health behavior, remote-ADD Checkov defect, and a six-document reviewed CSpell
+scope. The earlier local commits `d3d9d2875`, `4008b48f5`, `c151a6c65`,
+`06a240873` and `93d4ccdb5` also entered that published range. The full
+frontend local run at that candidate passed 695/695 suites and 7,751/7,751
+tests with 100% of statements (19,015/19,015), branches (13,415/13,415),
+functions (4,563/4,563) and lines (17,160/17,160). This is local evidence,
+not a substitute for current-run merged CI coverage or mutation certification.
+
+The SHA-bound local fast preflight on `813824f01` passed 9/9 lanes and wrote
+`artifacts/fast-preflight/fast-preflight.json`. A disposable pinned SeaweedFS
+4.47 container, bound to loopback and without volumes, passed create-bucket,
+head-bucket, save/read/exists, signed GET and delete smoke. The Compose
+overlay's `-s3.port=9000` argument is valid; an earlier apparent port mismatch
+was caused by PowerShell splitting an unquoted CLI argument, and no overlay
+change was made. Six read-only Compose configurations passed after providing
+an ephemeral placeholder `DATABASE_URL` and cutover acknowledgement for
+interpolation only. No persistent cutover marker, legacy volume or user data
+was touched.
+
+Still open at this checkpoint: exact-SHA hosted producer/aggregate completion;
+100% viable mutation evidence; all product and release acceptance listed in
+§148; CSpell expansion beyond the six reviewed English documents; safe
+cross-run Stryker timing integration (a selector under local review is not
+active CI); and real email OTP API/outbox/SMTP/browser acceptance. A local
+Mailpit/PostgreSQL acceptance probe reproduced an outbox handler-failure
+acknowledgement defect: a refused local SMTP connection reset delivery to
+`pending`, but the corresponding `StoredEvent` was marked processed. Durable
+dispatch and PII-safe retry tests are under review; do not call this fixed
+until GREEN integration evidence and independent review are complete. The
+user-owned untracked
+`docs/audits/AUDIT_PLATFORM_FULL.md` remains outside commits. Do not promote,
+merge, deploy, bypass a gate, or mark the goal complete from this checkpoint.
+
+### 2026-09-25 follow-up, still local and not release evidence
+
+Run `36097930554` has now completed. Its only independent failed producer is
+Frontend Tests / Lint & Format (`lint:depcheck`); CI Success is the dependent
+aggregate failure. The narrow source-bound `axe-core` asset declaration in
+local commit `337cf7b10` passes `npm run lint:depcheck` and its contract test,
+but must enter a new exact-SHA run before this is a hosted gate result.
+
+The MFA SMTP refusal probe exposed a real event-loss boundary. Local
+RED/GREEN tests now require durable event handlers to propagate failure into
+the outbox, sanitize the persisted error, retain one stable `event_id` over
+retries, defer an active delivery lease without consuming retry/DLQ budget,
+and reclaim it after expiry. A cancelled obsolete MFA delivery is an
+idempotent terminal no-op. The focused backend regression is 151 passed plus
+the subsequently added cancelled-replay case, with 29/29 repository harness
+tests. This code is uncommitted; the real PostgreSQL + Mailpit + browser
+acceptance is **not** yet green and remains a release blocker.
+
+Independent review also identified two adjacent durable-outbox gaps under
+parallel RED/GREEN repair: attachment deletion errors could be acknowledged,
+and replayed chat events could create duplicate notifications. Strict
+delete-and-verify and message-keyed notification deduplication are under
+focused testing; neither is yet accepted as complete or published. A
+cross-run Stryker timing optimization remains optional advice only; its
+token/artifact trust boundary is under independent review, and no change to
+mutation inventory or the 100% viable score is authorized.
+
+### 2026-09-25 durable-delivery review delta (local, uncommitted)
+
+The initial 151-test backend result above predates additional adversarial
+review. The broader touched backend selection subsequently passed 356 tests;
+one Windows symlink test skipped because the host cannot create the test link.
+Neither result is hosted exact-SHA evidence. A new direct outbox-dispatch test
+showed that making handlers fail-closed would otherwise dead-letter five
+persisted audit-only event types. Explicit acknowledgements now cover
+`SCHEDULE_CREATED`, `GRADE_ASSIGNED`, `GRADE_MODIFIED` and the two notification
+dead-letter administration audit events; unknown durable types remain rejected.
+Focused event-handler and EventBus tests passed 36/36. Re-run the combined
+backend selection after all concurrent edits settle.
+
+Adversarial review found that a reply notification could target a former chat
+participant named in the quoted message. A RED privacy test reproduced that
+leak, and the local handler now targets the quoted author only if still among
+current recipients. A separate forwarded-attachment test reproduced data loss:
+the destination row shared the source blob URL, so deleting the source removed
+the forwarded file. Independent storage copies, bounded reads, failure cleanup
+and ownership regression tests are in progress; no completion claim yet.
+
+The real PostgreSQL + Mailpit SMTP acceptance is now configured as a required
+PR/nightly integration step with a pinned local-only sink and a JUnit assertion
+that the focused test actually ran rather than skipped. Its workflow contracts
+passed 49/49 and actionlint passed locally; Docker Desktop did not provide a
+usable host SMTP banner, so only Linux CI can certify the real send/retry/resend
+path. Separately, SMTP `to_thread` cancellation and the 10-second durable
+dispatch timeout still need bounded-behavior review: a cancelled coroutine
+does not cancel a live SMTP thread, and SMTP inherently provides at-least-once,
+not exactly-once, delivery after ambiguous network completion.
+
+The Stryker timing candidate remains uncommitted and is being redesigned so
+all credential-bearing artifact selection and download happens before checkout
+or any PR-controlled dependency process. Reusing cross-run timing never reuses
+test results, source inventory or mutation evidence; it must retain the same
+fail-closed SHA/digest provenance and baseline fallback when unavailable.
+
+### 2026-09-25 combined local verification and adversarial review
+
+The current unpublished tree passed a combined touched-backend selection:
+195 tests passed; three notification-concurrency tests skipped locally because
+the host has no separate PostgreSQL sessions. `verify_harness.py --repo-only`
+passed 29/29. The Stryker workflow/selector contracts passed 153 Python tests
+and 104 Node tests, and actionlint, frontend typecheck, `lint:all`,
+`lint:depcheck`, Ruff, and focused mypy passed. The selector script's measured
+92% standalone coverage is **not** a release-gate failure: the quality contract
+scopes Python coverage to `app`, while standalone scripts have `N/A` metrics.
+These local results are not exact-SHA hosted mutation, coverage, or production
+evidence. The published PR source head remains `813824f01`; `337cf7b10` and
+this tree are not yet on the remote branch.
+
+Independent review identified a historical data-loss gap: pre-fix forwarded
+attachments already share source blob URLs, so deleting the source chat could
+delete a blob still referenced by another chat. Reference-aware durable
+cleanup and a PostgreSQL regression are now in progress; do not publish the
+attachment change before they pass. The same review identified unbounded
+cleanup fan-out and a 10-second generic EventBus timer that could repeatedly
+cancel a large cleanup. Bounded parallelism and explicit wait-for-outcome are
+under RED/GREEN verification. A third P2 risk remains under investigation:
+`smtplib`'s socket timeout is per operation, so a trickling SMTP peer can keep
+the sequential outbox worker occupied despite the generic 10-second timer.
+Cancellation alone cannot stop its thread; any total deadline must preserve
+ambiguous-send, retry, shutdown and PII-safety semantics.
+
+The SMTP deadline review did **not** land a speculative asyncio-only fix.
+A true total deadline needs a separately supervised transport process (or a
+fully cancellable async SMTP transport), plus Windows/Linux lifecycle tests,
+real SMTP acceptance and subprocess-aware coverage so the 100% source gate
+still measures the child code. This is an explicit open P2 availability item,
+not a claim of bounded delivery. The current attached-thread behavior avoids
+an orphaned late send when the coroutine is cancelled.
+
+After these changes settle: rerun focused and proportional full regressions,
+perform immutable-diff security review, make coherent commits without staging
+the user-owned untracked audit, push `egorribun`, and inspect a new run whose
+source SHA matches the pushed head. The last completed run `36097930554`
+contains only one independent failed producer (`lint:depcheck`); coverage,
+mutation and performance jobs skipped downstream and are still unproven.
+
+The historical attachment guard is now locally GREEN: the handler checks
+committed `Attachment.url` references in 128-URL chunks and preserves every
+still-owned object, while storage work runs at most eight deletes/probes in
+parallel. A deleted last owner schedules its own cleanup; an ambiguous delete
+is acknowledged only after an independent absence probe, otherwise it remains
+retryable. The second backend selection passed 268 tests (three local
+PostgreSQL-session skips); targeted attachment coverage is 89/89 statements
+and 44/44 branches. A PostgreSQL integration test is included in the required
+backend integration lane, but has only run on SQLite locally. Independent
+security review found no remaining confirmed P0–P2 in this particular fix.
+An index for `Attachment.url` is a measured performance follow-up, not an
+unproven release blocker: the field allows 2048 characters, so a naive
+multibyte B-tree index may exceed PostgreSQL tuple limits; use realistic
+`EXPLAIN (ANALYZE, BUFFERS)` before choosing a safe hash/expression design.
+
+CSpell's reviewed authored-English scope has advanced from six to nine files
+without new dictionary exceptions; `npx cspell --config cspell.json
+--no-progress` checked 9/9 with zero issues. The overall CI workflow count
+contract was updated in the same local unpublished tree. Broader documentation
+coverage remains a staged organizational task, not a reason to scan archived,
+generated or Russian files with an English-only dictionary.
+
+### 2026-09-25 commit checkpoint before new hosted run
+
+The previously described backend changes are now committed as `542be06d5`
+(`fix(outbox): harden MFA and chat delivery durability`). The CI/Stryker,
+depcheck contract, and nine-document CSpell changes are committed as
+`8a5d43ff2` (`fix(quality): isolate Stryker artifact trust and timing reuse`).
+These commits are local at this checkpoint; hosted evidence must use their
+eventual published head, not the old `813824f01` run. The user-owned untracked
+`docs/audits/AUDIT_PLATFORM_FULL.md` was not staged.
+
+Current local evidence: full frontend `npm run test:ci` passed 695/695 suites
+and 7,751/7,751 tests, with 100% statements (19,015/19,015), branches
+(13,415/13,415), functions (4,563/4,563), and lines (17,160/17,160).
+`npm run build` passed. That Windows build regenerated two tracked WASM binaries
+with different hashes; the three generated files were restored to their
+unchanged pre-build state and were not committed. The focused Stryker workflow
+and artifact-selector suite passed 153 Python tests and 104 Node tests before
+the final trust-boundary fix; after that fix, 108 focused Python tests passed,
+actionlint passed, and commit hooks passed. The final fix binds the downloaded
+cross-run metadata and both ZIPs to SHA-256 values emitted by the pre-checkout
+trusted step and checks those values at the offline reader after npm execution.
+The public fixture SHA-256 goldens in its tests were reviewed as non-secret
+false positives and narrowly allowlisted; `.secrets.baseline` was refreshed
+and re-staged by the required hook.
+
+The backend durable-delivery tests, attachment reference guard and independent
+review are green locally as detailed above; the required real PostgreSQL +
+Mailpit case awaits Linux CI. No exact-SHA merged coverage, mutation, Docker,
+staging, browser or release evidence is claimed yet. One reviewed P3 remains:
+the optional cross-run Stryker timing fetch tries the first plausible previous
+artifact pair and can fall back to baseline rather than trying the next pair
+when the first is stale or unavailable. This affects speed, not test or mutant
+inventory. The separate SMTP trickle/deadline P2 is still open.
+
+Next: publish the commits plus this checkpoint to `egorribun`, inspect each
+independent producer in the new PR #1266 run, repair any real failures with
+RED/GREEN evidence, and continue product/staging recertification. Do not call
+the goal complete, merge, deploy, or issue a SHA-bound release audit until
+all required exact-SHA gates and environments have actually passed.
