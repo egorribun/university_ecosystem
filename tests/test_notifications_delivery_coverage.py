@@ -590,6 +590,7 @@ async def test_outbox_redelivery_is_idempotent_by_notification_and_subscription(
         db_session,
         notification_ids=[notification.id, notification.id],
         channel="push",
+        payload_data={"category": "news", "articleId": "42"},
     )
     second = await notifications_delivery.redeliver_notifications(
         db_session,
@@ -604,6 +605,8 @@ async def test_outbox_redelivery_is_idempotent_by_notification_and_subscription(
     assert len(payloads) == 1
     assert payloads[0]["tag"] == str(notification.id)
     assert payloads[0]["data"] == {
+        "category": "news",
+        "articleId": "42",
         "notificationId": str(notification.id),
         "topic": "news.published",
         "type": "news",

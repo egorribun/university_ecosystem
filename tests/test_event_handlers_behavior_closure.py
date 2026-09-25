@@ -210,6 +210,41 @@ async def test_notification_redelivery_commits_partial_results_before_retry():
         db,
         notification_ids=event.notification_ids,
         channel="push",
+        payload_data=None,
+    )
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_notification_outbox_event_replays_original_payload_metadata():
+    event = NotificationsRequested.from_dict(
+        {
+            "notification_ids": [str(uuid4())],
+            "channel": "push",
+            "payload_data": {"category": "system", "version": "9.0.0"},
+        }
+    )
+    assert event.payload_data == {"category": "system", "version": "9.0.0"}
+
+    db = MagicMock()
+    db.commit = AsyncMock()
+    session_context = MagicMock()
+    session_context.__aenter__ = AsyncMock(return_value=db)
+    session_context.__aexit__ = AsyncMock(return_value=False)
+    with (
+        patch.object(event_handlers, "async_session", return_value=session_context),
+        patch(
+            "app.services.notifications.delivery.redeliver_notifications",
+            new=AsyncMock(return_value=SimpleNamespace(retryable_failures=0)),
+        ) as redeliver,
+    ):
+        await event_handlers.handle_notifications_requested(event)
+
+    redeliver.assert_awaited_once_with(
+        db,
+        notification_ids=event.notification_ids,
+        channel="push",
+        payload_data={"category": "system", "version": "9.0.0"},
     )
     db.commit.assert_awaited_once()
 

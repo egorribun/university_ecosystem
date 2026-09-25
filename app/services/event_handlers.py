@@ -293,6 +293,7 @@ async def handle_notifications_requested(event: NotificationsRequested) -> None:
             db,
             notification_ids=event.notification_ids,
             channel=event.channel,
+            payload_data=event.payload_data,
         )
         # Persist successful recipients and failed-attempt evidence before the
         # retry signal escapes to OutboxWorker. A replay then sends only pairs

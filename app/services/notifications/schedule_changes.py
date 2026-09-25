@@ -22,6 +22,7 @@ from app.models import Notification, User
 from app.services.notification_templates import (
     render_registered_notification_template,
 )
+from app.services.notifications.dedupe import lock_notification_dedupe
 from app.services.notifications.delivery import create_notifications_for_users
 
 if TYPE_CHECKING:
@@ -149,6 +150,7 @@ async def notify_about_schedule_change(
         json.dumps({"previous": previous, "current": current}, sort_keys=True).encode()
     ).hexdigest()[:16]
     dedupe_key = f"schedule-change:{identifier}:{fingerprint}"
+    await lock_notification_dedupe(db, dedupe_key)
     notified = await _already_notified(db, members, dedupe_key)
     user_ids = [user_id for user_id in members if user_id not in notified]
     if not user_ids:
@@ -180,6 +182,7 @@ async def notify_about_schedule_change(
         payload_data=default["data"],
         user_ids=user_ids,
         topic=SCHEDULE_CHANGE_TOPIC,
+        push_via_outbox_only=True,
     )
 
 

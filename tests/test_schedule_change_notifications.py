@@ -350,6 +350,7 @@ async def test_delivery_carries_the_exact_localized_change(
         },
         "user_ids": [member.id],
         "topic": "schedule.changed",
+        "push_via_outbox_only": True,
     }
 
 

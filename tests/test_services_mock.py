@@ -436,6 +436,7 @@ async def test_handle_notifications_requested_with_ids() -> None:
     mock_event = MagicMock()
     mock_event.notification_ids = [uuid.uuid4(), uuid.uuid4()]
     mock_event.channel = "push"
+    mock_event.payload_data = None
     db = MagicMock()
     db.commit = AsyncMock()
     session_context = MagicMock()
@@ -455,6 +456,7 @@ async def test_handle_notifications_requested_with_ids() -> None:
         db,
         notification_ids=mock_event.notification_ids,
         channel="push",
+        payload_data=None,
     )
     db.commit.assert_awaited_once()
 

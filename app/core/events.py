@@ -657,15 +657,16 @@ class NotificationSent(DomainEvent):
 class NotificationsRequested(DomainEvent):
     """Fired when notifications need to be delivered to users.
 
-    RED-02 (audit 2026-03-14): Replaces direct push dispatch in
-    create_notifications_for_users(). The OutboxWorker picks this up and
-    triggers push delivery with at-least-once semantics.
+    The OutboxWorker picks this up and triggers push delivery with at-least-once
+    semantics. Some producers also dispatch directly; deduplicated producers
+    opt into outbox-only delivery so network I/O runs after their transaction.
     """
 
     EVENT_VERSION: ClassVar[int] = 1
 
     notification_ids: list[str] = field(default_factory=list)
     channel: str = "push"
+    payload_data: dict[str, Any] | None = None
 
     EVENT_TYPE: ClassVar[str] = "notification.delivery_requested"
 

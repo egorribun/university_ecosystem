@@ -19,6 +19,7 @@ from sqlalchemy import select
 from app.core.localization import DEFAULT_LOCALE, SUPPORTED_LOCALES, translate
 from app.models import Notification
 from app.services.notifications.core import _fetch_active_user_ids
+from app.services.notifications.dedupe import lock_notification_dedupe
 from app.services.notifications.delivery import create_notifications_for_users
 
 if TYPE_CHECKING:
@@ -67,6 +68,7 @@ async def announce_release(
     """Notify every active user who has not yet been told about ``version``."""
     normalized = _validated_version(version)
     dedupe_key = release_dedupe_key(normalized)
+    await lock_notification_dedupe(db, dedupe_key)
     notified = await _already_notified(db, dedupe_key)
     recipients = [
         user_id
@@ -100,6 +102,7 @@ async def announce_release(
         payload_data={"category": "system", "version": normalized},
         user_ids=recipients,
         topic=SYSTEM_RELEASE_TOPIC,
+        push_via_outbox_only=True,
     )
     return ReleaseAnnouncement(normalized, created, already_announced=bool(notified))
 

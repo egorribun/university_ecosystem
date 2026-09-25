@@ -233,4 +233,5 @@ async def test_announcement_delivery_call_is_exact(db_session, user_factory) -> 
         "payload_data": {"category": "system", "version": "1.4.0"},
         "user_ids": [member.id],
         "topic": "system.release",
+        "push_via_outbox_only": True,
     }
