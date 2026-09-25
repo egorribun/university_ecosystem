@@ -35,10 +35,11 @@ def run_launcher(
     seaweedfs_volume_exists: bool = False,
     ps_inspection_fails: bool = False,
     volume_inspection_fails: bool = False,
+    script_root: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     # -Logs exercises the launcher's real Compose argument construction without
     # starting containers or changing any environment files.
-    script = ROOT / "start-docker.ps1"
+    script = (script_root or ROOT) / "start-docker.ps1"
     # These are fixed test switches, not user input. Named parameters must be
     # bare tokens in PowerShell; quoting them passes positional string values.
     command_args = " ".join(args)
@@ -192,6 +193,35 @@ def test_down_remains_available_with_cutover_marker() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     assert compose_argv(result)[-1] == "down"
     assert "DOCKER_QUERY=" not in result.stderr
+
+
+def test_down_refuses_another_storage_operation_holding_the_shared_lock(
+    tmp_path: Path,
+) -> None:
+    shutil.copyfile(ROOT / "start-docker.ps1", tmp_path / "start-docker.ps1")
+    lock_dir = tmp_path / ".secrets" / "s3-storage-compose.lock"
+    lock_dir.mkdir(parents=True)
+
+    result = run_launcher("-Down", script_root=tmp_path)
+
+    assert result.returncode != 0
+    assert "DOCKER_ARGV=" not in result.stdout
+    assert lock_dir.is_dir(), "a competing lock must never be removed"
+
+
+def test_launcher_rechecks_storage_under_lock_before_final_up() -> None:
+    source = (ROOT / "start-docker.ps1").read_text(encoding="utf-8")
+    start = source.index("# -- Start services")
+    end = source.index("# -- Health check loop", start)
+    startup = source[start:end]
+
+    assert startup.index("Enter-S3StorageComposeLock") < startup.index(
+        "Assert-PlainS3RollbackGuard"
+    )
+    assert startup.index("Assert-PlainS3RollbackGuard") < startup.index(
+        "docker compose @ComposeArgs --env-file $EnvFile up"
+    )
+    assert "finally" in startup and "Exit-S3StorageComposeLock" in startup
 
 
 def compose_argv(result: subprocess.CompletedProcess[str]) -> list[str]:

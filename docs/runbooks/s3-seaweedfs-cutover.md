@@ -95,6 +95,23 @@ use, document and verify them separately before proceeding.
    service DNS name for existing clients and replaces the `minio-init` client
    with a readiness check. Do not combine it with the infra port-publishing
    override after the cutover overlay.
+
+   After cutover, use the acknowledged `start-docker.ps1 -SeaweedFS` path for
+   subsequent starts. The `scripts/dc.ps1` and `scripts/dc.sh` wrappers refuse
+   storage-starting operations against the legacy base file when cutover state
+   exists. Direct `docker compose -f docker-compose.full.yml up` bypasses those
+   safeguards and is **not** an approved rollback path. Never run `down -v` or
+   delete either storage volume as a shortcut: preserve the old MinIO volume
+   until object inventory, restore, and rollback evidence are recorded.
+   These launchers serialize storage-changing Compose operations with the
+   atomic `.secrets/s3-storage-compose.lock` directory and recheck storage
+   state while holding it. If a launcher is interrupted and the lock remains,
+   stop: inspect running Compose processes and storage state before removing
+   only that empty lock directory. Never remove a lock to force concurrent
+   operations or use direct Compose commands to bypass it. The lock is local
+   to this checkout: operators must also exclude simultaneous cutover or
+   legacy-start commands from other worktrees, copied checkouts, or hosts
+   targeting the same Docker daemon and Compose project.
 3. Prove Python `aioboto3` and Go `minio-go` Put/Head/Get/Delete, MIME and
    Cache-Control, presigned GET, health probes, private 403, authorized private
    download, public media, and backup upload/restore on the actual endpoint.

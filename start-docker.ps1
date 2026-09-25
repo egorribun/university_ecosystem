@@ -156,6 +156,26 @@ function Assert-CoreServiceAllowlist {
 
 Assert-CoreServiceAllowlist
 
+function Enter-S3StorageComposeLock {
+    # Cross-shell protocol shared with scripts/dc.ps1 and scripts/dc.sh.
+    # Directory creation is atomic; a stale lock must be reviewed manually.
+    $lockParent = Join-Path $ProjectRoot ".secrets"
+    $lockPath = Join-Path $lockParent "s3-storage-compose.lock"
+    [void][System.IO.Directory]::CreateDirectory($lockParent)
+    try {
+        New-Item -ItemType Directory -Path $lockPath -ErrorAction Stop | Out-Null
+    } catch {
+        throw "Storage Compose lock could not be acquired at $lockPath. Another operation or a stale lock requires operator review."
+    }
+    return $lockPath
+}
+
+function Exit-S3StorageComposeLock {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    # Remove only our empty lock directory, never arbitrary files or data.
+    Remove-Item -LiteralPath $Path -ErrorAction Stop
+}
+
 function New-Secret {
     param([int]$Length = 32)
     $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -838,16 +858,21 @@ if (-not $dockerOk) {
 # -- Handle -Down -------------------------------------------------------------
 
 if ($Down) {
-    Write-Status "Stopping all containers..."
-    $envArgs = if (Test-Path $EnvFile) { @("--env-file", $EnvFile) } else { @() }
-    docker compose @ComposeArgs @envArgs down
-    $composeExitCode = $LASTEXITCODE
-    if ($composeExitCode -ne 0) {
-        Write-Err "Failed to stop containers."
+    $storageLock = Enter-S3StorageComposeLock
+    try {
+        Write-Status "Stopping all containers..."
+        $envArgs = if (Test-Path $EnvFile) { @("--env-file", $EnvFile) } else { @() }
+        docker compose @ComposeArgs @envArgs down
+        $composeExitCode = $LASTEXITCODE
+        if ($composeExitCode -ne 0) {
+            Write-Err "Failed to stop containers."
+            exit $composeExitCode
+        }
+        Write-Ok "All containers stopped"
         exit $composeExitCode
+    } finally {
+        Exit-S3StorageComposeLock -Path $storageLock
     }
-    Write-Ok "All containers stopped"
-    exit $composeExitCode
 }
 
 # -- Handle -Logs -------------------------------------------------------------
@@ -875,7 +900,8 @@ if ($Logs) {
 
 # -- Persistent-storage rollback guard ---------------------------------------
 
-if (-not $SeaweedFS) {
+function Assert-PlainS3RollbackGuard {
+    if ($SeaweedFS) { return }
     # A plain start must never silently recreate `minio` from the old MinIO
     # volume after a SeaweedFS cutover. Inspect the actual container image,
     # including stopped containers, before any environment-file mutation. The
@@ -920,6 +946,8 @@ if (-not $SeaweedFS) {
         throw "SeaweedFS cutover volume exists. Refusing silent rollback to MinIO; verify storage state and follow the cutover/rollback runbook."
     }
 }
+
+Assert-PlainS3RollbackGuard
 
 # -- Generate secrets ---------------------------------------------------------
 
@@ -1219,6 +1247,13 @@ if ($Rebuild) {
 
 # -- Start services -----------------------------------------------------------
 
+$storageLock = Enter-S3StorageComposeLock
+try {
+# The early check above avoids wasted build work. This second check, while
+# holding the shared lock, closes the gap where a concurrent cutover could
+# write its marker between that check and our final Compose up.
+Assert-PlainS3RollbackGuard
+
 if ($SeaweedFS -and -not (Test-Path -LiteralPath $SeaweedFSCutoverMarker)) {
     # Record intent before the first storage-changing `up`. If startup later
     # fails, a plain start still cannot silently attach the old MinIO volume.
@@ -1293,6 +1328,9 @@ if ($Core) {
         docker compose @ComposeArgs --env-file $EnvFile logs --tail=50 migrations postgres-databases-init minio-init spicedb-migrate temporal-admin-tools temporal-namespace-init flagd flagd-healthprobe backend outbox-worker 2>$null
         exit 1
     }
+}
+} finally {
+    Exit-S3StorageComposeLock -Path $storageLock
 }
 
 # -- Health check loop --------------------------------------------------------
