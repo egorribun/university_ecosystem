@@ -628,6 +628,7 @@ also_copy = [
     # stack so the baseline/stats pass cannot fail on a missing input path.
     "docker-compose.yml",
     "docker-compose.full.yml",
+    "docker-compose.seaweedfs-cutover.yml",
     "docker-compose.infra.yml",
     "docker-compose.go.yml",
     "docker-compose.ci-loadtest.yml",
