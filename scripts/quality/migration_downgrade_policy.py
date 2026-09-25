@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import re
 from collections import deque
 from collections.abc import Callable, Sequence
@@ -13,6 +14,16 @@ from typing import NamedTuple
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MIGRATIONS_DIR = REPOSITORY_ROOT / "alembic" / "versions"
 _REVISION_ID = re.compile(r"^[A-Za-z0-9_]+$")
+# Guarded preflight is intentionally not a generic control-flow proof. This
+# reviewed BE-02 migration only retains existing defaults after a catalog
+# check. Pin its complete executable AST so helper/alias/exception-flow edits
+# fail closed until a human reviews and updates this fingerprint. Whitespace,
+# comments, and line endings do not change the AST fingerprint.
+_REVIEWED_PREFLIGHT = (
+    "202609250001_phase_semantic_defaults.py",
+    "202609250001",
+    "efee7b75048f744530b1eb34100df053ecd3aa9a3788eb72f7643a7006305796",  # pragma: allowlist secret - public migration AST SHA-256, not a credential
+)
 
 
 class PolicyError(RuntimeError):
@@ -51,7 +62,8 @@ def _assignment_value(tree: ast.Module, name: str) -> object | None:
     if not matches:
         return None
     try:
-        return ast.literal_eval(matches[0])
+        value: object = ast.literal_eval(matches[0])
+        return value
     except (TypeError, ValueError) as error:
         raise PolicyError(f"migration {name!r} must be a literal") from error
 
@@ -93,6 +105,203 @@ def _declared_raise_reason(function: ast.FunctionDef) -> tuple[str | None, bool]
     return None, has_raise
 
 
+def _has_unprotected_raise(
+    function: ast.FunctionDef,
+    helpers: dict[str, ast.FunctionDef],
+    *,
+    helper: bool = False,
+    visiting: frozenset[str] = frozenset(),
+) -> bool:
+    """Reject undeclared aborts and guarded aborts after schema writes.
+
+    A reviewed downgrade guard must check a catalog default directly. Helpers
+    may have other conditional validation failures, but an unconditional abort
+    hidden behind a helper call still cannot be treated as reversible.
+    """
+
+    def always_raises(statements: list[ast.stmt]) -> bool:
+        for statement in statements:
+            if isinstance(statement, ast.Raise):
+                return True
+            if (
+                isinstance(statement, ast.If)
+                and statement.orelse
+                and always_raises(statement.body)
+                and always_raises(statement.orelse)
+            ):
+                return True
+        return False
+
+    if any(
+        isinstance(node, ast.If)
+        and node.orelse
+        and always_raises(node.body)
+        and always_raises(node.orelse)
+        for node in ast.walk(function)
+    ):
+        return True
+
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(function):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    def is_guarded(node: ast.AST) -> bool:
+        ancestor = parents.get(node)
+        while ancestor is not None and ancestor is not function:
+            if isinstance(
+                ancestor, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+            ):
+                return False
+            if isinstance(ancestor, ast.If):
+                test = ancestor.test
+                if helper and any(
+                    isinstance(part, ast.Name) and isinstance(part.ctx, ast.Load)
+                    for part in ast.walk(test)
+                ):
+                    return True
+                if (
+                    not helper
+                    and isinstance(test, ast.Compare)
+                    and len(test.ops) == 1
+                    and isinstance(test.ops[0], ast.Is)
+                    and len(test.comparators) == 1
+                    and isinstance(test.comparators[0], ast.Constant)
+                    and test.comparators[0].value is None
+                    and isinstance(test.left, ast.Attribute)
+                    and test.left.attr == "default_sql"
+                    and isinstance(test.left.value, ast.Name)
+                    and test.left.value.id == "state"
+                ):
+                    return True
+            ancestor = parents.get(ancestor)
+        return False
+
+    def reviewed_lock_sql(call: ast.Call, owner: str) -> bool:
+        """Recognize only the literal transaction controls in the reviewed migration.
+
+        Helper names alone are not evidence: an ``op.execute`` with arbitrary or
+        computed SQL must be treated as a possible schema write.
+        """
+
+        if (
+            len(call.args) != 1
+            or call.keywords
+            or not isinstance(call.args[0], ast.Call)
+        ):
+            return False
+        text_call = call.args[0]
+        if (
+            not isinstance(text_call.func, ast.Attribute)
+            or not isinstance(text_call.func.value, ast.Name)
+            or text_call.func.value.id != "sa"
+            or text_call.func.attr != "text"
+            or len(text_call.args) != 1
+            or text_call.keywords
+        ):
+            return False
+        sql = text_call.args[0]
+        if isinstance(sql, ast.Constant) and isinstance(sql.value, str):
+            return (owner, sql.value) in {
+                ("_lock_postgres", "SET LOCAL lock_timeout = '10s'"),
+                ("_lock_postgres", "SET LOCAL statement_timeout = '60s'"),
+                ("_lock_postgres", "SELECT pg_advisory_xact_lock(824609250001)"),
+                (
+                    "_abort_offline",
+                    "DO $$ BEGIN RAISE EXCEPTION "
+                    "'BE-02 202609250001 requires online PostgreSQL catalog preflight'; "
+                    "END $$;",
+                ),
+            }
+        if owner != "_lock_targets" or not isinstance(sql, ast.JoinedStr):
+            return False
+        lock_helper = helpers.get(owner)
+        if lock_helper is None:
+            return False
+        # The two interpolated values are safe only when they come from the
+        # dialect's identifier quoting, not from attacker-controlled strings.
+        reviewed_helper = ast.parse(
+            "def _lock_targets(bind: Any, schema: str) -> None:\n"
+            "    preparer = bind.dialect.identifier_preparer\n"
+            "    qualified_schema = preparer.quote_identifier(schema)\n"
+            "    for table in sorted({spec.table for spec in DEFAULT_SPECS}):\n"
+            "        qualified_table = preparer.quote_identifier(table)\n"
+            "        op.execute(sa.text("
+            'f"LOCK TABLE {qualified_schema}.{qualified_table} "'
+            '"IN ACCESS EXCLUSIVE MODE"))'
+        ).body[0]
+        if ast.dump(lock_helper) != ast.dump(reviewed_helper):
+            return False
+        values = sql.values
+        return (
+            len(values) == 5
+            and isinstance(values[0], ast.Constant)
+            and values[0].value == "LOCK TABLE "
+            and isinstance(values[1], ast.FormattedValue)
+            and isinstance(values[1].value, ast.Name)
+            and values[1].value.id == "qualified_schema"
+            and values[1].conversion == -1
+            and values[1].format_spec is None
+            and isinstance(values[2], ast.Constant)
+            and values[2].value == "."
+            and isinstance(values[3], ast.FormattedValue)
+            and isinstance(values[3].value, ast.Name)
+            and values[3].value.id == "qualified_table"
+            and values[3].conversion == -1
+            and values[3].format_spec is None
+            and isinstance(values[4], ast.Constant)
+            and values[4].value == " IN ACCESS EXCLUSIVE MODE"
+        )
+
+    def writes_schema(call: ast.Call, seen: frozenset[str], owner: str) -> bool:
+        if isinstance(call.func, ast.Attribute) and isinstance(
+            call.func.value, ast.Name
+        ):
+            if call.func.value.id == "op":
+                if call.func.attr in {"f", "get_bind", "get_context"}:
+                    return False
+                return not (
+                    call.func.attr == "execute" and reviewed_lock_sql(call, owner)
+                )
+        if isinstance(call.func, ast.Name) and call.func.id in helpers:
+            name = call.func.id
+            if name in seen:
+                return True
+            return any(
+                isinstance(nested, ast.Call)
+                and writes_schema(nested, seen | {name}, name)
+                for nested in ast.walk(helpers[name])
+            )
+        return False
+
+    schema_writes = [
+        node.lineno
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and writes_schema(node, frozenset({function.name}), function.name)
+    ]
+    for node in ast.walk(function):
+        if isinstance(node, ast.Raise) and (
+            any(line <= node.lineno for line in schema_writes) or not is_guarded(node)
+        ):
+            return True
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in helpers
+            and node.func.id not in visiting
+            and not is_guarded(node)
+            and _has_unprotected_raise(
+                helpers[node.func.id],
+                helpers,
+                helper=True,
+                visiting=visiting | {function.name},
+            )
+        ):
+            return True
+    return False
+
+
 def _parse_migration(path: Path) -> MigrationMetadata:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -120,21 +329,58 @@ def _parse_migration(path: Path) -> MigrationMetadata:
 
     policy = _assignment_value(tree, "downgrade_policy")
     reason = _assignment_value(tree, "downgrade_reason")
+    preflight_reason = _assignment_value(tree, "downgrade_preflight_reason")
     downgrade = _downgrade_function(tree, path)
     raised_reason, has_raise = _declared_raise_reason(downgrade)
 
     if policy is None:
-        if reason is not None:
+        if reason is not None or preflight_reason is not None:
             raise PolicyError(
-                f"{path.name}: downgrade_reason requires a downgrade policy"
+                f"{path.name}: downgrade reason requires a downgrade policy"
             )
         if has_raise:
             raise PolicyError(
                 f"{path.name}: downgrade raises without an irreversible policy"
             )
         return MigrationMetadata(revision, parents, path, None)
+    if policy == "guarded_preflight":
+        if (
+            reason is not None
+            or not isinstance(preflight_reason, str)
+            or not preflight_reason.strip()
+        ):
+            raise PolicyError(
+                f"{path.name}: guarded preflight needs a non-empty reason"
+            )
+        if not has_raise:
+            raise PolicyError(f"{path.name}: guarded preflight needs a direct guard")
+        helpers = {
+            node.name: node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name != "downgrade"
+        }
+        if _has_unprotected_raise(downgrade, helpers):
+            raise PolicyError(
+                f"{path.name}: downgrade raises without an irreversible policy"
+            )
+        reviewed_name, reviewed_revision, reviewed_digest = _REVIEWED_PREFLIGHT
+        digest = hashlib.sha256(ast.dump(tree).encode("utf-8")).hexdigest()
+        if (path.name, revision, digest) != (
+            reviewed_name,
+            reviewed_revision,
+            reviewed_digest,
+        ):
+            raise PolicyError(
+                f"{path.name}: unreviewed guarded preflight AST; review the full "
+                "migration and update its fingerprint before allowing downgrade"
+            )
+        return MigrationMetadata(revision, parents, path, None)
     if policy != "irreversible":
         raise PolicyError(f"{path.name}: unsupported downgrade policy {policy!r}")
+    if preflight_reason is not None:
+        raise PolicyError(
+            f"{path.name}: irreversible downgrade cannot declare a preflight"
+        )
     if not isinstance(reason, str) or not reason.strip():
         raise PolicyError(
             f"{path.name}: irreversible downgrade needs a non-empty reason"

@@ -12,6 +12,8 @@ revision: str = "202609250001"
 down_revision: str | None = "202609220001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+downgrade_policy: str = "guarded_preflight"
+downgrade_preflight_reason: str = "Retain semantic defaults only when PostgreSQL catalog preflight confirms all targets"
 
 
 class DefaultSpec(NamedTuple):
