@@ -37,7 +37,7 @@ describe("useEventRegistration", () => {
   it("registers for an event optimistically", async () => {
     server.use(
       http.post("*/events/attendance", () => {
-        return HttpResponse.json({ qr_code: "mock-qr-token" })
+        return HttpResponse.json({ qr_token: "mock-qr-token" })
       })
     )
 

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, render as rtlRender, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -87,11 +87,18 @@ import InstallPrompt, {
   isInstallPromptSuppressed,
   readInstallPromptDismissedAt,
 } from "@/components/pwa/InstallPrompt"
-import { PWA_REFRESH_EVENT } from "@/app/pwaEvents"
+import { PWA_REFRESH_EVENT, requestPushEducation } from "@/app/pwaEvents"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { User } from "@/types/User"
 
 const INSTALL_DISMISS_KEY = "ecosystem.pwa.install.dismissedAt"
-const PUSH_DISMISS_KEY = "ecosystem.push.education.dismissedAt"
+const PUSH_DISMISS_KEY = "ecosystem.push.education.dismissedAt:1"
 const DISMISS_TTL = 7 * 24 * 60 * 60 * 1000
+const render = (ui: Parameters<typeof rtlRender>[0]) => {
+  const result = rtlRender(ui)
+  act(() => requestPushEducation("1"))
+  return result
+}
 
 function createPushPrefs(overrides: Partial<PushPrefs> = {}): PushPrefs {
   return {
@@ -178,7 +185,7 @@ function findMotionCall(predicate: (call: MotionProps) => boolean): MotionProps 
 }
 
 function findPromptRoot(): HTMLElement {
-  const root = document.querySelector(".fixed.bottom-24")
+  const root = document.querySelector(".fixed.z-toast.pointer-events-none")
   if (!(root instanceof HTMLElement)) throw new Error("install prompt root was not rendered")
   return root
 }
@@ -203,6 +210,11 @@ beforeEach(() => {
   state.onNotify = null
   state.pushPrefs = createPushPrefs()
   window.localStorage.clear()
+  useAuthStore.setState({
+    user: { id: "1", email: "student@example.test", is_active: true } satisfies User,
+    loading: false,
+  })
+  window.history.replaceState(null, "", "/events")
   vi.stubEnv("VITE_LHCI", "")
   configureBrowserSurface()
 })
@@ -260,7 +272,9 @@ describe("InstallPrompt mutation contracts", () => {
   it("keeps all install, feedback, and update motion variants intact", async () => {
     render(<InstallPrompt />)
     const installVariants = await waitFor(() => {
-      const call = findMotionCall((entry) => String(entry.className).includes("fixed bottom-24"))
+      const call = findMotionCall((entry) =>
+        String(entry.className).includes("fixed bottom-[calc(env(safe-area-inset-bottom)+5rem)]")
+      )
       if (!call) throw new Error("install motion call not captured")
       return call
     })
@@ -461,34 +475,7 @@ describe("InstallPrompt mutation contracts", () => {
     ).toHaveLength(1)
   })
 
-  it("renders a complete Safari guide link in the denied state", () => {
-    state.pushPrefs = createPushPrefs({
-      notificationPermission: "denied",
-      safariIOS: true,
-      safariGuideUrl: "https://example.com/guide",
-    })
-    render(<InstallPrompt />)
-
-    const transCall = state.transCalls.at(-1)
-    expect(transCall?.i18nKey).toBe("system:installPrompt.safariGuide")
-    const link = transCall?.components?.link
-    expect(link).toBeTruthy()
-    if (link && typeof link === "object" && "props" in link) {
-      expect(link.props).toMatchObject({
-        href: "https://example.com/guide",
-        target: "_blank",
-        rel: "noreferrer noopener",
-        className: "underline font-black",
-      })
-    }
-  })
-
-  it("applies disabled contracts for denied and default permission actions", async () => {
-    state.pushPrefs = createPushPrefs({ notificationPermission: "denied", pushBusy: true })
-    const denied = render(<InstallPrompt />)
-    expect(screen.getByRole("button", { name: "system:installPrompt.check" })).toBeDisabled()
-    denied.unmount()
-
+  it("applies disabled contracts for contextual default-permission actions", async () => {
     state.pushPrefs = createPushPrefs({ notificationPermission: "default", pushBusy: true })
     const busyDefault = render(<InstallPrompt />)
     expect(screen.getByRole("button", { name: "system:installPrompt.allow" })).toBeDisabled()
@@ -506,72 +493,15 @@ describe("InstallPrompt mutation contracts", () => {
     expect(state.pushPrefs.enableNotifications).toHaveBeenCalled()
   })
 
-  it("applies enabled/disabled contracts to global and topic switches", () => {
-    state.pushPrefs = createPushPrefs({
-      notificationPermission: "transitioning" as NotificationPermission,
-      notificationsEnabled: true,
-      pushBusy: false,
-      pushInitializing: false,
-    })
-    const enabled = render(<InstallPrompt />)
-    expect(
-      screen.getAllByRole("switch").every((control) => !control.hasAttribute("disabled"))
-    ).toBe(true)
-    enabled.unmount()
-
-    state.pushPrefs = createPushPrefs({
-      notificationPermission: "transitioning" as NotificationPermission,
-      notificationsEnabled: false,
-      topicKeys: ["schedule"],
-      topicState: { schedule: true },
-    })
-    const notificationsDisabled = render(<InstallPrompt />)
-    const disabledTopicSwitches = screen.getAllByRole("switch")
-    expect(disabledTopicSwitches[0]).not.toHaveAttribute("disabled")
-    expect(
-      disabledTopicSwitches.slice(1).every((control) => control.hasAttribute("disabled"))
-    ).toBe(true)
-    notificationsDisabled.unmount()
-
-    state.pushPrefs = createPushPrefs({
-      notificationPermission: "transitioning" as NotificationPermission,
-      notificationsEnabled: true,
-      pushBusy: true,
-      topicKeys: ["schedule"],
-      topicState: { schedule: true },
-    })
-    const busy = render(<InstallPrompt />)
-    expect(screen.getAllByRole("switch").every((control) => control.hasAttribute("disabled"))).toBe(
-      true
+  it("passes the default-permission status interpolation value", () => {
+    state.pushPrefs = createPushPrefs({ permissionText: "Ask" })
+    render(<InstallPrompt />)
+    expect(state.translationCalls).toContainEqual(
+      expect.objectContaining({
+        key: "system:installPrompt.status",
+        options: expect.objectContaining({ status: "Ask" }),
+      })
     )
-    busy.unmount()
-  })
-
-  it("passes status interpolation values for denied, default, and granted states", () => {
-    const cases: Array<Partial<PushPrefs>> = [
-      { notificationPermission: "denied", permissionText: "Blocked" },
-      { notificationPermission: "default", permissionText: "Ask" },
-      {
-        notificationPermission: "transitioning" as NotificationPermission,
-        notificationsEnabled: true,
-        permissionText: "Allowed",
-      },
-    ]
-    for (const overrides of cases) {
-      state.translationCalls.length = 0
-      state.pushPrefs = createPushPrefs(overrides)
-      const view = render(<InstallPrompt />)
-      const statusCalls = state.translationCalls.filter(({ key }) =>
-        ["system:installPrompt.status", "system:installPrompt.browserPermission"].includes(key)
-      )
-      expect(statusCalls.length).toBeGreaterThan(0)
-      expect(statusCalls).toContainEqual(
-        expect.objectContaining({
-          options: expect.objectContaining({ status: overrides.permissionText }),
-        })
-      )
-      view.unmount()
-    }
   })
 
   it("keeps feedback severity styles and icons distinct", async () => {
@@ -625,7 +555,7 @@ describe("InstallPrompt mutation contracts", () => {
 
     await firePrompt()
     const installClose = screen.getByRole("button", { name: "system:installPrompt.closeOffer" })
-    expect(installClose).toHaveClass("p-1.5", "rounded-xl")
+    expect(installClose).toHaveClass("min-h-11", "min-w-11", "rounded-xl")
     await user.click(installClose)
     await waitFor(() => {
       expect(screen.queryByText("system:installPrompt.installTitle")).not.toBeInTheDocument()
