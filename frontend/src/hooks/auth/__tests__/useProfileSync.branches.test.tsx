@@ -229,10 +229,25 @@ describe("useProfileSync focused mutation survivor contracts", () => {
   })
 
   it("passes the current-user query key when clearing a profile", async () => {
+    const channels: Array<{ posts: unknown[] }> = []
+    class FakeBroadcastChannel {
+      readonly posts: unknown[] = []
+      constructor() {
+        channels.push(this)
+      }
+      addEventListener() {}
+      removeEventListener() {}
+      postMessage(data: unknown) {
+        this.posts.push(data)
+      }
+      close() {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
     const queryClient = createQueryClient()
     vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
     const view = renderProfileSync({ queryClient, signingKey: mockSigningKey })
     await waitFor(() => expect(view.result.current.loading).toBe(true))
+    expect(channels).toHaveLength(1)
 
     const cancelQueries = vi.spyOn(queryClient, "cancelQueries")
     cancelQueries.mockClear()
@@ -243,6 +258,8 @@ describe("useProfileSync focused mutation survivor contracts", () => {
 
     expect(cancelQueries).toHaveBeenCalledTimes(1)
     expect(cancelQueries.mock.calls[0]?.[0]).toEqual({ queryKey: currentUserQueryKey })
+    expect(channels).toHaveLength(1)
+    expect(channels[0]?.posts).toEqual([])
     view.unmount()
   })
 
