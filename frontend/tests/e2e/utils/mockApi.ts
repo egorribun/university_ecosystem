@@ -144,6 +144,15 @@ const mockNews = [
 const MOCK_EVENTS_COUNT = 50
 const ONE_HOUR_MS = 60 * 60 * 1000
 const ONE_DAY_MS = 24 * ONE_HOUR_MS
+const MOCK_EVENT_TYPES = [
+  "lecture",
+  "seminar",
+  "conference",
+  "workshop",
+  "meetup",
+  "sport",
+  "other",
+] as const
 
 const now = new Date("2026-06-27T10:00:00Z")
 const mockEvents = Array.from({ length: MOCK_EVENTS_COUNT }, (_, index) => {
@@ -158,8 +167,8 @@ const mockEvents = Array.from({ length: MOCK_EVENTS_COUNT }, (_, index) => {
     description_en: `Event description ${id}`,
     location: `Корпус A, зал ${index + 1}`,
     location_en: `Building A, hall ${index + 1}`,
-    event_type: null,
-    event_type_en: null,
+    event_type: MOCK_EVENT_TYPES[index % MOCK_EVENT_TYPES.length],
+    event_type_en: MOCK_EVENT_TYPES[index % MOCK_EVENT_TYPES.length],
     starts_at: start.toISOString(),
     ends_at: end.toISOString(),
     created_at: now.toISOString(),

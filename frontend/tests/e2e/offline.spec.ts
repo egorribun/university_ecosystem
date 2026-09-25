@@ -187,10 +187,10 @@ test.describe("PWA offline support", () => {
   })
 
   test("shows offline indicator toast when connection is lost", async ({ page, context }) => {
-    const mock = await useMockApi(page, { serviceWorker: "preserve" })
+    // This checks the window online/offline UI contract, not SW-controlled
+    // navigation. Keep browser request routing deterministic on every engine.
+    const mock = await useMockApi(page)
     await mock.login(page)
-
-    await ensureServiceWorkerIsReady(page)
 
     await gotoWithTransientRetry(page, "/dashboard", { waitUntil: "networkidle" })
 

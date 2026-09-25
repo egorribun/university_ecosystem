@@ -111,7 +111,7 @@
 
 .events-sticky-categories {
   position: sticky;
-  top: var(--events-sticky-top);
+  top: calc(var(--events-sticky-top) + var(--visual-viewport-offset-top, 0px));
   /* Above card badges (z-surface) so a stuck bar stays readable and clickable. */
   z-index: var(--z-sticky, 100);
   padding-block: var(--space-2, 0.5rem);

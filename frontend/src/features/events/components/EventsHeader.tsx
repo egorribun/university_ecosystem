@@ -9,6 +9,7 @@ import useMediaQuery from "@/hooks/useMediaQuery"
 import type { EventDateRange, EventSortMode, EventTabKey } from "../types"
 import { useEventFilterPopover } from "@/components/events/EventFilterPopover"
 import { useSlidingIndicator } from "@/hooks/ui/useSlidingIndicator"
+import { useVisualViewportStickyOffset } from "@/hooks/ui/useVisualViewportStickyOffset"
 
 const SORT_CYCLE: EventSortMode[] = ["newest", "popular", "upcoming"]
 
@@ -52,7 +53,9 @@ export const EventsHeader = ({
 
   /* ── Sticky detection via IntersectionObserver ── */
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const stickyRef = useRef<HTMLDivElement>(null)
   const [isStuck, setIsStuck] = useState(false)
+  useVisualViewportStickyOffset(stickyRef)
 
   /* ── Tab indicator (Wave 124 SW1 — replaces framer-motion layoutId) ── */
   const tabsRef = useRef<HTMLDivElement>(null)
@@ -270,7 +273,7 @@ export const EventsHeader = ({
       <div ref={sentinelRef} className="mt-5 h-0" aria-hidden="true" />
 
       {/* Row 3: Category pills + sort toggle -- sticky on scroll */}
-      <div className="events-sticky-categories mb-6 sm:mb-8" data-stuck={isStuck}>
+      <div ref={stickyRef} className="events-sticky-categories mb-6 sm:mb-8" data-stuck={isStuck}>
         <FadeSection
           delay="140ms"
           className="flex items-center gap-2 sm:flex-wrap max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:scrollbar-none max-sm:pb-1 max-sm:-mx-4 max-sm:px-4"

@@ -127,41 +127,66 @@ const FEEDS = [
 
 test.describe("Category filters keep the reading position", () => {
   for (const feed of FEEDS) {
-    test(`${feed.path} categories never reset the scroll position to the top`, async ({ page }) => {
-      await page.setViewportSize({ width: 1280, height: 800 })
+    test(`${feed.path} categories never reset the scroll position to the top`, async ({
+      page,
+      isMobile,
+    }) => {
+      // Mock events are anchored to June 2026; keep the browser's date in
+      // that fixture window so the Upcoming list cannot decay into Empty.
+      await page.clock.setFixedTime(new Date("2026-06-27T10:00:00Z"))
+      if (!isMobile) await page.setViewportSize({ width: 1280, height: 800 })
       await useMockApi(page)
       await gotoWithTransientRetry(page, feed.path, { waitUntil: "commit", timeout: 30_000 })
 
       // Category pills only; the sort toggle carries an aria-label.
       const buttons = page.locator(`${feed.bar} button:not([aria-label])`)
-      await expect(buttons.nth(1)).toBeVisible({ timeout: 30_000 })
+      const expectedCategoryCount = feed.path === "/events" ? 8 : 7
+      await expect(buttons).toHaveCount(expectedCategoryCount, { timeout: 30_000 })
       await settle(page)
 
-      // The feed can briefly re-suspend while the mocked session settles.
-      await expect(buttons.nth(1)).toBeVisible({ timeout: 30_000 })
+      // A stable scrollHeight can still be the route's Loading shell.
+      await expect(buttons).toHaveCount(expectedCategoryCount, { timeout: 30_000 })
+      if (feed.path === "/events")
+        await expect(page.locator(".events-card-title").first()).toBeVisible()
       const count = await buttons.count()
       expect(count).toBeGreaterThan(2)
       for (let index = 1; index < count; index += 1) {
         await buttons.first().click()
+        if (feed.path === "/events")
+          await expect(page.locator(".events-card-title").first()).toBeVisible()
         await settle(page)
-        // Read well below the category bar (as deep as the mocked feed allows).
-        await page.evaluate(() =>
+        await page.evaluate(() => window.scrollTo(0, 0))
+        // Stay inside the feed's containing block. A sticky bar cannot remain
+        // visible after its short mocked list ends and the footer begins.
+        await page.locator(feed.bar).evaluate((bar) => {
+          const feedBottom = window.scrollY + bar.parentElement!.getBoundingClientRect().bottom
+          const barDocumentTop = window.scrollY + bar.getBoundingClientRect().top
+          const top = Number.parseFloat(getComputedStyle(bar).top)
+          const barHeight = bar.getBoundingClientRect().height
+          const maxScroll = document.documentElement.scrollHeight - window.innerHeight
           window.scrollTo(
             0,
-            Math.min(1200, document.documentElement.scrollHeight - window.innerHeight)
+            Math.min(1200, maxScroll, barDocumentTop + 300, feedBottom - top - barHeight - 40)
           )
-        )
-        const before = await page.evaluate(() => Math.round(window.scrollY))
-        expect(before).toBeGreaterThan(400)
+        })
 
         // The bar is stuck inside the viewport and on top of the cards, so the
         // click needs no scroll. Chromium hit-tests a sticky box against the
         // pre-scroll frame until the next frame, so wait until it is hittable.
+        await expect
+          .poll(() => page.locator(feed.bar).evaluate((bar) => bar.getBoundingClientRect().top))
+          .toBeGreaterThanOrEqual(0)
         const barTop = await page
           .locator(feed.bar)
           .evaluate((bar) => bar.getBoundingClientRect().top)
-        expect(barTop, `${feed.path} bar stuck`).toBeGreaterThanOrEqual(0)
         expect(barTop, `${feed.path} bar stuck`).toBeLessThan(200)
+        await buttons.nth(index).evaluate((button) => {
+          const toolbar = button.parentElement!
+          const buttonRect = button.getBoundingClientRect()
+          const toolbarRect = toolbar.getBoundingClientRect()
+          toolbar.scrollLeft +=
+            buttonRect.left - toolbarRect.left - (toolbarRect.width - buttonRect.width) / 2
+        })
         await expect
           .poll(() =>
             buttons.nth(index).evaluate((button) => {
@@ -175,9 +200,14 @@ test.describe("Category filters keep the reading position", () => {
           )
           .toBe(true)
 
+        const before = await page.evaluate(() => Math.round(window.scrollY))
+        expect(before).toBeGreaterThan(400)
+
         const captureProbe = feed.path === "/news" && index === 1
         if (captureProbe) await startScrollProbe(page, feed.bar)
         await buttons.nth(index).click()
+        if (feed.path === "/events")
+          await expect(page.locator(".events-card-title").first()).toBeVisible()
         await settle(page)
 
         const { scrollY, maxScroll } = await page.evaluate(() => ({

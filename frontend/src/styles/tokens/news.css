@@ -308,7 +308,7 @@
 
   .news-sticky-categories {
     position: sticky;
-    top: var(--news-sticky-top);
+    top: calc(var(--news-sticky-top) + var(--visual-viewport-offset-top, 0px));
     /* Above card badges (z-surface) so a stuck bar stays readable and clickable. */
     z-index: var(--z-sticky, 100);
     transition:

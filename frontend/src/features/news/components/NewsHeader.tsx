@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button"
 import { ALL_CATEGORIES, type NewsCategory } from "@/features/news/categories"
 import { cn } from "@/utils/cn"
 import type { SortMode } from "@/features/news/NewsFeature"
+import { useVisualViewportStickyOffset } from "@/hooks/ui/useVisualViewportStickyOffset"
 
 interface NewsHeaderProps {
   onAddClick: () => void
@@ -37,6 +38,7 @@ export const NewsHeader = ({
   const sentinelRef = useRef<HTMLDivElement>(null)
   const stickyRef = useRef<HTMLDivElement>(null)
   const [isStuck, setIsStuck] = useState(false)
+  useVisualViewportStickyOffset(stickyRef)
 
   useEffect(() => {
     const sentinel = sentinelRef.current!
