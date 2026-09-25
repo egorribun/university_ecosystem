@@ -55,6 +55,9 @@ function toTopicState(topics: readonly unknown[]): Record<NotificationTopicKey, 
   ) as Record<NotificationTopicKey, boolean>
 }
 
+/** The session answered for another account than the query was keyed by. */
+class PushTopicsAccountChangedError extends Error {}
+
 export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const { onNotify } = options ?? {}
   const { t } = useTranslation(["notifications"])
@@ -66,6 +69,11 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     queryKey: ["notifications", "push-topics", confirmedUserId],
     queryFn: async (): Promise<PushTopicsResponse> => {
       const response = await fetchPushTopics()
+      // The session answered for whoever is signed in now; never store that
+      // answer under the account this query was started for.
+      if (getConfirmedUserId(useAuthStore.getState()) !== confirmedUserId) {
+        throw new PushTopicsAccountChangedError()
+      }
       // The local copy only mirrors the server's canonical preference.
       setPersistedTopics(response.has_preferences ? response.topics : null, {
         userId: confirmedUserId,
@@ -75,6 +83,9 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     enabled: confirmedUserId !== null && isPushSupported(),
   })
   const serverTopics = pushTopicsQuery.data
+  // Until the canonical preference is known, an explicit toggle would
+  // overwrite it (e.g. an opt-out) with a placeholder selection.
+  const topicsReady = pushTopicsQuery.isSuccess
   const [topicState, setTopicState] = useState<Record<NotificationTopicKey, boolean>>(() => ({
     ...DEFAULT_NOTIFICATION_TOPICS,
   }))
@@ -235,13 +246,21 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         setPushSubscription(subscription)
         return
       }
-      const pendingTopics = pendingExplicitTopicsRef.current
-      if (pendingTopics !== undefined) {
-        await updatePushTopics(subscription.endpoint, pendingTopics)
-        pendingExplicitTopicsRef.current = undefined
-      }
+      // The endpoint is bound now: reflect that before any topic update.
       setPushSubscription(subscription)
       setPushConsent(true)
+      const pendingTopics = pendingExplicitTopicsRef.current
+      if (pendingTopics !== undefined) {
+        try {
+          await updatePushTopics(subscription.endpoint, pendingTopics)
+          pendingExplicitTopicsRef.current = undefined
+        } catch (error) {
+          logError("Failed to update topics", error)
+          invalidatePushQueries()
+          notify({ text: t("notifications:messages.updateFailed"), severity: "error" })
+          return
+        }
+      }
       invalidatePushQueries()
       notify({ text: t("notifications:messages.enabled"), severity: "success" })
     } catch (error) {
@@ -318,7 +337,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
 
   const handleTopicToggle = useCallback(
     (key: NotificationTopicKey) => async (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
-      if (pushBusy) return
+      if (pushBusy || !topicsReady) return
       const previousState = topicState
       const nextState = { ...topicState, [key]: checked }
       const topicsToSend = topicKeys.filter((topic) => nextState[topic])
@@ -353,6 +372,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       pushSubscription,
       topicKeys,
       topicState,
+      topicsReady,
       notify,
       t,
       topicLabels,
@@ -454,6 +474,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     topicKeys,
     topicLabels,
     topicState,
+    topicsReady,
     setTopicState,
     pushSupported,
     notificationPermission,

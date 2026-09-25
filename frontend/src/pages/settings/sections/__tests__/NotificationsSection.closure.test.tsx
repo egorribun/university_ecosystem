@@ -16,6 +16,7 @@ const topicApi = vi.hoisted(() => () => {
     topicKeys: [...topicKeys],
     topicState: Object.fromEntries(topicKeys.map((key) => [key, key !== "chat.message.created"])),
     topicLabels: Object.fromEntries(topicKeys.map((key) => [key, `Topic ${key}`])),
+    topicsReady: true,
     topicToggle: toggle,
     handleTopicToggle: vi.fn(
       (key: string) => (_event: unknown, checked: boolean) => toggle(key, checked)
@@ -188,6 +189,13 @@ describe("NotificationsSection — push and quiet-hours branches", () => {
         "Choose what push notifications are about. Your choice applies to all your devices."
       )
     ).toBeInTheDocument()
+  })
+
+  it("locks topic toggles until the saved preference has loaded", async () => {
+    pushState.value = { ...pushState.value, topicsReady: false }
+    await renderSection()
+
+    expect(screen.getByRole("switch", { name: "Topic news.published" })).toBeDisabled()
   })
 
   it("locks topic toggles while push is busy", async () => {

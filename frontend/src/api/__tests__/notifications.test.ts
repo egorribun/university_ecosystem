@@ -20,6 +20,7 @@ vi.mock("@/api/generated", () => ({
   subscribeApiV1PushSubscribePost: vi.fn(),
   sendTestApiV1PushTestPost: vi.fn(),
   updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch: vi.fn(),
+  meApiV1UsersMeGet: vi.fn(),
 }))
 
 vi.mock("@/api/client", () => ({
@@ -36,6 +37,7 @@ import {
   fetchDeadLetterQueue,
   fetchNotificationsList,
   fetchPushTopics,
+  fetchSessionUserId,
   getVapidPublicKey,
   isReleaseVersion,
   markAllNotificationsRead,
@@ -394,11 +396,39 @@ describe("updatePushTopics", () => {
 })
 
 describe("deleteSubscription + sendTest", () => {
-  it("deleteSubscription posts the endpoint", async () => {
+  it("deleteSubscription posts the endpoint and surfaces failures", async () => {
     await deleteSubscription("https://push.example/y")
     expect(gen.unsubscribeApiV1PushUnsubscribePost).toHaveBeenCalledWith({
       body: { endpoint: "https://push.example/y" },
+      throwOnError: true,
     })
+  })
+
+  it("deleteSubscription keeps only the HTTP status of a failed unbind", async () => {
+    const privatePushEndpoint = "https://push.example/private-unbind"
+    vi.mocked(gen.unsubscribeApiV1PushUnsubscribePost).mockRejectedValue(
+      Object.assign(new Error(`Failed for ${privatePushEndpoint}`), {
+        isAxiosError: true,
+        response: { status: 401 },
+        config: { data: privatePushEndpoint },
+      })
+    )
+
+    const error = await deleteSubscription(privatePushEndpoint).catch((reason: unknown) => reason)
+
+    expect(error).toMatchObject({
+      name: "PushSubscriptionPersistenceError",
+      response: { status: 401 },
+    })
+    expect(JSON.stringify(error)).not.toContain(privatePushEndpoint)
+    expect(String(error)).not.toContain(privatePushEndpoint)
+  })
+
+  it("fetchSessionUserId returns the id of the account behind the session", async () => {
+    vi.mocked(gen.meApiV1UsersMeGet).mockResolvedValue({ data: { id: 42 } } as never)
+
+    await expect(fetchSessionUserId()).resolves.toBe("42")
+    expect(gen.meApiV1UsersMeGet).toHaveBeenCalledWith({ throwOnError: true })
   })
 
   it("sendTest returns data + throws when empty", async () => {

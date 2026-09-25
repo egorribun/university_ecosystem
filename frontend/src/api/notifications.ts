@@ -11,6 +11,7 @@ import {
   getPushTopicsApiV1PushTopicsGet,
   getVapidPublicKeyApiV1PushVapidPublicKeyGet,
   listNotificationsApiV1NotificationsGet,
+  meApiV1UsersMeGet,
   markAllReadApiV1NotificationsReadAllPost,
   markReadSingleApiV1NotificationsNotifIdReadPatch,
   listNotificationDeadLetters,
@@ -247,7 +248,19 @@ export async function updatePushTopics(endpoint: string, topics: string[]): Prom
 }
 
 export async function deleteSubscription(endpoint: string): Promise<void> {
-  await unsubscribeApiV1PushUnsubscribePost({ body: { endpoint } })
+  try {
+    // A silently failed unbind would leave this endpoint delivering another
+    // account's notifications, so callers must see the failure.
+    await unsubscribeApiV1PushUnsubscribePost({ body: { endpoint }, throwOnError: true })
+  } catch (error) {
+    throw sanitizePushRequestError(error)
+  }
+}
+
+/** Id of the account that owns the current session cookie (GET /users/me). */
+export async function fetchSessionUserId(): Promise<string> {
+  const { data } = await meApiV1UsersMeGet({ throwOnError: true })
+  return String(data.id)
 }
 
 export async function sendTest(): Promise<SendTestNotificationResponse> {

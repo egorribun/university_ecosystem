@@ -2,11 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.unmock("@/push/subscribe")
 
-import { deleteSubscription, getVapidPublicKey, saveSubscription } from "@/api/notifications"
+import {
+  deleteSubscription,
+  fetchSessionUserId,
+  getVapidPublicKey,
+  saveSubscription,
+} from "@/api/notifications"
 import { withExpectedConsole } from "@/tests/strictConsole"
 
 vi.mock("@/api/notifications", () => ({
   deleteSubscription: vi.fn(),
+  fetchSessionUserId: vi.fn(),
   getVapidPublicKey: vi.fn(),
   saveSubscription: vi.fn().mockResolvedValue({}),
 }))
@@ -2073,6 +2079,9 @@ describe("subscribe", () => {
 
     beforeEach(() => {
       vi.stubGlobal("Notification", { permission: "granted" })
+      vi.mocked(fetchSessionUserId).mockImplementation(async () =>
+        String((authStore.getState().user as { id?: unknown } | null)?.id)
+      )
     })
 
     describe("fail-closed identity", () => {
@@ -2515,18 +2524,129 @@ describe("subscribe", () => {
     })
 
     describe("syncPushForConfirmedIdentity account boundary", () => {
-      it("never hands another account's browser consent or endpoint to a new login", async () => {
-        mockSWContainer.getRegistration.mockResolvedValue(makeReg(makeSub()))
+      it("retires another account's browser endpoint when a different account signs in", async () => {
+        const foreign = { ...makeSub(), unsubscribe: vi.fn().mockResolvedValue(true) }
+        mockSWContainer.getRegistration.mockResolvedValue(makeReg(foreign))
         vi.stubEnv("VITE_VAPID_PUBLIC_KEY", KEY)
         mod.setPushConsent(true)
         localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
+        localStorage.setItem("push:last_payload", JSON.stringify(foreign.toJSON()))
         setIdentity("owner-b")
 
         await expect(mod.syncPushForConfirmedIdentity()).resolves.toBeNull()
 
         expect(saveSubscription).not.toHaveBeenCalled()
-        expect(mockSWContainer.getRegistration).not.toHaveBeenCalled()
+        expect(foreign.unsubscribe).toHaveBeenCalledOnce()
+        expect(storedOwner()).toBeNull()
+        expect(localStorage.getItem("push:last_payload")).toBeNull()
+        expect(mod.hasPushConsent()).toBe(false)
+      })
+
+      it("keeps an account's endpoint when auth settles signed out", async () => {
+        const kept = { ...makeSub(), unsubscribe: vi.fn() }
+        mockSWContainer.getRegistration.mockResolvedValue(makeReg(kept))
+        localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
+        setIdentity(null)
+
+        await expect(mod.syncPushForConfirmedIdentity()).resolves.toBeNull()
+
+        expect(kept.unsubscribe).not.toHaveBeenCalled()
         expect(storedOwner()).toBe(JSON.stringify("owner-a"))
+      })
+
+      it("forgets another account's marker even without a browser subscription", async () => {
+        mockSWContainer.getRegistration.mockResolvedValue(makeReg(null))
+        localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
+        setIdentity("owner-b")
+
+        await expect(mod.syncPushForConfirmedIdentity()).resolves.toBeNull()
+        expect(storedOwner()).toBeNull()
+      })
+
+      it("logs a failed revocation of another account's endpoint", async () => {
+        const foreign = {
+          ...makeSub(),
+          unsubscribe: vi.fn().mockRejectedValue(new Error("push service unavailable")),
+        }
+        mockSWContainer.getRegistration.mockResolvedValue(makeReg(foreign))
+        localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
+        setIdentity("owner-b")
+
+        await withExpectedConsole(
+          "warn",
+          "Failed to retire another account's push subscription",
+          () => expect(mod.syncPushForConfirmedIdentity()).resolves.toBeNull()
+        )
+        expect(storedOwner()).toBeNull()
+      })
+
+      it("leaves the browser alone when no account enabled push here", async () => {
+        const unowned = { ...makeSub(), unsubscribe: vi.fn() }
+        mockSWContainer.getRegistration.mockResolvedValue(makeReg(unowned))
+        setIdentity("owner-b")
+
+        await expect(mod.syncPushForConfirmedIdentity()).resolves.toBeNull()
+
+        expect(unowned.unsubscribe).not.toHaveBeenCalled()
+        expect(mockSWContainer.getRegistration).not.toHaveBeenCalled()
+      })
+
+      it("does not rebind on boot when the session belongs to another account", async () => {
+        mockSWContainer.getRegistration.mockResolvedValue(makeReg(makeSub()))
+        vi.stubEnv("VITE_VAPID_PUBLIC_KEY", KEY)
+        mod.setPushConsent(true)
+        localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
+        setIdentity("owner-a")
+        vi.mocked(fetchSessionUserId).mockResolvedValue("owner-b")
+
+        await expect(mod.syncPushForConfirmedIdentity()).resolves.toBeNull()
+
+        expect(saveSubscription).not.toHaveBeenCalled()
+        expect(mockSWContainer.getRegistration).not.toHaveBeenCalled()
+      })
+
+      it("does nothing quietly when the boot session cannot be verified", async () => {
+        localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
+        mod.setPushConsent(true)
+        setIdentity("owner-a")
+        vi.mocked(fetchSessionUserId).mockRejectedValue(new Error("401"))
+
+        await withExpectedConsole("warn", "Push session check failed", () =>
+          expect(mod.syncPushForConfirmedIdentity()).resolves.toBeNull()
+        )
+        expect(saveSubscription).not.toHaveBeenCalled()
+      })
+
+      it("trusts an account id that came from an authenticated response", async () => {
+        const subscription = makeSub()
+        mockSWContainer.getRegistration.mockResolvedValue(makeReg(subscription))
+        vi.stubEnv("VITE_VAPID_PUBLIC_KEY", KEY)
+        mod.setPushConsent(true)
+        localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
+        setIdentity("owner-a")
+
+        await expect(mod.syncPushForConfirmedIdentity({ expectedUserId: "owner-a" })).resolves.toBe(
+          subscription
+        )
+        expect(fetchSessionUserId).not.toHaveBeenCalled()
+      })
+
+      it("abandons the sync when the account changes while it is in progress", async () => {
+        const registration = makeReg(makeSub())
+        const ready = deferred<typeof registration>()
+        mockSWContainer.getRegistration.mockReturnValue(ready.promise)
+        vi.stubEnv("VITE_VAPID_PUBLIC_KEY", KEY)
+        localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
+        setIdentity("owner-a")
+
+        const pending = mod.syncPushForConfirmedIdentity()
+        await flushMicrotasks()
+        setIdentity("owner-b")
+        ready.resolve(registration)
+
+        await expect(pending).resolves.toBeNull()
+        expect(saveSubscription).not.toHaveBeenCalled()
+        expect(mod.hasPushConsent()).toBe(false)
       })
 
       it("does not recover consent for an account that never enabled push here", async () => {
@@ -2649,14 +2769,31 @@ describe("subscribe", () => {
         expect(localStorage.getItem("push:last_payload")).toBeNull()
       })
 
-      it("logs and swallows a failed unbind", async () => {
-        mockSWContainer.getRegistration.mockResolvedValue(makeReg())
-        const failure = new Error("unbind failed")
-        vi.mocked(deleteSubscription).mockRejectedValue(failure)
+      it("revokes the endpoint in the browser when the server unbind fails", async () => {
+        const subscription = { ...makeSub(), unsubscribe: vi.fn().mockResolvedValue(true) }
+        mockSWContainer.getRegistration.mockResolvedValue(makeReg(subscription))
+        localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
+        vi.mocked(deleteSubscription).mockRejectedValue(new Error("unbind failed"))
 
         await withExpectedConsole("warn", "Failed to release push subscription binding", () =>
           expect(mod.releasePushServerBinding()).resolves.toBeUndefined()
         )
+
+        expect(subscription.unsubscribe).toHaveBeenCalledOnce()
+        expect(storedOwner()).toBeNull()
+      })
+
+      it("keeps the owner marker when the unbind outlives the logout guard", async () => {
+        mockSWContainer.getRegistration.mockResolvedValue(makeReg())
+        vi.mocked(deleteSubscription).mockReturnValue(new Promise<void>(() => {}))
+        localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
+
+        const settled = mod.releasePushServerBinding()
+        await vi.advanceTimersByTimeAsync(3_000)
+        await settled
+
+        // The next account that signs in retires this endpoint instead.
+        expect(storedOwner()).toBe(JSON.stringify("owner-a"))
       })
 
       it("stops waiting for a hung unbind after the logout guard", async () => {

@@ -1,4 +1,9 @@
-import { deleteSubscription, getVapidPublicKey, saveSubscription } from "@/api/notifications"
+import {
+  deleteSubscription,
+  fetchSessionUserId,
+  getVapidPublicKey,
+  saveSubscription,
+} from "@/api/notifications"
 import { logError, logWarning } from "@/app/logger"
 import { getConfirmedUserId, waitForConfirmedUserId } from "@/stores/authIdentity"
 import { useAuthStore } from "@/stores/useAuthStore"
@@ -412,7 +417,8 @@ export function setPushConsent(consented: boolean): void {
  * @returns true if consent was recovered
  */
 export async function recoverPushConsentFromBrowser(
-  registration?: ServiceWorkerRegistration
+  registration?: ServiceWorkerRegistration,
+  owner?: string
 ): Promise<boolean> {
   if (!isPushSupported()) return false
 
@@ -430,7 +436,7 @@ export async function recoverPushConsentFromBrowser(
     if (!(await reg.pushManager.getSubscription())) return false
     // A browser subscription alone does not prove that the authenticated
     // account owns it on the server. Recover consent only after persistence.
-    if (!(await ensurePushSubscription({ registration: reg }))) return false
+    if (!(await ensurePushSubscription({ registration: reg, owner }))) return false
   } catch (error) {
     logWarning("Failed to re-sync recovered push subscription", error)
     return false
@@ -544,6 +550,8 @@ type EnsurePushSubscriptionOptions = {
   vapidPublicKey?: string
   topics?: string[]
   requestPermission?: boolean
+  /** Abort unless this account is still the confirmed one. */
+  owner?: string
 }
 
 type EnsureTask = {
@@ -562,9 +570,10 @@ export async function ensurePushSubscription(
 ): Promise<PushSubscription | null> {
   if (!isPushSupported()) return null
 
-  // Fail closed: never persist without a confirmed authenticated identity.
+  // Fail closed: never persist without a confirmed authenticated identity,
+  // nor for a different account than the caller verified.
   const owner = readActiveUserId()
-  if (!owner) return null
+  if (!owner || (options?.owner !== undefined && options.owner !== owner)) return null
 
   const explicit = options?.topics !== undefined
   const previous = ensureTail
@@ -773,6 +782,7 @@ type SoftSyncOptions = {
   registration?: ServiceWorkerRegistration
   vapidPublicKey?: string
   topics?: string[]
+  owner?: string
 }
 
 export async function softSyncPushSubscription(
@@ -811,10 +821,39 @@ export async function syncPushForConfirmedIdentity({
   timeoutMs,
 }: ConfirmedIdentitySyncOptions = {}): Promise<PushSubscription | null> {
   const owner = await waitForConfirmedUserId({ expectedUserId, timeoutMs })
-  if (!owner || pushOwnerStorage.get() !== owner) return null
-  await recoverPushConsentFromBrowser(registration)
+  if (!owner) return null
+  const browserOwner = pushOwnerStorage.get()
+  if (browserOwner !== owner) {
+    if (browserOwner !== null) await retireForeignSubscription(registration)
+    return null
+  }
+  // A cached profile does not prove which account the session cookie
+  // belongs to; ids from authenticated responses (expectedUserId) do.
+  if (expectedUserId === undefined) {
+    const sessionOwner = await fetchSessionUserId().catch((error: unknown) => {
+      logWarning("Push session check failed", error)
+      return null
+    })
+    if (sessionOwner !== owner) return null
+  }
+  await recoverPushConsentFromBrowser(registration, owner)
   if (!hasPushConsent()) return null
-  return softSyncPushSubscription({ registration })
+  return softSyncPushSubscription({ registration, owner })
+}
+
+/**
+ * Another account enabled push on this browser and may still be bound to
+ * this endpoint on the server (e.g. its session expired without logout).
+ * Revoke the endpoint itself so its notifications stop arriving here.
+ */
+async function retireForeignSubscription(registration?: ServiceWorkerRegistration) {
+  pushOwnerStorage.remove()
+  pushSubStorage.remove()
+  setPushConsent(false)
+  const subscription = await getExistingPushSubscription(registration)
+  await subscription?.unsubscribe().catch((error: unknown) => {
+    logWarning("Failed to retire another account's push subscription", error)
+  })
 }
 
 /**
@@ -832,7 +871,18 @@ export async function releasePushServerBinding(): Promise<void> {
   const release = navigator.serviceWorker
     .getRegistration()
     .then((registration) => registration?.pushManager.getSubscription())
-    .then((subscription) => subscription && deleteSubscription(subscription.endpoint))
+    .then(async (subscription) => {
+      if (!subscription) return
+      try {
+        await deleteSubscription(subscription.endpoint)
+      } catch (error) {
+        logWarning("Failed to release push subscription binding", error)
+        // The server may still route this account's notifications here:
+        // revoke the endpoint itself and require an explicit re-enable.
+        pushOwnerStorage.remove()
+        await subscription.unsubscribe()
+      }
+    })
     .catch((error: unknown) => {
       logWarning("Failed to release push subscription binding", error)
     })

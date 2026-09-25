@@ -53,6 +53,7 @@ export function NotificationsSection({
     topicKeys,
     topicState,
     topicLabels,
+    topicsReady,
     handleTopicToggle,
   } = usePushPreferences({ onNotify: setSnackbar })
 
@@ -127,7 +128,7 @@ export function NotificationsSection({
                   <SwitchControl
                     checked={topicState[topic]}
                     onChange={handleTopicToggle(topic)}
-                    disabled={pushBusy || pushInitializing}
+                    disabled={pushBusy || pushInitializing || !topicsReady}
                     aria-label={topicLabels[topic]}
                   />
                   <span className="text-text-soft">{topicLabels[topic]}</span>
