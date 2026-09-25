@@ -76,17 +76,17 @@ func TestSanitizeKey(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFile_ResolvesSanitizedURL(t *testing.T) {
-	r := &Resolver{MinioBucket: "files"}
+	r := &Resolver{}
 	fr := r.File(struct{ ID gql.ID }{ID: gql.ID("uploads/photo.png")})
 	require.NotNil(t, fr)
 	assert.Equal(t, gql.ID("uploads/photo.png"), fr.ID())
-	assert.Contains(t, fr.URL(), "/files/")
+	assert.Equal(t, "/api/v1/img/uploads/photo.png", fr.URL())
 	assert.NotNil(t, fr.Size())
 	assert.NotNil(t, fr.Type())
 }
 
 func TestFile_TraversalFallsBackToInvalidPath(t *testing.T) {
-	r := &Resolver{MinioBucket: "files"}
+	r := &Resolver{}
 	fr := r.File(struct{ ID gql.ID }{ID: gql.ID("../../etc/passwd")})
 	require.NotNil(t, fr)
 	assert.Equal(t, gql.ID("invalid-path"), fr.ID())
@@ -112,7 +112,7 @@ func TestProcessFile_SuccessThreadsOptionsAndPrefix(t *testing.T) {
 			return &fakeWorkflowRun{id: "wf-run-1"}, nil
 		},
 	}
-	r := &Resolver{TemporalClient: fake, MinioBucket: "files"}
+	r := &Resolver{TemporalClient: fake}
 
 	input := ProcessFileInput{
 		Type:      "image",
@@ -136,7 +136,7 @@ func TestProcessFile_SuccessThreadsOptionsAndPrefix(t *testing.T) {
 }
 
 func TestProcessFile_InvalidSourceKeyRejected(t *testing.T) {
-	r := &Resolver{TemporalClient: &fakeTemporalClient{}, MinioBucket: "files"}
+	r := &Resolver{TemporalClient: &fakeTemporalClient{}}
 	_, err := r.ProcessFile(context.Background(), struct{ Input ProcessFileInput }{
 		Input: ProcessFileInput{Type: "image", SourceKey: "../etc/passwd", DestKey: "dst/ok.png"},
 	})
@@ -145,7 +145,7 @@ func TestProcessFile_InvalidSourceKeyRejected(t *testing.T) {
 }
 
 func TestProcessFile_InvalidDestKeyRejected(t *testing.T) {
-	r := &Resolver{TemporalClient: &fakeTemporalClient{}, MinioBucket: "files"}
+	r := &Resolver{TemporalClient: &fakeTemporalClient{}}
 	_, err := r.ProcessFile(context.Background(), struct{ Input ProcessFileInput }{
 		Input: ProcessFileInput{Type: "image", SourceKey: "src/ok.png", DestKey: "../../boom"},
 	})
@@ -159,9 +159,18 @@ func TestProcessFile_ExecuteWorkflowErrorPropagates(t *testing.T) {
 			return nil, assert.AnError
 		},
 	}
-	r := &Resolver{TemporalClient: fake, MinioBucket: "files"}
+	r := &Resolver{TemporalClient: fake}
 	_, err := r.ProcessFile(context.Background(), struct{ Input ProcessFileInput }{
 		Input: ProcessFileInput{Type: "image", SourceKey: "src/ok.png", DestKey: "dst/ok.png"},
 	})
 	require.Error(t, err)
+}
+
+func TestFile_URLIsThePortablePublicImagePath(t *testing.T) {
+	r := &Resolver{}
+	fr := r.File(struct{ ID gql.ID }{ID: gql.ID("/news_images/a b?.png")})
+	require.NotNil(t, fr)
+	// A same-origin path through the backend image proxy works in every
+	// environment and keeps its public-prefix authorization in front of storage.
+	assert.Equal(t, "/api/v1/img/news_images/a%20b%3F.png", fr.URL())
 }

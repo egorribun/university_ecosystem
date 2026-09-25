@@ -21,7 +21,6 @@ import (
 // Resolver is the root resolver for the GraphQL API.
 type Resolver struct {
 	TemporalClient    client.Client
-	MinioBucket       string
 	CapabilitySecret  []byte
 	RequireCapability bool
 	// ReplayGuard is shared with the gRPC and NATS ingress paths by production
@@ -48,6 +47,17 @@ func sanitizeKey(key string) (string, error) {
 	return cleaned, nil
 }
 
+// publicImagePath returns the same-origin backend image-proxy path for key.
+// Unlike a direct object-storage URL it works in every environment and keeps
+// the backend's public-prefix authorization in front of the private bucket.
+func publicImagePath(key string) string {
+	segments := strings.Split(key, "/")
+	for index, segment := range segments {
+		segments[index] = url.PathEscape(segment)
+	}
+	return "/api/v1/img/" + strings.Join(segments, "/")
+}
+
 // File returns a resolver for a specific file.
 //
 // W140 (z) #1: args.ID must be gql.ID (not string) because schema.graphql
@@ -63,11 +73,9 @@ func (r *Resolver) File(args struct{ ID gql.ID }) *FileResolver {
 		safeID = "invalid-path"
 	}
 
-	escapedSafeID := url.PathEscape(safeID)
-
 	return &FileResolver{
 		id:  safeID,
-		url: fmt.Sprintf("http://localhost:9000/%s/%s", r.MinioBucket, escapedSafeID),
+		url: publicImagePath(safeID),
 	}
 }
 

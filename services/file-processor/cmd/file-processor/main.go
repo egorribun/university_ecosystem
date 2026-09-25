@@ -1075,7 +1075,6 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 
 	resolver := &gql.Resolver{
 		TemporalClient:    c,
-		MinioBucket:       cfg.MinioBucket,
 		CapabilitySecret:  []byte(strings.TrimSpace(cfg.ProcessingCapabilitySecret)),
 		RequireCapability: strings.TrimSpace(cfg.ProcessingCapabilitySecret) != "",
 		ReplayGuard:       replayGuard,
