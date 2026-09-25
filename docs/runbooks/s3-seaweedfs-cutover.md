@@ -100,9 +100,12 @@ use, document and verify them separately before proceeding.
    subsequent starts. The `scripts/dc.ps1` and `scripts/dc.sh` wrappers refuse
    storage-starting operations against the legacy base file when cutover state
    exists. Direct `docker compose -f docker-compose.full.yml up` bypasses those
-   safeguards and is **not** an approved rollback path. Never run `down -v` or
-   delete either storage volume as a shortcut: preserve the old MinIO volume
-   until object inventory, restore, and rollback evidence are recorded.
+   safeguards and is **not** an approved rollback path. The wrappers also
+   reject `down --rmi`: keep the cached old MinIO image so the authenticated
+   source API remains recoverable until migration and rollback are verified.
+   Direct Compose can bypass this guard. Never run `down -v` or delete either
+   storage volume as a shortcut: preserve the old MinIO volume until object
+   inventory, restore, and rollback evidence are recorded.
    These launchers serialize storage-changing Compose operations with the
    atomic `.secrets/s3-storage-compose.lock` directory and recheck storage
    state while holding it. If a launcher is interrupted and the lock remains,

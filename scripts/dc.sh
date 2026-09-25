@@ -112,6 +112,9 @@ case "$compose_command" in
         -v|-v=*|--volume|--volume=*|--volumes|--volumes=*)
           echo "scripts/dc.sh: Refusing destructive Compose down --volumes; use a separately reviewed data cleanup procedure." >&2
           exit 2 ;;
+        --rmi|--rmi=*)
+          echo "scripts/dc.sh: Refusing Compose down --rmi; preserve the cached legacy S3 image until migration and rollback are verified." >&2
+          exit 2 ;;
       esac
     done
     ;;

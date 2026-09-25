@@ -145,6 +145,26 @@ def test_powershell_wrapper_never_offers_destructive_down(
     assert "COMPOSE_CALLED=" not in result.stdout
 
 
+@pytest.mark.parametrize(
+    "rmi_args",
+    [
+        ("--rmi", "all"),
+        ("--rmi", "local"),
+        ("--rmi=all",),
+        ("--rmi=local",),
+        ("--rmi",),
+    ],
+)
+@pytest.mark.parametrize("marker", [False, True])
+def test_powershell_wrapper_preserves_cached_source_image_on_down(
+    tmp_path: Path, rmi_args: tuple[str, ...], marker: bool
+) -> None:
+    result = _run_powershell_wrapper(tmp_path, "down", *rmi_args, marker=marker)
+    assert result.returncode != 0
+    assert "Refusing Compose down --rmi" in result.stderr
+    assert "COMPOSE_CALLED=" not in result.stdout
+
+
 @pytest.mark.parametrize("prefix", [("--ansi", "never"), ("--compatibility",)])
 def test_powershell_wrapper_rejects_unknown_global_prefix_before_destructive_down(
     tmp_path: Path, prefix: tuple[str, ...]
@@ -369,6 +389,27 @@ def test_shell_wrapper_never_offers_destructive_down(
 ) -> None:
     result = _run_shell_wrapper(tmp_path, "down", volume_flag)
     assert result.returncode != 0
+    assert "COMPOSE_CALLED=" not in result.stdout
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX shell integration runs on Linux CI")
+@pytest.mark.parametrize(
+    "rmi_args",
+    [
+        ("--rmi", "all"),
+        ("--rmi", "local"),
+        ("--rmi=all",),
+        ("--rmi=local",),
+        ("--rmi",),
+    ],
+)
+@pytest.mark.parametrize("marker", [False, True])
+def test_shell_wrapper_preserves_cached_source_image_on_down(
+    tmp_path: Path, rmi_args: tuple[str, ...], marker: bool
+) -> None:
+    result = _run_shell_wrapper(tmp_path, "down", *rmi_args, marker=marker)
+    assert result.returncode != 0
+    assert "Refusing Compose down --rmi" in result.stderr
     assert "COMPOSE_CALLED=" not in result.stdout
 
 

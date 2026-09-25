@@ -49,6 +49,9 @@ $deletesVolumes = @($args | Where-Object {
   [string]$_ -in @("-v", "--volume", "--volumes") -or
   [string]$_ -like "-v=*" -or [string]$_ -like "--volume=*" -or [string]$_ -like "--volumes=*"
 }).Count -gt 0
+$deletesImages = @($args | Where-Object {
+  [string]$_ -eq "--rmi" -or [string]$_ -like "--rmi=*"
+}).Count -gt 0
 $composeCommand = ""
 $composeCommandIndex = -1
 for ($index = 0; $index -lt $args.Count; $index++) {
@@ -95,6 +98,10 @@ for ($index = 0; $index -lt $args.Count; $index++) {
 }
 if ($composeCommand -eq "down" -and $deletesVolumes) {
   Write-Error "scripts/dc.ps1: Refusing destructive Compose down --volumes; use a separately reviewed data cleanup procedure."
+  exit 2
+}
+if ($composeCommand -eq "down" -and $deletesImages) {
+  Write-Error "scripts/dc.ps1: Refusing Compose down --rmi; preserve the cached legacy S3 image until migration and rollback are verified."
   exit 2
 }
 $readOnlyCommands = @("ps", "logs", "config", "images", "top", "ls", "version", "events", "port")
