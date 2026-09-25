@@ -20,8 +20,8 @@ pytestmark = pytest.mark.integration
 
 def _require_postgres() -> None:
     if database.engine.dialect.name != "postgresql":
-        # QUALITY-2509 @egorribun: SQLite unit shards cannot exercise PG advisory
-        # locks; the required PostgreSQL integration lane runs this file.
+        # SQLite unit shards cannot exercise PG advisory locks.
+        # QUALITY-2509 @egorribun: required PostgreSQL lane runs this file.
         pytest.skip("notification concurrency requires separate PostgreSQL sessions")
 
 

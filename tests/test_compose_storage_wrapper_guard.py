@@ -36,7 +36,7 @@ def _run_powershell_wrapper(
 ) -> subprocess.CompletedProcess[str]:
     pwsh = shutil.which("pwsh")
     if pwsh is None:
-        pytest.skip("PowerShell is unavailable on this runner")
+        pytest.fail("PowerShell is required for Compose wrapper contracts")
     (tmp_path / ".env.docker").write_text(
         f"COMPOSE_PROJECT_NAME='{env_project}'\n" if env_project else "",
         encoding="utf-8",
@@ -281,7 +281,7 @@ def _run_shell_wrapper(
 ) -> subprocess.CompletedProcess[str]:
     shell = shutil.which("sh")
     if shell is None:
-        pytest.skip("POSIX shell is unavailable on this runner")
+        pytest.fail("POSIX shell is required for Compose wrapper contracts")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (tmp_path / ".env.docker").write_text("", encoding="utf-8")
