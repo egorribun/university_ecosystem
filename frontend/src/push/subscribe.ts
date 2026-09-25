@@ -684,6 +684,7 @@ export async function ensurePushSubscription(
         await persistSubscriptionWithBackoff(payload, topics)
       } catch (error) {
         logError("Failed to persist push subscription", error)
+        throw error
       }
     } else {
       pushLastSyncStorage.set(Date.now().toString())

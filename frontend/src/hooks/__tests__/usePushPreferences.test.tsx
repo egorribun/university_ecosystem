@@ -357,6 +357,23 @@ describe("usePushPreferences", () => {
     )
   })
 
+  it("does not grant push consent when subscription persistence fails", async () => {
+    installNotification("granted")
+    mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
+    mockEnsurePushSubscription.mockRejectedValue(new Error("persistence failed"))
+    const onNotify = vi.fn()
+    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+
+    expect(mockSetPushConsent).not.toHaveBeenCalledWith(true)
+    expect(onNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "notifications:messages.enableFailed", severity: "error" })
+    )
+  })
+
   // ---- disableNotifications branches (lines 218-276) ----
 
   it("disableNotifications: unsupported → clears state without notify (222-227)", async () => {

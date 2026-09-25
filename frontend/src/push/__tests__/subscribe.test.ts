@@ -1173,8 +1173,9 @@ describe("subscribe", () => {
       expect(mockReg.pushManager.subscribe).toHaveBeenCalledOnce()
     })
 
-    it("swallows a permanent persistence failure after bounded retries", async () => {
-      vi.mocked(saveSubscription).mockRejectedValue(new Error("permanent failure"))
+    it("propagates a permanent persistence failure after bounded retries", async () => {
+      const persistenceError = new Error("permanent failure")
+      vi.mocked(saveSubscription).mockRejectedValue(persistenceError)
       const mockSub = {
         endpoint: "https://push.example.com/permanent-failure",
         options: { applicationServerKey: mod.urlBase64ToUint8Array("failure-key").buffer },
@@ -1195,9 +1196,13 @@ describe("subscribe", () => {
         "Failed to persist push subscription",
         async () => {
           const promise = mod.ensurePushSubscription({ requestPermission: false })
+          const settled = promise.then(
+            (value: unknown) => ({ value }),
+            (error: unknown) => ({ error })
+          )
           await vi.runAllTimersAsync()
 
-          await expect(promise).resolves.toBe(mockSub)
+          await expect(settled).resolves.toEqual({ error: persistenceError })
         },
         2
       )
@@ -1205,7 +1210,8 @@ describe("subscribe", () => {
     })
 
     it("uses the bounded exponential retry schedule including jitter", async () => {
-      vi.mocked(saveSubscription).mockRejectedValue(new Error("retryable failure"))
+      const retryError = new Error("retryable failure")
+      vi.mocked(saveSubscription).mockRejectedValue(retryError)
       const mockSub = {
         endpoint: "https://push.example.com/retry-schedule",
         options: { applicationServerKey: mod.urlBase64ToUint8Array("cmV0cnk").buffer },
@@ -1230,6 +1236,10 @@ describe("subscribe", () => {
               vapidPublicKey: "cmV0cnk",
               requestPermission: false,
             })
+            const settled = promise.then(
+              (value: unknown) => ({ value }),
+              (error: unknown) => ({ error })
+            )
 
             await vi.advanceTimersByTimeAsync(750)
             expect(saveSubscription).toHaveBeenCalledOnce()
@@ -1241,7 +1251,7 @@ describe("subscribe", () => {
             expect(saveSubscription).toHaveBeenCalledTimes(2)
 
             await vi.advanceTimersByTimeAsync(250)
-            await expect(promise).resolves.toBe(mockSub)
+            await expect(settled).resolves.toEqual({ error: retryError })
           },
           2
         )
