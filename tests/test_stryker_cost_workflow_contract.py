@@ -98,14 +98,16 @@ def test_cross_run_snapshot_is_bound_to_pre_checkout_action_outputs() -> None:
     fetch = _step(preflight, "Fetch bounded cross-run Stryker timing snapshot")
     verify = _step(preflight, "Verify cross-run Stryker timing without a token")
     assert steps.index(fetch) < steps.index(_step(preflight, "Checkout"))
-    assert "metadata_sha256" in fetch["with"]["script"]
-    assert "cost_sha256" in fetch["with"]["script"]
-    assert "preflight_sha256" in fetch["with"]["script"]
-    for output in ("METADATA", "COST", "PREFLIGHT"):
-        assert verify["env"][f"SNAPSHOT_{output}_SHA256"] == (
-            "${{ steps.cross_run_snapshot.outputs." + output.lower() + "_sha256 }}"
-        )
-        assert f"--snapshot-{output.lower()}-sha256" in verify["run"]
+    script = fetch["with"]["script"]
+    assert "candidates.json" in script
+    assert "candidates_sha256" in script
+    assert "for (const summary of runs)" in script
+    assert "candidates.push" in script
+    assert "if (candidates.length === 0)" in script
+    assert verify["env"]["SNAPSHOT_CANDIDATES_SHA256"] == (
+        "${{ steps.cross_run_snapshot.outputs.candidates_sha256 }}"
+    )
+    assert "--snapshot-candidates-sha256" in verify["run"]
 
 
 def test_historical_stryker_cost_evidence_is_same_run_bound_and_optional() -> None:

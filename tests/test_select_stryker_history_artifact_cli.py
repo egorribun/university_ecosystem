@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import shutil
 import stat
 import zipfile
 import zlib
@@ -369,6 +370,153 @@ def test_offline_snapshot_selects_only_digest_checked_compatible_costs(
     rejected = history.select_offline_historical_costs(arguments, current, tmp_path)
     assert rejected.candidate is None
     assert "archive digest mismatch" in rejected.diagnostic
+
+
+def test_bounded_offline_candidates_try_next_after_rejected_first(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    arguments, current, original = _snapshot(source)
+    root = tmp_path / "batch"
+    root.mkdir()
+    first = root / "candidate-0"
+    second = root / "candidate-1"
+    shutil.copytree(original, first)
+    shutil.copytree(original, second)
+    stale_cost = json.loads(
+        history._one_zip_member(
+            (first / "historical-costs.zip").read_bytes(), "HISTORICAL_COSTS.json"
+        )
+    )
+    stale_cost["payload"]["costs"][0]["estimatedDurationMs"] = 0
+    stale_cost["payloadSha256"] = hashlib.sha256(
+        _json_bytes(stale_cost["payload"])
+    ).hexdigest()
+    stale_zip = _zip("HISTORICAL_COSTS.json", _json_bytes(stale_cost))
+    (first / "historical-costs.zip").write_bytes(stale_zip)
+    stale_metadata = json.loads((first / "metadata.json").read_bytes())
+    stale_metadata["artifacts"][0]["size_in_bytes"] = len(stale_zip)
+    stale_metadata["artifacts"][0]["digest"] = (
+        "sha256:" + hashlib.sha256(stale_zip).hexdigest()
+    )
+    (first / "metadata.json").write_bytes(_json_bytes(stale_metadata))
+    candidates = []
+    for folder in (first, second):
+        candidates.append(
+            {
+                "directory": folder.name,
+                "digests": {
+                    name: hashlib.sha256((folder / name).read_bytes()).hexdigest()
+                    for name in (
+                        "metadata.json",
+                        "historical-costs.zip",
+                        "preflight.zip",
+                    )
+                },
+            }
+        )
+    manifest = _json_bytes({"schemaVersion": "1.0", "candidates": candidates})
+    (root / "candidates.json").write_bytes(manifest)
+
+    result = history.select_offline_historical_candidates(
+        arguments, current, root, hashlib.sha256(manifest).hexdigest()
+    )
+
+    assert result.candidate is not None
+    assert result.candidate.costs == {"src/example.ts": 1234.0}
+
+    # A post-checkout process cannot alter a considered candidate and still
+    # obtain advice from a later one: each considered sample is bound.
+    (first / "metadata.json").write_bytes(
+        (first / "metadata.json").read_bytes() + b"tampered"
+    )
+    tampered = history.select_offline_historical_candidates(
+        arguments, current, root, hashlib.sha256(manifest).hexdigest()
+    )
+    assert tampered.candidate is None
+    assert "trusted download" in tampered.diagnostic
+
+
+def test_offline_candidate_manifest_requires_pre_checkout_digest(
+    tmp_path: Path,
+) -> None:
+    arguments, current, _ = _fixtures()
+    root = tmp_path / "batch"
+    root.mkdir()
+    manifest = _json_bytes({"schemaVersion": "1.0", "candidates": []})
+    (root / "candidates.json").write_bytes(manifest)
+
+    result = history.select_offline_historical_candidates(
+        arguments, current, root, "0" * 64
+    )
+
+    assert result.candidate is None
+    assert "trusted download" in result.diagnostic
+
+
+def test_offline_cli_accepts_only_pre_checkout_bound_candidate_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    arguments, current, original = _snapshot(source)
+    root = tmp_path / "batch"
+    root.mkdir()
+    candidate = root / "candidate-0"
+    shutil.copytree(original, candidate)
+    manifest = _json_bytes(
+        {
+            "schemaVersion": "1.0",
+            "candidates": [
+                {
+                    "directory": candidate.name,
+                    "digests": {
+                        name: hashlib.sha256(
+                            (candidate / name).read_bytes()
+                        ).hexdigest()
+                        for name in (
+                            "metadata.json",
+                            "historical-costs.zip",
+                            "preflight.zip",
+                        )
+                    },
+                }
+            ],
+        }
+    )
+    (root / "candidates.json").write_bytes(manifest)
+    current_path = tmp_path / "PREFLIGHT_ARTIFACT.json"
+    current_path.write_bytes(_json_bytes(current))
+
+    code = history.main(
+        [
+            "--repository",
+            arguments.repository,
+            "--current-run-id",
+            str(arguments.current_run_id),
+            "--current-run-attempt",
+            str(arguments.current_run_attempt),
+            "--current-source-sha",
+            arguments.current_source_sha,
+            "--event",
+            arguments.event,
+            "--workflow-path",
+            arguments.workflow_path,
+            "--branch",
+            arguments.branch,
+            "--current-preflight",
+            str(current_path),
+            "--offline-snapshot",
+            str(root),
+            "--snapshot-candidates-sha256",
+            hashlib.sha256(manifest).hexdigest(),
+        ],
+        token=None,
+    )
+
+    assert code == 0
+    assert json.loads(capsys.readouterr().out)["candidate_run_id"] == 800
 
 
 def test_offline_cli_writes_only_vetted_advice_without_token(

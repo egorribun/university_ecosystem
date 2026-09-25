@@ -973,6 +973,7 @@ jobs:
               return Math.min(value, 5000)
             }
             let root
+            const candidates = []
             core.setOutput('has_candidate', 'false')
             try {
               const listing = await github.rest.actions.listWorkflowRuns({
@@ -987,6 +988,8 @@ jobs:
                 Date.now() - Date.parse(run.created_at) <= 30 * 86400000
               ).slice(0, 3)
               for (const summary of runs) {
+                let candidateDir
+                try {
                 const detail = await github.rest.actions.getWorkflowRun({
                   owner, repo, run_id: summary.id, request: { timeout: remaining() },
                 })
@@ -1053,24 +1056,36 @@ jobs:
                 }
                 const costZip = await download(cost[0])
                 const preflightZip = await download(preflight[0])
-                root = await fs.mkdtemp(path.join(process.env.RUNNER_TEMP, 'stryker-history-'))
-                await fs.writeFile(path.join(root, 'metadata.json'), JSON.stringify({
+                if (!root) root = await fs.mkdtemp(path.join(process.env.RUNNER_TEMP, 'stryker-history-'))
+                const directory = `candidate-${candidates.length}`
+                candidateDir = path.join(root, directory)
+                await fs.mkdir(candidateDir)
+                await fs.writeFile(path.join(candidateDir, 'metadata.json'), JSON.stringify({
                   run: detail.data, artifacts: chosen,
                 }), { flag: 'wx', mode: 0o600 })
-                await fs.writeFile(path.join(root, 'historical-costs.zip'), costZip, { flag: 'wx', mode: 0o600 })
-                await fs.writeFile(path.join(root, 'preflight.zip'), preflightZip, { flag: 'wx', mode: 0o600 })
-                for (const [name, output] of [
-                  ['metadata.json', 'metadata_sha256'],
-                  ['historical-costs.zip', 'cost_sha256'],
-                  ['preflight.zip', 'preflight_sha256'],
-                ]) {
-                  const bytes = await fs.readFile(path.join(root, name))
-                  core.setOutput(output, crypto.createHash('sha256').update(bytes).digest('hex'))
+                await fs.writeFile(path.join(candidateDir, 'historical-costs.zip'), costZip, { flag: 'wx', mode: 0o600 })
+                await fs.writeFile(path.join(candidateDir, 'preflight.zip'), preflightZip, { flag: 'wx', mode: 0o600 })
+                const digests = {}
+                for (const name of ['metadata.json', 'historical-costs.zip', 'preflight.zip']) {
+                  const bytes = await fs.readFile(path.join(candidateDir, name))
+                  digests[name] = crypto.createHash('sha256').update(bytes).digest('hex')
                 }
-                core.setOutput('snapshot_dir', root)
-                core.setOutput('has_candidate', 'true')
+                candidates.push({ directory, digests })
+                } catch {
+                  if (candidateDir) await fs.rm(candidateDir, { recursive: true, force: true })
+                  core.warning('Incompatible cross-run Stryker timing candidate skipped')
+                }
+              }
+              if (candidates.length === 0) {
+                if (root) await fs.rm(root, { recursive: true, force: true })
+                core.warning('Cross-run Stryker timing unavailable; baseline planner retained')
                 return
               }
+              const manifest = Buffer.from(JSON.stringify({ schemaVersion: '1.0', candidates }))
+              await fs.writeFile(path.join(root, 'candidates.json'), manifest, { flag: 'wx', mode: 0o600 })
+              core.setOutput('candidates_sha256', crypto.createHash('sha256').update(manifest).digest('hex'))
+              core.setOutput('snapshot_dir', root)
+              core.setOutput('has_candidate', 'true')
             } catch {
               if (root) await fs.rm(root, { recursive: true, force: true })
               core.warning('Cross-run Stryker timing unavailable; baseline planner retained')
@@ -1154,9 +1169,7 @@ jobs:
         shell: bash
         env:
           SNAPSHOT_DIR: ${{ steps.cross_run_snapshot.outputs.snapshot_dir }}
-          SNAPSHOT_METADATA_SHA256: ${{ steps.cross_run_snapshot.outputs.metadata_sha256 }}
-          SNAPSHOT_COST_SHA256: ${{ steps.cross_run_snapshot.outputs.cost_sha256 }}
-          SNAPSHOT_PREFLIGHT_SHA256: ${{ steps.cross_run_snapshot.outputs.preflight_sha256 }}
+          SNAPSHOT_CANDIDATES_SHA256: ${{ steps.cross_run_snapshot.outputs.candidates_sha256 }}
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
@@ -1170,9 +1183,7 @@ jobs:
             --branch "$PR_BRANCH" \
             --current-preflight frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json \
             --offline-snapshot "$SNAPSHOT_DIR" \
-            --snapshot-metadata-sha256 "$SNAPSHOT_METADATA_SHA256" \
-            --snapshot-cost-sha256 "$SNAPSHOT_COST_SHA256" \
-            --snapshot-preflight-sha256 "$SNAPSHOT_PREFLIGHT_SHA256" \
+            --snapshot-candidates-sha256 "$SNAPSHOT_CANDIDATES_SHA256" \
             --output-receipt "$RUNNER_TEMP/stryker-cross-run-receipt.json" \
             --github-output "$GITHUB_OUTPUT"
 

@@ -670,6 +670,83 @@ def select_offline_historical_costs(
         return HistorySelection(None, f"baseline planner retained: {error}")
 
 
+def select_offline_historical_candidates(
+    arguments: HistoryArguments,
+    current_preflight: bytes | dict[str, Any],
+    snapshot_root: Path,
+    manifest_digest: str,
+) -> HistorySelection:
+    """Try at most three immutable snapshots bound by a pre-checkout digest."""
+
+    try:
+        if re.fullmatch(r"[0-9a-f]{64}", manifest_digest) is None:
+            raise InvalidHistory("trusted historical candidate digest is required")
+        root_metadata = snapshot_root.lstat()
+        if not stat.S_ISDIR(root_metadata.st_mode):
+            raise InvalidHistory("historical candidate root is unsafe")
+        manifest = _json_object(
+            _snapshot_file(
+                snapshot_root,
+                "candidates.json",
+                2 * 1024 * 1024,
+                manifest_digest,
+            )
+        )
+        if (
+            set(manifest) != {"schemaVersion", "candidates"}
+            or manifest["schemaVersion"] != "1.0"
+        ):
+            raise InvalidHistory("historical candidate manifest is malformed")
+        entries = manifest["candidates"]
+        if not isinstance(entries, list) or not 0 < len(entries) <= _MAX_CANDIDATES:
+            raise InvalidHistory("historical candidate count is invalid")
+        required_names = {"metadata.json", "historical-costs.zip", "preflight.zip"}
+        for index, entry in enumerate(entries):
+            if not isinstance(entry, dict) or set(entry) != {"directory", "digests"}:
+                raise InvalidHistory("historical candidate entry is malformed")
+            digests = entry["digests"]
+            if (
+                entry["directory"] != f"candidate-{index}"
+                or not isinstance(digests, dict)
+                or set(digests) != required_names
+                or any(
+                    not isinstance(value, str)
+                    or re.fullmatch(r"[0-9a-f]{64}", value) is None
+                    for value in digests.values()
+                )
+            ):
+                raise InvalidHistory("historical candidate digest entry is malformed")
+        last_error = "no compatible recent successful Stryker run"
+        for entry in entries:
+            candidate_root = snapshot_root / entry["directory"]
+            candidate_metadata = candidate_root.lstat()
+            if not stat.S_ISDIR(candidate_metadata.st_mode):
+                raise InvalidHistory("historical candidate directory is unsafe")
+            # Every considered candidate is bound to the pre-checkout manifest.
+            # A changed local file is not an incompatible sample to skip.
+            for name, digest in entry["digests"].items():
+                _snapshot_file(
+                    candidate_root,
+                    name,
+                    _MAX_ZIP_BYTES if name.endswith(".zip") else 2 * 1024 * 1024,
+                    digest,
+                )
+            selection = select_offline_historical_costs(
+                arguments,
+                current_preflight,
+                candidate_root,
+                entry["digests"],
+            )
+            if selection.candidate is not None:
+                return selection
+            last_error = selection.diagnostic.removeprefix(
+                "baseline planner retained: "
+            )
+        return HistorySelection(None, f"baseline planner retained: {last_error}")
+    except (InvalidHistory, OSError) as error:
+        return HistorySelection(None, f"baseline planner retained: {error}")
+
+
 def _read_current_preflight(path: Path) -> bytes:
     try:
         metadata = path.lstat()
@@ -704,6 +781,7 @@ def main(
     parser.add_argument("--snapshot-metadata-sha256")
     parser.add_argument("--snapshot-cost-sha256")
     parser.add_argument("--snapshot-preflight-sha256")
+    parser.add_argument("--snapshot-candidates-sha256")
     parser.add_argument("--output-receipt", type=Path)
     parser.add_argument("--github-output", type=Path)
     options = parser.parse_args(argv)
@@ -719,20 +797,30 @@ def main(
     try:
         current = _read_current_preflight(options.current_preflight)
         if options.offline_snapshot is not None:
-            digests = {
-                "metadata.json": options.snapshot_metadata_sha256,
-                "historical-costs.zip": options.snapshot_cost_sha256,
-                "preflight.zip": options.snapshot_preflight_sha256,
-            }
-            if any(
-                not isinstance(value, str)
-                or re.fullmatch(r"[0-9a-f]{64}", value) is None
-                for value in digests.values()
-            ):
-                raise InvalidHistory("trusted historical snapshot digests are required")
-            selection = select_offline_historical_costs(
-                arguments, current, options.offline_snapshot, digests
-            )
+            if options.snapshot_candidates_sha256 is not None:
+                selection = select_offline_historical_candidates(
+                    arguments,
+                    current,
+                    options.offline_snapshot,
+                    options.snapshot_candidates_sha256,
+                )
+            else:
+                digests = {
+                    "metadata.json": options.snapshot_metadata_sha256,
+                    "historical-costs.zip": options.snapshot_cost_sha256,
+                    "preflight.zip": options.snapshot_preflight_sha256,
+                }
+                if any(
+                    not isinstance(value, str)
+                    or re.fullmatch(r"[0-9a-f]{64}", value) is None
+                    for value in digests.values()
+                ):
+                    raise InvalidHistory(
+                        "trusted historical snapshot digests are required"
+                    )
+                selection = select_offline_historical_costs(
+                    arguments, current, options.offline_snapshot, digests
+                )
         else:
             selection = select_historical_costs(
                 arguments,
