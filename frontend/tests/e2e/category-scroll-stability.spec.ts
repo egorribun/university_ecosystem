@@ -203,9 +203,40 @@ test.describe("Category filters keep the reading position", () => {
         const before = await page.evaluate(() => Math.round(window.scrollY))
         expect(before).toBeGreaterThan(400)
 
-        const captureProbe = feed.path === "/news" && index === 1
+        const captureProbe = feed.path === "/news"
         if (captureProbe) await startScrollProbe(page, feed.bar)
-        await buttons.nth(index).click()
+        // The element has already passed a real hit-test above. Playwright's
+        // locator.click() still performs its own "scroll into view if needed"
+        // on sticky elements in WebKit, which can reset the outer viewport
+        // before the click handler runs. Use the actual user input path so
+        // this assertion measures the product's scroll behavior, not an
+        // actionability scroll injected by the test driver.
+        const target = await buttons.nth(index).boundingBox()
+        expect(target).not.toBeNull()
+        const x = target!.x + target!.width / 2
+        const y = target!.y + target!.height / 2
+        // One real mobile tap covers the touch path. WebKit's synthetic touch
+        // injection can silently drop later taps into a horizontally scrolled
+        // sticky toolbar even while hit-testing reports the visible button;
+        // use pointer input for the remaining exhaustive category matrix.
+        if (isMobile && index === 1) await page.touchscreen.tap(x, y)
+        else await page.mouse.click(x, y)
+        try {
+          await expect(buttons.nth(index)).toHaveAttribute("aria-current", "page")
+        } catch (error) {
+          if (captureProbe) {
+            const events = await stopScrollProbe(page)
+            console.error(
+              "category scroll activation failure",
+              JSON.stringify({ index, target, events })
+            )
+            await test.info().attach("category-scroll-activation-timeline", {
+              body: Buffer.from(JSON.stringify({ index, target, events }, null, 2)),
+              contentType: "application/json",
+            })
+          }
+          throw error
+        }
         if (feed.path === "/events")
           await expect(page.locator(".events-card-title").first()).toBeVisible()
         await settle(page)
