@@ -124,3 +124,22 @@ def test_frontend_npm_install_validates_source_bound_wasm_before_network_retry(
     assert stage_body.index(
         "RUN node scripts/verify-wasm-artifacts.mjs"
     ) < stage_body.index("until npm ci")
+
+
+@pytest.mark.parametrize("job", ["rust-lint", "rust-tests"])
+def test_ci_rust_quality_jobs_use_the_canonical_producer_toolchain(job: str) -> None:
+    """Rust lint/coverage evidence must come from the WASM producer's compiler."""
+    producer = yaml.safe_load(PRODUCER.read_text(encoding="utf-8"))
+    canonical = str(
+        _step(producer["jobs"]["build"]["steps"], "Setup Rust toolchain")["with"][
+            "toolchain"
+        ]
+    )
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    setups = [
+        step
+        for step in ci["jobs"][job]["steps"]
+        if str(step.get("uses", "")).startswith("dtolnay/rust-toolchain@")
+    ]
+
+    assert [str(step["with"]["toolchain"]) for step in setups] == [canonical]

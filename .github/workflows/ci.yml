@@ -514,10 +514,12 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
-      - name: Set up Rust (stable)
+      - name: Set up Rust (canonical 1.97.1)
+        # Same compiler as the WASM producer (reusable-e2e-wasm-build.yml);
+        # a floating channel would lint and measure different code paths.
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
         with:
-          toolchain: stable
+          toolchain: 1.97.1
           components: rustfmt, clippy
       - name: Cache Cargo registry + target dirs
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -2911,10 +2913,10 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Set up Rust (stable + wasm32 target + llvm-tools)
+      - name: Set up Rust (canonical 1.97.1 + wasm32 target + llvm-tools)
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
         with:
-          toolchain: stable
+          toolchain: 1.97.1
           targets: wasm32-unknown-unknown
           components: llvm-tools-preview
 
