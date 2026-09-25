@@ -40,3 +40,4 @@ This directory contains architectural decision records (ADRs) for the University
 38. [ADR-038: Go Mutation Diagnostic Boundary](ADR-038-go-mutation-diagnostic-boundary.md)
 39. [ADR-039: Frontend Mutation Shard Cost Model](ADR-039-frontend-mutation-shard-cost-model.md)
 40. [ADR-040: Frontend Mutation Presentation Ignorer](ADR-040-frontend-mutation-presentation-ignorer.md)
+41. [ADR-041: Canonical Push Topic Preferences](ADR-041-canonical-push-topic-preferences.md)

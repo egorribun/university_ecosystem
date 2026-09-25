@@ -50,7 +50,7 @@ from app.services.push_topics import (
     get_allowed_topics,
     normalize_topic,
     normalize_topics,
-    resolve_topics,
+    resolve_subscription_topics_for_user,
     sort_topics,
     synchronize_user_topics,
 )
@@ -99,56 +99,43 @@ def _aggregate_results(
     )
 
 
-async def _refresh_user_topic_preferences(
-    db: AsyncSession, *, user_id: uuid.UUID
+async def _bind_subscription_to_user(
+    db: AsyncSession,
+    subscription: PushSubscription,
+    *,
+    user_id: uuid.UUID,
+    p256dh: str,
+    auth: str,
+    user_agent: str,
+    now: datetime,
+    requested_topics: list[str] | None,
 ) -> None:
-    """
-    Synchronize stored user topic preferences with subscription data
-    with robust upsert.
+    """Bind an endpoint to the caller and mirror the caller's preference.
+
+    ADR-041: a transferred endpoint never keeps the previous owner's topics,
+    and the previous owner's canonical preference is left untouched.
     """
 
-    topics_rows = (
-        await db.execute(
-            select(PushSubscription.topics).where(PushSubscription.user_id == user_id)
+    if subscription.user_id is not None and subscription.user_id != user_id:
+        logger.info(
+            "push.subscribe.owner_changed",
+            extra={
+                "subscription_id": subscription.id,
+                "endpoint_prefix": subscription.endpoint[:50],
+            },
         )
-    ).scalars()
-    aggregated: list[str] = []
-    for row in topics_rows:
-        if row:
-            aggregated.extend(str(item) for item in row if item)
-    normalized = sort_topics(aggregated, settings_obj=settings)
-
-    try:
-        # Avoid creating multiple topics records for the same user in parallel
-        async with db.begin_nested():
-            record = (
-                await db.execute(
-                    select(UserPushTopic).where(UserPushTopic.user_id == user_id)
-                )
-            ).scalar_one_or_none()
-
-            if normalized:
-                topics_copy = list(normalized)
-                if record is None:
-                    db.add(UserPushTopic(user_id=user_id, topics=topics_copy))
-                else:
-                    record.topics = topics_copy
-            elif record is not None:
-                await db.delete(record)
-            await db.flush()
-    except IntegrityError:
-        # Another process might have inserted it between select and flush
-        record = (
-            await db.execute(
-                select(UserPushTopic).where(UserPushTopic.user_id == user_id)
-            )
-        ).scalar_one_or_none()
-        if record:
-            if normalized:
-                record.topics = list(normalized)
-            else:
-                await db.delete(record)
-            await db.flush()
+    subscription.p256dh = p256dh
+    subscription.auth = auth
+    subscription.user_id = user_id
+    subscription.user_agent = user_agent or None
+    subscription.last_seen_at = now
+    # Flush first so an explicit update mirrors to this row as the caller's.
+    await db.flush()
+    subscription.topics = list(
+        await resolve_subscription_topics_for_user(
+            db, user_id=user_id, requested_topics=requested_topics
+        )
+    )
 
 
 async def _validate_subscription_payload(
@@ -310,37 +297,23 @@ async def subscribe(
             )
 
             if existing:
-                # Transfer ownership or update existing subscription
-                payload_topics = payload.topics
-                normalized_topics = resolve_topics(payload_topics, existing.topics)
-                topics_copy = list(normalized_topics)
-
-                existing.p256dh = p256dh
-                existing.auth = auth
-                existing.user_id = user.id
-                existing.user_agent = user_agent or None
-                existing.last_seen_at = now
-                if getattr(existing, "created_at", None) is None:
-                    existing.created_at = now
-                existing.topics = topics_copy
                 subscription = existing
             else:
-                # Try to create a new one
-                normalized_topics = resolve_topics(payload.topics, None)
                 subscription = PushSubscription(
-                    endpoint=endpoint,
-                    p256dh=p256dh,
-                    auth=auth,
-                    user_id=user.id,
-                    user_agent=user_agent or None,
-                    last_seen_at=now,
-                    created_at=now,
-                    topics=list(normalized_topics),
+                    endpoint=endpoint, created_at=now, topics=[]
                 )
                 db.add(subscription)
 
-            await db.flush()
-            await _refresh_user_topic_preferences(db, user_id=user.id)
+            await _bind_subscription_to_user(
+                db,
+                subscription,
+                user_id=user.id,
+                p256dh=p256dh,
+                auth=auth,
+                user_agent=user_agent,
+                now=now,
+                requested_topics=payload.topics,
+            )
             await db.commit()
             await db.refresh(subscription)
             logger.info(
@@ -379,15 +352,16 @@ async def subscribe(
             ).scalar_one_or_none()
 
             if existing:
-                normalized_topics = resolve_topics(payload.topics, existing.topics)
-                existing.p256dh = p256dh
-                existing.auth = auth
-                existing.user_id = user.id
-                existing.user_agent = user_agent or None
-                existing.last_seen_at = now
-                existing.topics = list(normalized_topics)
-                await db.flush()
-                await _refresh_user_topic_preferences(db, user_id=user.id)
+                await _bind_subscription_to_user(
+                    db,
+                    existing,
+                    user_id=user.id,
+                    p256dh=p256dh,
+                    auth=auth,
+                    user_agent=user_agent,
+                    now=now,
+                    requested_topics=payload.topics,
+                )
                 await db.commit()
                 await db.refresh(existing)
                 subscription = existing
@@ -539,9 +513,8 @@ async def unsubscribe(
     if not existing:
         return {"ok": True, "removed": False}
 
+    # ADR-041: removing a device never changes the user's canonical topics.
     await db.delete(existing)
-    await db.flush()
-    await _refresh_user_topic_preferences(db, user_id=user.id)
     await db.commit()
     return {"ok": True, "removed": True}
 
@@ -564,6 +537,7 @@ async def get_push_topics(
         allowed=allowed,
         topics=topics,
         has_preferences=record is not None,
+        updated_at=record.updated_at if record else None,
     )
 
 

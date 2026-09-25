@@ -121,26 +121,32 @@ def normalize_topics(
     return result
 
 
-def resolve_topics(
-    raw_topics: Iterable[str] | None,
-    existing: Sequence[str] | None = None,
+async def resolve_subscription_topics_for_user(
+    db: AsyncSession,
     *,
-    allowed_topics: Collection[str] | None = None,
-    settings_obj: Settings | None = None,
+    user_id: uuid.UUID,
+    requested_topics: Iterable[str] | None,
 ) -> list[str]:
-    """Resolve topics from a raw payload, falling back to existing values."""
+    """Return the topics a subscription owned by ``user_id`` must mirror.
 
-    if raw_topics is None:
-        return normalize_topics(
-            existing or [],
-            allowed_topics=allowed_topics,
-            settings_obj=settings_obj,
+    ADR-041: a non-empty request is an explicit preference update that is
+    persisted and mirrored to every subscription of the user.  An omitted or
+    empty request binds to the canonical ``UserPushTopic`` record without
+    rewriting it; no record yields ``[]`` (the all-topics default).  Opting
+    out of every topic is an explicit ``PATCH /push/subscribe/topics`` with
+    ``[]``.  Another user's data is never read.
+    """
+
+    if requested_topics:
+        return await synchronize_user_topics(
+            db, user_id=user_id, topics=requested_topics
         )
-    return normalize_topics(
-        raw_topics,
-        allowed_topics=allowed_topics,
-        settings_obj=settings_obj,
-    )
+    record = (
+        await db.execute(select(UserPushTopic).where(UserPushTopic.user_id == user_id))
+    ).scalar_one_or_none()
+    if record is None:
+        return []
+    return normalize_topics(record.topics)
 
 
 def subscription_supports_topic(

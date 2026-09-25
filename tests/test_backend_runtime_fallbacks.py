@@ -263,8 +263,8 @@ async def test_subscribe_integrity_error_retry():
         patch("app.routers.notifications.enforce_rate_limit", AsyncMock()),
         patch("app.routers.notifications.resolve_locale", MagicMock(return_value="en")),
         patch(
-            "app.routers.notifications.resolve_topics",
-            MagicMock(return_value={"general"}),
+            "app.routers.notifications.resolve_subscription_topics_for_user",
+            AsyncMock(return_value=[]),
         ),
     ):
         db = AsyncMock()

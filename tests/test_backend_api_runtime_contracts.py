@@ -81,9 +81,9 @@ async def test_subscribe_existing_subscription_update():
         patch("app.routers.notifications.enforce_rate_limit", AsyncMock()),
         patch("app.routers.notifications.resolve_locale", MagicMock(return_value="en")),
         patch(
-            "app.routers.notifications.resolve_topics",
-            MagicMock(return_value={"system"}),
-        ),
+            "app.routers.notifications.resolve_subscription_topics_for_user",
+            AsyncMock(return_value=["system.release"]),
+        ) as resolver,
     ):
         res = await call_injected(
             push_router.subscribe,
@@ -93,7 +93,10 @@ async def test_subscribe_existing_subscription_update():
             provides={"AsyncDatabaseSession": db},
         )
         assert res is not None
-        assert existing_sub.topics == ["system"]
+        assert existing_sub.topics == ["system.release"]
+        resolver.assert_awaited_once_with(
+            db, user_id=user.id, requested_topics=["system.release"]
+        )
 
 
 @pytest.mark.asyncio

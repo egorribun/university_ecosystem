@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,69 +13,151 @@ from sqlalchemy.exc import IntegrityError
 from tests.conftest import call_injected
 
 
-class _NestedTransaction:
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *_args):
-        return False
-
-
-def _result(*, scalars=None, scalar_one_or_none=None):
+def _result(*, scalar_one_or_none=None):
     result = MagicMock()
-    result.scalars.return_value = scalars if scalars is not None else []
     result.scalar_one_or_none.return_value = scalar_one_or_none
     return result
 
 
-@pytest.mark.asyncio
-async def test_refresh_topics_recovers_from_integrity_race_for_update_and_delete():
+def _subscription(**overrides):
+    values = {
+        "id": uuid.uuid4(),
+        "endpoint": "https://push.example.com/device",
+        "user_id": None,
+        "created_at": None,
+        "topics": ["news.published"],
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+async def _bind(subscription, *, user_id, requested_topics=None, user_agent=""):
     from app.routers import notifications
 
-    user_id = uuid.uuid4()
-    existing = MagicMock(topics=[])
+    db = AsyncMock()
+    now = datetime(2026, 9, 25, 12, 0, tzinfo=UTC)
+    with (
+        patch.object(
+            notifications,
+            "resolve_subscription_topics_for_user",
+            new=AsyncMock(return_value=("events.published",)),
+        ) as resolver,
+        patch.object(notifications, "logger") as logger,
+    ):
+        await notifications._bind_subscription_to_user(
+            db,
+            subscription,
+            user_id=user_id,
+            p256dh="p256dh",
+            auth="auth",
+            user_agent=user_agent,
+            now=now,
+            requested_topics=requested_topics,
+        )
+    return db, resolver, logger, now
+
+
+@pytest.mark.asyncio
+async def test_binding_transfers_endpoint_to_caller_preferences():
+    previous, caller = uuid.uuid4(), uuid.uuid4()
+    created = datetime(2026, 1, 1, tzinfo=UTC)
+    endpoint = "https://push.example.com/" + "d" * 80
+    subscription = _subscription(
+        user_id=previous, created_at=created, endpoint=endpoint
+    )
+
+    db, resolver, logger, now = await _bind(subscription, user_id=caller)
+
+    assert subscription.user_id == caller
+    assert subscription.topics == ["events.published"]
+    assert subscription.p256dh == "p256dh"
+    assert subscription.auth == "auth"
+    assert subscription.user_agent is None
+    assert subscription.last_seen_at == now
+    assert subscription.created_at == created
+    db.flush.assert_awaited_once()
+    resolver.assert_awaited_once_with(db, user_id=caller, requested_topics=None)
+    logger.info.assert_called_once_with(
+        "push.subscribe.owner_changed",
+        extra={"subscription_id": subscription.id, "endpoint_prefix": endpoint[:50]},
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner", ["caller", "unowned"])
+async def test_binding_does_not_report_a_transfer_without_a_new_owner(owner):
+    caller = uuid.uuid4()
+    subscription = _subscription(user_id=caller if owner == "caller" else None)
+
+    db, resolver, logger, _now = await _bind(
+        subscription,
+        user_id=caller,
+        requested_topics=["news.published"],
+        user_agent="Firefox/140",
+    )
+
+    assert subscription.created_at is None
+    assert subscription.user_agent == "Firefox/140"
+    resolver.assert_awaited_once_with(
+        db, user_id=caller, requested_topics=["news.published"]
+    )
+    logger.info.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_final_integrity_recovery_binds_the_endpoint_to_the_caller():
+    from app.routers import notifications
+    from app.schemas.notifications import PushSubscriptionIn
+
+    previous, caller = uuid.uuid4(), uuid.uuid4()
+    existing = _subscription(user_id=previous)
+    payload = PushSubscriptionIn(
+        endpoint="https://push.example.com/device",
+        keys={"p256dh": "p256dh", "auth": "auth"},
+    )
+    request = MagicMock()
+    request.client = None
+    request.headers.get.return_value = None
     db = AsyncMock()
     db.add = MagicMock()
-    db.begin_nested = MagicMock(return_value=_NestedTransaction())
-    db.execute.side_effect = [
-        _result(scalars=[["news"]]),
-        _result(scalar_one_or_none=existing),
-        _result(scalar_one_or_none=existing),
+    db.execute.side_effect = [_result() for _ in range(3)] + [
+        _result(scalar_one_or_none=existing)
     ]
     db.flush.side_effect = [
-        IntegrityError("insert", {}, RuntimeError("duplicate")),
-        None,
-    ]
+        IntegrityError("insert", {}, RuntimeError("duplicate")) for _ in range(3)
+    ] + [None]
 
-    await notifications._refresh_user_topic_preferences(db, user_id=user_id)
+    with (
+        patch.object(
+            notifications,
+            "_validate_subscription_payload",
+            new=AsyncMock(return_value=("https://push.example.com/device", "k", "a")),
+        ),
+        patch.object(notifications, "enforce_rate_limit", new=AsyncMock()),
+        patch.object(notifications.asyncio, "sleep", new=AsyncMock()),
+        patch.object(
+            notifications,
+            "resolve_subscription_topics_for_user",
+            new=AsyncMock(return_value=["events.published"]),
+        ) as resolver,
+        patch.object(
+            notifications, "_serialize_subscription", new=MagicMock(return_value="ok")
+        ),
+    ):
+        result = await call_injected(
+            notifications.subscribe,
+            payload=payload,
+            request=request,
+            user=SimpleNamespace(id=caller),
+            provides={"AsyncDatabaseSession": db},
+        )
 
-    assert existing.topics == ["news.published"]
-    db.flush.assert_awaited()
-
-    existing.topics = ["old"]
-    db.execute.side_effect = [
-        _result(scalars=[None]),
-        _result(scalar_one_or_none=existing),
-        _result(scalar_one_or_none=existing),
-    ]
-    db.flush.side_effect = [
-        IntegrityError("delete", {}, RuntimeError("duplicate")),
-        None,
-    ]
-
-    await notifications._refresh_user_topic_preferences(db, user_id=user_id)
-
-    db.delete.assert_awaited_with(existing)
-
-    db.execute.side_effect = [
-        _result(scalars=[["news"]]),
-        _result(scalar_one_or_none=None),
-        _result(scalar_one_or_none=None),
-    ]
-    db.flush.side_effect = [
-        IntegrityError("insert", {}, RuntimeError("duplicate")),
-    ]
-    await notifications._refresh_user_topic_preferences(db, user_id=user_id)
+    assert result == "ok"
+    assert existing.user_id == caller
+    assert existing.topics == ["events.published"]
+    resolver.assert_awaited_once_with(db, user_id=caller, requested_topics=None)
+    db.commit.assert_awaited_once()
+    db.refresh.assert_awaited_once_with(existing)
 
 
 @pytest.mark.asyncio
