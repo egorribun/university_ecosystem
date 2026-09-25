@@ -375,9 +375,9 @@ def anyio_backend() -> str:
 
 @pytest.fixture(scope="session")
 def minio_container() -> dict[str, str]:
-    """Start a disposable MinIO cell for opt-in integration tests."""
+    """Start a disposable SeaweedFS S3 cell for opt-in integration tests."""
     if os.environ.get("USE_TESTCONTAINERS_MINIO") != "1":
-        pytest.skip("Set USE_TESTCONTAINERS_MINIO=1 to run the MinIO cell")
+        pytest.skip("Set USE_TESTCONTAINERS_MINIO=1 to run the S3 cell")
 
     try:
         from testcontainers.core.container import DockerContainer
@@ -386,11 +386,14 @@ def minio_container() -> dict[str, str]:
 
     container = (
         DockerContainer(
-            "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+            "ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882"
         )
-        .with_env("MINIO_ROOT_USER", "minioadmin")
-        .with_env("MINIO_ROOT_PASSWORD", "minioadminsecret")
-        .with_command("server /data")
+        .with_env("AWS_ACCESS_KEY_ID", "minioadmin")
+        .with_env(
+            "AWS_SECRET_ACCESS_KEY", "minioadminsecret"
+        )  # pragma: allowlist secret
+        .with_env("S3_BUCKET", "quality-tests")
+        .with_command("mini -dir=/data -s3.port=9000")
         .with_exposed_ports(9000)
     )
     with container as started:

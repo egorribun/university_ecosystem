@@ -1219,7 +1219,7 @@ jobs:
       service-directory: ${{ matrix.service-directory }}
 
   container-integration-cells:
-    name: Disposable MinIO and SpiceDB cells
+    name: Disposable SeaweedFS S3 and SpiceDB cells
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -1230,10 +1230,9 @@ jobs:
       SECRET_KEY: nightly-container-cell-test-secret-32-chars # pragma: allowlist secret
       ENVIRONMENT: testing
       RUN_INTEGRATION_TESTS: "1"
+      # Legacy opt-in flag is retained for the existing Python S3 integration contract.
       USE_TESTCONTAINERS_MINIO: "1"
       USE_TESTCONTAINERS_SPICEDB: "1"
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadminsecret # pragma: allowlist secret
       NATS_AUTH_TOKEN: nightly-nats-token # pragma: allowlist secret
       SPICEDB_PRESHARED_KEY: nightly-spicedb-key # pragma: allowlist secret
       OTEL_SDK_DISABLED: "true"
@@ -1255,7 +1254,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Run real MinIO and SpiceDB contract cells
+      - name: Run real SeaweedFS S3 and SpiceDB contract cells
         run: >-
           uv run pytest -q
           tests/integration/test_minio_integration.py
