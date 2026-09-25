@@ -17,6 +17,97 @@ def _step(job: dict[str, object], name: str) -> dict[str, object]:
     )
 
 
+def test_stryker_artifact_token_steps_precede_pr_code_in_all_four_jobs() -> None:
+    jobs = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+    for job_name, selected in (
+        (
+            "stryker-preflight",
+            "Select immutable same-run historical Stryker cost candidate",
+        ),
+        ("stryker-shards", "Select immutable same-run Stryker preflight candidate"),
+        ("stryker-aggregate", "Select immutable same-run Stryker preflight candidate"),
+        (
+            "stryker-evidence-roundtrip",
+            "Select immutable same-run validated Stryker evidence candidate",
+        ),
+    ):
+        steps = jobs[job_name]["steps"]
+        selector = _step(jobs[job_name], selected)
+        assert steps[0] is selector
+        assert selector["uses"].startswith("actions/github-script@")
+        assert "GH_TOKEN" not in selector.get("env", {})
+        script = selector["with"]["script"]
+        for identity in (
+            "head_sha",
+            "run_attempt",
+            "workflow_run",
+            "digest",
+            "size_in_bytes",
+        ):
+            assert identity in script
+        checkout_index = steps.index(_step(jobs[job_name], "Checkout"))
+        npm_index = steps.index(_step(jobs[job_name], "Install frontend dependencies"))
+        for index, step in enumerate(steps):
+            if "github-token" in step.get("with", {}) or "API_TOKEN" in step.get(
+                "env", {}
+            ):
+                assert index < checkout_index < npm_index
+            assert "GH_TOKEN" not in step.get("env", {})
+
+
+def test_stryker_artifacts_are_materialized_before_dependency_execution() -> None:
+    jobs = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+    for job_name, materializations in (
+        (
+            "stryker-preflight",
+            ("Materialize selected historical Stryker cost without credentials",),
+        ),
+        (
+            "stryker-shards",
+            ("Materialize selected Stryker preflight without credentials",),
+        ),
+        (
+            "stryker-aggregate",
+            (
+                "Materialize selected Stryker preflight without credentials",
+                "Materialize same-run Stryker shards without credentials",
+            ),
+        ),
+        (
+            "stryker-evidence-roundtrip",
+            ("Materialize selected Stryker evidence without credentials",),
+        ),
+    ):
+        steps = jobs[job_name]["steps"]
+        install_index = steps.index(
+            _step(jobs[job_name], "Install frontend dependencies")
+        )
+        for name in materializations:
+            materialize = _step(jobs[job_name], name)
+            assert steps.index(materialize) < install_index
+            script = materialize["run"]
+            assert 'test ! -L "$candidate"' in script
+            assert 'realpath -m -- "$dst"' in script
+            assert 'test ! -L "$dst"' in script
+
+
+def test_cross_run_snapshot_is_bound_to_pre_checkout_action_outputs() -> None:
+    jobs = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+    preflight = jobs["stryker-preflight"]
+    steps = preflight["steps"]
+    fetch = _step(preflight, "Fetch bounded cross-run Stryker timing snapshot")
+    verify = _step(preflight, "Verify cross-run Stryker timing without a token")
+    assert steps.index(fetch) < steps.index(_step(preflight, "Checkout"))
+    assert "metadata_sha256" in fetch["with"]["script"]
+    assert "cost_sha256" in fetch["with"]["script"]
+    assert "preflight_sha256" in fetch["with"]["script"]
+    for output in ("METADATA", "COST", "PREFLIGHT"):
+        assert verify["env"][f"SNAPSHOT_{output}_SHA256"] == (
+            "${{ steps.cross_run_snapshot.outputs." + output.lower() + "_sha256 }}"
+        )
+        assert f"--snapshot-{output.lower()}-sha256" in verify["run"]
+
+
 def test_historical_stryker_cost_evidence_is_same_run_bound_and_optional() -> None:
     """A retry may optimize only with a prior verified artifact from this exact run/SHA."""
 
@@ -33,17 +124,18 @@ def test_historical_stryker_cost_evidence_is_same_run_bound_and_optional() -> No
         preflight, "Select immutable same-run historical Stryker cost candidate"
     )
     assert selector["id"] == "select_historical_stryker_cost"
-    assert selector["shell"] == "bash"
-    assert selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
-    selector_script = selector["run"]
+    assert selector["uses"].startswith("actions/github-script@")
+    assert selector["env"]["ARTIFACT_PREFIX"] == "frontend-mutation-historical-costs-"
+    assert selector["env"]["ATTEMPT_POLICY"] == "earlier"
+    assert selector["env"]["ALLOW_EMPTY"] == "true"
+    selector_script = selector["with"]["script"]
     for invariant in (
-        "set -euo pipefail",
-        "scripts/quality/select_same_run_artifact_cli.py",
-        '--artifact-prefix "frontend-mutation-historical-costs-"',
-        '--artifact-suffix "${{ github.sha }}"',
-        '--run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}"',
-        "--attempt-policy earlier",
-        "--allow-empty",
+        "getWorkflowRun",
+        "listWorkflowRunArtifacts",
+        "run.head_sha !== sourceSha",
+        "item.workflow_run?.head_sha !== sourceSha",
+        "item.digest",
+        "item.size_in_bytes",
     ):
         assert invariant in selector_script
 
@@ -58,9 +150,10 @@ def test_historical_stryker_cost_evidence_is_same_run_bound_and_optional() -> No
         "run-id": "${{ github.run_id }}",
         "github-token": "${{ github.token }}",
         "path": (
-            "frontend/reports/mutation/cost-candidates/"
+            "${{ runner.temp }}/stryker-same-run-cost/"
             "${{ steps.select_historical_stryker_cost.outputs.artifact_name }}"
         ),
+        "digest-mismatch": "error",
     }
     assert "pattern" not in download["with"]
 
@@ -88,6 +181,37 @@ def test_historical_stryker_cost_evidence_is_same_run_bound_and_optional() -> No
     )
     assert "env" not in fallback_generation
     assert fallback_generation["run"] == "npm run test:mutation"
+
+    fetch = _step(preflight, "Fetch bounded cross-run Stryker timing snapshot")
+    assert preflight["steps"].index(fetch) < preflight["steps"].index(
+        _step(preflight, "Checkout")
+    )
+    assert fetch["uses"].startswith("actions/github-script@")
+    assert fetch["if"] == fallback_generation["if"]
+    assert fetch["env"] == {
+        "API_TOKEN": "${{ github.token }}",
+        "PR_BRANCH": "${{ github.event.pull_request.head.ref }}",
+    }
+    verify = _step(preflight, "Verify cross-run Stryker timing without a token")
+    assert verify["if"] == (
+        "${{ steps.cross_run_snapshot.outputs.has_candidate == 'true' }}"
+    )
+    assert "GH_TOKEN" not in verify.get("env", {})
+    assert "API_TOKEN" not in verify.get("env", {})
+    assert (
+        "python3 -m scripts.quality.select_stryker_history_artifact_cli"
+        in verify["run"]
+    )
+    assert "--offline-snapshot" in verify["run"]
+    replan = _step(preflight, "Replan immutable Stryker preflight from vetted costs")
+    assert (
+        replan["if"] == "${{ steps.verify_cross_run.outputs.has_candidate == 'true' }}"
+    )
+    assert replan["env"] == {"STRYKER_PREFLIGHT_MODE": "replan"}
+    assert replan["run"] == "npm run test:mutation"
+    for generation_step in (historical_generation, fallback_generation, replan):
+        assert "GH_TOKEN" not in generation_step.get("env", {})
+        assert "API_TOKEN" not in generation_step.get("env", {})
 
     historical_env_steps = [
         step
@@ -134,12 +258,14 @@ def test_all_stryker_selectors_bind_rest_head_sha_to_pr_head_not_merge_checkout(
         ),
     )
     for job_name, step_name in selectors:
-        selector_script = _step(jobs[job_name], step_name)["run"]
-        assert '--commit-sha "${{ github.sha }}"' in selector_script
-        assert (
-            '--run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}"'
-            in selector_script
+        selector = _step(jobs[job_name], step_name)
+        assert selector["env"]["SOURCE_SHA"] == (
+            "${{ github.event.pull_request.head.sha }}"
         )
+        assert selector["env"]["TESTED_SHA"] == "${{ github.sha }}"
+        selector_script = selector["with"]["script"]
+        assert "run.head_sha !== sourceSha" in selector_script
+        assert "suffix !== testedSha" in selector_script
 
 
 def test_all_stryker_jobs_persist_distinct_pr_source_and_base_identities() -> None:

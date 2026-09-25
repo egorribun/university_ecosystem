@@ -1076,14 +1076,18 @@ def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
     producer_selector = _step(
         producer, "Select immutable same-run historical Stryker cost candidate"
     )
-    assert producer_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    assert producer_selector["uses"].startswith("actions/github-script@")
+    assert producer_selector["env"]["ARTIFACT_PREFIX"] == (
+        "frontend-mutation-historical-costs-"
+    )
+    assert "GH_TOKEN" not in producer_selector.get("env", {})
     for job_name in ("stryker-shards", "stryker-aggregate"):
         job = jobs[job_name]
         selector = _step(job, "Select immutable same-run Stryker preflight candidate")
         assert selector["id"] == "select_stryker_preflight"
-        assert selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
-        assert "scripts/quality/select_same_run_artifact_cli.py" in selector["run"]
-        assert '--artifact-prefix "frontend-mutation-preflight-"' in selector["run"]
+        assert selector["uses"].startswith("actions/github-script@")
+        assert selector["env"]["ARTIFACT_PREFIX"] == "frontend-mutation-preflight-"
+        assert "GH_TOKEN" not in selector.get("env", {})
         download = _step(job, "Download selected Stryker preflight candidate")
         assert download["with"] == {
             "artifact-ids": "${{ steps.select_stryker_preflight.outputs.artifact_id }}",
@@ -1091,9 +1095,10 @@ def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
             "run-id": "${{ github.run_id }}",
             "github-token": "${{ github.token }}",
             "path": (
-                "frontend/reports/mutation/preflight-candidates/"
+                "${{ runner.temp }}/stryker-preflight-candidate/"
                 "${{ steps.select_stryker_preflight.outputs.artifact_name }}"
             ),
+            "digest-mismatch": "error",
         }
         assert "pattern" not in download["with"]
 
@@ -1102,8 +1107,9 @@ def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
     )
     assert aggregate_shards["with"] == {
         "pattern": "frontend-mutation-shard-${{ github.run_id }}-*",
-        "path": "frontend/reports/mutation/external",
+        "path": "${{ runner.temp }}/stryker-shard-candidates",
         "merge-multiple": False,
+        "digest-mismatch": "error",
     }
     assert "name" not in aggregate_shards["with"]
 
@@ -1120,10 +1126,11 @@ def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
         roundtrip, "Select immutable same-run validated Stryker evidence candidate"
     )
     assert roundtrip_selector["id"] == "select_stryker_validated"
-    assert roundtrip_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
-    assert (
-        "scripts/quality/select_same_run_artifact_cli.py" in roundtrip_selector["run"]
+    assert roundtrip_selector["uses"].startswith("actions/github-script@")
+    assert roundtrip_selector["env"]["ARTIFACT_PREFIX"] == (
+        "frontend-mutation-validated-"
     )
+    assert "GH_TOKEN" not in roundtrip_selector.get("env", {})
     roundtrip_download = _step(
         roundtrip, "Download selected immutable Stryker evidence candidate"
     )
@@ -1133,9 +1140,10 @@ def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
         "run-id": "${{ github.run_id }}",
         "github-token": "${{ github.token }}",
         "path": (
-            "frontend/reports/mutation/validated-candidates/"
+            "${{ runner.temp }}/stryker-validated-candidate/"
             "${{ steps.select_stryker_validated.outputs.artifact_name }}"
         ),
+        "digest-mismatch": "error",
     }
     assert "pattern" not in roundtrip_download["with"]
 

@@ -8,6 +8,8 @@ import path from "node:path"
 import test from "node:test"
 import { promisify } from "node:util"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { runInNewContext } from "node:vm"
+import yaml from "js-yaml"
 import {
   PRESENTATION_IGNORER,
   canonicalInstrumenterConfig,
@@ -3927,6 +3929,191 @@ test("historical Stryker costs are bound to the exact source SHA, config, and vi
       ["src/a.ts", 1250],
       ["src/b.ts", 750],
     ]
+  )
+})
+
+test("pre-checkout Stryker selector binds source SHA, tested SHA, attempt, and digest", async () => {
+  const workflow = yaml.load(
+    await readFile(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8")
+  )
+  const script = workflow.jobs["stryker-preflight"].steps[0].with.script
+  const sourceSha = "a".repeat(40)
+  const testedSha = "b".repeat(40)
+  const prior = {
+    id: 17,
+    name: `frontend-mutation-historical-costs-42-1-${testedSha}`,
+    size_in_bytes: 1024,
+    expired: false,
+    digest: `sha256:${"c".repeat(64)}`,
+    workflow_run: { id: 42, head_sha: sourceSha },
+  }
+  const current = { ...prior, id: 18, name: `frontend-mutation-historical-costs-42-2-${testedSha}` }
+  const execute = async ({ runHeadSha = sourceSha, artifacts = [prior, current] } = {}) => {
+    const outputs = new Map()
+    await runInNewContext(`(async () => {\n${script}\n})()`, {
+      context: { repo: { owner: "example", repo: "university" }, runId: 42 },
+      process: {
+        env: {
+          ARTIFACT_PREFIX: "frontend-mutation-historical-costs-",
+          ARTIFACT_SUFFIX: testedSha,
+          ATTEMPT_POLICY: "earlier",
+          ALLOW_EMPTY: "true",
+          SOURCE_SHA: sourceSha,
+          TESTED_SHA: testedSha,
+          RUN_ATTEMPT: "2",
+          PR_BRANCH: "egorribun",
+        },
+      },
+      github: {
+        rest: {
+          actions: {
+            getWorkflowRun: async () => ({
+              data: {
+                id: 42,
+                run_attempt: 2,
+                head_sha: runHeadSha,
+                event: "pull_request",
+                path: ".github/workflows/ci.yml",
+                head_branch: "egorribun",
+                repository: { full_name: "example/university" },
+              },
+            }),
+            listWorkflowRunArtifacts: async () => ({
+              data: { total_count: artifacts.length, artifacts },
+            }),
+          },
+        },
+      },
+      core: { setOutput: (key, value) => outputs.set(key, value) },
+    })
+    return outputs
+  }
+
+  const selected = await execute()
+  assert.equal(selected.get("artifact_id"), "17")
+  assert.equal(selected.get("artifact_name"), prior.name)
+  assert.equal(selected.get("artifact_digest"), prior.digest)
+  assert.equal(selected.get("producer_attempt"), "1")
+  await assert.rejects(execute({ runHeadSha: testedSha }), /workflow identity mismatch/u)
+  await assert.rejects(
+    execute({ artifacts: [{ ...prior, workflow_run: { id: 42, head_sha: testedSha } }] }),
+    /candidate provenance is invalid/u
+  )
+})
+
+test("offline cross-run replan consumes immutable baseline without rerunning instrumenter", async () => {
+  const {
+    buildEvidenceIdentity,
+    buildPreflightArtifact,
+    replanPreflightWithHistoricalCosts,
+    validatePreflightArtifact,
+  } = await import(runnerUrl)
+  const file = "src/a.ts"
+  const source = "export const a = true\n"
+  const sourceFiles = [file]
+  const sourceByFile = new Map([[file, source]])
+  const sourceRevision = buildEvidenceIdentity({
+    headSha: "a".repeat(40),
+    sourceHeadSha: "b".repeat(40),
+    dirtyPaths: [],
+    inputHashes: {
+      "frontend/stryker.config.mjs": "2".repeat(64),
+      "quality/coverage-source-policy.json": "3".repeat(64),
+      "frontend/src/a.ts": sha256Text(source),
+    },
+  })
+  const artifactMetadata = {
+    sourceRevision,
+    workflow: {
+      runId: "42",
+      runAttempt: "1",
+      sha: sourceRevision.headSha,
+      sourceHeadSha: sourceRevision.sourceHeadSha,
+      baseSha: sourceRevision.baseSha,
+      baseRef: sourceRevision.baseRef,
+    },
+    config: {
+      path: "frontend/stryker.config.mjs",
+      sha256: "2".repeat(64),
+      instrumenterOptions: canonicalInstrumenterConfig,
+    },
+    sourcePolicy: { path: "quality/coverage-source-policy.json", sha256: "3".repeat(64) },
+    toolchain: {
+      node: "v24.15.0",
+      platform: "linux",
+      arch: "x64",
+      stryker: "9.6.1",
+      instrumenter: "9.6.1",
+      vitest: "4.1.10",
+    },
+    shardTargetMutants: 750,
+    shardCount: 1,
+  }
+  const preflightByFile = new Map([
+    [
+      file,
+      {
+        sourceSha256: sha256Text(source),
+        mutants: [
+          { fileName: file, mutatorName: "BooleanLiteral", replacement: "false", location },
+        ],
+      },
+    ],
+  ])
+  const baseline = buildPreflightArtifact({ ...artifactMetadata, preflightByFile })
+  const artifactText = `${JSON.stringify(baseline, null, 2)}\n`
+  const receiptText = JSON.stringify({
+    has_candidate: true,
+    candidate_run_id: 32,
+    costs: { [file]: 1234.5 },
+    diagnostic: "compatible historical Stryker timing advice",
+  })
+
+  const replannedText = replanPreflightWithHistoricalCosts({
+    artifactText,
+    receiptText,
+    sourceFiles,
+    sourceByFile,
+    artifactMetadata,
+  })
+  const replanned = validatePreflightArtifact({
+    ...artifactMetadata,
+    artifactText: replannedText,
+    sourceFiles,
+    sourceByFile,
+  })
+  assert.equal(baseline.payload.historicalCostModel, undefined)
+  assert.equal(
+    replanned.artifact.payload.historicalCostModel.sourceRevision.headSha,
+    sourceRevision.headSha
+  )
+  assert.equal(replanned.artifact.payload.historicalCostModel.costs[0].estimatedDurationMs, 1234.5)
+  assert.equal(replanned.preflightDigest, baseline.payload.preflight.digest)
+
+  for (const malformedReceipt of [
+    "not json",
+    JSON.stringify({ ...JSON.parse(receiptText), costs: {} }),
+  ]) {
+    assert.throws(() =>
+      replanPreflightWithHistoricalCosts({
+        artifactText,
+        receiptText: malformedReceipt,
+        sourceFiles,
+        sourceByFile,
+        artifactMetadata,
+      })
+    )
+  }
+  assert.throws(
+    () =>
+      replanPreflightWithHistoricalCosts({
+        artifactText,
+        receiptText,
+        sourceFiles,
+        sourceByFile: new Map([[file, "changed source"]]),
+        artifactMetadata,
+      }),
+    /stale|source snapshot/u
   )
 })
 

@@ -18,6 +18,9 @@ CANARY = [
     "docs/adr/README.md",
     "docs/adr/ADR-039-frontend-mutation-shard-cost-model.md",
     "docs/adr/ADR-040-frontend-mutation-presentation-ignorer.md",
+    "docs/adr/ADR-004-notification-system.md",
+    "docs/adr/ADR-018-cqrs-implementation.md",
+    "docs/testing/i18n-gate.md",
 ]
 if not CONFIG.is_file() or not CI.is_file():
     pytest.skip(  # QUALITY-123 @egorribun
@@ -51,5 +54,5 @@ def test_ci_checks_canary_every_run_and_rejects_empty_results() -> None:
     assert result_guard["env"]["CSPELL_FILES_CHECKED"] == (
         "${{ steps.cspell.outputs.number_of_files_checked }}"
     )
-    assert 'if [[ "$CSPELL_FILES_CHECKED" != "6" ]]; then' in result_guard["run"]
+    assert 'if [[ "$CSPELL_FILES_CHECKED" != "9" ]]; then' in result_guard["run"]
     assert "exit 1" in result_guard["run"]

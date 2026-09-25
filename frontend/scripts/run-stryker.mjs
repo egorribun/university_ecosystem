@@ -3015,15 +3015,15 @@ function preflightArtifactMetadata({
 
 function preflightArtifactExecution(env = process.env) {
   const mode = env.STRYKER_PREFLIGHT_MODE ?? "execute"
-  if (!["execute", "generate", "validate"].includes(mode)) {
-    throw new Error("STRYKER_PREFLIGHT_MODE must be execute, generate, or validate")
+  if (!["execute", "generate", "replan", "validate"].includes(mode)) {
+    throw new Error("STRYKER_PREFLIGHT_MODE must be execute, generate, replan, or validate")
   }
   const rawArtifact = env.STRYKER_PREFLIGHT_ARTIFACT
   if (rawArtifact !== undefined && rawArtifact !== "required") {
     throw new Error("STRYKER_PREFLIGHT_ARTIFACT must be the literal value required")
   }
-  if (mode === "generate" && rawArtifact !== undefined) {
-    throw new Error("Stryker preflight generation cannot consume a preflight artifact")
+  if ((mode === "generate" || mode === "replan") && rawArtifact !== undefined) {
+    throw new Error("Stryker preflight planning cannot consume a preflight artifact")
   }
   if (mode === "validate" && rawArtifact !== "required") {
     throw new Error("Stryker preflight validation requires an immutable artifact")
@@ -3123,7 +3123,7 @@ function serializePreflight(preflightByFile) {
           file,
           {
             sourceSha256: entry.sourceSha256,
-            mutantSignatures: entry.mutants.map((mutant) => mutantSignature(mutant, file)).sort(),
+            mutantSignatures: entry.mutants.map((mutant) => mutationSignature(mutant, file)).sort(),
           },
         ]
       })
@@ -3623,6 +3623,84 @@ export function buildPreflightArtifact({
   }
 }
 
+export function replanPreflightWithHistoricalCosts({
+  artifactText,
+  receiptText,
+  sourceFiles,
+  sourceByFile,
+  artifactMetadata,
+}) {
+  const baseline = validatePreflightArtifact({
+    ...artifactMetadata,
+    artifactText,
+    sourceFiles,
+    sourceByFile,
+    producerAttemptPolicy: "exact",
+  })
+  if (baseline.artifact.payload.historicalCostModel !== undefined) {
+    throw new Error("Cross-run timing replan requires an unweighted baseline preflight")
+  }
+  let receipt
+  try {
+    receipt = JSON.parse(receiptText)
+  } catch {
+    throw new Error("Cross-run timing receipt is malformed")
+  }
+  assertExactObjectKeys(
+    receipt,
+    ["has_candidate", "candidate_run_id", "costs", "diagnostic"],
+    "Cross-run timing receipt"
+  )
+  if (
+    receipt.has_candidate !== true ||
+    !Number.isSafeInteger(receipt.candidate_run_id) ||
+    receipt.candidate_run_id < 1 ||
+    !isRecord(receipt.costs)
+  ) {
+    throw new Error("Cross-run timing receipt has no valid candidate")
+  }
+  const historicalCostModel = buildHistoricalCostArtifact({
+    sourceRevision: artifactMetadata.sourceRevision,
+    config: artifactMetadata.config,
+    preflightByFile: baseline.preflightByFile,
+    costs: new Map(Object.entries(receipt.costs)),
+  }).payload
+  const finalArtifact = buildPreflightArtifact({
+    ...artifactMetadata,
+    preflightByFile: baseline.preflightByFile,
+    historicalCostModel,
+  })
+  if (finalArtifact.payload.preflight.digest !== baseline.preflightDigest) {
+    throw new Error("Cross-run timing replan changed the viable mutant inventory")
+  }
+  const finalText = jsonText(finalArtifact)
+  validatePreflightArtifact({
+    ...artifactMetadata,
+    artifactText: finalText,
+    sourceFiles,
+    sourceByFile,
+    producerAttemptPolicy: "exact",
+  })
+  return finalText
+}
+
+async function readCrossRunCostReceipt(env = process.env) {
+  if (typeof env.RUNNER_TEMP !== "string" || !path.isAbsolute(env.RUNNER_TEMP)) {
+    throw new Error("Cross-run timing receipt requires the runner temporary directory")
+  }
+  const receiptPath = path.join(env.RUNNER_TEMP, "stryker-cross-run-receipt.json")
+  const metadata = await lstat(receiptPath)
+  if (
+    !metadata.isFile() ||
+    metadata.isSymbolicLink() ||
+    metadata.nlink !== 1 ||
+    metadata.size > 8 * 1024 * 1024
+  ) {
+    throw new Error("Cross-run timing receipt is not an owned regular file")
+  }
+  return readFile(receiptPath, "utf8")
+}
+
 export function validatePreflightArtifact({
   artifactText,
   sourceFiles,
@@ -3962,7 +4040,7 @@ async function main() {
     throwIfCancellationRequested(cancellation.signal)
     lock = await acquireRunLock(runPaths.lockPath, runId)
     throwIfCancellationRequested(cancellation.signal)
-    if (artifactExecution.mode !== "validate") {
+    if (artifactExecution.mode !== "validate" && artifactExecution.mode !== "replan") {
       await cleanupCanonicalArtifacts(runPaths.outputRoot)
     }
     throwIfCancellationRequested(cancellation.signal)
@@ -4007,14 +4085,14 @@ async function main() {
         "Immutable Stryker preflight artifacts require a shard or aggregate execution"
       )
     }
-    if (artifactExecution.mode === "generate") {
+    if (artifactExecution.mode === "generate" || artifactExecution.mode === "replan") {
       if (
         externalShardCount === undefined ||
         externalShardIndex !== undefined ||
         aggregateRoot ||
         artifactExecution.artifactRequired
       ) {
-        throw new Error("Stryker preflight generation requires exactly a canonical shard count")
+        throw new Error("Stryker preflight planning requires exactly a canonical shard count")
       }
     }
     if (artifactExecution.mode === "validate" && aggregateRoot) {
@@ -4029,7 +4107,9 @@ async function main() {
     }
     assertSha256(historicalCostConfig.sha256, "Canonical Stryker configuration digest")
     const workflow =
-      artifactExecution.mode === "generate" || artifactExecution.artifactRequired
+      artifactExecution.mode === "generate" ||
+      artifactExecution.mode === "replan" ||
+      artifactExecution.artifactRequired
         ? requireWorkflowProvenance(before)
         : undefined
     const artifactMetadata = workflow
@@ -4045,6 +4125,41 @@ async function main() {
     let preflightByFile
     let shardPlan
     let currentPreflightDigest
+    if (artifactExecution.mode === "replan") {
+      const artifactText = await readFile(preflightArtifactOutputPath, "utf8")
+      // An absent or stale baseline is authoritative; optional advice cannot
+      // manufacture a preflight or mask a changed source snapshot.
+      validatePreflightArtifact({
+        ...artifactMetadata,
+        artifactText,
+        sourceFiles,
+        sourceByFile,
+        producerAttemptPolicy: "exact",
+      })
+      let replannedText
+      try {
+        const receiptText = await readCrossRunCostReceipt()
+        replannedText = replanPreflightWithHistoricalCosts({
+          artifactText,
+          receiptText,
+          sourceFiles,
+          sourceByFile,
+          artifactMetadata,
+        })
+      } catch {
+        process.stdout.write(
+          "Cross-run Stryker timing: baseline planner retained (advice unavailable or malformed)\n"
+        )
+        return
+      }
+      assertEvidenceUnchanged(before, (await captureEvidence(sourceFiles)).identity)
+      await atomicText(preflightArtifactOutputPath, replannedText)
+      assertEvidenceUnchanged(before, (await captureEvidence(sourceFiles)).identity)
+      process.stdout.write(
+        "Cross-run Stryker timing: verified advice replanned current preflight\n"
+      )
+      return
+    }
     if (artifactExecution.mode === "generate") {
       const canonicalPreflightByFile = await generateInstrumenterPreflight({
         sourceFiles,

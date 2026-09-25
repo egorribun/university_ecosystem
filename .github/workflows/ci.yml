@@ -498,8 +498,8 @@ jobs:
         env:
           CSPELL_FILES_CHECKED: ${{ steps.cspell.outputs.number_of_files_checked }}
         run: |
-          if [[ "$CSPELL_FILES_CHECKED" != "6" ]]; then
-            echo "::error::CSpell checked $CSPELL_FILES_CHECKED files; expected 6 reviewed English docs"
+          if [[ "$CSPELL_FILES_CHECKED" != "9" ]]; then
+            echo "::error::CSpell checked $CSPELL_FILES_CHECKED files; expected 9 reviewed English docs"
             exit 1
           fi
 
@@ -821,6 +821,261 @@ jobs:
       STRYKER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
       STRYKER_BASE_REF: ${{ github.event.pull_request.base.ref || github.ref_name }}
     steps:
+      # Credential-bearing REST selection runs before checkout or any PR code.
+      # Only this pinned action sees github.token; its shared script is reused
+      # by the shard, aggregate, and round-trip consumers with narrow inputs.
+      - name: Select immutable same-run historical Stryker cost candidate
+        id: select_historical_stryker_cost
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ARTIFACT_PREFIX: frontend-mutation-historical-costs-
+          ARTIFACT_SUFFIX: ${{ github.sha }}
+          ATTEMPT_POLICY: earlier
+          ALLOW_EMPTY: "true"
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          TESTED_SHA: ${{ github.sha }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        with:
+          github-token: ${{ github.token }}
+          script: &stryker_same_run_selector |
+            const { owner, repo } = context.repo
+            const prefix = process.env.ARTIFACT_PREFIX
+            const suffix = process.env.ARTIFACT_SUFFIX
+            const policy = process.env.ATTEMPT_POLICY
+            const sourceSha = process.env.SOURCE_SHA
+            const testedSha = process.env.TESTED_SHA
+            const branch = process.env.PR_BRANCH
+            const consumerAttempt = Number(process.env.RUN_ATTEMPT)
+            const allowEmpty = process.env.ALLOW_EMPTY === 'true'
+            const validSha = /^[0-9a-f]{40}$/
+            const allowedPrefixes = new Set([
+              'frontend-mutation-historical-costs-',
+              'frontend-mutation-preflight-',
+              'frontend-mutation-validated-',
+            ])
+            if (!allowedPrefixes.has(prefix) || !validSha.test(sourceSha) ||
+                !validSha.test(testedSha) || !Number.isSafeInteger(consumerAttempt) ||
+                consumerAttempt < 1 || !['earlier', 'current-or-earlier'].includes(policy) ||
+                !/^[A-Za-z0-9._/-]+$/.test(branch) ||
+                (prefix === 'frontend-mutation-validated-' ? suffix !== '' : suffix !== testedSha) ||
+                (allowEmpty && prefix !== 'frontend-mutation-historical-costs-')) {
+              throw new Error('same-run selector identity is invalid')
+            }
+            const deadline = Date.now() + 120000
+            const remaining = () => {
+              const value = deadline - Date.now()
+              if (value <= 0) throw new Error('same-run selector budget exhausted')
+              return Math.min(value, 5000)
+            }
+            const detail = await github.rest.actions.getWorkflowRun({
+              owner, repo, run_id: context.runId, request: { timeout: remaining() },
+            })
+            const run = detail.data
+            if (run.id !== context.runId || run.run_attempt !== consumerAttempt ||
+                run.head_sha !== sourceSha || run.event !== 'pull_request' ||
+                run.path !== '.github/workflows/ci.yml' || run.head_branch !== branch ||
+                run.repository?.full_name !== owner + '/' + repo) {
+              throw new Error('same-run workflow identity mismatch')
+            }
+            const records = []
+            let total
+            for (let page = 1; page <= 100; page++) {
+              const result = await github.rest.actions.listWorkflowRunArtifacts({
+                owner, repo, run_id: context.runId, page, per_page: 100,
+                request: { timeout: remaining() },
+              })
+              const count = result.data.total_count
+              if (!Number.isInteger(count) || count < 0 || count > 10000 ||
+                  (total !== undefined && count !== total) ||
+                  !Array.isArray(result.data.artifacts) ||
+                  result.data.artifacts.length > 100) {
+                throw new Error('same-run artifact catalog is malformed')
+              }
+              total = count
+              records.push(...result.data.artifacts)
+              if (records.length === total) break
+              if (records.length > total || result.data.artifacts.length === 0) {
+                throw new Error('same-run artifact catalog is partial')
+              }
+            }
+            if (records.length !== total) throw new Error('same-run artifact catalog exceeds page bound')
+            const pattern = new RegExp(
+              '^' + prefix + context.runId + '-([1-9][0-9]*)' +
+              (suffix ? '-' + suffix : '') + '$'
+            )
+            const candidates = new Map()
+            const ids = new Set()
+            for (const item of records) {
+              if (typeof item.name !== 'string') throw new Error('artifact name is malformed')
+              if (!item.name.startsWith(prefix)) continue
+              const match = pattern.exec(item.name)
+              if (!match) throw new Error('artifact has foreign or malformed provenance')
+              const attempt = Number(match[1])
+              if (!Number.isSafeInteger(attempt) || attempt > consumerAttempt ||
+                  !Number.isSafeInteger(item.id) || item.id < 1 ||
+                  !Number.isInteger(item.size_in_bytes) || item.size_in_bytes < 1 ||
+                  item.expired !== false || !/^sha256:[0-9a-f]{64}$/.test(item.digest) ||
+                  item.workflow_run?.id !== context.runId ||
+                  item.workflow_run?.head_sha !== sourceSha ||
+                  ids.has(item.id) || candidates.has(attempt)) {
+                throw new Error('artifact candidate provenance is invalid')
+              }
+              if (policy === 'earlier' && attempt === consumerAttempt) continue
+              ids.add(item.id)
+              candidates.set(attempt, item)
+            }
+            if (candidates.size === 0) {
+              if (!allowEmpty) throw new Error('same-run artifact candidate is absent')
+              core.setOutput('has_candidate', 'false')
+            } else {
+              const attempt = Math.max(...candidates.keys())
+              const chosen = candidates.get(attempt)
+              core.setOutput('has_candidate', 'true')
+              core.setOutput('artifact_id', String(chosen.id))
+              core.setOutput('artifact_name', chosen.name)
+              core.setOutput('artifact_digest', chosen.digest)
+              core.setOutput('producer_attempt', String(attempt))
+            }
+
+      - name: Download selected historical Stryker cost candidate
+        if: ${{ steps.select_historical_stryker_cost.outputs.has_candidate == 'true' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.select_historical_stryker_cost.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/stryker-same-run-cost/${{ steps.select_historical_stryker_cost.outputs.artifact_name }}
+          digest-mismatch: error
+
+      # This is the only cross-run API step that receives the read-only token.
+      # The PR-controlled npm/Python processes consume only a bounded, local
+      # snapshot and never inherit credentials. Failure retains the baseline.
+      - name: Fetch bounded cross-run Stryker timing snapshot
+        id: cross_run_snapshot
+        if: ${{ steps.select_historical_stryker_cost.outputs.has_candidate != 'true' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          API_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require('node:fs/promises')
+            const path = require('node:path')
+            const crypto = require('node:crypto')
+            const { owner, repo } = context.repo
+            const deadline = Date.now() + 30000
+            const remaining = () => {
+              const value = deadline - Date.now()
+              if (value <= 0) throw new Error('cross-run timing budget expired')
+              return Math.min(value, 5000)
+            }
+            let root
+            core.setOutput('has_candidate', 'false')
+            try {
+              const listing = await github.rest.actions.listWorkflowRuns({
+                owner, repo, workflow_id: 'ci.yml', event: 'pull_request',
+                status: 'success', branch: process.env.PR_BRANCH, per_page: 50,
+                request: { timeout: remaining() },
+              })
+              const runs = listing.data.workflow_runs.filter(run =>
+                run.id !== context.runId && run.conclusion === 'success' &&
+                run.path === '.github/workflows/ci.yml' &&
+                run.head_branch === process.env.PR_BRANCH &&
+                Date.now() - Date.parse(run.created_at) <= 30 * 86400000
+              ).slice(0, 3)
+              for (const summary of runs) {
+                const detail = await github.rest.actions.getWorkflowRun({
+                  owner, repo, run_id: summary.id, request: { timeout: remaining() },
+                })
+                if (detail.data.head_sha !== summary.head_sha ||
+                    detail.data.run_attempt !== summary.run_attempt) continue
+                const records = []
+                let total
+                for (let page = 1; page <= 5; page++) {
+                  const result = await github.rest.actions.listWorkflowRunArtifacts({
+                    owner, repo, run_id: summary.id, per_page: 100, page,
+                    request: { timeout: remaining() },
+                  })
+                  total = result.data.total_count
+                  if (!Number.isInteger(total) || total > 400) throw new Error('artifact catalog too large')
+                  records.push(...result.data.artifacts)
+                  if (records.length >= total) break
+                }
+                if (records.length !== total) continue
+                const prefix = `frontend-mutation-historical-costs-${summary.id}-${summary.run_attempt}-`
+                const cost = records.filter(item => item.name.startsWith(prefix))
+                if (cost.length !== 1) continue
+                const testedSha = cost[0].name.slice(prefix.length)
+                if (!/^[0-9a-f]{40}$/.test(testedSha)) continue
+                const preflightName = `frontend-mutation-preflight-${summary.id}-${summary.run_attempt}-${testedSha}`
+                const preflight = records.filter(item => item.name === preflightName)
+                if (preflight.length !== 1) continue
+                const chosen = [cost[0], preflight[0]]
+                if (chosen.some(item => !Number.isSafeInteger(item.id) ||
+                    !Number.isInteger(item.size_in_bytes) || item.size_in_bytes < 1 ||
+                    item.size_in_bytes > 64 * 1024 * 1024 || item.expired !== false ||
+                    !/^sha256:[0-9a-f]{64}$/.test(item.digest))) continue
+                const download = async item => {
+                  const response = await fetch(
+                    `https://api.github.com/repos/${owner}/${repo}/actions/artifacts/${item.id}/zip`,
+                    { headers: { Authorization: `Bearer ${process.env.API_TOKEN}`,
+                        Accept: 'application/vnd.github+json' },
+                      redirect: 'manual', signal: AbortSignal.timeout(remaining()) }
+                  )
+                  if (response.status !== 302) throw new Error('artifact redirect invalid')
+                  const location = new URL(response.headers.get('location'))
+                  const host = location.hostname.toLowerCase()
+                  if (location.protocol !== 'https:' || location.username || location.password ||
+                      location.hash || (location.port && location.port !== '443') ||
+                      !(host.endsWith('.actions.githubusercontent.com') ||
+                        host.endsWith('.blob.core.windows.net'))) {
+                    throw new Error('artifact CDN is untrusted')
+                  }
+                  const cdn = await fetch(location, {
+                    redirect: 'error', signal: AbortSignal.timeout(remaining()),
+                  })
+                  if (cdn.status !== 200 || !cdn.body) throw new Error('artifact CDN failed')
+                  const chunks = []
+                  let size = 0
+                  for await (const chunk of cdn.body) {
+                    size += chunk.length
+                    if (size > 64 * 1024 * 1024) throw new Error('artifact exceeds byte bound')
+                    chunks.push(Buffer.from(chunk))
+                  }
+                  const bytes = Buffer.concat(chunks)
+                  if (`sha256:${crypto.createHash('sha256').update(bytes).digest('hex')}` !== item.digest) {
+                    throw new Error('artifact digest mismatch')
+                  }
+                  return bytes
+                }
+                const costZip = await download(cost[0])
+                const preflightZip = await download(preflight[0])
+                root = await fs.mkdtemp(path.join(process.env.RUNNER_TEMP, 'stryker-history-'))
+                await fs.writeFile(path.join(root, 'metadata.json'), JSON.stringify({
+                  run: detail.data, artifacts: chosen,
+                }), { flag: 'wx', mode: 0o600 })
+                await fs.writeFile(path.join(root, 'historical-costs.zip'), costZip, { flag: 'wx', mode: 0o600 })
+                await fs.writeFile(path.join(root, 'preflight.zip'), preflightZip, { flag: 'wx', mode: 0o600 })
+                for (const [name, output] of [
+                  ['metadata.json', 'metadata_sha256'],
+                  ['historical-costs.zip', 'cost_sha256'],
+                  ['preflight.zip', 'preflight_sha256'],
+                ]) {
+                  const bytes = await fs.readFile(path.join(root, name))
+                  core.setOutput(output, crypto.createHash('sha256').update(bytes).digest('hex'))
+                }
+                core.setOutput('snapshot_dir', root)
+                core.setOutput('has_candidate', 'true')
+                return
+              }
+            } catch {
+              if (root) await fs.rm(root, { recursive: true, force: true })
+              core.warning('Cross-run Stryker timing unavailable; baseline planner retained')
+            }
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -841,46 +1096,26 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --no-audit --no-fund
-
-      # A timing model is only an optimization; the first attempt has no
-      # prior aggregate in this run. Later retries may consume exactly one
-      # immutable model emitted by a successful aggregate of this same run
-      # and SHA. The REST selector validates the server-issued artifact ID
-      # before the pinned action downloads it, so a single match still lands
-      # in an explicitly named directory (download-artifact v8 otherwise
-      # extracts a singleton directly into `path`).
-      - name: Select immutable same-run historical Stryker cost candidate
-        id: select_historical_stryker_cost
+      - name: Materialize selected historical Stryker cost without credentials
+        if: ${{ steps.select_historical_stryker_cost.outputs.has_candidate == 'true' }}
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: ${{ steps.select_historical_stryker_cost.outputs.artifact_name }}
         run: |
           set -euo pipefail
-          python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path ".github/workflows/ci.yml" \
-            --artifact-prefix "frontend-mutation-historical-costs-" \
-            --artifact-suffix "${{ github.sha }}" \
-            --attempt-policy earlier \
-            --allow-empty
-
-      - name: Download selected historical Stryker cost candidate
-        if: ${{ steps.select_historical_stryker_cost.outputs.has_candidate == 'true' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          artifact-ids: ${{ steps.select_historical_stryker_cost.outputs.artifact_id }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.run_id }}
-          github-token: ${{ github.token }}
-          path: frontend/reports/mutation/cost-candidates/${{ steps.select_historical_stryker_cost.outputs.artifact_name }}
+          src="$RUNNER_TEMP/stryker-same-run-cost/$ARTIFACT_NAME"
+          dst="frontend/reports/mutation/cost-candidates/$ARTIFACT_NAME"
+          test -d "$src" && test ! -L "$src"
+          test -f "$src/HISTORICAL_COSTS.json" && test ! -L "$src/HISTORICAL_COSTS.json"
+          test "$(stat --format='%h' "$src/HISTORICAL_COSTS.json")" = "1"
+          for candidate in frontend frontend/reports frontend/reports/mutation frontend/reports/mutation/cost-candidates "$dst"; do
+            test ! -L "$candidate"
+          done
+          test "$(realpath -m -- "$dst")" = "$(realpath -m -- "$GITHUB_WORKSPACE")/$dst"
+          test ! -e "$dst"
+          mkdir -p -- "$dst"
+          test -d "$dst" && test ! -L "$dst"
+          cp -- "$src/HISTORICAL_COSTS.json" "$dst/HISTORICAL_COSTS.json"
 
       - name: Verify selected historical Stryker cost payload
         if: ${{ steps.select_historical_stryker_cost.outputs.has_candidate == 'true' }}
@@ -897,6 +1132,10 @@ jobs:
           test ! -L "$root/HISTORICAL_COSTS.json"
           test "$(stat --format='%h' "$root/HISTORICAL_COSTS.json")" = "1"
 
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
       - name: Generate canonical immutable Stryker preflight with verified historical costs
         if: ${{ steps.select_historical_stryker_cost.outputs.has_candidate == 'true' }}
         working-directory: frontend
@@ -907,6 +1146,41 @@ jobs:
       - name: Generate canonical immutable Stryker preflight
         if: ${{ steps.select_historical_stryker_cost.outputs.has_candidate != 'true' }}
         working-directory: frontend
+        run: npm run test:mutation
+
+      - name: Verify cross-run Stryker timing without a token
+        id: verify_cross_run
+        if: ${{ steps.cross_run_snapshot.outputs.has_candidate == 'true' }}
+        shell: bash
+        env:
+          SNAPSHOT_DIR: ${{ steps.cross_run_snapshot.outputs.snapshot_dir }}
+          SNAPSHOT_METADATA_SHA256: ${{ steps.cross_run_snapshot.outputs.metadata_sha256 }}
+          SNAPSHOT_COST_SHA256: ${{ steps.cross_run_snapshot.outputs.cost_sha256 }}
+          SNAPSHOT_PREFLIGHT_SHA256: ${{ steps.cross_run_snapshot.outputs.preflight_sha256 }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          python3 -m scripts.quality.select_stryker_history_artifact_cli \
+            --repository "${{ github.repository }}" \
+            --current-run-id "${{ github.run_id }}" \
+            --current-run-attempt "${{ github.run_attempt }}" \
+            --current-source-sha "${{ github.event.pull_request.head.sha }}" \
+            --event "${{ github.event_name }}" \
+            --workflow-path ".github/workflows/ci.yml" \
+            --branch "$PR_BRANCH" \
+            --current-preflight frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json \
+            --offline-snapshot "$SNAPSHOT_DIR" \
+            --snapshot-metadata-sha256 "$SNAPSHOT_METADATA_SHA256" \
+            --snapshot-cost-sha256 "$SNAPSHOT_COST_SHA256" \
+            --snapshot-preflight-sha256 "$SNAPSHOT_PREFLIGHT_SHA256" \
+            --output-receipt "$RUNNER_TEMP/stryker-cross-run-receipt.json" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Replan immutable Stryker preflight from vetted costs
+        if: ${{ steps.verify_cross_run.outputs.has_candidate == 'true' }}
+        working-directory: frontend
+        env:
+          STRYKER_PREFLIGHT_MODE: replan
         run: npm run test:mutation
 
       - name: Upload immutable Stryker preflight
@@ -996,6 +1270,32 @@ jobs:
       STRYKER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
       STRYKER_BASE_REF: ${{ github.event.pull_request.base.ref || github.ref_name }}
     steps:
+      - name: Select immutable same-run Stryker preflight candidate
+        id: select_stryker_preflight
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ARTIFACT_PREFIX: frontend-mutation-preflight-
+          ARTIFACT_SUFFIX: ${{ github.sha }}
+          ATTEMPT_POLICY: current-or-earlier
+          ALLOW_EMPTY: "false"
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          TESTED_SHA: ${{ github.sha }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        with:
+          github-token: ${{ github.token }}
+          script: *stryker_same_run_selector
+
+      - name: Download selected Stryker preflight candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.select_stryker_preflight.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/stryker-preflight-candidate/${{ steps.select_stryker_preflight.outputs.artifact_name }}
+          digest-mismatch: error
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1013,37 +1313,25 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --no-audit --no-fund
-
-      - name: Select immutable same-run Stryker preflight candidate
-        id: select_stryker_preflight
+      - name: Materialize selected Stryker preflight without credentials
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: ${{ steps.select_stryker_preflight.outputs.artifact_name }}
         run: |
           set -euo pipefail
-          python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path ".github/workflows/ci.yml" \
-            --artifact-prefix "frontend-mutation-preflight-" \
-            --artifact-suffix "${{ github.sha }}" \
-            --attempt-policy current-or-earlier
-
-      - name: Download selected Stryker preflight candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          artifact-ids: ${{ steps.select_stryker_preflight.outputs.artifact_id }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.run_id }}
-          github-token: ${{ github.token }}
-          path: frontend/reports/mutation/preflight-candidates/${{ steps.select_stryker_preflight.outputs.artifact_name }}
+          src="$RUNNER_TEMP/stryker-preflight-candidate/$ARTIFACT_NAME"
+          dst="frontend/reports/mutation/preflight-candidates/$ARTIFACT_NAME"
+          test -d "$src" && test ! -L "$src"
+          test -f "$src/PREFLIGHT_ARTIFACT.json" && test ! -L "$src/PREFLIGHT_ARTIFACT.json"
+          test "$(stat --format='%h' "$src/PREFLIGHT_ARTIFACT.json")" = "1"
+          for candidate in frontend frontend/reports frontend/reports/mutation frontend/reports/mutation/preflight-candidates "$dst"; do
+            test ! -L "$candidate"
+          done
+          test "$(realpath -m -- "$dst")" = "$(realpath -m -- "$GITHUB_WORKSPACE")/$dst"
+          test ! -e "$dst"
+          mkdir -p -- "$dst"
+          test -d "$dst" && test ! -L "$dst"
+          cp -- "$src/PREFLIGHT_ARTIFACT.json" "$dst/PREFLIGHT_ARTIFACT.json"
 
       - name: Verify selected Stryker preflight payload
         shell: bash
@@ -1058,6 +1346,10 @@ jobs:
           test -s "$root/PREFLIGHT_ARTIFACT.json"
           test ! -L "$root/PREFLIGHT_ARTIFACT.json"
           test "$(stat --format='%h' "$root/PREFLIGHT_ARTIFACT.json")" = "1"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
 
       # A failed-jobs rerun may reuse only a verified immutable preflight
       # candidate from this workflow run and SHA. The shard cache is transport,
@@ -1132,6 +1424,40 @@ jobs:
       STRYKER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
       STRYKER_BASE_REF: ${{ github.event.pull_request.base.ref || github.ref_name }}
     steps:
+      - name: Select immutable same-run Stryker preflight candidate
+        id: select_stryker_preflight
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ARTIFACT_PREFIX: frontend-mutation-preflight-
+          ARTIFACT_SUFFIX: ${{ github.sha }}
+          ATTEMPT_POLICY: current-or-earlier
+          ALLOW_EMPTY: "false"
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          TESTED_SHA: ${{ github.sha }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        with:
+          github-token: ${{ github.token }}
+          script: *stryker_same_run_selector
+
+      - name: Download selected Stryker preflight candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.select_stryker_preflight.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/stryker-preflight-candidate/${{ steps.select_stryker_preflight.outputs.artifact_name }}
+          digest-mismatch: error
+
+      - name: Download all same-run Stryker shard candidates
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: frontend-mutation-shard-${{ github.run_id }}-*
+          path: ${{ runner.temp }}/stryker-shard-candidates
+          merge-multiple: false
+          digest-mismatch: error
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1149,37 +1475,25 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --no-audit --no-fund
-
-      - name: Select immutable same-run Stryker preflight candidate
-        id: select_stryker_preflight
+      - name: Materialize selected Stryker preflight without credentials
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: ${{ steps.select_stryker_preflight.outputs.artifact_name }}
         run: |
           set -euo pipefail
-          python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path ".github/workflows/ci.yml" \
-            --artifact-prefix "frontend-mutation-preflight-" \
-            --artifact-suffix "${{ github.sha }}" \
-            --attempt-policy current-or-earlier
-
-      - name: Download selected Stryker preflight candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          artifact-ids: ${{ steps.select_stryker_preflight.outputs.artifact_id }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.run_id }}
-          github-token: ${{ github.token }}
-          path: frontend/reports/mutation/preflight-candidates/${{ steps.select_stryker_preflight.outputs.artifact_name }}
+          src="$RUNNER_TEMP/stryker-preflight-candidate/$ARTIFACT_NAME"
+          dst="frontend/reports/mutation/preflight-candidates/$ARTIFACT_NAME"
+          test -d "$src" && test ! -L "$src"
+          test -f "$src/PREFLIGHT_ARTIFACT.json" && test ! -L "$src/PREFLIGHT_ARTIFACT.json"
+          test "$(stat --format='%h' "$src/PREFLIGHT_ARTIFACT.json")" = "1"
+          for candidate in frontend frontend/reports frontend/reports/mutation frontend/reports/mutation/preflight-candidates "$dst"; do
+            test ! -L "$candidate"
+          done
+          test "$(realpath -m -- "$dst")" = "$(realpath -m -- "$GITHUB_WORKSPACE")/$dst"
+          test ! -e "$dst"
+          mkdir -p -- "$dst"
+          test -d "$dst" && test ! -L "$dst"
+          cp -- "$src/PREFLIGHT_ARTIFACT.json" "$dst/PREFLIGHT_ARTIFACT.json"
 
       - name: Verify selected Stryker preflight payload
         shell: bash
@@ -1198,12 +1512,22 @@ jobs:
       # A failed-jobs retry must retain successful logical shards from earlier
       # attempts in this exact workflow run. The aggregate validates each
       # candidate's run, revision, preflight, and producer-attempt provenance.
-      - name: Download all same-run Stryker shard candidates
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: frontend-mutation-shard-${{ github.run_id }}-*
-          path: frontend/reports/mutation/external
-          merge-multiple: false
+      - name: Materialize same-run Stryker shards without credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/stryker-shard-candidates"
+          dst="frontend/reports/mutation/external"
+          test -d "$src" && test ! -L "$src"
+          test "$(find "$src" -type l | wc -l)" -eq 0
+          for candidate in frontend frontend/reports frontend/reports/mutation "$dst"; do
+            test ! -L "$candidate"
+          done
+          test "$(realpath -m -- "$dst")" = "$(realpath -m -- "$GITHUB_WORKSPACE")/$dst"
+          test ! -e "$dst"
+          mkdir -p -- "$dst"
+          test -d "$dst" && test ! -L "$dst"
+          cp -a -- "$src/." "$dst/"
 
       - name: Require same-run Stryker shard candidates
         shell: bash
@@ -1213,6 +1537,10 @@ jobs:
           test -d "$root" && test ! -L "$root"
           test "$(find "$root" -mindepth 1 -maxdepth 1 -type d | wc -l)" -ge 1
           test "$(find "$root" -mindepth 1 -maxdepth 1 -type l | wc -l)" -eq 0
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
 
       - name: Aggregate and verify fresh frontend mutation evidence
         working-directory: frontend
@@ -1262,6 +1590,32 @@ jobs:
       STRYKER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
       STRYKER_BASE_REF: ${{ github.event.pull_request.base.ref || github.ref_name }}
     steps:
+      - name: Select immutable same-run validated Stryker evidence candidate
+        id: select_stryker_validated
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ARTIFACT_PREFIX: frontend-mutation-validated-
+          ARTIFACT_SUFFIX: ""
+          ATTEMPT_POLICY: current-or-earlier
+          ALLOW_EMPTY: "false"
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          TESTED_SHA: ${{ github.sha }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        with:
+          github-token: ${{ github.token }}
+          script: *stryker_same_run_selector
+
+      - name: Download selected immutable Stryker evidence candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.select_stryker_validated.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/stryker-validated-candidate/${{ steps.select_stryker_validated.outputs.artifact_name }}
+          digest-mismatch: error
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1274,42 +1628,33 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --no-audit --no-fund
-
       - name: Set up Python for artifact provenance selection
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
 
-      - name: Select immutable same-run validated Stryker evidence candidate
-        id: select_stryker_validated
+      - name: Materialize selected Stryker evidence without credentials
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: ${{ steps.select_stryker_validated.outputs.artifact_name }}
         run: |
           set -euo pipefail
-          python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path ".github/workflows/ci.yml" \
-            --artifact-prefix "frontend-mutation-validated-" \
-            --artifact-suffix "" \
-            --attempt-policy current-or-earlier
-
-      - name: Download selected immutable Stryker evidence candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          artifact-ids: ${{ steps.select_stryker_validated.outputs.artifact_id }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.run_id }}
-          github-token: ${{ github.token }}
-          path: frontend/reports/mutation/validated-candidates/${{ steps.select_stryker_validated.outputs.artifact_name }}
+          src="$RUNNER_TEMP/stryker-validated-candidate/$ARTIFACT_NAME"
+          dst="frontend/reports/mutation/validated-candidates/$ARTIFACT_NAME"
+          test -d "$src" && test ! -L "$src"
+          for required in VALIDATED.json mutation.json inventory.json preflight.json; do
+            test -f "$src/$required" && test ! -L "$src/$required"
+            test "$(stat --format='%h' "$src/$required")" = "1"
+          done
+          test "$(find "$src" -type l | wc -l)" -eq 0
+          for candidate in frontend frontend/reports frontend/reports/mutation frontend/reports/mutation/validated-candidates "$dst"; do
+            test ! -L "$candidate"
+          done
+          test "$(realpath -m -- "$dst")" = "$(realpath -m -- "$GITHUB_WORKSPACE")/$dst"
+          test ! -e "$dst"
+          mkdir -p -- "$dst"
+          test -d "$dst" && test ! -L "$dst"
+          cp -a -- "$src/." "$dst/"
 
       - name: Verify selected immutable Stryker evidence payload
         shell: bash
@@ -1323,6 +1668,10 @@ jobs:
             test -f "$root/$required" && test ! -L "$root/$required"
             test "$(stat --format='%h' "$root/$required")" = "1"
           done
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
 
       - name: Re-verify downloaded frontend mutation evidence
         working-directory: frontend

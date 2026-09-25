@@ -7,7 +7,10 @@
     "docs/api/README.md",
     "docs/adr/README.md",
     "docs/adr/ADR-039-frontend-mutation-shard-cost-model.md",
-    "docs/adr/ADR-040-frontend-mutation-presentation-ignorer.md"
+    "docs/adr/ADR-040-frontend-mutation-presentation-ignorer.md",
+    "docs/adr/ADR-004-notification-system.md",
+    "docs/adr/ADR-018-cqrs-implementation.md",
+    "docs/testing/i18n-gate.md"
   ],
   "words": [
     "mypy",
