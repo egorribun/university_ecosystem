@@ -4,13 +4,15 @@
 # cache mounts.  Redeclaring this ARG inside the WASM stage below inherits the
 # value for the selected build platform (amd64/arm64/etc.).
 ARG TARGETARCH
+ARG WASM_BUILDPLATFORM=linux/amd64
 
 # Stage 1: Base
 FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS base
 WORKDIR /app
 
-# Stage 2: WASM — build Rust WASM packages (rust-crypto + wasm-sanitizer)
-FROM rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8ea46b23e403a5690ec357ec AS wasm-builder
+# Stage 2: WASM — build the same bytes as the canonical Linux producer.
+# WASM is architecture-independent; use its x86_64 toolchain on every target.
+FROM --platform=$WASM_BUILDPLATFORM rust:1.97.1-slim-bookworm@sha256:2775a09d208ff0d7c1f50490c45b62db929e87ba1dcbc3f2132ac71a704bcdd3 AS wasm-builder
 ARG TARGETARCH
 # Keep the Rust registry/git caches in BuildKit rather than rebuilding the
 # wasm-pack dependency graph for every image build.  The cache IDs are scoped
@@ -18,16 +20,23 @@ ARG TARGETARCH
 # runtime image.
 RUN --mount=type=cache,id=university-frontend-wasm-cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=university-frontend-wasm-cargo-git-${TARGETARCH},target=/usr/local/cargo/git,sharing=locked \
-    cargo install wasm-pack --locked
+    cargo install wasm-pack --version 0.13.1 --locked
+ADD --checksum=sha256:3dc677006555b355ea2da5e82602065a161d5e83eaefd3f759afa00b96e83212 https://github.com/WebAssembly/binaryen/releases/download/version_117/binaryen-version_117-x86_64-linux.tar.gz /tmp/binaryen.tar.gz
+RUN mkdir -p /opt/binaryen \
+ && tar -xzf /tmp/binaryen.tar.gz --strip-components=1 -C /opt/binaryen \
+ && /opt/binaryen/bin/wasm-opt --version | grep -Fq "version 117" \
+ && rustup target add wasm32-unknown-unknown
+ENV PATH="/opt/binaryen/bin:${PATH}"
 WORKDIR /wasm
+ENV RUSTFLAGS="--remap-path-prefix=/root/.cargo=/usr/local/cargo --remap-path-prefix=/wasm=/work/frontend"
 COPY frontend/rust-crypto ./rust-crypto
 COPY frontend/wasm-sanitizer ./wasm-sanitizer
 RUN --mount=type=cache,id=university-frontend-wasm-cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=university-frontend-wasm-cargo-git-${TARGETARCH},target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=university-frontend-rust-crypto-target-${TARGETARCH},target=/wasm/rust-crypto/target,sharing=locked \
     --mount=type=cache,id=university-frontend-wasm-sanitizer-target-${TARGETARCH},target=/wasm/wasm-sanitizer/target,sharing=locked \
-    wasm-pack build rust-crypto --target web \
- && wasm-pack build wasm-sanitizer --target web
+    wasm-pack build rust-crypto --target web --release \
+ && wasm-pack build wasm-sanitizer --target web --release
 
 # Stage 3: Dependencies
 FROM base AS deps
@@ -86,6 +95,9 @@ COPY frontend ./
 # Copy pre-built WASM packages (FIX-44-02: prevents silent WASM build failure)
 COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
 COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
+# Check the generated package bytes against the checked-in source inventory;
+# never regenerate provenance inside the image to bless a divergent build.
+RUN node scripts/verify-wasm-artifacts.mjs
 
 # Standard orchestrated frontend build (runs build-orchestrated.mjs: wasm, tokens, vite, sw, workbox, shell)
 RUN rm -rf dist && npm run build
