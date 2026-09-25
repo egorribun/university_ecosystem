@@ -20,7 +20,7 @@ from app.services.image_proxy import (
     _validate_image_payload,
     get_transformed_image,
 )
-from app.services.storage import StorageBackend
+from app.services.storage import S3Storage, StaticFSStorage, StorageBackend
 from app.utils.images import ImagePixelLimitError
 
 
@@ -33,6 +33,52 @@ async def test_fetch_source_bytes_reraises_missing_file_without_space_fallback()
         await _fetch_source_bytes(backend, "/static/avatar.png")
 
     backend.read_file.assert_awaited_once_with("/static/avatar.png")
+
+
+@pytest.mark.asyncio
+async def test_image_proxy_raw_path_reads_from_relative_base_s3_backend():
+    client = AsyncMock()
+    stream = AsyncMock()
+    stream.__aenter__.return_value = stream
+    stream.read.return_value = b"image"
+    client.get_object.return_value = {"Body": stream}
+    backend = S3Storage(bucket="uploads", base_url="/api/v1/img", client=client)
+
+    assert await backend.exists("/avatars/user.png") is False
+    assert await backend.exists("avatars/user.png") is True
+    assert await _fetch_source_bytes(backend, "avatars/user.png") == b"image"
+    client.head_object.assert_awaited_once_with(
+        Bucket="uploads", Key="avatars/user.png"
+    )
+    client.get_object.assert_awaited_once_with(Bucket="uploads", Key="avatars/user.png")
+
+
+@pytest.mark.asyncio
+async def test_image_proxy_cached_source_check_uses_relative_s3_key():
+    client = AsyncMock()
+    backend = S3Storage(bucket="uploads", base_url="/api/v1/img", client=client)
+    redis = AsyncMock()
+    redis.get.return_value = _cache_encode(b"cached", "image/png")
+
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=redis),
+        patch("app.services.image_proxy._validate_image_payload"),
+    ):
+        result = await get_transformed_image(backend, "avatars/user.png")
+
+    assert result == (b"cached", "image/png")
+    client.head_object.assert_awaited_once_with(
+        Bucket="uploads", Key="avatars/user.png"
+    )
+
+
+@pytest.mark.asyncio
+async def test_image_proxy_preserves_static_public_prefix_read_path(tmp_path):
+    backend = StaticFSStorage(tmp_path, base_url="/static")
+    url = await backend.save_file("avatars/user.png", b"image")
+
+    assert url == "/static/avatars/user.png"
+    assert await _fetch_source_bytes(backend, url) == b"image"
 
 
 @pytest.mark.anyio

@@ -19,7 +19,7 @@ sys.modules.setdefault("app.utils.files", _files_stub)
 
 from app.api import health
 from app.core import health as core_health
-from app.services.storage import StorageBackend
+from app.services.storage import S3Storage, StaticFSStorage, StorageBackend
 
 if _ORIGINAL_FILES_MODULE is _MISSING:
     sys.modules.pop("app.utils.files", None)
@@ -174,6 +174,28 @@ async def test_storage_helpers_cover_success_failure_and_type_guard(monkeypatch)
     )
     assert (
         await health._write_delete_storage_probe(_Storage(delete_error=RuntimeError()))
+        == "error"
+    )
+
+
+@pytest.mark.asyncio
+async def test_lightweight_s3_probe_checks_bucket_without_empty_object_key():
+    client = AsyncMock()
+    backend = S3Storage(bucket="uploads", client=client)
+
+    assert await health._lightweight_storage_probe(backend) == "ok"
+    client.head_bucket.assert_awaited_once_with(Bucket="uploads")
+    client.head_object.assert_not_awaited()
+
+    client.head_bucket.side_effect = OSError("S3 unavailable")
+    assert await health._lightweight_storage_probe(backend) == "error"
+
+
+@pytest.mark.asyncio
+async def test_lightweight_static_probe_checks_storage_directory(tmp_path):
+    assert await health._lightweight_storage_probe(StaticFSStorage(tmp_path)) == "ok"
+    assert (
+        await health._lightweight_storage_probe(StaticFSStorage(tmp_path / "missing"))
         == "error"
     )
 

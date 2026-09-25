@@ -36,7 +36,7 @@ except ImportError:
 from PIL import Image
 
 from app.core.config import settings
-from app.services.storage import StorageBackend
+from app.services.storage import S3Storage, StorageBackend
 from app.utils.images import (
     ImagePixelLimitError,
     _resolve_resample_filter,
@@ -110,7 +110,7 @@ async def get_transformed_image(
         if cached_payload:
             # A deleted user image must not remain publicly retrievable merely
             # because its transformed bytes are still present in Redis.
-            source_path = "/" + _sanitize_path_input(path).lstrip("/")
+            source_path = _backend_source_path(backend, path)
             if not await backend.exists(source_path):
                 try:
                     await redis_client.delete(redis_key)
@@ -189,12 +189,7 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
     instead of branching on implementation types. This preserves SRP and
     eliminates brittle hacks involving internal client access.
     """
-    # Security: Early validation of user input to block path traversal.
-    sanitized_path = _sanitize_path_input(path)
-
-    # Normalize path: ensure it doesn't have double slashes and has a
-    # leading slash for extraction logic if needed by the backend.
-    normalized_path = "/" + sanitized_path.lstrip("/")
+    normalized_path = _backend_source_path(backend, path)
 
     try:
         return await backend.read_file(normalized_path)
@@ -204,6 +199,12 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
             underscored = normalized_path.replace(" ", "_")
             return await backend.read_file(underscored)
         raise
+
+
+def _backend_source_path(backend: StorageBackend, path: str) -> str:
+    """Use a raw key for S3, preserving StaticFS's public-prefix URL contract."""
+    key = _sanitize_path_input(path).lstrip("/")
+    return key if isinstance(backend, S3Storage) else f"/{key}"
 
 
 def _sanitize_path_input(path: str) -> str:

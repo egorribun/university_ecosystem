@@ -75,16 +75,18 @@ def reset_health_cache() -> None:
 
 
 async def _lightweight_storage_probe(backend: Any) -> str | None:
-    """Perform a lightweight existence check on the storage backend."""
-    from app.services.storage import StorageBackend
+    """Check storage availability without treating an empty key as an object."""
+    from app.services.storage import S3Storage, StaticFSStorage, StorageBackend
 
     if not isinstance(backend, StorageBackend):
         return None
 
-    # Use a well-known path or root to check availability
-    # For S3, exists("/") usually checks bucket connectivity/existence
-    # For local FS, it checks the base_dir
     try:
+        if isinstance(backend, S3Storage):
+            await backend.probe_bucket()
+            return "ok"
+        if isinstance(backend, StaticFSStorage):
+            return "ok" if await asyncio.to_thread(backend.base_dir.is_dir) else "error"
         exists = await backend.exists("/")
         return "ok" if exists else "error"
     except Exception:  # RZ-22-01-JUSTIFIED: health probe — storage probe returns "error" on any failure (reviewed TD-27-04)

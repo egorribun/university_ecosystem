@@ -208,13 +208,27 @@ class S3Storage(StorageBackend):
         self._extra_put_object_args: dict[str, str] = extra_put_object_args or {}
 
     def _normalize_key(self, relative_path: str) -> str:
-        cleaned = relative_path.strip().strip("/")
-        if not cleaned:
+        if any(ord(char) < 32 or ord(char) == 127 for char in relative_path):
+            raise ValueError("Relative path contains control characters")
+        if not relative_path:
             raise ValueError("Relative path must not be empty")
-        candidate = Path(cleaned)
-        if candidate.is_absolute() or any(part == ".." for part in candidate.parts):
+        if relative_path.strip() != relative_path:
+            raise ValueError("Relative path must not contain outer whitespace")
+        if self._validated_key(relative_path) is None:
             raise ValueError("Relative path must not escape bucket prefix")
-        return candidate.as_posix()
+        return relative_path
+
+    @staticmethod
+    def _validated_key(key: str) -> str | None:
+        """Accept only unambiguous POSIX object keys, without rewriting them."""
+        if (
+            not key
+            or any(char in "\\%?#;" for char in key)
+            or any(ord(char) < 32 or ord(char) == 127 for char in key)
+            or any(part in {"", ".", ".."} for part in key.split("/"))
+        ):
+            return None
+        return key
 
     async def save_file(
         self,
@@ -271,36 +285,60 @@ class S3Storage(StorageBackend):
         ) as client:
             yield client
 
+    async def probe_bucket(self) -> None:
+        """Check S3 bucket availability without interpreting an empty key."""
+        async with asyncio.timeout(_S3_READ_TIMEOUT):
+            async with self._build_aioboto3_client() as s3:
+                await s3.head_bucket(Bucket=self.bucket)
+
     def _extract_key(self, file_url: str) -> str | None:
         if not file_url:
             return None
+        # Validate before strip(): otherwise leading/trailing controls could
+        # select a different object key from the caller-provided value.
+        if any(ord(char) < 32 or ord(char) == 127 for char in file_url):
+            return None
         trimmed = file_url.strip()
-        if not trimmed:
+        if not trimmed or trimmed != file_url or trimmed.startswith("//"):
             return None
         parsed = urlparse(trimmed)
+        if parsed.params or parsed.query or parsed.fragment:
+            return None
         if parsed.scheme in {"http", "https"}:
-            if parsed.netloc and parsed.netloc != self._base_url_parsed.netloc:
+            if (
+                parsed.scheme != self._base_url_parsed.scheme
+                or parsed.netloc != self._base_url_parsed.netloc
+            ):
                 return None
             path = parsed.path or ""
             base_path = (self._base_url_parsed.path or "").rstrip("/")
-            if base_path and path.startswith(base_path):
-                path = path[len(base_path) :]
-            key = path.lstrip("/")
-            return key or None
+            if base_path:
+                if not path.startswith(f"{base_path}/"):
+                    return None
+                key = path[len(base_path) + 1 :]
+            else:
+                if not path.startswith("/"):
+                    return None
+                key = path[1:]
+            return self._validated_key(key)
         if parsed.scheme == "s3":
-            if parsed.netloc and parsed.netloc != self.bucket:
+            if parsed.netloc != self.bucket or not parsed.path.startswith("/"):
                 return None
-            key = parsed.path.lstrip("/")
-            return key or None
+            key = parsed.path[1:]
+            return self._validated_key(key)
+        if parsed.scheme or parsed.netloc:
+            return None
         path = parsed.path
-        if not self._base_url_parsed.scheme:
-            base_path = self._base_url_parsed.path.rstrip("/")
-            if path == base_path:
+        if path.startswith("/"):
+            if self._base_url_parsed.scheme:
                 return None
-            if base_path and path.startswith(f"{base_path}/"):
-                path = path[len(base_path) :]
-        key = path.lstrip("/")
-        return key or None
+            base_path = self._base_url_parsed.path.rstrip("/")
+            if not base_path or not path.startswith(f"{base_path}/"):
+                return None
+            key = path[len(base_path) + 1 :]
+        else:
+            key = path
+        return self._validated_key(key)
 
     async def delete_file(self, file_url: str) -> None:
         key = self._extract_key(file_url)
@@ -319,7 +357,7 @@ class S3Storage(StorageBackend):
     async def exists(self, file_url_or_path: str) -> bool:
         key = self._extract_key(file_url_or_path)
         if not key:
-            key = file_url_or_path.lstrip("/")
+            return False
         try:
             async with asyncio.timeout(_S3_READ_TIMEOUT):  # RZ-29-01
                 async with self._build_aioboto3_client() as s3:
@@ -340,7 +378,7 @@ class S3Storage(StorageBackend):
     async def read_file(self, file_url_or_path: str) -> bytes:
         key = self._extract_key(file_url_or_path)
         if not key:
-            key = file_url_or_path.lstrip("/")
+            raise FileNotFoundError(f"S3 file not found: {file_url_or_path}")
         try:
             async with asyncio.timeout(_S3_READ_TIMEOUT):  # RZ-29-01
                 async with self._build_aioboto3_client() as s3:

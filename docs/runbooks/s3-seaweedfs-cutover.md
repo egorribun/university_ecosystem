@@ -34,6 +34,15 @@ Do not switch if any of these is missing:
   Caddy rejects PUT/DELETE and other bucket names, but the destination bucket
   remains private; verify historical URLs through a tested redirect or migrate
   references before switching, rather than opening bucket-wide anonymous GET.
+- Inventory persisted media and attachment URLs/object keys before switching.
+  `S3Storage` accepts only the configured HTTP(S) origin and base-path segment,
+  same-bucket `s3://` URLs, or canonical relative keys without a leading slash;
+  a leading slash is accepted only for the exact configured relative public
+  prefix. Reject ambiguous traversal, percent-encoded keys, URL delimiters, and
+  empty keys. Reconcile historical off-origin, `/storage/uploads/...`, and
+  other noncanonical references with a tested migration and exact object
+  inventory. Never add an implicit
+  URL-to-key fallback or rewrite references based only on their string shape.
 - Private `chat_uploads`, `event_files`, and `quarantine` objects denied by
   direct unsigned GET. Chat/event downloads must use their authorized backend
   APIs with `private, no-store` responses. Never enable bucket-wide public ACL.

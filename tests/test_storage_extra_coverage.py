@@ -130,8 +130,9 @@ async def test_s3_storage_extract_key_edge_cases():
 
     # Valid s3 url
     assert s3._extract_key("s3://test-bucket/path/file.txt") == "path/file.txt"
-    # Raw key fallback
-    assert s3._extract_key("/raw/path/file.txt") == "raw/path/file.txt"
+    # Bare keys are valid; slash-prefixed raw paths are ambiguous URLs.
+    assert s3._extract_key("raw/path/file.txt") == "raw/path/file.txt"
+    assert s3._extract_key("/raw/path/file.txt") is None
 
 
 @pytest.mark.asyncio
@@ -155,7 +156,8 @@ async def test_s3_storage_exists_empty_key():
     mock_client = AsyncMock()
     mock_client.head_object = AsyncMock()
     s3 = S3Storage(bucket="test", client=mock_client)
-    assert await s3.exists("") is True
+    assert await s3.exists("") is False
+    mock_client.head_object.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -172,8 +174,9 @@ async def test_s3_storage_read_file_empty_key():
     mock_client = AsyncMock()
     mock_client.get_object = AsyncMock(return_value={})
     s3 = S3Storage(bucket="test", client=mock_client)
-    with pytest.raises(KeyError):
+    with pytest.raises(FileNotFoundError):
         await s3.read_file("")
+    mock_client.get_object.assert_not_awaited()
 
 
 @pytest.mark.asyncio
