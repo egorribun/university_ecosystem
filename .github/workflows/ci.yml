@@ -488,9 +488,20 @@ jobs:
             !.opencode/**
             !.venv/**
       - name: Run cspell
+        id: cspell
         uses: streetsidesoftware/cspell-action@6f3c77c1406bc930f944ba97e9801a22e42caf58 # v9.1.0
         with:
           config: "cspell.json"
+          use_cspell_files: true
+          incremental_files_only: false
+      - name: Verify cspell checked canary
+        env:
+          CSPELL_FILES_CHECKED: ${{ steps.cspell.outputs.number_of_files_checked }}
+        run: |
+          if [[ "$CSPELL_FILES_CHECKED" != "2" ]]; then
+            echo "::error::CSpell checked $CSPELL_FILES_CHECKED files; expected 2 English canaries"
+            exit 1
+          fi
 
   rust-lint:
     name: Rust Lint & Format

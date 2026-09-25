@@ -1,6 +1,7 @@
 {
   "version": "0.2",
   "language": "en",
+  "files": ["docs/README.md", "docs/api_versioning.md"],
   "words": [
     "mypy",
     "hadolint",
@@ -48,7 +49,6 @@
     "**/uv.lock",
     "**/Cargo.lock",
     "**/*.db",
-    "**/*.pem",
-    "**/*"
+    "**/*.pem"
   ]
 }
