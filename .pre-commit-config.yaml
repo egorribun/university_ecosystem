@@ -85,6 +85,9 @@ repos:
           - "pyjwt"
           - "argon2-cffi"
           - "aiofiles"
+          # MFA SMTP transport is imported by app/auth/mfa/email_otp.py;
+          # keep the isolated hook's import graph aligned with uv.lock.
+          - "aiosmtplib>=5.1.3,<5.2"
           - "clamd"
           - "python-multipart"
           - "uvicorn"

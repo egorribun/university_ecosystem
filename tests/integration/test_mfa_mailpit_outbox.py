@@ -137,6 +137,7 @@ async def test_email_mfa_handler_outbox_smtp_retry_and_resend(
         smtp_starttls=False,
         smtp_user="",
         smtp_password="",
+        smtp_mfa_total_timeout_seconds=60,
         mail_from="no-reply@example.test",
     )
     monkeypatch.setattr(config, "settings", smtp_settings)

@@ -21,6 +21,21 @@ def _settings(**overrides):
     return NotificationSettings(**values)
 
 
+@pytest.mark.parametrize("seconds", [0, -1, 90.01, 120])
+def test_smtp_mfa_deadline_must_leave_room_inside_delivery_lease(
+    seconds: float,
+) -> None:
+    with pytest.raises(ValidationError):
+        _settings(smtp_mfa_total_timeout_seconds=seconds)
+
+
+def test_smtp_mfa_deadline_is_configurable_within_lease() -> None:
+    assert (
+        _settings(smtp_mfa_total_timeout_seconds=90).smtp_mfa_total_timeout_seconds
+        == 90
+    )
+
+
 def test_webpush_subject_accepts_mailto_https_and_local_http() -> None:
     assert _settings(vapid_subject="mailto:User@Example.COM").WEBPUSH_SUBJECT == (
         "mailto:user@example.com"
@@ -115,6 +130,51 @@ def test_smtp_user_security_validator_covers_dev_and_production_paths() -> None:
         )
         == "user"
     )
+
+
+@pytest.mark.parametrize("security", ["STARTTLS", "SSL"])
+def test_authenticated_production_smtp_accepts_encrypted_transport(
+    monkeypatch: pytest.MonkeyPatch, security: str
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    configured = _settings(
+        smtp_host="relay.internal.example",
+        smtp_port=587,
+        smtp_user="mailer",
+        smtp_security=security,
+    )
+    assert configured.smtp_user == "mailer"
+    assert configured.smtp_security == security.lower()
+
+
+def test_production_smtp_starttls_compatibility_enables_authenticated_tls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("SMTP_STARTTLS", "true")
+    configured = _settings(
+        smtp_host="relay.internal.example",
+        smtp_port=587,
+        smtp_user="mailer",
+    )
+    assert configured.smtp_starttls is True
+    assert configured.smtp_security == "starttls"
+
+
+def test_authenticated_plaintext_smtp_is_rejected_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(ValidationError, match="SMTP_USER cannot be used"):
+        _settings(smtp_host="relay.internal.example", smtp_user="mailer")
+
+
+def test_authenticated_plaintext_smtp_is_allowed_for_local_testing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "testing")
+    configured = _settings(smtp_host="localhost", smtp_port=1025, smtp_user="mailer")
+    assert configured.smtp_user == "mailer"
 
 
 def test_production_smtp_host_requires_transport_encryption_without_auth(
