@@ -21,6 +21,13 @@ export interface RouterContext {
 // removes those contributors from the measurement without touching
 // real-user navigation UX — prod tree-shakes the branch to `true`.
 const LHCI_VIEW_TRANSITION = import.meta.env.VITE_LHCI !== "true"
+// Mobile WebKit can leave the old route snapshot composited over the new page
+// indefinitely after a cross-route transition. The new route is in the DOM,
+// but links beneath that snapshot never become actionable. Keep normal route
+// navigation and reserve View Transitions for engines without this failure.
+const MOBILE_WEBKIT_VIEW_TRANSITION =
+  typeof window === "undefined" ||
+  !("WebKitPoint" in window && window.matchMedia("(hover: none) and (pointer: coarse)").matches)
 
 // Wave 126 Phase 3 SW4 — auth-at-edge replaces the W125 Phase 2 stub.
 //
@@ -78,7 +85,7 @@ const createAppRouter = () => {
     defaultPreload: "intent",
     defaultPreloadStaleTime: 0,
     scrollRestoration: true,
-    defaultViewTransition: LHCI_VIEW_TRANSITION,
+    defaultViewTransition: LHCI_VIEW_TRANSITION && MOBILE_WEBKIT_VIEW_TRANSITION,
     // Wave 152 Phase 1.5 + Wave 153 SW2 — provide a visible default pending
     // UI for ANY suspending route on the CLIENT, but return null during SSR.
     //

@@ -9,28 +9,39 @@ for (const viewport of [
     page,
   }) => {
     await page.setViewportSize(viewport)
-    // Headless Chromium denies notifications by default. Keep this test in
-    // the supported, undecided state without actually requesting permission.
+    // WebKit may expose neither API, while Chromium denies notifications by
+    // default. Model a supported, undecided browser without an OS prompt.
     await page.addInitScript(() => {
-      Object.defineProperty(Notification, "permission", {
+      Object.defineProperty(window, "Notification", {
         configurable: true,
-        value: "default",
+        value: class MockNotification {
+          static permission: NotificationPermission = "default"
+          static requestPermission(): Promise<NotificationPermission> {
+            return Promise.resolve("default")
+          }
+        },
       })
-      const query = navigator.permissions.query.bind(navigator.permissions)
-      Object.defineProperty(navigator.permissions, "query", {
+      Object.defineProperty(window, "PushManager", {
         configurable: true,
-        value: (descriptor: PermissionDescriptor) =>
-          descriptor.name === "notifications"
-            ? Promise.resolve({
-                name: "notifications",
-                state: "prompt",
-                onchange: null,
-                addEventListener() {},
-                removeEventListener() {},
-                dispatchEvent: () => true,
-              } satisfies PermissionStatus)
-            : query(descriptor),
+        value: class MockPushManager {},
       })
+      if (navigator.permissions?.query) {
+        const query = navigator.permissions.query.bind(navigator.permissions)
+        Object.defineProperty(navigator.permissions, "query", {
+          configurable: true,
+          value: (descriptor: PermissionDescriptor) =>
+            descriptor.name === "notifications"
+              ? Promise.resolve({
+                  name: "notifications",
+                  state: "prompt",
+                  onchange: null,
+                  addEventListener() {},
+                  removeEventListener() {},
+                  dispatchEvent: () => true,
+                } satisfies PermissionStatus)
+              : query(descriptor),
+        })
+      }
     })
     const { login } = await useMockApi(page)
     await login(page)

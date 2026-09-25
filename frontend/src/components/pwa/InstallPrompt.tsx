@@ -105,6 +105,10 @@ export default function InstallPrompt() {
   const [installing, setInstalling] = useState(false)
   const [updateToastOpen, setUpdateToastOpen] = useState(false)
   const [feedback, setFeedback] = useState<NotificationToast | null>(null)
+  const [visualViewportPanel, setVisualViewportPanel] = useState<{
+    left: number
+    width: number
+  } | null>(null)
   const installSuppressUntilRef = useRef<number>(0)
   const pushSuppressUntilRef = useRef<{ userId: string; until: number } | null>(null)
   const pendingUpdateRef = useRef<ServiceWorkerUpdateEventDetail["update"] | null>(null)
@@ -283,6 +287,48 @@ export default function InstallPrompt() {
     import.meta.env.VITE_LHCI !== "true"
   const shouldRenderPrompt = showInstallPanel || showPushPanel
 
+  useEffect(() => {
+    if (!shouldRenderPrompt) {
+      setVisualViewportPanel(null)
+      return
+    }
+    if (!window.visualViewport) return
+    const viewport = window.visualViewport
+    const updatePosition = () => {
+      // Mobile Safari can pan the visual viewport within a wider layout
+      // viewport. A fixed element otherwise remains anchored to the layout
+      // viewport and can be clipped even though it fits on screen.
+      if (
+        viewport.offsetLeft <= 0.5 &&
+        viewport.width >= document.documentElement.clientWidth - 0.5
+      ) {
+        setVisualViewportPanel(null)
+        return
+      }
+      const margin = window.matchMedia("(min-width: 640px)").matches ? 24 : 16
+      const width = Math.max(0, Math.min(384, viewport.width - 2 * margin))
+      const left = viewport.offsetLeft + (margin === 24 ? viewport.width - margin - width : margin)
+      setVisualViewportPanel({ left, width })
+    }
+    let frame: number | null = null
+    const schedulePosition = () => {
+      if (frame !== null) return
+      frame = window.requestAnimationFrame(() => {
+        frame = null
+        updatePosition()
+      })
+    }
+
+    updatePosition()
+    viewport.addEventListener("scroll", schedulePosition)
+    viewport.addEventListener("resize", schedulePosition)
+    return () => {
+      viewport.removeEventListener("scroll", schedulePosition)
+      viewport.removeEventListener("resize", schedulePosition)
+      if (frame !== null) window.cancelAnimationFrame(frame)
+    }
+  }, [shouldRenderPrompt])
+
   return (
     <>
       <AnimatePresence>
@@ -294,6 +340,15 @@ export default function InstallPrompt() {
             animate="animate"
             exit="exit"
             className="fixed bottom-[calc(env(safe-area-inset-bottom)+5rem)] right-4 left-4 sm:bottom-6 sm:left-auto sm:right-6 z-toast w-auto max-w-[24rem] pointer-events-none"
+            style={
+              visualViewportPanel
+                ? {
+                    left: visualViewportPanel.left,
+                    right: "auto",
+                    width: visualViewportPanel.width,
+                  }
+                : undefined
+            }
           >
             <GlassCard
               intensity="high"
@@ -441,7 +496,7 @@ export default function InstallPrompt() {
               <p className="text-sm font-black tracking-tight flex-1">{feedback.text}</p>
               <button
                 onClick={handleFeedbackClose}
-                aria-label={t("common:actions.close")}
+                aria-label={t("common:buttons.close")}
                 className="min-h-11 min-w-11 inline-flex items-center justify-center"
               >
                 <X className="h-4 w-4" />
@@ -476,7 +531,7 @@ export default function InstallPrompt() {
               </Button>
               <button
                 onClick={handleCloseUpdateToast}
-                aria-label={t("common:actions.close")}
+                aria-label={t("common:buttons.close")}
                 className="min-h-11 min-w-11 inline-flex items-center justify-center hover:bg-brand/(--opacity-subtle) rounded-lg transition-colors"
               >
                 <X className="h-4 w-4" />

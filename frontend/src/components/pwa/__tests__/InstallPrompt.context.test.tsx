@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import InstallPrompt from "@/components/pwa/InstallPrompt"
 import { useAuthStore } from "@/stores/useAuthStore"
@@ -115,5 +115,49 @@ describe("contextual push education", () => {
     expect(
       screen.getByRole("button", { name: "system:installPrompt.notificationsClose" })
     ).toHaveClass("min-h-11", "min-w-11")
+  })
+
+  it("keeps the offer in a panned visual viewport and removes its listeners", async () => {
+    const originalViewport = Object.getOwnPropertyDescriptor(window, "visualViewport")
+    const visualViewport = Object.assign(new EventTarget(), { width: 288, offsetLeft: 44 })
+    const addListener = vi.spyOn(visualViewport, "addEventListener")
+    const removeListener = vi.spyOn(visualViewport, "removeEventListener")
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: visualViewport,
+    })
+
+    let unmount = () => {}
+    try {
+      useAuthStore.setState({ user })
+      ;({ unmount } = render(<InstallPrompt />))
+      requestEducation()
+      const panel = screen
+        .getByText("system:installPrompt.notificationsTitle")
+        .closest<HTMLElement>(".fixed.z-toast")
+      expect(panel).not.toBeNull()
+      expect(panel!.style.left).toBe("60px")
+      expect(panel!.style.right).toBe("auto")
+      expect(panel!.style.width).toBe("256px")
+
+      act(() => {
+        visualViewport.offsetLeft = 72
+        visualViewport.dispatchEvent(new Event("scroll"))
+      })
+      await waitFor(() => expect(panel!.style.left).toBe("88px"))
+      expect(addListener).toHaveBeenCalledWith("scroll", expect.any(Function))
+      expect(addListener).toHaveBeenCalledWith("resize", expect.any(Function))
+
+      unmount()
+      expect(removeListener).toHaveBeenCalledWith("scroll", expect.any(Function))
+      expect(removeListener).toHaveBeenCalledWith("resize", expect.any(Function))
+    } finally {
+      unmount()
+      if (originalViewport) {
+        Object.defineProperty(window, "visualViewport", originalViewport)
+      } else {
+        Reflect.deleteProperty(window, "visualViewport")
+      }
+    }
   })
 })

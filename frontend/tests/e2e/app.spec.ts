@@ -41,11 +41,32 @@ test.describe("University ecosystem app", () => {
     await expect(page).toHaveURL(/\/news$/)
     await expect(page.getByRole("heading", { name: /Новости|News/i })).toBeVisible()
 
+    // A mobile WebKit view transition has previously left the News snapshot
+    // over the Dashboard and kept the schedule link geometrically unstable.
+    // Count actual transitions during the return navigation, so this regression
+    // fails deterministically even when the renderer happens not to stall.
+    if (test.info().project.name === "mobile-webkit") {
+      await page.evaluate(() => {
+        if (typeof document.startViewTransition !== "function") return
+        const startViewTransition = document.startViewTransition.bind(document)
+        document.startViewTransition = (update) => {
+          sessionStorage.setItem("e2e:route-view-transitions", "1")
+          return startViewTransition(update)
+        }
+      })
+    }
+
     await page
       .getByRole("link", { name: /На главную|На главну|Home/i })
       .first()
       .click()
     await expect(page).toHaveURL(/\/dashboard$/)
+
+    if (test.info().project.name === "mobile-webkit") {
+      expect(
+        await page.evaluate(() => sessionStorage.getItem("e2e:route-view-transitions"))
+      ).toBeNull()
+    }
 
     await page.getByRole("link", { name: /Полное расписание|Full schedule/i }).click()
     await expect(page).toHaveURL(/\/schedule$/)
