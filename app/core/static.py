@@ -14,7 +14,11 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
-PRIVATE_STATIC_PREFIXES: tuple[str, ...] = ("chat_uploads", "event_files")
+PRIVATE_STATIC_PREFIXES: tuple[str, ...] = (
+    "chat_uploads",
+    "event_files",
+    "quarantine",
+)
 _CACHE_CONTROL_HEADER = "Cache-Control"
 
 

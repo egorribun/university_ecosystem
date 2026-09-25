@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse
 
+from botocore.exceptions import ClientError
+
 from app.core.logging import get_logger
 
 # RZ-29-01: Business-level timeout guards for S3 operations.
@@ -290,8 +292,15 @@ class S3Storage(StorageBackend):
                 return None
             key = parsed.path.lstrip("/")
             return key or None
-        trimmed = trimmed.lstrip("/")
-        return trimmed or None
+        path = parsed.path
+        if not self._base_url_parsed.scheme:
+            base_path = self._base_url_parsed.path.rstrip("/")
+            if path == base_path:
+                return None
+            if base_path and path.startswith(f"{base_path}/"):
+                path = path[len(base_path) :]
+        key = path.lstrip("/")
+        return key or None
 
     async def delete_file(self, file_url: str) -> None:
         key = self._extract_key(file_url)
@@ -322,8 +331,6 @@ class S3Storage(StorageBackend):
             # We keep `except Exception` here intentionally because botocore may
             # raise non-ClientError types (EndpointConnectionError, etc.) that
             # must propagate — the isinstance check ensures ONLY 404 is swallowed.
-            from botocore.exceptions import ClientError
-
             if isinstance(exc, ClientError):
                 error_code = exc.response.get("Error", {}).get("Code", "")
                 if error_code in ("404", "NoSuchKey"):
@@ -340,6 +347,13 @@ class S3Storage(StorageBackend):
                     response = await s3.get_object(Bucket=self.bucket, Key=key)
                     async with response["Body"] as stream:
                         return cast(bytes, await stream.read())
+        except ClientError as exc:
+            error_code = exc.response.get("Error", {}).get("Code", "")
+            if error_code in ("404", "NoSuchKey"):
+                raise FileNotFoundError(
+                    f"S3 file not found: {file_url_or_path}"
+                ) from exc
+            raise
         except (FileNotFoundError, OSError, ConnectionError) as exc:
             # RZ-20-04: Narrowed — S3 read errors. Converts to FileNotFoundError
             # for uniform caller interface.

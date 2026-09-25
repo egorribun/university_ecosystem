@@ -475,6 +475,7 @@ PUBLIC_CACHE_CONTROL = "public, max-age=31536000, immutable"
         # remainder goes: a private root stays private...
         ("chat_uploads/2026/03/thread-1", PRIVATE_CACHE_CONTROL),
         ("event_files/archive/2026/agenda", PRIVATE_CACHE_CONTROL),
+        ("quarantine/news_images/rejected.bin", PRIVATE_CACHE_CONTROL),
         # ...and a public root is not made private by a deeper segment that
         # happens to be named after a private prefix.
         ("documents/chat_uploads/report", PUBLIC_CACHE_CONTROL),

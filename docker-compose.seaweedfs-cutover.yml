@@ -1,0 +1,37 @@
+# Opt-in overlay ONLY after the S3 cutover runbook's freeze, copy, verification,
+# URL and authorization gates pass. Keep this file LAST in the Compose -f list.
+# It never mounts or deletes the legacy minio_data / minio-data volumes.
+services:
+  minio:
+    # Preserve the service DNS name consumed by backend, Caddy and file-processor.
+    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    command: !override ["mini", "-dir=/data", "-s3.port=9000"]
+    environment: !override
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      S3_BUCKET: uploads
+      S3_CUTOVER_ACK: ${S3_CUTOVER_ACK:?Set only after completing docs/runbooks/s3-seaweedfs-cutover.md}
+    volumes: !override
+      - seaweedfs_data:/data
+    expose: !override
+      - "9000"
+    # The old MinIO console on 9001 does not exist on SeaweedFS mini.
+    # Keep the S3 API on the internal Compose network; do not publish it.
+    ports: !override []
+    healthcheck: !override
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  minio-init:
+    # SeaweedFS mini creates S3_BUCKET itself. Keep the existing dependency
+    # name, but remove the unavailable MinIO mc image and bucket mutation.
+    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    entrypoint: !override ["/bin/sh", "-ec"]
+    command: !override ["wget -qO- http://minio:9000/status >/dev/null"]
+    environment: !override {}
+
+volumes:
+  seaweedfs_data:
+    name: university_ecosystem_seaweedfs_data

@@ -135,6 +135,23 @@ def test_s3_extract_key(s3_storage):
     assert s3_storage._extract_key("s3://other-bucket/key.jpg") is None
 
 
+@pytest.mark.asyncio
+async def test_s3_relative_image_proxy_url_round_trips_to_original_key(
+    mock_s3_client,
+):
+    storage = S3Storage(bucket="uploads", client=mock_s3_client, base_url="/api/v1/img")
+
+    url = await storage.save_file("avatars/user.png", b"image")
+
+    assert url == "/api/v1/img/avatars/user.png"
+    assert storage._extract_key("/api/v1/img") is None
+    assert storage._extract_key(f"{url}?w=400") == "avatars/user.png"
+    await storage.delete_file(url)
+    mock_s3_client.delete_object.assert_awaited_once_with(
+        Bucket="uploads", Key="avatars/user.png"
+    )
+
+
 # ============================================================
 # get_storage_backend tests
 # ============================================================

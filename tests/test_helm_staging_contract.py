@@ -326,6 +326,7 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
     assert values["backend"]["config"]["storageS3EndpointURL"] == (
         "https://REQUIRED_MINIO_ENDPOINT"
     )
+    assert values["backend"]["config"]["storageS3BaseURL"] == "/api/v1/img"
     assert values["gateway"]["config"]["grpcUseTLS"] is True
     assert (
         values["internalGrpcMTLS"]
@@ -472,6 +473,7 @@ def test_staging_backend_uses_external_s3_storage_with_secret_credentials() -> N
     assert env["STORAGE_S3_ENDPOINT_URL"]["value"] == (
         "https://minio.staging.internal:443"
     )
+    assert env["STORAGE_S3_BASE_URL"]["value"] == "/api/v1/img"
     assert env["STORAGE_S3_ACCESS_KEY_ID"]["valueFrom"]["secretKeyRef"] == {
         "name": "university-application",
         "key": "minio-access-key",
@@ -537,6 +539,26 @@ def test_backend_s3_credentials_remain_in_preflight_when_file_processor_is_off()
             "--set-string",
             "backend.config.storageS3EndpointURL=http://minio.internal:9000",
             "backend.config.storageS3EndpointURL",
+        ),
+        (
+            "--set-string",
+            "backend.config.storageS3BaseURL=",
+            "backend.config.storageS3BaseURL",
+        ),
+        (
+            "--set-string",
+            "backend.config.storageS3BaseURL=https://minio.staging.internal/uploads",
+            "backend.config.storageS3BaseURL",
+        ),
+        (
+            "--set-string",
+            "backend.config.storageS3BaseURL=http://public.example.org/images",
+            "backend.config.storageS3BaseURL",
+        ),
+        (
+            "--set-string",
+            "backend.config.storageS3BaseURL=/storage/uploads",
+            "backend.config.storageS3BaseURL",
         ),
     ],
 )

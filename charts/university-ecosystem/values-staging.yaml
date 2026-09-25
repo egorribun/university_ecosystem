@@ -76,6 +76,9 @@ backend:
     storageBackend: s3
     storageS3Bucket: uploads
     storageS3EndpointURL: https://REQUIRED_MINIO_ENDPOINT
+    # Public image URLs go through the credentialed backend proxy; the S3
+    # bucket itself remains private and is never exposed by the Ingress.
+    storageS3BaseURL: /api/v1/img
     minioSecure: true
     eventFileScannerEnabled: true
     elasticsearchURL: https://REQUIRED_ELASTICSEARCH_HOST

@@ -112,12 +112,16 @@
 		reverse_proxy imgproxy:8080
 	}
 
-	# Optional same-origin access to reviewed public S3 media only. Keep the
+	# Optional legacy same-origin GET/HEAD access to reviewed public uploads
+	# in the exact bucket. Never expose S3 writes or other buckets. Keep the
 	# deny inside an ordered route: a sibling respond is sorted after handle.
 	# Private attachments and quarantined payloads share the uploads bucket.
 	handle /storage/* {
 		@non_public_storage {
-			not path /storage/*/avatars/* /storage/*/covers/* /storage/*/news_images/* /storage/*/story_covers/* /storage/*/tmp/event_images/*
+			not {
+				method GET HEAD
+				path /storage/uploads/avatars/* /storage/uploads/covers/* /storage/uploads/news_images/* /storage/uploads/story_covers/* /storage/uploads/tmp/event_images/*
+			}
 		}
 		route {
 			respond @non_public_storage 404

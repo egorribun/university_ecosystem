@@ -104,11 +104,12 @@ def test_s3_proxy_allows_only_public_media_prefixes() -> None:
         content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
         assert re.search(
             r"handle\s+/storage/\*\s*\{\s*"
-            r"@non_public_storage\s*\{\s*not\s+path\s+"
-            r"/storage/\*/avatars/\*\s+/storage/\*/covers/\*\s+"
-            r"/storage/\*/news_images/\*\s+"
-            r"/storage/\*/story_covers/\*\s+"
-            r"/storage/\*/tmp/event_images/\*\s*\}\s*"
+            r"@non_public_storage\s*\{\s*not\s*\{\s*"
+            r"method\s+GET\s+HEAD\s+path\s+"
+            r"/storage/uploads/avatars/\*\s+/storage/uploads/covers/\*\s+"
+            r"/storage/uploads/news_images/\*\s+"
+            r"/storage/uploads/story_covers/\*\s+"
+            r"/storage/uploads/tmp/event_images/\*\s*\}\s*\}\s*"
             r"route\s*\{\s*respond\s+@non_public_storage\s+404\s*"
             r"uri\s+strip_prefix\s+/storage\s*"
             r"reverse_proxy\s+minio:9000\s*\}\s*\}",

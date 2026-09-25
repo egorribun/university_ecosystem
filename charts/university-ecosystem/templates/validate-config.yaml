@@ -217,6 +217,9 @@
   {{- if not (hasPrefix "https://" .Values.backend.config.storageS3EndpointURL) -}}
     {{- fail "backend.config.storageS3EndpointURL must use https:// in staging/production" -}}
   {{- end -}}
+  {{- if ne .Values.backend.config.storageS3BaseURL "/api/v1/img" -}}
+    {{- fail "backend.config.storageS3BaseURL must be the validated same-origin /api/v1/img delivery route in staging/production" -}}
+  {{- end -}}
   {{- range $name, $dependency := dict "redis" .Values.redis "nats" .Values.nats -}}
     {{- if or (not $dependency.networkPolicy.enabled) $dependency.networkPolicy.allowExternal $dependency.networkPolicy.allowExternalEgress -}}
       {{- fail (printf "%s.networkPolicy must be enabled with allowExternal=false and allowExternalEgress=false in staging/production" $name) -}}

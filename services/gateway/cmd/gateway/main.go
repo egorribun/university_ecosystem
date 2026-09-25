@@ -770,8 +770,12 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 				fileFn(c)
 				return
 			}
-			if strings.HasPrefix(subPath, "/auth/") {
+			if strings.HasPrefix(subPath, "/auth/") ||
+				(strings.HasPrefix(subPath, "/img/") &&
+					(c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead)) {
 				// Auth routes: optional JWT
+				// Public media reads also need optional JWT so browser image tags can
+				// reach the backend's positive-prefix S3 image proxy without a token.
 				jwtMiddleware.Optional(ctx)(c)
 			} else {
 				// All other v1 routes: require JWT

@@ -50,8 +50,9 @@ except ImportError:
 
 logger = get_logger(__name__)
 
-# Redis cache TTL for transformed images (7 days)
-_CACHE_TTL = 7 * 24 * 60 * 60
+# Bound retained transformed bytes to one day. User media is revalidated on
+# every cache hit, but expired entries should not linger in Redis for a week.
+_CACHE_TTL = 24 * 60 * 60
 
 
 def _configured_image_max_pixels() -> int:
@@ -107,6 +108,15 @@ async def get_transformed_image(
         redis_client = await get_cache_client()
         cached_payload = await redis_client.get(redis_key)
         if cached_payload:
+            # A deleted user image must not remain publicly retrievable merely
+            # because its transformed bytes are still present in Redis.
+            source_path = "/" + _sanitize_path_input(path).lstrip("/")
+            if not await backend.exists(source_path):
+                try:
+                    await redis_client.delete(redis_key)
+                except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
+                    logger.warning("Redis stale image eviction failed: %s", exc)
+                raise ValueError(f"Could not load image: {path}")
             # Safe deserialization via msgspec — no code execution risk.
             data, mime = _cache_decode(cached_payload)
             _validate_image_payload(data, max_pixels=_configured_image_max_pixels())
