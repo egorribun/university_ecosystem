@@ -161,6 +161,25 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     setPushBusy(true)
 
     try {
+      // Safari requires the native permission request to originate from the
+      // button's user activation. Waiting for service-worker readiness first
+      // can lose that activation before the browser sees this call.
+      const requestedPermission =
+        Notification.permission === "default"
+          ? await Notification.requestPermission()
+          : Notification.permission
+      setNotificationPermission(requestedPermission)
+      if (requestedPermission !== "granted") {
+        setOptimisticEnabled(null)
+        notify({
+          text:
+            requestedPermission === "denied"
+              ? t("notifications:messages.enableInSettings")
+              : t("notifications:messages.confirmPermission"),
+          severity: "info",
+        })
+        return
+      }
       const registration = await resolveServiceWorkerRegistration()
       if (!registration) {
         setOptimisticEnabled(null) // Revert optimistic update
@@ -170,7 +189,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       const subscription = await ensurePushSubscription({
         registration,
         topics: selectedTopics,
-        requestPermission: true,
+        requestPermission: false,
       })
       const permission = Notification.permission
       setNotificationPermission(permission)

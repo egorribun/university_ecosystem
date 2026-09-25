@@ -77,6 +77,7 @@ const {
 
 class MockNotification {
   static permission: NotificationPermission = "default"
+  static requestPermission = vi.fn(async () => MockNotification.permission)
 }
 
 type MutableSubscription = PushSubscription & {
@@ -209,7 +210,7 @@ describe("usePushPreferences notifications flow", () => {
     expect(initialArgs.requestPermission).toBe(false)
     const ensureArgs = ensurePushSubscriptionMock.mock.calls[1]![0]
     expect(ensureArgs.registration).toBe(registration)
-    expect(ensureArgs.requestPermission).toBe(true)
+    expect(ensureArgs.requestPermission).toBe(false)
     expect(ensureArgs.topics).toEqual(["news.published", "schedule.changed"])
 
     expect(setPushConsentMock).toHaveBeenCalledWith(true)
@@ -311,7 +312,7 @@ describe("usePushPreferences notifications flow", () => {
       await result.current.enableNotifications()
     })
 
-    expect(ensurePushSubscriptionMock).toHaveBeenCalled()
+    expect(ensurePushSubscriptionMock).not.toHaveBeenCalled()
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
         text: tNotifications("messages.enableInSettings"),
@@ -341,6 +342,7 @@ describe("usePushPreferences notifications flow", () => {
     )
     expect(result.current.notificationsEnabled).toBe(false)
     expect(result.current.notificationPermission).toBe("default")
+    expect(MockNotification.requestPermission).toHaveBeenCalledOnce()
   })
 
   it("informs user when subscription cannot be created despite granted permission", async () => {

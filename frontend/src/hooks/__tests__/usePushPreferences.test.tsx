@@ -75,7 +75,10 @@ function wrapper({ children }: { children: ReactNode }) {
 
 // Helper to install a Notification global with a controllable permission
 function installNotification(permission: NotificationPermission) {
-  ;(globalThis as any).Notification = { permission }
+  ;(globalThis as any).Notification = {
+    permission,
+    requestPermission: vi.fn(async () => permission),
+  }
 }
 
 describe("usePushPreferences", () => {
@@ -115,6 +118,36 @@ describe("usePushPreferences", () => {
 
   // ---- enableNotifications branches (lines 150-216) ----
 
+  it("requests native permission before awaiting service-worker readiness", async () => {
+    const notification = {
+      permission: "default" as NotificationPermission,
+      requestPermission: vi.fn(async () => {
+        notification.permission = "granted"
+        return "granted" as NotificationPermission
+      }),
+    }
+    vi.stubGlobal("Notification", notification)
+    let permissionRequestsAtReadiness = -1
+    mockResolveServiceWorkerRegistration.mockImplementation(async () => {
+      permissionRequestsAtReadiness = notification.requestPermission.mock.calls.length
+      return {} as ServiceWorkerRegistration
+    })
+    mockEnsurePushSubscription.mockResolvedValue(null)
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await act(async () => {
+      const enabling = result.current.enableNotifications()
+      expect(notification.requestPermission).toHaveBeenCalledOnce()
+      await enabling
+    })
+
+    expect(permissionRequestsAtReadiness).toBe(1)
+    expect(notification.requestPermission).toHaveBeenCalledOnce()
+    expect(mockEnsurePushSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({ requestPermission: false })
+    )
+  })
+
   it("enableNotifications: unsupported push → warning + setPushSupported(false) (152-159)", async () => {
     mockIsPushSupported.mockReturnValue(false)
     const onNotify = vi.fn()
@@ -147,7 +180,7 @@ describe("usePushPreferences", () => {
   })
 
   it("enableNotifications: no SW registration → workerNotReady (167-171)", async () => {
-    installNotification("default")
+    installNotification("granted")
     mockResolveServiceWorkerRegistration.mockResolvedValue(null)
     const onNotify = vi.fn()
     const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
@@ -199,6 +232,31 @@ describe("usePushPreferences", () => {
     )
   })
 
+  it.each([
+    ["denied", "notifications:messages.enableInSettings"],
+    ["default", "notifications:messages.confirmPermission"],
+  ] as const)(
+    "reports a %s permission revoked while subscription was pending",
+    async (permission, text) => {
+      installNotification("granted")
+      mockResolveServiceWorkerRegistration.mockResolvedValue({} as ServiceWorkerRegistration)
+      mockEnsurePushSubscription.mockImplementation(async () => {
+        ;(globalThis as any).Notification.permission = permission
+        return null
+      })
+      const onNotify = vi.fn()
+      const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+
+      await act(async () => {
+        await result.current.enableNotifications()
+      })
+
+      expect(onNotify).toHaveBeenCalledWith(expect.objectContaining({ text, severity: "info" }))
+      expect(result.current.pushSubscription).toBeNull()
+      expect(result.current.notificationPermission).toBe(permission)
+    }
+  )
+
   it("enableNotifications: subscription null + undecided permission asks for confirmation", async () => {
     installNotification("default")
     mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
@@ -218,10 +276,37 @@ describe("usePushPreferences", () => {
     )
   })
 
+  it("does not await service-worker readiness when the native permission request rejects", async () => {
+    const onNotify = vi.fn()
+    const notification = {
+      permission: "default" as NotificationPermission,
+      requestPermission: vi.fn(async () => {
+        throw new DOMException("Not allowed", "NotAllowedError")
+      }),
+    }
+    vi.stubGlobal("Notification", notification)
+    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+
+    expect(notification.requestPermission).toHaveBeenCalledOnce()
+    expect(mockResolveServiceWorkerRegistration).not.toHaveBeenCalled()
+    expect(onNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "notifications:messages.enableFailed", severity: "error" })
+    )
+    expect(result.current.pushBusy).toBe(false)
+    expect(result.current.notificationsEnabled).toBe(false)
+  })
+
   it("enableNotifications: subscription present but permission not granted → enableInSettings (191-199)", async () => {
-    installNotification("default")
+    installNotification("granted")
     mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
-    mockEnsurePushSubscription.mockResolvedValue({ endpoint: "https://x" } as any)
+    mockEnsurePushSubscription.mockImplementation(async () => {
+      ;(globalThis as any).Notification.permission = "denied"
+      return { endpoint: "https://x" } as any
+    })
     const onNotify = vi.fn()
     const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
 
