@@ -8747,3 +8747,63 @@ integration upload now contains `pytest-report.xml` and
 The catalog path and an explicit regression test were corrected locally,
 without changing or skipping the Mailpit test. This fix is not on the
 published SHA and must pass a new run before the gate can be called green.
+
+The optional Stryker cross-run timing P3 was also addressed locally without
+changing mutation inventory: the credential-bearing pre-checkout step can
+download up to three bounded plausible historical pairs; the post-checkout
+reader verifies an action-output-bound SHA-256 manifest and each considered
+candidate, then tries the next pair if source/config compatibility fails.
+An independent adversarial review found no confirmed P0–P2 in this delta;
+111 focused tests passed without the shared pytest cache. The actual GitHub
+runner/artifact path remains unproven until a new run. Broad catch diagnostics
+remain terse by design and may limit optimization troubleshooting, but a
+failed timing lookup uses the complete baseline planner rather than skipping
+any test or mutant.
+
+Web Push permission activation was independently reviewed and fixed locally:
+the native permission request now runs synchronously in the user click handler
+before awaiting service-worker readiness. The denied/default paths avoid a
+second subscription attempt, and consent persists only for a granted,
+non-null subscription. The focused RU/EN Settings and hook regression set
+passed (212 tests); modified-hook coverage is 100% on statements, branches,
+functions, and lines. Typecheck, ESLint, Prettier, and diff checks passed.
+An independent reviewer found no confirmed P0–P2 regression. Browser-native
+Safari/iOS activation and prompt positioning still need real-device evidence;
+jsdom ordering tests do not establish that gate.
+
+The independent OSS S3 cutover review confirmed that repository contracts and
+the 15 focused preflight/Compose-overlay tests pass, but no local object
+migration has occurred. The legacy MinIO volume still exists, while the
+SeaweedFS data volume and cutover marker do not. The runbook's authenticated
+source API, restorable backup, writer freeze, object-level copy/verification,
+private/public media checks, and rollback evidence remain mandatory. The
+staging Kubernetes context currently refuses connection and staging values
+retain endpoint placeholders. A dormant GraphQL `File.url` contract still
+hardcodes `http://localhost:9000`; no frontend caller was found, so this is
+an API portability gap rather than a proven current user-facing incident.
+
+Fresh PR #1266 checks on published source `f8c76d0f2` exposed three
+independent roots, not 25 separate failures: the catalog/Mailpit artifact
+drift above; one stale MFA test that expected an active `sending` lease to
+return instead of emitting `DurableEventDeferred`; and two external Semgrep
+OSS CDC dynamic-DDL alerts. The MFA contract test was locally split into
+terminal `sent`/`cancelled` idempotency and active-lease deferral, without
+changing the delivery implementation. Its focused backend/outbox regression
+passed 101 tests. The CDC patch now validates publication and replication-slot
+identifiers before their respective DDL/protocol boundaries, composes the
+publication DDL through `psycopg.sql.Identifier`, and removes the two obsolete
+suppression-ledger entries. Local evidence: 96 CDC/SARIF tests and 51 security
+contract tests passed; pinned Semgrep 1.113.0 with suppressions disabled
+reported two findings before and zero after; an ephemeral PostgreSQL 17
+`wal_level=logical` instance provisioned and queried a publication and slot.
+The isolated pre-commit mypy environment needed a matching `psycopg` dependency;
+its parity test and exact mypy hook now pass. All three roots need a fresh
+source-SHA run before closure; aggregate CI failure is not an independent
+fourth defect.
+
+After the Web Push change, the local full frontend `npm run test:ci` completed
+successfully: 695/695 files, 7,755/7,755 tests, and V8 statements
+19,021/19,021, branches 13,421/13,421, functions 4,563/4,563, lines
+17,166/17,166 (all 100%). This is local functional/coverage evidence,
+not a substitute for Stryker, cross-browser Safari activation, or a fresh
+GitHub matrix on the pushed source SHA.
