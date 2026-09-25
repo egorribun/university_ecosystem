@@ -10,6 +10,39 @@
 
 ## 0. Снимок 2026-09-25: полное текущее состояние
 
+### 0.0000 Безопасная пауза 2026-09-25 (вечер, лимит сессии) — САМЫЙ СВЕЖИЙ СНИМОК
+
+Работа идёт по утверждённому плану `C:\Users\egorribun\.claude\plans\rustling-dazzling-stearns.md` (фазы 0–13; решения пользователя 2026-09-25 — в памяти `mvp-decisions-2026-09-25`). Разделы §0.000 и ниже — история.
+
+**Закоммичено после `c6b2c9046` (проверять `git log origin/egorribun..HEAD`):**
+
+1. `68fcd1268 test(auth)`: fixture `_delivery_fixture` получила `lease_expires_at` (устраняет 3 падения CI run 36118352908) и граничные регрессии: без lease или lease ровно до SMTP-дедлайна — `DurableEventDeferred` без отправки; +1 µs — отправка. Мутант `<=`→`<` вручную убит. MFA-наборы 243 passed.
+2. `91c9597f1 fix(notifications)`: каноническая модель тем (ADR-041).
+   - `UserPushTopic` — источник истины.
+   - POST `/push/subscribe` при omitted или `[]` привязывает endpoint к записи вызывающего; непустой список — явное обновление, зеркалируемое на его устройства.
+   - Перенос endpoint не читает и не меняет прежнего владельца.
+   - unsubscribe не трогает предпочтения.
+   - Удалены `_refresh_user_topic_preferences` и `resolve_topics`.
+   - Проверки: 917 push/notification тестов; на реальном PostgreSQL 58 + 2 integration (конкурентный захват endpoint); mutmut 13/13 и 28/28.
+3. `a6fb310ca fix(ci)`: `rust-lint`/`rust-tests` в `ci.yml` пинованы на 1.97.1 (контракт в `tests/test_frontend_docker_wasm_parity.py`), `.secrets.baseline` сдвиг строк.
+
+**НЕ закоммичено — фронтенд-часть фазы 2.2 (агент остановлен по паузе, не отревьюено):** ~30 файлов `frontend/` (новые `src/stores/authIdentity.ts` + тест; `push/subscribe.ts`, `hooks/usePushPreferences.ts`, `hooks/auth/useAuthApi.ts`, `useProfileSync.ts`, `main.tsx`, `setupTests.ts`, `tests/e2e/utils/mockApi.ts`; удалены `hooks/usePushSync.ts` и его тест).
+
+- **Состояние:** последний отчёт агента — полный Vitest зелёный (7823/7824, одно падение он исправил), затем шла мутационная проверка `authIdentity.ts`. Прерванный мутант восстановлен из crash-backup, `authIdentity` 26/26 passed, `mutant-backups/` пуст.
+- **Резервные копии:** `artifacts/wip/push-frontend-wip-2026-09-25-pause.patch`, `artifacts/wip/untracked/…` и более ранний `artifacts/wip/push-wip-2026-09-25.patch` (исходный WIP).
+- **Следующий шаг:**
+  1. Прочитать diff целиком и сверить с планом §2.2: identity gate без заглушек `ssr-stub`/`-1`/`lhci-*`, темы только явно, очередь вместо `globalEnsureLock`, logout отвязывает endpoint.
+  2. Прогнать focused Vitest, typecheck/lint/prettier и Stryker по `authIdentity.ts`, `subscribe.ts`, `usePushPreferences.ts`.
+  3. security-review, затем коммит `fix(notifications): gate push persistence on confirmed identity` и `fix(notifications): unbind push endpoint on logout`.
+  4. Затем §2.3 (UI выбора тем, `feat(wave213)`) и admin `has_preferences` (схема + регенерация SDK).
+
+**Прочее:**
+
+- Пользовательский аудит `docs/audits/AUDIT_PLATFORM_FULL.md` не тронут.
+- Контейнеры не запущены (одноразовый PG `claude-push-pg-adr041` удалён).
+- Создан дополнительный worktree `../ue-mm2` (detached `68fcd1268`, копии закоммиченных backend-файлов, **без** node_modules junction) — для mutmut. Можно удалить через `git worktree remove --force ../ue-mm2`.
+- Push этого снимка и трёх коммитов выполнен обычным `git push origin egorribun`; свежий CI — фаза 3 плана.
+
 ### 0.000 Безопасная пауза 2026-09-25 13:04 Europe/Moscow — АВТОРИТЕТНЫЙ СНИМОК
 
 **Причина остановки:** прямой запрос пользователя «дойди до контрольной точки и приостанови безопасно работу; обнови handoff». Это сознательно незавершённая реализация, а не заявление о green CI или готовом MVP. Этот раздел является дельтой к полному scope §6–§13 и актуальному continuation/master plan; старые статусы §0.00–§5 читать только как историю. Сведения о live GitHub неизбежно стареют — сверить их при следующем resume.
