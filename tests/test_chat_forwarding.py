@@ -468,6 +468,32 @@ class TestForwardMessages:
         uow.rollback.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_forward_failure_without_copies_skips_storage_cleanup(self) -> None:
+        uow = _mock_uow()
+        user = _mock_user()
+        dest = _mock_chat()
+        src = _message_dto()
+        uow.chats.get_by_id = AsyncMock(return_value=dest)
+        uow.chats.check_participant = AsyncMock(return_value=True)
+        uow.chats.message_exists_in_chat = AsyncMock(return_value=True)
+        uow.chats.get_last_messages = AsyncMock(return_value={src.id: src})
+        uow.chats.get_user_display_names = AsyncMock(return_value={})
+        uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
+        uow.chats.update_timestamp_by_id = AsyncMock()
+        uow.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
+        attachment_service = MagicMock()
+        attachment_service.cleanup_files = AsyncMock()
+        dispatcher = ChatMessageDispatcher(uow, attachment_service, AsyncMock())
+
+        with pytest.raises(RuntimeError, match="commit failed"):
+            await dispatcher.forward_messages(
+                dest.id, user, uuid.uuid4(), [src.id], locale="en"
+            )
+
+        uow.rollback.assert_awaited_once()
+        attachment_service.cleanup_files.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_forward_rejects_aggregate_payload_before_copy(self) -> None:
         uow = _mock_uow()
         user = _mock_user()

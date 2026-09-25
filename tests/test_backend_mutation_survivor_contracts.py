@@ -217,7 +217,7 @@ def _lease_margin() -> timedelta:
 
 
 async def _deliver_with_lease(
-    lease_expires_at: datetime | None, *, sender: AsyncMock
+    lease_expires_at: datetime | None, *, sender: object
 ) -> None:
     service = _email_service()
     delivery, challenge = _delivery_fixture(lease_expires_at=lease_expires_at)
@@ -271,6 +271,19 @@ async def test_delivery_sends_when_lease_outlives_the_smtp_deadline() -> None:
     )
 
     sender.send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delivery_uses_the_smtp_senders_own_deadline() -> None:
+    """A configured SMTP sender deadline replaces the global fallback."""
+    sender = email_otp_module.SmtpMfaEmailSender(total_timeout_seconds=10)
+    send = AsyncMock()
+
+    with patch.object(sender, "send", send):
+        # 16 s covers 10 s + 5 s margin, far below the 60 s + 5 s fallback.
+        await _deliver_with_lease(NOW + timedelta(seconds=16), sender=sender)
+
+    send.assert_awaited_once()
 
 
 def test_otel_shutdown_suppresses_unexpected_provider_errors() -> None:

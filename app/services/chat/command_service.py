@@ -95,7 +95,7 @@ class AttachmentProcessorProtocol(Protocol):
     async def cleanup_files(self, urls: list[str]) -> None: ...  # pragma: no branch
     async def copy_for_forward(
         self, attachment: AttachmentDTO, chat_id: uuid.UUID, *, locale: str | None
-    ) -> dict[str, str | int]: ...
+    ) -> dict[str, str | int]: ...  # pragma: no branch
     async def collect_urls(
         self, chat: Any
     ) -> list[str]: ...  # pragma: no branch  # Any: accepts Chat or ChatDTO

@@ -341,6 +341,19 @@ async def test_durable_event_deferral_is_not_collapsed_into_handler_failure() ->
 
 
 @pytest.mark.asyncio
+async def test_durable_handler_cancellation_is_not_masked_as_a_failure() -> None:
+    event = UserCreated(email="user@example.test")
+    bus = EventBus()
+
+    async def cancelled(_event: object) -> None:
+        raise asyncio.CancelledError
+
+    bus.subscribe(event.event_type, cancelled)
+    with pytest.raises(asyncio.CancelledError):
+        await bus.publish(event, durable=True)
+
+
+@pytest.mark.asyncio
 async def test_durable_event_timeout_is_retryable_after_child_cleanup() -> None:
     event = UserCreated(email="user@example.test")
     bus = EventBus()

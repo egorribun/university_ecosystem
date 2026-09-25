@@ -741,6 +741,13 @@ class TestS3StorageBranchEdgeCases:
         key = s3._extract_key("https://my-bucket.s3.amazonaws.com/path/to/file.txt")
         assert key == "path/to/file.txt"
 
+    def test_extract_key_rejects_origin_without_object_path(self):
+        from app.services.storage import S3Storage
+
+        s3 = S3Storage(bucket="my-bucket")
+
+        assert s3._extract_key("https://my-bucket.s3.amazonaws.com") is None
+
     @pytest.mark.asyncio
     async def test_exists_reraises_non_client_error(self):
         """Lines 327→331: Non-ClientError exception in exists() is re-raised directly.
