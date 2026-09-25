@@ -1,4 +1,5 @@
-import { memo } from "react"
+import { memo, useEffect, useRef } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { m } from "framer-motion"
 import {
   MessageCirclePlus,
@@ -61,6 +62,8 @@ interface ContactListProps {
 // Wave 184 SW2 (Path B) — skeleton row count. 6 rows is enough to fill the
 // sidebar viewport on most screens without being visually overwhelming.
 const SKELETON_ROW_COUNT = 6
+const VIRTUALIZE_CONTACTS_AFTER = 50
+const ESTIMATED_CONTACT_ROW_HEIGHT = 80
 
 /**
  * Resolve a keyboard navigation target without ever producing an out-of-range
@@ -132,6 +135,28 @@ export const ContactList = memo(function ContactList({
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const hoverAnim = prefersReducedMotion ? undefined : { x: 4 }
   const tapAnim = prefersReducedMotion ? undefined : { scale: 0.98 }
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const pendingFocusIdRef = useRef<string | null>(null)
+  const isVirtualized = contacts.length > VIRTUALIZE_CONTACTS_AFTER
+  const virtualizer = useVirtualizer({
+    count: isVirtualized ? contacts.length : 0,
+    getScrollElement: () => scrollRef.current,
+    getItemKey: (index) => contacts[index]!.id,
+    estimateSize: () => ESTIMATED_CONTACT_ROW_HEIGHT,
+    overscan: 5,
+    initialRect: { width: 320, height: 600 },
+  })
+  const virtualRows = virtualizer.getVirtualItems()
+
+  useEffect(() => {
+    const pendingId = pendingFocusIdRef.current
+    if (!pendingId) return
+    const row = document.getElementById(`messenger-contact-${pendingId}`)
+    if (row) {
+      row.focus()
+      pendingFocusIdRef.current = null
+    }
+  }, [virtualRows])
 
   // Wave 184 SW2 (Path B) — skeleton rows render BEFORE both empty-state
   // branches (W183 SW1 no-conversations + no-search-match) so first-paint
@@ -306,104 +331,139 @@ export const ContactList = memo(function ContactList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-2 bg-(--msg-sidebar-bg)">
-      {contacts.map((contact, index) => {
-        const isActive = selectedId === contact.id
-        return (
-          <m.div
-            key={contact.id}
-            id={`messenger-contact-${contact.id}`}
-            role="button"
-            tabIndex={0}
-            aria-current={isActive ? "true" : undefined}
-            style={{ "--stagger-index": Math.min(index, 6) } as React.CSSProperties}
-            onClick={() => onSelect(contact.id)}
-            onKeyDown={(event) => {
-              // Wave 183 SW4 — added Arrow Up/Down + Home/End keyboard nav
-              // (WCAG 2.1.1 Keyboard + ARIA APG navigation widget pattern).
-              // Pre-W183 only Enter/Space worked; users had to Tab through
-              // contacts to navigate. No wrap-around (matches Slack/Discord
-              // UX where Home/End jump to extremes deliberately).
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault()
-                onSelect(contact.id)
-                return
-              }
-              if (
-                event.key === "ArrowDown" ||
-                event.key === "ArrowUp" ||
-                event.key === "Home" ||
-                event.key === "End"
-              ) {
-                event.preventDefault()
-                const targetIndex = getContactNavigationIndex(index, event.key, contacts.length)
-                const target = contacts[targetIndex] ?? contact
-                const targetElement =
-                  document.getElementById(`messenger-contact-${target.id}`) ?? event.currentTarget
-                targetElement.focus()
-              }
-            }}
-            whileHover={hoverAnim}
-            whileTap={tapAnim}
-            className={cn(
-              "messenger-stagger-item flex items-center gap-3 p-3 mb-1 rounded-2xl cursor-pointer transition-all duration-base min-h-[60px]",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
-              isActive
-                ? "messenger-active-chip"
-                : "hover:bg-(--bg-surface-hover)/(--opacity-subtle)"
-            )}
-          >
-            <div className="relative shrink-0">
-              {/* Wave 211 G4 — group rows show the Users glyph (no per-user photo,
-                  no presence dot); DM rows keep the peer photo + online dot. */}
-              {contact.isGroup ? (
-                <GroupAvatar className="w-12 h-12" />
-              ) : (
-                <>
-                  <SmartImage
-                    srcRaw={contact.avatar || AVATAR_PLACEHOLDER_URL}
-                    fallback={AVATAR_PLACEHOLDER_URL}
-                    alt={contact.name}
-                    className="w-12 h-12 rounded-full object-cover shadow-sm"
-                  />
-                  {contact.online && (
-                    <span
-                      className="messenger-online-indicator absolute bottom-0 right-0 w-3.5 h-3.5 border-2 border-(--bg-surface) dark:border-(--bg-page)"
-                      aria-hidden="true"
-                    />
-                  )}
-                </>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex justify-between items-center mb-0.5">
-                <h3 className="font-bold text-base truncate sf-pro text-text-primary">
-                  {contact.name}
-                </h3>
-                <span className="text-xs shrink-0 ml-2 font-medium uppercase tracking-tight text-(--text-secondary) opacity-medium">
-                  {contact.lastMessageTime}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm truncate flex-1 leading-tight text-(--text-secondary)">
-                  {contact.lastMessage}
-                </p>
-                {contact.unread > 0 && (
-                  <m.span
-                    initial={prefersReducedMotion ? false : { scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={prefersReducedMotion ? { duration: 0 } : undefined}
-                    className="messenger-unread-badge min-w-5 h-5 px-1 rounded-full text-label-xs flex items-center justify-center"
-                    aria-label={t("messenger:aria.unread", { count: contact.unread })}
-                  >
-                    {contact.unread > 99 ? "99+" : contact.unread}
-                  </m.span>
+    <div
+      ref={scrollRef}
+      role="list"
+      aria-label={t("messenger:aria.conversationList")}
+      className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2 bg-(--msg-sidebar-bg)"
+    >
+      <div
+        style={
+          isVirtualized
+            ? { height: `${virtualizer.getTotalSize()}px`, position: "relative" }
+            : undefined
+        }
+      >
+        {(isVirtualized
+          ? virtualRows
+          : contacts.map((contact, index) => ({ index, key: contact.id, start: 0 }))
+        ).map((virtualRow) => {
+          const index = virtualRow.index
+          const contact = contacts[index]!
+          const isActive = selectedId === contact.id
+          return (
+            <div
+              key={virtualRow.key}
+              ref={isVirtualized ? virtualizer.measureElement : undefined}
+              data-index={isVirtualized ? index : undefined}
+              role="listitem"
+              aria-posinset={index + 1}
+              aria-setsize={contacts.length}
+              className={isVirtualized ? "absolute top-0 left-0 w-full pb-1" : undefined}
+              style={isVirtualized ? { transform: `translateY(${virtualRow.start}px)` } : undefined}
+            >
+              <m.div
+                id={`messenger-contact-${contact.id}`}
+                role="button"
+                tabIndex={0}
+                aria-current={isActive ? "true" : undefined}
+                style={{ "--stagger-index": Math.min(index, 6) } as React.CSSProperties}
+                onClick={() => onSelect(contact.id)}
+                onKeyDown={(event) => {
+                  // Wave 183 SW4 — added Arrow Up/Down + Home/End keyboard nav
+                  // (WCAG 2.1.1 Keyboard + ARIA APG navigation widget pattern).
+                  // Pre-W183 only Enter/Space worked; users had to Tab through
+                  // contacts to navigate. No wrap-around (matches Slack/Discord
+                  // UX where Home/End jump to extremes deliberately).
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault()
+                    onSelect(contact.id)
+                    return
+                  }
+                  if (
+                    event.key === "ArrowDown" ||
+                    event.key === "ArrowUp" ||
+                    event.key === "Home" ||
+                    event.key === "End"
+                  ) {
+                    event.preventDefault()
+                    const targetIndex = getContactNavigationIndex(index, event.key, contacts.length)
+                    const target = contacts[targetIndex] ?? contact
+                    const targetElement = document.getElementById(`messenger-contact-${target.id}`)
+                    if (targetElement) {
+                      targetElement.focus()
+                    } else if (isVirtualized) {
+                      pendingFocusIdRef.current = target.id
+                      virtualizer.scrollToIndex(targetIndex, { align: "auto" })
+                    } else {
+                      event.currentTarget.focus()
+                    }
+                  }
+                }}
+                whileHover={hoverAnim}
+                whileTap={tapAnim}
+                className={cn(
+                  "messenger-stagger-item flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all duration-base min-h-[60px]",
+                  !isVirtualized && "mb-1",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
+                  isActive
+                    ? "messenger-active-chip"
+                    : "hover:bg-(--bg-surface-hover)/(--opacity-subtle)"
                 )}
-              </div>
+              >
+                <div className="relative shrink-0">
+                  {/* Wave 211 G4 — group rows show the Users glyph (no per-user photo,
+                  no presence dot); DM rows keep the peer photo + online dot. */}
+                  {contact.isGroup ? (
+                    <GroupAvatar className="w-12 h-12" />
+                  ) : (
+                    <>
+                      <SmartImage
+                        srcRaw={contact.avatar || AVATAR_PLACEHOLDER_URL}
+                        fallback={AVATAR_PLACEHOLDER_URL}
+                        alt={contact.name}
+                        className="w-12 h-12 rounded-full object-cover shadow-sm"
+                      />
+                      {contact.online && (
+                        <span
+                          className="messenger-online-indicator absolute bottom-0 right-0 w-3.5 h-3.5 border-2 border-(--bg-surface) dark:border-(--bg-page)"
+                          aria-hidden="true"
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center mb-0.5">
+                    <h3 className="font-bold text-base truncate sf-pro text-text-primary">
+                      {contact.name}
+                    </h3>
+                    <span className="text-xs shrink-0 ml-2 font-medium uppercase tracking-tight text-(--text-secondary) opacity-medium">
+                      {contact.lastMessageTime}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm truncate flex-1 leading-tight text-(--text-secondary)">
+                      {contact.lastMessage}
+                    </p>
+                    {contact.unread > 0 && (
+                      <m.span
+                        initial={prefersReducedMotion ? false : { scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={prefersReducedMotion ? { duration: 0 } : undefined}
+                        className="messenger-unread-badge min-w-5 h-5 px-1 rounded-full text-label-xs flex items-center justify-center"
+                        aria-label={t("messenger:aria.unread", { count: contact.unread })}
+                      >
+                        {contact.unread > 99 ? "99+" : contact.unread}
+                      </m.span>
+                    )}
+                  </div>
+                </div>
+              </m.div>
             </div>
-          </m.div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 })

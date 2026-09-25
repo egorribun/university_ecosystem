@@ -27,6 +27,37 @@ const { translationMock, mediaQueryMock } = vi.hoisted(() => ({
   mediaQueryMock: vi.fn(),
 }))
 
+// jsdom has no scrolling layout. Model a 10-row viewport while keeping the
+// component's count, stable-key and bounded-render contracts observable.
+const virtualizerMock = vi.hoisted(() => ({
+  startIndex: 0,
+  options: undefined as
+    { count: number; getItemKey: (index: number) => string | number | bigint } | undefined,
+  scrollToIndex: vi.fn(),
+}))
+
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: (options: NonNullable<typeof virtualizerMock.options>) => {
+    virtualizerMock.options = options
+    return {
+      getVirtualItems: () =>
+        Array.from(
+          { length: Math.min(options.count - virtualizerMock.startIndex, 10) },
+          (_, offset) => {
+            const index = virtualizerMock.startIndex + offset
+            return { index, key: options.getItemKey(index), start: index * 80 }
+          }
+        ),
+      getTotalSize: () => options.count * 80,
+      measureElement: () => {},
+      scrollToIndex: (index: number, options: { align: string }) => {
+        virtualizerMock.startIndex = Math.max(index - 9, 0)
+        virtualizerMock.scrollToIndex(index, options)
+      },
+    }
+  },
+}))
+
 vi.mock("react-i18next", () => ({
   useTranslation: (...namespaces: unknown[]) => {
     translationMock(...namespaces)
@@ -96,6 +127,8 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 )
 
 afterEach(() => {
+  virtualizerMock.startIndex = 0
+  virtualizerMock.scrollToIndex.mockClear()
   mockReducedMotion.mockReturnValue(false)
   translationMock.mockClear()
   mediaQueryMock.mockClear()
@@ -432,6 +465,52 @@ describe("ContactList — empty state (W183 SW1)", () => {
 })
 
 describe("ContactList — keyboard navigation (W183 SW4)", () => {
+  it("renders a bounded number of rows for 1000 conversations", () => {
+    const contacts = Array.from({ length: 1000 }, (_, index) => ({
+      ...mockContacts[0]!,
+      id: `conversation-${index}`,
+      name: `Conversation ${index}`,
+    }))
+
+    const { container } = render(
+      <ContactList contacts={contacts} selectedId={null} onSelect={() => {}} />,
+      { wrapper }
+    )
+
+    expect(virtualizerMock.options?.count).toBe(1000)
+    expect(virtualizerMock.options?.getItemKey(999)).toBe("conversation-999")
+    expect(
+      screen.getByRole("list", { name: "messenger:aria.conversationList" })
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole("listitem")).toHaveLength(10)
+    expect(screen.getAllByRole("listitem")[0]).toHaveAttribute("aria-posinset", "1")
+    expect(screen.getAllByRole("listitem")[0]).toHaveAttribute("aria-setsize", "1000")
+    expect(container.querySelectorAll('[id^="messenger-contact-"]').length).toBeLessThan(30)
+    expect(document.getElementById("messenger-contact-conversation-0")).toBeInTheDocument()
+    expect(document.getElementById("messenger-contact-conversation-999")).not.toBeInTheDocument()
+  })
+
+  it("scrolls to and restores focus on a virtualized End target", () => {
+    const contacts = Array.from({ length: 1000 }, (_, index) => ({
+      ...mockContacts[0]!,
+      id: `conversation-${index}`,
+    }))
+    const props = { contacts, selectedId: null, onSelect: vi.fn() }
+    const { rerender } = render(<ContactList {...props} />, { wrapper })
+    const first = document.getElementById("messenger-contact-conversation-0")!
+    first.focus()
+
+    fireEvent.keyDown(first, { key: "End" })
+    expect(virtualizerMock.scrollToIndex).toHaveBeenCalledWith(999, { align: "auto" })
+
+    // Real Virtual Core issues a render when its observed range changes.
+    // The jsdom mock has no observer, so trigger that render explicitly.
+    rerender(<ContactList {...props} selectedId="conversation-999" />)
+    expect(document.activeElement).toBe(
+      document.getElementById("messenger-contact-conversation-999")
+    )
+  })
+
   it("clamps every navigation target to the contact list bounds", () => {
     expect(getContactNavigationIndex(2, "ArrowDown", 3)).toBe(2)
     expect(getContactNavigationIndex(0, "ArrowUp", 3)).toBe(0)

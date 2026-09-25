@@ -134,6 +134,7 @@
   },
   "aria": {
     "messageList": "Сообщения чата",
+    "conversationList": "Диалоги",
     "removeAttachment": "Удалить вложение",
     "attachments": "Вложения",
     "sendMessage": "Отправить сообщение",
