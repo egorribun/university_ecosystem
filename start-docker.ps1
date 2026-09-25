@@ -42,6 +42,8 @@ $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ProjectRoot
 
 $ComposeFile = "docker-compose.full.yml"
+$SeaweedFSCutoverMarker = Join-Path $ProjectRoot ".secrets/s3-seaweedfs-cutover-initiated"
+$SeaweedFSVolumeName = "university_ecosystem_seaweedfs_data"
 $ComposeArgs = @("-f", $ComposeFile)
 if ($SeaweedFS) {
     # The overlay points clients at a separate, initially empty volume. Require
@@ -871,6 +873,54 @@ if ($Logs) {
     exit $composeExitCode
 }
 
+# -- Persistent-storage rollback guard ---------------------------------------
+
+if (-not $SeaweedFS) {
+    # A plain start must never silently recreate `minio` from the old MinIO
+    # volume after a SeaweedFS cutover. Inspect the actual container image,
+    # including stopped containers, before any environment-file mutation. The
+    # marker also survives `compose down`, when no container remains to inspect.
+    if (Test-Path -LiteralPath $SeaweedFSCutoverMarker) {
+        throw "SeaweedFS cutover marker exists. Refusing silent rollback to MinIO; follow a verified migration/rollback procedure instead."
+    }
+    # Compose uses COMPOSE_PROJECT_NAME when set; otherwise it derives the
+    # project from this directory (there is no top-level `name` in full.yml).
+    $composeProject = $env:COMPOSE_PROJECT_NAME
+    if ([string]::IsNullOrWhiteSpace($composeProject)) {
+        $composeProject = Get-EnvEntry -Path $EnvFile -Key "COMPOSE_PROJECT_NAME"
+    }
+    if ([string]::IsNullOrWhiteSpace($composeProject)) {
+        $composeProject = (Split-Path -Leaf $ProjectRoot).ToLowerInvariant()
+    }
+    $storageImages = @(
+        docker ps -a `
+            --filter "label=com.docker.compose.project=$composeProject" `
+            --filter "label=com.docker.compose.service=minio" `
+            --format "{{.Image}}" 2>$null
+    )
+    if ($LASTEXITCODE -ne 0) {
+        throw "Cannot inspect the existing Compose storage service; refusing a plain MinIO start."
+    }
+    if (@($storageImages | Where-Object { $_ -match 'seaweedfs' }).Count -gt 0) {
+        throw "Existing Compose storage service uses SeaweedFS. Refusing silent rollback to MinIO; follow a verified migration/rollback procedure instead."
+    }
+
+    # The overlay gives this volume an explicit global name, independent of
+    # COMPOSE_PROJECT_NAME. It outlives `compose down` and even a lost marker.
+    # Exact-match the returned name because Docker's name filter can be fuzzy.
+    $cutoverVolumes = @(
+        docker volume ls `
+            --filter "name=^$SeaweedFSVolumeName$" `
+            --format "{{.Name}}" 2>$null
+    )
+    if ($LASTEXITCODE -ne 0) {
+        throw "Cannot inspect the SeaweedFS cutover volume; refusing a plain MinIO start."
+    }
+    if ($cutoverVolumes -contains $SeaweedFSVolumeName) {
+        throw "SeaweedFS cutover volume exists. Refusing silent rollback to MinIO; verify storage state and follow the cutover/rollback runbook."
+    }
+}
+
 # -- Generate secrets ---------------------------------------------------------
 
 $generated = $false
@@ -1168,6 +1218,19 @@ if ($Rebuild) {
 }
 
 # -- Start services -----------------------------------------------------------
+
+if ($SeaweedFS -and -not (Test-Path -LiteralPath $SeaweedFSCutoverMarker)) {
+    # Record intent before the first storage-changing `up`. If startup later
+    # fails, a plain start still cannot silently attach the old MinIO volume.
+    # This local marker is ignored by Git and survives `compose down`.
+    [void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $SeaweedFSCutoverMarker))
+    [System.IO.File]::WriteAllText(
+        $SeaweedFSCutoverMarker,
+        "SeaweedFS cutover initiated. Do not run plain start-docker.ps1 without a verified rollback procedure.`n",
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    Write-Warn "Recorded SeaweedFS cutover marker; plain MinIO startup is now blocked."
+}
 
 if ($Core) {
     # Keep dependency ordering for the core topology. The gateway depends on a

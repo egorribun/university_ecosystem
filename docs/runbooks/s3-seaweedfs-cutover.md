@@ -82,9 +82,16 @@ use, document and verify them separately before proceeding.
    The launcher passes `docker-compose.full.yml` first and this overlay last,
    and refuses `-SeaweedFS` without the exact acknowledgment. The
    acknowledgment is an operator attestation, **not** an automated proof of
-   copied data, URL compatibility, or backup restore. Ordinary launcher runs
-   still select MinIO; do not use them as an unplanned rollback after new
-   SeaweedFS writes. The overlay keeps the `minio:9000`
+   copied data, URL compatibility, or backup restore. Before its first `up`,
+   the launcher records `.secrets/s3-seaweedfs-cutover-initiated`; this marker
+   survives `-Down` and intentionally blocks later plain MinIO startup even
+   when the cutover `up` fails. Plain startup also refuses an existing
+   SeaweedFS container or the exact `university_ecosystem_seaweedfs_data`
+   volume. The volume check is deliberately conservative: a pre-created but
+   empty target also blocks plain startup. Verify its state and follow a
+   reviewed rollback/cleanup procedure; do not delete the marker or volume
+   merely to bypass the guard. A normal first start with no target volume
+   still selects MinIO. The overlay keeps the `minio:9000`
    service DNS name for existing clients and replaces the `minio-init` client
    with a readiness check. Do not combine it with the infra port-publishing
    override after the cutover overlay.
