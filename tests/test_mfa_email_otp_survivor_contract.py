@@ -29,6 +29,7 @@ from app.auth.mfa.email_otp import (
     build_configured_email_otp_service,
 )
 from app.core.config import settings
+from app.core.events import DurableEventDeferred
 from app.models import ChallengeState, StoredEvent
 
 NOW = datetime(2026, 8, 25, 9, 0, tzinfo=UTC)
@@ -1277,8 +1278,8 @@ async def test_delivery_without_explicit_clock_uses_utc_for_every_lease_timestam
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("status", ["sent", "sending"])
-async def test_delivery_claim_loss_is_idempotent_for_sent_or_active_work(
+@pytest.mark.parametrize("status", ["sent", "cancelled"])
+async def test_delivery_claim_loss_is_idempotent_for_terminal_work(
     service: EmailOtpService,
     status: str,
 ) -> None:
@@ -1292,6 +1293,26 @@ async def test_delivery_claim_loss_is_idempotent_for_sent_or_active_work(
     sender = AsyncMock()
 
     await service.deliver(db, delivery_id=delivery_id, sender=sender, now=NOW)
+
+    sender.send.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delivery_claim_loss_defers_active_work_without_sending(
+    service: EmailOtpService,
+) -> None:
+    delivery_id = uuid.uuid4()
+    claim = SimpleNamespace(one_or_none=Mock(return_value=None))
+    db = MagicMock(
+        execute=AsyncMock(return_value=claim),
+        scalar=AsyncMock(return_value="sending"),
+        commit=AsyncMock(),
+    )
+    sender = AsyncMock()
+
+    with pytest.raises(DurableEventDeferred):
+        await service.deliver(db, delivery_id=delivery_id, sender=sender, now=NOW)
 
     sender.send.assert_not_awaited()
     db.commit.assert_not_awaited()
