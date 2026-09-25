@@ -126,6 +126,33 @@ const FEEDS = [
 ] as const
 
 test.describe("Category filters keep the reading position", () => {
+  test("news category bar keeps the same height when it becomes sticky", async ({
+    page,
+    isMobile,
+  }) => {
+    if (!isMobile) await page.setViewportSize({ width: 1280, height: 800 })
+    await useMockApi(page)
+    await gotoWithTransientRetry(page, "/news", { waitUntil: "commit", timeout: 30_000 })
+
+    const bar = page.locator(".news-sticky-categories")
+    await expect(bar).toBeVisible()
+    await expect(page.getByRole("link", { name: /Новость дня|News of the day/i })).toBeVisible()
+    await page.evaluate(async () => {
+      await document.fonts.ready
+    })
+    await settle(page)
+    await expect(bar).toHaveAttribute("data-stuck", "false")
+    const initialHeight = await bar.evaluate((element) => element.getBoundingClientRect().height)
+
+    await page.evaluate(() => window.scrollTo(0, 450))
+    await expect(bar).toHaveAttribute("data-stuck", "true")
+    const stickyHeight = await bar.evaluate((element) => element.getBoundingClientRect().height)
+    expect(
+      Math.abs(stickyHeight - initialHeight),
+      `news sticky bar: initial=${initialHeight}, sticky=${stickyHeight}`
+    ).toBeLessThanOrEqual(2)
+  })
+
   for (const feed of FEEDS) {
     test(`${feed.path} categories never reset the scroll position to the top`, async ({
       page,

@@ -118,9 +118,7 @@ test.describe("University ecosystem app", () => {
 
     // 1. Visit news page to populate localStorage
     await page.getByRole("link", { name: /Посмотреть все новости|See all news/i }).click()
-    await expect(
-      page.getByText(/\u041d\u043e\u0432\u043e\u0441\u0442\u044c \u0434\u043d\u044f/)
-    ).toBeVisible()
+    await expect(page.getByRole("link", { name: /Новость дня|News of the day/i })).toBeVisible()
 
     // 2. Wait for localStorage to be populated
     await expect(async () => {
