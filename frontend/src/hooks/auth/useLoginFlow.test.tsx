@@ -102,6 +102,45 @@ const pendingLoginWithMethods = (methods: PendingMfaState["methods"]): PendingMf
   methods,
 })
 
+describe("useMfaFlow post-login redirect", () => {
+  it.each(["totp", "email_otp", "recovery_code"] as const)(
+    "preserves search.redirect after %s verification without legacy route state",
+    async (method) => {
+      mocks.pendingMfa = mfaLogin()
+      mocks.routerSearch = { redirect: "/events" }
+      const { result } = renderHook(() => useMfaFlow())
+
+      await act(async () => {
+        if (method === "totp") await result.current.handleOtpVerify("123456")
+        else if (method === "email_otp") await result.current.handleEmailOtpVerify("123456")
+        else await result.current.handleRecoveryVerify("RECOVERY-123")
+      })
+
+      expect(mocks.submitMfaChallenge).toHaveBeenCalledWith(expect.objectContaining({ method }))
+      expect(mocks.navigate).toHaveBeenCalledWith({ to: "/events", replace: true })
+    }
+  )
+
+  it.each(["totp", "email_otp", "recovery_code"] as const)(
+    "rejects a cross-origin search.redirect after %s verification",
+    async (method) => {
+      mocks.pendingMfa = mfaLogin()
+      mocks.routerSearch = { redirect: "https://attacker.example/phishing" }
+      mocks.routerState = { from: { pathname: "https://attacker.example/phishing" } }
+      const { result } = renderHook(() => useMfaFlow())
+
+      await act(async () => {
+        if (method === "totp") await result.current.handleOtpVerify("123456")
+        else if (method === "email_otp") await result.current.handleEmailOtpVerify("123456")
+        else await result.current.handleRecoveryVerify("RECOVERY-123")
+      })
+
+      expect(mocks.submitMfaChallenge).toHaveBeenCalledWith(expect.objectContaining({ method }))
+      expect(mocks.navigate).toHaveBeenCalledWith({ to: "/dashboard", replace: true })
+    }
+  )
+})
+
 // ---------------------------------------------------------------------------
 // useLoginForm.onSubmit — lines 121-146
 // ---------------------------------------------------------------------------
@@ -340,7 +379,7 @@ describe("useMfaFlow.handleRecoveryVerify", () => {
 
   it("submits a recovery code and redirects on success", async () => {
     mocks.pendingMfa = mfaLogin()
-    mocks.routerState = { from: { pathname: "/secure" } }
+    mocks.routerSearch = { redirect: "/secure" }
     const { result } = renderHook(() => useMfaFlow())
 
     await act(async () => {
@@ -486,7 +525,7 @@ describe("useMfaFlow.handleOtpVerify", () => {
 
   it("verifies the otp challenge then redirects (lines 277-288)", async () => {
     mocks.pendingMfa = mfaLogin()
-    mocks.routerState = { from: { pathname: "/secure" } }
+    mocks.routerSearch = { redirect: "/secure" }
     const { result } = renderHook(() => useMfaFlow())
     await act(async () => {
       await result.current.handleOtpVerify("654321")
