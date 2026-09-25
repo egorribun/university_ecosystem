@@ -5125,12 +5125,28 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         if step.get("name") == "Select immutable same-run Stryker preflight candidate"
     )
     assert preflight_selector["id"] == "select_stryker_preflight"
-    assert preflight_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
-    assert (
-        "scripts/quality/select_same_run_artifact_cli.py" in preflight_selector["run"]
+    assert preflight_selector["uses"] == (
+        "actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3"
     )
-    assert (
-        '--artifact-prefix "frontend-mutation-preflight-"' in preflight_selector["run"]
+    assert preflight_selector["env"] == {
+        "ARTIFACT_PREFIX": "frontend-mutation-preflight-",
+        "ARTIFACT_SUFFIX": "${{ github.sha }}",
+        "ATTEMPT_POLICY": "current-or-earlier",
+        "ALLOW_EMPTY": "false",
+        "SOURCE_SHA": "${{ github.event.pull_request.head.sha }}",
+        "TESTED_SHA": "${{ github.sha }}",
+        "RUN_ATTEMPT": "${{ github.run_attempt }}",
+        "PR_BRANCH": "${{ github.event.pull_request.head.ref }}",
+    }
+    assert preflight_selector["with"]["github-token"] == "${{ github.token }}"
+    assert "validSha.test(sourceSha)" in preflight_selector["with"]["script"]
+    assert "validSha.test(testedSha)" in preflight_selector["with"]["script"]
+    assert mutation_shards["steps"].index(preflight_selector) < mutation_shards[
+        "steps"
+    ].index(
+        next(
+            step for step in mutation_shards["steps"] if step.get("name") == "Checkout"
+        )
     )
     preflight_download = next(
         step
@@ -5142,10 +5158,8 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         "repository": "${{ github.repository }}",
         "run-id": "${{ github.run_id }}",
         "github-token": "${{ github.token }}",
-        "path": (
-            "frontend/reports/mutation/preflight-candidates/"
-            "${{ steps.select_stryker_preflight.outputs.artifact_name }}"
-        ),
+        "path": "${{ runner.temp }}/stryker-preflight-candidate/${{ steps.select_stryker_preflight.outputs.artifact_name }}",
+        "digest-mismatch": "error",
     }
     assert "pattern" not in preflight_download["with"]
     shard_checkout = next(
@@ -5207,6 +5221,8 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         if step.get("name") == "Select immutable same-run Stryker preflight candidate"
     )
     assert aggregate_selector["id"] == "select_stryker_preflight"
+    assert aggregate_selector["env"] == preflight_selector["env"]
+    assert aggregate_selector["with"] == preflight_selector["with"]
     aggregate_preflight_download = next(
         step
         for step in mutation_aggregate["steps"]
@@ -5220,8 +5236,9 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     )
     assert aggregate_shard_download["with"] == {
         "pattern": "frontend-mutation-shard-${{ github.run_id }}-*",
-        "path": "frontend/reports/mutation/external",
+        "path": "${{ runner.temp }}/stryker-shard-candidates",
         "merge-multiple": False,
+        "digest-mismatch": "error",
     }
     assert "name" not in aggregate_shard_download["with"]
     aggregate_checkout = next(
@@ -5265,10 +5282,13 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         == "Select immutable same-run validated Stryker evidence candidate"
     )
     assert roundtrip_selector["id"] == "select_stryker_validated"
-    assert roundtrip_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
-    assert (
-        "scripts/quality/select_same_run_artifact_cli.py" in roundtrip_selector["run"]
-    )
+    assert roundtrip_selector["uses"] == preflight_selector["uses"]
+    assert roundtrip_selector["env"] == {
+        **preflight_selector["env"],
+        "ARTIFACT_PREFIX": "frontend-mutation-validated-",
+        "ARTIFACT_SUFFIX": "",
+    }
+    assert roundtrip_selector["with"] == preflight_selector["with"]
     roundtrip_download = next(
         step
         for step in mutation_roundtrip["steps"]
@@ -5279,10 +5299,8 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         "repository": "${{ github.repository }}",
         "run-id": "${{ github.run_id }}",
         "github-token": "${{ github.token }}",
-        "path": (
-            "frontend/reports/mutation/validated-candidates/"
-            "${{ steps.select_stryker_validated.outputs.artifact_name }}"
-        ),
+        "path": "${{ runner.temp }}/stryker-validated-candidate/${{ steps.select_stryker_validated.outputs.artifact_name }}",
+        "digest-mismatch": "error",
     }
     assert "pattern" not in roundtrip_download["with"]
     assert "stryker-evidence-roundtrip" in jobs["ci-success"]["needs"]

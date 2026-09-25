@@ -142,13 +142,14 @@ async def test_recorded_schedule_payloads_rebuild_the_notified_events() -> None:
         )
         stored = {row.event_type: row for row in rows.scalars()}
 
-    published: list[object] = []
     bus = AsyncMock()
-    bus.publish.side_effect = published.append
     with patch("app.workers.outbox.event_bus", bus):
         for event_type in ("SCHEDULE_UPDATED", "SCHEDULE_DELETED"):
             await OutboxWorker()._dispatch_event(stored[event_type])
 
+    assert bus.publish.await_count == 2
+    assert all(call.kwargs == {"durable": True} for call in bus.publish.await_args_list)
+    published = [call.args[0] for call in bus.publish.await_args_list]
     updated, deleted = published
     assert isinstance(updated, ScheduleUpdated)
     assert updated.schedule_id == str(created.id)
