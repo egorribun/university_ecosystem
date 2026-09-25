@@ -421,7 +421,7 @@ def test_frontend_wasm_build_pins_the_artifact_toolchain() -> None:
     setup = _step(producer, "Setup Rust toolchain")
 
     assert setup["uses"] == (
-        "dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772"
+        "dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de"
     )
     assert setup["with"] == {
         "toolchain": "1.97.1",

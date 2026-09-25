@@ -185,7 +185,7 @@ jobs:
         # hosted runner's `stable` channel is mutable and a compiler update
         # changes optimized binaries, which must fail closed at provenance
         # validation rather than silently replacing the release artifact.
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # pinned action
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # pinned action
         with:
           toolchain: 1.97.1
           targets: wasm32-unknown-unknown
@@ -534,7 +534,7 @@ jobs:
 
       - name: Install uv for differential coverage
         if: ${{ github.event_name == 'pull_request' }}
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
