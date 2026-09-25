@@ -2783,6 +2783,18 @@ describe("subscribe", () => {
         expect(storedOwner()).toBeNull()
       })
 
+      it("logs a failure to read browser push state without blocking logout", async () => {
+        mockSWContainer.getRegistration.mockRejectedValue(new Error("registration unavailable"))
+        localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
+
+        await withExpectedConsole("warn", "Failed to release push subscription binding", () =>
+          expect(mod.releasePushServerBinding()).resolves.toBeUndefined()
+        )
+
+        expect(deleteSubscription).not.toHaveBeenCalled()
+        expect(storedOwner()).toBe(JSON.stringify("owner-a"))
+      })
+
       it("keeps the owner marker when the unbind outlives the logout guard", async () => {
         mockSWContainer.getRegistration.mockResolvedValue(makeReg())
         vi.mocked(deleteSubscription).mockReturnValue(new Promise<void>(() => {}))
