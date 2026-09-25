@@ -116,6 +116,21 @@ describe("Login page", () => {
     })
   })
 
+  it("presents one centered, distraction-free sign-in form", async () => {
+    await renderLogin()
+
+    const main = screen.getByRole("main", { name: tAuth("login.title") })
+    expect(main).toHaveClass("auth-shell")
+    expect(main.querySelectorAll("form")).toHaveLength(1)
+    expect(main.querySelectorAll(".auth-card-matte")).toHaveLength(1)
+    expect(
+      screen.getByRole("heading", { level: 1, name: tAuth("login.title") })
+    ).toBeInTheDocument()
+    expect(screen.getByText(tAuth("login.heroBadge"))).toBeInTheDocument()
+    expect(screen.queryByText(tAuth("login.heroHeading"))).not.toBeInTheDocument()
+    expect(document.querySelector(".auth-theme canvas")).not.toBeInTheDocument()
+  })
+
   it("blocks submission for invalid email", async () => {
     const user = userEvent.setup()
     await renderLogin()

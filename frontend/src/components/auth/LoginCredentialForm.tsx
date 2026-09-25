@@ -2,11 +2,9 @@ import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
 import { Eye, EyeOff, Sparkles, LogIn } from "lucide-react"
 
-import { FadeIn } from "@/components/ui/motion/FadeIn"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { Checkbox } from "@/components/ui/Checkbox"
-import useMediaQuery from "@/hooks/useMediaQuery"
 import type { useLoginForm } from "@/hooks/auth/useLoginFlow"
 
 type LoginCredentialFormProps = {
@@ -22,8 +20,6 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
   // does not need to pin a default namespace.  This keeps the presentational
   // form usable with lightweight i18n test adapters and SSR fallbacks.
   const { t } = useTranslation()
-  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
-
   const {
     form: {
       register,
@@ -44,17 +40,15 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
   } = form
 
   return (
-    <FadeIn
-      {...(prefersReducedMotion ? { initial: false as const } : {})}
-      direction="up"
-      distance={8}
-      duration={0.2}
-      delay={0.2}
-      className="auth-card-glass flex w-full min-w-0 flex-col justify-center bg-surface/(--opacity-hover) p-6 sm:p-10"
-    >
+    <div className="auth-card-matte w-full border border-border-subtle p-6 sm:p-10">
       <form noValidate autoComplete="on" onSubmit={onSubmit} className="flex flex-col gap-6">
         <div className="space-y-2 text-center">
-          <h2 className="text-3xl font-extrabold">{t("auth:login.title")}</h2>
+          <p className="text-xs font-semibold uppercase tracking-widest text-brand">
+            {t("auth:login.heroBadge")}
+          </p>
+          <h1 id="login-heading" className="text-3xl font-extrabold">
+            {t("auth:login.title")}
+          </h1>
           <p className="text-sm text-text-secondary">{t("auth:login.subtitle")}</p>
         </div>
 
@@ -216,7 +210,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             fullWidth
             loading={submitting}
             disabled={submitting}
-            className="text-lg font-extrabold shadow-premium hover:shadow-glass-strong"
+            className="auth-submit text-lg font-extrabold"
             leadingIcon={!submitting ? <LogIn className="h-6 w-6" /> : undefined}
           >
             {t("auth:actions.signIn")}
@@ -252,6 +246,6 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
           </div>
         </div>
       </form>
-    </FadeIn>
+    </div>
   )
 }

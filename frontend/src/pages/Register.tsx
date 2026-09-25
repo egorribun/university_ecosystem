@@ -1,15 +1,11 @@
 import { useState, useMemo, useEffect, type FormEvent } from "react"
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
-import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-react"
-import { m } from "framer-motion"
+import { Eye, EyeOff, Sparkles, Crown } from "lucide-react"
 import { useForm, Controller } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
 import "@/styles/tokens/auth.css"
 
-import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
-import AuthBackdrop from "@/components/auth/AuthBackdrop"
-import useMediaQuery from "@/hooks/useMediaQuery"
 import api from "@/api/client"
 import { Input } from "@/components/ui/Input"
 import { Select } from "@/components/ui/Select"
@@ -18,7 +14,6 @@ import { suggestEmailDomain } from "@/utils/authUtils"
 import { cn } from "@/utils/cn"
 import { registerSchema, type RegisterValues } from "@/features/auth/schemas"
 import { analyzePasswordStrength } from "@/utils/passwordStrength"
-import { easeOutExpo } from "@/utils/animations"
 import {
   captureActiveTelemetryContext,
   type CapturedTelemetryContext,
@@ -31,9 +26,6 @@ const Register = () => {
   const { t, i18n } = useTranslation(["auth"])
   const passwordStrengthLanguage = i18n.resolvedLanguage ?? i18n.language
   const navigate = useNavigate()
-  // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
-  // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
-  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const [showPass, setShowPass] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [capsPass, setCapsPass] = useState(false)
@@ -150,75 +142,26 @@ const Register = () => {
     ][strength]
   }, [strength, t])
 
-  const heroPerks = [
-    {
-      id: "community",
-      icon: UsersRound,
-      title: t("auth:register.hero.perks.community.title"),
-      description: t("auth:register.hero.perks.community.description"),
-    },
-    {
-      id: "secure",
-      icon: ShieldCheck,
-      title: t("auth:register.hero.perks.secure.title"),
-      description: t("auth:register.hero.perks.secure.description"),
-    },
-    {
-      id: "experience",
-      icon: Sparkles,
-      title: t("auth:register.hero.perks.experience.title"),
-      description: t("auth:register.hero.perks.experience.description"),
-    },
-  ]
-
   const inviteHint = needsInvite
     ? t("auth:register.inviteRequired")
     : t("auth:register.inviteOptional")
 
   return (
-    <div className="auth-theme relative min-h-screen w-full overflow-hidden bg-page text-text-primary">
-      <AuthBackdrop prefersReducedMotion={prefersReducedMotion} />
-      <ParticleAuthBackground />
-      <div className="relative z-surface mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
-        {/* Left Column - Hero */}
-        <m.div
-          initial={prefersReducedMotion ? false : { x: -8 }}
-          animate={{ x: 0 }}
-          transition={{ duration: 0.2, ease: easeOutExpo }}
-          className="auth-card-matte flex w-full min-w-0 flex-col justify-center border-glass-border-subtle p-8 lg:p-12"
-        >
-          <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-text-primary/(--opacity-strong)">
-            <Crown className="h-5 w-5" aria-hidden="true" />
-            {t("auth:register.hero.badge")}
+    <div className="auth-theme min-h-screen bg-page text-text-primary">
+      <main className="auth-shell auth-shell--register" aria-labelledby="register-heading">
+        <div className="auth-card-matte w-full border border-border-subtle p-6 sm:p-10">
+          <div className="mb-8 space-y-3">
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-brand">
+              <Crown className="size-4" aria-hidden="true" />
+              {t("auth:register.hero.badge")}
+            </p>
+            <h1 id="register-heading" className="text-3xl font-extrabold text-text-primary">
+              {t("auth:register.title")}
+            </h1>
+            <p className="text-sm leading-relaxed text-text-secondary">
+              {t("auth:register.hero.description")}
+            </p>
           </div>
-          <h1 className="mt-6 text-4xl font-extrabold leading-tight text-text-primary sm:text-5xl">
-            {t("auth:register.title")}
-          </h1>
-          <p className="mt-4 text-lg leading-relaxed text-text-secondary">
-            {t("auth:register.hero.description")}
-          </p>
-          <div className="mt-8 grid gap-5 sm:grid-cols-2">
-            {heroPerks.map(({ id, icon: Icon, title, description }) => (
-              <div key={id} className="auth-perk-card group">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-12 items-center justify-center rounded-md bg-brand-subtle-bg text-brand">
-                    <Icon className="h-5 w-5" aria-hidden="true" />
-                  </div>
-                  <p className="text-base font-semibold">{title}</p>
-                </div>
-                <p className="mt-4 text-sm text-text-secondary">{description}</p>
-              </div>
-            ))}
-          </div>
-        </m.div>
-
-        {/* Right Column - Form */}
-        <m.div
-          initial={prefersReducedMotion ? false : { y: 8 }}
-          animate={{ y: 0 }}
-          transition={{ duration: 0.2, ease: easeOutExpo, delay: 0.05 }}
-          className="auth-card-matte flex w-full min-w-0 flex-col justify-center border-glass-border-subtle bg-surface/(--opacity-hover) p-6 sm:p-10"
-        >
           <form
             onSubmit={handleTelemetrySubmit}
             autoComplete="on"
@@ -247,7 +190,11 @@ const Register = () => {
               </div>
 
               <div className="space-y-2">
-                <label id="register-role-label" htmlFor="role" className="text-sm font-semibold">
+                <label
+                  id="register-role-label"
+                  htmlFor="register-role-trigger"
+                  className="text-sm font-semibold"
+                >
                   {t("auth:fields.role")}
                 </label>
                 <div className="relative">
@@ -504,7 +451,7 @@ const Register = () => {
               fullWidth
               loading={isSubmitting}
               disabled={isSubmitting}
-              className="text-lg font-extrabold shadow-premium hover:shadow-glass disabled:opacity-strong"
+              className="auth-submit text-lg font-extrabold disabled:opacity-strong"
             >
               {t("auth:actions.signUp")}
             </Button>
@@ -519,8 +466,8 @@ const Register = () => {
               </Link>
             </div>
           </form>
-        </m.div>
-      </div>
+        </div>
+      </main>
     </div>
   )
 }

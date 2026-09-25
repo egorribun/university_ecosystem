@@ -83,15 +83,23 @@ describe("Register page", () => {
     }
   })
 
-  it("renders the complete bilingual registration hero contract", async () => {
+  it("presents one centered registration form with a concise university identity", async () => {
     await renderRegister()
 
+    const main = screen.getByRole("main", { name: tAuth("register.title") })
+    expect(main).toHaveClass("auth-shell")
+    expect(main.querySelectorAll("form")).toHaveLength(1)
+    expect(main.querySelectorAll(".auth-card-matte")).toHaveLength(1)
     expect(screen.getByText(tAuth("register.hero.badge"))).toBeInTheDocument()
-    expect(screen.getByRole("heading", { name: tAuth("register.title") })).toBeInTheDocument()
+    expect(
+      screen.getByRole("heading", { level: 1, name: tAuth("register.title") })
+    ).toBeInTheDocument()
     expect(screen.getByText(tAuth("register.hero.description"))).toBeInTheDocument()
     for (const perk of ["community", "secure", "experience"]) {
-      expect(screen.getByText(tAuth(`register.hero.perks.${perk}.title`))).toBeInTheDocument()
-      expect(screen.getByText(tAuth(`register.hero.perks.${perk}.description`))).toBeInTheDocument()
+      expect(screen.queryByText(tAuth(`register.hero.perks.${perk}.title`))).not.toBeInTheDocument()
+      expect(
+        screen.queryByText(tAuth(`register.hero.perks.${perk}.description`))
+      ).not.toBeInTheDocument()
     }
   })
 
@@ -210,6 +218,17 @@ describe("Register page", () => {
     )
     await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
     expect(inviteInput).toBeInTheDocument()
+  })
+
+  it("opens the role selector when its visible label is clicked", async () => {
+    const user = userEvent.setup()
+    await renderRegister()
+
+    const roleLabel = screen.getByText(tAuth("fields.role"), { selector: "label" })
+    const roleSelector = screen.getByRole("combobox")
+    await user.click(roleLabel)
+
+    expect(roleSelector).toHaveAttribute("aria-expanded", "true")
   })
 
   it("requires an invite code for administrator accounts and removes it for students", async () => {
