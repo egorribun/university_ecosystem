@@ -441,3 +441,35 @@ def test_all_postgres_gates_exercise_safe_range_and_declared_boundary() -> None:
         assert "migration_downgrade_policy.py assert-boundary" in combined
         assert "alembic downgrade base" not in combined
         assert 'downgrade "$SAFE_DOWNGRADE_TARGET"' in combined
+
+
+def test_postgres_migration_gates_pin_python_before_uv() -> None:
+    workflow = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs: dict[str, Any] = workflow["jobs"]
+
+    for job_name in (
+        "alembic-migrations",
+        "db-migration-gate",
+        "db-migration-integrity",
+    ):
+        steps = jobs[job_name]["steps"]
+        python_steps = [
+            (index, step)
+            for index, step in enumerate(steps)
+            if str(step.get("uses", "")).startswith("actions/setup-python@")
+        ]
+        uv_steps = [
+            index
+            for index, step in enumerate(steps)
+            if str(step.get("uses", "")).startswith("astral-sh/setup-uv@")
+        ]
+        assert len(python_steps) == len(uv_steps) == 1, job_name
+        python_index, python_step = python_steps[0]
+        assert python_step["uses"] == (
+            "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+        ), job_name
+        assert python_step["with"]["python-version"] == "3.14", job_name
+        assert python_index < uv_steps[0], job_name
+
+    for job_name in ("db-migration-gate", "db-migration-integrity"):
+        assert jobs[job_name]["env"]["UV_PYTHON"] == "3.14", job_name
