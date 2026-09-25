@@ -10,7 +10,31 @@
 
 ## 0. Снимок 2026-09-25: полное текущее состояние
 
-### 0.0000 Безопасная пауза 2026-09-25 (вечер, лимит сессии) — САМЫЙ СВЕЖИЙ СНИМОК
+### 0.00000 Безопасная пауза 2026-09-26 (лимит сессии) — САМЫЙ СВЕЖИЙ СНИМОК
+
+План прежний: `C:\Users\egorribun\.claude\plans\rustling-dazzling-stearns.md`. Лимит WSL поднят пользователем (Docker VM 11.7 GiB / 12 CPU). §0.0000 ниже — предыдущая пауза, теперь история.
+
+**Опубликовано (`origin/egorribun` = `43279cce8`):**
+
+1. Фронтенд Push-границы аккаунта: `dd5daecb1`, `425ca62f6` (6 находок security-review), `43279cce8` (покрытие).
+2. UI выбора 5 тем: `cc8c0ad13 feat(wave213)`.
+3. ADR-041 дополнен: `d576fd208`.
+4. Прочее: `2b7457f56` (File.url в file-processor), `a31df2f0f` (песочница mutmut), `e53e37047` (BE-02 read-only preflight каталога; на PG17: head → 12 converged, 202609220001 → 10 pending/2 converged).
+
+Проверки: полный Vitest 695 файлов/7859 тестов; мутационно по изменённым строкам `subscribe.ts` 56/56, `usePushPreferences.ts` 28/28, `api/notifications.ts` 9/9, `NotificationsSection.tsx` 8/8, `authIdentity.ts` 64/64, `useAuthApi.ts` 23/23.
+
+**Локально, НЕ запушено (4 коммита поверх `43279cce8`):** `590b3c57c` Go-бамп (#1292), `4564c11b6` Actions-бамп (#1291, 906 контрактов), `2d429678f` pip-бамп (#1290: strawberry 0.327.7, mutmut 3.8.0), `713e5b256` heartbeat watchdog O9 (20/20 на Linux). Push отложен, чтобы не отменить CI run **36194161259** на `43279cce8` (`cancel-in-progress: true`): на момент паузы 89 success / 11 skipped / 4 in_progress, падений нет — ждём его полный инвентарь Stryker. При возобновлении: проверить итог run, затем `git push origin egorribun`.
+
+**Фаза 4 (мутационный долг) — частично, НЕ закоммичено, НЕ отревьюено:**
+
+- Частичный CI-инвентарь (33/64 шарда run 36157153947): `artifacts/quality/mutation-tools/inventories/ci-36157153947-partial.json` — 162 проблемных мутанта в 31 файле.
+- Агенты остановлены по паузе. Их незавершённые правки лежат в worktree `../ue-mut-A` (утилиты, 19 файлов) и `../ue-mut-B` (UI-компоненты, 16 файлов + новый `frontend/src/tests/helpers/windowErrors.ts`, мусорный `frontend/src/__scratch_b/` удалить). Резервные патчи: `artifacts/wip/phase4/ue-mut-{A,B}.patch`, `…untracked.txt`, `windowErrors.ts`. Оба worktree на `d576fd208`; старые остатки агентов прошлых сессий — в `git -C ../ue-mut-X stash list`.
+- Процессы мутаций убиты, `mutant-backups/` пуст, мутантов в файлах не осталось (восстановлены `EventAboutEditor.tsx`, `EventFileManager.tsx` в ue-mut-B). Инструмент `mutant_check_fast.mjs` теперь с `bail: 1` (как Stryker).
+- При возобновлении: продолжить агентов (или заново) по тем же файлам, затем ведущий ревьюит дифф, переносит в основное дерево, полный Vitest, коммиты `test(quality): …`.
+
+**Дальше по плану:** npm-бамп #1289 (после агентов: общий `node_modules`), O4 (сверка 92 обязательных контекстов `main` с реально производимыми после завершения run), подключение watchdog к CI, фазы 6–13.
+
+### 0.0000 Безопасная пауза 2026-09-25 (вечер, лимит сессии) — история
 
 Работа идёт по утверждённому плану `C:\Users\egorribun\.claude\plans\rustling-dazzling-stearns.md` (фазы 0–13; решения пользователя 2026-09-25 — в памяти `mvp-decisions-2026-09-25`). Разделы §0.000 и ниже — история.
 
