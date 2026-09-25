@@ -74,8 +74,17 @@ use, document and verify them separately before proceeding.
 1. Inspect `docker compose config --no-interpolate` for the actual Core or full
    stack plus the cutover overlay **last**. Confirm `minio` mounts only
    `seaweedfs_data`, port 9001 is absent, and old volumes remain untouched.
-2. Set `S3_CUTOVER_ACK` only for this controlled deployment, then bring up the
-   selected stack with the overlay last. The overlay keeps the `minio:9000`
+2. Set `S3_CUTOVER_ACK=VERIFIED_S3_CUTOVER` only after personally verifying
+   every stop condition above. In the same PowerShell session, run
+   `$env:S3_CUTOVER_ACK = 'VERIFIED_S3_CUTOVER'` and then
+   `.\start-docker.ps1 -SeaweedFS` (or `.\start-docker.ps1 -SeaweedFS -Core`
+   for Core mode). `-Build` and `-Rebuild` may be combined with either mode.
+   The launcher passes `docker-compose.full.yml` first and this overlay last,
+   and refuses `-SeaweedFS` without the exact acknowledgment. The
+   acknowledgment is an operator attestation, **not** an automated proof of
+   copied data, URL compatibility, or backup restore. Ordinary launcher runs
+   still select MinIO; do not use them as an unplanned rollback after new
+   SeaweedFS writes. The overlay keeps the `minio:9000`
    service DNS name for existing clients and replaces the `minio-init` client
    with a readiness check. Do not combine it with the infra port-publishing
    override after the cutover overlay.
