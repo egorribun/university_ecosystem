@@ -8701,3 +8701,49 @@ independent producer in the new PR #1266 run, repair any real failures with
 RED/GREEN evidence, and continue product/staging recertification. Do not call
 the goal complete, merge, deploy, or issue a SHA-bound release audit until
 all required exact-SHA gates and environments have actually passed.
+
+### 2026-09-25 published head and independent local integration
+
+The four-commit range `337cf7b10..f8c76d0f2` is now pushed to `egorribun`;
+PR #1266 reports source head `f8c76d0f297bb632e90a0b02f943057e6cc10907`.
+Fresh Matrix run `36108157923` and its companion security/performance runs
+have started, but were still queued or in progress at this checkpoint. No
+old-run result may certify this SHA.
+
+A dedicated, disposable PostgreSQL 17 container and Mailpit v1.31.1 sink,
+both bound only to loopback and started without persistent volumes, ran the
+actual MFA SMTP/outbox retry/resend integration and the shared-attachment
+PostgreSQL regression: 2/2 passed in 35.35 seconds. Both containers were
+stopped and removed afterward. The local pytest cache emitted a Windows
+concurrency warning; test results were unaffected. The CI copy of this
+acceptance is still required as SHA-bound Linux evidence.
+
+Read-only Dependabot triage of 16 open default-branch alerts found all
+affected packages already updated in this PR branch. Nine alerts remain
+applicable to current `main`, including critical AnyIO and high-severity
+httpcore2 and js-yaml; seven appear stale against the checked main manifests.
+Do not dismiss automatically. Exact-SHA dependency/SBOM gates and the merge
+of patched versions to main are required before a release claim.
+
+The known SMTP trickling-peer P2 remains open after a focused 5/5 contract
+check: `smtplib`'s 10-second socket timeout is per operation, and cancelling
+`asyncio.to_thread` can orphan a late OTP send. A genuine total deadline
+requires a cancellable transport or supervised child-process boundary, plus
+cross-platform trickle, ambiguous-send, cleanup, PII, coverage and mutation
+tests; do not paper over this with `asyncio.wait_for`.
+
+Read-only BE-02 re-audit corrected the older external-audit snapshot: phase-four
+migration `202609250001` is already committed. Current source inventory is
+94 dual defaults, zero server-only and 40 Python-only, all 40 documented
+exceptions under ADR-036 (37 UUIDv7 primary keys, one CSPRNG signing key and
+two JSON topic fields). Focused policy/migration/schema checks passed 32/32;
+there is no safe reason to add a duplicate mass-default migration. A live
+deployed PostgreSQL catalog preflight remains required before DDL promotion.
+
+In the new hosted run, the first independent failed producer was Source/Test
+Inventory & Anti-Pattern Check. It reported a real catalog drift: the backend
+integration upload now contains `pytest-report.xml` and
+`mfa-mailpit-report.xml`, while the static catalog listed only the former.
+The catalog path and an explicit regression test were corrected locally,
+without changing or skipping the Mailpit test. This fix is not on the
+published SHA and must pass a new run before the gate can be called green.

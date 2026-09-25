@@ -36,6 +36,17 @@ def test_catalog_is_a_complete_current_workflow_inventory() -> None:
     assert _errors(_catalog()) == []
 
 
+def test_backend_integration_artifact_catalog_includes_mailpit_report() -> None:
+    workflows = _catalog()["workflows"]
+    backend = next(
+        item
+        for item in workflows
+        if item["path"] == ".github/workflows/reusable-backend-tests.yml"
+    )
+    artifact = backend["jobs"]["integration-tests"]["artifacts"][0]
+    assert artifact["path_pattern"] == "pytest-report.xml\nmfa-mailpit-report.xml\n"
+
+
 def test_catalog_declares_matrix_governance_for_every_source_matrix() -> None:
     """Every matrix has a source-bound cap or an explicit owner justification."""
 
