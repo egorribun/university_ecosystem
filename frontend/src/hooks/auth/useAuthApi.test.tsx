@@ -26,10 +26,10 @@ const mocks = vi.hoisted(() => ({
   },
   incrementSessionEpoch: vi.fn(),
   fetchCurrentUser: vi.fn((..._a: unknown[]) => Promise.resolve({ id: "u-1" })),
-  recoverPushConsentFromBrowser: vi.fn(async () => false),
   hasPushConsent: vi.fn(() => false),
-  softSyncPushSubscription: vi.fn(async () => null),
   setPushConsent: vi.fn(),
+  syncPushForConfirmedIdentity: vi.fn(async (..._a: unknown[]) => null as unknown),
+  releasePushServerBinding: vi.fn(async () => undefined as void),
   prefetchDashboardStories: vi.fn(),
   prefetchDashboardNews: vi.fn(),
   prefetchDashboardEvents: vi.fn(),
@@ -52,10 +52,10 @@ vi.mock("./useProfileSync", () => ({
 }))
 
 vi.mock("@/push/subscribe", () => ({
-  recoverPushConsentFromBrowser: mocks.recoverPushConsentFromBrowser,
   hasPushConsent: mocks.hasPushConsent,
-  softSyncPushSubscription: mocks.softSyncPushSubscription,
   setPushConsent: mocks.setPushConsent,
+  syncPushForConfirmedIdentity: mocks.syncPushForConfirmedIdentity,
+  releasePushServerBinding: mocks.releasePushServerBinding,
 }))
 
 vi.mock("@/i18n/config", () => ({ default: mocks.i18n }))
@@ -179,9 +179,9 @@ beforeEach(() => {
   mocks.i18n.language = "en"
   mocks.apiPost.mockResolvedValue({ status: 200, data: {} })
   mocks.apiGet.mockResolvedValue({ status: 200, data: {} })
-  mocks.recoverPushConsentFromBrowser.mockResolvedValue(false)
   mocks.hasPushConsent.mockReturnValue(false)
-  mocks.softSyncPushSubscription.mockResolvedValue(null)
+  mocks.syncPushForConfirmedIdentity.mockResolvedValue(null)
+  mocks.releasePushServerBinding.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -261,15 +261,28 @@ describe("login", () => {
     dispatch.mockRestore()
   })
 
-  it("syncs push subscription when consent recovered (lines 175-181)", async () => {
+  it("hands push sync to the identity gate for exactly the logged-in account", async () => {
     const w = makeWires()
-    mocks.recoverPushConsentFromBrowser.mockResolvedValue(true)
-    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser({ id: 42 } as never) } })
     const { result } = renderApi(w)
     await act(async () => {
       await result.current.login("a@b.dev", "pw")
     })
-    await waitFor(() => expect(mocks.softSyncPushSubscription).toHaveBeenCalled())
+    expect(mocks.syncPushForConfirmedIdentity).toHaveBeenCalledOnce()
+    expect(mocks.syncPushForConfirmedIdentity).toHaveBeenCalledWith({ expectedUserId: "42" })
+  })
+
+  it("does not start a push sync for a pending MFA challenge", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({
+      status: 202,
+      data: { challenge_token: "ct", methods: [], expires_in: 60 },
+    })
+    const { result } = renderApi(w)
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+    expect(mocks.syncPushForConfirmedIdentity).not.toHaveBeenCalled()
   })
 
   it("throws 'Invalid response from server' when payload is not a token-with-profile (line 187)", async () => {
@@ -493,6 +506,47 @@ describe("logout", () => {
     expect(w.handleUnauthorized).toHaveBeenCalled()
   })
 
+  it("unbinds this browser endpoint on the server before ending the session", async () => {
+    const w = makeWires({ user: fullUser() })
+    const order: string[] = []
+    mocks.releasePushServerBinding.mockImplementation(async () => {
+      order.push("release")
+    })
+    mocks.apiPost.mockImplementation(async (url: unknown) => {
+      order.push(String(url))
+      return { status: 200, data: {} }
+    })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.logout()
+    })
+
+    // The unbind needs the still-valid session, so it must finish first.
+    expect(order).toEqual(["release", "/auth/logout"])
+    expect(mocks.setPushConsent).not.toHaveBeenCalled()
+    expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+  })
+
+  it("still ends the session when the push unbind fails", async () => {
+    const w = makeWires({ user: fullUser() })
+    const failure = new Error("unbind failed")
+    mocks.releasePushServerBinding.mockRejectedValue(failure)
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.logout()
+    })
+
+    expect(mocks.logWarning).toHaveBeenCalledWith(
+      "Failed to release push binding on logout",
+      failure
+    )
+    expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout")
+    expect(mocks.logError).not.toHaveBeenCalled()
+    expect(w.handleUnauthorized).toHaveBeenCalledOnce()
+  })
+
   it("skips the logout POST when there is no user, still unauthorizes (line 216 false branch)", async () => {
     const w = makeWires({ user: null })
     const { result } = renderApi(w)
@@ -500,6 +554,7 @@ describe("logout", () => {
       await result.current.logout()
     })
     expect(mocks.apiPost).not.toHaveBeenCalled()
+    expect(mocks.releasePushServerBinding).not.toHaveBeenCalled()
     expect(w.handleUnauthorized).toHaveBeenCalled()
   })
 
@@ -756,23 +811,24 @@ describe("refresh", () => {
     expect(w.resetEtagCache).toHaveBeenCalled()
     expect(mocks.fetchCurrentUser).toHaveBeenCalled()
     expect(w.setUser).toHaveBeenCalled()
-    expect(mocks.recoverPushConsentFromBrowser).toHaveBeenCalled()
-    expect(mocks.softSyncPushSubscription).toHaveBeenCalled()
+    expect(mocks.syncPushForConfirmedIdentity).toHaveBeenCalledWith({ expectedUserId: "u-1" })
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })
 
-  it("does not sync push when refreshed profile has no browser consent", async () => {
+  it("finishes the refresh without waiting for the identity-gated push sync", async () => {
     const w = makeWires()
     mocks.fetchCurrentUser.mockResolvedValue(fullUser())
-    mocks.hasPushConsent.mockReturnValue(false)
+    // The gate only resolves after authOperation is cleared; awaiting it
+    // inside the refresh would deadlock.
+    mocks.syncPushForConfirmedIdentity.mockReturnValue(new Promise(() => {}))
     const { result } = renderApi(w)
 
     await act(async () => {
       await result.current.refresh()
     })
 
-    expect(w.setUser).toHaveBeenCalled()
-    expect(mocks.softSyncPushSubscription).not.toHaveBeenCalled()
+    expect(mocks.syncPushForConfirmedIdentity).toHaveBeenCalledOnce()
+    expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })
 
   it("calls handleUnauthorized on a 401 from fetchCurrentUser (lines 347-350)", async () => {
@@ -813,19 +869,24 @@ describe("refresh", () => {
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })
 
-  it("swallows an asynchronous push-sync failure after refresh", async () => {
+  it("logs an asynchronous push-sync failure after refresh", async () => {
     const w = makeWires()
+    const failure = new Error("push unavailable")
     mocks.fetchCurrentUser.mockResolvedValue(fullUser())
-    mocks.hasPushConsent.mockReturnValue(true)
-    mocks.softSyncPushSubscription.mockRejectedValue(new Error("push unavailable"))
+    mocks.syncPushForConfirmedIdentity.mockRejectedValue(failure)
     const { result } = renderApi(w)
 
     await act(async () => {
       await result.current.refresh()
-      await Promise.resolve()
     })
 
-    expect(mocks.softSyncPushSubscription).toHaveBeenCalled()
+    await waitFor(() =>
+      expect(mocks.logWarning).toHaveBeenCalledWith(
+        "Push sync after authentication failed",
+        failure
+      )
+    )
+    expect(w.handleUnauthorized).not.toHaveBeenCalled()
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })
 })
@@ -860,58 +921,48 @@ describe("useAuthApi — residual defensive branches", () => {
     ).rejects.toThrow(/login\.duration\.hours:2/)
   })
 
-  it("swallows push soft-sync failures after a recovered login consent", async () => {
+  it("logs a push-sync rejection after login without failing the login", async () => {
     const w = makeWires()
+    const failure = new Error("push sync unavailable")
     mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
-    mocks.recoverPushConsentFromBrowser.mockResolvedValue(true)
-    mocks.softSyncPushSubscription.mockRejectedValue(new Error("push sync unavailable"))
+    mocks.syncPushForConfirmedIdentity.mockRejectedValue(failure)
     const { result } = renderApi(w)
 
+    let out: unknown = "x"
     await act(async () => {
-      await result.current.login("a@b.dev", "pw")
-    })
-    await waitFor(() => expect(mocks.softSyncPushSubscription).toHaveBeenCalled())
-  })
-
-  it("swallows push-consent recovery rejection after login", async () => {
-    const w = makeWires()
-    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
-    mocks.recoverPushConsentFromBrowser.mockRejectedValue(new Error("permission unavailable"))
-    const { result } = renderApi(w)
-
-    await act(async () => {
-      await result.current.login("a@b.dev", "pw")
-      await Promise.resolve()
+      out = await result.current.login("a@b.dev", "pw")
     })
 
-    expect(w.setUser).toHaveBeenCalled()
+    expect(out).toBeNull()
+    await waitFor(() =>
+      expect(mocks.logWarning).toHaveBeenCalledWith(
+        "Push sync after authentication failed",
+        failure
+      )
+    )
   })
 
-  it("swallows push soft-sync failures after an MFA verification", async () => {
+  it("hands push sync to the identity gate after an MFA verification", async () => {
     const w = makeWires()
-    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
-    mocks.recoverPushConsentFromBrowser.mockResolvedValue(true)
-    mocks.softSyncPushSubscription.mockRejectedValue(new Error("push sync unavailable"))
+    const failure = new Error("push sync unavailable")
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser({ id: "mfa-user" }) } })
+    mocks.syncPushForConfirmedIdentity.mockRejectedValue(failure)
     const { result } = renderApi(w)
 
     await act(async () => {
       await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
     })
-    await waitFor(() => expect(mocks.softSyncPushSubscription).toHaveBeenCalled())
-  })
 
-  it("swallows push-consent recovery rejection after MFA verification", async () => {
-    const w = makeWires()
-    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
-    mocks.recoverPushConsentFromBrowser.mockRejectedValue(new Error("permission unavailable"))
-    const { result } = renderApi(w)
-
-    await act(async () => {
-      await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
-      await Promise.resolve()
+    expect(mocks.syncPushForConfirmedIdentity).toHaveBeenCalledWith({
+      expectedUserId: "mfa-user",
     })
-
-    expect(w.setUser).toHaveBeenCalled()
+    await waitFor(() =>
+      expect(mocks.logWarning).toHaveBeenCalledWith(
+        "Push sync after authentication failed",
+        failure
+      )
+    )
+    expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })
 
   it("swallows a dashboard prefetch import failure", async () => {

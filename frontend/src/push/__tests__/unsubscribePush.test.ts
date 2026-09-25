@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { unsubscribePush } from "@/push/subscribe"
 
 const CONSENT_KEY = "push-notification-consent"
-const LAST_SYNC_KEY = "push:last_sync"
+const OWNER_KEY = "push:last_owner"
 const SUB_KEY = "push:last_payload"
 const TOPICS_KEY = "push:last_topics"
 
@@ -64,7 +64,7 @@ describe("unsubscribePush", () => {
 
   it("resolves when the service worker never becomes ready", async () => {
     localStorage.setItem(CONSENT_KEY, "granted")
-    localStorage.setItem(LAST_SYNC_KEY, "123")
+    localStorage.setItem(OWNER_KEY, JSON.stringify("owner-a"))
     localStorage.setItem(SUB_KEY, "{}")
     localStorage.setItem(TOPICS_KEY, "[]")
 
@@ -80,14 +80,13 @@ describe("unsubscribePush", () => {
     expect(result).toBe(false)
 
     expect(localStorage.getItem(CONSENT_KEY)).toBeNull()
-    expect(localStorage.getItem(LAST_SYNC_KEY)).toBeNull()
+    expect(localStorage.getItem(OWNER_KEY)).toBeNull()
     expect(localStorage.getItem(SUB_KEY)).toBeNull()
     expect(localStorage.getItem(TOPICS_KEY)).toBeNull()
   })
 
   it("keeps stored topics when preserveTopics is requested", async () => {
     localStorage.setItem(CONSENT_KEY, "granted")
-    localStorage.setItem(LAST_SYNC_KEY, "123")
     localStorage.setItem(SUB_KEY, "{}")
     localStorage.setItem(TOPICS_KEY, '["news"]')
 

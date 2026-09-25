@@ -79,7 +79,23 @@ for an identity confirmed by the live auth store (no placeholders, no profile
 cache). The backend remains the final authority when a request races an
 account switch.
 
+Browser notification permission is per browser, not per account. The
+frontend therefore treats a browser endpoint and its local consent as owned
+by the account that enabled push there (the `push:last_owner` marker):
+
+- only that account's confirmed login re-binds the endpoint or recovers lost
+  consent automatically;
+- another account on the same browser sees push as disabled and must enable
+  it explicitly;
+- logout detaches the endpoint on the server (`POST /push/unsubscribe`)
+  while keeping the browser subscription and the owner marker, so the same
+  account resumes push on its next login.
+
 ## Consequences
+
+- Browsers that enabled push before the owner marker existed keep their
+  server binding and keep receiving notifications, but are not re-synced
+  automatically until the user toggles push once.
 
 - Delivery semantics are consistent across in-app and Web Push: an opt-out
   row also suppresses in-app notifications for those topics, because

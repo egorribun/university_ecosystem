@@ -462,8 +462,7 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
       msg.text().includes("[sw]") ||
       msg.text().includes("[mock]") ||
       msg.text().includes("[test]") ||
-      msg.text().includes("LivePushToasts") ||
-      msg.text().includes("[usePushSync]")
+      msg.text().includes("LivePushToasts")
     ) {
       // eslint-disable-next-line no-console
       console.log(
@@ -1123,6 +1122,28 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
         body: JSON.stringify({
           items: state.deadLetterJobs.slice(offset, offset + limit),
           total: state.deadLetterJobs.length,
+        }),
+      })
+      return
+    }
+
+    // Push preferences hydrate from the server once auth confirms the user.
+    // No stored preference means the backend default: every topic enabled.
+    if (normPath === "api/push/topics" && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          allowed: [
+            "news.published",
+            "schedule.changed",
+            "events.published",
+            "chat.message.created",
+            "system.release",
+          ],
+          topics: [],
+          has_preferences: false,
+          updated_at: null,
         }),
       })
       return

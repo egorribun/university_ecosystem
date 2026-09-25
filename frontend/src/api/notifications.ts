@@ -1,4 +1,5 @@
 import * as v from "valibot"
+import { isAxiosError } from "axios"
 
 import {
   adminGetUserTopicsApiV1PushAdminTopicsUserIdGet,
@@ -17,6 +18,7 @@ import {
   retryNotificationDeadLetters,
   subscribeApiV1PushSubscribePost,
   sendTestApiV1PushTestPost,
+  updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch,
 } from "@/api/generated"
 import type {
   AdminUserTopicsResponse,
@@ -180,6 +182,21 @@ export const purgeDeadLetterJobs = async (jobIds: string[]) => {
   })
 }
 
+/**
+ * Axios errors retain request config, including the endpoint and Web Push
+ * keys. Preserve only the status needed by the bounded retry policy; callers
+ * may send this error to both console and remote telemetry.
+ */
+function sanitizePushRequestError(error: unknown): Error {
+  const status = isAxiosError(error) ? error.response?.status : undefined
+  const safeError = new Error("Push subscription request failed")
+  safeError.name = "PushSubscriptionPersistenceError"
+  if (status !== undefined) {
+    Object.assign(safeError, { response: { status } })
+  }
+  return safeError
+}
+
 export async function saveSubscription(
   sub: PushSubscriptionJSON,
   topics?: string[]
@@ -200,11 +217,33 @@ export async function saveSubscription(
     user_agent: userAgent,
     ...(Array.isArray(topics) ? { topics } : {}),
   }
-  const { data } = await subscribeApiV1PushSubscribePost({ body: payload })
+  let data: PushSubscriptionResponse | undefined
+  try {
+    const response = await subscribeApiV1PushSubscribePost({ body: payload, throwOnError: true })
+    data = response.data
+  } catch (error) {
+    throw sanitizePushRequestError(error)
+  }
   if (!data) {
     throw new Error("Failed to save subscription")
   }
   return data
+}
+
+/**
+ * Explicit topic preference update for this endpoint (ADR-041). Unlike
+ * POST /push/subscribe, an empty list here is an explicit opt-out of every
+ * topic; the server mirrors the preference to all of the user's endpoints.
+ */
+export async function updatePushTopics(endpoint: string, topics: string[]): Promise<void> {
+  try {
+    await updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch({
+      body: { endpoint, topics },
+      throwOnError: true,
+    })
+  } catch (error) {
+    throw sanitizePushRequestError(error)
+  }
 }
 
 export async function deleteSubscription(endpoint: string): Promise<void> {

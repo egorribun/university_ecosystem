@@ -37,6 +37,11 @@ import { clearLegacyAccessToken } from "./legacyTokenCleanup"
 import { logError, logWarning } from "@/app/logger"
 import { extractApiError } from "@/utils/error"
 import { useAuthStore } from "@/stores/useAuthStore"
+import {
+  ENCRYPTED_CACHE_PLACEHOLDER_USER_ID,
+  LHCI_USER_ID_PREFIX,
+  SSR_STUB_USER_ID,
+} from "@/stores/authIdentity"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 // TD-14-07 (2026-03-18): Bumped from v7 → v8 to force-evict any previously
@@ -803,7 +808,7 @@ export const buildSsrStubUser = (role: string): User => ({
   // SW3 loader.ensureQueryData populates it. Empty fields are safe
   // defaults: Navbar renders with placeholder, Profile menu shows
   // role-based options. No PII surfaces in SSR HTML.
-  id: "ssr-stub",
+  id: SSR_STUB_USER_ID,
   email: "",
   full_name: "",
   role: coerceUserRole(role),
@@ -923,7 +928,7 @@ const resolveInitialUserStateWithoutLhci = ({
   // v4+ encrypted data cannot be decrypted synchronously.  Return a minimal
   // placeholder until the async init effect verifies and decrypts the cache.
   return {
-    id: "-1",
+    id: ENCRYPTED_CACHE_PLACEHOLDER_USER_ID,
     email: "",
     full_name: "",
     role: "student",
@@ -971,7 +976,7 @@ const resolveInitialInitializingStateWithoutLhci = ({
   // profile snapshot. If the compile-time LHCI guard is removed or the runtime
   // flag changes after the first render, bootstrap must expose loading rather
   // than treating that audit-only user as settled application state.
-  if (userState?.id?.startsWith("lhci-")) return true
+  if (userState?.id?.startsWith(LHCI_USER_ID_PREFIX)) return true
   if (userState !== null) return false
   return true
 }
@@ -1172,7 +1177,7 @@ export const useProfileSync = (
       // placeholder. It must not become fresh authoritative /users/me data,
       // otherwise fetchQuery() returns the placeholder and never reaches the
       // backend for the real profile.
-      if (cachedUser.id !== "-1") {
+      if (cachedUser.id !== ENCRYPTED_CACHE_PLACEHOLDER_USER_ID) {
         queryClient.setQueryData<UserState>(currentUserQueryKey, cachedUser)
       }
       cachedUserRef.current = null

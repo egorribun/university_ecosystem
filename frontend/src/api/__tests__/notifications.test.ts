@@ -19,6 +19,7 @@ vi.mock("@/api/generated", () => ({
   retryNotificationDeadLetters: vi.fn(),
   subscribeApiV1PushSubscribePost: vi.fn(),
   sendTestApiV1PushTestPost: vi.fn(),
+  updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch: vi.fn(),
 }))
 
 vi.mock("@/api/client", () => ({
@@ -44,6 +45,7 @@ import {
   saveSubscription,
   sendTest,
   updateAdminUserTopics,
+  updatePushTopics,
 } from "../notifications"
 
 const UUID = "11111111-1111-4111-8111-111111111111"
@@ -271,6 +273,123 @@ describe("saveSubscription", () => {
   it("throws when the server returns no data", async () => {
     vi.mocked(gen.subscribeApiV1PushSubscribePost).mockResolvedValue({ data: undefined } as never)
     await expect(saveSubscription(goodSub)).rejects.toThrow("Failed to save subscription")
+  })
+
+  it.each([409, 429])("preserves HTTP %i without exposing subscription secrets", async (status) => {
+    const privatePushEndpoint = "https://push.example/private-endpoint"
+    const privatePushAuth = "private-auth-key"
+    const transportError = Object.assign(new Error(`Failed for ${privatePushEndpoint}`), {
+      isAxiosError: true,
+      response: {
+        status,
+        data: { detail: privatePushAuth },
+      },
+      config: { data: JSON.stringify({ endpoint: privatePushEndpoint, auth: privatePushAuth }) },
+    })
+    // The generated client fulfills with an AxiosError unless throwOnError is
+    // requested. Mirror that boundary instead of forcing a rejection.
+    vi.mocked(gen.subscribeApiV1PushSubscribePost).mockImplementation(
+      (options) =>
+        (options.throwOnError
+          ? Promise.reject(transportError)
+          : Promise.resolve(transportError as never)) as never
+    )
+
+    let caught: unknown
+    try {
+      await saveSubscription(goodSub)
+    } catch (error) {
+      caught = error
+    }
+
+    expect(gen.subscribeApiV1PushSubscribePost).toHaveBeenCalledWith(
+      expect.objectContaining({ throwOnError: true })
+    )
+    expect(caught).toBeInstanceOf(Error)
+    expect(caught).not.toBe(transportError)
+    expect(caught).toMatchObject({ response: { status } })
+    expect(caught).not.toHaveProperty("config")
+    expect(caught).not.toHaveProperty("cause")
+    expect(JSON.stringify(caught)).not.toContain(privatePushEndpoint)
+    expect(JSON.stringify(caught)).not.toContain(privatePushAuth)
+    expect((caught as Error).message).not.toContain(privatePushEndpoint)
+  })
+
+  it.each([
+    ["network", new Error("network rejected for private-auth-key")],
+    [
+      "Axios without response",
+      Object.assign(new Error("private-auth-key"), { isAxiosError: true }),
+    ],
+  ])("sanitizes %s errors without an HTTP status", async (_label, transportError) => {
+    vi.mocked(gen.subscribeApiV1PushSubscribePost).mockRejectedValue(transportError)
+
+    const caught = await saveSubscription(goodSub).then(
+      () => null,
+      (error: unknown) => error
+    )
+    expect(caught).toMatchObject({
+      name: "PushSubscriptionPersistenceError",
+      message: "Push subscription request failed",
+    })
+    expect(caught).not.toBe(transportError)
+    expect(caught).not.toHaveProperty("response")
+    expect(caught).not.toHaveProperty("config")
+    expect(caught).not.toHaveProperty("cause")
+    expect(JSON.stringify(caught)).not.toContain("private-auth-key")
+    expect(gen.subscribeApiV1PushSubscribePost).toHaveBeenCalledOnce()
+  })
+})
+
+describe("updatePushTopics", () => {
+  it("sends an explicit topic list for the endpoint via PATCH", async () => {
+    vi.mocked(gen.updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch).mockResolvedValue({
+      data: { topics: ["news"] },
+    } as never)
+
+    await expect(updatePushTopics("https://push.example/z", ["news"])).resolves.toBeUndefined()
+
+    expect(gen.updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch).toHaveBeenCalledWith({
+      body: { endpoint: "https://push.example/z", topics: ["news"] },
+      throwOnError: true,
+    })
+  })
+
+  it("sends an empty list as an explicit opt-out of every topic", async () => {
+    vi.mocked(gen.updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch).mockResolvedValue({
+      data: { topics: [] },
+    } as never)
+
+    await updatePushTopics("https://push.example/z", [])
+
+    expect(gen.updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch).toHaveBeenCalledWith({
+      body: { endpoint: "https://push.example/z", topics: [] },
+      throwOnError: true,
+    })
+  })
+
+  it("keeps only the HTTP status of a failed update", async () => {
+    const privatePushEndpoint = "https://push.example/private-topics-endpoint"
+    vi.mocked(gen.updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch).mockRejectedValue(
+      Object.assign(new Error(`Failed for ${privatePushEndpoint}`), {
+        isAxiosError: true,
+        response: { status: 404, data: { detail: privatePushEndpoint } },
+        config: { data: JSON.stringify({ endpoint: privatePushEndpoint }) },
+      })
+    )
+
+    const caught = await updatePushTopics(privatePushEndpoint, ["news"]).then(
+      () => null,
+      (error: unknown) => error
+    )
+
+    expect(caught).toMatchObject({
+      name: "PushSubscriptionPersistenceError",
+      message: "Push subscription request failed",
+      response: { status: 404 },
+    })
+    expect(caught).not.toHaveProperty("config")
+    expect(JSON.stringify(caught)).not.toContain(privatePushEndpoint)
   })
 })
 

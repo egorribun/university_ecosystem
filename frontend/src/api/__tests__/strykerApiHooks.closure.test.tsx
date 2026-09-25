@@ -329,6 +329,7 @@ describe("push subscription SSR contract", () => {
         keys: { p256dh: "p", auth: "a" },
         user_agent: undefined,
       },
+      throwOnError: true,
     })
   })
 })

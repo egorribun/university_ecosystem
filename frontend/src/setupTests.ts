@@ -386,6 +386,8 @@ vi.mock("@/push/subscribe", () => ({
   recoverPushConsentFromBrowser: vi.fn(async () => false),
   hasPushConsent: vi.fn(() => false),
   softSyncPushSubscription: vi.fn(async () => null),
+  syncPushForConfirmedIdentity: vi.fn(async () => null),
+  releasePushServerBinding: vi.fn(async () => undefined),
   setPushConsent: vi.fn(),
   isPushSupported: vi.fn(() => false),
 }))
