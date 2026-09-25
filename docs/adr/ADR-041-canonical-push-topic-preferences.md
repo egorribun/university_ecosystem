@@ -89,7 +89,17 @@ by the account that enabled push there (the `push:last_owner` marker):
   it explicitly;
 - logout detaches the endpoint on the server (`POST /push/unsubscribe`)
   while keeping the browser subscription and the owner marker, so the same
-  account resumes push on its next login.
+  account resumes push on its next login. If that unbind fails, the browser
+  revokes the endpoint itself; if it times out, the marker stays so the
+  next account's login retires it;
+- when a different account signs in on a browser whose marker names
+  another account, the browser subscription is revoked, so an account whose
+  session expired without logout stops receiving notifications there;
+- a cached profile id is not proof of the session's account: the boot sync
+  verifies it with `GET /users/me`, while login, MFA and refresh pass the
+  account id from their authenticated responses;
+- topic toggles stay disabled until the canonical preference has loaded,
+  so a placeholder selection can never overwrite a stored opt-out.
 
 ## Consequences
 
