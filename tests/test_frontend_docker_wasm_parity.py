@@ -46,19 +46,23 @@ def test_frontend_image_wasm_toolchain_matches_canonical_producer() -> None:
     official_digest = "2775a09d208ff0d7c1f50490c45b62db929e87ba1dcbc3f2132ac71a704bcdd3"  # pragma: allowlist secret - public Docker image digest
     assert f"rust:1.97.1-slim-bookworm@sha256:{official_digest}" in dockerfile
     assert "cargo install wasm-pack --version 0.13.1 --locked" in dockerfile
-    binaryen_add = (
-        "ADD "
+    binaryen_url = (
         f"https://github.com/WebAssembly/binaryen/releases/download/{binaryen_version.group(1)}/"
-        f"binaryen-{binaryen_version.group(1)}-x86_64-linux.tar.gz /tmp/binaryen.tar.gz"
+        f"binaryen-{binaryen_version.group(1)}-x86_64-linux.tar.gz"
     )
-    assert binaryen_add in dockerfile
-    assert not re.search(r"(?m)^ADD --checksum", dockerfile)  # Hadolint 2.12 parser.
+    assert not re.search(r"(?m)^ADD\b", dockerfile)  # Checkov CKV_DOCKER_4.
+    assert (
+        "apt-get install -y --no-install-recommends curl ca-certificates" in dockerfile
+    )
+    assert "curl --fail --silent --show-error --location" in dockerfile
+    assert "--proto '=https' --tlsv1.2" in dockerfile
+    assert f'--output /tmp/binaryen.tar.gz "{binaryen_url}"' in dockerfile
     checksum_check = (
         f"printf '%s  %s\\n' '{binaryen_checksum.group(1)}' /tmp/binaryen.tar.gz"
         " | sha256sum --check --strict"
     )
     assert checksum_check in dockerfile
-    assert dockerfile.index(binaryen_add) < dockerfile.index(checksum_check)
+    assert dockerfile.index(binaryen_url) < dockerfile.index(checksum_check)
     assert dockerfile.index(checksum_check) < dockerfile.index(
         "tar -xzf /tmp/binaryen.tar.gz"
     )

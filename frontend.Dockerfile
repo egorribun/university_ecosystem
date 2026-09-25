@@ -21,10 +21,15 @@ ARG TARGETARCH
 RUN --mount=type=cache,id=university-frontend-wasm-cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=university-frontend-wasm-cargo-git-${TARGETARCH},target=/usr/local/cargo/git,sharing=locked \
     cargo install wasm-pack --version 0.13.1 --locked
-# Hadolint 2.12 cannot parse ADD --checksum. Verify the pinned download before
-# any extraction or execution; the hash remains mandatory and fail-closed.
-ADD https://github.com/WebAssembly/binaryen/releases/download/version_117/binaryen-version_117-x86_64-linux.tar.gz /tmp/binaryen.tar.gz
-RUN printf '%s  %s\n' '3dc677006555b355ea2da5e82602065a161d5e83eaefd3f759afa00b96e83212' /tmp/binaryen.tar.gz | sha256sum --check --strict # pragma: allowlist secret -- public Binaryen release checksum
+# Keep the fetch tool in the builder only. A remote ADD fails CKV_DOCKER_4;
+# download over TLS and verify the pinned bytes before extraction or execution.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+RUN curl --fail --silent --show-error --location \
+      --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 \
+      --output /tmp/binaryen.tar.gz "https://github.com/WebAssembly/binaryen/releases/download/version_117/binaryen-version_117-x86_64-linux.tar.gz" \
+ && printf '%s  %s\n' '3dc677006555b355ea2da5e82602065a161d5e83eaefd3f759afa00b96e83212' /tmp/binaryen.tar.gz | sha256sum --check --strict # pragma: allowlist secret -- public Binaryen release checksum
 RUN mkdir -p /opt/binaryen \
  && tar -xzf /tmp/binaryen.tar.gz --strip-components=1 -C /opt/binaryen \
  && /opt/binaryen/bin/wasm-opt --version | grep -Fq "version 117" \
