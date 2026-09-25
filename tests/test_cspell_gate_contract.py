@@ -1,4 +1,4 @@
-"""Keep the CI spelling gate nonempty without scanning uncurated docs."""
+"""Keep the CI spelling gate tied to a reviewed English documentation set."""
 
 from __future__ import annotations
 
@@ -11,7 +11,14 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "cspell.json"
 CI = ROOT / ".github/workflows/ci.yml"
-CANARY = ["docs/README.md", "docs/api_versioning.md"]
+CANARY = [
+    "docs/README.md",
+    "docs/api_versioning.md",
+    "docs/api/README.md",
+    "docs/adr/README.md",
+    "docs/adr/ADR-039-frontend-mutation-shard-cost-model.md",
+    "docs/adr/ADR-040-frontend-mutation-presentation-ignorer.md",
+]
 if not CONFIG.is_file() or not CI.is_file():
     pytest.skip(  # QUALITY-123 @egorribun
         "Spelling gate assets are absent from this isolated test checkout",
@@ -19,7 +26,7 @@ if not CONFIG.is_file() or not CI.is_file():
     )
 
 
-def test_cspell_config_selects_only_existing_english_canary_files() -> None:
+def test_cspell_config_selects_existing_reviewed_english_docs() -> None:
     config = json.loads(CONFIG.read_text(encoding="utf-8"))
 
     assert config["files"] == CANARY
@@ -32,7 +39,9 @@ def test_ci_checks_canary_every_run_and_rejects_empty_results() -> None:
     steps = workflow["jobs"]["quality"]["steps"]
     spellcheck = next(step for step in steps if step.get("name") == "Run cspell")
     result_guard = next(
-        step for step in steps if step.get("name") == "Verify cspell checked canary"
+        step
+        for step in steps
+        if step.get("name") == "Verify cspell checked reviewed docs"
     )
 
     assert spellcheck["id"] == "cspell"
@@ -42,5 +51,5 @@ def test_ci_checks_canary_every_run_and_rejects_empty_results() -> None:
     assert result_guard["env"]["CSPELL_FILES_CHECKED"] == (
         "${{ steps.cspell.outputs.number_of_files_checked }}"
     )
-    assert 'if [[ "$CSPELL_FILES_CHECKED" != "2" ]]; then' in result_guard["run"]
+    assert 'if [[ "$CSPELL_FILES_CHECKED" != "6" ]]; then' in result_guard["run"]
     assert "exit 1" in result_guard["run"]

@@ -494,12 +494,12 @@ jobs:
           config: "cspell.json"
           use_cspell_files: true
           incremental_files_only: false
-      - name: Verify cspell checked canary
+      - name: Verify cspell checked reviewed docs
         env:
           CSPELL_FILES_CHECKED: ${{ steps.cspell.outputs.number_of_files_checked }}
         run: |
-          if [[ "$CSPELL_FILES_CHECKED" != "2" ]]; then
-            echo "::error::CSpell checked $CSPELL_FILES_CHECKED files; expected 2 English canaries"
+          if [[ "$CSPELL_FILES_CHECKED" != "6" ]]; then
+            echo "::error::CSpell checked $CSPELL_FILES_CHECKED files; expected 6 reviewed English docs"
             exit 1
           fi
 

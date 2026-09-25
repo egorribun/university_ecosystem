@@ -1,7 +1,14 @@
 {
   "version": "0.2",
   "language": "en",
-  "files": ["docs/README.md", "docs/api_versioning.md"],
+  "files": [
+    "docs/README.md",
+    "docs/api_versioning.md",
+    "docs/api/README.md",
+    "docs/adr/README.md",
+    "docs/adr/ADR-039-frontend-mutation-shard-cost-model.md",
+    "docs/adr/ADR-040-frontend-mutation-presentation-ignorer.md"
+  ],
   "words": [
     "mypy",
     "hadolint",
@@ -38,7 +45,13 @@
     "atheris",
     "audit's",
     "conftest",
-    "dishka"
+    "dishka",
+    "healthz",
+    "totp",
+    "hotspot",
+    "behaviour",
+    "behavioural",
+    "instrumenter"
   ],
   "ignorePaths": [
     "**/node_modules/**",
