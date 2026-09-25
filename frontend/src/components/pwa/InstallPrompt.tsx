@@ -245,10 +245,10 @@ export default function InstallPrompt() {
   }, [])
 
   const handlePushDismiss = useCallback(() => {
-    if (userId) {
-      pushSuppressUntilRef.current = { userId: String(userId), until: Date.now() + DISMISS_TTL }
-      rememberDismiss(pushDismissKey(userId))
-    }
+    // The close action is mounted only when showPushPanel includes Boolean(userId).
+    // Its callback retains that authenticated render's user ID.
+    pushSuppressUntilRef.current = { userId: String(userId), until: Date.now() + DISMISS_TTL }
+    rememberDismiss(pushDismissKey(String(userId)))
     setPushVisible(false)
   }, [userId])
 

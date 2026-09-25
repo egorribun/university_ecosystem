@@ -32,7 +32,12 @@ const { translationMock, mediaQueryMock } = vi.hoisted(() => ({
 const virtualizerMock = vi.hoisted(() => ({
   startIndex: 0,
   options: undefined as
-    { count: number; getItemKey: (index: number) => string | number | bigint } | undefined,
+    | {
+        count: number
+        getItemKey: (index: number) => string | number | bigint
+        estimateSize: () => number
+      }
+    | undefined,
   scrollToIndex: vi.fn(),
 }))
 
@@ -45,10 +50,10 @@ vi.mock("@tanstack/react-virtual", () => ({
           { length: Math.min(options.count - virtualizerMock.startIndex, 10) },
           (_, offset) => {
             const index = virtualizerMock.startIndex + offset
-            return { index, key: options.getItemKey(index), start: index * 80 }
+            return { index, key: options.getItemKey(index), start: index * options.estimateSize() }
           }
         ),
-      getTotalSize: () => options.count * 80,
+      getTotalSize: () => options.count * options.estimateSize(),
       measureElement: () => {},
       scrollToIndex: (index: number, options: { align: string }) => {
         virtualizerMock.startIndex = Math.max(index - 9, 0)
@@ -479,6 +484,7 @@ describe("ContactList — keyboard navigation (W183 SW4)", () => {
 
     expect(virtualizerMock.options?.count).toBe(1000)
     expect(virtualizerMock.options?.getItemKey(999)).toBe("conversation-999")
+    expect(virtualizerMock.options?.estimateSize()).toBe(80)
     expect(
       screen.getByRole("list", { name: "messenger:aria.conversationList" })
     ).toBeInTheDocument()
@@ -505,6 +511,28 @@ describe("ContactList — keyboard navigation (W183 SW4)", () => {
 
     // Real Virtual Core issues a render when its observed range changes.
     // The jsdom mock has no observer, so trigger that render explicitly.
+    rerender(<ContactList {...props} selectedId="conversation-999" />)
+    expect(document.activeElement).toBe(
+      document.getElementById("messenger-contact-conversation-999")
+    )
+  })
+
+  it("keeps pending focus until the virtualized target row is actually mounted", () => {
+    const contacts = Array.from({ length: 1000 }, (_, index) => ({
+      ...mockContacts[0]!,
+      id: `conversation-${index}`,
+    }))
+    const props = { contacts, selectedId: null, onSelect: vi.fn() }
+    const { rerender } = render(<ContactList {...props} />, { wrapper })
+    const first = document.getElementById("messenger-contact-conversation-0")!
+    first.focus()
+
+    fireEvent.keyDown(first, { key: "End" })
+    virtualizerMock.startIndex = 0
+    rerender(<ContactList {...props} selectedId="not-yet-mounted" />)
+    expect(document.activeElement).toBe(first)
+
+    virtualizerMock.startIndex = 990
     rerender(<ContactList {...props} selectedId="conversation-999" />)
     expect(document.activeElement).toBe(
       document.getElementById("messenger-contact-conversation-999")

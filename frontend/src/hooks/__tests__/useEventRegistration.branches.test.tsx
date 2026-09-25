@@ -239,6 +239,33 @@ describe("useEventRegistration (branches)", () => {
     expect(onNotify).toHaveBeenCalledWith("events:card.messages.registerSuccess")
   })
 
+  it("register(): a recovered anonymous registration does not request push education", async () => {
+    const axiosErr = { isAxiosError: true, response: { status: 500, data: {} } }
+    mockPost.mockRejectedValue(axiosErr)
+    mockIsAxiosError.mockImplementation((error: unknown) => error === axiosErr)
+    mockGet.mockResolvedValue({ data: { is_registered: true, participant_count: 1 } })
+    const onNotify = vi.fn()
+    const onEducationRequest = vi.fn()
+    window.addEventListener("ecosystem:push-education-requested", onEducationRequest)
+    try {
+      const { result } = renderHook(() =>
+        useEventRegistration({ eventId, user: null, initialRegistered: false, onNotify })
+      )
+
+      await act(async () => {
+        await result.current.register()
+      })
+
+      await waitFor(() =>
+        expect(onNotify).toHaveBeenCalledWith("events:card.messages.registerSuccess")
+      )
+      expect(result.current.isRegistered).toBe(true)
+      expect(onEducationRequest).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener("ecosystem:push-education-requested", onEducationRequest)
+    }
+  })
+
   it("register(): network error, resync stays unregistered → detail/failure notify (167-187)", async () => {
     const axiosErr: any = {
       isAxiosError: true,

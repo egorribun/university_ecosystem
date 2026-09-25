@@ -108,6 +108,18 @@ describe("contextual push education", () => {
     expect(screen.getByText("system:installPrompt.notificationsTitle")).toBeInTheDocument()
   })
 
+  it("honors an in-memory dismissal for the same account even when storage is cleared", () => {
+    useAuthStore.setState({ user })
+    render(<InstallPrompt />)
+    requestEducation()
+    fireEvent.click(screen.getByRole("button", { name: "system:installPrompt.notificationsClose" }))
+    localStorage.removeItem("ecosystem.push.education.dismissedAt:1")
+
+    requestEducation()
+
+    expect(screen.queryByText("system:installPrompt.notificationsTitle")).not.toBeInTheDocument()
+  })
+
   it("keeps the contextual close action at the 44px touch-target floor", () => {
     useAuthStore.setState({ user })
     render(<InstallPrompt />)
@@ -119,12 +131,20 @@ describe("contextual push education", () => {
 
   it("keeps the offer in a panned visual viewport and removes its listeners", async () => {
     const originalViewport = Object.getOwnPropertyDescriptor(window, "visualViewport")
+    const originalClientWidth = Object.getOwnPropertyDescriptor(
+      document.documentElement,
+      "clientWidth"
+    )
     const visualViewport = Object.assign(new EventTarget(), { width: 288, offsetLeft: 44 })
     const addListener = vi.spyOn(visualViewport, "addEventListener")
     const removeListener = vi.spyOn(visualViewport, "removeEventListener")
     Object.defineProperty(window, "visualViewport", {
       configurable: true,
       value: visualViewport,
+    })
+    Object.defineProperty(document.documentElement, "clientWidth", {
+      configurable: true,
+      value: 400,
     })
 
     let unmount = () => {}
@@ -145,6 +165,19 @@ describe("contextual push education", () => {
         visualViewport.dispatchEvent(new Event("scroll"))
       })
       await waitFor(() => expect(panel!.style.left).toBe("88px"))
+
+      act(() => {
+        visualViewport.offsetLeft = 0
+        visualViewport.dispatchEvent(new Event("resize"))
+      })
+      await waitFor(() => expect(panel!.style.left).toBe("16px"))
+
+      act(() => {
+        visualViewport.width = 400
+        visualViewport.dispatchEvent(new Event("resize"))
+      })
+      await waitFor(() => expect(panel!.style.left).toBe(""))
+      expect(panel!.style.width).toBe("")
       expect(addListener).toHaveBeenCalledWith("scroll", expect.any(Function))
       expect(addListener).toHaveBeenCalledWith("resize", expect.any(Function))
 
@@ -157,6 +190,67 @@ describe("contextual push education", () => {
         Object.defineProperty(window, "visualViewport", originalViewport)
       } else {
         Reflect.deleteProperty(window, "visualViewport")
+      }
+      if (originalClientWidth) {
+        Object.defineProperty(document.documentElement, "clientWidth", originalClientWidth)
+      } else {
+        Reflect.deleteProperty(document.documentElement, "clientWidth")
+      }
+    }
+  })
+
+  it("uses desktop viewport geometry and cancels one pending reposition frame on unmount", () => {
+    const originalViewport = Object.getOwnPropertyDescriptor(window, "visualViewport")
+    const originalClientWidth = Object.getOwnPropertyDescriptor(
+      document.documentElement,
+      "clientWidth"
+    )
+    const visualViewport = Object.assign(new EventTarget(), { width: 500, offsetLeft: 40 })
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: visualViewport })
+    Object.defineProperty(document.documentElement, "clientWidth", {
+      configurable: true,
+      value: 1000,
+    })
+    const mediaQuery = vi
+      .spyOn(window, "matchMedia")
+      .mockImplementation(
+        (query) => ({ matches: query === "(min-width: 640px)" }) as MediaQueryList
+      )
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 73)
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
+    let unmount = () => {}
+    try {
+      useAuthStore.setState({ user })
+      ;({ unmount } = render(<InstallPrompt />))
+      requestEducation()
+      const panel = screen
+        .getByText("system:installPrompt.notificationsTitle")
+        .closest<HTMLElement>(".fixed.z-toast")
+      expect(panel?.style.left).toBe("132px")
+      expect(panel?.style.width).toBe("384px")
+
+      act(() => {
+        visualViewport.dispatchEvent(new Event("scroll"))
+        visualViewport.dispatchEvent(new Event("resize"))
+      })
+      expect(requestFrame).toHaveBeenCalledOnce()
+
+      unmount()
+      expect(cancelFrame).toHaveBeenCalledExactlyOnceWith(73)
+    } finally {
+      unmount()
+      mediaQuery.mockRestore()
+      requestFrame.mockRestore()
+      cancelFrame.mockRestore()
+      if (originalViewport) {
+        Object.defineProperty(window, "visualViewport", originalViewport)
+      } else {
+        Reflect.deleteProperty(window, "visualViewport")
+      }
+      if (originalClientWidth) {
+        Object.defineProperty(document.documentElement, "clientWidth", originalClientWidth)
+      } else {
+        Reflect.deleteProperty(document.documentElement, "clientWidth")
       }
     }
   })

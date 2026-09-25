@@ -12,7 +12,7 @@
  * simulate what server.ts would set at runtime, then assert the factory
  * reads from it.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { getRouter, type RouterContext } from "../router"
 
 type SsrAuthGetter = (() => RouterContext["auth"] | undefined) | undefined
@@ -140,5 +140,21 @@ describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 60000 },
     const options = getRouter().options
     expect(options.scrollRestoration).toBe(true)
     expect(options.getScrollRestorationKey).toBeUndefined()
+  })
+
+  it("disables view transitions on touch WebKit so the old snapshot cannot block links", async () => {
+    vi.stubGlobal("WebKitPoint", class WebKitPoint {})
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({ matches: query === "(hover: none) and (pointer: coarse)" }))
+    )
+    try {
+      vi.resetModules()
+      const { getRouter: getWebKitRouter } = await import("../router")
+      expect(getWebKitRouter().options.defaultViewTransition).toBe(false)
+      expect(window.matchMedia).toHaveBeenCalledWith("(hover: none) and (pointer: coarse)")
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
