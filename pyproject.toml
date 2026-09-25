@@ -694,6 +694,9 @@ also_copy = [
     "frontend/src/tests/mocks",
     "frontend/src/tests/mocks/generated",
     "frontend/tests/e2e/utils",
+    # test_frontend_depcheck_asset_contract reads the direct axe-core users.
+    "frontend/tests/e2e/accessibility.spec.ts",
+    "frontend/tests/e2e/a11y-public.spec.ts",
     "frontend/package.json",
     "frontend/stryker.config.mjs",
     "frontend/vitest.config.ts",

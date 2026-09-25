@@ -119,7 +119,9 @@ def test_plain_start_refuses_existing_seaweedfs_before_env_bootstrap() -> None:
     assert "DOCKER_QUERY=" in result.stderr
     query = json.loads(result.stderr.split("DOCKER_QUERY=", 1)[1].splitlines()[0])
     assert query[:2] == ["ps", "-a"]
-    assert "label=com.docker.compose.project=university_ecosystem" in query
+    # Without COMPOSE_PROJECT_NAME Compose (and the launcher) derive the
+    # project from the checkout directory, e.g. mutmut's isolated `mutants`.
+    assert f"label=com.docker.compose.project={ROOT.name.lower()}" in query
     assert "label=com.docker.compose.service=minio" in query
 
 
