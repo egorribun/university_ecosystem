@@ -1,14 +1,93 @@
 # University Ecosystem: safe-pause handoff и план полного закрытия
 
-> **Для следующего исполнителя:** работа приостановлена по прямому запросу пользователя. Не возобновлять исполнение, контейнеры, мониторинг или публикацию до команды продолжить. После возобновления использовать `executing-plans` либо `subagent-driven-development`, затем независимое ревью и `verification-before-completion`. Чекбоксы ниже означают оставшуюся работу, а не распоряжение повторить уже реализованные вертикали.
+> **Для следующего исполнителя:** работа приостановлена по прямому запросу пользователя. Не возобновлять исполнение, контейнеры, мониторинг или публикацию до команды продолжить. **Самый свежий и приоритетный снимок — §0.000, включая финальную сверку 2026-09-25 13:19 Europe/Moscow.** Все более ранние формулировки «текущий HEAD», «чистое дерево» и «текущий CI» исторические. После возобновления использовать `executing-plans` либо `subagent-driven-development`, затем независимое ревью и `verification-before-completion`. Чекбоксы ниже означают оставшуюся работу, а не распоряжение повторить уже реализованные вертикали.
 
 **Дата снимка:** 2026-09-22, около 16:25–16:35 Europe/Moscow. GitHub timestamps — UTC.
 
-> **Статус 2026-09-25 01:20 Europe/Moscow — снова безопасная пауза по запросу пользователя.** Актуальное состояние — только **§0 ниже**. Разделы §1–§5 описывают паузу 2026-09-22 и остаются историей (WASM, MFA, Semgrep из них давно закоммичены и опубликованы). Требования и Definition of Done §6–§13 остаются в силе, их уточняет §0.9.
+> **Исторический статус 2026-09-25 01:20 Europe/Moscow:** безопасная пауза того момента. Разделы §1–§5 описывают паузу 2026-09-22 и остаются историей (WASM, MFA, Semgrep из них давно закоммичены и опубликованы). Требования и Definition of Done §6–§13 остаются в силе; текущий статус — §0.000.
 >
-> **Возобновление 2026-09-25 05:25 Europe/Moscow:** пауза выше — исторический снимок. Текущий дельта-статус приведён в §0.0; §0.1–§0.9 надо читать как предшествующий baseline, а не как утверждение о чистом дереве или завершённом CI.
+> **Историческое возобновление 2026-09-25 05:25 Europe/Moscow:** дельта приведена в §0.0; §0.1–§0.9 — предшествующий baseline, а не утверждение о чистом дереве или завершённом CI. Новая пауза и authoritative delta — §0.000.
 
 ## 0. Снимок 2026-09-25: полное текущее состояние
+
+### 0.000 Безопасная пауза 2026-09-25 13:04 Europe/Moscow — АВТОРИТЕТНЫЙ СНИМОК
+
+**Причина остановки:** прямой запрос пользователя «дойди до контрольной точки и приостанови безопасно работу; обнови handoff». Это сознательно незавершённая реализация, а не заявление о green CI или готовом MVP. Этот раздел является дельтой к полному scope §6–§13 и актуальному continuation/master plan; старые статусы §0.00–§5 читать только как историю. Сведения о live GitHub неизбежно стареют — сверить их при следующем resume.
+
+#### A. Сохранность, точная идентичность и границы
+
+| Объект | Проверенный факт на момент паузы |
+| --- | --- |
+| Репозиторий / ветка | `C:/Users/egorribun/Documents/university_ecosystem`, **`egorribun`**, не менять рабочую ветку пользователя. |
+| Локальный HEAD перед этим обновлением | `6b1e2c707ec228b05d16a716b28aa1566270b23e` — `test(storage): verify signed and anonymous S3 object access`. |
+| Опубликованный `origin/egorribun` / PR #1266 | `1488096d0621a7292e0664346c67117e37021f85`, [PR #1266](https://github.com/egorribun/university_ecosystem/pull/1266) открыт, base `main`, GitHub `mergeable=MERGEABLE`. Локальный HEAD на **один коммит впереди**; его нельзя называть опубликованным или покрытым текущим CI. |
+| Локальные НЕЗАКОММИЧЕННЫЕ файлы | `frontend/src/api/notifications.ts`, `frontend/src/api/__tests__/notifications.test.ts`, `frontend/src/push/subscribe.ts`, `frontend/src/push/__tests__/subscribe.test.ts`. Это WIP текущей попытки, **не сбрасывать и не публиковать как готовое**: независимое ревью выявило два существенных дефекта. |
+| Пользовательский untracked | `docs/audits/AUDIT_PLATFORM_FULL.md`, SHA256 `902f81d4b3a904d074ed32e3e7c3a9157f92e1e45e3dc7fca646f05e8ed2887b`; не удалять, не переписывать и не включать широким `git add -A`. |
+| Stash | `git stash list --date=iso` не вывел записей на момент проверки; это не основание менять stash при resume. |
+| Worktrees | Основной плюс `../ue-e2e`, `../ue-mm`, `../ue-mut-A/B/C` (detached). Не удалять автоматически: §0.1 предупреждает о NTFS-junction `node_modules` на основной repo. |
+| Docker | `docker ps -a` пуст; `university_ecosystem_minio-data` существует и **сохранён**; Docker Engine 29.8.0. Live S3 cutover и перенос объектов не проводились. |
+| Subagents | `/root/security_arch_148`, `/root/security_frontend_diff_148`, `/root/security_auth_diff_148` завершили bounded задачи; работающих дочерних агентов и локальных тестовых процессов после проверки нет. |
+| Goal | Долгосрочная цель остаётся незавершённой и переводится в `paused` по этой явной просьбе. Не выставлять `complete` по частичному CI. |
+
+**Финальная сверка handoff 2026-09-25 13:19 Europe/Moscow:** документ зафиксирован отдельным текущим `HEAD` (`docs(quality): checkpoint current CI and push-account blockers`); точный SHA проверять `git rev-parse HEAD`, а не вычислять по тексту внутри самого коммита. Ветка `egorribun` на **два** коммита (`6b1e2c7` и handoff `HEAD`) впереди `origin/egorribun`; оба **не запушены**. Четыре frontend WIP-файла по-прежнему unstaged, пользовательский аудит по-прежнему untracked с тем же SHA256; `git diff --check` и `git diff --cached --check` exit 0. Таблица выше фиксирует состояние **до** коммита handoff и объясняет, почему там указан один опережающий коммит. Не делать push только ради checkpoint при известных frontend trust-boundary дефектах; сохранять эту local/remote границу явно.
+
+В этой остановке **не было** merge, force-push, обхода branch protection, деплоя, запуска/удаления контейнеров, изменения Docker volumes, cloud credentials или пользовательского аудита. Исправления после `1488096d0` не представлены в PR, кроме того что уже было опубликовано до снимка. Не запускать новый full CI ради старого SHA, когда локальный WIP ещё требует исправлений.
+
+#### B. Что произошло после предыдущего §0.00
+
+1. Уже опубликованные локально проверенные коммиты `667a11ae6` (CI provenance и durable schedule assertions), `d84e44c09` (Push persistence fail-closed) и `1488096d0` (bounded MFA SMTP delivery/lease) находятся в `origin/egorribun`; **их фактический свежий CI не зелёный**, см. C.
+2. `6b1e2c707` — локальный, не опубликован. Реальный disposable SeaweedFS S3-контракт в `tests/integration/test_minio_integration.py`: подписанный presigned GET читает загруженные байты; тот же объект без подписи получает HTTP 403. RED получен с намеренно неподписанным GET (403, exit 1), GREEN всего файла `2 passed` (exit 0, ~4.18 s); Ruff check/format и `git diff --check` пройдены. Это доказывает только одноразовый тестовый endpoint, **не** перенос старых MinIO objects, не Compose Core/full и не staging. Никакой старый том не тронут.
+3. Frontend WIP после `1488096d0` (четыре файла в A): generated Axios client теперь вызывается с `throwOnError: true`; наружу выходит status-only `PushSubscriptionPersistenceError` без request config/body/endpoint/keys. `409`/`429` не превращаются в ложный успех; recovery выставляет consent только после сохранения; введён per-user owner marker и проверка смены аккаунта во время запроса. Тесты добавлены в соответствующие API/Push suites. Это **частично готовая**, а не завершённая защита — см. D.
+4. Независимое ревью API/Push: `/root/security_frontend_diff_148` подтвердил отсутствие новой утечки ключей через safe API error и RED→GREEN 409/429; `/root/security_auth_diff_148` обнаружил два реальных account-boundary дефекта в WIP; `/root/security_arch_148` проверил S3 путь. Отчёт sealed security plugin на **предыдущий опубликованный** diff `5cebe7df7..1488096d0`: scan ID `2a9e4a40-51a5-432c-94aa-ebe1eeb7e51a`, 7/7 changed items reviewed, 0 новых findings, отчёт `C:/Users/egorribun/.codex/state/plugins/codex-security/scans/university_ecosystem/1488096d0621a7292e0664346c67117e37021f85_20260925T092926Z_yjtiouxe/report.md`. **Он не покрывает ни 6b1e2c7, ни текущий frontend WIP.**
+5. Пользователь подтвердил архитектурный выбор **поддерживаемого OSS S3-хранилища** вместо лицензируемого AIStor. В текущем repo это SeaweedFS с opt-in cutover; пользователь не выдавал разрешение на destructive migration, удаление legacy тома или слепое переключение production writers.
+
+#### C. Свежий CI опубликованного SHA: единственный обнаруженный producer failure
+
+- [Run 36118352908](https://github.com/egorribun/university_ecosystem/actions/runs/36118352908), `headSha=1488096d0621a7292e0664346c67117e37021f85`: первоначальный снимок 10:04 UTC был `in_progress` (91 success / 11 skipped / 1 failure / 2 unfinished). **Финальная сверка 10:19 UTC:** run `completed/failure`, **93 success / 24 skipped / 2 failure** из 119 jobs. Два красных контекста: producer backend shard 1 ниже и производный `CI Success`; новых независимых failed producers нет. Двадцать четыре skipped нужно классифицировать по `if:`/DAG перед финальным audit: среди них есть downstream quality/coverage/mutation jobs, пропущенные из-за красного upstream, а не успешно пройденные gates. `gh pr view 1266` по-прежнему показывает опубликованный source SHA `1488096d0`. Учитывать разницу между PR source SHA `1488096d0` и tested merge SHA `f929df40a039047ba9bd54ec3bf937ccff64e7d4` в job logs; нельзя подменять одно другим в audit.
+- Упавший producer: `Backend Tests (Python 3.14-shard-1) / Unit Tests (All-Python 3.14-shard-1)`, job `108018917327`. Лог доступен через `gh api repos/egorribun/university_ecosystem/actions/jobs/108018917327/logs` даже пока run in progress. Итог job: **3 failed / 2637 passed / 15 skipped**, 853.23 s, exit 1. `gh run view --log-failed` во время активного run не возвращает лог, но API jobs/logs возвращает HTTP 200.
+- Все три failure в `tests/test_backend_mutation_survivor_contracts.py`: `test_delivery_cancellation_requires_an_explicit_single_row_update`, `test_delivery_completion_requires_an_explicit_single_row_update`, `test_delivery_completion_with_single_rowcount_succeeds`. `_delivery_fixture()` создаёт `SimpleNamespace` без `lease_expires_at`, а после `1488096d0` `EmailOtpService.deliver()` читает `delivery.lease_expires_at` при повторной проверке ownership после row locks (`app/auth/mfa/email_otp.py:1162`). Результат — `AttributeError`, тест не доходит до своей rowcount-ветки. Изолированное локальное воспроизведение тех же трёх: **3 failed, 12 deselected**, exit 1, 2.57 s. Локальные два `PytestCacheWarning` о правах `.pytest_cache` не являются причиной трёх assertion failures, но не скрывать их при будущем zero-warning аудите.
+- **Следующий минимальный TDD patch:** дать fixture реалистичный `lease_expires_at=NOW + timedelta(minutes=2)` и проверить, что более строгий production guard продолжает fail-closed при истекшей/чужой lease. Прогнать три RED→GREEN, затем весь `tests/test_backend_mutation_survivor_contracts.py`, связанные MFA/unit/integration suites и shard-aware local preflight. Если появляются дополнительные мок-расхождения, не отключать guard или тест. Только затем отдельный coherent `test(auth): ...` commit.
+- Нельзя назвать 93 success доказательством всей матрицы: run терминально красный, а часть quality/mutation/manifest jobs не исполнялась после producer failure. Даже гипотетический green старого SHA не покрыл бы локальные WIP, `6b1e2c7` и текущий handoff `HEAD`.
+
+#### D. Два подтверждённых блокера frontend WIP — исправить ДО commit/push
+
+1. **Межаккаунтные темы при восстановлении consent.** `frontend/src/push/subscribe.ts:460-494` вызывает `persistSubscriptionWithBackoff(json)` без `topics`; backend `app/routers/notifications.py:315-329` при существующем endpoint вычисляет `resolve_topics(payload.topics, existing.topics)`. После logout пользователя A browser subscription остаётся; login B вызывает recovery раньше soft sync (`frontend/src/main.tsx:93-101`). Так B может унаследовать список тем A, а owner marker уже будет B. Это security/privacy и корректность settings, не только дублирующий POST. Нужен явный контракт переноса endpoint к B **с B-owned canonical preferences**, либо другой fail-closed способ, подтверждённый backend integration; не подставлять A topics из localStorage.
+2. **Cold boot до hydration auth стирает prefs.** В `ensurePushSubscription` около `subscribe.ts:694-712` при `useAuthStore.loading=true`, `user=null`, пустом profile cache получается `currentOwner=null`, `topicsToPersist=[]`, `shouldPersist=true`. Load-event SW setup (`main.tsx:183-190`) может отправить существующий endpoint с действующей cookie пользователя A прежде `/users/me`. Backend `_refresh_user_topic_preferences` при пустом массиве удаляет preference record (`app/routers/notifications.py:130-137`), а `subscription_supports_topic` трактует empty как unrestricted/all (`app/services/push_topics.py:184-192`; тест `tests/test_push_topics_service.py:213-220`). Это восстанавливает все-topic доставку вопреки настроенной фильтрации. **Пустой `[]` здесь НЕ opt-out**. Не выполнять persistence/transfer, пока текущая авторизованная identity не подтверждена live auth state; не использовать stale profile cache как security authority.
+3. При следующем resume сначала добавить два RED frontend-теста с реальными условиями A→B/recovery и auth-loading cold boot, плюс backend contract/integration для `None` vs `[]` и принадлежности endpoint. Затем выбрать и проверить canonical B preferences: изучить `GET /api/v1/push/topics`, frontend queries/Settings, хранение `UserPushTopic` и semantics default/all. Не менять историческую `[]` семантику или product opt-in незаметно. Защитить request in flight от смены identity, но учесть что серверный POST может уже завершиться после клиентской смены; backend должен быть final authority. После GREEN — независимое security review нового diff и full relevant frontend/backend checks. Если источник B preferences не гарантирует безопасного account transfer, приостановить transfer и явно попросить решение, а не отправить скрытое наследование.
+4. Текущий WIP прошёл локальный `npm run typecheck` (exit 0, 2026-09-25 10:04 UTC) и focused `npx vitest run src/api/__tests__/notifications.test.ts src/push/__tests__/subscribe.test.ts`: **44 + 93 = 137 passed**, 2 files, exit 0, 7.33 s. Эти тесты **не покрывают** дефекты 1–2; не считать их достаточными. Предыдущие расширенные focused runs, по сообщениям исполнителей, были green, но после двух находок нужны новые RED suites. `git diff --check` exit 0. Повторить ESLint/Prettier/TS после будущей правки; не фиксировать сейчас 100% mutation без свежего Stryker.
+
+#### E. Безопасная последовательность продолжения, без потери WIP
+
+1. По явной команде resume: прочесть корневой и доменные `AGENTS.md`, `quality/quality-contract.json`, этот §0.000, continuation plan и master plan; сверить `git status --short --branch`, `git log origin/egorribun..HEAD`, `git diff --check`, наличие четырёх WIP-файлов и SHA пользовательского аудита. **Не делать `reset --hard`, `checkout --`, broad clean/stage, recursive delete worktrees.** Если diff изменился извне — сначала понять owner.
+2. Сверить сохранённый terminal snapshot run 36118352908 (93 success / 24 skipped / 2 failure) с workflow `if:` и DAG для каждого skip; producer/backend и derivative `CI Success` не смешивать. Не судить по устаревшим run в чате. При необходимости скачать immutable logs/artifacts; `gh api .../jobs/108018917327/logs` уже подтвердил точные три падения.
+3. Быстрый независимый backend slice: исправить `_delivery_fixture` в тесте (не production guard), добавить regression для истечения/reclaim, прогнать focused + MFA/lease integration, Ruff/mypy по затронутому, затем маленький тестовый commit. Этот slice не должен пересекаться с четырьмя frontend WIP-файлами и может идти параллельно у отдельного агента.
+4. Frontend slice D через systematic debugging + RED→GREEN→refactor. Работать с реальным серверным meaning `None`/`[]`, authenticated identity и per-user topic preference. Рецензировать trust boundary, логирование ключей и дедупликацию. Коммитить только после combined focused tests, `npm run typecheck`, lint, formatting, build/SSR по необходимости, Push/browser/E2E, и независимого review. Не stage пользовательский untracked audit.
+5. Проверить остальные незакрытые master/continuation/external-audit критерии §6–§13 по актуальным SHA/evidence, а не старым чекбоксам. Особые external-only gates: полноценный Docker Core/full и data-preserving SeaweedFS cutover, exact-six immutable images, SBOM/attestations, локальный kind вместо отсутствующего staging (по согласованному 2026-09-23 scope), TLS/ExternalSecrets/observability/CWV/rollback, cross-browser/mobile, SHA-bound final audit. Deployed-catalog preflight Alembic и WASM Linux toolchain parity остаются обязательными до release.
+6. После одновременного закрытия code slices — coherent commits на `egorribun`, precommit/security review, сохранить `.secrets.baseline` если hook его изменил, обычный push, fresh CI на новом **точном source SHA**. Дождаться terminal producer/aggregate mutation 100% и полного quality manifest; не merge/deploy/bypass только потому что большинство jobs green. Отдельно зафиксировать audited source SHA vs audit-only commit SHA.
+
+#### F. Проверенные команды и ссылки для следующего исполнителя
+
+```powershell
+git status --short --branch
+git log --oneline origin/egorribun..HEAD
+git diff --check
+Get-FileHash -LiteralPath 'docs/audits/AUDIT_PLATFORM_FULL.md' -Algorithm SHA256
+gh pr view 1266 --json state,headRefOid,baseRefName,statusCheckRollup
+gh run view 36118352908 --json status,conclusion,headSha,jobs
+gh api repos/egorribun/university_ecosystem/actions/jobs/108018917327/logs | Select-String 'FAILED|AttributeError|short test summary' -Context 2,2
+uv run pytest -q tests/test_backend_mutation_survivor_contracts.py -k 'delivery_cancellation_requires_an_explicit_single_row_update or delivery_completion_requires_an_explicit_single_row_update or delivery_completion_with_single_rowcount_succeeds' --no-cov
+cd frontend
+npm run typecheck
+npx vitest run src/api/__tests__/notifications.test.ts src/push/__tests__/subscribe.test.ts
+```
+
+**Политика доказательств:** указанные выше focused GREEN действуют только для текущего *незакоммиченного* дерева; CI run — только для опубликованного `1488096d0`/его tested merge, S3-тест — только для локального `6b1e2c7`. Нельзя суммировать их в «единый green SHA». Timeouts/skips/incomplete evidence остаются release blockers по `quality/quality-contract.json`, если `if:` guard и неприменимость не доказаны. Все 100% coverage/mutation/security floors остаются без ослабления.
+
+#### G. Проверка самого handoff и пределы достоверности
+
+- При финальной сверке 2026-09-25 13:19 Europe/Moscow повторно прочитаны `git status`/локальный и remote SHA, PR #1266, terminal CI run 36118352908, paused goal, `quality/quality-contract.json`, текущие source/contract-файлы BE-02, Rust Base64, Stryker history и CSpell. Все **девять** локальных Markdown-ссылок этого handoff разрешаются в существующие файлы. Пользовательский аудит сверён по SHA256; нет его staging или изменения.
+- Предыдущая проверка markdownlint-cli2 из корня на Windows вывела `Linting: 1 file; 0 issues in 0 files`, а запуск из директории документа с `--config ../../../.markdownlint.json` дал тот же результат. Здесь `0 files` в summary означает число файлов **с ошибками**, а не пропуск: строка `Linting: 1 file` подтверждает фактически обработанный документ. Проверить `git diff --check` снова после последнего редактирования и до commit.
+- Это операционный handoff и указатель на полный continuation/master plan, **не независимый построчный аудит всего репозитория**. 93 успешных jobs старого SHA, локальные focused tests и links/lint документа не доказывают финальную матрицу. Unknown остаётся unknown; при возобновлении переснять volatile GitHub/Docker/toolchain state и не выдавать старые секции за текущие.
 
 ### 0.00 Дельта 2026-09-25 06:50 Europe/Moscow — активная работа
 
@@ -145,7 +224,7 @@
 
 ### 1.1 Что читать и в каком порядке
 
-1. Этот handoff — операционная точка остановки, включая незавершённую WASM-сборку.
+1. Сначала §0.000 этого handoff — операционная точка последней остановки. Остальные §1–§5 содержат историческую WASM/MFA/Semgrep работу и полезную причинную историю, но не актуальный WIP inventory.
 2. Корневой [AGENTS.md](../../../AGENTS.md), доменные AGENTS затрагиваемых областей и [quality contract](../../../quality/quality-contract.json).
 3. [Continuation plan](2026-08-31-mvp-quality-closure-continuation.md), **§148**, затем относящиеся к текущей задаче acceptance-разделы. Старые operational snapshots не являются текущим статусом.
 4. [Исходное MVP ТЗ](University_Ecosystem_MVP.md): требования сохраняются, но предложения «переписать профиль с нуля» заменены утверждённым gap-аудитом существующего продукта.
@@ -406,9 +485,11 @@ npm run build
 
 ### 6.1 BE-02: defaults и migration semantics
 
-Текущее metadata inventory: 82 dual / 52 Python-only / 0 server-only, 45 tables. Из 52 Python-only: 40 application-owned exceptions — 37 UUIDv7, 1 CSPRNG secret, 2 JSON defaults. Их нельзя «закрывать» копированием Python logic в server_default.
+**Актуализация относительно исторического инвентаря ниже:** migration `alembic/versions/202609250001_phase_semantic_defaults.py` уже существует; §0.0 фиксирует локально пройденные PostgreSQL upgrade/downgrade/re-upgrade и 3 integration-теста. Последний локальный governed inventory: **94 dual / 40 Python-only / 0 server-only**, причём 40 — документированные application-owned UUIDv7/JSON/secret defaults. Исторические «82/52» и список 12 candidates ниже объясняют происхождение phase four, **не являются текущим backlog к повторной реализации**. Открыты deployed-catalog preflight, production-data/lock-budget/rollback acceptance и final-SHA evidence.
 
-12 оставшихся semantic candidates:
+Исторический metadata inventory **до** phase four: 82 dual / 52 Python-only / 0 server-only, 45 tables. Из прежних 52 Python-only: 40 application-owned exceptions — 37 UUIDv7, 1 CSPRNG secret, 2 JSON defaults. Их нельзя «закрывать» копированием Python logic в server_default.
+
+12 тогда ещё остававшихся semantic candidates (реализованы локально в `202609250001`):
 
 1. `attachments.created_at`;
 2. `chats.created_at`;
@@ -423,23 +504,25 @@ npm run build
 11. `stored_events.created_at`;
 12. `users.role`.
 
-- [ ] Прочитать ADR-036 и source inventory; определить UTC/time-of-statement vs transaction, ORM/onupdate vs direct SQL, enum cast semantics.
-- [ ] Для каждого кандидата записать решение и тест direct-SQL/ORM equivalence либо обоснованное application ownership.
-- [ ] Перед DDL выполнить fail-closed deployed catalog preflight: типы, defaults, nullability, NULL rows, расхождение `'pending'`/`'PENDING'`/`'pen ding'`.
-- [ ] Реализовать phased/backfill/check/validate migration там, где требуется; проверить реальный PostgreSQL upgrade/downgrade/re-upgrade, lock budget и rollback.
-- [ ] Не считать локальную metadata таблицу доказательством состояния внешней БД; destructive migration только после проверки target и полномочий.
+- [x] Source/ADR inventory, governed phase-four migration и локальный PostgreSQL upgrade/downgrade/re-upgrade подтверждены на checkpoint §0.0; повторять implementation по историческому списку не нужно.
+- [ ] На каждом целевом deployed PostgreSQL **до** DDL выполнить fail-closed catalog preflight: типы, defaults, nullability, NULL rows, enum cast и lock budget; измерить реальный rollback.
+- [ ] Fresh final-SHA tests/manifest и прямой SQL/ORM semantic equivalence подтвердить для фактического release target. Локальная metadata таблица не доказывает состояние внешней БД; destructive migration требует точного target и полномочий.
 
 ### 6.2 BE-08: CDC
 
 `asyncpg.connect(replication="database")` не поддерживается; `put_copy_data` отсутствует. Исправлен безопасный startup rejection **до side effects**, сохранён default polling. Keepalive больше не подтверждает WAL за пределами успешно отправленных событий. ADR-037 фиксирует deferred transport.
 
+Пользовательский scope от 2026-09-23 уже выводит CDC transport **за пределы функционального MVP** (§0.2). Поэтому согласование MVP-границы не ожидает повторного вопроса; технический CDC transport остаётся отдельным deferred/open долгом и не должен скрываться за статусом MVP.
+
 - [ ] Не называть fail-closed отключение «работающим CDC».
 - [ ] Для включения нужны поддерживаемый replication transport, transaction/replay ownership, реальные PostgreSQL/NATS restart/replay/ack tests, durable checkpoint и backpressure.
-- [ ] Если CDC не входит в функциональный MVP, получить явное согласование такого scope; без него строка остаётся deferred/open, а не DONE.
+- [x] Зафиксировать явную MVP-границу (согласовано 2026-09-23); держать техническую строку `BE-08` как deferred/open, а не DONE.
 
 ### 6.3 RUST-P3-03 и declined рекомендации
 
-- [ ] Завершить §3.1 и runtime/provenance evidence для Base64 export.
+Source-часть Base64 уже реализована: `frontend/rust-crypto/src/lib.rs` экспортирует `hmac_sha256_sign_base64`, а `frontend/src/workers/crypto.worker.ts` его вызывает. Нижеупомянутое «завершить §3.1» — историческая задача исходной паузы, **не текущая просьба повторить source implementation**. Закрытие `RUST-P3-03` требует проверенной parity checked-in `.wasm`/provenance с pinned Linux CI producer и SHA-bound final evidence; Windows build с другим байтовым результатом не достаточен.
+
+- [ ] Подтвердить canonical Linux `.wasm`/provenance parity, worker runtime и final-SHA evidence для уже реализованного Base64 export (§3.1 — историческая source-работа).
 - Не отменять без новых доказательств declined `RUST-P3-01`: общий Cargo workspace объединяет несовместимые feature graphs и меняет cache/profile contracts.
 - Не ослаблять `INFRA-12`: main-only retention cleanup обязан fail-closed при отсутствии обязательных secrets, а не warn-and-skip.
 - [ ] Пересмотреть остальные закрытые audit IDs по mapping source/test/evidence на final SHA, включая дубликаты GO/SEC, без повторной ненужной переписи.
@@ -540,6 +623,8 @@ npm run build
 
 ### Stage 10 — Docker, staging, release
 
+**Граница текущей среды:** реального staging-кластера нет; пользовательский scope 2026-09-23 допускает Docker Core/full и локальный kind как доступную MVP-приёмку. Это не доказательство production rollout: внешний кластер, домены, TLS/secrets, реальные устройства и field CWV остаются explicit external-only gates, если их не заменит отдельное согласованное решение. Не подменять локальный kind словом «staging» в SHA-bound аудите.
+
 - [ ] Проверить все поддерживаемые Compose combinations `config --quiet`; не запускать overlays отдельно, если они зависят от base.
 - [ ] Реальный путь `start-docker.ps1 -Build`, затем Core/full с измерением RAM/CPU/startup/readiness и корректным shutdown. Не удалять пользовательские volumes и не применять global prune.
 - [ ] Backend `/health/ready`, frontend SSR/Caddy, gRPC file processor, WebSocket, PostgreSQL, раздельный Redis, NATS и observability.
@@ -579,8 +664,10 @@ Playwright browser engines и mobile emulation не равны реальным 
 
 ### O2 — duration-aware sharding
 
-- Python cost-aware execution и frontend same-run retry history уже есть; **совместимая cross-run history ещё OPEN**.
-- [ ] Создать отдельный `scripts/quality/select_stryker_history_artifact_cli.py`; тесты `tests/test_select_stryker_history_artifact_cli.py`, `tests/test_stryker_cost_workflow_contract.py`, planner contracts в `frontend/scripts/run-stryker.test.mjs`.
+**Актуализация:** `scripts/quality/select_stryker_history_artifact_cli.py` и `tests/test_select_stryker_history_artifact_cli.py` уже есть и подключены в `.github/workflows/ci.yml`; `tests/test_stryker_cost_workflow_contract.py` содержит contract. Коммиты `8a5d43ff2` и `e0d1da451` защищают trust boundary и совместимый retry исторических timing candidates. Чекбоксы ниже — исходная спецификация, **не перечень файлов, которые надо создать заново**. Проверить на свежем SHA bounded provenance/fallback и замерить реальный выигрыш, не reuse mutant results.
+
+- Python cost-aware execution, frontend same-run retry history и source-код совместимой cross-run timing history уже есть; **свежая end-to-end верификация и измеренный эффект ещё OPEN**.
+- [x] CLI `scripts/quality/select_stryker_history_artifact_cli.py`, tests и workflow wiring присутствуют в source. Их существование не означает, что runtime выигрыш и provenance уже доказаны.
 - [ ] Проверять config/lock/toolchain/test-input/preflight-inventory fingerprints, trusted producer, digest, finite costs каждого current viable source.
 - [ ] Ограничить runs/pages/bytes/entries/age и общий monotonic deadline. В архиве ровно один regular cost JSON; reject links/extra/executable/cache payloads.
 - [ ] Invalid/stale/incomplete history → diagnostic и безопасный existing planner fallback; **никогда reuse test/mutation results**.
@@ -637,9 +724,11 @@ Playwright browser engines и mobile emulation не равны реальным 
 
 ## 10. Spelling, docs и dependency follow-up
 
-### 10.1 Dormant spelling gate
+### 10.1 Spelling gate: прежний dormant-дефект устранён, полнота scope ещё открыта
 
-`cspell.json` содержит `ignorePaths: ["**/*"]`. Exact action-style command с `--no-must-find-files` проверяет0files и выходит0. Markdownlint при этом реально работает. Это открытый quality defect.
+**Актуализация:** прежний `ignorePaths: ["**/*"]` уже удалён. Текущий `cspell.json` исключает только служебные/generated пути и содержит reviewed canary-set из **9 authored English docs**; `tests/test_cspell_gate_contract.py` требует все 9 и запрещает universal ignore, CI проверяет `number_of_files_checked == 9`. §0.00 фиксирует green CSpell 9.2.2/10.2.2 на выборке (2 файла, 0 issues) для более раннего checkpoint; это **не** проверка всего авторского корпуса или RU/EN. Абзац ниже о zero-file gate и предложение scope относятся к исторической диагностике, не к состоянию активного CI. Remaining: согласовать/зафиксировать полный mandatory corpus, RU dictionary/license, пройти все authored docs, затем code и fail-closed nonempty count без сокрытия typo fixtures.
+
+Исторический defect **до исправления**: `cspell.json` содержал `ignorePaths: ["**/*"]`; action-style command проверял 0 файлов и выходил 0. Универсальный ignore уже удалён; открытым остаётся **полнота обязательного корпуса и RU/EN-policy**, а не zero-file gate.
 
 Диагностика: CSpell10.2.2, sample3832trackedtext,27862unknown occurrences, приблизительно2071unique nongenerated; **не 27862 опечатки**. Imported skills/lockfiles исключены только из диагностического sample, не как approved release exclusion. RU dictionary2.3.2 имеет GPL3 dev-tool licensing consideration; dialect EN policy тоже определить.
 
@@ -647,7 +736,8 @@ Playwright browser engines и mobile emulation не равны реальным 
 
 - [ ] Зафиксировать authored/generated/vendor/historical boundaries по policy; уточнить scope если решение меняет обязательность.
 - [ ] Добавить CLI/action canary: нормальный RU/EN проходит; `mispeling` и `ашибка` приводят к failure. Document API, обходящий path filtering, недостаточен.
-- [ ] Убрать universal ignore, исправить настоящие опечатки и точечно документировать технический словарь.
+- [x] Убрать universal ignore и зафиксировать nonempty English canary-set.
+- [ ] Расширить проверку на утверждённый authored corpus, исправить настоящие опечатки и точечно документировать технический словарь.
 - [ ] Не исправлять intentional invalid fixtures (`pullPolcy`, `Привед`, `gmial`) и не добавлять их в глобальный whitelist.
 - [ ] Проверить свежий gate реально scanned files>0, RU/EN, lock reproducibility, license scan.
 - Diagnostic scripts/data: `C:/Temp/cspell-audit-2ca7a320bb8d4eb887723d376a5c7268/`.
@@ -669,14 +759,16 @@ Playwright browser engines и mobile emulation не равны реальным 
 
 ## 11. Организация субагентов после возобновления
 
+**Ближайший актуальный параллельный набор после resume:** lead координирует terminal CI/identity/коммиты; backend worker исправляет три fixture failures и проверяет lease safety; frontend worker закрывает два account-boundary Push дефекта через RED→GREEN; независимый security reviewer проверяет готовый diff (до четырёх active slots вместе с lead). Не давать backend и frontend workers общие файлы. Работать с этим набором только после явной команды продолжить, а не в текущей паузе.
+
 Сейчас доступны максимум четыре active slots: lead + три workers. Параллелить независимые scopes, не количество ради количества. Skill инструкции читать целиком главным агентом до выполнения; subagent reading не заменяет это.
 
 | Роль | Ближайший bounded scope | Запрет пересечения / выход |
 | --- | --- | --- |
 | lead | Live CI triage, ownership, docs ledger, integration и commit | Единственный stage/commit/push coordinator |
-| Rust implementer/perf | §3.1 canonical generated WASM, затем Docker producer gap | Только crypto/worker/generator files; toolchain/hash/repeat proof |
-| QA/backend | Real MFA/outbox acceptance либо BE02, один выбранный slice | Не менять shared workflows без передачи ownership; RED/GREEN/JUnit |
-| independent reviewer | Read-only spec/security/provenance review законченного slice | Не быть автором reviewed patch; findings с файлами/линиями |
+| backend worker | Три MFA delivery fixture failures + lease expiry/reclaim contracts | Только backend tests и при доказанной необходимости MFA production code; RED/GREEN/JUnit |
+| frontend worker | Два Push account-boundary дефекта + canonical B topics | Только четыре перечисленных frontend WIP-файла и согласованные focused tests; RED/GREEN/browser |
+| independent reviewer | Read-only trust-boundary/security/provenance review готового frontend/backend diff | Не быть автором reviewed patch; findings с файлами/линиями |
 
 После освобождения slots возможны отдельные bounded задачи map lifecycle, real WS contracts, Push topics или CI cost selector. Не запускать одновременно npm installs/formatters/генераторы по одной dependency tree. Не создавать новые user-owned Codex tasks вместо настоящих subagents без запроса пользователя.
 
@@ -700,7 +792,7 @@ Playwright browser engines и mobile emulation не равны реальным 
 - main/release promotion authorization, maintenance/rollback window;
 - real devices/branded browsers и достаточное окно field CWV;
 - spelling mandatory scope, если пользователь ещё не ответил;
-- статус deferred CDC относительно functional MVP.
+- наличие **нового** решения пользователя, если будущий scope вновь включит CDC transport в functional MVP; решение 2026-09-23 пока действует.
 
 Нет необходимости спрашивать пользователя о каждой локальной тестовой правке. Но нельзя считать старое автономное поручение разрешением на destructive production migration, bypass, произвольное merge или изменение прав доступа.
 
@@ -737,4 +829,4 @@ Ignored artifacts и C:/Temp могут исчезнуть; их отсутст�
 
 ## 14. Готовая команда для следующей сессии
 
-> Продолжи на egorribun с чтения AGENTS.md, quality/quality-contract.json и docs/superpowers/plans/2026-09-22-mvp-safe-pause-handoff.md. Сначала проверь live Git/PR/CI и сохранённые незакоммиченные изменения. Заверши canonical Rust/WASM Base64 regeneration: исходники изменены, generated export ещё не перенесён, stopped container сохранён. Не теряй локальные MFA/Semgrep/docs изменения и пользовательский untracked AUDIT_PLATFORM_FULL.md. После независимого review и combined gates сделай coherent commits/push. Далее выполняй весь §148 continuation, stages0–10 и девять organizational tasks, сохраняя100% floors, полный inventory и SHA/run provenance. Не merge/deploy/bypass без актуальных полномочий, не объявляй completion по узкому green run. Используй до трёх независимых workers плюс lead, замораживай writers перед hooks/commits.
+> Возобнови goal на ветке `egorribun`. Сначала прочитай корневой и затронутые доменные `AGENTS.md`, `quality/quality-contract.json`, **§0.000 этого handoff**, continuation/master plans и пользовательский внешний аудит без его изменения. Проверь live Git/PR/CI вместо старых snapshot: опубликованный PR #1266 на `1488096d0` завершил CI run `36118352908` красным (три backend fixture failures, производный `CI Success`, downstream skips); локальный handoff `HEAD` вместе с `6b1e2c7` ещё не запушен, а четыре frontend Push/API файла остаются unstaged WIP. Не потеряй их и untracked `AUDIT_PLATFORM_FULL.md`; не делай broad stage/reset/clean. Параллельно, но на непересекающихся файлах, исправь backend fixture с RED→GREEN и два подтверждённых cross-account Push дефекта, проверив backend meaning `topics=None` vs `[]` и live auth identity; затем independent security review, proportional full gates, coherent commits, обычный push и fresh exact-SHA CI до terminal 100% coverage/mutation evidence. После этого продолжи remaining §6–§13 и актуальный continuation plan (Docker Core/full, data-preserving OSS S3 cutover, local kind вместо отсутствующего staging по согласованному scope, immutable images/TLS/observability/CWV/rollback/final SHA-bound audit). Не повторяй уже реализованные source-фичи по историческим чекбоксам. Не merge/deploy/bypass без актуальных полномочий и не объявляй весь MVP завершённым по узкому green run.
