@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import dataclasses
 import json
+import re
 import struct
 import time
 import uuid
@@ -15,6 +16,7 @@ from urllib.parse import urlparse, urlunparse
 import asyncpg
 from opentelemetry import trace
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram
+from psycopg import sql
 
 from app.core.config import settings
 from app.core.events import _EVENT_REGISTRY, DomainEvent, EventMetadata
@@ -472,7 +474,17 @@ class CdcOutboxWorker:
     ) -> None:
         self.dsn = dsn or str(settings.database_url)
         self.nats_broker = nats_broker or global_nats_broker
+        # START_REPLICATION does not support binding the slot identifier.
+        if re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", slot_name) is None:
+            raise ValueError("slot_name must be a lowercase PostgreSQL identifier")
         self.slot_name = slot_name
+        # PostgreSQL folds unquoted names and truncates identifiers at 63 bytes.
+        # The same name is also inserted into the replication protocol options,
+        # so reject rather than silently rewrite an invalid configuration.
+        if re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", publication_name) is None:
+            raise ValueError(
+                "publication_name must be a lowercase PostgreSQL identifier"
+            )
         self.publication_name = publication_name
         self._decoder = PgOutputDecoder()
         self._is_running = False
@@ -520,15 +532,15 @@ class CdcOutboxWorker:
                 self.publication_name,
             )
             if not pub_exists:
-                # Sanitize publication name identifier to ensure safe DDL execution
-                safe_pub_name = "".join(
-                    c for c in self.publication_name if c.isalnum() or c == "_"
+                # Bind parameters cannot represent a DDL identifier. Compose it
+                # with the driver's identifier renderer, not string formatting.
+                statement = sql.SQL(
+                    "CREATE PUBLICATION {} FOR TABLE stored_events;"
+                ).format(sql.Identifier(self.publication_name))
+                await conn.execute(statement.as_string())
+                logger.info(
+                    "Provisioned replication publication '%s'", self.publication_name
                 )
-                # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query, python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
-                await conn.execute(  # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query, python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
-                    f"CREATE PUBLICATION {safe_pub_name} FOR TABLE stored_events;"  # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query, python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
-                )
-                logger.info("Provisioned replication publication '%s'", safe_pub_name)
 
             # 2. Provision Replication Slot using pgoutput plugin
             slot_exists = await conn.fetchval(

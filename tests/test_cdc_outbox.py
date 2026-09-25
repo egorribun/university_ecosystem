@@ -328,11 +328,61 @@ async def test_cdc_outbox_worker_provision_replication_resources() -> None:
     await worker.provision_replication_resources(conn=mock_conn)
 
     mock_conn.execute.assert_called_once_with(
-        "CREATE PUBLICATION outbox_pub FOR TABLE stored_events;"
+        'CREATE PUBLICATION "outbox_pub" FOR TABLE stored_events;'
     )
     mock_conn.fetchval.assert_called_with(
         "SELECT pg_create_logical_replication_slot($1, 'pgoutput')",
         "outbox_cdc_slot",
+    )
+
+
+@pytest.mark.asyncio
+async def test_cdc_publication_name_is_quoted_without_changing_its_identity() -> None:
+    conn = AsyncMock()
+    conn.fetchval = AsyncMock(side_effect=[None, "existing_slot"])
+
+    worker = CdcOutboxWorker(publication_name="custom_pub")
+    await worker.provision_replication_resources(conn=conn)
+
+    conn.execute.assert_awaited_once_with(
+        'CREATE PUBLICATION "custom_pub" FOR TABLE stored_events;'
+    )
+    conn.fetchval.assert_any_await(
+        "SELECT 1 FROM pg_publication WHERE pubname = $1", "custom_pub"
+    )
+
+
+@pytest.mark.parametrize(
+    "publication_name",
+    ["", "bad;DROP TABLE stored_events", "MixedCase", "a" * 64],
+)
+def test_cdc_publication_name_rejects_invalid_identifiers(
+    publication_name: str,
+) -> None:
+    with pytest.raises(ValueError, match="publication_name"):
+        CdcOutboxWorker(publication_name=publication_name)
+
+
+@pytest.mark.parametrize(
+    "slot_name",
+    ["", "slot;DROP TABLE stored_events", "MixedCase", "s" * 64],
+)
+def test_cdc_slot_name_rejects_invalid_replication_identifiers(slot_name: str) -> None:
+    with pytest.raises(ValueError, match="slot_name"):
+        CdcOutboxWorker(slot_name=slot_name)
+
+
+@pytest.mark.asyncio
+async def test_cdc_slot_name_passes_to_parameterized_slot_creation() -> None:
+    conn = AsyncMock()
+    conn.fetchval = AsyncMock(side_effect=[1, None, "custom_slot_9"])
+
+    worker = CdcOutboxWorker(slot_name="custom_slot_9")
+    await worker.provision_replication_resources(conn=conn)
+
+    conn.fetchval.assert_any_await(
+        "SELECT pg_create_logical_replication_slot($1, 'pgoutput')",
+        "custom_slot_9",
     )
 
 

@@ -63,6 +63,9 @@ repos:
           - "pydantic>=2"
           - "pydantic-settings"
           - "sqlalchemy[mypy]>=2"
+          # CDC publication DDL uses psycopg.sql.Identifier for safe quoting;
+          # mirror the declared runtime driver in this isolated mypy env.
+          - "psycopg[binary]>=3.3.3,<4"
           - "types-redis"
           - "types-passlib"
           - "types-aiofiles"

@@ -3,6 +3,7 @@ import re
 import tomllib
 from pathlib import Path
 
+import yaml
 from packaging.requirements import Requirement
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -130,6 +131,34 @@ def test_httpx2_requirement_stays_on_the_patched_security_floor() -> None:
         None,
     )
     assert httpx_requirement == "httpx2>=2.12.0,<3"
+
+
+def test_precommit_mypy_installs_the_declared_psycopg_driver() -> None:
+    pyproject = _read_toml("pyproject.toml")
+    project = pyproject["project"]
+    assert isinstance(project, dict)
+    dependencies = project["dependencies"]
+    assert isinstance(dependencies, list)
+    production = next(
+        Requirement(value)
+        for value in dependencies
+        if isinstance(value, str) and Requirement(value).name == "psycopg"
+    )
+
+    pre_commit = yaml.safe_load(_read_text(".pre-commit-config.yaml"))
+    mypy_repo = next(
+        repo
+        for repo in pre_commit["repos"]
+        if repo["repo"] == "https://github.com/pre-commit/mirrors-mypy"
+    )
+    mypy_hook = next(hook for hook in mypy_repo["hooks"] if hook["id"] == "mypy")
+    isolated = next(
+        Requirement(value)
+        for value in mypy_hook["additional_dependencies"]
+        if Requirement(value).name == "psycopg"
+    )
+    assert isolated.extras == production.extras
+    assert isolated.specifier == production.specifier
 
 
 def test_renovate_validator_contract_is_pinned_and_blocking() -> None:
