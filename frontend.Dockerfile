@@ -21,7 +21,10 @@ ARG TARGETARCH
 RUN --mount=type=cache,id=university-frontend-wasm-cargo-registry-${TARGETARCH},target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=university-frontend-wasm-cargo-git-${TARGETARCH},target=/usr/local/cargo/git,sharing=locked \
     cargo install wasm-pack --version 0.13.1 --locked
-ADD --checksum=sha256:3dc677006555b355ea2da5e82602065a161d5e83eaefd3f759afa00b96e83212 https://github.com/WebAssembly/binaryen/releases/download/version_117/binaryen-version_117-x86_64-linux.tar.gz /tmp/binaryen.tar.gz
+# Hadolint 2.12 cannot parse ADD --checksum. Verify the pinned download before
+# any extraction or execution; the hash remains mandatory and fail-closed.
+ADD https://github.com/WebAssembly/binaryen/releases/download/version_117/binaryen-version_117-x86_64-linux.tar.gz /tmp/binaryen.tar.gz
+RUN printf '%s  %s\n' '3dc677006555b355ea2da5e82602065a161d5e83eaefd3f759afa00b96e83212' /tmp/binaryen.tar.gz | sha256sum --check --strict # pragma: allowlist secret -- public Binaryen release checksum
 RUN mkdir -p /opt/binaryen \
  && tar -xzf /tmp/binaryen.tar.gz --strip-components=1 -C /opt/binaryen \
  && /opt/binaryen/bin/wasm-opt --version | grep -Fq "version 117" \
@@ -42,9 +45,16 @@ RUN --mount=type=cache,id=university-frontend-wasm-cargo-registry-${TARGETARCH},
 FROM base AS deps
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 COPY frontend/scripts ./scripts/
+COPY frontend/WASM_SOURCE_PROVENANCE.json ./
+COPY frontend/rust-crypto/Cargo.toml frontend/rust-crypto/Cargo.lock ./rust-crypto/
+COPY frontend/rust-crypto/src/lib.rs ./rust-crypto/src/lib.rs
+COPY frontend/wasm-sanitizer/Cargo.toml frontend/wasm-sanitizer/Cargo.lock ./wasm-sanitizer/
+COPY frontend/wasm-sanitizer/src/lib.rs ./wasm-sanitizer/src/lib.rs
 # Copy built WASM packages so local file: dependencies exist and satisfy ensure-wasm preinstall check
 COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
 COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
+# Integrity failure is deterministic: abort before the npm network retry loop.
+RUN node scripts/verify-wasm-artifacts.mjs
 # Retry to tolerate transient ECONNRESET / "network aborted" from the npm
 # registry under bandwidth contention with parallel compose builds (npm does
 # not reliably retry a mid-stream socket reset). The /root/.npm cache mount
@@ -110,9 +120,16 @@ RUN rm -rf dist && npm run build
 FROM base AS prod-deps
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 COPY frontend/scripts ./scripts/
+COPY frontend/WASM_SOURCE_PROVENANCE.json ./
+COPY frontend/rust-crypto/Cargo.toml frontend/rust-crypto/Cargo.lock ./rust-crypto/
+COPY frontend/rust-crypto/src/lib.rs ./rust-crypto/src/lib.rs
+COPY frontend/wasm-sanitizer/Cargo.toml frontend/wasm-sanitizer/Cargo.lock ./wasm-sanitizer/
+COPY frontend/wasm-sanitizer/src/lib.rs ./wasm-sanitizer/src/lib.rs
 # Copy built WASM packages so local file: dependencies exist and satisfy ensure-wasm preinstall check
 COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
 COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
+# Integrity failure is deterministic: abort before the npm network retry loop.
+RUN node scripts/verify-wasm-artifacts.mjs
 # Drop dev-only lifecycle scripts before `npm ci`:
 #   - `prepare` runs `husky ../.husky` (Git hooks setup); husky lives in
 #     devDependencies so it's missing under `--omit=dev` → exit code 127.

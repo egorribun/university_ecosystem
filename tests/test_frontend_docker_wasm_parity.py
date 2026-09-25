@@ -46,10 +46,21 @@ def test_frontend_image_wasm_toolchain_matches_canonical_producer() -> None:
     official_digest = "2775a09d208ff0d7c1f50490c45b62db929e87ba1dcbc3f2132ac71a704bcdd3"  # pragma: allowlist secret - public Docker image digest
     assert f"rust:1.97.1-slim-bookworm@sha256:{official_digest}" in dockerfile
     assert "cargo install wasm-pack --version 0.13.1 --locked" in dockerfile
-    assert (
-        f"ADD --checksum=sha256:{binaryen_checksum.group(1)} "
+    binaryen_add = (
+        "ADD "
         f"https://github.com/WebAssembly/binaryen/releases/download/{binaryen_version.group(1)}/"
-        f"binaryen-{binaryen_version.group(1)}-x86_64-linux.tar.gz" in dockerfile
+        f"binaryen-{binaryen_version.group(1)}-x86_64-linux.tar.gz /tmp/binaryen.tar.gz"
+    )
+    assert binaryen_add in dockerfile
+    assert not re.search(r"(?m)^ADD --checksum", dockerfile)  # Hadolint 2.12 parser.
+    checksum_check = (
+        f"printf '%s  %s\\n' '{binaryen_checksum.group(1)}' /tmp/binaryen.tar.gz"
+        " | sha256sum --check --strict"
+    )
+    assert checksum_check in dockerfile
+    assert dockerfile.index(binaryen_add) < dockerfile.index(checksum_check)
+    assert dockerfile.index(checksum_check) < dockerfile.index(
+        "tar -xzf /tmp/binaryen.tar.gz"
     )
     assert (
         "tar -xzf /tmp/binaryen.tar.gz --strip-components=1 -C /opt/binaryen"
@@ -86,3 +97,26 @@ def test_frontend_image_validates_built_wasm_against_checked_in_source_provenanc
         "await validateArtifacts(frontendRoot, { requireSourceProvenance: true })"
         in build_wasm
     )
+
+
+@pytest.mark.parametrize("stage", ["deps", "prod-deps"])
+def test_frontend_npm_install_validates_source_bound_wasm_before_network_retry(
+    stage: str,
+) -> None:
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+    stage_body = dockerfile.split(f"FROM base AS {stage}\n", 1)[1].split("\nFROM ", 1)[
+        0
+    ]
+    assert "COPY frontend/WASM_SOURCE_PROVENANCE.json ./" in stage_body
+    for package in ("rust-crypto", "wasm-sanitizer"):
+        assert (
+            f"COPY frontend/{package}/Cargo.toml frontend/{package}/Cargo.lock ./{package}/"
+            in stage_body
+        )
+        assert (
+            f"COPY frontend/{package}/src/lib.rs ./{package}/src/lib.rs" in stage_body
+        )
+    assert "RUN node scripts/verify-wasm-artifacts.mjs" in stage_body
+    assert stage_body.index(
+        "RUN node scripts/verify-wasm-artifacts.mjs"
+    ) < stage_body.index("until npm ci")
