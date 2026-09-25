@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Table,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,11 +50,12 @@ chat_participants = Table(
 class Chat(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "chats"
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utc_now,
+        server_default=func.now(),
         onupdate=utc_now,
     )
     # Wave 209 G1 — group-chat identity. chat_type discriminates a 1-on-1 DM
@@ -133,7 +135,7 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         String(CHAT_MAX_MESSAGE_LENGTH), nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
     )
     read_status: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
@@ -284,7 +286,7 @@ class Attachment(Base, UUID7PrimaryKeyMixin):
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     size: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
     )
 
     # Relationships
@@ -326,7 +328,7 @@ class MessageReaction(Base, UUID7PrimaryKeyMixin):
     # matches the POST /reactions Form(max_length=16) cap.
     emoji: Mapped[str] = mapped_column(String(16), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now
+        DateTime(timezone=True), default=utc_now, server_default=func.now()
     )
 
     __table_args__ = (

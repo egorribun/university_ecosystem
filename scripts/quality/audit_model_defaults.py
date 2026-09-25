@@ -637,6 +637,8 @@ def _validate_inventory_state(
 
     for column, item in metadata_by_column.items():
         column_exception = exception_by_column.get(column)
+        if item["classification"] == "python_only" and column_exception is None:
+            raise InventoryError(f"unreviewed python_only default: {column}")
         if column_exception is not None:
             item["exception_kind"] = column_exception["kind"]
             item["exception_owner"] = column_exception["owner"]

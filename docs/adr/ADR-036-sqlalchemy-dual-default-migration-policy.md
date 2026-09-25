@@ -25,7 +25,7 @@ pretend that source metadata alone proves the DDL of every deployed database.
 
 ## Inventory
 
-The current SQLAlchemy metadata (re-measured 2026-09-20 after phase two)
+The historical SQLAlchemy metadata baseline (measured 2026-09-20 after phase two)
 contains 45 tables and 134 effective defaulted columns (computed expressions
 and `default=None` excluded):
 
@@ -39,9 +39,14 @@ server-only. The effective/source difference includes UUIDv7 primary-key
 defaults inherited from the mixin and explicit `default=None` declarations;
 the candidate list must therefore be generated from both metadata and the
 PostgreSQL catalog rather than inferred by subtracting totals. These figures
-supersede the external audit's stale 92-column number and must be regenerated
-after model changes. Phase one intentionally leaves the remaining owner-scoped
-candidates pending their own catalog-backed migrations.
+supersede the external audit's stale 92-column number; they are not the latest
+inventory. After phases three and four, the effective inventory is 94 both /
+40 Python-only / 0 server-only across the same 134 columns. The source
+inventory is 94 both / 14 Python-only / 0 server-only. All forty effective
+Python-only columns are named exceptions: thirty-seven inherited UUIDv7
+identifiers, one signing key and two JSON topic collections. The checked-in
+policy and generated inventory remain the executable source of truth; a
+deployed PostgreSQL catalog has not yet been certified.
 
 ## Decision
 
@@ -67,7 +72,8 @@ downgrade, ORM and direct-write evidence.
    unambiguous values first, reusing already deployed DDL where possible.
 4. **Python-side completion phase.** Add ORM defaults to server-only
    timestamps/scalars, including composite-key and partition columns, using
-   timezone-aware UTC values that match PostgreSQL `CURRENT_TIMESTAMP`.
+   timezone-aware UTC values. Python wall-clock evaluation and PostgreSQL
+   transaction-start evaluation are deliberately not temporally identical.
 5. **Timestamp phase.** Verify clock-skew, timezone and serialization behavior
    on PostgreSQL and SQLite test paths before changing `created_at` or
    `updated_at` declarations.
@@ -127,9 +133,9 @@ vector_chunks.created_at
 ```
 
 Sixteen are `DateTime(timezone=True)` columns whose server default is `now()`;
-they receive `default=lambda: datetime.now(UTC)`, matching both the existing
-dual-declared timestamps in `app/models/auth.py` and PostgreSQL's
-`CURRENT_TIMESTAMP` semantics. `tenants.is_active` receives `default=True` to
+they receive `default=lambda: datetime.now(UTC)`, matching the existing
+dual-declared timestamps in `app/models/auth.py`, but **not** PostgreSQL's
+transaction-start `CURRENT_TIMESTAMP` timing. `tenants.is_active` receives `default=True` to
 mirror its `server_default="true"`.
 
 This phase deliberately emits **no DDL and no migration**. A Python-side
@@ -214,6 +220,48 @@ container built from migrations proves correctness, not safety against
 production data -- the **deployed** catalog preflight this ADR mandates still
 gates acceptance.
 
+### Phase four: reviewed timestamps and native role fallback
+
+Revision `202609250001` covers eleven timestamp columns and `users.role`:
+
+```text
+attachments.created_at              chats.created_at
+chats.updated_at                     dead_letter_jobs.created_at
+dead_letter_jobs.updated_at          failed_outbox_events.failed_at
+grades.created_at                    grades.updated_at
+message_reactions.created_at         messages.created_at
+stored_events.created_at             users.role
+```
+
+Mapped timestamps retain their Python `datetime.now(UTC)` defaults; their new
+PostgreSQL `now()` defaults are **fallbacks only when a direct SQL writer omits
+the field**. PostgreSQL evaluates `now()` at transaction start, whereas the
+Python default is evaluated near the ORM INSERT. A long transaction can
+therefore yield earlier DB-fallback timestamps than later ORM-created rows.
+Consumers that compare chronology or order by these fields must not assume
+the two clock paths are equivalent. A source search found no current direct
+SQL writer in `app/`, `services/`, or `scripts/` that inserts into these tables
+while omitting the timestamp, but that finding does not establish the behavior
+of external writers. `users.role` retains its Python `student` default and
+gains a PostgreSQL native-enum cast fallback. The model declaration uses a
+dialect-neutral string so SQLite's `create_all` remains valid; the migration
+uses the explicit PostgreSQL cast.
+
+The migration serializes its own runs with a transaction advisory lock, sets
+local 10-second lock and 60-second statement timeouts, captures the current
+schema, then takes deterministic schema-qualified exclusive locks on all
+target tables before snapshotting **all** candidate catalog states. Qualified
+NULL scans and DDL cannot be diverted to a `pg_temp` shadow table. It requires the
+expected column, type, `NOT NULL` state, zero historical NULLs, native
+`userrole` enum with a `student` label, and either no default or an exactly
+reviewed equivalent. It rejects drift without rewriting historical rows or
+fabricating dates. A downgrade validates but retains matching defaults:
+preexisting equivalent defaults cannot be distinguished from defaults this
+revision added. Offline SQL generation fails closed. Local disposable
+PostgreSQL tests exercise direct inserts, long-transaction timing, re-upgrade,
+downgrade, conflicting enum defaults and historical NULL rejection; they are
+not a deployed-catalog sign-off.
+
 ## Exceptions
 
 The following values remain intentionally application-only unless a separate
@@ -256,8 +304,9 @@ coverage exclusion.
 
 ### Negative
 
-- Several owner-scoped migrations and a live PostgreSQL preflight remain before
-  every candidate is dual-declared.
+- The four named exception classes remain application-only; any change to
+  that contract needs its own security/schema review. A deployed-catalog
+  preflight remains required before rollout.
 - Source metadata and deployed DDL may differ until the catalog evidence is
   collected, so local SQLite tests cannot certify completion alone.
 - JSON, partition and composite-key fields require additional design review.

@@ -2,7 +2,15 @@ import uuid as _uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, CheckConstraint, DateTime, Integer, String
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    Integer,
+    String,
+    func,
+)
 from sqlalchemy import UUID as SAUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,7 +50,10 @@ class StoredEvent(Base, UUID7PrimaryKeyMixin):
     trace_context: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        index=True,
     )
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True

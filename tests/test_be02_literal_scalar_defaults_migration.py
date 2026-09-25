@@ -107,15 +107,15 @@ def test_migration_revision_is_the_single_head() -> None:
     assert migration.revision == "202609220001"
     assert migration.down_revision == "202609150001"
 
-    # Nothing may be stacked on top of this revision without revisiting the
-    # phase: the inventory policy pins ``migration_head`` to it.
+    # Phase four is the reviewed, single successor.  The policy moves its
+    # ``migration_head`` in the same change, preserving the inventory gate.
     pattern = re.compile(r'^down_revision[^=]*=\s*"202609220001"', re.MULTILINE)
     successors = [
         path.name
         for path in VERSIONS.glob("*.py")
         if pattern.search(path.read_text(encoding="utf-8"))
     ]
-    assert successors == []
+    assert successors == ["202609250001_phase_semantic_defaults.py"]
 
 
 def test_postgresql_regressions_are_collected_by_the_enabled_integration_lane() -> None:

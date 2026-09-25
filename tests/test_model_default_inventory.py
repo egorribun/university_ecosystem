@@ -118,6 +118,20 @@ def test_policy_rejects_unknown_exception_without_postgres(tmp_path: Path) -> No
         build_inventory(REPO_ROOT, policy_path=policy_path)
 
 
+def test_policy_rejects_unreviewed_python_only_default(tmp_path: Path) -> None:
+    policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+    policy["exceptions"] = [
+        item
+        for item in policy["exceptions"]
+        if item["column"] != "active_sessions.signing_key"
+    ]
+    policy_path = tmp_path / "policy.json"
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+
+    with pytest.raises(InventoryError, match="unreviewed python_only"):
+        build_inventory(REPO_ROOT, policy_path=policy_path)
+
+
 def test_migration_head_parser_supports_merge_tuples_and_rejects_dynamic_values(
     tmp_path: Path,
 ) -> None:

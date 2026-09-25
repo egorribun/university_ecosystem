@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -55,11 +56,15 @@ class DeadLetterJob(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
+        server_default=func.now(),
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )

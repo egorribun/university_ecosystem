@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, UUID, DateTime, Integer, String, Text
+from sqlalchemy import JSON, UUID, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -38,6 +38,7 @@ class FailedOutboxEvent(Base, UUID7PrimaryKeyMixin):
     failed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
+        server_default=func.now(),
         nullable=False,
         index=True,
     )

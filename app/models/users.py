@@ -56,6 +56,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         ),
         nullable=False,
         default=UserRole.STUDENT,
+        server_default=UserRole.STUDENT.value,
         index=True,
     )
     group_id: Mapped[uuid.UUID | None] = mapped_column(
