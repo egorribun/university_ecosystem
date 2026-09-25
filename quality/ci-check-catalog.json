@@ -2956,7 +2956,7 @@
         },
         "container-integration-cells": {
           "profile": "nightly",
-          "check_name_template": "Disposable MinIO and SpiceDB cells",
+          "check_name_template": "Disposable SeaweedFS S3 and SpiceDB cells",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.ref == 'refs/heads/main' }}",

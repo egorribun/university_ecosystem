@@ -842,15 +842,19 @@ def test_launcher_seed_commands_are_compose_project_safe() -> None:
 
     assert "university_ecosystem-backend-1" not in launcher
     assert "docker compose -f `$ComposeFile --env-file `$EnvFile cp" not in launcher
+    assert (
+        "$ComposeCommand = \"docker compose $($ComposeArgs -join ' ') "
+        '--env-file .env.docker"'
+    ) in launcher
     expected_commands = (
-        "docker compose -f $ComposeFile --env-file $EnvFile cp "
-        "scripts/seed_demo_data.py backend:/app/seed_demo_data.py",
-        "docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app "
-        "backend python seed_demo_data.py",
-        "docker compose -f $ComposeFile --env-file $EnvFile cp "
-        "scripts/seed_admin_data.py backend:/app/seed_admin_data.py",
-        "docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app "
-        "backend python seed_admin_data.py",
+        'Write-Host "       $ComposeCommand cp '
+        'scripts/seed_demo_data.py backend:/app/seed_demo_data.py"',
+        'Write-Host "       $ComposeCommand exec -T -w /app '
+        'backend python seed_demo_data.py"',
+        'Write-Host "       $ComposeCommand cp '
+        'scripts/seed_admin_data.py backend:/app/seed_admin_data.py"',
+        'Write-Host "       $ComposeCommand exec -T -w /app '
+        'backend python seed_admin_data.py"',
     )
     for command in expected_commands:
         assert launcher.count(command) == 1, (
