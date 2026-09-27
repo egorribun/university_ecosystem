@@ -46,9 +46,10 @@ export function EventAboutEditor({
     setEditing(true)
   }
 
+  // The draft is only rendered while editing, and handleEdit re-seeds it from
+  // the baseline, so cancelling only has to leave edit mode.
   const handleCancel = () => {
     setEditing(false)
-    setDraft(baseline)
   }
 
   const handleSave = async () => {
@@ -90,7 +91,7 @@ export function EventAboutEditor({
           <button
             type="button"
             aria-label={t("events:detail.sections.about.editAria")}
-            className="rounded-full p-1 text-(--text-secondary) transition-colors hover:text-(--primary-main)"
+            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full p-1 text-(--text-secondary) transition-colors hover:text-(--primary-main)"
             onClick={handleEdit}
           >
             <EditIcon size={20} />
@@ -106,6 +107,11 @@ export function EventAboutEditor({
             disabled={saving}
             rows={3}
             className={cn(inputClass, "min-h-(--min-h-textarea) resize-y")}
+            aria-label={
+              language === "en"
+                ? t("events:detail.sections.about.fieldLabel_en")
+                : t("events:detail.sections.about.fieldLabel")
+            }
             placeholder={
               language === "en"
                 ? t("events:detail.sections.about.fieldLabel_en")
