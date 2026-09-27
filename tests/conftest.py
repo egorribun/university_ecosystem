@@ -442,7 +442,7 @@ def spicedb_container() -> dict[str, str]:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def initialize_database_for_tests():
+def initialize_database_for_tests() -> None:
     """
     Initialize the database engine for the test session.
     Must run after environment variables are set.
@@ -542,7 +542,7 @@ async def clear_redis_between_tests(mock_global_redis):
 
 
 @pytest.fixture(autouse=True)
-def seed_random_generators():
+def seed_random_generators() -> None:
     """Ensure random generators are deterministically seeded before each test."""
     import random
 
