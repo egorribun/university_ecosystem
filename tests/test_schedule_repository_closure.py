@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from pydantic import ConfigDict
 
 import app.models as models
 from app.core.cache import schedule_cache
@@ -14,6 +15,7 @@ from app.repositories.base import BaseRepository
 from app.repositories.schedule_repository import (
     GroupRepository,
     ScheduleRepository,
+    _restore_cached,
     get_group_repository,
     get_schedule_repository,
 )
@@ -112,6 +114,27 @@ async def test_cached_dtos_are_passed_through_untouched():
         result = await repo.list_groups()
 
     assert result[0] is dto
+
+
+def test_cached_instances_preserve_identity_with_revalidating_model() -> None:
+    """The generic cache helper must not replace already-created DTOs."""
+
+    class RevalidatingGroupDTO(GroupDTO):
+        model_config = ConfigDict(revalidate_instances="always")
+
+    dto = RevalidatingGroupDTO(id=uuid4(), name="Group Gamma")
+    payload = {"id": uuid4(), "name": "Group Delta"}
+
+    # This real Pydantic policy rebuilds even a valid existing instance.
+    assert RevalidatingGroupDTO.model_validate(dto) is not dto
+
+    result = _restore_cached(RevalidatingGroupDTO, [dto, payload])
+
+    assert result[0] is dto
+    assert result[0].name == "Group Gamma"
+    assert result[1].id == payload["id"]
+    assert result[1].name == "Group Delta"
+    assert isinstance(result[1], RevalidatingGroupDTO)
 
 
 @pytest.mark.asyncio
