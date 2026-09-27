@@ -3555,7 +3555,7 @@ jobs:
           set -euo pipefail
           SOURCE_REVISION="$(git rev-parse HEAD)"
           test "$SOURCE_REVISION" = "$COMMIT_SHA"
-          python -m scripts.mutmut_retry_artifacts create-stats \
+          uv run --frozen --no-sync python -m scripts.mutmut_retry_artifacts create-stats \
             --root . \
             --manifest mutmut-stats-artifact.json \
             --stats mutants/mutmut-stats.json \
