@@ -86,7 +86,11 @@ describe("real localized password analyzer", () => {
   })
 
   it("recognizes a common password through the bundled dictionaries", async () => {
-    const result = await analyzePasswordStrength("password", "en")
+    // A fresh module loads the analyzer inside this test instead of reusing
+    // the one cached by the feedback checks above.
+    vi.resetModules()
+    const { analyzePasswordStrength: freshAnalyzer } = await import("./passwordStrength")
+    const result = await freshAnalyzer("password", "en")
 
     expect(result.score).toBe(0)
     expect(result.sequence.map((match) => match.pattern)).toContain("dictionary")

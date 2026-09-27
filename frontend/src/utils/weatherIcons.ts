@@ -26,31 +26,51 @@ const createMeta = (
 
 const FALLBACK_META = createMeta("Unknown conditions", "unknown", "🌡️", "none")
 
-const CODE_GROUPS: Array<{ codes: number[]; meta: WeatherIconMeta }> = [
-  { codes: [0], meta: createMeta("Clear sky", "clear", "☀️", "glow") },
-  { codes: [1, 2], meta: createMeta("Mostly clear", "mostlyClear", "🌤️", "glow") },
-  { codes: [3], meta: createMeta("Overcast", "cloudy", "☁️", "breeze") },
-  { codes: [45, 48], meta: createMeta("Fog", "fog", "🌫️", "none") },
-  { codes: [51, 53, 55], meta: createMeta("Drizzle", "drizzle", "🌦️", "drizzle") },
-  { codes: [56, 57], meta: createMeta("Freezing drizzle", "freezingDrizzle", "🌧️", "drizzle") },
-  { codes: [61, 63, 65], meta: createMeta("Rain", "rain", "🌧️", "drizzle") },
-  { codes: [66, 67], meta: createMeta("Freezing rain", "freezingRain", "🌧️", "drizzle") },
-  { codes: [71, 73, 75], meta: createMeta("Snowfall", "snow", "🌨️", "snow") },
-  { codes: [77], meta: createMeta("Snow grains", "snowGrains", "❄️", "snow") },
-  { codes: [80, 81, 82], meta: createMeta("Rain showers", "rainShowers", "🌦️", "drizzle") },
-  { codes: [85, 86], meta: createMeta("Snow showers", "snowShowers", "🌨️", "snow") },
-  { codes: [95], meta: createMeta("Thunderstorm", "thunderstorm", "⛈️", "storm") },
-  {
-    codes: [96, 99],
-    meta: createMeta("Thunderstorm with hail", "thunderstormHail", "⛈️", "storm"),
-  },
-]
+const CLEAR = createMeta("Clear sky", "clear", "☀️", "glow")
+const MOSTLY_CLEAR = createMeta("Mostly clear", "mostlyClear", "🌤️", "glow")
+const OVERCAST = createMeta("Overcast", "cloudy", "☁️", "breeze")
+const FOG = createMeta("Fog", "fog", "🌫️", "none")
+const DRIZZLE = createMeta("Drizzle", "drizzle", "🌦️", "drizzle")
+const FREEZING_DRIZZLE = createMeta("Freezing drizzle", "freezingDrizzle", "🌧️", "drizzle")
+const RAIN = createMeta("Rain", "rain", "🌧️", "drizzle")
+const FREEZING_RAIN = createMeta("Freezing rain", "freezingRain", "🌧️", "drizzle")
+const SNOWFALL = createMeta("Snowfall", "snow", "🌨️", "snow")
+const SNOW_GRAINS = createMeta("Snow grains", "snowGrains", "❄️", "snow")
+const RAIN_SHOWERS = createMeta("Rain showers", "rainShowers", "🌦️", "drizzle")
+const SNOW_SHOWERS = createMeta("Snow showers", "snowShowers", "🌨️", "snow")
+const THUNDERSTORM = createMeta("Thunderstorm", "thunderstorm", "⛈️", "storm")
+const THUNDERSTORM_HAIL = createMeta("Thunderstorm with hail", "thunderstormHail", "⛈️", "storm")
 
-const WEATHER_CODE_META: Record<number, WeatherIconMeta> = {}
-for (const { codes, meta } of CODE_GROUPS) {
-  for (const code of codes) {
-    WEATHER_CODE_META[code] = meta
-  }
+// WMO weather interpretation codes used by the provider.
+const WEATHER_CODE_META: Readonly<Record<number, WeatherIconMeta>> = {
+  0: CLEAR,
+  1: MOSTLY_CLEAR,
+  2: MOSTLY_CLEAR,
+  3: OVERCAST,
+  45: FOG,
+  48: FOG,
+  51: DRIZZLE,
+  53: DRIZZLE,
+  55: DRIZZLE,
+  56: FREEZING_DRIZZLE,
+  57: FREEZING_DRIZZLE,
+  61: RAIN,
+  63: RAIN,
+  65: RAIN,
+  66: FREEZING_RAIN,
+  67: FREEZING_RAIN,
+  71: SNOWFALL,
+  73: SNOWFALL,
+  75: SNOWFALL,
+  77: SNOW_GRAINS,
+  80: RAIN_SHOWERS,
+  81: RAIN_SHOWERS,
+  82: RAIN_SHOWERS,
+  85: SNOW_SHOWERS,
+  86: SNOW_SHOWERS,
+  95: THUNDERSTORM,
+  96: THUNDERSTORM_HAIL,
+  99: THUNDERSTORM_HAIL,
 }
 
 // A missing, NaN or infinite code truncates to a key the table never holds.

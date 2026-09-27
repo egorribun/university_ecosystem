@@ -1,3 +1,4 @@
+import type { TargetAndTransition, Transition } from "framer-motion"
 import { describe, expect, it } from "vitest"
 import {
   easeBackOut,
@@ -36,6 +37,25 @@ describe("animation tokens and variants", () => {
     expect(hoverScale.tap).toMatchObject({ scale: 0.97 })
     expect(hoverLift.hover).toMatchObject({ y: -8 })
     expect(hoverLift.tap).toMatchObject({ y: -2 })
+  })
+
+  it("keeps slide entrance tuning independent from the mutable shared spring preset", () => {
+    const transition = (slideUpVariants.visible as TargetAndTransition).transition as Transition
+    const originalPresetDuration = springSoft.duration
+    const originalSlideDuration = transition.duration
+
+    try {
+      springSoft.duration = 0.75
+      expect(transition.duration).toBe(originalSlideDuration)
+
+      transition.duration = 1.25
+      expect(springSoft.duration).toBe(0.75)
+    } finally {
+      if (originalPresetDuration === undefined) delete springSoft.duration
+      else springSoft.duration = originalPresetDuration
+      if (originalSlideDuration === undefined) delete transition.duration
+      else transition.duration = originalSlideDuration
+    }
   })
 
   it("builds stagger and directional reveal variants for every direction", () => {
