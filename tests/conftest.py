@@ -653,7 +653,7 @@ def link_dishka_auth_to_legacy_auth():
 
 
 @pytest.fixture(autouse=True)
-def _reset_settings_cached_properties():
+def _reset_settings_cached_properties() -> Iterator[None]:
     """Pop settings @cached_property caches before each test (defense-in-depth).
 
     pydantic v2 does NOT invalidate a @cached_property (e.g.
@@ -782,7 +782,7 @@ def mock_spicedb_permissions():
 
 
 @pytest.fixture(autouse=True)
-def clear_dependency_overrides():
+def clear_dependency_overrides() -> Iterator[None]:
     """
     Clear ONLY the dependency overrides that were added by the CURRENT test.
     RZ-3: The previous implementation called app.dependency_overrides.clear(),
