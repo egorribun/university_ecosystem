@@ -20,12 +20,21 @@ test.describe("Profile Settings — Wave 11", () => {
     expect(errors).toHaveLength(0)
   })
 
-  test("settings page reaches network-idle without indefinite hanging", async ({ page }) => {
-    // WHY: Prevents regressions where a bad fetch hangs the page forever.
-    await page.goto("/settings")
-    await page.waitForLoadState("networkidle", { timeout: 15_000 })
-    // If we reach here, the page did not hang
-    expect(true).toBe(true)
+  test("anonymous settings navigation reaches a usable login and preserves its destination", async ({
+    page,
+  }) => {
+    const destination = "/settings?tab=2"
+    await page.goto(destination, { waitUntil: "domcontentloaded" })
+
+    await expect(page).toHaveURL(
+      (url) => url.pathname === "/login" && url.searchParams.get("redirect") === destination
+    )
+    const email = page.getByRole("textbox", { name: /^e-?mail$/i })
+    const password = page.getByLabel(/^(пароль|password)$/i)
+    await expect(email).toBeVisible()
+    await expect(email).toBeEnabled()
+    await expect(password).toBeVisible()
+    await expect(password).toBeEnabled()
   })
 
   test("settings page body has rendered content", async ({ page }) => {

@@ -39,18 +39,16 @@ test.describe("News & Admin — Wave 11", () => {
   })
 
   test("admin route is protected (redirects when not authenticated)", async ({ page }) => {
-    // WHY: Admin panel must never be accessible without authentication.
-    // Even if the backend is not running, the client-side route guard must
-    // redirect to login before rendering any admin UI.
-    await page.goto("/admin", { waitUntil: "commit", timeout: 30_000 })
-    const url = page.url()
-    // Either redirected to login, or shows a login form on the same URL
-    const isProtected =
-      url.includes("login") || url.includes("auth") || url === new URL("/", page.url()).href
-    expect(
-      isProtected || url.includes("admin"),
-      `Admin route unexpectedly resolved to: ${url}`
-    ).toBeTruthy()
+    await page.goto("/admin/users", { waitUntil: "domcontentloaded" })
+
+    await expect(page).toHaveURL((url) => url.pathname === "/login")
+    const email = page.getByRole("textbox", { name: /^e-?mail$/i })
+    const password = page.getByLabel(/^(пароль|password)$/i)
+    await expect(email).toBeVisible()
+    await expect(email).toBeEnabled()
+    await expect(password).toBeVisible()
+    await expect(password).toBeEnabled()
+    await expect(page.getByRole("heading", { name: /^(Пользователи|Users)$/i })).not.toBeVisible()
   })
 
   test("news route has no critical console errors", async ({ page }) => {

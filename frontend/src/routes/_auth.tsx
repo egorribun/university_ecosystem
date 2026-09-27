@@ -1,6 +1,29 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router"
+import { useEffect, useRef } from "react"
+import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { evaluateAuthGuard } from "./guards"
+
+function AuthLayout() {
+  const user = useAuthStore((state) => state.user)
+  const loading = useAuthStore((state) => state.loading)
+  const navigate = useNavigate()
+  const destination = useRouterState({ select: (state) => state.location.href })
+  const needsLogin = !loading && !user && import.meta.env.VITE_LHCI !== "true"
+  const redirectedRef = useRef(false)
+
+  useEffect(() => {
+    if (!needsLogin) {
+      redirectedRef.current = false
+    } else if (!redirectedRef.current) {
+      // Pending navigation changes the URL before this layout unmounts.
+      redirectedRef.current = true
+      void navigate({ to: "/login", search: { redirect: destination }, replace: true })
+    }
+  }, [destination, navigate, needsLogin])
+
+  if (needsLogin) return null
+  return <Outlet />
+}
 
 export const Route = createFileRoute("/_auth")({
   // Wave 128 SW2 — flip `ssr: false` → `ssr: true` so /dashboard
@@ -39,5 +62,5 @@ export const Route = createFileRoute("/_auth")({
   // see guards.ts for full rationale + __tests__/guards.test.ts for
   // 11 unit tests covering the decision tree.
   beforeLoad: ({ location }) => evaluateAuthGuard(useAuthStore.getState(), location),
-  component: () => <Outlet />,
+  component: AuthLayout,
 })
