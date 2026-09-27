@@ -136,6 +136,11 @@ test("canonical Node gates retain the real test CSS pipeline contract", async ()
   assert.match(packageJson.scripts["test:wasm"], /scripts\/vitest-css-pipeline\.test\.mjs/u)
 })
 
+test("canonical Node gates exercise the bounded progress monitor contracts", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+  assert.match(packageJson.scripts["test:wasm"], /scripts\/stryker-progress-monitor\.test\.mjs/u)
+})
+
 test("profile bootstrap keeps the LHCI branch compile-time tree-shakeable", async () => {
   const profileSyncSource = await readFile(
     new URL("src/hooks/auth/useProfileSync.ts", frontendRoot),
