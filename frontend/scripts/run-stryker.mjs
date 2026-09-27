@@ -30,6 +30,7 @@ import {
   mutationPatternsFromPolicy,
 } from "./validate-stryker-inventory.mjs"
 import { canonicalInstrumenterConfig } from "./stryker-presentation-ignorer.mjs"
+import { createStrykerProgressContext } from "./stryker-progress-context.mjs"
 
 const execFileAsync = promisify(execFile)
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url))
@@ -2904,6 +2905,38 @@ async function git(args) {
   return stdout.trim()
 }
 
+/**
+ * Progress is an opt-in terminal diagnostic gate, not mutation acceptance proof.
+ * Default execution retains runNode's owned tree and quiescence lifecycle.
+ * Never validate in finally: child/signal/shutdown failures remain primary.
+ */
+export async function runStrykerShardExecution(
+  { args, description, env, timeoutMs, abortSignal, shardTemp, runId, shardId, progressEnabled },
+  { runChild = runNode, createProgressContext = createStrykerProgressContext } = {}
+) {
+  throwIfCancellationRequested(abortSignal)
+  const context = await createProgressContext({
+    enabled: progressEnabled,
+    shardTemp,
+    runId,
+    shardId,
+    parentEnv: env,
+  })
+  throwIfCancellationRequested(abortSignal)
+  const windowsProcessHost = await runChild(
+    args,
+    description,
+    context.childEnv,
+    timeoutMs,
+    abortSignal
+  )
+  // runNode success already proves exit-zero, close and owned-tree quiescence.
+  throwIfCancellationRequested(abortSignal)
+  context.validateSuccessfulExit()
+  throwIfCancellationRequested(abortSignal)
+  return windowsProcessHost
+}
+
 export async function captureEvidence(sourceFiles) {
   const [headSha, status, listedFiles] = await Promise.all([
     git(["rev-parse", "HEAD"]),
@@ -4327,10 +4360,10 @@ async function main() {
           // so place an exact, fail-closed copy beside (never inside) the sandbox.
           await stageStrykerSandboxInputs(shardTemp)
           const executionStartedAt = Date.now()
-          const windowsProcessHost = await runNode(
-            [strykerEntry, "run"],
-            `Stryker ${shard.id}`,
-            {
+          const windowsProcessHost = await runStrykerShardExecution({
+            args: [strykerEntry, "run"],
+            description: `Stryker ${shard.id}`,
+            env: {
               ...buildStrykerChildEnvironment(),
               STRYKER_CONCURRENCY: String(runnerConcurrency),
               STRYKER_TEMP_DIR: shardTemp,
@@ -4338,9 +4371,13 @@ async function main() {
               STRYKER_MUTATE_JSON: JSON.stringify(shard.files),
               STRYKER_SHARD_RUN: "1",
             },
-            shardTimeoutMs,
-            cancellation.signal
-          )
+            timeoutMs: shardTimeoutMs,
+            abortSignal: cancellation.signal,
+            shardTemp,
+            runId,
+            shardId: shard.id,
+            progressEnabled: process.env.STRYKER_PROGRESS_ENABLED,
+          })
           const durationMs = Math.max(1, Date.now() - executionStartedAt)
           const reportText = await readFile(reportPath, "utf8")
           const report = normalizeStrykerRuntimeReport(JSON.parse(reportText))

@@ -16,7 +16,7 @@ const validPath = (value) =>
 
 /**
  * Stryker10 factory-only adapter: importing this module never owns files/locks.
- * Future runner contract (not wired here): STRYKER_PROGRESS_ENABLED="1", plus
+ * Runner-owned context contract: STRYKER_PROGRESS_ENABLED="1", plus
  * STRYKER_PROGRESS_DIRECTORY, STRYKER_PROGRESS_OUTPUT, STRYKER_PROGRESS_RUN_ID,
  * STRYKER_PROGRESS_SHARD_ID. Paths refer to a private existing runner-owned
  * directory and its fresh direct-child output; directory ownership is not

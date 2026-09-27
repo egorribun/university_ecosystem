@@ -21,6 +21,204 @@ const location = { start: { line: 1, column: 21 }, end: { line: 1, column: 25 } 
 const processTreeFixtureSetupTimeoutMs = 5_000
 const execFileAsync = promisify(execFile)
 
+async function progressIntegrationFixture(t) {
+  const { runStrykerShardExecution } = await import(runnerUrl)
+  assert.equal(
+    typeof runStrykerShardExecution,
+    "function",
+    "actual shard execution seam must exist"
+  )
+  const shardTemp = await mkdtemp(path.join(os.tmpdir(), "stryker-integration-"))
+  t.after(() => rm(shardTemp, { recursive: true, force: true }))
+  return {
+    runStrykerShardExecution,
+    shardTemp,
+    options: {
+      args: ["existing-stryker-entry", "run"],
+      description: "Stryker shard-1",
+      env: { NODE_OPTIONS: "--trace-warnings", STRYKER_PROGRESS_OUTPUT: "inherited-location" },
+      timeoutMs: 15_300_000,
+      abortSignal: new AbortController().signal,
+      shardTemp,
+      runId: "run-1",
+      shardId: "shard-1",
+      progressEnabled: "1",
+    },
+  }
+}
+
+test("progress integration uses context then owned-child success then terminal validation before continuation", async (t) => {
+  const f = await progressIntegrationFixture(t)
+  const { createStrykerProgressContext } = await import("./stryker-progress-context.mjs")
+  const { createStrykerProgressReporter } = await import("./stryker-progress-reporter.mjs")
+  const calls = []
+  const hostEvidence = { sourceSha256: "a".repeat(64), binarySha256: "b".repeat(64) }
+  const result = await f.runStrykerShardExecution(f.options, {
+    createProgressContext: async (options) => {
+      calls.push("context")
+      assert.equal(options.enabled, "1")
+      assert.equal(options.runId, "run-1")
+      assert.equal(options.shardId, "shard-1")
+      const context = await createStrykerProgressContext(options)
+      return {
+        childEnv: context.childEnv,
+        validateSuccessfulExit() {
+          calls.push("terminal")
+          return context.validateSuccessfulExit()
+        },
+      }
+    },
+    runChild: async (args, description, env, timeoutMs, signal) => {
+      calls.push("owned-child")
+      assert.equal(args, f.options.args)
+      assert.equal(description, f.options.description)
+      assert.equal(timeoutMs, 15_300_000)
+      assert.equal(signal, f.options.abortSignal)
+      assert.equal(env.NODE_OPTIONS, "--trace-warnings")
+      assert.notEqual(env.STRYKER_PROGRESS_OUTPUT, "inherited-location")
+      const reporter = createStrykerProgressReporter({
+        enabled: true,
+        ownedDirectory: env.STRYKER_PROGRESS_DIRECTORY,
+        outputPath: env.STRYKER_PROGRESS_OUTPUT,
+        runId: env.STRYKER_PROGRESS_RUN_ID,
+        shardId: env.STRYKER_PROGRESS_SHARD_ID,
+      })
+      reporter.onMutationTestingPlanReady({ mutantPlans: [{ mutant: { id: "1" } }] })
+      reporter.onMutantTested({ id: "1", status: "Survived" })
+      reporter.onMutationTestReportReady({}, {})
+      reporter.wrapUp()
+      calls.push("quiesced-success")
+      return hostEvidence
+    },
+  })
+  calls.push("report-and-evidence-continuation")
+  assert.equal(result, hostEvidence)
+  assert.deepEqual(calls, [
+    "context",
+    "owned-child",
+    "quiesced-success",
+    "terminal",
+    "report-and-evidence-continuation",
+  ])
+  assert.equal(f.options.env.STRYKER_PROGRESS_OUTPUT, "inherited-location")
+})
+
+test("progress integration rejects exit-zero missing output before report/evidence continuation", async (t) => {
+  const f = await progressIntegrationFixture(t)
+  let continued = false
+  await assert.rejects(
+    async () => {
+      await f.runStrykerShardExecution(f.options, { runChild: async () => undefined })
+      continued = true
+    },
+    { code: "STRYKER_PROGRESS_INCOMPLETE" }
+  )
+  assert.equal(continued, false)
+})
+
+test("progress integration preserves owned-child failure and false-quiescence rather than validating in finally", async (t) => {
+  const f = await progressIntegrationFixture(t)
+  const failure = Object.assign(new Error("owned child failed first"), { processQuiesced: false })
+  await assert.rejects(
+    () =>
+      f.runStrykerShardExecution(f.options, {
+        runChild: async () => {
+          throw failure
+        },
+      }),
+    (error) => error === failure
+  )
+  assert.equal(failure.processQuiesced, false)
+})
+
+test("disabled progress integration launches the existing child with scrubbed fields and no progress directories", async (t) => {
+  const f = await progressIntegrationFixture(t)
+  let launches = 0
+  const result = await f.runStrykerShardExecution(
+    { ...f.options, progressEnabled: "0" },
+    {
+      runChild: async (_args, _description, env) => {
+        launches++
+        assert.deepEqual(env, { NODE_OPTIONS: "--trace-warnings" })
+        return undefined
+      },
+    }
+  )
+  assert.equal(result, undefined)
+  assert.equal(launches, 1)
+  assert.deepEqual(await (await import("node:fs/promises")).readdir(f.shardTemp), [])
+})
+
+test("cancellation before or after owned-child success preserves its reason and blocks terminal continuation", async (t) => {
+  for (const timing of ["before", "after"]) {
+    const f = await progressIntegrationFixture(t)
+    const controller = new AbortController()
+    const interruption = Object.assign(new Error("interrupted by SIGTERM"), {
+      code: "STRYKER_INTERRUPTED",
+      signalName: "SIGTERM",
+    })
+    let launches = 0
+    if (timing === "before") controller.abort(interruption)
+    await assert.rejects(
+      () =>
+        f.runStrykerShardExecution(
+          { ...f.options, abortSignal: controller.signal },
+          {
+            runChild: async () => {
+              launches++
+              controller.abort(interruption)
+            },
+          }
+        ),
+      (error) => error === interruption
+    )
+    assert.equal(launches, timing === "before" ? 0 : 1)
+  }
+})
+
+test("actual Stryker configuration opts in only exact 1 while preserving release settings", async (t) => {
+  const savedEnabled = process.env.STRYKER_PROGRESS_ENABLED
+  const savedShard = process.env.STRYKER_SHARD_RUN
+  t.after(() => {
+    if (savedEnabled === undefined) delete process.env.STRYKER_PROGRESS_ENABLED
+    else process.env.STRYKER_PROGRESS_ENABLED = savedEnabled
+    if (savedShard === undefined) delete process.env.STRYKER_SHARD_RUN
+    else process.env.STRYKER_SHARD_RUN = savedShard
+  })
+  let iteration = 0
+  for (const shard of ["0", "1"])
+    for (const enabled of [undefined, "0", "true", " 1", "1 ", "1"]) {
+      process.env.STRYKER_SHARD_RUN = shard
+      if (enabled === undefined) delete process.env.STRYKER_PROGRESS_ENABLED
+      else process.env.STRYKER_PROGRESS_ENABLED = enabled
+      const url = new URL("../stryker.config.mjs", import.meta.url)
+      url.searchParams.set("progress-test", String(iteration++))
+      const config = (await import(url)).default
+      assert.deepEqual(config.plugins, [
+        "@stryker-mutator/*",
+        "./scripts/stryker-presentation-ignorer.mjs",
+        ...(enabled === "1" ? ["./scripts/stryker-progress-plugin.mjs"] : []),
+      ])
+      assert.deepEqual(config.reporters, [
+        "clear-text",
+        "progress",
+        ...(shard === "1" ? [] : ["html"]),
+        "json",
+        ...(enabled === "1" ? ["owned-progress"] : []),
+      ])
+      assert.deepEqual(config.thresholds, {
+        high: 100,
+        low: 100,
+        break: shard === "1" ? null : 100,
+      })
+      assert.equal(config.dryRunTimeoutMinutes, 30)
+      assert.equal(config.incremental, false)
+      assert.equal(config.coverageAnalysis, "perTest")
+      assert.deepEqual(config.mutator, { plugins: null, excludedMutations: [] })
+      assert.deepEqual(config.ignorers, [PRESENTATION_IGNORER])
+    }
+})
+
 test("formats Vitest null-prototype errors without weakening native String", async () => {
   const safeStringModuleUrl = new URL("./stryker-safe-error-string.mjs", import.meta.url)
   const { formatSerializedError, safeString } = await import(safeStringModuleUrl)

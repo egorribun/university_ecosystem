@@ -146,6 +146,16 @@ test("canonical Node gates exercise the Stryker factory adapter contracts", asyn
   assert.match(packageJson.scripts["test:wasm"], /scripts\/stryker-progress-plugin\.test\.mjs/u)
 })
 
+test("canonical Node gates execute the runner-owned progress context contracts exactly once", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+  const argumentsList = packageJson.scripts["test:wasm"].split(/\s+/u)
+  assert.equal(
+    argumentsList.filter((argument) => argument === "scripts/stryker-progress-context.test.mjs")
+      .length,
+    1
+  )
+})
+
 test("profile bootstrap keeps the LHCI branch compile-time tree-shakeable", async () => {
   const profileSyncSource = await readFile(
     new URL("src/hooks/auth/useProfileSync.ts", frontendRoot),
