@@ -364,7 +364,9 @@ pytest_plugins = [
 
 
 @compiles(JSONB, "sqlite")
-def _compile_jsonb_sqlite(_element, _compiler, **_kwargs):
+def _compile_jsonb_sqlite(
+    _element: object, _compiler: object, **_kwargs: object
+) -> str:
     return "TEXT"
 
 
