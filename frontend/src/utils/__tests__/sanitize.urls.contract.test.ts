@@ -44,7 +44,7 @@ describe("sanitizeTelegramUrl", () => {
     ["  https://telegram.me/university  ", "https://telegram.me/university"],
     ["@university", "https://t.me/university"],
     ["@@university_2026", "https://t.me/university_2026"],
-  ])("accepts %j", (raw, expected) => {
+  ])("accepts %j [case %#]", (raw, expected) => {
     expect(sanitizeTelegramUrl(raw)).toBe(expected)
   })
 

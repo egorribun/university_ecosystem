@@ -159,7 +159,7 @@ describe("ReleaseAnnouncementCard", () => {
     [400, { detail: "Bad version" }, "Bad version"],
     [500, { detail: { error: "boom" } }, "Failed to announce the release."],
     [500, { unexpected: true }, "Failed to announce the release."],
-  ])("maps a %s response to a readable error", async (status, body, message) => {
+  ])("maps a %s response to a readable error [case %#]", async (status, body, message) => {
     captureRelease(() => HttpResponse.json(body, { status }))
     const user = renderCard()
 

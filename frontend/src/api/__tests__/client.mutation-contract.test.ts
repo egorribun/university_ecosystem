@@ -17,7 +17,7 @@ describe("api client defensive helper contracts", () => {
     [undefined, false],
     ["AbortError", false],
     [42, false],
-  ])("classifies %j as abort=%s", (error, expected) => {
+  ])("classifies %j as abort=%s [case %#]", (error, expected) => {
     expect(isAbortError(error)).toBe(expected)
   })
 

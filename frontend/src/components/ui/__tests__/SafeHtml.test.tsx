@@ -41,7 +41,7 @@ describe("SafeHtml", () => {
   })
 
   it.each(["<script>alert(1)</script><p>Safe text</p>", '<p onclick="boom()">Safe text</p>'])(
-    "fails closed when sanitized output still contains an injection pattern",
+    "fails closed when sanitized output still contains an injection pattern [case %#]",
     (maliciousOutput) => {
       sanitize.mockReturnValue(maliciousOutput)
 

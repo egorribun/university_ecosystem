@@ -35,7 +35,7 @@ const lazyRoutes = [
 ] as const
 
 describe("lazy route components", () => {
-  it.each(lazyRoutes)("loads %s", async (testId, route) => {
+  it.each(lazyRoutes)("loads %s [case %#]", async (testId, route) => {
     const Component = route.options.component!
 
     const view = render(

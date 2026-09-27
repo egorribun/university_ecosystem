@@ -276,7 +276,7 @@ describe("useActivitySummaryQuery", () => {
     Object.assign(new Error("aborted"), { name: "AbortError" }),
     Object.assign(new Error("cancelled"), { name: "CanceledError" }),
     Object.assign(new Error("cancelled"), { code: "ERR_CANCELED" }),
-  ])("rethrows every cancellation marker without fallback fan-out", async (canceled) => {
+  ])("rethrows every cancellation marker without fallback fan-out [case %#]", async (canceled) => {
     apiMock.get.mockRejectedValueOnce(canceled)
     const options = activitySummaryOptions({ period: "30d", language: "en" })
 

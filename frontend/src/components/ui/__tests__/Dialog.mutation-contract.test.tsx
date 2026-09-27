@@ -171,7 +171,10 @@ describe("Dialog mutation contracts", () => {
     [true, document.createElement("div"), true],
     [true, null, false],
     [false, document.createElement("div"), false],
-  ] as const)("keeps the portal renderability contract for open=%s", (open, node, expected) => {
-    expect(shouldRenderDialog(open, node)).toBe(expected)
-  })
+  ] as const)(
+    "keeps the portal renderability contract for open=%s [case %#]",
+    (open, node, expected) => {
+      expect(shouldRenderDialog(open, node)).toBe(expected)
+    }
+  )
 })
