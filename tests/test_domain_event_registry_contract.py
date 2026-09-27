@@ -13,7 +13,9 @@ import ast
 import os
 import re
 import uuid
+from copy import deepcopy
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -148,6 +150,59 @@ def test_dead_letter_audit_events_rebuild_their_batch_count(event_type: str) -> 
     )
     assert event_cls.from_dict({}).batch_count == 0
     assert event_cls.EVENT_TYPE == event_type
+
+
+@pytest.mark.parametrize("include_schema", [False, True])
+@pytest.mark.parametrize("populated", [False, True])
+def test_schedule_deletion_consumes_only_schema_metadata(
+    include_schema: bool, populated: bool
+) -> None:
+    from app.core.events import ScheduleDeleted
+
+    payload: dict[str, Any] = {"unexpected": {"retained": [1, 2]}}
+    if populated:
+        payload.update(
+            schedule_id="s-1",
+            subject="Physics",
+            group_id="g-1",
+            deleted=False,
+            previous_state={"room": "101"},
+        )
+    expected_remaining = deepcopy(payload)
+    if include_schema:
+        payload["_schema_version"] = 2
+
+    event = ScheduleDeleted.from_dict(payload)
+
+    assert payload == expected_remaining
+    assert (event.schedule_id, event.subject, event.group_id, event.deleted) == (
+        ("s-1", "Physics", "g-1", False) if populated else (None, "", None, True)
+    )
+    assert event.previous_state == ({"room": "101"} if populated else {})
+    assert not hasattr(event, "unexpected")
+    assert not hasattr(event, "_schema_version")
+
+
+@pytest.mark.parametrize("include_schema", [False, True])
+@pytest.mark.parametrize("populated", [False, True])
+def test_dead_letter_retry_consumes_only_schema_metadata(
+    include_schema: bool, populated: bool
+) -> None:
+    from app.core.events import NotificationDeadLetterRetried
+
+    payload: dict[str, Any] = {"unexpected": {"retained": [1, 2]}}
+    if populated:
+        payload["batch_count"] = "3"
+    expected_remaining = deepcopy(payload)
+    if include_schema:
+        payload["_schema_version"] = 2
+
+    event = NotificationDeadLetterRetried.from_dict(payload)
+
+    assert payload == expected_remaining
+    assert event.batch_count == (3 if populated else 0)
+    assert not hasattr(event, "unexpected")
+    assert not hasattr(event, "_schema_version")
 
 
 def test_scan_ignores_inactive_mutmut_variants(monkeypatch: pytest.MonkeyPatch) -> None:
