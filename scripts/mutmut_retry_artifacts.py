@@ -17,6 +17,7 @@ import sys
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib import metadata as importlib_metadata
 from pathlib import Path, PurePosixPath
 from typing import Any, NoReturn, cast
 
@@ -387,11 +388,17 @@ def create_stats_sidecar(
     parent = _relative(candidate_parent, "stats candidate parent")
     canonical = f"{parent}/{_physical(logical_shard, run_attempt)}/{STATS_PATH}"
     try:
+        producer_version = importlib_metadata.version("mutmut")
+    except importlib_metadata.PackageNotFoundError as error:
+        raise RetryArtifactError(
+            "installed mutmut producer metadata is unavailable"
+        ) from error
+    try:
         return write_metadata(
             repository_root=repository_root,
             output_path=Path(STATS_SIDECAR_NAME),
             reports=((_STATS_COMPONENT, _STATS_FORMAT, STATS_SOURCE_PATH, canonical),),
-            tool_versions={"mutmut": "3.7.0"},
+            tool_versions={"mutmut": producer_version},
             expected_sha=commit_sha,
             identity_provider="github-actions",
             repository=context["repository"],

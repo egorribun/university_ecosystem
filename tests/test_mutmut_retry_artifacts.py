@@ -6,6 +6,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 
 import pytest
@@ -151,6 +152,7 @@ def test_stats_sidecar_uses_generic_provenance_integrity_envelope(
     )
 
     assert sidecar["schema_version"] == 2
+    assert sidecar["tool_versions"] == {"mutmut": importlib_metadata.version("mutmut")}
     assert sidecar["producer"]["identity_provider"] == "github-actions"
     assert sidecar["producer"]["artifact"] == "mutmut-stats-shard-0"
     assert sidecar["reports"] == [
@@ -165,6 +167,59 @@ def test_stats_sidecar_uses_generic_provenance_integrity_envelope(
             "byte_size": sidecar["reports"][0]["byte_size"],
         }
     ]
+
+
+def test_stats_sidecar_records_installed_producer_version(repository, monkeypatch):
+    requested = []
+
+    def installed_version(distribution):
+        requested.append(distribution)
+        return "3.8.1"
+
+    monkeypatch.setattr(importlib_metadata, "version", installed_version)
+    candidate = _write_stats_candidate(repository, shard=0, run_attempt="1")
+    sidecar = json.loads(
+        (candidate / retry_artifacts.STATS_SIDECAR_NAME).read_text(encoding="utf-8")
+    )
+    assert requested == ["mutmut"]
+    assert sidecar["tool_versions"] == {"mutmut": "3.8.1"}
+
+
+@pytest.mark.parametrize("version", ["", "unknown", "latest", "unavailable"])
+def test_stats_sidecar_rejects_unusable_producer_version(
+    repository, monkeypatch, version
+):
+    monkeypatch.setattr(importlib_metadata, "version", lambda distribution: version)
+    with pytest.raises(retry_artifacts.RetryArtifactError):
+        _write_stats_candidate(repository, shard=0, run_attempt="1")
+    assert not (repository / retry_artifacts.STATS_SIDECAR_NAME).exists()
+    assert not (repository / retry_artifacts.STATS_CANDIDATE_DIRECTORY).exists()
+
+
+def test_stats_sidecar_rejects_missing_producer_metadata(repository, monkeypatch):
+    missing = importlib_metadata.PackageNotFoundError("mutmut")
+
+    def installed_version(distribution):
+        raise missing
+
+    monkeypatch.setattr(importlib_metadata, "version", installed_version)
+    with pytest.raises(retry_artifacts.RetryArtifactError) as raised:
+        _write_stats_candidate(repository, shard=0, run_attempt="1")
+    assert raised.value.__cause__ is missing
+    assert not (repository / retry_artifacts.STATS_SIDECAR_NAME).exists()
+
+
+def test_stats_sidecar_preserves_metadata_read_failure(repository, monkeypatch):
+    failure = OSError("distribution metadata unreadable")
+
+    def installed_version(distribution):
+        raise failure
+
+    monkeypatch.setattr(importlib_metadata, "version", installed_version)
+    with pytest.raises(OSError) as raised:
+        _write_stats_candidate(repository, shard=0, run_attempt="1")
+    assert raised.value is failure
+    assert not (repository / retry_artifacts.STATS_SIDECAR_NAME).exists()
 
 
 def test_retry_provenance_rejects_a_root_with_a_linked_ancestor(
