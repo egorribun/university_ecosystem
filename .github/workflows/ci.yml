@@ -4774,6 +4774,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: [backend-tests]
+    env:
+      UV_PYTHON: "3.14"
     services:
       postgres:
         image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
@@ -4803,9 +4805,15 @@ jobs:
         ports: ["8474:8474", "5433:5433", "6380:6380", "4223:4223", "9003:9003"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: "3.14" }
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
       - name: Install dependencies
         run: uv sync --frozen
+      - name: Verify Python runtime
+        run: >-
+          uv run --frozen --no-sync python -c
+          'import sys; print(sys.version); assert sys.version_info[:2] == (3, 14), sys.version'
       - name: Configure ToxiProxy proxies
         run: |
           curl --fail --retry 30 --retry-delay 1 http://localhost:9000/status
