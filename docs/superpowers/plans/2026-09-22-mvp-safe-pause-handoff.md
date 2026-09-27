@@ -10,7 +10,87 @@
 
 ## 0. Снимок 2026-09-25: полное текущее состояние
 
-### 0.00000 Безопасная пауза 2026-09-26 (лимит сессии) — САМЫЙ СВЕЖИЙ СНИМОК
+### 0.000000 Безопасная пауза 2026-09-27 — САМЫЙ СВЕЖИЙ И АВТОРИТЕТНЫЙ СНИМОК
+
+Всё ниже §0.000000 — история. Активный план: `C:\Users\egorribun\.claude\plans\rustling-dazzling-stearns.md` (фазы 0–13). Решения пользователя: память `mvp-decisions-2026-09-25`, `mvp-scope-decisions-2026-09-23`, `standing-permissions-2026-09-24`, `frontend-stryker-hybrid-decision`, `windows-build-rewrites-wasm`.
+
+#### 1. Идентичность и сохранность (проверено при паузе)
+
+| Объект | Состояние |
+| --- | --- |
+| Ветка / PR | `egorribun`, PR #1266 → `main` (OPEN). Merge в `main` — только с разрешения пользователя |
+| HEAD = `origin/egorribun` | `29987745ece30ff72cf9d171ae0707c7b07bb845`; локально незапушенных коммитов нет |
+| Рабочее дерево | чистое, кроме пользовательского untracked `docs/audits/AUDIT_PLATFORM_FULL.md` (SHA256 `902f81d4b3a904d074ed32e3e7c3a9157f92e1e45e3dc7fca646f05e8ed2887b`, не трогать и не стейджить) |
+| CI на HEAD | run **36313157002** запущен при паузе (статус `pending`) — первым делом проверить итог |
+| Процессы | все агенты остановлены; mutant_check/mm_loop/циклы агентов убиты; `artifacts/quality/mutation-tools/mutant-backups/` пуст (последние бэкапы восстановлены: `ue-mm2/app/services/storage.py`, `ue-mut-A/frontend/src/utils/animations.ts`, `ue-mut-C/.../ActivityHeatmap.tsx`) |
+| Docker | контейнеров нет; том `university_ecosystem_minio-data` сохранён |
+| Ресурсы | WSL поднят пользователем: Docker VM 11.7 GiB / 12 CPU / swap 8 GB |
+| Worktrees | `../ue-mut-A` и `../ue-mut-B` на `d576fd208`, `../ue-mut-C` и `../ue-mm2` на `4cbe00c9f` (все detached), `../ue-e2e`, `../ue-mm` — старые. В `ue-mut-A/B/C` `frontend/node_modules` — **NTFS-junction** на основной repo: никогда не удалять рекурсивно (`cmd /c rmdir <path>\frontend\node_modules` сначала, потом `git worktree remove`). `ue-mm2` junction не имеет |
+
+#### 2. Коммиты с прошлой паузы (все опубликованы)
+
+`590b3c57c` Go-бамп (#1292; `go.sum` через `go mod tidy`, удалён неиспользуемый testcontainers MinIO) · `4564c11b6` Actions-бамп (#1291; новые SHA применены во всех workflow и в контракте WASM-тулчейна; 906 контрактов) · `2d429678f` pip-бамп (#1290; strawberry 0.327.7, mutmut 3.8.0, libcst 1.9.0; 523 теста; `mm_loop` работает с mutmut 3.8) · `713e5b256` heartbeat watchdog O9 (`scripts/quality/heartbeat_watchdog.py`, 20/20 на Linux в `python:3.14-slim-bookworm`; **ещё не подключён к CI**) · `4cbe00c9f` handoff · `29987745e` backend-мутанты (см. §4).
+
+Dependabot PR #1289–#1292 сами не тронуты (закрытие — с разрешения). **npm-бамп #1289 не перенесён**: делать, когда нет агентов (общий `node_modules` через junction): `git fetch origin pull/1289/head:refs/remotes/dependabot/1289`, применить `package.json`/`package-lock.json`, `npm ci`, полный frontend gate, восстановить WASM/provenance (память `windows-build-rewrites-wasm`).
+
+#### 3. Полный мутационный инвентарь (CI run 36194161259 на `43279cce8`, все 64 шарда Stryker + 128 групп mutmut)
+
+- **Frontend Stryker:** `artifacts/quality/mutation-tools/inventories/ci-36194161259-full.json` — 35 568 Killed, 1 306 Ignored (ADR-040), **6 083 проблемных**: 5 958 Survived, 67 Timeout, 46 RuntimeError, 12 NoCoverage в **295 файлах**. Мутаторы: StringLiteral 1414 (i18n-ключи 348, ключи/массивы 145, сравнения/enum 128, className лишь 25), ConditionalExpression 1294, ArrayDeclaration 583 (массивы зависимостей хуков → `[]`), ObjectLiteral 483, LogicalOperator 375, BooleanLiteral 331, CallExpression 313, BlockStatement 260, EqualityOperator 247, OptionalChaining 245, прочие <210. Это **поведенческий** долг — закрывать тестами/эквивалентными упрощениями, не расширением ADR-040 (оно требует нового ADR и решения пользователя).
+- **Очереди для агентов** (непересекающиеся, `[file, bad, nonSurvivor]`, приоритет Timeout/RuntimeError/NoCoverage): `inventories/queue-A.json` (hooks, push, sw, stores, utils, api, contexts, db, app, i18n, notifications, config, types и корневые `src/*.ts(x)` — 108 файлов / 2 378), `queue-B.json` (components, pages — 116 / 2 220), `queue-C.json` (features, routes и прочее — 71 / 1 485). Пересобрать очереди после новых коммитов по свежему CI.
+- **Backend mutmut:** `inventories/mutmut-36194161259.json` — **143 Survived + 1 Timeout** в 12 модулях: storage 44, chat.attachment_service 39, core.events 15, event_handlers 11, auth.mfa.email_otp 11, workers.cdc_outbox 9, image_proxy 7, notifications.dedupe 4, chat.notification_service 1, workers.outbox 1, system_release 1, schedule_changes 1. Логи всех 75 упавших групп: `artifacts/ci-logs/mutmut-36194161259/*.log`; подтверждённый статус разбирать по блокам `=== confirming <mutant> ===` → `Mutant results` (первичные «🙁» в логе включают убитых при подтверждении).
+
+#### 4. Backend: что закрыто в `29987745e` и что осталось
+
+Закрыто тестами/упрощениями (поведенческие тесты прошли: 1 827 связанных тестов; **мутационная перепроверка локально НЕ завершена** — её подтвердит CI run 36313157002, либо `mm_loop` в `../ue-mm2`):
+
+- `storage`: общий `_has_control_chars` (границы 0x1f/0x20/0x7f/0x80), точные сообщения, `max_bytes=0`, отсутствие лишних `read` после лимита, таймаут `probe_bucket`, лог-события; убраны эквивалентные `rstrip("/")`, `cast(bytes, …)`, дефолт `.get("Code", "")`. Бывший **Timeout** `read_file__mutmut_30` (`<` → `<=`) порождали фейковые потоки, отдававшие данные на `read(0)`; теперь фейки реалистичны (`read(0)` → `b""`) в `tests/test_s3_storage_read_errors.py` и `tests/test_storage_key_boundary_contracts.py`.
+- `chat.attachment_service`: константы `_CLEANUP_FAILED/_COPY_FAILED`, границы размера (0 и ровно max), `locale`/аргументы `process_upload`, чужой URL при реальном `StaticFSStorage`, подсчёт отказов по пачкам (флаг `failed` заменён счётчиком), удалено мёртвое `len(data) > max_size`. Тесты: `tests/test_chat_attachment_copy_contracts.py`.
+- `core.events`: сообщения вынесены в константы, `deferred = any(...)`; тесты `tests/test_event_bus_durable_contracts.py` (включая форму SQL и итоги обработчика очистки вложений).
+- `auth.mfa.email_otp.SmtpMfaEmailSender.send`: флаг `delivered` заменён на `except BaseException … abort; raise` (`# RZ-22-01-JUSTIFIED: cleanup then re-raise`); тесты `tests/test_mfa_smtp_sender_contracts.py`.
+- `notifications.dedupe`: SQL в модульной константе `_DEDUPE_LOCK`; ключи блокировки для `system_release`, `schedule_changes`, `ChatNotificationService` и CDC-сообщения/лог — `tests/test_notification_dedupe_lock_contracts.py`.
+
+**Осталось (backend):**
+
+1. `services.image_proxy` (7): попытка удалить `.lstrip("/")` в `_backend_source_path` **сломала 4 теста и откатана** — `_sanitize_path_input` возвращает путь с ведущим `/`, мутант `lstrip("XX/XX")` не эквивалентен; нужен тест с путём с ведущим `/`. Плюс тесты на `redis_client.delete(redis_key)` и точное лог-сообщение «Redis stale image eviction failed: %s» при ошибке Redis.
+2. `workers.outbox` `deferred_count += 1` → `= 1`: тест «3 события, 2 отложены, 1 успешен → `process_batch()` возвращает 1» написан, но возвращал 0 — причина не найдена (возможно, `batch_size`/выборка событий или порядок); разобраться по образцу `tests/test_outbox_worker.py::test_durable_outbox_deferral_preserves_retry_budget_and_pending_event`, тест удалён до исправления.
+3. Мутационно подтвердить все модули §4 (CI или `mm_loop`): `cd ../ue-mm2`, синхронизировать с HEAD (`git stash -u` локальных копий или сравнить `cmp`), `PYTHONIOENCODING=utf-8 ../university_ecosystem/.venv/Scripts/python.exe ../university_ecosystem/artifacts/quality/mutation-tools/mm_loop.py --file app/services/storage.py --tests "<файлы тестов>" <имена мутантов>`. Прогон `--all` по `storage.py` занимает часы (мутанты `get_storage_backend` убиваются лишь в конце набора, ~60 s каждый) — выбирать имена функций регуляркой через `mm_check.mutated_code`.
+4. Два теста `tests/test_mfa_smtp_cancellation_contract.py` с реальными сокетами (`drip_fed`, `lost_data_ack`) **падают на этом Windows-хосте и до, и после изменений** (вероятно `networkingMode=mirrored` в `.wslconfig`); в Linux CI проходят — не считать регрессией, подтвердить по CI.
+
+#### 5. Frontend фаза 4: частичная работа агентов (НЕ отревьюена, НЕ перенесена)
+
+Бэкапы: `artifacts/wip/phase4-2026-09-27/ue-mut-{A,B,C}.patch`, `…untracked.txt`, `untracked-{A,B}/…`. Более ранние бэкапы: `artifacts/wip/phase4/`.
+
+- **A (`../ue-mut-A`, база `d576fd208`)**: 24 файла + 4 новых — утилиты (`a11y`, `animations`, `browser`, `cache`, `cryptoWorker`, `media`, `passwordStrength`, `performance`, `sanitize`, `slugify`, `spotify`, `weatherIcons`, `bootstrapFallback` тест, `trustedTypes` тест, `app/pwaEvents` тест), затем **крупный рефакторинг `hooks/useChatWebSocket.ts` (−369 строк) с выносом `hooks/chatReplayCheckpoints.ts`** и новыми тестами `chatReplayCheckpoints.test.ts`, `useChatWebSocket.transport.test.tsx`; `hooks/useNowPlaying.ts` + `useNowPlaying.polling.test.tsx`; начатые упрощения `hooks/auth/useLoginFlow.ts` (агент был прерван «перед применением упрощений useLoginFlow» — проверить целостность!).
+- **B (`../ue-mut-B`, база `d576fd208`)**: 16 файлов — `components/ui` (`Card`, `GlassCard`, `SafeHtml`, `ScheduleCardSkeleton`, `Skeleton`, `Spotlight`, `TextField`, `Textarea`) и тесты, `components/events/{EventAboutEditor,EventFileManager}.tsx`, новый `tests/helpers/windowErrors.ts` (назначение уточнить при ревью). `frontend/src/__scratch_b/` удалить, если остался. Badge-литералы — решение: рефакторинг в зону ADR-040 с идентичным выводом или вопрос пользователю, не пиннинг CSS.
+- **C (`../ue-mut-C`, база `4cbe00c9f`)**: `features/activity/components/ActivityHeatmap.tsx` + его тест (238 строк).
+
+**Как принимать:** для каждого файла: прочитать дифф; убедиться, что упрощения сохраняют поведение; `fresh_mutants.mjs` + `mutant_check_fast.mjs` на весь файл (N/N, 0 TIMEOUT); перенести в основное дерево (`git -C ../ue-mut-X diff -- <files> | git apply`), `npx tsc --noEmit -p .`, eslint, prettier, полный `npx vitest run`, коммиты `test(quality): …`/`refactor(frontend): …` пакетами. Дифф A по `useChatWebSocket.ts` — отдельный тщательный ревью (WebSocket-транспорт, реконнект, replay), при сомнении — `code-review`/`security-review` скиллы.
+
+#### 6. Инструменты и выученные правила
+
+- `artifacts/quality/mutation-tools/mutant_check_fast.mjs` теперь с `bail: 1` (как Stryker): без него медленные падения выглядели TIMEOUT. Флаги: `--timeout 30000 --inventory <json> --file <src> --tests "<files>" [--only ids]`. `fresh_mutants.mjs --out <json> <src>` (НЕ передавать `--help` — пишет файл `--help`).
+- Фильтр мутантов по изменённым строкам: `git diff -U0 HEAD -- <file>` → диапазоны `+start,count` → отбор по `location.start.line+1`. Пути в инвентарях — в регистре git (`src/pages/settings/...`, не `Settings`).
+- Зависание под фейковыми таймерами = Stryker Timeout (запрещён). В быстрых тест-файлах ставить `vi.setConfig({ testTimeout: 2_000 })` (пример: `frontend/src/push/__tests__/subscribe.test.ts`), чтобы мутант падал как Killed; реалистичные фейки (read(0) → пусто).
+- Агенты: максимум 3, каждый в своём worktree; запрещать фоновые циклы проверок (агент B запускал `run-rest.sh`, который пережил остановку агента и запускал новые проверки — при паузе убивать процессы `mutant_check|mm_loop|run-rest|phase4-` и восстанавливать `mutant-backups/`).
+- Коммит только когда никто не пишет в основное дерево (pre-commit прячет unstaged). После detect-secrets — `git add .secrets.baseline`. Push отменяет текущий CI (`cancel-in-progress: true`) — пушить после получения нужного инвентаря.
+- detect-secrets срабатывает на имена переменных с `secret` — называть `privatePushEndpoint` и т.п.
+- Ruff S608 — не собирать SQL f-строкой в тестах (использовать `sa.insert(sa.table(...))`); S603 для `subprocess` — `# noqa: S603 - <причина>`.
+
+#### 7. Прочие открытые пункты плана
+
+- **O4:** обязательные контексты `main` (92, `artifacts/quality/o4-required.txt`) сверить с реально производимыми check-runs на зелёном SHA; на `43279cce8` не хватало агрегатов (прогон был незавершён).
+- **O9:** подключить `heartbeat_watchdog.py` к долгим CI-стадиям (mutation shards) + контракт-тест workflow + запись в catalog.
+- **Фазы 6–13** по плану: live-E2E лейн против Docker Core, спеки Stage 1–8, zero-warning build, CSpell RU (dev-only словарь), WASM Linux-parity, security-сканы, O1–O8, Docker Core/full, SeaweedFS cutover с сохранением данных, kind (TLS/Kyverno/observability/rollback), exact-six образы, финальный SHA-аудит, merge (с разрешения).
+
+#### 8. Порядок возобновления
+
+1. `git status --short --branch`, `git log origin/egorribun..HEAD`, SHA аудита, `ls artifacts/quality/mutation-tools/mutant-backups`, `docker ps -a`, процессы `mutant_check|mm_loop`.
+2. Итог CI run 36313157002: разобрать падения; скачать **новый** полный инвентарь Stryker/mutmut (всё в `artifacts/ci-artifacts/<run>/`), пересобрать очереди A/B/C.
+3. Backend остатки §4 (image_proxy, outbox) → мутационная проверка → коммит.
+4. Ревью и перенос частичной работы агентов §5 → коммиты → запуск агентов по очередям пакетами (~8 файлов), ревью каждого пакета.
+5. После снижения фронтенд-долга: npm-бамп, O4/O9, затем фазы 6–13.
+
+### 0.00000 Безопасная пауза 2026-09-26 (лимит сессии) — история
 
 План прежний: `C:\Users\egorribun\.claude\plans\rustling-dazzling-stearns.md`. Лимит WSL поднят пользователем (Docker VM 11.7 GiB / 12 CPU). §0.0000 ниже — предыдущая пауза, теперь история.
 
