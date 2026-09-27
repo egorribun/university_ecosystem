@@ -86,6 +86,7 @@ def test_default_checks_cover_frontend_backend_harness_and_focused_contracts() -
     for ledger in (
         "test_route_dependency_inventory.py",
         "test_quality_configuration.py",
+        "test_quality_workflow_contract.py",
         "test_domain_event_registry_contract.py",
         "test_mfa_openapi_artifacts_contract.py",
     ):

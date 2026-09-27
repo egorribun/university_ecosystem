@@ -38,6 +38,7 @@ _FOCUSED_TESTS = (
     # Fast repository ledgers that a hosted run otherwise catches first.
     "tests/test_route_dependency_inventory.py",
     "tests/test_quality_configuration.py",
+    "tests/test_quality_workflow_contract.py",
     "tests/test_domain_event_registry_contract.py",
     "tests/test_mfa_openapi_artifacts_contract.py",
 )
