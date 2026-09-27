@@ -83,7 +83,10 @@ def test_development_internal_hmac_secret_keeps_compatibility_with_short_values(
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", "development")
 
-    settings = SecuritySettings(internal_hmac_secret="dev-secret")
+    # This contract targets the internal HMAC boundary, not the separate JWT
+    # development-algorithm warning. Use the recommended signing algorithm so
+    # a permissive HMAC fixture does not introduce an unrelated warning.
+    settings = SecuritySettings(algorithm="RS256", internal_hmac_secret="dev-secret")
 
     assert settings.internal_hmac_secret == "dev-secret"  # pragma: allowlist secret
 
