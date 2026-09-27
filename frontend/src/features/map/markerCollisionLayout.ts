@@ -320,14 +320,11 @@ function layoutOffsets(
   for (const marker of markers) {
     const cameraPoints = getCameraPoints(marker)
     let offset: MapMarkerOffset | undefined
-    let attempts = 0
     for (const candidate of candidates) {
-      attempts += 1
       if (isAvailable(marker, cameraPoints, candidate, placedMarkers, spatialIndexes)) {
         offset = candidate
         break
       }
-      if (attempts >= candidateAttemptLimit) break
     }
     offset ??= fallbackOffset(marker, cameraPoints, rightmostEdges)
 
