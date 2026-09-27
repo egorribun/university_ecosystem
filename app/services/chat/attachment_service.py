@@ -94,7 +94,7 @@ class ChatAttachmentService:
         else:
             delete_one = delete_static_file
 
-        failures = 0
+        has_failures = False
         # Each S3 delete/HEAD creates an async client. A legacy bulk history
         # clear can contain thousands of URLs, so bound both task allocation
         # and open connections without losing best-effort progress in a batch.
@@ -107,10 +107,9 @@ class ChatAttachmentService:
                 for outcome in outcomes:
                     if isinstance(outcome, asyncio.CancelledError):
                         raise outcome
-                failures += sum(
-                    isinstance(outcome, BaseException) for outcome in outcomes
-                )
-        if failures:
+                if any(isinstance(outcome, BaseException) for outcome in outcomes):
+                    has_failures = True
+        if has_failures:
             raise AttachmentCleanupError(_CLEANUP_FAILED) from None
 
     async def copy_for_forward(
