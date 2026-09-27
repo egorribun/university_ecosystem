@@ -5,7 +5,7 @@ import { createRef } from "react"
 import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 
-import { Badge } from "@/components/ui/Badge"
+import { Badge, Chip, type BadgeProps } from "@/components/ui/Badge"
 import { Checkbox } from "@/components/ui/Checkbox"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { ProgressBar } from "@/components/ui/ProgressBar"
@@ -87,6 +87,40 @@ describe("Badge", () => {
       </Badge>
     )
     expect(screen.getByTestId("badge")).toHaveClass("min-h-11", "min-w-11")
+  })
+
+  it("gives every variant value its own styling on top of the neutral badge", () => {
+    // `null` opts a badge out of an axis (and of the compound rules that
+    // depend on it), so it is the neutral baseline each value must change.
+    // Only the difference is asserted; the concrete classes are presentation.
+    const classesOf = (props: BadgeProps) => {
+      const { container, unmount } = render(<Badge {...props}>probe</Badge>)
+      const classes = [...(container.firstElementChild?.classList ?? [])].sort()
+      unmount()
+      return classes
+    }
+    const expectStyled = (props: BadgeProps, neutral: BadgeProps) =>
+      expect(classesOf({ ...neutral, ...props }), JSON.stringify(props)).not.toEqual(
+        classesOf(neutral)
+      )
+
+    for (const variant of ["solid", "outline"] as const) {
+      expectStyled({ variant }, { variant: null, tone: null })
+      for (const tone of ["default", "primary", "success", "danger", "info"] as const) {
+        expectStyled({ tone }, { variant, tone: null })
+      }
+    }
+    for (const shape of ["pill", "circle"] as const) {
+      expectStyled({ shape }, { shape: null, size: null })
+      for (const size of ["xs", "sm", "md"] as const) {
+        expectStyled({ size }, { shape, size: null })
+      }
+    }
+  })
+
+  it("exposes a diagnostic display name shared by the Chip alias", () => {
+    expect(Badge.displayName).toBe("Badge")
+    expect(Chip).toBe(Badge)
   })
 })
 

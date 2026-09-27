@@ -49,7 +49,7 @@ export const TextField = React.forwardRef<
       rows,
       trailingIcon,
       leadingIcon,
-      size = "md",
+      size,
       id,
       ...props
     },

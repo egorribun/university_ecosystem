@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
 import { MediaSlot } from "@/components/ui/MediaSlot"
+import { collectWindowErrors } from "@/tests/helpers/windowErrors"
 
 describe("MediaSlot mutation contracts", () => {
   it("starts a sourced image in a loading state and leaves the image visible", () => {
@@ -24,7 +25,7 @@ describe("MediaSlot mutation contracts", () => {
     const { container } = render(<MediaSlot src="https://img.example/cover.jpg" alt="Cover" />)
     const image = screen.getByRole("img", { name: "Cover" })
 
-    expect(() => fireEvent.load(image)).not.toThrow()
+    expect(collectWindowErrors(() => fireEvent.load(image))).toEqual([])
     expect(image).toHaveClass("opacity-100")
     expect(container.querySelector(".animate-pulse")).toBeNull()
   })
@@ -39,7 +40,7 @@ describe("MediaSlot mutation contracts", () => {
     )
     const image = screen.getByRole("img", { name: "Missing" })
 
-    expect(() => fireEvent.error(image)).not.toThrow()
+    expect(collectWindowErrors(() => fireEvent.error(image))).toEqual([])
     expect(screen.getByText("fallback")).toBeInTheDocument()
     expect(container.querySelector("img")).toBeNull()
   })

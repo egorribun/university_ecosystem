@@ -18,6 +18,7 @@ vi.mock("framer-motion", () => ({
 }))
 
 import { Switch } from "@/components/ui/Switch"
+import { collectWindowErrors } from "@/tests/helpers/windowErrors"
 
 describe("Switch behavior contract", () => {
   it("starts idle, enters hover only when enabled, and leaves hover on exit", () => {
@@ -86,9 +87,8 @@ describe("Switch behavior contract", () => {
 
   it("does not throw when the optional change callback is omitted", () => {
     render(<Switch checked={false} aria-label="without callback" />)
-    expect(() =>
-      fireEvent.click(screen.getByRole("switch", { name: "without callback" }))
-    ).not.toThrow()
+    const input = screen.getByRole("switch", { name: "without callback" })
+    expect(collectWindowErrors(() => fireEvent.click(input))).toEqual([])
   })
 
   it("does not enter hover state while disabled", () => {

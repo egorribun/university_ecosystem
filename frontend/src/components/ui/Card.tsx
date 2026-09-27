@@ -12,29 +12,27 @@ type CardVariantFn = (props?: CardVariantProps) => string
 let cardVariantsCache: CardVariantFn | null = null
 
 function cardVariants(props?: CardVariantProps): string {
-  if (cardVariantsCache === null) {
-    cardVariantsCache = cva(
-      "relative flex flex-col rounded-xl border border-border-subtle bg-(--bg-surface) text-text-primary shadow-surface transition-premium",
-      {
-        variants: {
-          padding: {
-            none: "p-0",
-            sm: "p-3",
-            md: "p-4",
-            lg: "p-6",
-          },
-          hoverable: {
-            true: "hover:-translate-y-1.5 hover:scale-hover-lift hover:shadow-premium-lift focus-ring-premium motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:transition-shadow",
-            false: "",
-          },
+  cardVariantsCache ??= cva(
+    "relative flex flex-col rounded-xl border border-border-subtle bg-(--bg-surface) text-text-primary shadow-surface transition-premium",
+    {
+      variants: {
+        padding: {
+          none: "p-0",
+          sm: "p-3",
+          md: "p-4",
+          lg: "p-6",
         },
-        defaultVariants: {
-          padding: "md",
-          hoverable: false,
+        hoverable: {
+          true: "hover:-translate-y-1.5 hover:scale-hover-lift hover:shadow-premium-lift focus-ring-premium motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:transition-shadow",
+          false: "",
         },
-      }
-    ) as CardVariantFn
-  }
+      },
+      defaultVariants: {
+        padding: "md",
+        hoverable: false,
+      },
+    }
+  ) as CardVariantFn
   return cardVariantsCache(props)
 }
 

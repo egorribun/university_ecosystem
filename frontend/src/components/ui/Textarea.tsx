@@ -15,10 +15,8 @@ const textareaVariants = cva(
         false: "w-auto",
       },
     },
-    defaultVariants: {
-      error: false,
-      fullWidth: true,
-    },
+    // No defaultVariants: an unset `error` adds nothing and the base class
+    // list is already full width, so defaults would only repeat the base.
   }
 )
 

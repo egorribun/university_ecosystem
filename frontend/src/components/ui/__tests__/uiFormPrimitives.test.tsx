@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/RadioGroup"
 import { Select } from "@/components/ui/Select"
 import { TextField } from "@/components/ui/TextField"
 import { Textarea } from "@/components/ui/Textarea"
+import { collectWindowErrors } from "@/tests/helpers/windowErrors"
 
 // Select calls useTranslation("common"); the other six components below don't
 // use i18n, so a file-level stub is the simplest self-contained provider.
@@ -143,6 +144,23 @@ describe("Textarea", () => {
     expect(area).toHaveAttribute("aria-invalid", "true")
     expect(area).toHaveAttribute("rows", "5")
   })
+
+  it("styles the error and fixed-width states differently from the default field", () => {
+    // Compare class sets: the order tailwind-merge emits is not a contract.
+    const classesOf = (props: React.ComponentProps<typeof Textarea>) => {
+      const { unmount } = render(<Textarea aria-label="probe" {...props} />)
+      const classes = [...screen.getByRole("textbox", { name: "probe" }).classList].sort()
+      unmount()
+      return classes
+    }
+    const byDefault = classesOf({})
+
+    expect(classesOf({ error: false, fullWidth: true })).toEqual(byDefault)
+    expect(classesOf({ error: true })).not.toEqual(byDefault)
+    expect(classesOf({ fullWidth: false })).not.toEqual(byDefault)
+    expect(classesOf({ className: "extra" })).toEqual([...byDefault, "extra"].sort())
+    expect(Textarea.displayName).toBe("Textarea")
+  })
 })
 
 // --------------------------------------------------------------------------- #
@@ -175,8 +193,9 @@ describe("TextField", () => {
     render(<TextField multiline label="Bio" value="hello" onChange={() => {}} />)
     const area = screen.getByRole("textbox", { name: "Bio" })
 
+    expect(area).toBeEnabled()
     expect(area).not.toHaveAttribute("aria-invalid", "true")
-    expect(() => fireEvent.blur(area)).not.toThrow()
+    expect(collectWindowErrors(() => fireEvent.blur(area))).toEqual([])
   })
 
   it("keeps the documented defaults and wrapper contract", () => {
@@ -189,10 +208,9 @@ describe("TextField", () => {
     expect(TextField.displayName).toBe("TextField")
     expect(wrapper).toHaveClass("flex", "flex-col", "gap-1.5")
     expect(wrapper).not.toHaveClass("w-full")
-    expect(wrapper).not.toHaveClass("Stryker", "was", "here!")
     expect(input).toHaveAttribute("type", "text")
+    expect(input).toBeEnabled()
     expect(input).toHaveClass("w-auto", "min-h-12", "text-base")
-    expect(input).not.toHaveClass("Stryker", "was", "here!")
 
     rerender(
       <TextField
@@ -200,12 +218,15 @@ describe("TextField", () => {
         onChange={() => {}}
         fullWidth={false}
         className="custom-field"
+        inputClassName="custom-control"
         data-testid="default-field"
       />
     )
     expect(container.firstElementChild).toHaveClass("custom-field")
     expect(container.firstElementChild).not.toHaveClass("w-full")
-    expect(screen.getByTestId("default-field")).toHaveClass("w-auto")
+    expect(container.firstElementChild).not.toHaveClass("custom-control")
+    expect(screen.getByTestId("default-field")).toHaveClass("w-auto", "custom-control")
+    expect(screen.getByTestId("default-field")).not.toHaveClass("custom-field")
   })
 
   it("generates a control id when a labelled field does not receive one", () => {
@@ -250,7 +271,7 @@ describe("TextField", () => {
     expect(onChange).toHaveBeenCalled()
     expect(screen.getByTestId("lead")).toBeInTheDocument()
     expect(screen.getByTestId("tr")).toBeInTheDocument()
-    expect(() => fireEvent.blur(area)).not.toThrow()
+    expect(collectWindowErrors(() => fireEvent.blur(area))).toEqual([])
     expect(area).not.toHaveAttribute("aria-describedby")
   })
 

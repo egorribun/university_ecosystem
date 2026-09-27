@@ -14,9 +14,7 @@ const skeletonVariants = cva("skeleton bg-muted animate-pulse", {
       xl: "rounded-(--radius-xl)",
     },
   },
-  defaultVariants: {
-    rounded: true,
-  },
+  // No defaultVariants: the component always resolves `rounded` itself.
 })
 
 type SkeletonProps = Omit<HTMLAttributes<HTMLDivElement>, "width" | "height"> &
@@ -48,7 +46,7 @@ export function Skeleton({
     variantRounding = rounded
   } else if (typeof rounded === "string") {
     // Check if it's a known variant key
-    if (["full", "md", "lg", "xl"].includes(rounded)) {
+    if (["full", "sm", "md", "lg", "xl"].includes(rounded)) {
       variantRounding = rounded as VariantProps<typeof skeletonVariants>["rounded"]
     } else {
       // It's a custom CSS value
