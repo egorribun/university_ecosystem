@@ -25,6 +25,13 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Fixed, PII-free durable-dispatch messages (they reach the outbox audit trail).
+_DEFERRED = "Durable event deferred"
+_NO_DURABLE_HANDLER = "No durable event handler registered"
+_HANDLER_FAILED = "Durable event handler failed"
+_DISPATCH_TIMED_OUT = "Durable event dispatch timed out"
+_SLOW_EXTERNAL_DELIVERY = "Durable external delivery exceeded event dispatch timer"
+
 EventHandler = Callable[["DomainEvent"], Coroutine[Any, Any, None]]
 EventMiddleware = Callable[
     ["DomainEvent", Callable[["DomainEvent"], Coroutine[Any, Any, None]]],
@@ -36,7 +43,7 @@ class DurableEventDeferred(RuntimeError):
     """A PII-free signal to keep a durable event pending without using retries."""
 
     def __init__(self) -> None:
-        super().__init__("Durable event deferred")
+        super().__init__(_DEFERRED)
 
 
 @dataclass
@@ -942,7 +949,7 @@ class EventBus:
         handlers = self._handlers.get(event_type, []) + self._all_handlers
 
         if durable and not self._handlers.get(event_type):
-            raise RuntimeError("No durable event handler registered")
+            raise RuntimeError(_NO_DURABLE_HANDLER)
         if not handlers:
             logger.debug("No handlers for event %s", event_type)
             return
@@ -959,16 +966,17 @@ class EventBus:
                     *(handler(evt) for handler in handlers),
                     return_exceptions=True,
                 )
-                deferred = False
+                deferred = any(
+                    isinstance(outcome, DurableEventDeferred) for outcome in outcomes
+                )
                 for outcome in outcomes:
                     if isinstance(outcome, DurableEventDeferred):
-                        deferred = True
                         continue
                     if isinstance(outcome, Exception):
                         # Handler errors may contain recipient addresses or OTPs.
                         # Keep the durable retry signal without persisting raw
                         # handler exception text in the outbox audit trail.
-                        raise RuntimeError("Durable event handler failed") from None
+                        raise RuntimeError(_HANDLER_FAILED) from None
                     if isinstance(outcome, BaseException):
                         raise outcome
                 if deferred:
@@ -1017,7 +1025,7 @@ class EventBus:
                     # work succeeded or starve a large cleanup indefinitely.
                     # Their own I/O policies govern operation timeouts.
                     logger.warning(
-                        "Durable external delivery exceeded event dispatch timer",
+                        _SLOW_EXTERNAL_DELIVERY,
                         extra={"event_type": event_type, "event_id": event.event_id},
                     )
                     await chain_task
@@ -1036,7 +1044,7 @@ class EventBus:
                     },
                 )
                 if durable:
-                    raise TimeoutError("Durable event dispatch timed out")
+                    raise TimeoutError(_DISPATCH_TIMED_OUT)
             elif chain_task.exception() is not None:
                 # Propagate unexpected exceptions that escaped _safe_handle
                 raise chain_task.exception()  # type: ignore[misc]

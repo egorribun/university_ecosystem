@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
 from botocore.exceptions import ClientError
@@ -23,6 +23,11 @@ if TYPE_CHECKING:
     from app.core.config import Settings
 
 logger = get_logger(__name__)
+
+
+def _has_control_chars(value: str) -> bool:
+    """C0 controls and DEL can split or disguise object keys and URLs."""
+    return any(ord(char) < 32 or ord(char) == 127 for char in value)
 
 
 @runtime_checkable
@@ -223,7 +228,7 @@ class S3Storage(StorageBackend):
         self._extra_put_object_args: dict[str, str] = extra_put_object_args or {}
 
     def _normalize_key(self, relative_path: str) -> str:
-        if any(ord(char) < 32 or ord(char) == 127 for char in relative_path):
+        if _has_control_chars(relative_path):
             raise ValueError("Relative path contains control characters")
         if not relative_path:
             raise ValueError("Relative path must not be empty")
@@ -239,7 +244,7 @@ class S3Storage(StorageBackend):
         if (
             not key
             or any(char in "\\%?#;" for char in key)
-            or any(ord(char) < 32 or ord(char) == 127 for char in key)
+            or _has_control_chars(key)
             or any(part in {"", ".", ".."} for part in key.split("/"))
         ):
             return None
@@ -311,7 +316,7 @@ class S3Storage(StorageBackend):
             return None
         # Validate before strip(): otherwise leading/trailing controls could
         # select a different object key from the caller-provided value.
-        if any(ord(char) < 32 or ord(char) == 127 for char in file_url):
+        if _has_control_chars(file_url):
             return None
         trimmed = file_url.strip()
         if not trimmed or trimmed != file_url or trimmed.startswith("//"):
@@ -326,7 +331,7 @@ class S3Storage(StorageBackend):
             ):
                 return None
             path = parsed.path or ""
-            base_path = (self._base_url_parsed.path or "").rstrip("/")
+            base_path = self._base_url_parsed.path
             if base_path:
                 if not path.startswith(f"{base_path}/"):
                     return None
@@ -347,7 +352,7 @@ class S3Storage(StorageBackend):
         if path.startswith("/"):
             if self._base_url_parsed.scheme:
                 return None
-            base_path = self._base_url_parsed.path.rstrip("/")
+            base_path = self._base_url_parsed.path
             if not base_path or not path.startswith(f"{base_path}/"):
                 return None
             key = path[len(base_path) + 1 :]
@@ -404,18 +409,19 @@ class S3Storage(StorageBackend):
                     response = await s3.get_object(Bucket=self.bucket, Key=key)
                     async with response["Body"] as stream:
                         if max_bytes is None:
-                            return cast(bytes, await stream.read())
+                            body: bytes = await stream.read()
+                            return body
                         content = bytearray()
                         limit = max_bytes + 1
                         while len(content) < limit:
                             remaining = limit - len(content)
-                            chunk = cast(bytes, await stream.read(remaining))
+                            chunk: bytes = await stream.read(remaining)
                             if not chunk:
                                 break
                             content.extend(chunk[:remaining])
                         return bytes(content)
         except ClientError as exc:
-            error_code = exc.response.get("Error", {}).get("Code", "")
+            error_code = exc.response.get("Error", {}).get("Code")
             if error_code in ("404", "NoSuchKey"):
                 raise FileNotFoundError(
                     f"S3 file not found: {file_url_or_path}"

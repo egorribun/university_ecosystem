@@ -31,6 +31,10 @@ from app.services.storage import S3Storage, StaticFSStorage, StorageBackend
 from app.utils import files as file_utils
 from app.utils.files import delete_static_file, save_attachment
 
+# Fixed, PII-free messages: storage URLs and provider errors never surface.
+_CLEANUP_FAILED = "Attachment cleanup failed"
+_COPY_FAILED = "Attachment copy failed"
+
 
 class AttachmentCleanupError(RuntimeError):
     """A stored attachment could not be verified as deleted."""
@@ -72,7 +76,7 @@ class ChatAttachmentService:
 
             async def delete_verified(url: str) -> None:
                 if not _is_managed_url(backend, url):
-                    raise AttachmentCleanupError("Attachment cleanup failed")
+                    raise AttachmentCleanupError(_CLEANUP_FAILED)
                 try:
                     await backend.delete_file(url)
                 except Exception:
@@ -82,15 +86,15 @@ class ChatAttachmentService:
                     # the outer batch converts any probe failure to a safe NAK.
                     if not await backend.exists(url):
                         return
-                    raise AttachmentCleanupError("Attachment cleanup failed") from None
+                    raise AttachmentCleanupError(_CLEANUP_FAILED) from None
                 if await backend.exists(url):
-                    raise AttachmentCleanupError("Attachment cleanup failed")
+                    raise AttachmentCleanupError(_CLEANUP_FAILED)
 
             delete_one = delete_verified
         else:
             delete_one = delete_static_file
 
-        failed = False
+        failures = 0
         # Each S3 delete/HEAD creates an async client. A legacy bulk history
         # clear can contain thousands of URLs, so bound both task allocation
         # and open connections without losing best-effort progress in a batch.
@@ -103,10 +107,11 @@ class ChatAttachmentService:
                 for outcome in outcomes:
                     if isinstance(outcome, asyncio.CancelledError):
                         raise outcome
-                    if isinstance(outcome, BaseException):
-                        failed = True
-        if failed:
-            raise AttachmentCleanupError("Attachment cleanup failed") from None
+                failures += sum(
+                    isinstance(outcome, BaseException) for outcome in outcomes
+                )
+        if failures:
+            raise AttachmentCleanupError(_CLEANUP_FAILED) from None
 
     async def copy_for_forward(
         self, attachment: AttachmentDTO, chat_id: uuid.UUID, *, locale: str | None
@@ -120,13 +125,14 @@ class ChatAttachmentService:
 
         backend = file_utils._get_storage_backend()
         if not _is_managed_url(backend, attachment.url):
-            raise AttachmentCopyError("Attachment copy failed")
+            raise AttachmentCopyError(_COPY_FAILED)
         try:
             data = await backend.read_file(attachment.url, max_bytes=max_size)
         except Exception:  # RZ-22-01-JUSTIFIED: domain conversion hides storage URL and provider error text
-            raise AttachmentCopyError("Attachment copy failed") from None
-        if len(data) != attachment.size or len(data) > max_size:
-            raise AttachmentCopyError("Attachment copy failed")
+            raise AttachmentCopyError(_COPY_FAILED) from None
+        # attachment.size is already bounded by max_size above.
+        if len(data) != attachment.size:
+            raise AttachmentCopyError(_COPY_FAILED)
 
         upload = UploadFile(
             file=BytesIO(data), size=len(data), filename=attachment.filename

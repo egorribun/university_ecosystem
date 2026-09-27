@@ -59,7 +59,8 @@ async def test_read_failure_log_does_not_expose_private_object_key(caplog) -> No
 @pytest.mark.asyncio
 async def test_s3_bounded_read_requests_only_limit_plus_one() -> None:
     stream = AsyncMock()
-    stream.read.return_value = b"123456"
+    # Like a real body, a zero-byte read yields nothing.
+    stream.read.side_effect = lambda size: b"123456" if size else b""
 
     @asynccontextmanager
     async def body():
@@ -93,7 +94,8 @@ async def test_s3_bounded_read_collects_fragmented_stream_to_limit() -> None:
 @pytest.mark.asyncio
 async def test_s3_bounded_read_caps_oversized_stream_chunk() -> None:
     stream = AsyncMock()
-    stream.read.return_value = b"abcdefghi"
+    # Like a real body, a zero-byte read yields nothing.
+    stream.read.side_effect = lambda size: b"abcdefghi" if size else b""
 
     @asynccontextmanager
     async def body():

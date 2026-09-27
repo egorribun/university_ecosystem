@@ -167,24 +167,26 @@ class SmtpMfaEmailSender:
             start_tls=security == "starttls",
             tls_context=ssl.create_default_context() if security != "none" else None,
         )
-        delivered = False
         try:
             async with asyncio.timeout(timeout):
                 await client.connect()
                 if settings.smtp_user:
                     await client.login(settings.smtp_user, settings.smtp_password or "")
                 await client.send_message(message)
-                delivered = True
-        except (aiosmtplib.SMTPException, OSError, TimeoutError, ValueError):
-            # Provider responses can contain recipient or OTP data. The public
-            # delivery boundary exposes only a stable, PII-free error and
-            # suppresses the raw provider traceback.
-            raise OSError("SMTP unavailable") from None
-        finally:
+        except BaseException as exc:  # RZ-22-01-JUSTIFIED: cleanup then re-raise — abort queued bytes on any failure or cancellation
             # A timeout or caller cancellation must abort queued bytes, not
             # leave a detached send running beyond the delivery lease.
-            if not delivered and client.transport is not None:
+            if client.transport is not None:
                 cast(asyncio.Transport, client.transport).abort()
+            if isinstance(
+                exc, (aiosmtplib.SMTPException, OSError, TimeoutError, ValueError)
+            ):
+                # Provider responses can contain recipient or OTP data. The
+                # public delivery boundary exposes only a stable, PII-free
+                # error and suppresses the raw provider traceback.
+                raise OSError("SMTP unavailable") from None
+            raise
+        finally:
             client.close()
 
 
