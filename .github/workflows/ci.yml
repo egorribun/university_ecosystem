@@ -3210,7 +3210,7 @@ jobs:
             echo "- Stats matrix entries: $stats_total"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Generate mutmut's source/metadata tree once.  mutmut 3.7 requires that
+  # Generate mutmut's source/metadata tree once. The dependency-pinned runner requires that
   # tree before every stats collection, but the generated files are immutable
   # for a given checkout/configuration and can be safely transported as a
   # same-run, provenance-bound artifact.  Stats legs and the planner validate
@@ -3342,7 +3342,7 @@ jobs:
       # budget for required non-mutation diagnostics and aggregation. This is
       # not a GitHub account-wide cap or a cross-workflow semaphore.
       max-parallel: 8
-      # mutmut 3.7.0 collects the complete pytest-to-mutant mapping before it
+      # The dependency-pinned mutmut collects the complete pytest-to-mutant mapping before it
       # applies positional mutant filters.  Collect disjoint test populations
       # once per leg and merge them before the mutation legs start. Eight
       # legs keep the heaviest test populations below the 25-minute job cap.
@@ -4525,7 +4525,7 @@ jobs:
           echo "Derived fail-closed mutation timeout: ${MUTMUT_TIMEOUT_SECONDS}s"
           rm -f .mutmut-cache
           # The shell cap is calculated from the merged test durations and
-          # mutmut 3.7's 15x per-PID watchdog, rather than an arbitrary shorter
+          # the configured 15x per-PID watchdog, rather than an arbitrary shorter
           # wall-clock that could preempt a valid mutmut classification.
           # This blocking job runs REAL mutation and still hard-fails above
           # the CI-supported cap; mutmut exits 0 on completion regardless of

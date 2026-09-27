@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Calculate a fail-closed outer timeout for one exact mutmut shard.
 
-Mutmut 3.7.0 aborts a child after
+The pinned mutmut 3.8 default fork runner aborts a child after
 ``15 * (estimated_test_seconds + timeout_constant)`` wall seconds.  The
-repository sets ``timeout_constant = 6`` so pytest's 120-second per-test
-watchdog classifies a pathological mutant as a killed test before mutmut's
-own watchdog records an incomplete timeout.  A shorter shell ``timeout`` can
+repository sets ``timeout_constant = 6``. This additive grace alone does not
+guarantee that pytest's 120-second per-test watchdog fires first: the shortest
+wall cap is 90 seconds at multiplier 15. Whichever watchdog fires, incomplete
+mutation evidence remains a failure. A shorter shell ``timeout`` can
 still terminate a valid child before mutmut has classified it.  This helper
 derives an upper bound from the same merged stats and exact IDs used by the
 shard planner.  It also reserves parent-side watchdog polling, fork/reap,
@@ -18,10 +19,10 @@ largest value that still fits a cap.  That is required, not merely
 convenient: a hub function mapped to the whole suite derives a 15x budget of
 97_567 seconds, and even a 1_335-second union derives 21_611 seconds against
 GitHub's hard 21_600-second job maximum, so the full watchdog bound cannot fit
-in *any* hosted job (measured in run 35488190240).  Lowering it is safe
-because the 15x watchdog is a backstop that should never fire: pytest's own
-``--timeout=120 --timeout-method=signal`` (pyproject.toml) is what detects a
-mutant-induced hang, and mutmut's ``-x`` aborts at the first failing test.
+in *any* hosted job (measured in run 35488190240). Lowering the outer cap does
+not change the upstream watchdog or certify that classification will finish.
+Pytest's ``--timeout=120 --timeout-method=signal`` (pyproject.toml) also detects
+test hangs, and mutmut's ``-x`` aborts at the first failing test.
 When the shorter shell cap does preempt a run, the caller sees exit 124 and
 must fail closed; it can never turn an unconfirmed mutant into a passing one.
 """
@@ -47,8 +48,8 @@ MUTMUT_WALL_TIMEOUT_MULTIPLIER = 15
 # so this floor is the smallest value that keeps every function derivable.
 MUTMUT_MINIMUM_EXECUTION_MULTIPLIER = 2
 # Keep this synchronized with [tool.mutmut].timeout_constant in pyproject.toml.
-# Six seconds intentionally exceeds pytest's 120-second child-test timeout for
-# the shortest exact mutation shard while preserving a fail-closed outer cap.
+# Six seconds is additive upstream grace, not a guarantee that the derived
+# wall cap exceeds pytest's 120-second per-test timeout for every mapped union.
 MUTMUT_WALL_TIMEOUT_GRACE_SECONDS = 6
 METADATA_AND_STARTUP_RESERVE_SECONDS = 900
 CONTROL_CYCLE_RESERVE_SECONDS = 15
