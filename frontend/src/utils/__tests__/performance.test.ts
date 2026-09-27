@@ -86,11 +86,18 @@ describe("performance utilities", () => {
       vi.spyOn(performance, "measure").mockImplementation(() => undefined as never)
       vi.spyOn(performance, "getEntriesByName").mockImplementation((name, type) =>
         name === "render" && type === "measure"
-          ? ([{ duration: 5 }, { duration: 7.5 }] as PerformanceEntry[])
+          ? ([{ duration: 5 }, { duration: 6 }, { duration: 7.5 }] as PerformanceEntry[])
           : []
       )
 
       expect(measure("render", "a", "b")).toBe(7.5)
+    })
+
+    it("returns zero when no measure entry was recorded", () => {
+      vi.spyOn(performance, "measure").mockImplementation(() => undefined as never)
+      vi.spyOn(performance, "getEntriesByName").mockReturnValue([])
+
+      expect(measure("render", "a")).toBe(0)
     })
   })
 
@@ -115,6 +122,29 @@ describe("performance utilities", () => {
       )
 
       expect(getWebVitals()).toStrictEqual({ ttfb: 60 })
+    })
+
+    it("retains navigation timing when the paint timeline API throws", () => {
+      vi.spyOn(performance, "getEntriesByName").mockImplementation(() => {
+        throw new Error("paint timeline unavailable")
+      })
+      vi.spyOn(performance, "getEntriesByType").mockImplementation((type) =>
+        type === "navigation"
+          ? ([{ responseStart: 123.75, requestStart: 42.5 }] as PerformanceNavigationTiming[])
+          : []
+      )
+
+      expect(getWebVitals()).toStrictEqual({ ttfb: 81.25 })
+    })
+
+    it("treats an unavailable timeline API as having no entries", () => {
+      const unsupported = () => {
+        throw new Error("unsupported")
+      }
+      vi.spyOn(performance, "getEntriesByName").mockImplementation(unsupported)
+      vi.spyOn(performance, "getEntriesByType").mockImplementation(unsupported)
+
+      expect(getWebVitals()).toStrictEqual({})
     })
   })
 

@@ -47,7 +47,9 @@ export function measure(name: string, startMark: string, endMark?: string): numb
       performance.measure(name, startMark)
     }
     const entries = performance.getEntriesByName(name, "measure")
-    return entries[entries.length - 1]?.duration ?? 0
+    // The measure recorded above is the newest entry of that name; without one
+    // the property read throws into the zero fallback below.
+    return entries[entries.length - 1]!.duration
   } catch {
     return 0
   }
@@ -64,23 +66,30 @@ export interface WebVitals {
   ttfb?: number // Time to First Byte
 }
 
+/** Read a Performance Timeline list, treating an unavailable API as empty. */
+function readEntries(read: () => PerformanceEntryList): PerformanceEntryList {
+  try {
+    return read()
+  } catch {
+    return []
+  }
+}
+
 export function getWebVitals(): WebVitals {
   const vitals: WebVitals = {}
 
-  try {
-    // FCP
-    const [fcpEntry] = performance.getEntriesByName("first-contentful-paint")
-    if (fcpEntry) {
-      vitals.fcp = fcpEntry.startTime
-    }
+  // FCP
+  const [fcpEntry] = readEntries(() => performance.getEntriesByName("first-contentful-paint"))
+  if (fcpEntry) {
+    vitals.fcp = fcpEntry.startTime
+  }
 
-    // TTFB from navigation timing
-    const [navEntry] = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[]
-    if (navEntry) {
-      vitals.ttfb = navEntry.responseStart - navEntry.requestStart
-    }
-  } catch {
-    // Metrics not available
+  // TTFB from navigation timing
+  const [navEntry] = readEntries(() =>
+    performance.getEntriesByType("navigation")
+  ) as PerformanceNavigationTiming[]
+  if (navEntry) {
+    vitals.ttfb = navEntry.responseStart - navEntry.requestStart
   }
 
   return vitals
@@ -133,7 +142,7 @@ const DEFAULT_METRICS_INTERVAL = 30000
  */
 class MetricsBuffer {
   private buffer: Array<{ name: string; value: number; timestamp: number }> = []
-  private flushInterval: ReturnType<typeof setInterval> | null = null
+  private flushInterval?: ReturnType<typeof setInterval>
 
   start(intervalMs = DEFAULT_METRICS_INTERVAL): void {
     if (this.flushInterval) return
@@ -141,10 +150,8 @@ class MetricsBuffer {
   }
 
   stop(): void {
-    if (this.flushInterval) {
-      clearInterval(this.flushInterval)
-      this.flushInterval = null
-    }
+    clearInterval(this.flushInterval)
+    this.flushInterval = undefined
   }
 
   record(name: string, value: number): void {
@@ -152,8 +159,6 @@ class MetricsBuffer {
   }
 
   flush(): void {
-    if (this.buffer.length === 0) return
-
     const metrics = [...this.buffer]
     this.buffer = []
 
