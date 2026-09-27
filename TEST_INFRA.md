@@ -17,7 +17,7 @@
 | F4 | Mutmut Discovery Isolation | `mutmut_stats_shard.py` | ✓ | ✓ | ✓ | ✓ |
 | F5 | Harness Safety Interceptor | `verify_challenger_pre_tool.py` | ✓ | ✓ | ✓ | ✓ |
 | F6 | Asset Git Tracking | `git status` / `.gitignore` | ✓ | ✓ | ✓ | ✓ |
-| F7 | Documentation Parity | `audit_links.py` / `compare_readmes.py` | ✓ | ✓ | ✓ | ✓ |
+| F7 | Documentation Parity | `scripts/docs/check_markdown_links.py` (local file links); manual/independent semantic README parity review | ✓ | ✓ | ✓ | ✓ |
 | F8 | WS-Hub Benchmark Ratio | `compare_paired_benchmarks.py` | ✓ | ✓ | ✓ | ✓ |
 | F9 | Playwright Cross-Browser Matrix | `playwright test` (Chromium/Firefox/WebKit) | ✓ | ✓ | ✓ | ✓ |
 | F10 | Current-Head Aggregator Gate | repository CI status for the reviewed head / `verify_harness.py` | ✓ | ✓ | ✓ | ✓ |

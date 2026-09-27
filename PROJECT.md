@@ -17,9 +17,12 @@ university_ecosystem/
 ├── charts/                     # Helm deployment charts
 ├── k8s/                        # Kubernetes manifests & Kyverno policies
 ├── .agents/                    # Antigravity developer harness & subagents
-├── quality/                    # Quality contract (100% coverage, 0 viable mutants)
+├── quality/                    # Quality contract (coverage and viable-mutant score targets)
 └── verify_harness.py           # Developer harness test suite
 ```
+
+Policy targets are 100% applicable coverage and a 100% viable-mutant score
+(zero surviving viable mutants), not an empty mutation universe or a current pass claim.
 
 ---
 

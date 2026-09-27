@@ -9,7 +9,7 @@ Welcome to the **University Ecosystem Platform** contribution guide. Please foll
 - **Branch Naming**: Use feature/topic branch names (e.g., `egorribun` or `feature/schedule-optimizations`).
 - **Commit Style**: Use conventional commit format: `feat(scope): description` or `fix(scope): description`.
 - **Commit Trailer Rules**:
-  - **CRITICAL**: Do **NOT** include `Co-Authored-By: Antigravity <antigravity@google.com>` or any Antigravity trailers under any circumstances.
+  - **CRITICAL**: Do **NOT** include any `Co-Authored-By` trailer under any circumstances.
   - Do **NOT** associate testing coverage or testing roadmaps with waves in logs, comments, or commit messages (waves are strictly reserved for core business features).
   - Quality, security, CI, and documentation maintenance are non-wave scopes:
     use `fix(quality):`, `fix(security):`, `test(contracts):`, or

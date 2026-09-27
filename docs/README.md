@@ -31,6 +31,9 @@ handoffs are intentionally not part of the canonical index.
 
 ## Quality evidence
 
+- [Active MVP quality-closure status and remaining acceptance](superpowers/plans/2026-09-22-mvp-safe-pause-handoff.md#0resume-20260927-возобновление-и-подтверждённые-новые-блокеры)
+  — current operational status; the linked master requirements and continuation
+  plan remain acceptance/history references, not separate live status ledgers.
 - [Quality dashboard](testing/dashboard.md)
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
