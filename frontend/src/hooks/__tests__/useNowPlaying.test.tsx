@@ -1,4 +1,4 @@
-import { QueryClientProvider } from "@tanstack/react-query"
+import { focusManager, QueryClientProvider } from "@tanstack/react-query"
 import { renderHook, waitFor, act } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -445,5 +445,205 @@ describe("useNowPlaying", () => {
         visibilityState: "visible",
       })
     ).toBe(5_000)
+  })
+})
+
+describe("now-playing normalization and error contract", () => {
+  const axiosFailure = (message: string, response?: unknown) =>
+    Object.assign(new Error(message), { isAxiosError: true, response })
+
+  it("requests the now-playing endpoint", async () => {
+    const get = vi.spyOn(api, "get").mockResolvedValue({ status: 204, data: "" } as any)
+
+    await expect(fetchNowPlaying()).resolves.toBeNull()
+
+    expect(get.mock.calls[0]?.[0]).toBe("/spotify/now-playing")
+  })
+
+  it("keeps blank text and missing numbers empty and clamps progress to the duration", async () => {
+    vi.spyOn(api, "get")
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { artists: ["Solo"], album_name: "   ", duration_ms: null, progress_ms: 5_000 },
+      } as any)
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { track_id: "t", duration_ms: 1_000, progress_ms: 5_000 },
+      } as any)
+
+    await expect(fetchNowPlaying()).resolves.toMatchObject({
+      artists: ["Solo"],
+      album_name: null,
+      duration_ms: null,
+      progress_ms: 5_000,
+    })
+    await expect(fetchNowPlaying()).resolves.toMatchObject({
+      duration_ms: 1_000,
+      progress_ms: 1_000,
+    })
+  })
+
+  it("clears the rate limit after a successful or unauthorized response", async () => {
+    vi.spyOn(api, "get")
+      .mockResolvedValueOnce({ status: 204, data: "" } as any)
+      .mockRejectedValueOnce(axiosFailure("expired", { status: 401, headers: {} }))
+
+    nowPlayingTesting.scheduleRateLimit(10_000)
+    await fetchNowPlaying()
+    expect(nowPlayingTesting.getRateLimitedUntil()).toBe(0)
+
+    nowPlayingTesting.scheduleRateLimit(10_000)
+    await fetchNowPlaying()
+    expect(nowPlayingTesting.getRateLimitedUntil()).toBe(0)
+  })
+
+  it("interprets only Axios responses and keeps other failures intact", async () => {
+    const foreign = Object.assign(new Error("foreign"), { response: { status: 401 } })
+    const network = axiosFailure("network")
+    const upstream = axiosFailure("upstream", { status: 503, headers: {} })
+    vi.spyOn(api, "get")
+      .mockRejectedValueOnce(foreign)
+      .mockRejectedValueOnce(network)
+      .mockRejectedValueOnce(upstream)
+
+    await expect(fetchNowPlaying()).rejects.toBe(foreign)
+    await expect(fetchNowPlaying()).rejects.toBe(network)
+    await expect(fetchNowPlaying()).rejects.toBe(upstream)
+    expect(nowPlayingTesting.getRateLimitedUntil()).toBe(0)
+  })
+
+  it.each([
+    ["no headers", undefined],
+    ["a negative retry-after", { "retry-after": "-1" }],
+    ["a zero retry-after", { "retry-after": "0" }],
+  ])("falls back to the default back-off for %s", async (_label, headers) => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2024-01-01T00:00:00Z"))
+    vi.spyOn(api, "get").mockRejectedValue(axiosFailure("limited", { status: 429, headers }))
+
+    await expect(fetchNowPlaying()).rejects.toThrow("limited")
+
+    expect(nowPlayingTesting.getRateLimitedUntil()).toBe(Date.now() + 5_250)
+  })
+
+  it("retries once unless the server asked to back off", () => {
+    const retry = nowPlayingTesting.shouldRetryNowPlaying
+    const limited = axiosFailure("limited", { status: 429, headers: {} })
+
+    expect(retry(0, limited)).toBe(false)
+    expect(retry(0, axiosFailure("upstream", { status: 503, headers: {} }))).toBe(true)
+    expect(retry(0, axiosFailure("network"))).toBe(true)
+    expect(retry(0, Object.assign(new Error("foreign"), { response: { status: 429 } }))).toBe(true)
+    expect(retry(1, new Error("offline"))).toBe(false)
+  })
+
+  it("does not poll in the test environment and stops polling for a hidden document", () => {
+    expect(nowPlayingTesting.computeRefetchInterval({ enabled: true, data: null })).toBe(false)
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    })
+    expect(
+      nowPlayingTesting.computeRefetchInterval({
+        enabled: true,
+        data: null,
+        isTestEnvironment: false,
+      })
+    ).toBe(false)
+  })
+})
+
+describe("useNowPlaying query lifecycle", () => {
+  const setup = (enabled: boolean) => {
+    const client = createQueryClient()
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    const hook = renderHook(({ on }: { on: boolean }) => useNowPlaying(on), {
+      wrapper,
+      initialProps: { on: enabled },
+    })
+    return { ...hook, client }
+  }
+
+  it("shows and persists nothing playing while the first poll is pending", () => {
+    vi.spyOn(api, "get").mockReturnValue(new Promise(() => undefined))
+
+    const { result } = setup(true)
+
+    expect(result.current.data).toBeNull()
+    expect(result.current.isPlaceholderData).toBe(true)
+    expect(localStorage.getItem(STORAGE_KEY)).toBe("null")
+  })
+
+  it("persists exactly the fetched track", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({
+      status: 200,
+      data: { track_id: "stored", track_name: "Stored", fetched_at: "2024-01-01T00:00:00Z" },
+    } as any)
+
+    const { result } = setup(true)
+    await waitFor(() => expect(result.current.data?.track_id).toBe("stored"))
+
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toStrictEqual(result.current.data)
+  })
+
+  it("keeps the last track for five minutes after the last subscriber leaves", async () => {
+    vi.useFakeTimers()
+    vi.spyOn(api, "get").mockResolvedValue({
+      status: 200,
+      data: { track_id: "kept", track_name: "Kept" },
+    } as any)
+    const { result, unmount, client } = setup(true)
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      expect(result.current.data?.track_id).toBe("kept")
+      unmount()
+
+      await act(() => vi.advanceTimersByTimeAsync(299_999))
+      expect(client.getQueryData(["spotify", "now-playing"])).toMatchObject({ track_id: "kept" })
+      await act(() => vi.advanceTimersByTimeAsync(1))
+      expect(client.getQueryData(["spotify", "now-playing"])).toBeUndefined()
+    } finally {
+      unmount()
+      client.clear()
+    }
+  })
+
+  it("does not refetch a stale track when the window regains focus", async () => {
+    vi.useFakeTimers()
+    const get = vi.spyOn(api, "get").mockResolvedValue({
+      status: 200,
+      data: { track_id: "focus", track_name: "Focus" },
+    } as any)
+    setup(true)
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    expect(get).toHaveBeenCalledOnce()
+
+    await act(() => vi.advanceTimersByTimeAsync(61_000))
+    act(() => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+    })
+    await act(() => vi.advanceTimersByTimeAsync(0))
+
+    expect(get).toHaveBeenCalledOnce()
+    focusManager.setFocused(undefined)
+  })
+
+  it("starts listening for visibility once enabled", async () => {
+    const get = vi.spyOn(api, "get").mockResolvedValue({
+      status: 200,
+      data: { track_id: "late", track_name: "Late" },
+    } as any)
+    const { rerender, result } = setup(false)
+    rerender({ on: true })
+    await waitFor(() => expect(result.current.data?.track_id).toBe("late"))
+    expect(get).toHaveBeenCalledOnce()
+
+    document.dispatchEvent(new Event("visibilitychange"))
+
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2))
   })
 })
