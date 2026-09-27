@@ -9,12 +9,18 @@ import { cn } from "@/utils/cn"
 import { Alert, Button } from "@/components/settings/SettingsUI"
 import { RefreshCw, LogOut, Music, ExternalLink } from "lucide-react"
 
+type SpotifyFeedbackKey =
+  | "common:errors.generic"
+  | "settings:integrations.spotify.snackbar.openFailed"
+  | "settings:integrations.spotify.snackbar.connectFailed"
+  | "settings:integrations.spotify.snackbar.disconnectFailed"
+
 export default function SpotifyConnect() {
   const { user, setUser } = useAuth()
   const queryClient = useQueryClient()
   const [actionLoading, setActionLoading] = useState(false)
   const [feedback, setFeedback] = useState<{
-    key: string
+    key: SpotifyFeedbackKey
     disconnected?: boolean
   } | null>(null)
   const { t } = useTranslation(["settings", "common"])

@@ -6,6 +6,12 @@
 export type DynamicTranslationRegistry = Readonly<Record<string, readonly string[]>>
 
 export const dynamicTranslationRegistry = {
+  "feedback.key": [
+    "common:errors.generic",
+    "settings:integrations.spotify.snackbar.openFailed",
+    "settings:integrations.spotify.snackbar.connectFailed",
+    "settings:integrations.spotify.snackbar.disconnectFailed",
+  ],
   'errors.email.message || "auth:messages.invalidFormat"': [
     "auth:messages.invalidEmail",
     "auth:messages.invalidFormat",
