@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { AppShellProvider } from "@/contexts/AppShellContext"
+import { collectWindowErrors } from "@/tests/helpers/windowErrors"
 import type { StoryItem } from "@/types/Story"
 import DashboardStories from "../DashboardStories"
 
@@ -27,9 +28,9 @@ let nextFrameId = 0
 const frames = new Map<number, FrameRequestCallback>()
 
 function renderStories(onStoryOpen = vi.fn()) {
-  const ui = (collection: StoryItem[]) => (
+  const ui = (collection: StoryItem[], callback: (story: StoryItem) => void = onStoryOpen) => (
     <AppShellProvider>
-      <DashboardStories stories={collection} onStoryOpen={onStoryOpen} />
+      <DashboardStories stories={collection} onStoryOpen={callback} />
     </AppShellProvider>
   )
   const view = render(ui(stories))
@@ -37,6 +38,7 @@ function renderStories(onStoryOpen = vi.fn()) {
     ...view,
     onStoryOpen,
     replaceStories: (collection: StoryItem[]) => view.rerender(ui(collection)),
+    replaceCallback: (callback: (story: StoryItem) => void) => view.rerender(ui(stories, callback)),
   }
 }
 
@@ -84,6 +86,55 @@ describe("DashboardStories real-viewer navigation boundaries", () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+  })
+
+  it("navigates the real viewer without an optional story callback or uncaught errors", () => {
+    render(
+      <AppShellProvider>
+        <DashboardStories stories={stories} />
+      </AppShellProvider>
+    )
+    const clickWithoutErrors = (name: string) => {
+      const errors = collectWindowErrors(() => {
+        fireEvent.click(screen.getByRole("button", { name }))
+      })
+      expect(errors).toEqual([])
+    }
+
+    clickWithoutErrors("Story: One")
+    expect(screen.getByRole("dialog", { name: "One" })).toBeInTheDocument()
+    clickWithoutErrors("stories.viewer.aria.next")
+    expect(screen.getByRole("dialog", { name: "Two" })).toBeInTheDocument()
+    clickWithoutErrors("stories.viewer.aria.prev")
+    expect(screen.getByRole("dialog", { name: "One" })).toBeInTheDocument()
+    clickWithoutErrors("stories.viewer.aria.next")
+    clickWithoutErrors("stories.viewer.aria.next")
+    expect(screen.getByRole("dialog", { name: "Three" })).toBeInTheDocument()
+    clickWithoutErrors("stories.viewer.aria.next")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(frames.size).toBe(0)
+  })
+
+  it("publishes navigation and a later reopening to the latest real callback", () => {
+    const initialCallback = vi.fn()
+    const latestCallback = vi.fn()
+    const { replaceCallback } = renderStories(initialCallback)
+    fireEvent.click(screen.getByRole("button", { name: "Story: One" }))
+    expect(initialCallback).toHaveBeenCalledExactlyOnceWith(stories[0])
+    replaceCallback(latestCallback)
+
+    const errors = collectWindowErrors(() => {
+      fireEvent.click(screen.getByRole("button", { name: "stories.viewer.aria.next" }))
+      expect(screen.getByRole("dialog", { name: "Two" })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "stories.viewer.aria.prev" }))
+      expect(screen.getByRole("dialog", { name: "One" })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "stories.viewer.aria.close" }))
+      fireEvent.click(screen.getByRole("button", { name: "Story: Three" }))
+    })
+    expect(errors).toEqual([])
+    expect(initialCallback).toHaveBeenCalledTimes(1)
+    expect(latestCallback.mock.calls).toEqual([[stories[1]], [stories[0]], [stories[2]]])
+    expect(screen.getByRole("dialog", { name: "Three" })).toBeInTheDocument()
   })
 
   it("closes after Next on the final real viewer without reopening another story", () => {
