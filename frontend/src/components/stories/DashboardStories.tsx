@@ -41,15 +41,6 @@ export default function DashboardStories({
   const pauseStartedRef = useRef(false)
   const isPaused = isInteractionPaused || isDocumentHidden
 
-  useEffect(() => {
-    return () => {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current)
-        rafRef.current = null
-      }
-    }
-  }, [])
-
   const [closeViewer] = useState<() => void>(() => () => {
     setOpenIndex(null)
     setProgress(0)
