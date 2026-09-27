@@ -1,9 +1,12 @@
 import datetime as dt
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 
 import fakeredis.aioredis
 import pytest_asyncio
+from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.models as models
 from app.core.config import settings
@@ -11,7 +14,7 @@ from app.deps import cache as cache_module
 
 
 class _TestingRedisCache(cache_module.RedisCache):
-    async def _get_client(self):
+    async def _get_client(self) -> Redis[Any]:
         if self._client is None:
             self._client = fakeredis.aioredis.FakeRedis(
                 encoding="utf-8", decode_responses=True
@@ -43,7 +46,9 @@ class _TestingRedisCache(cache_module.RedisCache):
 
 
 @pytest_asyncio.fixture
-async def fake_cache(mock_global_redis) -> AsyncIterator[_TestingRedisCache]:
+async def fake_cache(
+    mock_global_redis: fakeredis.aioredis.FakeRedis,
+) -> AsyncIterator[_TestingRedisCache]:
     """Fixture to inject fakeredis for cache tests."""
     from app.core import cache as core_cache
 
@@ -85,10 +90,12 @@ async def fake_cache(mock_global_redis) -> AsyncIterator[_TestingRedisCache]:
 
 
 @pytest_asyncio.fixture
-async def story_factory(db_session) -> Callable[..., Awaitable[models.Story]]:
-    async def _factory(**kwargs) -> models.Story:
+async def story_factory(
+    db_session: AsyncSession,
+) -> Callable[..., Awaitable[models.Story]]:
+    async def _factory(**kwargs: object) -> models.Story:
         now = dt.datetime.now(dt.UTC)
-        defaults = {
+        defaults: dict[str, object] = {
             "title": f"Story {uuid.uuid4().hex[:8]}",
             "short_text": "Story body",
             "expires_at": now + dt.timedelta(hours=24),
