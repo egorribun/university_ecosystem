@@ -1120,7 +1120,7 @@ describe("useChatWebSocket", () => {
   })
 
   it("bounds replay memory with LRU eviction while retaining recently replayed IDs", () => {
-    const seen = new Map<string, true>()
+    const seen = new Set<string>()
     for (let index = 1; index <= 4096; index += 1) {
       expect(rememberLiveMessage(seen, "chat-lru", `lru-message-${index}`)).toBe(true)
     }
@@ -1674,7 +1674,7 @@ describe("useChatWebSocket", () => {
     })
 
     const session = renderHook(
-      ({ userId }) => useChatWebSocket({ enabled: true, currentUserId: userId }),
+      ({ userId }) => useChatWebSocket({ enabled: userId !== undefined, currentUserId: userId }),
       { wrapper: makeWrapper(), initialProps: { userId: "logout-user" as string | undefined } }
     )
     await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
@@ -1804,7 +1804,14 @@ describe("useChatWebSocket", () => {
 
     queryClient.setQueryData<MessagesListResponse>(["messages", "chat-session"], emptyCache())
     rerender({ currentUserId: "session-user-2" })
-    act(() => socket.onmessage?.({ data: "second-session" } as MessageEvent))
+    act(() => socket.onmessage?.({ data: "stale-first-session" } as MessageEvent))
+    expect(onNewMessage).toHaveBeenCalledTimes(1)
+    expect(
+      queryClient.getQueryData<MessagesListResponse>(["messages", "chat-session"])?.items
+    ).toEqual([])
+
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(2))
+    act(() => TestWebSocket.instances[1]!.onmessage?.({ data: "second-session" } as MessageEvent))
 
     expect(onNewMessage).toHaveBeenCalledTimes(2)
     expect(
