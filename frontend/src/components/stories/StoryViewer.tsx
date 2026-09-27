@@ -89,7 +89,7 @@ export const StoryViewer = ({
   }, [isOpen, setOverlayState])
 
   const activeIndex = activeStoryIndex ?? -1
-  const viewerStory = stories[activeIndex] ?? null
+  const viewerStory = isOpen ? (stories[activeIndex] ?? null) : null
   const nextStory = stories[activeIndex + 1] ?? null
   const nextStoryImage = nextStory?.cover_url_optimized ?? nextStory?.cover_url ?? null
 

@@ -55,6 +55,47 @@ describe("DashboardStories defensive closed selection boundary", () => {
     vi.restoreAllMocks()
   })
 
+  it.each(["initial render", "after close"])(
+    "does not resolve a closed viewer index or expose a dialog on %s",
+    (phase) => {
+      const one = story("One")
+      const two = story("Two")
+      let closedIndexReads = 0
+      class StoryCollection extends Array<StoryItem> {
+        get "-1"(): StoryItem {
+          closedIndexReads += 1
+          return one
+        }
+      }
+      const collection: StoryItem[] = new StoryCollection(one, two)
+      const onStoryOpen = vi.fn()
+      const previousOverflow = document.body.style.overflow
+
+      render(
+        <StrictMode>
+          <AppShellProvider>
+            <DashboardStories stories={collection} onStoryOpen={onStoryOpen} />
+          </AppShellProvider>
+        </StrictMode>
+      )
+
+      if (phase === "after close") {
+        click("Story: One")
+        expect(screen.getByRole("dialog", { name: "One" })).toBeInTheDocument()
+        expect(onStoryOpen.mock.calls).toEqual([[one]])
+        expect(document.body.style.overflow).toBe("hidden")
+        closedIndexReads = 0
+        click("stories.viewer.aria.close")
+      }
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      expect(closedIndexReads).toBe(0)
+      expect(document.body.style.overflow).toBe(previousOverflow)
+      expect(screen.getByRole("button", { name: "Story: One" })).not.toHaveAttribute("data-active")
+      expect(screen.getByRole("button", { name: "Story: Two" })).not.toHaveAttribute("data-active")
+    }
+  )
+
   it("keeps a closed viewer unselected even when a typed array inherits a null accessor", () => {
     const one = story("One")
     const two = story("Two")
