@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react"
+import React, { createContext, useContext, useEffect, useState, useSyncExternalStore } from "react"
 
 type Theme = "light" | "dark" | "system"
 
@@ -14,8 +14,10 @@ const VALID_THEMES: ReadonlySet<Theme> = new Set(["light", "dark", "system"])
 
 const THEME_COOKIE_NAME = "ue-mode"
 const COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60 // 1 year
+const subscribeToHydration = () => () => undefined
 
 const readStoredTheme = (): Theme => {
+  if (typeof window === "undefined") return "system"
   try {
     const raw = localStorage.getItem("ue-mode")
     return raw && VALID_THEMES.has(raw as Theme) ? (raw as Theme) : "system"
@@ -58,10 +60,18 @@ const readCookieValue = (name: string): string | null => {
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(readStoredTheme)
+  // React reuses the server snapshot during hydration, then reads the browser
+  // snapshot. No subscription is needed: this boundary changes only once.
+  const themeReady = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false
+  )
 
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light")
 
   useEffect(() => {
+    if (!themeReady) return
     const root = window.document.documentElement
     const body = window.document.body
 
@@ -91,7 +101,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } else {
       applyTheme(theme)
     }
-  }, [theme])
+  }, [theme, themeReady])
 
   const setTheme = (t: Theme) => {
     setThemeState(t)
@@ -108,13 +118,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // but no cookie (post-W127 deploy migration path). Only writes when cookie
   // is missing AND the in-memory theme value is non-default.
   useEffect(() => {
+    if (!themeReady) return
     if (readCookieValue(THEME_COOKIE_NAME) === null) {
       setThemeCookie(theme)
     }
-  }, [theme])
+  }, [theme, themeReady])
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, resolvedTheme }}>
+    <ThemeContext.Provider
+      value={{ theme: themeReady ? theme : "system", setTheme, resolvedTheme }}
+    >
       {children}
     </ThemeContext.Provider>
   )
