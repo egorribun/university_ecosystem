@@ -126,6 +126,11 @@ test("canonical test:ci executes the frontend quality contract tests", async () 
   assert.match(command, /scripts\/lhci-route-policy\.test\.mjs/u)
 })
 
+test("canonical Node gates exercise the non-release progress reporter contracts", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+  assert.match(packageJson.scripts["test:wasm"], /scripts\/stryker-progress-reporter\.test\.mjs/u)
+})
+
 test("profile bootstrap keeps the LHCI branch compile-time tree-shakeable", async () => {
   const profileSyncSource = await readFile(
     new URL("src/hooks/auth/useProfileSync.ts", frontendRoot),
