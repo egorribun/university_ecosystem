@@ -199,7 +199,7 @@ export default function DashboardStories({
         loading={loading}
         onPrefetch={onPrefetch}
         onOpenStory={openStory}
-        activeStoryId={openIndex !== null ? displayStories[openIndex]?.id : undefined}
+        activeStoryId={activeStoryId}
       />
       <StoryViewer
         stories={displayStories}
