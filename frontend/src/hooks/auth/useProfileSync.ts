@@ -791,14 +791,14 @@ export type SsrAuthHint = {
 // Wave 128 SW1 — runtime UserRole validation for ssrAuthHint.user.role
 // (typed as `string` per SsrAuthState shape). Invalid roles fall back to
 // "student" — same defensive pattern as ssrAuth.ts validateJwt.
-const KNOWN_USER_ROLES: ReadonlyArray<UserRole> = [
-  "student",
-  "teacher",
-  "admin",
-  "superuser",
-  "anonymous",
-]
 const coerceUserRole = (role: string): UserRole => {
+  const KNOWN_USER_ROLES: ReadonlyArray<UserRole> = [
+    "student",
+    "teacher",
+    "admin",
+    "superuser",
+    "anonymous",
+  ]
   return (KNOWN_USER_ROLES as ReadonlyArray<string>).includes(role) ? (role as UserRole) : "student"
 }
 
