@@ -23,7 +23,13 @@ interface WorkerMessage {
 }
 
 type PendingEntry = { resolve: (val: unknown) => void; reject: (err: Error) => void }
+// Every entry removes itself (and its timeout) as soon as it settles.
 const pendingPromises = new Map<string, PendingEntry>()
+
+/** Number of requests still waiting for the worker; lets tests prove settled requests are released. */
+export function getPendingCryptoRequestCountForTesting(): number {
+  return pendingPromises.size
+}
 
 // FE-01 (audit 2026-03-08 Wave 5): Drain all pending promises when the worker
 // crashes (OOM, uncaught exception) so callers receive a rejection rather than
@@ -34,13 +40,13 @@ worker.onerror = (event: ErrorEvent) => {
   for (const { reject } of pendingPromises.values()) {
     reject(err)
   }
-  pendingPromises.clear()
 }
 
 worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
   const msg = event.data
-  // Guard against malformed messages (e.g. from a compromised worker).
-  if (!msg || typeof msg !== "object" || typeof msg.id !== "string") return
+  // Guard against empty messages; any other malformed message (e.g. from a
+  // compromised worker) carries no id of a pending request and is ignored.
+  if (!msg) return
 
   const { id, result, error } = msg
   const pending = pendingPromises.get(id)
@@ -51,7 +57,6 @@ worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
     } else {
       pending.resolve(result)
     }
-    pendingPromises.delete(id)
   }
 }
 
@@ -63,24 +68,36 @@ const CRYPTO_WORKER_TIMEOUT_MS = 30_000
 const post = <T, P = unknown>(type: string, payload: P): Promise<T> => {
   return new Promise((resolve, reject) => {
     const id = crypto.randomUUID()
-
-    const timeoutId = setTimeout(() => {
+    const release = () => {
+      clearTimeout(timeoutId)
       pendingPromises.delete(id)
-      reject(new Error(`Crypto worker timeout after ${CRYPTO_WORKER_TIMEOUT_MS}ms (op: ${type})`))
-    }, CRYPTO_WORKER_TIMEOUT_MS)
-
-    pendingPromises.set(id, {
+    }
+    const entry: PendingEntry = {
       resolve: (val: unknown) => {
-        clearTimeout(timeoutId)
+        release()
         resolve(val as T)
       },
       reject: (err: Error) => {
-        clearTimeout(timeoutId)
+        release()
         reject(err)
       },
-    })
+    }
 
-    worker.postMessage({ type, payload, id })
+    const timeoutId = setTimeout(() => {
+      entry.reject(
+        new Error(`Crypto worker timeout after ${CRYPTO_WORKER_TIMEOUT_MS}ms (op: ${type})`)
+      )
+    }, CRYPTO_WORKER_TIMEOUT_MS)
+
+    pendingPromises.set(id, entry)
+
+    try {
+      worker.postMessage({ type, payload, id })
+    } catch (error) {
+      // A synchronous clone/dispatch failure never reaches a worker reply or timeout.
+      release()
+      reject(error)
+    }
   })
 }
 
