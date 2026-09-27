@@ -1,4 +1,7 @@
 import types
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -66,3 +69,62 @@ async def test_s3_storage_uses_client():
     await backend.delete_file("avatars/test.png")
     assert client.delete_calls
     assert client.delete_calls[0]["Key"] == "avatars/test.png"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "key", ["avatars/ExamX_2026.PNG", "X/report.pdf", "documents/AZ09_-x.json"]
+)
+async def test_s3_preserves_case_sensitive_object_keys_across_operations(
+    key: str,
+) -> None:
+    client = AsyncMock()
+    stream = AsyncMock()
+    stream.read.return_value = b"payload"
+
+    @asynccontextmanager
+    async def body() -> AsyncIterator[AsyncMock]:
+        yield stream
+
+    client.get_object.return_value = {"Body": body()}
+    storage = S3Storage(
+        bucket="uploads", client=client, base_url="https://cdn.example/uploads"
+    )
+
+    url = await storage.save_file(key, b"payload")
+
+    assert url == f"https://cdn.example/uploads/{key}"
+    client.put_object.assert_awaited_once_with(
+        Bucket="uploads", Key=key, Body=b"payload"
+    )
+    assert await storage.read_file(url) == b"payload"
+    client.get_object.assert_awaited_once_with(Bucket="uploads", Key=key)
+    assert await storage.exists(f"s3://uploads/{key}") is True
+    client.head_object.assert_awaited_once_with(Bucket="uploads", Key=key)
+    await storage.delete_file(key)
+    client.delete_object.assert_awaited_once_with(Bucket="uploads", Key=key)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "key",
+    [
+        "docs/X%41",
+        "docs/X?download=1",
+        "docs/X#fragment",
+        "docs/X;version",
+        r"docs\X",
+        "docs/\x00X",
+        "docs/../X",
+    ],
+)
+async def test_s3_uppercase_keys_do_not_bypass_invalid_path_rejection(
+    key: str,
+) -> None:
+    client = AsyncMock()
+    storage = S3Storage(bucket="uploads", client=client)
+
+    with pytest.raises(ValueError):
+        await storage.save_file(key, b"payload")
+
+    client.put_object.assert_not_awaited()
