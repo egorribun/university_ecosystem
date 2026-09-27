@@ -50,13 +50,13 @@ export default function DashboardStories({
     }
   }, [])
 
-  const closeViewer = useCallback(() => {
+  const [closeViewer] = useState<() => void>(() => () => {
     setOpenIndex(null)
     setProgress(0)
     setIsInteractionPaused(false)
     pausedElapsedRef.current = 0
     pauseStartedRef.current = false
-  }, [])
+  })
 
   const goToIndex = useCallback(
     (nextIndex: number) => {
@@ -163,16 +163,16 @@ export default function DashboardStories({
     [onStoryOpen]
   )
 
-  const pausePlayback = useCallback(() => {
+  const [pausePlayback] = useState<() => void>(() => () => {
     if (pauseStartedRef.current) return
     pausedElapsedRef.current = performance.now() - autoStartRef.current
     pauseStartedRef.current = true
-  }, [])
+  })
 
-  const resumePlayback = useCallback(() => {
+  const [resumePlayback] = useState<() => void>(() => () => {
     autoStartRef.current = performance.now() - pausedElapsedRef.current
     pauseStartedRef.current = false
-  }, [])
+  })
 
   const handlePause = useCallback(() => {
     pausePlayback()
