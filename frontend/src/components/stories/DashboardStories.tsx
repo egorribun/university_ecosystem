@@ -30,6 +30,7 @@ export default function DashboardStories({
   }, [stories, maxVisibleStories])
 
   const [openIndex, setOpenIndex] = useState<number | null>(null)
+  const activeStoryId = openIndex === null ? undefined : displayStories[openIndex]?.id
   const [progress, setProgress] = useState(0)
   const [isInteractionPaused, setIsInteractionPaused] = useState(false)
   const [isDocumentHidden, setIsDocumentHidden] = useState(false)
@@ -42,7 +43,7 @@ export default function DashboardStories({
 
   useEffect(() => {
     return () => {
-      if (rafRef.current) {
+      if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current)
         rafRef.current = null
       }
@@ -84,6 +85,8 @@ export default function DashboardStories({
   const goPrev = useCallback(() => {
     if (openIndex === null) return
     if (openIndex <= 0) {
+      autoStartRef.current = performance.now()
+      pausedElapsedRef.current = 0
       setProgress(0)
       return
     }
@@ -95,18 +98,24 @@ export default function DashboardStories({
       setProgress(0)
       return
     }
+    if (activeStoryId === undefined) {
+      closeViewer()
+      return
+    }
     setProgress(0)
     autoStartRef.current = performance.now()
     pausedElapsedRef.current = 0
     pauseStartedRef.current = document.visibilityState === "hidden"
-  }, [openIndex])
+  }, [openIndex, activeStoryId, closeViewer])
 
   useEffect(() => {
-    if (openIndex === null || prefersReducedMotion || isPaused) {
+    if (openIndex === null || activeStoryId === undefined || prefersReducedMotion || isPaused) {
       return
     }
 
+    let ownsPlayback = true
     const step = (timestamp: number) => {
+      if (!ownsPlayback) return
       const elapsed = timestamp - autoStartRef.current
       const ratio = Math.min(1, elapsed / STORY_AUTO_ADVANCE_MS)
       setProgress(ratio * 100)
@@ -121,12 +130,13 @@ export default function DashboardStories({
     rafRef.current = requestAnimationFrame(step)
 
     return () => {
-      if (rafRef.current) {
+      ownsPlayback = false
+      if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current)
         rafRef.current = null
       }
     }
-  }, [openIndex, goNext, prefersReducedMotion, isPaused])
+  }, [openIndex, activeStoryId, goNext, prefersReducedMotion, isPaused])
 
   useEffect(() => {
     if (openIndex === null) return
