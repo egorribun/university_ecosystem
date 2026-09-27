@@ -993,7 +993,7 @@ def _is_async_test_framework_task(task: Any) -> bool:
     return False
 
 
-def pytest_addoption(parser):
+def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--run-quarantined",
         action="store_true",
@@ -1014,7 +1014,7 @@ def pytest_addoption(parser):
     )
 
 
-def pytest_configure(config):
+def pytest_configure(config: pytest.Config) -> None:
     invocation_args = tuple(str(arg) for arg in config.invocation_params.args)
     explicit_basetemp = any(
         arg == "--basetemp" or arg.startswith("--basetemp=") for arg in invocation_args
@@ -1024,7 +1024,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "quarantine: mark test as quarantined/flaky")
 
 
-def pytest_runtest_setup(item):
+def pytest_runtest_setup(item: pytest.Item) -> None:
     if "quarantine" in item.keywords and not item.config.getoption("--run-quarantined"):
         pytest.skip("skipping quarantined flaky test (use --run-quarantined to run)")
 
