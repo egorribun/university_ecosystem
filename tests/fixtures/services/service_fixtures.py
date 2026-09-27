@@ -14,7 +14,7 @@ from app.deps import cache as cache_module
 
 
 class _TestingRedisCache(cache_module.RedisCache):
-    async def _get_client(self) -> Redis[Any]:
+    async def _get_client(self) -> "Redis[Any]":  # noqa: UP037 - Redis is generic only in stubs; Python 3.12 evaluates annotations eagerly.
         if self._client is None:
             self._client = fakeredis.aioredis.FakeRedis(
                 encoding="utf-8", decode_responses=True
