@@ -164,14 +164,14 @@ export default function DashboardStories({
     pauseStartedRef.current = false
   })
 
-  const handlePause = useCallback(() => {
+  const [handlePause] = useState<() => void>(() => () => {
     pausePlayback()
     setIsInteractionPaused(true)
-  }, [pausePlayback])
+  })
 
-  const handleResume = useCallback(() => {
+  const [handleResume] = useState<() => void>(() => () => {
     setIsInteractionPaused(false)
-  }, [])
+  })
 
   useEffect(() => {
     const handleVisibilityChange = () => {
