@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run mutmut 3.7 with a precomputed stats map in a fresh pytest process.
+"""Run mutmut with a precomputed stats map in a fresh pytest process.
 
 Mutmut reloads an existing ``mutants/mutmut-stats.json`` and then normally
 uses ``pytest.main(--collect-only)`` to discover new tests before its clean
@@ -12,7 +12,7 @@ is scoped to the same mapped test union mutmut uses for its clean baseline and
 mutation children. ``--reuse-generated-universe`` additionally validates the
 planner's content-addressed source/metadata snapshot and skips only mutmut's
 duplicate source-generation phase. Watchdogs, exact selection, and result
-persistence remain mutmut's own pinned-3.7 implementation.
+persistence remain mutmut's own dependency-pinned implementation.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ if not __package__:  # pragma: no cover - direct CI script entry point
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.mutmut_universe import (
     load_reused_generation_stats,
+    require_mutmut_fork_isolation,
     validate_universe_manifest,
 )
 
@@ -345,6 +346,7 @@ def run_mutmut_from_stats(
         raise ValueError("max_children must be positive")
     _require_precomputed_stats()
     cli = mutmut_cli or _load_mutmut_cli()
+    require_mutmut_fork_isolation(cli)
 
     @contextmanager
     def _reuse_universe() -> Any:
@@ -394,8 +396,10 @@ def run_mutmut_from_stats(
         return database_dir
 
     def _reuse_precomputed_test_ids(_runner: Any) -> Any:
+        from mutmut.runners.harness import ListAllTestsResult
+
         _prepare_runner_process(_runner)
-        return cli.ListAllTestsResult(ids=set(cli.collected_test_names()))
+        return ListAllTestsResult(ids=set(cli.collected_test_names()))
 
     def _run_selected_forced_fail(runner: Any) -> Any:
         return runner.run_tests(
@@ -421,7 +425,7 @@ def run_mutmut_from_stats(
     if original_run_tests is not None:
         cli.PytestRunner.run_tests = _run_process_isolated_tests
     try:
-        # `_run` is pinned with mutmut==3.7.0.  It still owns all mutation
+        # The dependency-pinned upstream `_run` still owns all mutation
         # phases. The temporary hooks reuse redundant collection and align
         # forced-fail with mutmut's exact clean/mutation test selection.
         with _reuse_universe():

@@ -1,6 +1,6 @@
 """Generate the mutmut universe and collect one complete test-stats shard.
 
-mutmut 3.7.0 applies positional mutant filters only after it has collected
+mutmut applies positional mutant filters only after it has collected
 stats for the entire pytest population.  Running those filters in a matrix
 therefore repeats the expensive full stats pass.  This helper keeps the
 mutmut-generated universe unchanged, but lets CI collect disjoint pytest
@@ -17,12 +17,15 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 if not __package__:  # pragma: no cover - direct CI script entry point
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.mutmut_universe import (
+    get_mutmut_config,
     prepare_mutants_directory,
     prepare_reused_generation,
+    require_mutmut_fork_isolation,
     write_generation_manifest,
 )
 
@@ -58,8 +61,8 @@ def _parse_args() -> argparse.Namespace:
     return args
 
 
-def _load_mutmut_cli():
-    """Load mutmut's 3.7 orchestration module only on the CI platform."""
+def _load_mutmut_cli() -> Any:
+    """Load the dependency-pinned orchestration module only on the CI platform."""
 
     try:
         from mutmut import __main__ as mutmut_cli
@@ -78,10 +81,11 @@ def _stats_selection_args(*, shard_id: int, num_shards: int) -> tuple[str, ...]:
     return (f"--shard-id={shard_id}", f"--num-shards={num_shards}")
 
 
-def _generate_mutant_universe(mutmut_cli, *, max_children: int) -> None:
+def _generate_mutant_universe(mutmut_cli: Any, *, max_children: int) -> None:
     """Create the normal mutmut copy and metadata before collecting stats."""
 
-    mutmut_cli.Config.ensure_loaded()
+    require_mutmut_fork_isolation(mutmut_cli)
+    get_mutmut_config(mutmut_cli)
     mutants_dir = Path("mutants")
     mutants_dir.mkdir(parents=True, exist_ok=True)
     prepare_mutants_directory(mutmut_cli)
@@ -112,6 +116,7 @@ def collect_stats_shard(
     """Persist one pytest stats shard, optionally reusing generation output."""
 
     mutmut_cli = _load_mutmut_cli()
+    require_mutmut_fork_isolation(mutmut_cli)
     if reuse_generated_universe:
         prepare_reused_generation(mutmut_cli)
     else:
@@ -121,15 +126,13 @@ def collect_stats_shard(
     # Append partition args only when there is more than one shard. For 1/1,
     # mutmut's saved config fingerprint must match the fresh runner that loads
     # this full stats map before mutation execution.
-    mutmut_cli.Config.ensure_loaded()
-    config = mutmut_cli.Config.get()
+    config = get_mutmut_config(mutmut_cli)
     config.pytest_add_cli_args_test_selection = [
         *config.pytest_add_cli_args_test_selection,
         *_stats_selection_args(shard_id=shard_id, num_shards=num_shards),
     ]
     mutmut_cli.setup_source_paths()
-    runner = mutmut_cli.PytestRunner()
-    runner.prepare_main_test_run()
+    runner = mutmut_cli.get_mutant_runner(max_children)
     mutmut_cli.run_stats_collection(runner)
 
     stats_path = Path("mutants/mutmut-stats.json")

@@ -47,11 +47,12 @@ class _FakeMutmut:
         self.received_names: list[str] | None = None
         self.received_name_calls: list[list[str]] = []
         self.config_loaded = False
-        self.Config = SimpleNamespace(ensure_loaded=self._ensure_config_loaded)
+        self.config = self._load_config
         self.status_by_exit_code = _STATUS_BY_EXIT_CODE
 
-    def _ensure_config_loaded(self) -> None:
+    def _load_config(self) -> SimpleNamespace:
         self.config_loaded = True
+        return SimpleNamespace()
 
     def collect_source_file_mutation_data(
         self, *, mutant_names: list[str]

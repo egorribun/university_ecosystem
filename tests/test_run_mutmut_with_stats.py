@@ -18,6 +18,22 @@ from scripts.run_mutmut_with_stats import run_mutmut_from_stats
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.parametrize("isolation", ["forkserver", "unknown", None])
+def test_execution_rejects_unsupported_isolation_before_hooks(
+    tmp_path, monkeypatch, isolation
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_module, "_require_precomputed_stats", lambda: None)
+    config = SimpleNamespace(process_isolation=isolation)
+    cli = SimpleNamespace(config=lambda: config)
+    with pytest.raises(RuntimeError, match="requires fork process isolation"):
+        run_mutmut_from_stats(
+            mutant_names=("module.fn_mutmut_1",), max_children=1, mutmut_cli=cli
+        )
+    assert config.process_isolation is isolation
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_mutation_worker_atfork_guard_skips_dead_otel_weakmethod(
     monkeypatch,
 ) -> None:
@@ -370,7 +386,6 @@ def test_run_mutmut_from_stats_skips_the_second_in_process_pytest_collection(
 
     fake_cli = SimpleNamespace(
         PytestRunner=_FakePytestRunner,
-        ListAllTestsResult=_FakeListAllTestsResult,
         collected_test_names=lambda: {"tests/test_fn.py::test_fn"},
         _run=_run,
     )

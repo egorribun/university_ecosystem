@@ -33,6 +33,7 @@ from scripts.mutmut_shard_budget import (
     MUTMUT_WALL_TIMEOUT_MULTIPLIER,
 )
 from scripts.mutmut_universe import (
+    get_mutmut_config,
     prepare_mutants_directory,
     prepare_reused_generation,
     write_universe_manifest,
@@ -940,7 +941,7 @@ def _load_mutmut_cli() -> Any:
 def _generate_mutant_universe(mutmut_cli: Any, *, max_children: int) -> None:
     """Create the same source copy and metadata that ``mutmut run`` uses."""
 
-    mutmut_cli.Config.ensure_loaded()
+    get_mutmut_config(mutmut_cli)
     mutants_dir = Path("mutants")
     mutants_dir.mkdir(parents=True, exist_ok=True)
     # mutmut's mtime fast path intentionally retains newer generated files.
@@ -954,7 +955,7 @@ def _generate_mutant_universe(mutmut_cli: Any, *, max_children: int) -> None:
     # This is false in the repository configuration.  Keep the branch so a
     # future config change cannot make the planner and mutmut use different
     # mutant universes.
-    if mutmut_cli.Config.get().mutate_only_covered_lines:
+    if get_mutmut_config(mutmut_cli).mutate_only_covered_lines:
         mutmut_cli.store_lines_covered_by_tests()
     stats = mutmut_cli.create_mutants(max_children)
     metadata = list(mutants_dir.rglob("*.py.meta"))
