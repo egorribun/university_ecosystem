@@ -60,14 +60,13 @@ export default function DashboardStories({
 
   const goToIndex = useCallback(
     (nextIndex: number) => {
-      const next = Math.max(0, Math.min(displayStories.length - 1, nextIndex))
-      const story = displayStories[next]
+      const story = displayStories[nextIndex]
       if (!story) {
         closeViewer()
         return
       }
       setProgress(0)
-      setOpenIndex(next)
+      setOpenIndex(nextIndex)
       onStoryOpen?.(story)
     },
     [closeViewer, displayStories, onStoryOpen]
@@ -75,12 +74,8 @@ export default function DashboardStories({
 
   const goNext = useCallback(() => {
     if (openIndex === null) return
-    if (openIndex >= displayStories.length - 1) {
-      closeViewer()
-      return
-    }
     goToIndex(openIndex + 1)
-  }, [openIndex, displayStories.length, goToIndex, closeViewer])
+  }, [openIndex, goToIndex])
 
   const goPrev = useCallback(() => {
     if (openIndex === null) return
