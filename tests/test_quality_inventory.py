@@ -857,3 +857,32 @@ def test_static_skip_condition_is_not_a_dynamic_skip(tmp_path: Path) -> None:
     check_anti_patterns(test_file, errors, [], [])
 
     assert errors == []
+
+
+@pytest.mark.parametrize(
+    ("contract_name", "support_path"),
+    [
+        ("test_conftest_jsonb_compiler.py", "tests/conftest.py"),
+        (
+            "test_service_fixture_annotations.py",
+            "tests/fixtures/services/service_fixtures.py",
+        ),
+    ],
+)
+def test_fixture_contract_declares_its_actual_repository_support_target(
+    contract_name: str, support_path: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    contract_path = root / "tests" / contract_name
+    references = find_python_repository_references(contract_path)
+
+    assert (root / support_path).is_file()
+    assert classify_file(support_path, []) != "test"
+    assert support_path in references
+    assert matches_source(
+        f"tests/{contract_name}",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={support_path},
+    )
