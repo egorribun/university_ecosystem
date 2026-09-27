@@ -257,6 +257,86 @@ describe("ticket exchange", () => {
 })
 
 describe("connection lifecycle", () => {
+  it("does not publish a message after a cache subscriber synchronously changes accounts", async () => {
+    const onNewMessageA = vi.fn()
+    const onNewMessageB = vi.fn()
+    const session = await connected({ currentUserId: "user-a", onNewMessage: onNewMessageA })
+    session.queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    const unsubscribe = session.queryClient.getQueryCache().subscribe((event) => {
+      if (
+        event.type === "updated" &&
+        event.query.queryKey[0] === "chats" &&
+        event.action.type === "invalidate"
+      ) {
+        unsubscribe()
+        flushSync(() =>
+          session.rerender({
+            enabled: true,
+            currentUserId: "user-b",
+            onNewMessage: onNewMessageB,
+          })
+        )
+      }
+    })
+
+    act(() =>
+      session.socket.receive({
+        type: "new_message",
+        chat_id: CHAT,
+        message: message({ id: "accepted-before-switch" }),
+        stream_seq: 5,
+        resume_token: "checkpoint-a",
+      })
+    )
+    await flush()
+    unsubscribe()
+
+    expect(session.socket.close).toHaveBeenCalledOnce()
+    expect(sockets()).toHaveLength(2)
+    expect(onNewMessageA).not.toHaveBeenCalled()
+    expect(onNewMessageB).not.toHaveBeenCalled()
+    expect(mocks.dbUpsert).not.toHaveBeenCalled()
+    expect(window.sessionStorage.getItem("university.chat.replay.v2:user-a")).toBeNull()
+    expect(window.sessionStorage.getItem("university.chat.replay.v2:user-b")).toBeNull()
+
+    const incomingB = message({ id: "owned-b", chat_id: OTHER_CHAT })
+    act(() => lastSocket().onopen?.())
+    act(() =>
+      lastSocket().receive({ type: "new_message", chat_id: OTHER_CHAT, message: incomingB })
+    )
+    expect(onNewMessageB).toHaveBeenCalledExactlyOnceWith(incomingB, OTHER_CHAT)
+  })
+
+  it.each(["account change", "same-account reconnect"])(
+    "ignores a captured error callback after %s while reporting the owned socket's error",
+    async (transition) => {
+      const session = await connected({ currentUserId: "user-a" })
+      const capturedError = session.socket.onerror!
+      if (transition === "account change")
+        session.rerender({ enabled: true, currentUserId: "user-b" })
+      else {
+        act(() => session.socket.close(1006))
+        await act(() => vi.advanceTimersByTimeAsync(1_000))
+      }
+      await flush()
+      expect(sockets()).toHaveLength(2)
+      act(() => lastSocket().onopen?.())
+
+      act(() => capturedError(new Event("error")))
+      expect(mocks.logError).not.toHaveBeenCalled()
+      expect(session.result.current.isConnected).toBe(true)
+
+      const ownedError = new Event("error")
+      act(() => lastSocket().onerror?.(ownedError))
+      expect(mocks.logError).toHaveBeenCalledExactlyOnceWith("[WebSocket] Error:", ownedError)
+      expect(session.result.current.isConnected).toBe(true)
+    }
+  )
+
   it("queues the new account's room during commit without sending its token on the old socket", async () => {
     window.sessionStorage.setItem(
       "university.chat.replay.v2:user-b",
