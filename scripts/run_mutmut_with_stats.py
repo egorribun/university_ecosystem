@@ -64,6 +64,7 @@ _AUTO_DATABASE_DIR_ENV = "UNIVERSITY_ECOSYSTEM_PYTEST_AUTO_DATABASE_DIR"
 _DATABASE_MODE_ENV = "UNIVERSITY_ECOSYSTEM_PYTEST_DATABASE_MODE"
 _MUTATION_CACHE_PREFIX = "mutmut-cache-"
 _MUTATION_CACHE_DIR_BY_PID: dict[int, Path] = {}
+_MUTATION_OWNED_CACHE_DIR_BY_PID: dict[int, tuple[Path, Path]] = {}
 
 
 def _callback_weak_references(callback: Any) -> tuple[weakref.ReferenceType[Any], ...]:
@@ -165,6 +166,7 @@ def _configure_process_local_pytest_cache(runner: Any) -> Path | None:
             cache_dir = Path(
                 tempfile.mkdtemp(prefix=f"{_MUTATION_CACHE_PREFIX}{process_id}-")
             ).resolve()
+            _MUTATION_OWNED_CACHE_DIR_BY_PID[process_id] = (cache_dir, cache_dir.parent)
         _MUTATION_CACHE_DIR_BY_PID[process_id] = cache_dir
 
     filtered_args: list[str] = []
@@ -256,25 +258,71 @@ def _isolate_mutation_child_database() -> Path | None:
     return Path(os.environ[_AUTO_DATABASE_DIR_ENV]).resolve()
 
 
-def _cleanup_mutation_child_database(database_dir: Path | None) -> None:
-    """Remove one child-owned database/cache directory after pytest teardown."""
-
+def _owned_mutation_child_database(database_dir: Path | None) -> Path | None:
+    """Validate ownership without importing a bootstrap that could allocate data."""
     if database_dir is None:
-        return
-    import tests.conftest as test_bootstrap
-
-    if database_dir.parent != test_bootstrap._AUTO_DATABASE_ROOT:
-        return
+        return None
+    test_bootstrap = sys.modules.get("tests.conftest")
+    database_root = getattr(test_bootstrap, "_AUTO_DATABASE_ROOT", None)
+    if not isinstance(database_root, Path) or database_root.is_symlink():
+        return None
+    if database_dir.is_symlink() or database_dir.parent != database_root:
+        return None
     if not database_dir.name.startswith(f"pytest-{os.getpid()}-"):
-        return
+        return None
     sentinel = database_dir / ".pytest-owned"
+    if sentinel.is_symlink():
+        return None
     expected = f"university-ecosystem-pytest:{os.getpid()}:{database_dir.name}\n"
     try:
         if sentinel.read_text(encoding="utf-8") != expected:
-            return
-    except OSError:
-        return
-    shutil.rmtree(database_dir, ignore_errors=True)
+            return None
+    except (OSError, UnicodeError):
+        return None
+    return database_dir
+
+
+def _cleanup_mutation_child_database(database_dir: Path | None) -> None:
+    """Remove only a validated current-child directory; deletion failures are fatal."""
+    owned_dir = _owned_mutation_child_database(database_dir)
+    if owned_dir is not None:
+        shutil.rmtree(owned_dir)
+
+
+def _cleanup_mutation_child_resources(database_dir: Path | None) -> None:
+    """Discover late bootstrap allocation and clean separately owned fallback cache."""
+    if database_dir is None and os.environ.get(_DATABASE_MODE_ENV) == "harness-sqlite":
+        late_dir = os.environ.get(_AUTO_DATABASE_DIR_ENV)
+        if late_dir and os.environ.get(_AUTO_DATABASE_URL_ENV):
+            database_dir = Path(late_dir)
+    owned_dir = _owned_mutation_child_database(database_dir)
+    failures: list[BaseException] = []
+    if owned_dir is not None:
+        try:
+            _dispose_inherited_database()
+        except BaseException as exc:
+            failures.append(exc)
+        try:
+            _cleanup_mutation_child_database(owned_dir)
+        except BaseException as exc:
+            failures.append(exc)
+    process_id = os.getpid()
+    owned_cache = _MUTATION_OWNED_CACHE_DIR_BY_PID.pop(process_id, None)
+    _MUTATION_CACHE_DIR_BY_PID.pop(process_id, None)
+    if owned_cache is not None:
+        cache_dir, cache_root = owned_cache
+        if (
+            not cache_dir.is_symlink()
+            and not cache_root.is_symlink()
+            and cache_dir.parent == cache_root
+            and cache_dir.name.startswith(f"{_MUTATION_CACHE_PREFIX}{process_id}-")
+        ):
+            try:
+                shutil.rmtree(cache_dir)
+            except BaseException as exc:
+                failures.append(exc)
+    if failures:
+        raise BaseExceptionGroup("mutmut child resource cleanup failed", failures)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -410,15 +458,27 @@ def run_mutmut_from_stats(
     def _run_process_isolated_tests(
         runner: Any, *, mutant_name: str | None, tests: Sequence[str]
     ) -> int:
-        database_dir = _prepare_runner_process(runner)
+        database_dir: Path | None = None
         try:
+            database_dir = _prepare_runner_process(runner)
             if original_run_tests is None:
                 raise RuntimeError("mutmut PytestRunner does not implement run_tests")
-            return int(original_run_tests(runner, mutant_name=mutant_name, tests=tests))
-        finally:
-            if database_dir is not None:
-                _dispose_inherited_database()
-                _cleanup_mutation_child_database(database_dir)
+            result = int(
+                original_run_tests(runner, mutant_name=mutant_name, tests=tests)
+            )
+        except BaseException as primary:
+            if os.getpid() != parent_pid:
+                try:
+                    _cleanup_mutation_child_resources(database_dir)
+                except BaseException as cleanup:
+                    raise BaseExceptionGroup(
+                        "mutmut test execution and cleanup failed", [primary, cleanup]
+                    ) from primary
+            raise
+        else:
+            if os.getpid() != parent_pid:
+                _cleanup_mutation_child_resources(database_dir)
+            return result
 
     cli.PytestRunner.list_all_tests = _reuse_precomputed_test_ids
     cli.PytestRunner.run_forced_fail = _run_selected_forced_fail

@@ -368,6 +368,199 @@ def _write_complete_stats(tmp_path) -> None:
     )
 
 
+@pytest.mark.parametrize("sentinel_valid", [True, False], ids=["valid", "invalid-utf8"])
+@pytest.mark.parametrize("in_child", [False, True])
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+@pytest.mark.parametrize("fails", [False, True])
+@pytest.mark.parametrize("allocates", [False, True])
+def test_runner_cleans_late_child_database_and_fallback_cache(
+    tmp_path, monkeypatch, fails, allocates, cleanup_fails, in_child, sentinel_valid
+) -> None:
+    """Late bootstrap allocations must be gone before a child uses os._exit."""
+    _write_complete_stats(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv(run_module._AUTO_DATABASE_URL_ENV, raising=False)
+    monkeypatch.delenv(run_module._AUTO_DATABASE_DIR_ENV, raising=False)
+    monkeypatch.delenv(run_module._DATABASE_MODE_ENV, raising=False)
+    monkeypatch.delitem(sys.modules, "tests.conftest", raising=False)
+    monkeypatch.setattr(run_module, "_MUTATION_CACHE_DIR_BY_PID", {})
+    monkeypatch.setattr(run_module, "_MUTATION_OWNED_CACHE_DIR_BY_PID", {})
+    cache_root = tmp_path / "cache-root"
+    cache_root.mkdir()
+    monkeypatch.setattr(run_module.tempfile, "tempdir", str(cache_root))
+    database_root = tmp_path / "owned-root"
+    database_root.mkdir()
+    parent_pid = os.getpid()
+    child_pid = parent_pid + 10000 if in_child else parent_pid
+    database_dir = database_root / f"pytest-{child_pid}-late"
+    failure = RuntimeError("original test failure")
+    cleanup_failure = OSError("fixture cleanup denied")
+    original_rmtree = run_module.shutil.rmtree
+
+    def cleanup(path):
+        if cleanup_fails:
+            raise cleanup_failure
+        return original_rmtree(path)
+
+    monkeypatch.setattr(run_module.shutil, "rmtree", cleanup)
+    disposed = []
+    monkeypatch.setattr(
+        run_module, "_dispose_inherited_database", lambda: disposed.append(True)
+    )
+
+    class Runner:
+        def __init__(self):
+            self._pytest_add_cli_args = []
+
+        def list_all_tests(self):
+            return None
+
+        def run_forced_fail(self):
+            return 1
+
+        def run_tests(self, *, mutant_name, tests):
+            if not allocates:
+                if fails:
+                    raise failure
+                return 1
+            database_dir.mkdir()
+            (database_dir / ".pytest-owned").write_text(
+                f"university-ecosystem-pytest:{child_pid}:{database_dir.name}\n",
+                encoding="utf-8",
+            )
+            if not sentinel_valid:
+                (database_dir / ".pytest-owned").write_bytes(b"\xff")
+            (database_dir / "test.db").write_bytes(b"actual owned fixture bytes")
+            monkeypatch.setitem(
+                sys.modules,
+                "tests.conftest",
+                SimpleNamespace(_AUTO_DATABASE_ROOT=database_root),
+            )
+            monkeypatch.setenv(run_module._DATABASE_MODE_ENV, "harness-sqlite")
+            monkeypatch.setenv(
+                run_module._AUTO_DATABASE_URL_ENV,
+                f"sqlite+aiosqlite:///{database_dir}/test.db",
+            )
+            monkeypatch.setenv(run_module._AUTO_DATABASE_DIR_ENV, str(database_dir))
+            if fails:
+                raise failure
+            return 1
+
+    def execute(names, max_children):
+        with monkeypatch.context() as child:
+            child.setattr(run_module.os, "getpid", lambda: child_pid)
+            Runner().run_tests(mutant_name=names[0], tests=())
+
+    cli = SimpleNamespace(
+        config=lambda: SimpleNamespace(process_isolation="fork"),
+        PytestRunner=Runner,
+        _run=execute,
+    )
+    if not in_child:
+        if fails:
+            with pytest.raises(RuntimeError) as raised:
+                run_mutmut_from_stats(
+                    mutant_names=("app.fn__mutmut_1",), max_children=1, mutmut_cli=cli
+                )
+            assert raised.value is failure
+        else:
+            run_mutmut_from_stats(
+                mutant_names=("app.fn__mutmut_1",), max_children=1, mutmut_cli=cli
+            )
+        assert database_dir.exists() is allocates
+        assert len(list(cache_root.iterdir())) == 1
+        assert disposed == []
+        return
+    if cleanup_fails:
+        with pytest.raises(BaseExceptionGroup) as raised:
+            run_mutmut_from_stats(
+                mutant_names=("app.fn__mutmut_1",), max_children=1, mutmut_cli=cli
+            )
+        if fails:
+            assert raised.value.exceptions[0] is failure
+            assert raised.value.__cause__ is failure
+            cleanup_group = raised.value.exceptions[1]
+        else:
+            cleanup_group = raised.value
+        assert isinstance(cleanup_group, BaseExceptionGroup)
+        assert all(error is cleanup_failure for error in cleanup_group.exceptions)
+        assert len(cleanup_group.exceptions) == (
+            2 if allocates and sentinel_valid else 1
+        )
+        assert database_dir.exists() is allocates
+        assert len(list(cache_root.iterdir())) == 1
+        return
+    if fails:
+        with pytest.raises(RuntimeError) as raised:
+            run_mutmut_from_stats(
+                mutant_names=("app.fn__mutmut_1",), max_children=1, mutmut_cli=cli
+            )
+        assert raised.value is failure
+    else:
+        run_mutmut_from_stats(
+            mutant_names=("app.fn__mutmut_1",), max_children=1, mutmut_cli=cli
+        )
+    assert database_dir.exists() is (allocates and not sentinel_valid)
+    assert list(cache_root.iterdir()) == []
+    assert disposed == ([True] if allocates and sentinel_valid else [])
+
+
+@pytest.mark.parametrize(
+    "ownership",
+    [
+        "parent",
+        "foreign-root",
+        "wrong-sentinel",
+        "unloaded",
+        "directory-symlink",
+        "sentinel-symlink",
+        "root-symlink",
+    ],
+)
+def test_cleanup_does_not_delete_unowned_or_import_bootstrap(
+    tmp_path, monkeypatch, ownership
+) -> None:
+    root = tmp_path / "owned-root"
+    root.mkdir()
+    pid = os.getpid() - 1 if ownership == "parent" else os.getpid()
+    directory = root / f"pytest-{pid}-fixture"
+    directory.mkdir()
+    sentinel = directory / ".pytest-owned"
+    sentinel.write_text(
+        "foreign owner"
+        if ownership == "wrong-sentinel"
+        else f"university-ecosystem-pytest:{pid}:{directory.name}\n",
+        encoding="utf-8",
+    )
+    original_is_symlink = Path.is_symlink
+    rejected_path = {
+        "directory-symlink": directory,
+        "sentinel-symlink": sentinel,
+        "root-symlink": root,
+    }.get(ownership)
+    if rejected_path is not None:
+        monkeypatch.setattr(
+            Path,
+            "is_symlink",
+            lambda path: path == rejected_path or original_is_symlink(path),
+        )
+    if ownership == "unloaded":
+        monkeypatch.delitem(sys.modules, "tests.conftest", raising=False)
+    else:
+        monkeypatch.setitem(
+            sys.modules,
+            "tests.conftest",
+            SimpleNamespace(
+                _AUTO_DATABASE_ROOT=tmp_path if ownership == "foreign-root" else root,
+            ),
+        )
+    run_module._cleanup_mutation_child_database(directory)
+    assert directory.is_dir()
+    assert sentinel.is_file()
+    if ownership == "unloaded":
+        assert "tests.conftest" not in sys.modules
+
+
 def test_run_mutmut_from_stats_skips_the_second_in_process_pytest_collection(
     tmp_path, monkeypatch
 ) -> None:
