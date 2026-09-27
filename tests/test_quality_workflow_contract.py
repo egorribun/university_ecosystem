@@ -2288,7 +2288,24 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     helper_text = (REPOSITORY_ROOT / "scripts/mutmut_stats_shard.py").read_text(
         encoding="utf-8"
     )
-    assert "config = mutmut_cli.Config.get()" in helper_text
+    helper_tree = ast.parse(helper_text)
+    collect_stats = next(
+        node
+        for node in helper_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "collect_stats_shard"
+    )
+    # Require the stats path to use the compatibility adapter, not the removed
+    # upstream Config class API. Its behavior and fail-closed isolation checks
+    # are exercised by test_mutmut_universe and test_mutmut_stats_protocol.
+    assert any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "get_mutmut_config"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "mutmut_cli"
+        for node in ast.walk(collect_stats)
+    )
     assert "mutmut.config" not in helper_text
 
     assert "mutation-tests-stats" in mutation_job["needs"]
