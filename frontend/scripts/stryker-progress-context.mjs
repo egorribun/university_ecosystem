@@ -29,6 +29,7 @@ const validPath = (value) =>
  * a hostile-filesystem ownership guarantee (including ancestor/race attacks).
  * Fresh directories remain under shardTemp for the parent's existing finalizer.
  * No timers, inactivity policy, resource probes, process wrapper or quality proof.
+ * observeLive is a synchronous bounded reader; the existing child owner schedules it.
  * Invoke validateSuccessfulExit ONLY after existing runNode success/quiescence;
  * never in finally or after a child failure. Its snapshot is informational only.
  */
@@ -46,6 +47,7 @@ export async function createStrykerProgressContext(options = {}) {
   if (options.enabled !== "1") {
     return Object.freeze({
       childEnv: Object.freeze(childEnv),
+      observeLive: () => undefined,
       validateSuccessfulExit: () => undefined,
     })
   }
@@ -70,6 +72,7 @@ export async function createStrykerProgressContext(options = {}) {
   const monitor = createStrykerProgressMonitor({ outputPath, runId, shardId })
   return Object.freeze({
     childEnv: Object.freeze(childEnv),
+    observeLive: () => monitor.observe(),
     validateSuccessfulExit: () => monitor.validateExit(0),
   })
 }

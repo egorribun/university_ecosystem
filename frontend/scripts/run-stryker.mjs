@@ -2437,6 +2437,7 @@ export function waitForChildClose(
     terminationGraceMs = childTerminationGraceMs,
     scheduleTimeout = setTimeout,
     cancelTimeout = clearTimeout,
+    observeLive,
   }
 ) {
   return new Promise((resolve, reject) => {
@@ -2455,6 +2456,12 @@ export function waitForChildClose(
     let postExitFailure
     let graceTimer
     let timeoutTimer
+    let observationTimer
+
+    const stopObserving = () => {
+      if (observationTimer !== undefined) cancelTimeout(observationTimer)
+      observationTimer = undefined
+    }
 
     const detachListeners = () => {
       child.removeListener("error", onError)
@@ -2465,6 +2472,7 @@ export function waitForChildClose(
     const settle = (error) => {
       if (settled) return
       settled = true
+      stopObserving()
       if (timeoutTimer !== undefined) cancelTimeout(timeoutTimer)
       if (graceTimer !== undefined) cancelTimeout(graceTimer)
       detachListeners()
@@ -2497,6 +2505,7 @@ export function waitForChildClose(
     const beginTermination = (primaryError) => {
       if (settled || terminationStarted) return
       terminationStarted = true
+      stopObserving()
       primaryTerminationError = processError ?? primaryError
       primaryTerminationSecondaryErrors = processError ? [primaryError] : []
       if (timeoutTimer !== undefined) cancelTimeout(timeoutTimer)
@@ -2542,6 +2551,7 @@ export function waitForChildClose(
       return failure
     }
     const beginPostExitFailure = (error) => {
+      stopObserving()
       if (!postExitFailure) postExitFailure = error
       if (timeoutTimer !== undefined) cancelTimeout(timeoutTimer)
       if (graceTimer !== undefined) return
@@ -2574,6 +2584,7 @@ export function waitForChildClose(
     }
     const onExit = (code, signal) => {
       exitResult = { code, signal }
+      stopObserving()
     }
     const verifyPostCloseProcessTree = (primaryError) => {
       if (postCloseVerificationStarted) return
@@ -2658,6 +2669,7 @@ export function waitForChildClose(
     }
     const onClose = (code, signal) => {
       closeResult = { code, signal }
+      stopObserving()
       if (terminationStarted) {
         finishTerminatedExecution()
         return
@@ -2676,12 +2688,45 @@ export function waitForChildClose(
         verifyPostCloseProcessTree()
       } else if (result.code === 0) settle()
     }
+    // Synchronous bounded snapshot reads only. This owner retains the sole
+    // termination authority; duplicate/missing output is not inactivity proof.
+    const observationFailed = (error) => {
+      if (settled || terminationStarted) return
+      if (exitResult) beginPostExitFailure(error)
+      else beginTermination(error)
+    }
+    const scheduleObservation = () => {
+      if (
+        typeof observeLive !== "function" ||
+        settled ||
+        terminationStarted ||
+        exitResult ||
+        closeResult
+      )
+        return
+      try {
+        observationTimer = scheduleTimeout(() => {
+          if (settled || terminationStarted || exitResult || closeResult) return
+          observationTimer = undefined
+          try {
+            observeLive()
+          } catch (error) {
+            observationFailed(error)
+            return
+          }
+          scheduleObservation()
+        }, 1_000)
+      } catch (error) {
+        observationFailed(error)
+      }
+    }
     child.once("error", onError)
     child.once("exit", onExit)
     child.once("close", onClose)
     abortSignal?.addEventListener("abort", onAbort)
     timeoutTimer = scheduleTimeout(onTimeout, timeoutMs)
     if (abortSignal?.aborted) onAbort()
+    scheduleObservation()
   })
 }
 
@@ -2847,7 +2892,7 @@ async function spawnWindowsJobHost(args, env) {
   }
 }
 
-async function runNode(args, description, env, timeoutMs, abortSignal) {
+async function runNode(args, description, env, timeoutMs, abortSignal, observeLive) {
   throwIfCancellationRequested(abortSignal)
   if (process.platform === "win32") {
     const hosted = await spawnWindowsJobHost(args, env)
@@ -2872,6 +2917,7 @@ async function runNode(args, description, env, timeoutMs, abortSignal) {
       timeoutMs,
       abortSignal,
       processTreeOwnership,
+      observeLive,
     })
     return {
       sourceSha256: hosted.hostSourceSha256,
@@ -2893,6 +2939,7 @@ async function runNode(args, description, env, timeoutMs, abortSignal) {
     timeoutMs,
     abortSignal,
     processTreeOwnership,
+    observeLive,
   })
 }
 
@@ -2928,7 +2975,8 @@ export async function runStrykerShardExecution(
     description,
     context.childEnv,
     timeoutMs,
-    abortSignal
+    abortSignal,
+    progressEnabled === "1" ? context.observeLive : undefined
   )
   // runNode success already proves exit-zero, close and owned-tree quiescence.
   throwIfCancellationRequested(abortSignal)

@@ -47,6 +47,392 @@ async function progressIntegrationFixture(t) {
   }
 }
 
+async function liveObserverFixture(t, overrides = {}) {
+  const { waitForChildClose } = await import(runnerUrl)
+  const child = new EventEmitter()
+  child.pid = 9876
+  child.exitCode = null
+  child.signalCode = null
+  const controller = new AbortController()
+  const timers = []
+  let observations = 0
+  let terminations = 0
+  const ownership = { kind: "posix-process-group", rootPid: child.pid, groupId: child.pid }
+  const result = waitForChildClose(child, {
+    description: "live observed shard",
+    timeoutMs: 15_300_000,
+    abortSignal: controller.signal,
+    processTreeOwnership: ownership,
+    verifyProcessTree: async () => true,
+    observeLive: () => {
+      observations++
+      return { snapshot: null, completionAdvanced: false }
+    },
+    terminate: async (target, owned) => {
+      assert.equal(target, child)
+      assert.equal(owned, ownership)
+      terminations++
+      return true
+    },
+    scheduleTimeout(callback, milliseconds) {
+      const timer = {
+        callback() {
+          timer.cancelled = true
+          callback()
+        },
+        milliseconds,
+        cancelled: false,
+      }
+      timers.push(timer)
+      return timer
+    },
+    cancelTimeout(timer) {
+      timer.cancelled = true
+    },
+    ...overrides,
+  })
+  // Attach rejection handling immediately, including tests' failing RED assertions.
+  void result.catch(() => undefined)
+  t.after(async () => {
+    child.emit("exit", 0, null)
+    child.emit("close", 0, null)
+    for (const timer of timers)
+      if (!timer.cancelled && timer.milliseconds === 15_000) timer.callback()
+    await result.catch(() => undefined)
+  })
+  return {
+    child,
+    controller,
+    timers,
+    result,
+    get observations() {
+      return observations
+    },
+    get terminations() {
+      return terminations
+    },
+    tick() {
+      const timer = timers.find((entry) => entry.milliseconds === 1_000 && !entry.cancelled)
+      assert.ok(timer, "live observer must own a bounded polling timer")
+      timer.cancelled = true
+      timer.callback()
+      return timer.callback
+    },
+  }
+}
+
+test("live observer polls missing or duplicate snapshots without inactivity termination and stops on close", async (t) => {
+  const f = await liveObserverFixture(t)
+  const late = f.tick()
+  f.tick()
+  assert.equal(f.observations, 2)
+  assert.equal(f.terminations, 0)
+  f.child.emit("exit", 0, null)
+  f.child.emit("close", 0, null)
+  await f.result
+  late()
+  assert.equal(f.observations, 2)
+  assert.equal(
+    f.timers.every((timer) => timer.cancelled),
+    true
+  )
+  assert.equal(f.child.listenerCount("close"), 0)
+})
+
+test("live observer failure waits for existing tree termination AND child close", async (t) => {
+  const failure = new Error("invalid live snapshot")
+  let confirmTermination
+  const confirmation = new Promise((resolve) => {
+    confirmTermination = resolve
+  })
+  t.after(() => confirmTermination(true))
+  const f = await liveObserverFixture(t, {
+    observeLive: () => {
+      throw failure
+    },
+    terminate: async () => confirmation,
+  })
+  let settled = false
+  void f.result.catch(() => {
+    settled = true
+  })
+  const late = f.tick()
+  await Promise.resolve()
+  f.child.emit("exit", null, "SIGKILL")
+  f.child.emit("close", null, "SIGKILL")
+  await Promise.resolve()
+  assert.equal(settled, false)
+  confirmTermination(true)
+  await assert.rejects(f.result, (error) => error === failure && error.processQuiesced === true)
+  late()
+  assert.equal(
+    f.timers.every((timer) => timer.cancelled),
+    true
+  )
+})
+
+for (const first of ["child", "abort", "timeout", "observer"]) {
+  test(`live observer preserves first ${first} failure and ignores late polling`, async (t) => {
+    const observerError = new Error("observer failed")
+    const childError = new Error("child failed")
+    const interruption = new Error("abort failed first")
+    const f = await liveObserverFixture(t, {
+      observeLive: () => {
+        throw observerError
+      },
+    })
+    const poll = f.timers.find((timer) => timer.milliseconds === 1_000)
+    assert.ok(poll, "observer must be scheduled")
+    if (first === "child") f.child.emit("error", childError)
+    if (first === "abort") f.controller.abort(interruption)
+    if (first === "timeout") f.timers.find((timer) => timer.milliseconds === 15_300_000).callback()
+    poll.callback()
+    if (first === "observer") {
+      f.controller.abort(interruption)
+      f.child.emit("error", childError)
+    }
+    f.child.emit("exit", null, "SIGKILL")
+    f.child.emit("close", null, "SIGKILL")
+    await assert.rejects(f.result, (error) => {
+      const primary = error.cause ?? error
+      if (first === "child") assert.equal(primary, childError)
+      if (first === "abort") assert.equal(primary, interruption)
+      if (first === "timeout") assert.match(primary.message, /exceeded 15300000ms/u)
+      if (first === "observer") {
+        assert.equal(primary, observerError)
+        assert.equal(error.processQuiesced, false, "late child error is retained fail-closed")
+        assert.equal(error.errors.includes(childError), true)
+      }
+      return true
+    })
+    assert.equal(f.terminations, 1)
+    assert.equal(
+      f.timers.every((timer) => timer.cancelled),
+      true
+    )
+  })
+}
+
+for (const exitCode of [0, 7]) {
+  test(`live observer error discovered after root exit ${exitCode} never signals a reusable root`, async (t) => {
+    const observerError = new Error("observer after root exit")
+    let f
+    f = await liveObserverFixture(t, {
+      observeLive: () => {
+        f.child.emit("exit", exitCode, null)
+        throw observerError
+      },
+    })
+    f.tick()
+    assert.equal(f.terminations, 0)
+    f.child.emit("close", exitCode, null)
+    await assert.rejects(f.result, (error) => {
+      if (exitCode === 0) assert.equal(error, observerError)
+      else {
+        assert.match(error.cause.message, /exited with code 7/u)
+        assert.equal(error.errors[1], observerError)
+      }
+      assert.equal(error.processQuiesced, true)
+      return true
+    })
+    assert.equal(f.terminations, 0)
+  })
+}
+
+test("live observer stops before post-exit quiescence verification and late callbacks stay inert", async (t) => {
+  let confirmAbsent
+  const absent = new Promise((resolve) => {
+    confirmAbsent = resolve
+  })
+  t.after(() => confirmAbsent(true))
+  const f = await liveObserverFixture(t, { verifyProcessTree: async () => absent })
+  const poll = f.timers.find((timer) => timer.milliseconds === 1_000)
+  assert.ok(poll)
+  f.child.emit("exit", 0, null)
+  poll.callback()
+  assert.equal(f.observations, 0)
+  f.child.emit("close", 0, null)
+  poll.callback()
+  confirmAbsent(true)
+  await f.result
+  assert.equal(f.observations, 0)
+  assert.equal(
+    f.timers.every((timer) => timer.cancelled),
+    true
+  )
+})
+
+test("disabled child wait has no observer timer", async (t) => {
+  const f = await liveObserverFixture(t, { observeLive: undefined })
+  assert.deepEqual(
+    f.timers.map((timer) => timer.milliseconds),
+    [15_300_000]
+  )
+  f.child.emit("exit", 0, null)
+  f.child.emit("close", 0, null)
+  await f.result
+})
+
+test("actual shard seam supplies live context observation to owned execution", async (t) => {
+  const f = await progressIntegrationFixture(t)
+  const { createStrykerProgressReporter } = await import("./stryker-progress-reporter.mjs")
+  await f.runStrykerShardExecution(f.options, {
+    runChild: async (_args, _description, env, _timeout, _signal, observeLive) => {
+      assert.equal(typeof observeLive, "function")
+      assert.equal(observeLive().snapshot, null)
+      const reporter = createStrykerProgressReporter({
+        enabled: true,
+        ownedDirectory: env.STRYKER_PROGRESS_DIRECTORY,
+        outputPath: env.STRYKER_PROGRESS_OUTPUT,
+        runId: env.STRYKER_PROGRESS_RUN_ID,
+        shardId: env.STRYKER_PROGRESS_SHARD_ID,
+      })
+      try {
+        reporter.onMutationTestingPlanReady({ mutantPlans: [{ mutant: { id: "one" } }] })
+        observeLive()
+        reporter.onMutantTested({ id: "one", status: "Killed" })
+        assert.equal(observeLive().completionAdvanced, true)
+        assert.equal(observeLive().completionAdvanced, false)
+        reporter.onMutationTestReportReady({}, {})
+      } finally {
+        reporter.wrapUp()
+      }
+    },
+  })
+})
+
+for (const corrupted of ["malformed", "wrong-run"]) {
+  test(`live observer rejects actual ${corrupted} reporter output through owned termination`, async (t) => {
+    const f = await progressIntegrationFixture(t)
+    const { writeFile } = await import("node:fs/promises")
+    const { createStrykerProgressReporter } = await import("./stryker-progress-reporter.mjs")
+    await assert.rejects(
+      () =>
+        f.runStrykerShardExecution(f.options, {
+          runChild: async (_args, _description, env, _timeout, _signal, observeLive) => {
+            const reporter = createStrykerProgressReporter({
+              enabled: true,
+              ownedDirectory: env.STRYKER_PROGRESS_DIRECTORY,
+              outputPath: env.STRYKER_PROGRESS_OUTPUT,
+              runId: env.STRYKER_PROGRESS_RUN_ID,
+              shardId: env.STRYKER_PROGRESS_SHARD_ID,
+            })
+            try {
+              const contents =
+                corrupted === "malformed"
+                  ? "invalid"
+                  : JSON.stringify({
+                      ...JSON.parse(await readFile(env.STRYKER_PROGRESS_OUTPUT, "utf8")),
+                      runId: "other",
+                    })
+              await writeFile(env.STRYKER_PROGRESS_OUTPUT, contents)
+              const owned = await liveObserverFixture(t, { observeLive })
+              owned.tick()
+              owned.child.emit("exit", null, "SIGKILL")
+              owned.child.emit("close", null, "SIGKILL")
+              await assert.rejects(owned.result, (error) => {
+                assert.equal(error.code, "STRYKER_PROGRESS_INVALID")
+                assert.equal(error.processQuiesced, true)
+                return true
+              })
+              assert.equal(owned.terminations, 1)
+              await owned.result
+            } finally {
+              reporter.wrapUp()
+            }
+          },
+        }),
+      { code: "STRYKER_PROGRESS_INVALID" }
+    )
+  })
+}
+
+test("live observer failure stays first when tree termination fails or close never arrives", async (t) => {
+  for (const closes of [true, false]) {
+    const first = new Error("observer first")
+    const shutdown = new Error("termination failed")
+    const f = await liveObserverFixture(t, {
+      observeLive: () => {
+        throw first
+      },
+      terminate: async () => {
+        throw shutdown
+      },
+    })
+    f.tick()
+    await new Promise((resolve) => setImmediate(resolve))
+    if (closes) {
+      f.child.emit("exit", null, "SIGKILL")
+      f.child.emit("close", null, "SIGKILL")
+    } else {
+      f.timers.find((timer) => timer.milliseconds === 15_000).callback()
+    }
+    await assert.rejects(f.result, (error) => {
+      assert.equal(error.cause, first)
+      assert.equal(error.errors[0], first)
+      assert.equal(error.errors[1], shutdown)
+      assert.equal(error.processQuiesced, false)
+      if (!closes) assert.match(error.errors[2].message, /did not terminate and close/u)
+      return true
+    })
+    assert.equal(
+      f.timers.every((timer) => timer.cancelled),
+      true
+    )
+  }
+})
+
+test("live observer is never scheduled after cancellation already owns shutdown", async (t) => {
+  const controller = new AbortController()
+  const first = new Error("cancelled before observation")
+  controller.abort(first)
+  const f = await liveObserverFixture(t, { abortSignal: controller.signal })
+  assert.equal(
+    f.timers.some((timer) => timer.milliseconds === 1_000),
+    false
+  )
+  f.child.emit("exit", null, "SIGKILL")
+  f.child.emit("close", null, "SIGKILL")
+  await assert.rejects(f.result, (error) => error === first)
+  assert.equal(f.observations, 0)
+})
+
+test(
+  "actual owned runNode live failure quiesces its root and descendant",
+  { timeout: 45_000 },
+  async (t) => {
+    const f = await progressIntegrationFixture(t)
+    const pidPath = path.join(f.shardTemp, "fixture-processes.json")
+    const childScript = String.raw`
+    const fs = require('node:fs');
+    const { spawn } = require('node:child_process');
+    const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)', 'university-ecosystem-live-observer-descendant'], { stdio: 'ignore', windowsHide: true });
+    fs.writeFileSync(process.env.FIXTURE_PROCESS_PATH, JSON.stringify({ root: process.pid, descendant: descendant.pid }));
+    fs.writeFileSync(process.env.STRYKER_PROGRESS_OUTPUT, 'invalid progress');
+    setInterval(() => {}, 1000);
+  `
+    await assert.rejects(
+      () =>
+        f.runStrykerShardExecution({
+          ...f.options,
+          args: ["-e", childScript, "university-ecosystem-live-observer-root"],
+          env: { ...process.env, STRYKER_TEMP_DIR: f.shardTemp, FIXTURE_PROCESS_PATH: pidPath },
+          timeoutMs: 10_000,
+        }),
+      (error) => {
+        assert.equal(error.code, "STRYKER_PROGRESS_INVALID", error.message)
+        assert.equal(error.processQuiesced, true)
+        return true
+      }
+    )
+    const pids = JSON.parse(await readFile(pidPath, "utf8"))
+    assert.equal(Number.isSafeInteger(pids.root) && pids.root > 0, true)
+    assert.equal(Number.isSafeInteger(pids.descendant) && pids.descendant > 0, true)
+    assert.equal(processIsAlive(pids.root), false)
+    assert.equal(processIsAlive(pids.descendant), false)
+  }
+)
+
 test("progress integration uses context then owned-child success then terminal validation before continuation", async (t) => {
   const f = await progressIntegrationFixture(t)
   const { createStrykerProgressContext } = await import("./stryker-progress-context.mjs")

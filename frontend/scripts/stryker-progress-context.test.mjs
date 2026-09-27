@@ -262,3 +262,46 @@ test("symbolic-link parent is rejected without changing its target", async (t) =
   })
   assert.deepEqual(fs.readdirSync(target), [])
 })
+
+test("live context observes actual completed mutants without treating duplicate output as progress", async (t) => {
+  const f = fixture(t)
+  const context = await f.create()
+  assert.equal(typeof context.observeLive, "function")
+  assert.equal(context.observeLive().snapshot, null)
+  const reporter = f.reporter(context)
+  reporter.onMutationTestingPlanReady({ mutantPlans: [{ mutant: { id: "one" } }] })
+  assert.equal(context.observeLive().completionAdvanced, false)
+  reporter.onMutantTested({ id: "one", status: "Killed" })
+  const advanced = context.observeLive()
+  assert.equal(advanced.completionAdvanced, true)
+  assert.equal(advanced.snapshot.completedMutants, 1)
+  assert.equal(context.observeLive().completionAdvanced, false)
+  reporter.onMutationTestReportReady({}, {})
+  reporter.wrapUp()
+  assert.equal(context.validateSuccessfulExit().phase, "wrapped-up")
+})
+
+test("live context failure cannot be healed by a later terminal reporter snapshot", async (t) => {
+  const f = fixture(t)
+  const context = await f.create()
+  assert.equal(typeof context.observeLive, "function")
+  const reporter = f.reporter(context)
+  fs.writeFileSync(context.childEnv.STRYKER_PROGRESS_OUTPUT, "malformed")
+  let first
+  assert.throws(context.observeLive, (error) => {
+    first = error
+    return error.code === "STRYKER_PROGRESS_INVALID"
+  })
+  reporter.onMutationTestingPlanReady({ mutantPlans: [] })
+  reporter.onMutationTestReportReady({}, {})
+  reporter.wrapUp()
+  assert.throws(context.validateSuccessfulExit, (error) => error === first)
+})
+
+test("disabled live context is inert without progress files", async (t) => {
+  const f = fixture(t)
+  const context = await f.create({ enabled: "0" })
+  assert.equal(typeof context.observeLive, "function")
+  assert.equal(context.observeLive(), undefined)
+  assert.deepEqual(fs.readdirSync(f.shardTemp), [])
+})
