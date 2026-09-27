@@ -10,7 +10,7 @@ import re
 import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import NoReturn
+from typing import NoReturn, TypedDict
 
 SCHEMA_VERSION = 1
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
@@ -31,6 +31,14 @@ MANIFEST_FIELDS = frozenset(
 
 class ManifestError(ValueError):
     """Raised when a pytest shard manifest is unsafe or incomplete."""
+
+
+class _ValidatedManifest(TypedDict):
+    shard_id: int
+    num_shards: int
+    all_nodeids: list[str]
+    selected_nodeids: list[str]
+    all_sha256: object
 
 
 def _reject_json_constant(value: str) -> NoReturn:
@@ -192,7 +200,9 @@ def _load_manifest(path: Path) -> dict[str, object]:
     return value
 
 
-def _validate_manifest(document: Mapping[str, object], path: Path) -> dict[str, object]:
+def _validate_manifest(
+    document: Mapping[str, object], path: Path
+) -> _ValidatedManifest:
     schema_version = document["schema_version"]
     if (
         isinstance(schema_version, bool)
@@ -254,7 +264,7 @@ def verify_manifests(
         raise ManifestError(
             f"expected exactly {shard_count} pytest shard manifests, found {len(paths)}"
         )
-    documents: list[dict[str, object]] = []
+    documents: list[_ValidatedManifest] = []
     seen_shards: set[int] = set()
     for path in paths:
         document = _validate_manifest(_load_manifest(path), path)
