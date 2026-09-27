@@ -1845,11 +1845,35 @@ export async function persistMutationEvidence({ paths, inventory, preflight }) {
   return { inventorySha256: sha256(inventoryText), markerWritten: false }
 }
 
-export function indexShardProducerEvidence(shardResults, root = repositoryRoot) {
+export function indexShardProducerEvidence(
+  shardResults,
+  root = repositoryRoot,
+  { scope, releaseEligible, env = process.env } = {}
+) {
+  const localFocused = scope?.kind === "local-focused"
+  if (localFocused) {
+    if (releaseEligible !== false) {
+      throw new Error("Local-focused producer evidence must be explicitly release ineligible")
+    }
+    // Reuse the same environment boundary as scope selection. Local evidence
+    // must not acquire a workflow identity through an aggregate or CI context.
+    resolveMutationSourceSelection(scope.sourceFiles, {
+      ...env,
+      STRYKER_LOCAL_MUTATE_JSON: JSON.stringify(scope.sourceFiles),
+    })
+  }
   if (!Array.isArray(shardResults) || shardResults.length === 0) {
     throw new Error("Mutation shard producer evidence is missing")
   }
   return shardResults.map((shard) => {
+    const workflowRunId = shard?.shardEvidence?.workflowRunId
+    const workflowRunAttempt = shard?.shardEvidence?.workflowRunAttempt
+    const workflowIdentityValid = localFocused
+      ? (workflowRunId === null && workflowRunAttempt === null) ||
+        (workflowRunId === undefined && workflowRunAttempt === undefined)
+      : typeof workflowRunId === "string" &&
+        workflowRunId !== "" &&
+        parseWorkflowRunAttempt(workflowRunAttempt) !== undefined
     if (
       typeof shard?.id !== "string" ||
       typeof shard.shardEvidencePath !== "string" ||
@@ -1862,9 +1886,7 @@ export function indexShardProducerEvidence(shardResults, root = repositoryRoot) 
       typeof shard.shardEvidence.baseSha !== "string" ||
       (shard.shardEvidence.baseRef !== null && typeof shard.shardEvidence.baseRef !== "string") ||
       !/^[a-f0-9]{64}$/u.test(shard.shardEvidence.evidenceDigest) ||
-      typeof shard.shardEvidence.workflowRunId !== "string" ||
-      shard.shardEvidence.workflowRunId === "" ||
-      parseWorkflowRunAttempt(shard.shardEvidence.workflowRunAttempt) === undefined ||
+      !workflowIdentityValid ||
       !/^[a-f0-9]{64}$/u.test(shard.shardEvidence.reportSha256) ||
       JSON.stringify(JSON.parse(shard.shardEvidenceText)) !== JSON.stringify(shard.shardEvidence)
     ) {
@@ -4515,7 +4537,12 @@ async function main() {
           schemaVersion: shard.report.schemaVersion,
         })),
       ],
-      shardEvidence: indexShardProducerEvidence(shardResults),
+      shardEvidence: indexShardProducerEvidence(shardResults, repositoryRoot, {
+        scope: focusedMutationRun
+          ? { kind: "local-focused", sourceFiles }
+          : { kind: "canonical", sourceFiles },
+        releaseEligible,
+      }),
       ...inventoryResult,
     }
     const persisted = await persistMutationEvidence({ paths: runPaths, inventory, preflight })

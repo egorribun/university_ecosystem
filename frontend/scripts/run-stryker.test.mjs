@@ -2353,6 +2353,144 @@ test("indexes and validates Windows process-host provenance when present", async
   )
 })
 
+test("local-focused producer evidence has truthful absent workflow identity and no release marker", async (t) => {
+  const { indexShardProducerEvidence, mutationRunPaths, persistMutationEvidence } = await import(
+    runnerUrl
+  )
+  const root = await mkdtemp(path.join(os.tmpdir(), "stryker-local-producer-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const scope = { kind: "local-focused", sourceFiles: ["src/a.ts"] }
+  const paths = mutationRunPaths({ focused: true, sourceFiles: scope.sourceFiles }, root)
+  for (const workflowIdentity of [{ workflowRunId: null, workflowRunAttempt: null }, {}]) {
+    const evidence = {
+      schemaVersion: "1.0",
+      shardId: "shard-000",
+      revision: "a".repeat(40),
+      sourceHeadSha: "a".repeat(40),
+      baseSha: "a".repeat(40),
+      baseRef: null,
+      evidenceDigest: "b".repeat(64),
+      reportSha256: "c".repeat(64),
+      ...workflowIdentity,
+    }
+    const shard = {
+      id: evidence.shardId,
+      shardEvidencePath: path.join(paths.outputRoot, "SHARD_EVIDENCE.json"),
+      shardEvidenceText: `${JSON.stringify(evidence)}\n`,
+      shardEvidence: evidence,
+    }
+    const indexed = indexShardProducerEvidence([shard], root, {
+      scope,
+      releaseEligible: false,
+      env: {},
+    })
+    assert.equal(indexed[0].workflowRunId, evidence.workflowRunId)
+    assert.equal(indexed[0].workflowRunAttempt, evidence.workflowRunAttempt)
+    const inventory = {
+      runId: "local-run",
+      scope,
+      releaseEligible: false,
+      summary: { viableMutantScore: 100 },
+      shardEvidence: indexed,
+    }
+    const persisted = await persistMutationEvidence({
+      paths,
+      inventory,
+      preflight: { runId: inventory.runId },
+    })
+    assert.equal(persisted.markerWritten, false)
+    assert.deepEqual(
+      JSON.parse(await readFile(path.join(paths.outputRoot, "inventory.json"))),
+      JSON.parse(JSON.stringify(inventory))
+    )
+    for (const name of ["VALIDATED.json", "LOCAL_VALIDATION.json"]) {
+      await assert.rejects(() => readFile(path.join(paths.outputRoot, name)), /ENOENT/u)
+    }
+    assert.throws(() => indexShardProducerEvidence([shard], root), /malformed/u)
+    assert.throws(
+      () =>
+        indexShardProducerEvidence([shard], root, {
+          scope: { kind: "canonical" },
+          releaseEligible: false,
+          env: {},
+        }),
+      /malformed/u
+    )
+  }
+})
+
+test("local-focused producer identity rejects mixed, malformed, and claimed workflow identities", async () => {
+  const { indexShardProducerEvidence } = await import(runnerUrl)
+  const root = path.join(os.tmpdir(), "stryker-local-producer-negative")
+  const scope = { kind: "local-focused", sourceFiles: ["src/a.ts"] }
+  const evidence = {
+    schemaVersion: "1.0",
+    shardId: "shard-000",
+    revision: "a".repeat(40),
+    sourceHeadSha: "a".repeat(40),
+    baseSha: "a".repeat(40),
+    baseRef: null,
+    evidenceDigest: "b".repeat(64),
+    reportSha256: "c".repeat(64),
+    workflowRunId: null,
+    workflowRunAttempt: null,
+  }
+  const index = (identity, options = { scope, releaseEligible: false, env: {} }) => {
+    const document = { ...evidence, ...identity }
+    return indexShardProducerEvidence(
+      [
+        {
+          id: document.shardId,
+          shardEvidencePath: path.join(root, "SHARD_EVIDENCE.json"),
+          shardEvidenceText: JSON.stringify(document),
+          shardEvidence: document,
+        },
+      ],
+      root,
+      options
+    )
+  }
+  for (const identity of [
+    { workflowRunId: null, workflowRunAttempt: undefined },
+    { workflowRunId: undefined, workflowRunAttempt: null },
+    { workflowRunId: "42", workflowRunAttempt: null },
+    { workflowRunId: null, workflowRunAttempt: "1" },
+    { workflowRunId: "42", workflowRunAttempt: "1" },
+    { workflowRunId: "", workflowRunAttempt: "0" },
+    { workflowRunId: 42, workflowRunAttempt: 1 },
+  ])
+    assert.throws(() => index(identity), /malformed/u)
+  for (const identity of [
+    {},
+    { workflowRunId: undefined, workflowRunAttempt: undefined },
+    { workflowRunId: "42", workflowRunAttempt: null },
+    { workflowRunId: null, workflowRunAttempt: "1" },
+    { workflowRunId: "", workflowRunAttempt: "1" },
+    { workflowRunId: "42", workflowRunAttempt: "0" },
+    { workflowRunId: "42", workflowRunAttempt: "1.5" },
+    { workflowRunId: "42", workflowRunAttempt: "9007199254740992" },
+    { workflowRunId: 42, workflowRunAttempt: 1 },
+  ]) {
+    assert.throws(() => index(identity, {}), /malformed/u)
+    assert.throws(
+      () => index(identity, { scope: { kind: "canonical" }, releaseEligible: false, env: {} }),
+      /malformed/u
+    )
+  }
+  for (const options of [
+    { scope, releaseEligible: true, env: {} },
+    { scope, env: {} },
+    { scope: { kind: "local-focused", sourceFiles: [] }, releaseEligible: false, env: {} },
+    ...[
+      { GITHUB_ACTIONS: "true" },
+      { GITHUB_RUN_ID: "42" },
+      { GITHUB_RUN_ATTEMPT: "1" },
+      { STRYKER_SHARD_COUNT: "2" },
+    ].map((env) => ({ scope, releaseEligible: false, env })),
+  ])
+    assert.throws(() => index({}, options), /local-only|Local-focused|denominator/u)
+})
+
 test("runner rejects all raw Stryker CLI overrides", async () => {
   const { assertRunnerArguments } = await import(runnerUrl)
   assert.doesNotThrow(() => assertRunnerArguments([]))
