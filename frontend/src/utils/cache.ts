@@ -3,7 +3,7 @@
  * Handles numeric timestamps and string dates.
  */
 export function parseCacheVersion(input: unknown): number | undefined {
-  if (typeof input === "number" && Number.isFinite(input)) return input
+  if (typeof input === "number") return Number.isFinite(input) ? input : undefined
   if (typeof input === "string") {
     const numeric = Number(input)
     if (!Number.isNaN(numeric)) return numeric

@@ -109,6 +109,25 @@ describe("addVersionParam", () => {
     expect(addVersionParam("http://[invalid?existing=1", 3)).toBe("http://[invalid?existing=1&_v=3")
   })
 
+  it("keeps absolute URLs absolute even on the internal placeholder host", async () => {
+    const { addVersionParam } = await import("@/utils/media")
+    expect(addVersionParam("http://internal.placeholder/a.png", 1)).toBe(
+      "http://internal.placeholder/a.png?_v=1"
+    )
+    expect(addVersionParam("HTTPS://internal.placeholder/a.png", 1)).toBe(
+      "https://internal.placeholder/a.png?_v=1"
+    )
+    expect(addVersionParam("//internal.placeholder/a.png", 1)).toBe(
+      "http://internal.placeholder/a.png?_v=1"
+    )
+  })
+
+  it("keeps relative URLs with a doubled slash relative", async () => {
+    const { addVersionParam } = await import("@/utils/media")
+    expect(addVersionParam("/media//a.png", 1)).toBe("/media//a.png?_v=1")
+    expect(addVersionParam("media/a.png", 1)).toBe("/media/a.png?_v=1")
+  })
+
   it("treats null and empty versions as no-op values", async () => {
     const { addVersionParam } = await import("@/utils/media")
     const url = "/media/image.png"
@@ -166,6 +185,8 @@ describe("resolveMediaUrl security and proxy helpers", () => {
       "blob:https://example.com/preview"
     )
     expect(resolveProxyImageUrl(undefined)).toBe("")
+    expect(resolveProxyImageUrl("", 320, "https://api.example.com")).toBe("")
+    expect(resolveProxyImageUrl("   ", 320, "https://api.example.com")).toBe("")
   })
 })
 

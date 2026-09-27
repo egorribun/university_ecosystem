@@ -260,6 +260,26 @@ describe("a11y utilities", () => {
       trap.deactivate()
       document.body.removeChild(container)
     })
+
+    it("does not wrap when nothing is focused and the dialog has no focusable elements", () => {
+      const container = document.createElement("div")
+      document.body.appendChild(container)
+      const trap = new FocusTrap(container)
+      trap.activate()
+      Object.defineProperty(document, "activeElement", { configurable: true, get: () => null })
+
+      try {
+        for (const shiftKey of [false, true]) {
+          const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey, cancelable: true })
+          document.dispatchEvent(event)
+          expect(event.defaultPrevented).toBe(false)
+        }
+      } finally {
+        Reflect.deleteProperty(document, "activeElement")
+        trap.deactivate()
+        container.remove()
+      }
+    })
   })
 
   describe("prefersReducedMotion", () => {

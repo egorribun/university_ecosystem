@@ -11,7 +11,6 @@ export function slugify(text: string): string {
     .trim()
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s-]/gu, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
+    .replace(/[\s-]+/g, "-")
     .slice(0, 64)
 }

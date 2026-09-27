@@ -2,7 +2,6 @@ const DUMMY_BASE = "http://internal.placeholder"
 
 // eslint-disable-next-line security/detect-unsafe-regex -- linear pattern, no backtracking risk
 const hasProtocol = (value: string) => /^(?:https?:)?\/\//i.test(value)
-const isBlobUrl = (value: string) => /^blob:/i.test(value)
 
 export function resolveMediaUrl(
   raw?: string,
@@ -10,20 +9,9 @@ export function resolveMediaUrl(
 ): string {
   if (!raw) return ""
   const trimmed = String(raw).trim()
-  if (!trimmed) return ""
-
-  // Return blob: URLs unchanged — they're local preview URLs
-  if (isBlobUrl(trimmed)) {
-    return trimmed
-  }
 
   // Check for dangerous protocols
-  const dangerous = /^\s*(javascript:|vbscript:|data:text\/)/i.test(trimmed)
-  if (dangerous) return ""
-
-  if (hasProtocol(trimmed)) {
-    return trimmed
-  }
+  if (/^(?:javascript:|vbscript:|data:text\/)/i.test(trimmed)) return ""
 
   const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`
   const needsPrefix =
@@ -32,19 +20,28 @@ export function resolveMediaUrl(
     withLeadingSlash.startsWith("/api/v1/chats/") ||
     withLeadingSlash.startsWith("/api/v1/events/")
 
+  // Absolute, protocol-relative and blob: URLs (and "") never carry one of
+  // these backend prefixes, so they are returned unchanged here too.
   if (!needsPrefix) {
     return trimmed
   }
 
-  const cleanOrigin = origin?.trim() ?? ""
+  // An empty origin keeps the path relative (nginx proxy).
+  const normalizedOrigin = (origin?.trim() ?? "").replace(/\/+$/, "")
+  return `${normalizedOrigin}${withLeadingSlash}`
+}
 
-  // Empty origin means use relative paths (nginx proxy)
-  if (!cleanOrigin) {
+/** The image-proxy path of a local static/media or already proxied image, else null. */
+function toImageProxyPath(raw: string): string | null {
+  const trimmed = raw.trim()
+  const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`
+  if (withLeadingSlash.startsWith("/api/v1/img/")) {
+    return withLeadingSlash.replace("/api/v1/img/", "/")
+  }
+  if (withLeadingSlash.startsWith("/static/") || withLeadingSlash.startsWith("/media/")) {
     return withLeadingSlash
   }
-
-  const normalizedOrigin = cleanOrigin.replace(/\/+$/, "")
-  return `${normalizedOrigin}${withLeadingSlash}`
+  return null
 }
 
 export function resolveProxyImageUrl(
@@ -52,42 +49,21 @@ export function resolveProxyImageUrl(
   width?: number,
   origin = import.meta.env.VITE_BACKEND_ORIGIN
 ): string {
-  if (!raw) return ""
-  const trimmed = String(raw).trim()
-  if (!trimmed || isBlobUrl(trimmed) || hasProtocol(trimmed)) {
+  // Empty input, blob: and absolute URLs never map to a proxy path.
+  const proxyPath = raw ? toImageProxyPath(raw) : null
+  if (proxyPath === null) {
     return resolveMediaUrl(raw, origin)
   }
 
-  const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`
-
-  if (
-    withLeadingSlash.startsWith("/static/") ||
-    withLeadingSlash.startsWith("/media/") ||
-    withLeadingSlash.startsWith("/api/v1/img/")
-  ) {
-    const apiBase = "/api/v1/img"
-    const cleanOrigin = origin?.trim() ?? ""
-
-    // Empty origin means use relative paths (nginx proxy)
-    const base = cleanOrigin ? cleanOrigin.replace(/\/+$/, "") : ""
-
-    // Capture the path relative to static/media or use it as is if already proxy path
-    let proxyPath = withLeadingSlash
-    if (withLeadingSlash.startsWith("/api/v1/img/")) {
-      proxyPath = withLeadingSlash.replace("/api/v1/img/", "/")
-    }
-
-    const url = new URL(`${base}${apiBase}${proxyPath}`, DUMMY_BASE)
-    if (width) {
-      url.searchParams.set("w", String(width))
-    }
-
-    // Return absolute URL or path-relative depending on origin presence
-    const result = url.toString().replace(DUMMY_BASE, "")
-    return result
+  // Empty origin means use relative paths (nginx proxy)
+  const base = (origin?.trim() ?? "").replace(/\/+$/, "")
+  const url = new URL(`${base}/api/v1/img${proxyPath}`, DUMMY_BASE)
+  if (width) {
+    url.searchParams.set("w", String(width))
   }
 
-  return resolveMediaUrl(raw, origin)
+  // Return absolute URL or path-relative depending on origin presence
+  return url.toString().replace(DUMMY_BASE, "")
 }
 
 export function addVersionParam(url?: string, version?: string | number | null): string {
@@ -121,12 +97,8 @@ export function sanitizeUrl(url: string): string | null {
     const parsed = new URL(url, base)
     const protocol = parsed.protocol.toLowerCase()
 
-    // Block dangerous protocols outright
-    if (protocol === "javascript:" || protocol === "vbscript:") {
-      return null
-    }
-
-    // Only allow safe protocols: http, https, blob, mailto, tel, and data:image/*
+    // Only allow safe protocols: http, https, blob, mailto, tel, and data:image/*.
+    // Everything else, including javascript: and vbscript:, is rejected.
     if (protocol === "data:") {
       const pathname = parsed.pathname.toLowerCase()
       // Allow images, block everything else (e.g. text/html, application/xml)
