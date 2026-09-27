@@ -6,34 +6,47 @@ import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
-import { Button } from "@/components/settings/SettingsUI"
+import { Alert, Button } from "@/components/settings/SettingsUI"
 import { RefreshCw, LogOut, Music, ExternalLink } from "lucide-react"
 
 export default function SpotifyConnect() {
   const { user, setUser } = useAuth()
   const queryClient = useQueryClient()
   const [actionLoading, setActionLoading] = useState(false)
+  const [feedback, setFeedback] = useState<{
+    key: string
+    disconnected?: boolean
+  } | null>(null)
   const { t } = useTranslation(["settings", "common"])
 
   const spotifyEnabled = Boolean(user?.spotify_connected || user?.spotify_is_connected)
   const { data: now, isFetching: refreshing, refetch } = useNowPlaying(spotifyEnabled)
 
   const connect = async () => {
+    setFeedback(null)
     setActionLoading(true)
     try {
       const r = await api.get<{ url?: string }>("/spotify/auth-url")
       const safeUrl = sanitizeSpotifyAuthorizeUrl(r.data?.url)
-      if (!safeUrl) return
+      if (!safeUrl) {
+        setFeedback({ key: "settings:integrations.spotify.snackbar.openFailed" })
+        return
+      }
       window.location.href = safeUrl
+    } catch {
+      setFeedback({ key: "settings:integrations.spotify.snackbar.connectFailed" })
     } finally {
       setActionLoading(false)
     }
   }
 
   const disconnect = async () => {
+    setFeedback(null)
     setActionLoading(true)
+    let disconnected = false
     try {
       await api.post("/spotify/disconnect")
+      disconnected = true
       setUser((prev) =>
         prev
           ? {
@@ -45,21 +58,45 @@ export default function SpotifyConnect() {
           : prev
       )
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: currentUserQueryKey }),
-        queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey }),
+        queryClient.invalidateQueries({ queryKey: currentUserQueryKey }, { throwOnError: true }),
+        queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey }, { throwOnError: true }),
       ])
+    } catch {
+      setFeedback(
+        disconnected
+          ? { key: "common:errors.generic", disconnected: true }
+          : { key: "settings:integrations.spotify.snackbar.disconnectFailed" }
+      )
     } finally {
       setActionLoading(false)
     }
   }
 
   const refresh = async () => {
-    await refetch()
+    setFeedback(null)
+    try {
+      await refetch({ throwOnError: true })
+    } catch {
+      setFeedback({ key: "common:errors.generic" })
+    }
   }
 
   useEffect(() => {
     const qp = new URLSearchParams(window.location.search)
-    if (qp.get("spotify")) void refetch()
+    if (!qp.get("spotify")) return
+    let active = true
+    setFeedback(null)
+    const refreshAfterCallback = async () => {
+      try {
+        await refetch({ throwOnError: true })
+      } catch {
+        if (active) setFeedback({ key: "common:errors.generic" })
+      }
+    }
+    void refreshAfterCallback()
+    return () => {
+      active = false
+    }
   }, [refetch])
 
   if (!user) return null
@@ -73,6 +110,14 @@ export default function SpotifyConnect() {
         </h3>
       </div>
       <div className="p-6">
+        {feedback && (
+          <Alert severity="error" className="mb-4">
+            {feedback.disconnected && (
+              <>{t("settings:integrations.spotify.snackbar.disconnected")} </>
+            )}
+            {t(feedback.key)}
+          </Alert>
+        )}
         {!spotifyEnabled ? (
           <Button
             onClick={connect}
