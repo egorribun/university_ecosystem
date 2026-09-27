@@ -294,6 +294,29 @@ describe("useLoginForm.onSubmit", () => {
 // ---------------------------------------------------------------------------
 
 describe("useLoginForm suggestion", () => {
+  it.each([
+    ["JSON null", "null", null],
+    ["literal undefined", "undefined", undefined],
+  ] as const)("safely validates a persisted %s email on blur", async (_label, stored, email) => {
+    window.localStorage.setItem("auth:lastEmail", stored)
+    const { result, unmount } = renderHook(() => useLoginForm())
+
+    try {
+      expect(result.current.form.getValues("email")).toBe(email)
+      expect(result.current.form.formState.errors.email).toBeUndefined()
+
+      await act(async () => {
+        await expect(result.current.handleEmailBlur()).resolves.toBeUndefined()
+      })
+      await waitFor(() => expect(result.current.form.formState.errors.email).toBeDefined())
+
+      expect(mocks.suggestEmailDomain).not.toHaveBeenCalled()
+      expect(result.current.emailSuggestion).toBeNull()
+    } finally {
+      unmount()
+    }
+  })
+
   it("applySuggestion writes the suggestion + clears the banner (lines 158-160)", async () => {
     mocks.suggestEmailDomain.mockReturnValue("user@gmail.com")
     const { result } = renderHook(() => useLoginForm())

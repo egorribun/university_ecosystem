@@ -67,8 +67,20 @@ export type ChallengeWithAttempts = ChallengeMethod &
  *   + activeEmail/submitting/error fields + ``onSubmit`` already
  *   wrapped by ``handleSubmit``.
  */
+/**
+ * The message to show for a failed auth request: the API `detail` of an Axios
+ * response first, then a non-empty `Error.message`, else the fallback.
+ */
+export function resolveAuthErrorMessage(error: unknown, fallback: string): string {
+  if (isAxiosError(error) && error.response?.data?.detail) {
+    return error.response.data.detail
+  }
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 export function useLoginForm() {
-  const { t } = useTranslation(["auth"])
+  // Every key names its namespace explicitly ("auth:…").
+  const { t } = useTranslation()
   const navigate = useNavigate()
   // W179 SW4 — read TanStack canonical `search.redirect` (matches _auth.tsx:47
   // writer) instead of legacy `location.state.from.pathname` (React Router
@@ -77,7 +89,7 @@ export function useLoginForm() {
   // §Honesty #3 race condition. See frontend/src/utils/redirect.ts for the
   // shared helper used by Login.tsx + _public.tsx + here (3-place dedup).
   const search = useRouterState({ select: (s) => s.location.search })
-  const redirectPath = resolveRedirectPath((search as { redirect?: unknown } | null)?.redirect)
+  const redirectPath = resolveRedirectPath((search as { redirect?: unknown }).redirect)
   const { login, pendingMfa } = useAuth()
 
   // Persistence for user convenience
@@ -130,15 +142,10 @@ export function useLoginForm() {
 
       navigate({ to: redirectPath, replace: true })
     } catch (error) {
-      let message = t("auth:login.error")
-      if (error instanceof Error && error.message) {
-        message = error.message
-      }
-      if (isAxiosError(error) && error.response?.data?.detail) {
-        message = error.response.data.detail
-      }
-      // Set root error
-      setError("root", { type: "server", message })
+      setError("root", {
+        type: "server",
+        message: resolveAuthErrorMessage(error, t("auth:login.error")),
+      })
     }
   }
 
@@ -150,6 +157,7 @@ export function useLoginForm() {
   const handleEmailBlur = async () => {
     // Trigger validation first
     await trigger("email")
+    // Persisted legacy values can be nullish despite the string field type.
     const raw = currentEmail?.trim()
     if (!raw) return
     const suggestion = suggestEmailDomain(raw)
@@ -208,12 +216,13 @@ export function useLoginForm() {
  *   the optimistic-clear path on subsequent input.
  */
 export function useMfaFlow() {
-  const { t } = useTranslation(["auth"])
+  // Every key names its namespace explicitly ("auth:…").
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const search = useRouterState({ select: (s) => s.location.search })
   const { pendingMfa, submitMfaChallenge } = useAuth()
 
-  const redirectPath = resolveRedirectPath((search as { redirect?: unknown } | null)?.redirect)
+  const redirectPath = resolveRedirectPath((search as { redirect?: unknown }).redirect)
 
   const [mfaBusy, setMfaBusy] = useState(false)
   const [mfaError, setMfaError] = useState<string | null>(null)
@@ -250,7 +259,8 @@ export function useMfaFlow() {
     : 0
 
   useEffect(() => {
-    if (!emailChallenge || resendSeconds <= 0) return
+    // Without an email challenge there is no countdown (resendSeconds is 0).
+    if (resendSeconds === 0) return
     const timer = window.setTimeout(() => setResendNow(Date.now()), 1000)
     return () => window.clearTimeout(timer)
   }, [emailChallenge, resendSeconds])
@@ -281,14 +291,7 @@ export function useMfaFlow() {
           setMfaError(error.message)
           setMfaErrorSource("general")
         } else {
-          let message = t("auth:mfa.errors.generic")
-          if (error instanceof Error && error.message) {
-            message = error.message
-          }
-          if (isAxiosError(error) && error.response?.data?.detail) {
-            message = error.response.data.detail
-          }
-          setMfaError(message)
+          setMfaError(resolveAuthErrorMessage(error, t("auth:mfa.errors.generic")))
           setMfaErrorSource("totp")
         }
       } finally {
@@ -318,14 +321,7 @@ export function useMfaFlow() {
         })
         navigate({ to: redirectPath, replace: true })
       } catch (error) {
-        let message = t("auth:mfa.errors.generic")
-        if (error instanceof Error && error.message) {
-          message = error.message
-        }
-        if (isAxiosError(error) && error.response?.data?.detail) {
-          message = error.response.data.detail
-        }
-        setMfaError(message)
+        setMfaError(resolveAuthErrorMessage(error, t("auth:mfa.errors.generic")))
         setMfaErrorSource(error instanceof ChallengeLockedError ? "general" : "email_otp")
       } finally {
         setMfaBusy(false)
@@ -344,12 +340,7 @@ export function useMfaFlow() {
       setEmailChallenge(rotated)
       setResendNow(Date.now())
     } catch (error) {
-      let message = t("auth:mfa.errors.generic")
-      if (error instanceof Error && error.message) message = error.message
-      if (isAxiosError(error) && error.response?.data?.detail) {
-        message = error.response.data.detail
-      }
-      setMfaError(message)
+      setMfaError(resolveAuthErrorMessage(error, t("auth:mfa.errors.generic")))
       setMfaErrorSource("general")
     } finally {
       setMfaBusy(false)
@@ -379,20 +370,9 @@ export function useMfaFlow() {
         })
         navigate({ to: redirectPath, replace: true })
       } catch (error) {
-        if (error instanceof ChallengeLockedError) {
-          setMfaError(error.message)
-          setMfaErrorSource("general")
-        } else {
-          let message = t("auth:mfa.errors.generic")
-          if (error instanceof Error && error.message) {
-            message = error.message
-          }
-          if (isAxiosError(error) && error.response?.data?.detail) {
-            message = error.response.data.detail
-          }
-          setMfaError(message)
-          setMfaErrorSource("general")
-        }
+        // Every recovery failure, a locked challenge included, is a banner error.
+        setMfaError(resolveAuthErrorMessage(error, t("auth:mfa.errors.generic")))
+        setMfaErrorSource("general")
       } finally {
         setMfaBusy(false)
       }
