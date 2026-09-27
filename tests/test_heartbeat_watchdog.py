@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
+import signal
+import subprocess
 import sys
 import time
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -279,3 +283,368 @@ def test_main_runs_the_command_after_the_separator(tmp_path: Path) -> None:
 
     assert exit_code == 0
     assert json.loads(report.read_text(encoding="utf-8"))["stage"] == "cli"
+
+
+@pytest.mark.parametrize("option", ["stall-seconds", "grace-seconds", "poll-seconds"])
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf", "-inf"])
+def test_main_rejects_unsafe_timing_before_spawning(option, value, monkeypatch):
+    def unexpected_spawn(*args, **kwargs):
+        pytest.fail("invalid timing must be rejected before spawning")
+
+    monkeypatch.setattr(watchdog.subprocess, "Popen", unexpected_spawn)
+    with pytest.raises(SystemExit) as error:
+        watchdog.main(
+            [
+                "--stage",
+                "s",
+                "--report",
+                "r.json",
+                "--stall-seconds",
+                "1",
+                f"--{option}={value}",
+                "--",
+                PY,
+                "-c",
+                "pass",
+            ]
+        )
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("option", ["stall_seconds", "grace_seconds", "poll_seconds"])
+@pytest.mark.parametrize(
+    "value", [0.0, -1.0, float("nan"), float("inf"), float("-inf")]
+)
+def test_run_rejects_unsafe_timing_before_spawning(
+    tmp_path, option, value, monkeypatch
+):
+    def unexpected_spawn(*args, **kwargs):
+        pytest.fail("invalid timing must be rejected before spawning")
+
+    monkeypatch.setattr(watchdog.subprocess, "Popen", unexpected_spawn)
+    options = {"stall_seconds": 1.0, "grace_seconds": 1.0, "poll_seconds": 0.05}
+    options[option] = value
+    with pytest.raises(ValueError, match="finite and positive"):
+        watchdog.run(
+            [PY, "-c", "pass"], stage="s", report_path=tmp_path / "r.json", **options
+        )
+
+
+def _wait_for_owned_child(pid_file: Path) -> int:
+    # QUALITY-O9 @egorribun: readiness wait is capped at five seconds; the
+    # test-created child writes this file after installing its TERM handler.
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if pid_file.exists():
+            ready_pid = pid_file.read_text(encoding="ascii").strip()
+            if ready_pid:
+                return int(ready_pid)
+        time.sleep(0.01)  # Bound by the readiness deadline above.
+    pytest.fail("test child did not become ready within five seconds")
+
+
+def _term_ignoring_child(pid_file: Path) -> str:
+    return (
+        "import os, pathlib, signal, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        f"pathlib.Path({str(pid_file)!r}).write_text(str(os.getpid()), encoding='ascii')\n"
+        # QUALITY-O9 @egorribun: 60 seconds is a fallback cap; the watchdog
+        # Bound: the test's finally block also terminates this owned group.
+        "time.sleep(60)\n"
+    )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="owned process groups require POSIX")
+@pytest.mark.parametrize("failure_point", ["probe", "report", "probe-and-final-report"])
+def test_supervisor_failure_reaps_term_ignoring_child_and_preserves_error(
+    tmp_path, monkeypatch, failure_point
+):
+    pid_file = tmp_path / "owned.pid"
+    report = tmp_path / "heartbeat.json"
+    original_spawn = subprocess.Popen
+    original_write = watchdog._write
+    original_signal_group = watchdog._signal_group
+    children = []
+    shutdown_signals = []
+    expected = OSError(f"original {failure_point} failure")
+
+    def owned_spawn(*args, **kwargs):
+        child = original_spawn(*args, **kwargs)
+        children.append(child)
+        _wait_for_owned_child(pid_file)
+        return child
+
+    def fail_probe(*args, **kwargs):
+        raise expected
+
+    writes = 0
+
+    def fail_first_write(path, payload):
+        nonlocal writes
+        writes += 1
+        if writes == 1:
+            raise expected
+        original_write(path, payload)
+
+    def fail_final_write(path, payload):
+        raise OSError("secondary final report failure")
+
+    def record_signal_group(child, *, force):
+        shutdown_signals.append(force)
+        original_signal_group(child, force=force)
+
+    monkeypatch.setattr(watchdog.subprocess, "Popen", owned_spawn)
+    monkeypatch.setattr(watchdog, "_signal_group", record_signal_group)
+    if failure_point.startswith("probe"):
+        monkeypatch.setattr(watchdog, "group_resources", fail_probe)
+        if failure_point == "probe-and-final-report":
+            monkeypatch.setattr(watchdog, "_write", fail_final_write)
+    else:
+        monkeypatch.setattr(watchdog, "_write", fail_first_write)
+    previous_handlers = {
+        sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)
+    }
+    started = time.monotonic()
+    try:
+        with pytest.raises(OSError) as error:
+            watchdog.run(
+                [PY, "-c", _term_ignoring_child(pid_file)],
+                stage="failure",
+                report_path=report,
+                stall_seconds=30,
+                grace_seconds=0.15,
+                poll_seconds=0.01,
+            )
+        assert error.value is expected
+        assert children[0].poll() == -signal.SIGKILL
+        assert shutdown_signals[:2] == [False, True]
+        assert time.monotonic() - started >= 0.15
+        assert time.monotonic() - started < 5
+        if failure_point != "probe-and-final-report":
+            payload = json.loads(report.read_text(encoding="utf-8"))
+            assert payload["status"] == "failed"
+            assert payload["exit_code"] == -signal.SIGKILL
+            assert payload["error"]["type"] == "OSError"
+        assert {
+            sig: signal.getsignal(sig) for sig in previous_handlers
+        } == previous_handlers
+    finally:
+        # Only the Popen-created group from this test may be terminated.
+        if children and children[0].poll() is None:
+            os.killpg(children[0].pid, signal.SIGKILL)
+            children[0].wait(timeout=5)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="owned process groups require POSIX")
+@pytest.mark.parametrize("cancel_signal", [signal.SIGTERM, signal.SIGINT])
+@pytest.mark.parametrize(
+    "signal_during_final_report", [False, True], ids=["single-signal", "second-signal"]
+)
+def test_cli_cancellation_escalates_and_records_original_signal(
+    tmp_path, cancel_signal, signal_during_final_report
+):
+    pid_file = tmp_path / "owned.pid"
+    report = tmp_path / "heartbeat.json"
+    second_signal = (
+        (signal.SIGINT if cancel_signal == signal.SIGTERM else signal.SIGTERM)
+        if signal_during_final_report
+        else None
+    )
+    supervisor = multiprocessing.get_context("spawn").Process(
+        target=_invoke_watchdog_cli,
+        args=(
+            [
+                "--stage",
+                "cancel",
+                "--report",
+                str(report),
+                "--stall-seconds",
+                "30",
+                "--grace-seconds",
+                "0.15",
+                "--poll-seconds",
+                "0.01",
+                "--",
+                PY,
+                "-c",
+                _term_ignoring_child(pid_file),
+            ],
+            second_signal,
+        ),
+    )
+    supervisor.start()
+    child_pid = None
+    try:
+        child_pid = _wait_for_owned_child(pid_file)
+        os.kill(supervisor.pid, cancel_signal)
+        # QUALITY-O9 @egorribun: five-second cap catches unbounded shutdown;
+        # the configured cleanup grace is only 0.15 seconds.
+        supervisor.join(timeout=5)
+        assert supervisor.exitcode == 128 + cancel_signal
+        payload = json.loads(report.read_text(encoding="utf-8"))
+        assert payload["status"] == "cancelled"
+        assert payload["cancellation_signal"] == cancel_signal
+        assert payload["exit_code"] == -signal.SIGKILL
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, 0)
+    finally:
+        if supervisor.is_alive():
+            supervisor.kill()
+            supervisor.join(timeout=5)
+        if child_pid is not None:
+            try:
+                # This PID identifies only the ready child created above.
+                os.killpg(child_pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+def _invoke_watchdog_cli(args: list[str], second_signal: int | None = None) -> None:
+    if second_signal is not None:
+        original_write = watchdog._write
+
+        def signal_inside_final_report(path, payload):
+            if payload["status"] == "cancelled":
+                # Signal only this test-owned supervisor, never the pytest parent.
+                os.kill(os.getpid(), second_signal)
+            original_write(path, payload)
+
+        watchdog._write = signal_inside_final_report
+    raise SystemExit(watchdog.main(args))
+
+
+@pytest.mark.parametrize("cancel_signal", [signal.SIGTERM, signal.SIGINT])
+@pytest.mark.parametrize("failure_point", ["report", "clock", "cleanup", "restore"])
+def test_cancellation_keeps_its_exit_code_after_secondary_failure(
+    tmp_path, monkeypatch, capfd, cancel_signal, failure_point
+):
+    handlers = {sig: signal.SIG_DFL for sig in (signal.SIGTERM, signal.SIGINT)}
+    previous_handlers = dict(handlers)
+    cleanup_completed = []
+    exceptions = {
+        "report": OSError("sensitive secondary report text"),
+        "clock": LookupError("sensitive secondary clock text"),
+        "cleanup": RuntimeError("sensitive secondary cleanup text"),
+        "restore": OSError("sensitive secondary restoration text"),
+    }
+
+    def register_handler(sig, handler):
+        if (
+            failure_point == "restore"
+            and handler == signal.SIG_DFL
+            and sig == signal.SIGTERM
+        ):
+            raise exceptions["restore"]
+        previous = handlers[sig]
+        handlers[sig] = handler
+        return previous
+
+    class OwnedChild:
+        pid = 42
+        stdout = BytesIO()
+        stderr = BytesIO()
+        returncode = None
+
+        def poll(self):
+            handlers[cancel_signal](cancel_signal, None)
+            return self.returncode
+
+    child = OwnedChild()
+
+    def cleanup(process, **kwargs):
+        assert process is child
+        child.returncode = -9
+        cleanup_completed.append(True)
+        if failure_point == "cleanup":
+            raise exceptions["cleanup"]
+
+    original_write = watchdog._write
+
+    def write_report(path, payload):
+        if failure_point == "report":
+            raise exceptions["report"]
+        original_write(path, payload)
+
+    clock_calls = 0
+
+    def clock():
+        nonlocal clock_calls
+        clock_calls += 1
+        if failure_point == "clock" and clock_calls > 1:
+            raise exceptions["clock"]
+        return 100.0
+
+    monkeypatch.setattr(watchdog.signal, "signal", register_handler)
+    monkeypatch.setattr(watchdog.signal, "getsignal", handlers.__getitem__)
+    monkeypatch.setattr(watchdog.subprocess, "Popen", lambda *args, **kwargs: child)
+    monkeypatch.setattr(watchdog, "_shutdown_group", cleanup)
+    monkeypatch.setattr(watchdog, "_write", write_report)
+    exit_code = watchdog.run(
+        [PY, "-c", "pass"],
+        stage="cancel",
+        report_path=tmp_path / "r.json",
+        stall_seconds=30,
+        grace_seconds=1,
+        poll_seconds=0.01,
+        clock=clock,
+    )
+
+    assert exit_code == 128 + cancel_signal
+    assert cleanup_completed == [True]
+    diagnostic = capfd.readouterr().err
+    assert type(exceptions[failure_point]).__name__ in diagnostic
+    assert "sensitive secondary" not in diagnostic
+    if failure_point != "restore":
+        assert handlers == previous_handlers
+    else:
+        # A failed TERM restoration must not prevent attempting INT restoration.
+        assert handlers[signal.SIGINT] == signal.SIG_DFL
+
+
+def test_primary_probe_exception_survives_signal_restoration_failure(
+    tmp_path, monkeypatch
+):
+    handlers = {sig: signal.SIG_DFL for sig in (signal.SIGTERM, signal.SIGINT)}
+    primary = LookupError("original probe failure")
+
+    class OwnedChild:
+        pid = 42
+        stdout = BytesIO()
+        stderr = BytesIO()
+        returncode = None
+
+        def poll(self):
+            return self.returncode
+
+    child = OwnedChild()
+
+    def cleanup(process, **kwargs):
+        child.returncode = -9
+
+    def register_handler(sig, handler):
+        if handler == signal.SIG_DFL and sig == signal.SIGTERM:
+            raise OSError("secondary restoration failure")
+        previous = handlers[sig]
+        handlers[sig] = handler
+        return previous
+
+    def fail_probe(*args, **kwargs):
+        raise primary
+
+    monkeypatch.setattr(watchdog.signal, "signal", register_handler)
+    monkeypatch.setattr(watchdog.signal, "getsignal", handlers.__getitem__)
+    monkeypatch.setattr(watchdog.subprocess, "Popen", lambda *args, **kwargs: child)
+    monkeypatch.setattr(watchdog, "_shutdown_group", cleanup)
+    monkeypatch.setattr(watchdog, "group_resources", fail_probe)
+    with pytest.raises(LookupError) as error:
+        watchdog.run(
+            [PY, "-c", "pass"],
+            stage="failure",
+            report_path=tmp_path / "r.json",
+            stall_seconds=30,
+            grace_seconds=1,
+            poll_seconds=0.01,
+        )
+    assert error.value is primary
+    assert any("restoration" in note for note in primary.__notes__)
+    assert handlers[signal.SIGINT] == signal.SIG_DFL

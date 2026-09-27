@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import signal
 import subprocess
@@ -169,6 +170,43 @@ def _write(report_path: Path, report: dict[str, object]) -> None:
     temporary.replace(report_path)
 
 
+def _positive_seconds(value: str | float) -> float:
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError("timing values must be finite and positive")
+    return seconds
+
+
+def _group_running(process: subprocess.Popen[bytes]) -> bool:
+    # Reap the direct child before checking the group: its zombie must not
+    # keep an otherwise-empty group alive throughout the shutdown grace.
+    direct_running = process.poll() is None
+    if os.name != "posix":
+        return direct_running
+    try:
+        os.killpg(process.pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _shutdown_group(
+    process: subprocess.Popen[bytes], *, grace_seconds: float, poll_seconds: float
+) -> None:
+    """Allow graceful shutdown, then bound the lifetime of the owned group."""
+    _signal_group(process, force=False)
+    # Cleanup uses the real monotonic clock, independent of an injected
+    # monitor clock or failed resource probe.
+    deadline = time.monotonic() + grace_seconds
+    while _group_running(process):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            _signal_group(process, force=True)
+            break
+        time.sleep(min(poll_seconds, remaining))
+    process.wait(timeout=grace_seconds)
+
+
 def run(
     command: Sequence[str],
     *,
@@ -180,58 +218,153 @@ def run(
     heartbeat_file: Path | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> int:
-    process = subprocess.Popen(  # noqa: S603 - argv comes from the CI step, no shell.
-        list(command),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=os.name == "posix",
-    )
-    counter = _OutputCounter()
-    pumps = [
-        threading.Thread(
-            target=counter.pump, args=(process.stdout, sys.stdout.buffer), daemon=True
-        ),
-        threading.Thread(
-            target=counter.pump, args=(process.stderr, sys.stderr.buffer), daemon=True
-        ),
-    ]
-    for pump in pumps:
-        pump.start()
+    stall_seconds = _positive_seconds(stall_seconds)
+    grace_seconds = _positive_seconds(grace_seconds)
+    poll_seconds = _positive_seconds(poll_seconds)
     monitor = Monitor(stage, stall_seconds, grace_seconds, started_at=clock())
+    process: subprocess.Popen[bytes] | None = None
+    pumps: list[threading.Thread] = []
+    cancellation_signal: int | None = None
+    previous_handlers: dict[int, int | Callable[..., object] | None] = {}
+    failure: BaseException | None = None
+    secondary_errors: list[dict[str, str]] = []
 
-    def probe() -> Probe:
-        mtime = None
-        if heartbeat_file is not None and heartbeat_file.exists():
-            mtime = heartbeat_file.stat().st_mtime
-        cpu, rss = group_resources(process.pid)
-        return Probe(counter.events, mtime, cpu, rss)
+    def record_failure(exc: BaseException, phase: str) -> None:
+        nonlocal failure
+        if failure is None and cancellation_signal is None:
+            failure = exc
+            monitor.status = "failed"
+            return
+        if monitor.status == "running" and cancellation_signal is not None:
+            monitor.status = "cancelled"
+        message = f"Watchdog {phase} also failed: {type(exc).__name__}"
+        if failure is not None:
+            failure.add_note(message)
+        secondary_errors.append({"phase": phase, "type": type(exc).__name__})
+        try:
+            # Diagnostic text must not disclose exception messages, which can
+            # contain paths, credentials, or application data.
+            sys.stderr.write(message + "\n")
+            sys.stderr.flush()
+        except BaseException as diagnostic_error:  # RZ-22-01-JUSTIFIED: failed diagnostics cannot replace the first failure/cancellation.
+            secondary_errors.append(
+                {"phase": "diagnostic", "type": type(diagnostic_error).__name__}
+            )
+            if failure is not None:
+                failure.add_note(
+                    f"Watchdog diagnostic also failed: {type(diagnostic_error).__name__}"
+                )
 
-    while process.poll() is None:
-        now = clock()
-        action = monitor.observe(probe(), now)
-        _write(report_path, monitor.report(now, pid=process.pid, exit_code=None))
-        if action != "wait":
-            _signal_group(process, force=action == "kill")
-        time.sleep(poll_seconds)
-    exit_code = process.returncode
-    # Anything still in the group outlived its parent: reap it.
-    _signal_group(process, force=True)
-    for pump in pumps:
-        pump.join(timeout=poll_seconds)
-    now = clock()
-    if monitor.status == "running":
-        monitor.status = "exited"
-    _write(report_path, monitor.report(now, pid=process.pid, exit_code=exit_code))
-    return STALLED_EXIT_CODE if monitor.status == "stalled" else exit_code
+    def cancel(signum: int, _frame: object) -> None:
+        nonlocal cancellation_signal
+        # A later signal must not replace the first cancellation reason or
+        # interrupt bounded TERM-to-KILL cleanup.
+        if cancellation_signal is None:
+            cancellation_signal = signum
+
+    try:
+        try:
+            if threading.current_thread() is threading.main_thread():
+                for sig in (signal.SIGTERM, signal.SIGINT):
+                    previous_handlers[sig] = signal.getsignal(sig)
+                    signal.signal(sig, cancel)
+            process = subprocess.Popen(  # noqa: S603 - argv comes from the CI step, no shell.
+                list(command),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=os.name == "posix",
+            )
+            counter = _OutputCounter()
+            for source, sink in (
+                (process.stdout, sys.stdout.buffer),
+                (process.stderr, sys.stderr.buffer),
+            ):
+                pump = threading.Thread(
+                    target=counter.pump, args=(source, sink), daemon=True
+                )
+                pump.start()
+                pumps.append(pump)
+
+            while process.poll() is None:
+                if cancellation_signal is not None:
+                    monitor.status = "cancelled"
+                    break
+                now = clock()
+                mtime = None
+                if heartbeat_file is not None and heartbeat_file.exists():
+                    mtime = heartbeat_file.stat().st_mtime
+                cpu, rss = group_resources(process.pid)
+                action = monitor.observe(Probe(counter.events, mtime, cpu, rss), now)
+                _write(
+                    report_path, monitor.report(now, pid=process.pid, exit_code=None)
+                )
+                if action != "wait":
+                    break
+                time.sleep(poll_seconds)
+        except BaseException as exc:  # RZ-22-01-JUSTIFIED: preserve original failure after owned process cleanup.
+            record_failure(exc, "monitor")
+        finally:
+            if process is not None:
+                try:
+                    if monitor.status in {"failed", "cancelled", "stalled"}:
+                        _shutdown_group(
+                            process,
+                            grace_seconds=grace_seconds,
+                            poll_seconds=poll_seconds,
+                        )
+                    else:
+                        # Anything still in the group outlived its finished parent.
+                        _signal_group(process, force=True)
+                    for pump in pumps:
+                        pump.join(timeout=poll_seconds)
+                except BaseException as exc:  # RZ-22-01-JUSTIFIED: cleanup failures must not replace the first failure.
+                    record_failure(exc, "cleanup")
+
+        if process is not None:
+            if monitor.status == "running":
+                monitor.status = (
+                    "cancelled" if cancellation_signal is not None else "exited"
+                )
+            try:
+                report = monitor.report(
+                    clock(), pid=process.pid, exit_code=process.returncode
+                )
+                if failure is not None:
+                    report["error"] = {"type": type(failure).__name__}
+                if cancellation_signal is not None:
+                    report["cancellation_signal"] = cancellation_signal
+                if secondary_errors:
+                    report["secondary_errors"] = list(secondary_errors)
+                _write(report_path, report)
+            except BaseException as exc:  # RZ-22-01-JUSTIFIED: retain primary exception when final reporting also fails.
+                record_failure(exc, "final report")
+    finally:
+        # Keep cancellation handlers active through the final report attempt.
+        # Restoration is last and cannot mask the first failure/cancellation.
+        for original_signal, handler in previous_handlers.items():
+            try:
+                signal.signal(original_signal, handler)
+            except BaseException as exc:  # RZ-22-01-JUSTIFIED: restoration cannot replace a primary failure/cancellation or prevent other handlers being restored.
+                record_failure(exc, "signal restoration")
+
+    if failure is not None:
+        raise failure
+    if cancellation_signal is not None:
+        return 128 + cancellation_signal
+    if monitor.status == "stalled":
+        return STALLED_EXIT_CODE
+    if process is None or process.returncode is None:
+        raise RuntimeError("Watchdog child did not reach a terminal state")
+    return process.returncode
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", required=True)
     parser.add_argument("--report", required=True, type=Path)
-    parser.add_argument("--stall-seconds", required=True, type=float)
-    parser.add_argument("--grace-seconds", default=30.0, type=float)
-    parser.add_argument("--poll-seconds", default=5.0, type=float)
+    parser.add_argument("--stall-seconds", required=True, type=_positive_seconds)
+    parser.add_argument("--grace-seconds", default=30.0, type=_positive_seconds)
+    parser.add_argument("--poll-seconds", default=5.0, type=_positive_seconds)
     parser.add_argument("--heartbeat-file", type=Path)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
