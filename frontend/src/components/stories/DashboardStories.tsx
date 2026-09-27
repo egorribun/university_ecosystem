@@ -81,7 +81,6 @@ export default function DashboardStories({
 
   useEffect(() => {
     if (openIndex === null) {
-      setProgress(0)
       return
     }
     if (activeStoryId === undefined) {
