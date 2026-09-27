@@ -172,8 +172,7 @@ export default function DashboardStories({
 
   const handleResume = useCallback(() => {
     setIsInteractionPaused(false)
-    if (!isDocumentHidden) resumePlayback()
-  }, [isDocumentHidden, resumePlayback])
+  }, [])
 
   useEffect(() => {
     const handleVisibilityChange = () => {
