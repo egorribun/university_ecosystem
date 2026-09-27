@@ -11,7 +11,7 @@ import sys
 import tempfile
 import time
 import types
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
@@ -499,7 +499,7 @@ def mock_global_redis(monkeypatch_session):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def monkeypatch_session():
+def monkeypatch_session() -> Iterator[pytest.MonkeyPatch]:
     """Helper fixture to provide monkeypatch at session scope."""
     mp = pytest.MonkeyPatch()
     yield mp
