@@ -2035,6 +2035,45 @@ test("parallel shard pool waits for every worker before surfacing a failure", as
   assert.deepEqual(started, ["first", "second"])
 })
 
+test("parallel shard pool preserves the first observed failure rather than worker order", async () => {
+  const { runPool } = await import(runnerUrl)
+  let releaseEarlierWorker
+  const earlierWorkerGate = new Promise((resolve) => {
+    releaseEarlierWorker = resolve
+  })
+  const firstObserved = Object.assign(new Error("second worker failed first"), {
+    processQuiesced: true,
+  })
+  const laterObserved = Object.assign(new Error("first worker failed later"), {
+    processQuiesced: false,
+  })
+  const started = []
+  const execution = runPool(
+    ["earlier-worker", "later-worker", "must-not-start"],
+    2,
+    async (item) => {
+      started.push(item)
+      if (item === "later-worker") throw firstObserved
+      await earlierWorkerGate
+      throw laterObserved
+    }
+  )
+  const verification = assert.rejects(execution, (error) => {
+    assert.equal(error instanceof AggregateError, true)
+    assert.equal(error.cause, firstObserved)
+    assert.deepEqual(error.errors, [firstObserved, laterObserved])
+    assert.match(error.message, /second worker failed first/u)
+    assert.equal(error.processQuiesced, false)
+    return true
+  })
+
+  // Let the rejected worker stop scheduling before releasing its sibling.
+  await new Promise((resolve) => setImmediate(resolve))
+  releaseEarlierWorker()
+  await verification
+  assert.deepEqual(started, ["earlier-worker", "later-worker"])
+})
+
 test("failed marker revocation retains the owned run lock", async () => {
   const { finalizeMutationRun } = await import(runnerUrl)
   const primary = new Error("test failure")

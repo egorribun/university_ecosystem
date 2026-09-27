@@ -3893,24 +3893,24 @@ export async function runPool(items, concurrency, worker, { abortSignal } = {}) 
   let nextIndex = 0
   let stopScheduling = false
   const results = new Array(items.length)
-  const workers = await Promise.allSettled(
+  const errors = []
+  await Promise.allSettled(
     Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-      while (!stopScheduling && nextIndex < items.length) {
-        throwIfCancellationRequested(abortSignal)
-        const index = nextIndex
-        nextIndex += 1
-        try {
+      try {
+        while (!stopScheduling && nextIndex < items.length) {
+          throwIfCancellationRequested(abortSignal)
+          const index = nextIndex
+          nextIndex += 1
           results[index] = await worker(items[index], index)
-        } catch (error) {
-          stopScheduling = true
-          throw error
         }
+      } catch (error) {
+        // Record observation order, not the worker-array order of allSettled.
+        errors.push(error)
+        stopScheduling = true
+        throw error
       }
     })
   )
-  const errors = workers
-    .filter((result) => result.status === "rejected")
-    .map((result) => result.reason)
   if (errors.length === 1) throw errors[0]
   if (errors.length > 1) {
     const failure = new AggregateError(
