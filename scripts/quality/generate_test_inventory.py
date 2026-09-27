@@ -120,8 +120,16 @@ def scan_repository(mapping_config: dict[str, object]) -> list[dict[str, object]
     # dependency/build/cache trees; pruning them before enumeration avoids
     # materializing hundreds of thousands of irrelevant paths on local runs.
     for root, dirnames, filenames in os.walk(REPOSITORY_ROOT):
-        dirnames[:] = [name for name in dirnames if not should_prune_directory(name)]
         root_path = Path(root)
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if not should_prune_directory(name)
+            # The root output tree contains reports and backup copies, not
+            # authored source (quality-contract.json source_roots). Preserve
+            # nested source modules named artifacts, e.g. app/artifacts.
+            and not (root_path == REPOSITORY_ROOT and name == "artifacts")
+        ]
         for filename in filenames:
             path = root_path / filename
             relative_path = str(path.relative_to(REPOSITORY_ROOT)).replace("\\", "/")

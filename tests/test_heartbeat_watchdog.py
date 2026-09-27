@@ -191,6 +191,7 @@ def test_stalled_command_is_terminated_with_its_partial_report(tmp_path: Path) -
     started = time.monotonic()
     exit_code, report = _run(
         tmp_path,
+        # Bound by the watchdog's 0.5 s stall window; 60 s is the broken-run cap.
         "import time; print('started', flush=True); time.sleep(60)",
         stall_seconds=0.5,
     )
@@ -209,6 +210,7 @@ def test_touching_the_heartbeat_file_keeps_a_silent_command_alive(
         "import pathlib, sys, time\n"
         f"beat = pathlib.Path({str(heartbeat)!r})\n"
         "for i in range(15):\n"
+        # Bound: 15 heartbeats at 0.1 s, testing real file-mtime progress.
         "    beat.write_text(str(i)); time.sleep(0.1)\n"
     )
 
@@ -227,6 +229,7 @@ def test_orphaned_children_are_reaped_after_the_command_exits(tmp_path: Path) ->
     pid_file = tmp_path / "orphan.pid"
     code = (
         "import subprocess, sys\n"
+        # Bound: watchdog reaps this child after its parent exits; child caps at 60 s.
         f"child = subprocess.Popen([{PY!r}, '-c', 'import time; time.sleep(60)'])\n"
         f"open({str(pid_file)!r}, 'w').write(str(child.pid))\n"
     )
@@ -241,7 +244,7 @@ def test_orphaned_children_are_reaped_after_the_command_exits(tmp_path: Path) ->
             os.kill(orphan, 0)
         except ProcessLookupError:
             break
-        time.sleep(0.05)
+        time.sleep(0.05)  # Bound by the five-second orphan-reaping deadline.
     else:  # pragma: no cover - only reached when reaping regressed
         pytest.fail("orphaned child survived the watchdog")
 

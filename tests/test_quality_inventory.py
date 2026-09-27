@@ -133,6 +133,27 @@ def test_api_dependency_contract_is_backed_by_repository_references() -> None:
     )
 
 
+def test_inventory_ignores_root_output_backups_but_keeps_authored_artifact_modules(
+    tmp_path: Path, monkeypatch
+) -> None:
+    for relative_path in (
+        "artifacts/wip/frontend/src/example.test.ts",
+        "app/artifacts/model.py",
+        "tests/test_authored.py",
+    ):
+        path = tmp_path / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("pass", encoding="utf-8")
+    monkeypatch.setattr(inventory, "REPOSITORY_ROOT", tmp_path)
+    records = scan_repository(
+        {"teams": {}, "tier0_rules": [], "generated_patterns": []}
+    )
+    assert {record["path"] for record in records} == {
+        "app/artifacts/model.py",
+        "tests/test_authored.py",
+    }
+
+
 def test_inventory_prunes_dependency_and_hidden_directories(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -221,6 +242,14 @@ def test_check_anti_patterns(tmp_path: Path) -> None:
     errors = []
     check_anti_patterns(test_file_skip_valid, errors, [], [])
     assert len(errors) == 0
+
+
+def test_watchdog_process_contracts_document_their_wait_bounds() -> None:
+    errors: list[str] = []
+    check_anti_patterns(
+        Path(__file__).with_name("test_heartbeat_watchdog.py"), errors, [], []
+    )
+    assert errors == []
 
 
 def test_python_duplicate_scopes(tmp_path: Path) -> None:
