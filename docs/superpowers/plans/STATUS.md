@@ -26,6 +26,11 @@ timeout-инфляции, exclusions, waivers и ручной перемарки
   `!reset`, хеши detect-secrets runner) — исправлено в `a4caec3bf`.
 - Блокеры стенда сняты: health-probe file-processor (`8c64befb7`) и
   apk-пины Caddy (`acc44de4c`); стенд пересобирается.
+- **MinIO недоступен:** `quay.io/minio/minio` и `quay.io/minio/mc` отвечают
+  401. Базовый compose-стек не стартует на чистой машине, Helm backup-job не
+  скачает mc. Ф8 (SeaweedFS) стала обязательной; стенд переведён на
+  SeaweedFS (`354f967a5`). Старый том MinIO читается только MinIO-сервером,
+  собранным из исходников по тегу.
 - WIP агентов прошлой сессии пуст (лимит оборвал их до изменений); агент
   по auth-файлам волны 1 перезапущен в `../ue-w1`, push-файлы ждут слота.
 
