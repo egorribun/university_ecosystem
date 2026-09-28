@@ -94,7 +94,7 @@ export default function DashboardStories({
   }, [openIndex, activeStoryId, closeViewer])
 
   useEffect(() => {
-    if (openIndex === null || activeStoryId === undefined || prefersReducedMotion || isPaused) {
+    if (activeStoryId === undefined || prefersReducedMotion || isPaused) {
       return
     }
 
@@ -146,7 +146,6 @@ export default function DashboardStories({
   const openStory = useCallback(
     (story: StoryItem, index: number) => {
       autoStartRef.current = performance.now()
-      setProgress(0)
       setOpenIndex(index)
       onStoryOpen?.(story)
     },

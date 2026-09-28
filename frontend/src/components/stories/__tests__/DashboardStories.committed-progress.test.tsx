@@ -26,19 +26,26 @@ const stories: StoryItem[] = ["One", "Two"].map((title) => ({
 // A public callback consumer reads the committed view in its layout integration.
 // It neither dispatches navigation from an effect nor observes private hook state.
 function OpenedViewConsumer() {
-  const [openedStory, setOpenedStory] = useState<StoryItem | null>(null)
+  const [openedStory, setOpenedStory] = useState<{ story: StoryItem; revision: number } | null>(
+    null
+  )
   const [announcement, setAnnouncement] = useState("")
   useLayoutEffect(() => {
     if (!openedStory) return
     const activeProgress = document.querySelector(
       '[role="dialog"] [role="progressbar"][aria-live="polite"]'
     )
-    setAnnouncement(`${openedStory.title}: ${activeProgress?.getAttribute("aria-valuenow")}`)
+    setAnnouncement(`${openedStory.story.title}: ${activeProgress?.getAttribute("aria-valuenow")}`)
   }, [openedStory])
   return (
     <>
       <output aria-label="Opened view progress">{announcement}</output>
-      <DashboardStories stories={stories} onStoryOpen={setOpenedStory} />
+      <DashboardStories
+        stories={stories}
+        onStoryOpen={(story) =>
+          setOpenedStory((previous) => ({ story, revision: (previous?.revision ?? 0) + 1 }))
+        }
+      />
     </>
   )
 }
@@ -117,6 +124,29 @@ describe("DashboardStories public opened-view commit contract", () => {
     expect(screen.getByRole("dialog", { name: "One" })).toBeInTheDocument()
     expect(screen.getByLabelText("Opened view progress")).toHaveTextContent("One: 0")
     expect(activeProgress()).toHaveAttribute("aria-valuenow", "0")
+    unmount()
+    expect(frames.size).toBe(0)
+  })
+
+  it("publishes zero committed progress when reopening a played story", () => {
+    const { unmount } = render(
+      <StrictMode>
+        <AppShellProvider>
+          <OpenedViewConsumer />
+        </AppShellProvider>
+      </StrictMode>
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Story: One" }))
+    tick(7_600)
+    expect(
+      document.querySelector('[role="dialog"] [role="progressbar"][aria-live="polite"]')
+    ).toHaveAttribute("aria-valuenow", "40")
+
+    fireEvent.click(screen.getByRole("button", { name: "stories.viewer.aria.close" }))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Story: One" }))
+    expect(screen.getByRole("dialog", { name: "One" })).toBeInTheDocument()
+    expect(screen.getByLabelText("Opened view progress")).toHaveTextContent("One: 0")
     unmount()
     expect(frames.size).toBe(0)
   })
