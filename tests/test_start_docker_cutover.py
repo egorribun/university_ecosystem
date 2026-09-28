@@ -7,6 +7,8 @@ import subprocess
 from hashlib import sha256
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 LOCAL_STATE_FILES = (
     ".env",
@@ -271,4 +273,59 @@ def test_cutover_rejects_arbitrary_nonempty_ack() -> None:
     result = run_launcher("-SeaweedFS", "-Logs", ack="yes")
     assert result.returncode != 0
     assert "S3_CUTOVER_ACK" in result.stdout + result.stderr
+    assert "DOCKER_ARGV=" not in result.stdout
+
+
+def test_extra_compose_overlay_is_applied_last() -> None:
+    result = run_launcher(
+        "-SeaweedFS",
+        "-Logs",
+        "-ExtraCompose",
+        "docker-compose.observability.yml",
+        ack="VERIFIED_S3_CUTOVER",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    args = compose_argv(result)
+    assert args[:7] == [
+        "compose",
+        "-f",
+        "docker-compose.full.yml",
+        "-f",
+        "docker-compose.seaweedfs-cutover.yml",
+        "-f",
+        "docker-compose.observability.yml",
+    ]
+    assert args[-2:] == ["logs", "-f"]
+
+
+@pytest.mark.parametrize(
+    ("overlay", "reason"),
+    [
+        (r"..\docker-compose.evil.yml", "expected a docker-compose.<name>.yml"),
+        (r"C:\docker-compose.evil.yml", "expected a docker-compose.<name>.yml"),
+        ("sub/docker-compose.evil.yml", "expected a docker-compose.<name>.yml"),
+        ("docker-compose.yaml", "expected a docker-compose.<name>.yml"),
+        ("compose.live.yml", "expected a docker-compose.<name>.yml"),
+        ("docker-compose.seaweedfs-cutover.yml", "has its own launcher switch"),
+        ("docker-compose.full.yml", "has its own launcher switch"),
+        ("docker-compose.missing-overlay.yml", "file not found"),
+    ],
+)
+def test_extra_compose_rejects_unsafe_or_missing_overlays(
+    overlay: str, reason: str
+) -> None:
+    result = run_launcher("-Logs", "-ExtraCompose", f"'{overlay}'")
+    assert result.returncode != 0
+    assert reason in result.stdout + result.stderr
+    assert "DOCKER_ARGV=" not in result.stdout
+
+
+def test_extra_compose_rejects_a_repeated_overlay() -> None:
+    result = run_launcher(
+        "-Logs",
+        "-ExtraCompose",
+        "docker-compose.observability.yml,docker-compose.observability.yml",
+    )
+    assert result.returncode != 0
+    assert "listed twice" in result.stdout + result.stderr
     assert "DOCKER_ARGV=" not in result.stdout

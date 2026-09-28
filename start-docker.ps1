@@ -16,6 +16,7 @@
     .\start-docker.ps1 -Rebuild   # Build (no-cache) then start
     .\start-docker.ps1 -Core      # Start only the application/core dependencies
     .\start-docker.ps1 -SeaweedFS # Verified S3 cutover only; see runbook
+    .\start-docker.ps1 -Build -ExtraCompose docker-compose.live.yml  # Owned acceptance stand
     .\start-docker.ps1 -Down      # Stop all containers
     .\start-docker.ps1 -Logs                  # Follow all logs
     .\start-docker.ps1 -Logs -LogService backend  # Follow one service
@@ -34,6 +35,7 @@ param(
     [Alias("Lean")]
     [switch]$Core,
     [switch]$SeaweedFS,
+    [string[]]$ExtraCompose = @(),
     [string]$LogService = ""
 )
 
@@ -56,6 +58,24 @@ if ($SeaweedFS) {
         throw "SeaweedFS cutover refused: required Compose overlay is missing: $overlay"
     }
     $ComposeArgs += @("-f", $overlay)
+}
+foreach ($extra in $ExtraCompose) {
+    # Additional overlays stay inside the checkout, follow the repository's
+    # Compose naming, apply last, and can never smuggle in the storage cutover
+    # without its own attestation.
+    if ($extra -notmatch '^docker-compose\.[a-z0-9-]+\.yml$') {
+        throw "Extra Compose overlay refused: expected a docker-compose.<name>.yml file in the project root: $extra"
+    }
+    if ($extra -in @($ComposeFile, "docker-compose.seaweedfs-cutover.yml")) {
+        throw "Extra Compose overlay refused: $extra has its own launcher switch"
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot $extra) -PathType Leaf)) {
+        throw "Extra Compose overlay refused: file not found: $extra"
+    }
+    if ($ComposeArgs -contains $extra) {
+        throw "Extra Compose overlay refused: $extra is listed twice"
+    }
+    $ComposeArgs += @("-f", $extra)
 }
 $ComposeCommand = "docker compose $($ComposeArgs -join ' ') --env-file .env.docker"
 if ($SeaweedFS) {
