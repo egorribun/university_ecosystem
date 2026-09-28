@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790600818315,
+  "lastUpdate": 1790600821277,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -12925,6 +12925,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 84328,
             "range": "± 284",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "be8c6a1976cb6dc6b6e577b17e99638247983c7f",
+          "message": "ci(deps): let Dependabot update the uv lock with Python manifests (#1298)\n\nSwitch the root Python project to Dependabot's uv ecosystem so grouped Python updates regenerate uv.lock with pyproject.toml, keep a pip entry for the hash-pinned detect-secrets runner, and hold jsonschema and its stubs below 4.26 for semgrep.\n\nBypass reason (AGENTS.md section 5): merged with admin bypass at the maintainer's explicit request. The change touches only .github/dependabot.yml; the failing checks are the pre-existing reds of main's own CI (run 34989574430 on 481dba81e), which are fixed on egorribun (PR #1266).",
+          "timestamp": "2026-09-28T13:53:45+03:00",
+          "tree_id": "9b7be27dceb39558b7e437202405243911c4ece2",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/be8c6a1976cb6dc6b6e577b17e99638247983c7f"
+        },
+        "date": 1790600820357,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 5993,
+            "range": "± 36",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6970,
+            "range": "± 276",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 10043,
+            "range": "± 60",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10706,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 99031,
+            "range": "± 2249",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5449,
+            "range": "± 287",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6243,
+            "range": "± 11",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9071,
+            "range": "± 37",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9321,
+            "range": "± 36",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 91699,
+            "range": "± 286",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5283,
+            "range": "± 66",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6236,
+            "range": "± 173",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8727,
+            "range": "± 217",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9203,
+            "range": "± 39",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 90222,
+            "range": "± 622",
             "unit": "ns/iter"
           }
         ]
