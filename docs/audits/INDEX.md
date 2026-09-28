@@ -6,13 +6,11 @@ must not be treated as current configuration or current quality evidence.
 
 ## Current quality-closure roadmap
 
-- [Active MVP quality-closure status and remaining acceptance](../superpowers/plans/2026-09-22-mvp-safe-pause-handoff.md#0resume-20260927-возобновление-и-подтверждённые-новые-блокеры)
-  — the current operational roadmap, starting at §0.resume-20260927. It is a
-  plan, not an audit certificate; every release claim still requires fresh
-  exact-SHA evidence.
-- [MVP quality-closure continuation plan](../superpowers/plans/2026-08-31-mvp-quality-closure-continuation.md)
-  — the linked requirements, acceptance templates and historical evidence
-  ledger; its dated checkpoints do not replace the active status above.
+- [Active MVP closure status](../superpowers/plans/STATUS.md) — the current
+  operational status. It is a plan, not an audit certificate; every release
+  claim still requires fresh exact-SHA evidence.
+- [Archived MVP handoff and continuation plans](../superpowers/plans/archive/)
+  — historical requirements, acceptance templates and evidence ledgers.
 
 ## Archive link audit (2026-09-15)
 

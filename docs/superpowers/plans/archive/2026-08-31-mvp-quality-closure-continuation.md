@@ -16,7 +16,7 @@
 
 **Historical audit refresh:** `2026-08-31T13:37:11+03:00`; historical PR `#1257`, source head `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, matrix run `33349026009`. Это superseded baseline, сохранённый для причинного и regression-аудита. §32 и последующие dated overlays являются историческими snapshots, не текущей сертификацией; live identity/status хранится в handoff §0.resume-20260927 и должен проверяться через paginated GitHub Jobs API перед каждым утверждением о закрытии.
 
-**Spec:** [`AGENTS.md`](../../../AGENTS.md), [`app/AGENTS.md`](../../../app/AGENTS.md), [`frontend/AGENTS.md`](../../../frontend/AGENTS.md), [`services/AGENTS.md`](../../../services/AGENTS.md), [`quality/quality-contract.json`](../../../quality/quality-contract.json), [`University_Ecosystem_MVP.md`](University_Ecosystem_MVP.md), [`2026-08-25-quality-closure-foundation.md`](2026-08-25-quality-closure-foundation.md), [`prompt.md`](prompt.md), PR [#1257](https://github.com/egorribun/university_ecosystem/pull/1257).
+**Spec:** [`AGENTS.md`](../../../../AGENTS.md), [`app/AGENTS.md`](../../../../app/AGENTS.md), [`frontend/AGENTS.md`](../../../../frontend/AGENTS.md), [`services/AGENTS.md`](../../../../services/AGENTS.md), [`quality/quality-contract.json`](../../../../quality/quality-contract.json), [`University_Ecosystem_MVP.md`](../University_Ecosystem_MVP.md), [`2026-08-25-quality-closure-foundation.md`](2026-08-25-quality-closure-foundation.md), [`prompt.md`](prompt.md), PR [#1257](https://github.com/egorribun/university_ecosystem/pull/1257).
 
 ## Global Constraints
 

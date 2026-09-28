@@ -10,7 +10,7 @@
 
 **Tech Stack:** Python 3.14, FastAPI, SQLAlchemy 2 async, Dishka, pytest/coverage.py/mutmut; React 19, TypeScript 7, Vite 8/Rolldown, Vitest/Stryker, Playwright; Go 1.22+, race detector, golangci-lint; Rust/cargo-llvm-cov/nightly branch instrumentation; Docker Compose, Kubernetes/Helm, GitHub Actions, Semgrep, Bandit, gitleaks, detect-secrets, Codecov.
 
-**Spec:** [`AGENTS.md`](../../../AGENTS.md), [`app/AGENTS.md`](../../../app/AGENTS.md), [`frontend/AGENTS.md`](../../../frontend/AGENTS.md), [`services/AGENTS.md`](../../../services/AGENTS.md), [`quality/quality-contract.json`](../../../quality/quality-contract.json), [`quality/coverage-manifest.schema.json`](../../../quality/coverage-manifest.schema.json).
+**Spec:** [`AGENTS.md`](../../../../AGENTS.md), [`app/AGENTS.md`](../../../../app/AGENTS.md), [`frontend/AGENTS.md`](../../../../frontend/AGENTS.md), [`services/AGENTS.md`](../../../../services/AGENTS.md), [`quality/quality-contract.json`](../../../../quality/quality-contract.json), [`quality/coverage-manifest.schema.json`](../../../../quality/coverage-manifest.schema.json).
 
 ## Global Constraints
 
