@@ -19,6 +19,31 @@ timeout-инфляции, exclusions, waivers и ручной перемарки
 | CI | Полная матрица на `7466912e6` запущена; прогон на `4aed00f09` заменён новым push |
 | Security-PR | #1296 смержен в `main` 2026-09-28 (admin bypass, причина в merge-коммите) |
 
+## Пауза 2026-09-28 (лимит сессии) — начать здесь
+
+- Все коммиты запушены в `egorribun` до `8c64befb7` (см. `git log`). CI на
+  этом SHA — источник свежего инвентаря мутаций (Ф0.2): дождаться terminal,
+  скачать shard-артефакты.
+- Агенты волны 1 работали в `../ue-w1` (auth: `useLoginFlow`,
+  `ResetPassword`, `Register`, `ssrAuth`) и `../ue-w2` (push: `subscribe`,
+  `usePushPreferences`, `useDndSettings`). Их WIP не отревьюен и не
+  перенесён: сначала `git -C ../ue-w1 diff` / `../ue-w2`, focused Stryker по
+  каждому файлу, затем перенос в ROOT. Логи — `artifacts/agent-w*/` внутри
+  worktree. В обоих worktree junction на `node_modules`: удалять только после
+  `[IO.Directory]::Delete(junction, $false)`.
+- Ф5 стенд: `scripts/live_stand.py up` дошёл до сборки образов. Найдено и
+  исправлено: health-probe file-processor (`8c64befb7`). **Открыто:** runtime
+  стадия `services/caddy/Dockerfile` пинит apk-версии (`libapk=3.0.7-r0`,
+  `libcrypto3=3.5.8-r0`, `curl=8.20.0-r0` и др.), которых уже нет в
+  репозитории Alpine — `apk add` падает с exit 4. Обновить пины до текущих
+  версий `caddy:2.11.4-alpine` и контракт-тест; заодно проверить xcaddy
+  `--replace` x/net v0.56.0 / x/text v0.39.0 против grpc 1.83.2 (требует
+  x/net ≥0.58.0). Worktree `../ue-live` существует, контейнеров стенда нет.
+- Далее: снятие селекторов логина с живого стенда в браузере →
+  `frontend/playwright.live.config.ts` + `frontend/tests/e2e-live/`.
+- `../ue-sec` — worktree ветки `ci/dependabot-uv-ecosystem` (#1298 смержен),
+  можно удалить.
+
 ## Фазы
 
 - [x] Ф0.1 CI-контракт `continue-on-error` для O9-диагностики
