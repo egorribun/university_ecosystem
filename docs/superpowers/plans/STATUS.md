@@ -26,7 +26,7 @@ timeout-инфляции, exclusions, waivers и ручной перемарки
 - [x] Ф1 Security-PR #1296 смержен; проверить закрытие алертов после обновления графа
 - [x] Ф2 Гигиена: STATUS, архив планов, память, инвентарь worktree (решения ниже)
 - [ ] Ф3 Мутации до 100% viable (волны 1–4)
-- [x] Ф4 #1292, #1293, #1295 пришли merge-ем `main`; #1294 перенесён без `grpcio-health-checking` (не используется, 1.84 несовместим с protobuf 6). #1297 не мержить: повторяет эту проблему и поднимает `jsonschema` до 4.26, несовместимого с semgrep
+- [x] Ф4 #1292, #1293, #1295 пришли merge-ем `main`; #1294 перенесён без `grpcio-health-checking` (не используется, 1.84 несовместим с protobuf 6). #1297 закрыт (менял `pyproject.toml` без `uv.lock`, `jsonschema` 4.26 несовместим с semgrep); #1298 переводит Dependabot на экосистему `uv` — смержен в `main`
 - [ ] Ф5 Живой лейн приёмки: compose live overlay, Mailpit, VAPID, роли
 - [ ] Ф6 Продуктовая приёмка по ТЗ §§2–13 (+ admin, PWA/offline, SSR, слабые устройства, security-негативы)
 - [ ] Ф6b Дизайн-ревью редизайнов ТЗ по скриншотам live-стенда
@@ -57,6 +57,19 @@ path, chat forward, notification delivery, SMTP `cast`.
 
 Порядок: волна 1 — security/auth; волна 2 — messenger/realtime; волна 3 —
 файлы с ≥50 мутантами; волна 4 — хвост.
+
+Волна 1, прогресс:
+
+- [x] Fork-safety `_auth_executor` (`da30b91f7`): Linux RED (зависание
+  дочернего процесса) → GREEN, security-ревью APPROVE.
+- [x] `AdminFeatureFlagsFeature.tsx` — 26/26 killed (`2cdbef282`).
+- [ ] Frontend auth: `useLoginFlow`, `ResetPassword`, `Register`, `ssrAuth` (агент).
+- [ ] Frontend push: `subscribe`, `usePushPreferences`, `useDndSettings` (агент).
+- [ ] Backend-семейства — по точному списку из CI.
+- [ ] Бэклог из ревью: module-level executor-ы в `analytics` и
+  `minio_storage` (тот же класс fork-дефекта, сейчас не достижим: gunicorn
+  без `--preload`); кэши по `id(loop)` → `WeakKeyDictionary`; глобальный
+  `_push_semaphore` в `webpush`.
 
 ## Незавершённая работа
 
