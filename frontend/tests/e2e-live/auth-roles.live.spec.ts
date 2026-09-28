@@ -1,4 +1,4 @@
-import { expect, loginAs, ROLES, test, type Role } from "./fixtures"
+import { expect, loginAs, ROLES, submitLogin, test, type Role } from "./fixtures"
 
 const ROLE_NAMES: Role[] = ["student", "teacher", "admin"]
 
@@ -14,10 +14,7 @@ for (const role of ROLE_NAMES) {
 }
 
 test("a wrong password keeps the user on the login page", async ({ page }) => {
-  await page.goto("/login")
-  await page.getByRole("textbox", { name: "E-mail" }).fill(ROLES.student.email)
-  await page.getByLabel("Пароль", { exact: true }).fill("definitely-not-the-password")
-  await page.getByRole("button", { name: "Войти" }).click()
+  await submitLogin(page, ROLES.student.email, "definitely-not-the-password")
 
   await expect(page.getByRole("alert")).toBeVisible()
   await expect(page).toHaveURL(/\/login/)
