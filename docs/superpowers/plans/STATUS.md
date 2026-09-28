@@ -15,18 +15,18 @@ timeout-инфляции, exclusions, waivers и ручной перемарки
 | Что | Значение |
 | --- | --- |
 | Ветка / PR | `egorribun` / #1266 → `main` (`481dba81e`) |
-| Последний push | `4aed00f09` — fix(ci): classify advisory progress diagnostic steps |
-| CI | Matrix на `4aed00f09` запущен; предыдущий `36362444946` на `035e2d2` упал только на неклассифицированных O9-шагах |
-| Security-PR | #1296 `security/default-branch-alerts` → `main`: anyio, httpx2/httpcore2, urllib3 floor, js-yaml; merge — только с подтверждения |
+| Последний push | `7466912e6` — merge `main` (#1292, #1293, #1295, #1296) и pip-группа #1294 |
+| CI | Полная матрица на `7466912e6` запущена; прогон на `4aed00f09` заменён новым push |
+| Security-PR | #1296 смержен в `main` 2026-09-28 (admin bypass, причина в merge-коммите) |
 
 ## Фазы
 
 - [x] Ф0.1 CI-контракт `continue-on-error` для O9-диагностики
 - [ ] Ф0.2 Полный terminal CI на `4aed00f09`, свежий инвентарь мутаций
-- [ ] Ф1 Security-PR #1296: зелёный CI → merge (с подтверждения) → 0 алертов
+- [x] Ф1 Security-PR #1296 смержен; проверить закрытие алертов после обновления графа
 - [x] Ф2 Гигиена: STATUS, архив планов, память, инвентарь worktree (решения ниже)
 - [ ] Ф3 Мутации до 100% viable (волны 1–4)
-- [ ] Ф4 Dependabot #1292–#1295 в ветку (mutmut 3.8 — после Ф3 backend)
+- [x] Ф4 #1292, #1293, #1295 пришли merge-ем `main`; #1294 перенесён без `grpcio-health-checking` (не используется, 1.84 несовместим с protobuf 6). #1297 не мержить: повторяет эту проблему и поднимает `jsonschema` до 4.26, несовместимого с semgrep
 - [ ] Ф5 Живой лейн приёмки: compose live overlay, Mailpit, VAPID, роли
 - [ ] Ф6 Продуктовая приёмка по ТЗ §§2–13 (+ admin, PWA/offline, SSR, слабые устройства, security-негативы)
 - [ ] Ф6b Дизайн-ревью редизайнов ТЗ по скриншотам live-стенда
@@ -58,37 +58,28 @@ path, chat forward, notification delivery, SMTP `cast`.
 Порядок: волна 1 — security/auth; волна 2 — messenger/realtime; волна 3 —
 файлы с ≥50 мутантами; волна 4 — хвост.
 
-## Сохранённое WIP (не удалять без решения мейнтейнера)
+## Незавершённая работа
 
-| Место | Состояние на 2026-09-28 |
-| --- | --- |
-| `../ue-e2e` | 3 изменённых файла: News/Events routes, `app.spec.ts` |
-| `../ue-mm` | 13 изменённых tracked, backend mutation WIP |
-| `../ue-mm2` | `storage.py` + новый key-boundary тест |
-| `../ue-mut-A` | 52 tracked + 31 untracked: auth fork, lifespan, chat, ci.yml |
-| `../ue-mut-B` | 38 tracked: storage, frontend events, ci.yml |
-| `../ue-mut-C` | 31 tracked: docs, db-perf workflow |
-| `~/.codex/worktrees/c0-owned-stand` | SMTP cast candidate, auth, Stories |
-| `~/.codex/worktrees/ci-catalog-needs` | O6 catalog v5 (уже интегрирован в `c1f0b57f7`) |
-| `~/.codex/worktrees/mutation-diagnostics` | O9 WIP (интегрирован в `c1f0b57f7`) |
-| stash@{0..3} | 8 / 50 / 17 / 14 файлов, от 2026-09-25 и 2026-09-27 |
+Старые worktree и все stash разобраны и удалены 2026-09-28. Почти весь их WIP
+уже был в HEAD или вытеснен новыми версиями. Бэкап и классификация лежат в
+ignored `artifacts/wip/2026-09-28/`; неинтегрированные правки, которые ещё
+нужны, — в `keep/`: fork-safe `_auth_executor` (волна 1), SMTP `cast` и три
+мелких мутационных патча. Агенты фазы 3 работают в новых worktree.
 
-Все worktree с junction на `node_modules`: удалять только после
-`cmd /c rmdir <junction>`, затем `git worktree remove`. Новые агенты работают
-в отдельных worktree, старые не переиспользуются до решения.
+## Решения мейнтейнера 2026-09-28
 
-## Открытые решения мейнтейнера
-
-1. Merge security-PR #1296 после зелёного CI.
-2. Судьба старых worktree и stash: сохранить патчи в `artifacts/wip/` и удалить,
-   или оставить.
-3. Трекать ли `docs/audits/AUDIT_PLATFORM_FULL.md` в git как есть.
-4. Feature flags: все четыре (`new-chat-ui`, `semantic-search`,
-   `push-batching`, `graphql-subscriptions`) объявлены в
-   `app/core/feature_flags.py` и `k8s/flagd/flags.json` и показаны на
-   admin-странице Feature Flags, но `is_enabled` нигде не вызывается —
-   переключатели ни на что не влияют. Удалить их (страница станет пустой)
-   или подключить реальные потребители.
+1. Security-PR #1296 смержен, несмотря на красные проверки, унаследованные от
+   `main` (они же красные на собственном CI `main` `481dba81e`, run
+   `34989574430`). Merge с admin bypass выполнил мейнтейнер, причина
+   записана в merge-коммит (AGENTS.md §5).
+2. Feature flags: четыре флага без единого потребителя удалены; OpenFeature/
+   flagd и read-only страница диагностики остаются, страница показывает
+   честное пустое состояние. Новый флаг регистрируется только вместе с кодом,
+   который его читает.
+3. `docs/audits/AUDIT_PLATFORM_FULL.md` пока не закрыт: открыты BE-02
+   (deployed-catalog preflight, фазы 8–9) и RUST-P3-03 (final-SHA evidence).
+   В фазе 11 его ledger переносится в финальный аудит, после чего файл
+   удаляется.
 
 ## Согласованные ограничения MVP
 
