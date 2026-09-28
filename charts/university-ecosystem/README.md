@@ -35,7 +35,7 @@ attestation verification must not be claimed until reviewed signer roots and
 attestation policies are configured.
 
 When backups are enabled, `backup.postgresImage` and
-`backup.minioClientImage` must also use `repository@sha256:<digest>` and are
+`backup.s3ClientImage` must also use `repository@sha256:<digest>` and are
 pulled with `Always`. Staging and production deliberately reject arbitrary
 `backend.env`, `outboxWorker.env`, subchart `extraEnvVars`, sidecars,
 initContainers, `extraDeploy`, and unreviewed helper containers. Add a typed,

@@ -73,34 +73,37 @@ spec:
                   mountPath: /tmp
           containers:
             - name: upload
-              image: {{ .Values.backup.minioClientImage | quote }}
+              image: {{ .Values.backup.s3ClientImage | quote }}
               imagePullPolicy: {{ ternary "Always" "IfNotPresent" (has .Values.global.environment (list "staging" "production")) }}
               command: ["/bin/sh", "-ec"]
+              # The `backup:` remote is defined only by RCLONE_CONFIG_BACKUP_*;
+              # no rclone.conf is read or written.
               args:
                 - |
-                  mc alias set destination "$MINIO_ENDPOINT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
-                  mc mb --ignore-existing "destination/$MINIO_BUCKET"
+                  rclone mkdir "backup:$BACKUP_BUCKET"
                   object="university-$(date -u +%Y%m%dT%H%M%SZ).dump"
-                  mc cp /backup/database.dump "destination/$MINIO_BUCKET/$object"
+                  rclone copyto /backup/database.dump "backup:$BACKUP_BUCKET/$object"
               env:
-                - name: MINIO_ENDPOINT
-                  value: {{ .Values.backup.minioEndpoint | quote }}
-                - name: MINIO_BUCKET
+                - name: BACKUP_BUCKET
                   value: {{ .Values.backup.minioBucket | quote }}
-                - name: MINIO_ACCESS_KEY
+                - name: RCLONE_CONFIG_BACKUP_TYPE
+                  value: s3
+                - name: RCLONE_CONFIG_BACKUP_PROVIDER
+                  value: Other
+                - name: RCLONE_CONFIG_BACKUP_ENDPOINT
+                  value: {{ .Values.backup.minioEndpoint | quote }}
+                - name: RCLONE_CONFIG_BACKUP_ACCESS_KEY_ID
                   valueFrom:
                     secretKeyRef:
                       name: {{ include "university-ecosystem.applicationSecretName" . }}
                       key: minio-access-key
-                - name: MINIO_SECRET_KEY
+                - name: RCLONE_CONFIG_BACKUP_SECRET_ACCESS_KEY
                   valueFrom:
                     secretKeyRef:
                       name: {{ include "university-ecosystem.applicationSecretName" . }}
                       key: minio-secret-key
                 - name: HOME
                   value: /tmp
-                - name: MC_CONFIG_DIR
-                  value: /tmp/mc
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true

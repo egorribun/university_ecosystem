@@ -342,7 +342,7 @@
         "successfulJobsHistoryLimit": {"type": "integer", "minimum": 0},
         "failedJobsHistoryLimit": {"type": "integer", "minimum": 0},
         "ttlSecondsAfterFinished": {"type": "integer", "minimum": 0},
-        "postgresImage": {"type": "string"}, "minioClientImage": {"type": "string"},
+        "postgresImage": {"type": "string"}, "s3ClientImage": {"type": "string"},
         "minioEndpoint": {"type": "string"}, "minioBucket": {"type": "string"}
       }
     },

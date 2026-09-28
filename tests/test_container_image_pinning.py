@@ -160,7 +160,7 @@ def test_helm_backup_images_are_digest_pinned() -> None:
         encoding="utf-8"
     )
     references = re.findall(
-        r'^\s*(?:postgresImage|minioClientImage):\s*["\']([^"\']+)',
+        r'^\s*(?:postgresImage|s3ClientImage):\s*["\']([^"\']+)',
         values,
         re.MULTILINE,
     )

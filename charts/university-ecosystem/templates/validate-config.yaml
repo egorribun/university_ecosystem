@@ -160,8 +160,8 @@
     {{- if not (regexMatch "^.+@sha256:[0-9a-f]{64}$" .Values.backup.postgresImage) -}}
       {{- fail "backup.postgresImage requires an immutable @sha256 digest in staging/production" -}}
     {{- end -}}
-    {{- if not (regexMatch "^.+@sha256:[0-9a-f]{64}$" .Values.backup.minioClientImage) -}}
-      {{- fail "backup.minioClientImage requires an immutable @sha256 digest in staging/production" -}}
+    {{- if not (regexMatch "^.+@sha256:[0-9a-f]{64}$" .Values.backup.s3ClientImage) -}}
+      {{- fail "backup.s3ClientImage requires an immutable @sha256 digest in staging/production" -}}
     {{- end -}}
   {{- end -}}
   {{- if .Values.nats.enabled -}}

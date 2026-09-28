@@ -120,7 +120,9 @@ backup:
   failedJobsHistoryLimit: 3
   ttlSecondsAfterFinished: 86400
   postgresImage: "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
-  minioClientImage: "quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
+  # S3 upload client. MinIO no longer publishes its mc image; rclone speaks
+  # the S3 API of SeaweedFS and any other S3-compatible backup target.
+  s3ClientImage: "rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5"
   minioEndpoint: "http://minio:9000"
   minioBucket: "backups"
 

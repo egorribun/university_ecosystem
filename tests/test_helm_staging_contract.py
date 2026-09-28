@@ -686,7 +686,7 @@ def test_staging_render_rejects_a_missing_first_party_digest() -> None:
     ("image_key", "mutable_image"),
     [
         ("backup.postgresImage", "postgres:latest"),
-        ("backup.minioClientImage", "minio/mc:latest"),
+        ("backup.s3ClientImage", "rclone/rclone:latest"),
     ],
 )
 @pytest.mark.parametrize("environment", ["staging", "production"])
