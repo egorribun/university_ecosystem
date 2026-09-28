@@ -28,7 +28,9 @@ timeout-инфляции, exclusions, waivers и ручной перемарки
 - [ ] Ф3 Мутации до 100% viable (волны 1–4)
 - [ ] Ф4 Dependabot #1292–#1295 в ветку (mutmut 3.8 — после Ф3 backend)
 - [ ] Ф5 Живой лейн приёмки: compose live overlay, Mailpit, VAPID, роли
-- [ ] Ф6 Продуктовая приёмка по ТЗ §§2–13
+- [ ] Ф6 Продуктовая приёмка по ТЗ §§2–13 (+ admin, PWA/offline, SSR, слабые устройства, security-негативы)
+- [ ] Ф6b Дизайн-ревью редизайнов ТЗ по скриншотам live-стенда
+- [ ] Ф6c Неиспользуемые зависимости и мёртвый код, демо-данные, нагрузка ws-hub, security- и code-review ветки
 - [ ] Ф7 Spelling RU, zero-warning build, Rust pin, BE-02 all phases, O1–O9
 - [ ] Ф8 Docker Core/full, Grafana provisioning, SeaweedFS cutover, restore
 - [ ] Ф9 Локальный kind prod-like: TLS, Kyverno, ESO, HPA, chaos, rollback
