@@ -1366,7 +1366,9 @@ $services = [ordered]@{
     backend       = @{ type = "docker"; service = "backend"; ready = $false }
     elasticsearch = @{ type = "docker"; service = "elasticsearch"; ready = $false }
     gateway       = @{ type = "http"; service = "gateway"; url = "http://localhost:8080/health"; ready = $false }
-    minio         = @{ type = "http"; service = "minio"; url = "http://localhost:9001/"; ready = $false }
+    # Docker health covers both MinIO and the SeaweedFS storage, which has no
+    # 9001 console and publishes no host port.
+    minio         = @{ type = "docker"; service = "minio"; ready = $false }
     temporal      = @{ type = "docker"; service = "temporal"; ready = $false }
     grafana       = @{ type = "http"; service = "grafana"; url = "http://localhost:3000/api/health"; ready = $false }
     notifications = @{ type = "docker"; service = "notifications-worker"; ready = $false }

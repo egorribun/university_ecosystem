@@ -445,8 +445,11 @@ def test_start_script_removes_obsolete_containers_and_waits_for_the_full_stack()
     }
     for service in critical_services:
         assert f'service = "{service}"' in services_block, service
+    minio = re.search(r"minio\s+= @\{([^\n]+)", services_block)
+    assert minio is not None
+    assert 'type = "docker"' in minio.group(1)
+    assert 'service = "minio"' in minio.group(1)
     for name, url in {
-        "minio": "http://localhost:9001/",
         "grafana": "http://localhost:3000/api/health",
         "prometheus": "http://localhost:9090/-/healthy",
         "frontend": "http://localhost:8081/login",

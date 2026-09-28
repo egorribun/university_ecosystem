@@ -165,15 +165,21 @@ def test_main_reports_stand_errors_with_exit_code_two(
     assert "live_stand: no stand" in capsys.readouterr().err
 
 
-def test_live_overlay_publishes_only_caddy_and_mailpit() -> None:
+def test_live_overlay_adds_mailpit_and_keeps_the_base_host_ports() -> None:
     source = (ROOT / "docker-compose.live.yml").read_text(encoding="utf-8")
     overlay: dict[str, Any] = yaml.safe_load(
         source.replace("!reset []", "[]").replace("!override", "")
     )
     services = overlay["services"]
 
-    published = {name for name, service in services.items() if service.get("ports")}
-    assert published == {"mailpit"}
+    # The launcher's readiness probes use the base 127.0.0.1 ports, so only
+    # the storage console port (absent on SeaweedFS) is removed.
+    assert {name for name, service in services.items() if "ports" in service} == {
+        "mailpit",
+        "minio",
+    }
+    assert services["minio"]["ports"] == []
+    assert source.count("!reset") == 1
     assert services["mailpit"]["ports"] == [
         "127.0.0.1:${LIVE_MAILPIT_PORT:-18025}:8025"
     ]
