@@ -5,8 +5,13 @@ import { describe, expect, it, vi } from "vitest"
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) =>
-      key === "common:noResults" ? "No results." : (fallback ?? key),
+    t: (key: string, options?: string | Record<string, unknown>) => {
+      if (key === "common:noResults") return "No results."
+      if (key === "common:pagination.pageOf" && typeof options === "object") {
+        return `Page ${String(options.current)} of ${String(options.total)}`
+      }
+      return typeof options === "string" ? options : key
+    },
   }),
 }))
 

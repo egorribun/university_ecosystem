@@ -17,8 +17,10 @@ export function DataTablePagination<TData extends RowData>({
   return (
     <div className="flex items-center justify-between px-2">
       <div className="flex-1 text-sm text-text-secondary">
-        {table.getFilteredSelectedRowModel().rows.length} of{" "}
-        {table.getFilteredRowModel().rows.length} row(s) selected.
+        {t("common:pagination.selected", {
+          selected: table.getFilteredSelectedRowModel().rows.length,
+          total: table.getFilteredRowModel().rows.length,
+        })}
       </div>
       <div className="flex items-center space-x-6 lg:space-x-8">
         <div className="flex items-center space-x-2">
@@ -42,7 +44,10 @@ export function DataTablePagination<TData extends RowData>({
           />
         </div>
         <div className="flex w-24 items-center justify-center text-sm font-medium">
-          Page {table.state.pagination.pageIndex + 1} of {table.getPageCount()}
+          {t("common:pagination.pageOf", {
+            current: table.state.pagination.pageIndex + 1,
+            total: table.getPageCount(),
+          })}
         </div>
         <div className="flex items-center space-x-2">
           <Button

@@ -108,3 +108,13 @@ describe("DataTableColumnHeader — accessibility", () => {
     expect(results).toHaveNoViolations()
   })
 })
+
+describe("DataTableColumnHeader in Russian", () => {
+  it("announces the sort state in the interface language", async () => {
+    const { default: i18n } = await import("@/i18n/config")
+    await i18n.changeLanguage("ru")
+    render(<DataTableColumnHeader column={makeColumn()} title="Создан" />)
+
+    expect(screen.getByRole("button", { name: "Создан, без сортировки" })).toBeInTheDocument()
+  })
+})

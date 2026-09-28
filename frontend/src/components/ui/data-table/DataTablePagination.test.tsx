@@ -44,3 +44,15 @@ describe("DataTablePagination", () => {
     expect(table.setPageIndex).toHaveBeenNthCalledWith(2, 2)
   })
 })
+
+describe("DataTablePagination in Russian", () => {
+  it("renders the selection and page summaries without English text", async () => {
+    const { default: i18n } = await import("@/i18n/config")
+    await i18n.changeLanguage("ru")
+    render(<DataTablePagination table={makeTable()} />)
+
+    expect(screen.getByText("Выбрано: 1 из 4")).toBeInTheDocument()
+    expect(screen.getByText("Страница 2 из 3")).toBeInTheDocument()
+    expect(screen.queryByText(/row\(s\) selected|Page \d/)).not.toBeInTheDocument()
+  })
+})

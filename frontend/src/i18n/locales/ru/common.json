@@ -123,6 +123,13 @@
     "firstPage": "В начало",
     "prevPage": "Назад",
     "nextPage": "Вперед",
-    "lastPage": "В конец"
+    "lastPage": "В конец",
+    "selected": "Выбрано: {{selected}} из {{total}}",
+    "pageOf": "Страница {{current}} из {{total}}"
+  },
+  "tableSort": {
+    "ascending": "сортировка по возрастанию",
+    "descending": "сортировка по убыванию",
+    "none": "без сортировки"
   }
 }
