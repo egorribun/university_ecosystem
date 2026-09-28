@@ -64,6 +64,20 @@ def test_mutmut_also_copy_covers_contract_inputs() -> None:
     assert not missing, f"also_copy contract inputs are missing: {missing}"
 
 
+def test_mutmut_also_copy_covers_every_root_compose_file() -> None:
+    """Compose contract tests read root overlays inside mutmut's sandbox."""
+
+    with (ROOT / "pyproject.toml").open("rb") as project_file:
+        project = tomllib.load(project_file)
+
+    configured = set(project["tool"]["mutmut"]["also_copy"])
+    # docker-compose.override.yml is Compose's git-ignored local override.
+    compose_files = {path.name for path in ROOT.glob("docker-compose*.yml")}
+    compose_files.discard("docker-compose.override.yml")
+    assert compose_files
+    assert sorted(compose_files - configured) == []
+
+
 def test_mutmut_also_copy_creates_file_parents_before_exact_files() -> None:
     """The mutmut copier requires a configured directory before ``copy2``."""
 

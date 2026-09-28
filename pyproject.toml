@@ -636,6 +636,7 @@ also_copy = [
     "docker-compose.prod.yml",
     "docker-compose.sandbox.yml",
     "docker-compose.test.yml",
+    "docker-compose.live.yml",
     "codecov.yml",
     "renovate.json",
     "uv.lock",
