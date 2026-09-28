@@ -22,6 +22,9 @@ services:
     ports:
       - "127.0.0.1:${LIVE_MAILPIT_PORT:-18025}:8025"
     read_only: true
+    # Mailpit keeps its message database in /tmp.
+    tmpfs:
+      - /tmp
     cap_drop:
       - ALL
     security_opt:
