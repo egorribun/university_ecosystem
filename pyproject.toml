@@ -35,7 +35,7 @@ dependencies = [
   "fastapi>=0.135.3,<0.142",                          # PY-P1-01 (audit Wave 10): tight minor bound; update consciously via Renovate
   "filelock>=3.25.2,<4",                               # SEC-09: cap lock API major upgrades
   "geoip2>=5.2.0,<6",                                  # SEC-09: cap GeoIP API major upgrades
-  "grpcio>=1.81.0,<1.84",  # 1.82.0 was yanked; 1.82.1+ moves health stubs to protobuf 7
+  "grpcio>=1.81.0,<1.85",  # 1.82.0 was yanked
   "gunicorn>=25.3.0,<26",                              # SEC-09: cap WSGI server major upgrades
   "httpx[http2]>=0.28.1,<1.0",                          # TD-W9-06: upper bound — httpx 1.0 has breaking transport API changes
   "h2>=4.4.1,<5",                                       # SEC: fixes the active h2 advisory in HTTP/2 transport
@@ -86,12 +86,11 @@ dependencies = [
   "strawberry-graphql[fastapi]>=0.314.3,<0.328.0",    # FIX-41-02: Python 3.14 compat; Renovate opens PR to advance
   "structlog>=25.5.0,<26",                             # SEC-09: cap logging API major upgrades
   "typer>=0.24.1,<1",                                  # SEC-09: cap CLI API major upgrades
-  "urllib3>=2.7.0,<2.8",                              # PY-P1-01 (audit Wave 10): require the patched 2.7.x line; urllib3 v3 breaks transport API
+  "urllib3>=2.7.0,<2.9",                              # PY-P1-01 (audit Wave 10): require the patched 2.7+ line; urllib3 v3 breaks transport API
   "uvicorn[standard]>=0.44.0,<1",                      # SEC-09: cap ASGI server API major upgrades
   "uvloop>=0.22.1,<1 ; sys_platform != 'win32'",       # SEC-09: cap event-loop API major upgrades
   "zxcvbn>=4.5.0,<5",                                  # SEC-09: cap password-strength API major upgrades
   "authzed>=1.24.4,<2",                                # SEC-09: cap SpiceDB client major upgrades
-  "grpcio-health-checking>=1.81.0,<1.84",  # stable line compatible with protobuf 6
   "dishka>=1.9.1,<2",                                  # MOD-W10-01: upper bound; dishka 2.0 may restructure DI container API
   "openfeature-sdk>=0.8.4,<1",                         # SEC-09: cap feature-flag API major upgrades
   "openfeature-provider-flagd>=0.5.0,<0.5.3",  # 0.5.1+ requires protobuf 7, incompatible with Authzed/OTEL
@@ -422,7 +421,7 @@ dev = [
   # MOD-07 (audit 2026-03-16 Wave 10): Consumer-driven contract tests for the
   # Python backend → ws-hub NATS message boundary.  pact-python v2 wraps the
   # Pact Rust FFI and exposes the pact.v3 API used in tests/contracts/.
-  "pact-python==3.4.0",
+  "pact-python==3.4.1",
   "diff-cover>=9.2.0",
   # The deterministic OSV adapter imports pip-audit's frozen dependency
   # parser and service contracts in its backend regression tests. Keep the
@@ -469,7 +468,7 @@ environments = [
 ]
 override-dependencies = [
     "protobuf>=6.33.6,<8",
-    "grpcio>=1.81.0,<1.84",
+    "grpcio>=1.81.0,<1.85",
     "opentelemetry-api>=1.41.0",
     "opentelemetry-sdk>=1.41.0",
     "opentelemetry-exporter-otlp>=1.41.0",

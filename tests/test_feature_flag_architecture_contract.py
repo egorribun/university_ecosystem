@@ -60,7 +60,7 @@ def test_flagd_runtime_dependencies_are_explicit_and_compatible() -> None:
 
     assert "openfeature-provider-flagd>=0.5.0,<0.5.3" in dependencies
     assert "protobuf>=6.33.6,<8" in dependencies
-    assert "grpcio>=1.81.0,<1.84" in dependencies
+    assert "grpcio>=1.81.0,<1.85" in dependencies
 
 
 def test_flagd_settings_are_typed_and_validate_the_port() -> None:
