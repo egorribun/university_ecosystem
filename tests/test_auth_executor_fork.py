@@ -77,7 +77,7 @@ def _wait_for_child(pid: int, timeout_s: float) -> int:
         finished, status = os.waitpid(pid, os.WNOHANG)
         if finished:
             return os.waitstatus_to_exitcode(status)
-        time.sleep(0.05)
+        time.sleep(0.05)  # Bound by the timeout_s deadline checked above.
     os.kill(pid, signal.SIGKILL)
     os.waitpid(pid, 0)
     pytest.fail(f"forked child {pid} did not finish within {timeout_s}s")
