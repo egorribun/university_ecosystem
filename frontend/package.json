@@ -37,6 +37,7 @@
     "test:watch": "vitest --configLoader runner",
     "i18n:check": "node scripts/i18n-scanner.mjs && vitest run --configLoader runner src/tests/translationParity.test.ts",
     "test:e2e": "playwright test",
+    "test:e2e:live": "playwright test -c playwright.live.config.ts",
     "test:e2e:coverage-tool": "node --test scripts/merge-playwright-coverage.test.mjs",
     "visual:smoke": "node ./scripts/playwright-visual-smoke.mjs",
     "lhci": "node ./scripts/run-lhci.mjs",
