@@ -1,9 +1,11 @@
 import asyncio
 import hashlib
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from functools import cache, partial
+from types import ModuleType
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -45,10 +47,16 @@ def _container_cpu_count() -> int:
 
 
 _AUTH_EXECUTOR_WORKERS: int = max(2, _container_cpu_count())
-_auth_executor = ThreadPoolExecutor(
-    max_workers=_AUTH_EXECUTOR_WORKERS,
-    thread_name_prefix="auth_worker",
-)
+
+
+def _new_auth_executor() -> ThreadPoolExecutor:
+    return ThreadPoolExecutor(
+        max_workers=_AUTH_EXECUTOR_WORKERS,
+        thread_name_prefix="auth_worker",
+    )
+
+
+_auth_executor = _new_auth_executor()
 
 # Semaphore that caps concurrent async Argon2 operations to (worker_count - 1).
 # Without this, a login burst fans out 100+ simultaneous 32MB/~300ms hash calls,
@@ -68,7 +76,8 @@ def _get_argon2_semaphore_for_loop(loop_id: int) -> asyncio.Semaphore:
     """Return a Semaphore scoped to a specific event loop instance.
 
     Called lazily at request-time, AFTER the worker's event loop is running.
-    Fork-safe: each forked Gunicorn worker gets its own loop with a unique id.
+    A forked child can reuse a parent loop's id, so the at-fork reset below
+    clears this cache.
     Free-threading safe: lru_cache dict operations are GIL-free safe (dict is
     protected by its own per-object lock in Python 3.13 free-threading).
     """
@@ -84,6 +93,33 @@ def _get_argon2_semaphore() -> asyncio.Semaphore:
     """
     loop = asyncio.get_running_loop()
     return _get_argon2_semaphore_for_loop(id(loop))
+
+
+def _reset_auth_state_after_fork() -> None:
+    """Give a forked child its own auth pool, loop primitives and HIBP client.
+
+    Worker threads do not survive fork, but an inherited ThreadPoolExecutor
+    still counts its idle workers, so work submitted in the child would queue
+    forever.  A child's event loop can also reuse a parent loop's id and would
+    then be handed a semaphore or lock bound to the parent's loop.  The HIBP
+    client's pooled sockets and a public-key cache lock held by a parent pool
+    thread must not be shared with the child either.
+    """
+    global _auth_executor, _hibp_client, _public_key_cache_lock
+    _auth_executor = _new_auth_executor()
+    _get_argon2_semaphore_for_loop.cache_clear()
+    _get_hibp_lock_for_loop.cache_clear()
+    _hibp_client = None
+    _public_key_cache_lock = threading.Lock()
+
+
+def _register_fork_reset(os_module: ModuleType = os) -> None:
+    register_at_fork = getattr(os_module, "register_at_fork", None)
+    if register_at_fork is not None:
+        register_at_fork(after_in_child=_reset_auth_state_after_fork)
+
+
+_register_fork_reset()
 
 
 class SecurityError(Exception):
@@ -146,7 +182,8 @@ def _get_hibp_client_lock() -> asyncio.Lock:
 
     RZ-NEW-002 (audit 2026-03-19): Uses lru_cache keyed on event loop id
     to avoid threading.Lock dependency (free-threading Python 3.13 safe).
-    Fork-safe: each forked Gunicorn worker gets its own loop with a unique id.
+    A forked child can reuse a parent loop's id, so the at-fork reset clears
+    this cache.
     """
     loop = asyncio.get_running_loop()
     return _get_hibp_lock_for_loop(id(loop))
