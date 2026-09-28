@@ -1,6 +1,305 @@
 # University Ecosystem: safe-pause handoff и план полного закрытия
 
-> **Для следующего исполнителя:** пользователь явно возобновил работу 2026-09-27. **Самый свежий операционный статус — §0.resume-20260927; предшествующий снимок паузы — §0.000000.** Более ранние формулировки «текущий HEAD», «чистое дерево» и «текущий CI» исторические. Использовать `executing-plans` либо `subagent-driven-development`, затем независимое ревью и `verification-before-completion`. Чекбоксы ниже означают оставшуюся работу, а не распоряжение повторить уже реализованные вертикали.
+## Контрольная точка 2026-09-28 03:19 Europe/Moscow — SAFE PAUSE
+
+**При возобновлении начать здесь.** Эта секция — актуальный операционный
+снимок; нижележащие разделы сохраняют исторические исследования и не
+являются новым подтверждением их старых CI-чисел. Пользователь попросил
+достичь контрольной точки и безопасно приостановиться. Новые изменения и
+долгое ожидание CI после этой точки не начинать. Goal остаётся ACTIVE, не
+COMPLETE; полный master/continuation plan и внешний аудит не сертифицированы.
+
+### Git, PR, собственность файлов
+
+- ROOT checkout: `C:\Users\egorribun\Documents\university_ecosystem`,
+  активная ветка `egorribun`. До checkpoint локальный и remote HEAD были
+  `8d025df25d565378b4047943015c11c3b39e3831`; PR
+  `https://github.com/egorribun/university_ecosystem/pull/1266` OPEN,
+  base `481dba81ec78d7d2a33873a3a661470b0ecdd512`.
+- Четыре последовательных, проверенных локальных коммита над `8d`:
+  `c1f0b57f7548173dbe7f6761078e9f6ff62aa2b6`
+  (`fix(quality): validate CI needs and preserve shard diagnostics`),
+  `355fc03ffa5746a3856b0a9eca2a5ed2581955c6`
+  (`fix(security): reject reset tokens at expiry boundary`),
+  `4f39bb38d6431e887cfb847b892d98ea5a07c12a`
+  (`test(quality): bound mutation fixtures and verify security paths`),
+  `defd7c27df7751f85641aa7c0aeae84941a8b9bc`
+  (`fix(frontend): keep story progress consistent across navigation`).
+  Они ещё **не запушены** на момент написания этой секции; следующий шаг —
+  отдельный docs-only commit handoff и один обычный push `egorribun`, затем
+  проверить remote/PR SHA. Не делать force-push, merge или production release.
+- После четырёх коммитов tracked dirty остался только этот handoff-файл.
+  `docs/audits/AUDIT_PLATFORM_FULL.md` остаётся единственным untracked в
+  ROOT: это пользовательский внешний аудит; не удалять, не стадировать
+  автоматически. `.secrets.baseline` был повторно staged после
+  `detect-secrets` и включён в первый commit; очередной hook может снова
+  обновить его, в этом случае повторить `git add .secrets.baseline`.
+- Четыре stash от 25 и 27 сентября сохранены без pop/drop. Не использовать
+  `git clean`, широкое staging или recursive deletion. Оставить legacy
+  `university_ecosystem_minio-data` volume и все ignored evidence untouched.
+  Worktrees: ROOT; managed detached `c0-owned-stand`, `ci-catalog-needs`,
+  `mutation-diagnostics` (все на исходном `8d`); старые detached `ue-e2e`,
+  `ue-mm`, `ue-mm2`, `ue-mut-A/B/C`. Никакие из них не удалять без отдельной
+  инвентаризации WIP/ignored data. Только ROOT делает stage/commit/push.
+
+### Что именно зафиксировано и как это проверено
+
+1. **CI catalog O6 v5 + безопасная Stryker-диагностика O9 (`c1f0b57f`).**
+   Validator сверяет все 56 workflows/185 jobs, source `needs`, несуществующие,
+   self/duplicate edges и статические выражения, включая group/case/
+   whitespace/quoted `}}`; динамический или bare context отвергает.
+   O9 создаёт отдельный owner-published `diagnostic.json` в уникальном
+   `$RUNNER_TEMP` каталоге; upload использует **точный путь**, marker ставится
+   только после успешной публикации и подтверждённой quiescence. Child не
+   наследует `GITHUB_OUTPUT`/export directory. Артефакт advisory,
+   `releaseEligible:false`, CPU/RSS null; он не подменяет `mutation.json`,
+   `SHARD_EVIDENCE.json`, 100% gate, cache, process owner или timeout.
+   Независимый security/contract review PASS с явным residual: same-UID
+   trusted runner TOCTOU не является криптографической provenance, поэтому
+   diagnostic не release evidence. Проверки ROOT: validator exit0
+   (56/185); catalog+workflow pytest **54/54**; после финального
+   quiescence refinement Node-контракты **158/158**, Prettier,
+   frontend typecheck и lint exit0. `actionlint` локально не установлен,
+   но pre-commit actionlint hook прошёл на commit. `detect-secrets` сначала
+   нашёл ложный тестовый fixture key `secret`, который заменён на
+   `unexpected` с той же проверкой лишнего поля; затем baseline обновился,
+   повторно staged, и финальный hook прошёл. Никаких suppression/exclusion.
+2. **Auth reset (`355fc03f`).** Оба сравнения срока ссылки теперь `<= now`,
+   совпадают с repository-запросом `expires_at > now`. Тесты проверяют
+   равенство времени на discovery и locked re-read и naive legacy timestamp;
+   токен отклоняется до user lock/password update с прежним безопасным
+   audit reason. Агент наблюдал prompt RED до исправления и GREEN после;
+   ROOT перенёс hash-equal изменения. Независимый security review PASS.
+   ROOT related suite **46/46** exit0; Ruff/pre-commit strict mypy/Bandit/
+   Semgrep/detect-secrets PASS. Остальные auth reset mutation timeouts OPEN.
+3. **Точные mutmut-фикстуры/контракты (`4f39bb38`).** EventBus `durable or`
+   мутант раньше оставлял бесконечный fake handler: тестовые ожидания стали
+   bounded, точный mutant RED. Chat attachment-copy mutant с чужим URL
+   теперь RED по нулю storage reads. Private attachment decode-loop mutant
+   теперь RED через bounded real-unquote wrapper. ScheduleDeleted и
+   NotificationDeadLetterRetried optional `_schema_version` удаляются
+   структурно без семантически пустых pop defaults и без исключений из
+   inventory; тесты сохраняют contract с/без версии. WebPush test проверяет
+   forwarding custom CA bundle сквозь pinned HTTPS pool без реальной сети.
+   ROOT event suites **27/27**, WebPush+chat+private **100/100**, Ruff lint/
+   format и pre-commit PASS. Fresh mutmut score на новом SHA ещё не известен.
+4. **Stories (`defd7c27`).** Удалены избыточный openStory progress reset и
+   guard, добавлен public committed close/reopen test. Ранее изолированный
+   Stories set **118/118**, ROOT frontend typecheck/lint/pre-commit PASS.
+   Архивированный focused Stryker session
+   `21750e98-6be6-4f0f-96c3-46350686c18e` на прежнем candidate дал
+   179 total/171 Killed/8 Survived; после одного прежнего локального
+   улучшения остаются по меньшей мере IDs 14/15/25/38/45/59/61, и fresh
+   полный Stryker ещё не запускался. Нельзя заявлять 100% mutation.
+5. **Общие gates checkpoint:** `verify_harness.py --repo-only` **29/29**;
+   frontend `npm run typecheck`, `npm run lint`, scoped Prettier — exit0;
+   `git diff --check` exit0. Все четыре commits прошли применимые
+   pre-commit hooks (строки `Skipped` обусловлены отсутствием затронутых
+   файлов, не bypass). Это не полный Python/frontend/Go/Rust/API/security/
+   infra/Docker/staging release gate.
+
+### Текущее внешнее evidence и почему оно ещё не сертификат
+
+- CI Matrix run `36353799087` attempt1 на старом `8d` при последнем
+  неатомарном PR-check snapshot имел **40 FAILURE / 16 IN_PROGRESS /
+  68 QUEUED / 18 SKIPPED / 221 SUCCESS**. Это продолжающийся старый run,
+  а не результат новых четырёх commits. CI concurrency на `pull_request`
+  отменяет старую матрицу при новом push; после push дождаться новой
+  exact-SHA матрицы, не смешивать run/attempt/head/base.
+- Основная известная группа ещё не зафиксированных Python mutation gaps:
+  `NotificationDeadLetterPurged.from_dict` selected #1/#5/#6/#7 survived,
+  full-map подтвердил #1/#5/#6; нужна такая же узкая optional-version
+  structural/TDD проверка, не массовая перепись events. Auth reset имеет
+  много timeout mutants; отдельно `_unlink_ignore_missing` #2/#3,
+  `InternalAccessMiddleware.__init__` #1, private-static path #12/#15,
+  chat forward #62/#108–113, notification delivery #117. Сначала скачать
+  exact selected/full-map evidence, установить конкретный mutant и причину
+  hang/survival, затем ограниченный RED→GREEN. Full-map SMTP #73/#74/#84
+  Killed — не называть survivors по одному reduced map. Не повышать timeout
+  и не добавлять exclusions/quarantine/suppressions.
+- Агент скачал игнорируемые exact artifacts для groups 63–71/77–81 в
+  `C:\Users\egorribun\.codex\worktrees\ci-catalog-needs\university_ecosystem\artifacts\ci-triage-36353799087\`.
+  Groups 72–75 на тот момент ещё не выдавали artifacts. Ранее ROOT сохранил
+  group21/22/32 под `artifacts/quality/pr1266-8d-mutmut-group*-20260928`.
+  Исторический focused Stories report/SHARD_EVIDENCE сохранён под ignored
+  `artifacts/quality/stryker-archives/.../21750e98-6be6-4f0f-96c3-46350686c18e/`.
+- Изолированный SMTP candidate в `c0-owned-stand`: доказан equivalent
+  `cast(asyncio.Transport, transport)`→`cast(None, transport)` (cast — runtime
+  identity); предложено удалить cast, оставив существующий `attrgetter`
+  для abort, новый точный mutant даёт RED. Однако независимый reviewer дал
+  **code PASS / proof HOLD**: mock tests проходят, два live-loopback socket
+  теста на Windows упали; baseline equivalence не доказана reviewer'ом.
+  Candidate **не** перенесён в ROOT и не вошёл в commits. Возобновить с
+  повторным baseline/candidate сравнением и Linux evidence, а не объявлять
+  закрытым.
+- Изолированный auth native-fork v5 в `ue-mut-A` остаётся HOLD: Linux probe
+  подтверждал только executor-specific fork branch, но pytest-wrapper ещё не
+  прошёл Linux collection из-за неполного import closure (`app/core/lifespan.py`).
+  Не переносить и не переносить вывод на HIBP/RSA locks до точного Linux proof.
+
+### Порядок возобновления, границы полномочий и внешняя приёмка
+
+1. Считать root/domain `AGENTS.md`, `quality/quality-contract.json`, этот
+   handoff и активный goal. Проверить `git status`, `git stash list`, HEAD,
+   origin, PR source SHA и новый terminal/active CI run. Если docs-only
+   commit/push уже выполнены после написания этой секции, зафиксировать его
+   SHA как новую верхнюю дельту; не полагаться на старые числа выше.
+2. Разобрать **каждый новый distinct** failure по точному artifact, приоритет:
+   Purged equivalent defaults, auth timeout, storage unlink, internal access,
+   static path, chat forwarding, notification delivery, затем оставшиеся
+   Stories Stryker survivors. Сохранять first-failure logs, exact mutation
+   diff, RED proof и focused/full GREEN; не считать aggregate failure
+   отдельной причиной.
+3. На той же `egorribun` ветке делать небольшие coherent non-wave commits,
+   scope quality/security/testing по назначению. Перед каждым push —
+   targeted regressions, harness, typecheck/lint/build при frontend change,
+   Ruff/mypy/security checks, `git diff --check` и повторное staging
+   `.secrets.baseline` после `detect-secrets`. ROOT является единственным
+   stage/commit/push owner. Изолированные agent worktrees могут хранить WIP,
+   но их dirty state не равен интеграции.
+4. C0 live acceptance — пользователь выбрал **отдельный run-owned стенд** с
+   изолированной БД/ресурсами и безопасным cleanup; перед реализацией нужен
+   завершённый детальный design/spec и согласование по brainstorming skill.
+   Не менять существующие `.env`, БД, volumes и пользователей. Storage
+   направление: **поддерживаемое OSS S3-хранилище** вместо устаревшего MinIO;
+   SeaweedFS cutover подготовлен, но не завершён/не сертифицирован.
+   O9 согласован как отдельная безопасная информационная диагностика, не
+   release evidence.
+5. После кодовых fixes — fresh полного CI matrix на едином SHA, schema-valid
+   quality manifest, 100% всех применимых coverage и viable mutation,
+   актуальные security/infra/API gates. Затем isolated C0 реальные роли и
+   Core, immutable-digest Docker smoke, production-like K8s staging/TLS/
+   observability/CWV/browser-device/chaos/rollback, exact-six images и
+   SHA-bound audit. Проверить отсутствие P0/P1/high/critical и чистый
+   tracked worktree перед release. Merge/production не выполнены и не
+   авторизованы этой контрольной точкой.
+
+## Операционная дельта 2026-09-28 03:12 Europe/Moscow — ROOT WIP, не release evidence
+
+Эта секция новее дельты 02:51 ниже. Исходный PR #1266 и текущий Matrix run
+`36353799087`/attempt 1 по-прежнему проверяют опубликованный SHA
+`8d025df25d565378b4047943015c11c3b39e3831`, а не dirty ROOT. Последний
+неатомарный снимок PR checks: 36 FAILURE (только mutmut execution groups),
+16 IN_PROGRESS, 76 QUEUED, 18 SKIPPED, 219 SUCCESS; это не terminal verdict.
+Новые failures доходят до groups 81; для них нужен exact selected-results и
+full-map разбор, а не трактовка каждой группы как отдельного product bug.
+
+- O6 v5: scanner каталога теперь fail-closed для группированных, case-varied
+  и bare/dynamic `needs` выражений; independent reviewer PASS. ROOT совместил
+  validator, tests, каталог и runbook. Локально validator OK (56 workflows,
+  185 jobs), 54/54 catalog+workflow contract tests. Отдельные 10 mypy ошибок
+  validator были в прежних строках и не были объявлены закрытыми.
+- O9: wide-glob отвергнут. Изолированный TDD patch перенесён в ROOT с
+  hash-equal workflow/runner/owner/tests: уникальный runner-temp export,
+  точный `diagnostic.json`, атомарная публикация, marker только после
+  подтверждённого process quiescence; child не наследует GITHUB_OUTPUT.
+  Informational diagnostic никогда не заменяет canonical mutation evidence.
+  Catalog artifact metadata согласован; Node contract tests 158/158,
+  typecheck и Prettier PASS; root lint ещё выполняется. Независимый combined
+  reviewer предварительно PASS, окончательный verdict после focused tests.
+- Python mutation ROOT WIP: EventBus/attachment/path bounded tests остаются
+  RED на точных старых mutants и GREEN на исходнике. ScheduleDeleted и
+  NotificationDeadLetterRetried optional schema pop переведены на
+  `with suppress(KeyError): del ...` без exclusions, сохранены успешные
+  контракты с/без версии. Event focused suite 27/27, Ruff lint/format PASS;
+  fresh mutmut score ещё не измерен. WebPush custom CA forwarding test 73/73
+  в полном focused файле; exact TLS mutant не перепроверен.
+- Auth expiry: два условия `expires_at < now` заменены на `<=`, потому что
+  repository уже требует `expires_at > now`; тесты equality на discovery и
+  locked read и naive timestamp locked read. Agent зафиксировал prompt RED,
+  ROOT интегрировал hash-equal patch; independent security review PASS,
+  ROOT related 46/46 PASS, Ruff PASS. Дополнительные auth mutants остаются.
+- SMTP `SmtpMfaEmailSender.send__mutmut_105` доказан equivalent runtime
+  `typing.cast`→identity; агент выполняет структурное удаление пустого cast
+  без waiver, результаты ещё не интегрированы. Reduced-map SMTP mutants 47/48
+  не считать survivors: полная карта их убивает. Новые группы 63–81 агент
+  инвентаризирует по exact evidence.
+- Stories: семь прежних survivors всё ещё открыты; новый полный Stryker после
+  локального refactor ещё не проводился. C0 owned stand и auth fork v5
+  остаются отдельными HOLD до своих explicit gates. Docker/staging/release,
+  SHA-bound final manifest и полный master plan не закрыты. ROOT не делал
+  commit/push после SHA `8d`; локальные изменения не являются CI verdict.
+
+## Операционная дельта 2026-09-28 02:51 Europe/Moscow — работа ACTIVE
+
+Эта дельта новее всех нижележащих исторических снимков; числа CI относятся
+только к указанному моменту. Goal активен, §§6–13 и весь release acceptance
+остаются открытыми. ROOT — единственный координатор stage/commit/push.
+
+- Git: ветка `egorribun`, локальный HEAD = `origin/egorribun` = PR #1266 source
+  `8d025df25d565378b4047943015c11c3b39e3831`; base PR
+  `481dba81ec78d7d2a33873a3a661470b0ecdd512`. На данном checkpoint
+  исправления не закоммичены и не опубликованы. Сохранить четыре stash,
+  пользовательский untracked `docs/audits/AUDIT_PLATFORM_FULL.md`, legacy
+  MinIO volume и изолированные WIP. Не blanket-stage/clean.
+- Fresh Matrix run `36353799087`/attempt 1 проверяет только source HEAD `8d`.
+  Снимок около 23:50 UTC: 18 FAILURE (mutmut execution groups 21, 22,
+  32–38, 40–45, 47, 48, 51), 16 IN_PROGRESS, 95 QUEUED, 18 условных
+  SKIPPED, 216 SUCCESS по PR checks. Это не terminal result и не новая
+  сертификация локального dirty дерева. У каждого завершённого failed job
+  доступен exact-evidence artifact через `gh run download`; group21/22/32
+  сохранены под ignored `artifacts/quality/pr1266-8d-mutmut-group*-20260928`.
+- Stories: канонический focused Stryker session
+  `21750e98-6be6-4f0f-96c3-46350686c18e` завершился exit1 с
+  179 total / 171 Killed / 8 Survived / 0 Timeout / 0 NoCoverage.
+  `mutation.json` и `SHARD_EVIDENCE.json` сохранены и hash-equal исходному
+  отчёту в ignored `artifacts/quality/stryker-archives/52a08d09485e22a41ca4987fa1dd38a189526505a29d8e36be63209e3c0a560c/21750e98-6be6-4f0f-96c3-46350686c18e/`.
+  ROOT WIP удалил доказанно избыточный `openStory` reset и guard
+  `openIndex===null` при undefined active story, добавил public parent-layout
+  close→reopen тест; 118/118 Stories tests, typecheck, lint прошли в
+  изолированной копии. Семь остальных survivor ID 14/15/25/38/45/59/61
+  всё ещё OPEN; no waiver и no whole-Stryker claim.
+- Python mutation: group21 `EventBus.publish__mutmut_67` меняет `durable and`
+  на `durable or` и висит на бесконечном handler; два теста переведены на
+  конечный release Event, exact mutant дал быстрый RED, исходник 25/25 GREEN.
+  Group22 `ChatAttachmentService.copy_for_forward__mutmut_21` обходит
+  managed-URL validation передачей `None` как backend; тест теперь требует
+  ноль storage reads для чужого URL, exact mutant RED / source GREEN.
+  Group32 `_path_segments__mutmut_18` делает decoding loop бесконечным;
+  тест с bounded обёрткой реального `unquote` дал exact RED / 13/13 GREEN.
+  Ни один timeout/budget/gate не повышен и не исключён. ScheduleDeleted
+  `from_dict` groups 33–38/40/45: новый тест проверяет игнорирование
+  поддельных event ID/time/metadata; семантически пустой default у schema
+  `pop` заменён на optional delete с сохранением прежней мутации входа.
+  Focused tests/ruff проходят; fresh mutmut Killed ещё не подтверждён.
+- Остальные текущие группы раздельны: AuthService.perform_password_reset
+  mutants 10/100/124–127 дают timeout (анализ идёт); SMTP MFA sender
+  mutants47/48 и WebPush TLS adapter mutant33 требуют triage. Не смешивать
+  эти результаты с уже закрытыми group21/22/32. Новые CI failures после
+  checkpoint инвентаризировать по exact selected-results, не по агрегатору.
+- CI governance O6: isolated v4 фиксирует точный `needs` catalog для 185 jobs,
+  unknown/self/duplicate edges и статические expression refs, включая
+  whitespace/quoted `}}`/nested fields. 45/45 тестов и validator 56/185
+  GREEN в изолированном worktree; ROOT перенёс 4 файла и совместил runbook,
+  но интеграционное ревью/проверка после O9 metadata ещё впереди.
+  O9 informational Stryker diagnostic перенесён в ROOT как WIP, но
+  независимый HOLD выявил слишком широкий artifact upload glob: он способен
+  включить посторонний sibling JSON. Исправление TDD идёт в отдельном
+  worktree; до этого не коммитить и не называть artifact trusted.
+- Auth fork v5 patch остаётся изолированным HOLD: native Linux probe на том
+  же product SHA подтверждает executor-specific fork fix, Windows focused
+  tests проходят, но новый pytest-wrapper не прошёл Linux collection
+  (первый запуск: OCI mount; второй: отсутствующий `py.py`). Исправленный
+  import closure всё ещё не включает `app/core/lifespan.py`, импортируемый
+  тестом; третьего контейнерного запуска не было. Не распространять вывод
+  на HIBP/RSA locks и не интегрировать без exact Linux pytest proof.
+- C0: пользователь ранее выбрал отдельный run-owned stand; детальный design
+  ещё ожидает явного approval согласно brainstorming skill, поэтому code и
+  Docker/DB не запускались. O9 отдельная безопасная диагностика одобрена.
+  SeaweedFS — выбранное OSS S3 направление, но cutover НЕ выполнен:
+  `docs/runbooks/s3-seaweedfs-cutover.md` требует authenticated old endpoint,
+  restorable backup, writer freeze, exact data/metadata parity и rollback.
+
+Следующий checkpoint: получить независимые verdict по O6/O9/auth и новым
+mutmut кластерам, перенести только проверенные patches, синхронизировать
+CI-каталог с точным диагностическим artifact contract, затем harness29/29,
+typecheck/lint/build, focused Python/frontend, actionlint/security,
+`git diff --check`, review и небольшие coherent commits без
+`Co-Authored-By`. Обычный push только после локального gate; новый CI SHA
+проверять заново. Ни green отдельных тестов, ни мониторинг старого SHA не
+закрывают whole mutation100%, Docker/staging/real journeys и final SHA audit.
+
+> **Для следующего исполнителя:** самый свежий операционный статус — «Операционная дельта 2026-09-28 02:51» непосредственно выше; §0.resume-20260927 и §0.000000 — исторические снимки. Более ранние формулировки «текущий HEAD», «чистое дерево» и «текущий CI» исторические. Использовать `executing-plans` либо `subagent-driven-development`, затем независимое ревью и `verification-before-completion`. Чекбоксы ниже означают оставшуюся работу, а не распоряжение повторить уже реализованные вертикали.
 
 **Дата снимка:** 2026-09-22, около 16:25–16:35 Europe/Moscow. GitHub timestamps — UTC.
 
