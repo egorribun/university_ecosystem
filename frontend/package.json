@@ -233,7 +233,7 @@
     "dompurify": ">=3.4.13",
     "form-data": ">=4.0.6",
     "protobufjs": ">=8.6.0",
-    "js-yaml": "^4.3.1",
+    "js-yaml": "^4.3.2",
     "lodash": ">=4.17.24",
     "@opentelemetry/core": "2.8.0",
     "uuid": ">=14.0.0",
