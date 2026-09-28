@@ -1,19 +1,10 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { FeatureFlag } from "@/types/Admin"
 
-vi.mock("framer-motion", async () =>
-  (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
-)
-
 const state = vi.hoisted(() => ({
-  reducedMotion: false,
-  query: { data: [] as FeatureFlag[], isPending: false },
-}))
-
-vi.mock("@/hooks/useMediaQuery", () => ({
-  default: () => state.reducedMotion,
+  query: { data: [] as FeatureFlag[] | undefined, isPending: false },
 }))
 
 vi.mock("react-i18next", () => ({
@@ -28,10 +19,15 @@ vi.mock("@/api/hooks/adminFeatureFlags", () => ({
 }))
 
 vi.mock("@/components/settings", () => ({
-  Chip: ({ label }: { label: string }) => <span data-testid={`chip-${label}`}>{label}</span>,
+  Chip: ({ label, color }: { label: string; color: string }) => (
+    <span data-testid="effective-chip" data-color={color}>
+      {label}
+    </span>
+  ),
 }))
 
 vi.mock("lucide-react", () => ({
+  Flag: () => <span data-testid="empty-flag-icon" aria-hidden="true" />,
   Info: () => <span aria-hidden="true" />,
 }))
 
@@ -39,9 +35,9 @@ import { AdminFeatureFlagsFeature } from "@/features/admin/AdminFeatureFlagsFeat
 
 const flags: FeatureFlag[] = [
   {
-    name: "always-on",
+    name: "enabled-by-targeting",
     enabled: true,
-    default: true,
+    default: false,
     description: "Enabled flag",
     provider: "flagd Provider",
     evaluation_reason: "TARGETING_MATCH",
@@ -49,9 +45,9 @@ const flags: FeatureFlag[] = [
     config_path: "k8s/flagd/flags.json",
   },
   {
-    name: "off-by-default",
+    name: "disabled-by-default",
     enabled: false,
-    default: false,
+    default: true,
     description: "Disabled flag",
     provider: "flagd Provider",
     evaluation_reason: "DEFAULT",
@@ -60,8 +56,13 @@ const flags: FeatureFlag[] = [
   },
 ]
 
+function row(name: string) {
+  const tableRow = screen.getByText(name).closest("tr")
+  if (!tableRow) throw new Error(`row ${name} not rendered`)
+  return within(tableRow)
+}
+
 beforeEach(() => {
-  state.reducedMotion = false
   state.query = { data: [], isPending: false }
 })
 
@@ -75,22 +76,59 @@ describe("AdminFeatureFlagsFeature closure", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument()
   })
 
-  it("renders effective values and the read-only GitOps ownership contract", () => {
-    state.query = { data: flags, isPending: false }
-    state.reducedMotion = true
+  it("explains an empty registry instead of rendering an empty table", () => {
+    render(<AdminFeatureFlagsFeature />)
 
-    const { rerender } = render(<AdminFeatureFlagsFeature />)
+    expect(screen.queryByRole("table")).not.toBeInTheDocument()
+    expect(
+      screen.getByRole("heading", { level: 2, name: "featureFlags.empty.title" })
+    ).toBeInTheDocument()
+    expect(screen.getByText("featureFlags.empty.description")).toBeInTheDocument()
+    expect(screen.getByTestId("empty-flag-icon")).toBeInTheDocument()
+    expect(screen.getByText("featureFlags.management.notice")).toBeInTheDocument()
+  })
+
+  it("treats a settled query without data as an empty registry", () => {
+    state.query = { data: undefined, isPending: false }
+
+    render(<AdminFeatureFlagsFeature />)
+
+    expect(screen.queryByRole("table")).not.toBeInTheDocument()
+    expect(screen.getByText("featureFlags.empty.title")).toBeInTheDocument()
+  })
+
+  it("renders the page heading and subtitle", () => {
+    render(<AdminFeatureFlagsFeature />)
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "featureFlags.title" })
+    ).toBeInTheDocument()
+    expect(screen.getByText("featureFlags.subtitle")).toBeInTheDocument()
+  })
+
+  it("renders effective values, fallbacks and the read-only GitOps ownership contract", () => {
+    state.query = { data: flags, isPending: false }
+
+    render(<AdminFeatureFlagsFeature />)
 
     expect(screen.getByRole("table")).toBeInTheDocument()
-    expect(screen.getByTestId("chip-featureFlags.values.on")).toBeInTheDocument()
-    expect(screen.getByTestId("chip-featureFlags.values.off")).toBeInTheDocument()
+    expect(screen.queryByText("featureFlags.empty.title")).not.toBeInTheDocument()
+
+    const enabled = row("enabled-by-targeting")
+    expect(enabled.getByTestId("effective-chip")).toHaveTextContent("featureFlags.values.on")
+    expect(enabled.getByTestId("effective-chip")).toHaveAttribute("data-color", "success")
+    expect(enabled.getAllByText("featureFlags.values.off")).toHaveLength(1)
+    expect(enabled.getByText("TARGETING_MATCH")).toBeInTheDocument()
+
+    const disabled = row("disabled-by-default")
+    expect(disabled.getByTestId("effective-chip")).toHaveTextContent("featureFlags.values.off")
+    expect(disabled.getByTestId("effective-chip")).toHaveAttribute("data-color", "default")
+    expect(disabled.getAllByText("featureFlags.values.on")).toHaveLength(1)
+    expect(disabled.getByText("DEFAULT")).toBeInTheDocument()
+
     expect(screen.getByText("featureFlags.management.notice")).toBeInTheDocument()
     expect(screen.getAllByText("k8s/flagd/flags.json")).toHaveLength(2)
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
     expect(screen.queryByRole("slider")).not.toBeInTheDocument()
-
-    state.reducedMotion = false
-    rerender(<AdminFeatureFlagsFeature />)
-    expect(screen.getByRole("table")).toBeInTheDocument()
   })
 })

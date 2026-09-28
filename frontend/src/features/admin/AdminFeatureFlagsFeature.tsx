@@ -1,9 +1,8 @@
-import { m, AnimatePresence } from "framer-motion"
-import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
-import { Info } from "lucide-react"
+import { Flag, Info } from "lucide-react"
 import { useAdminFeatureFlagsQuery } from "@/api/hooks/adminFeatureFlags"
 import { Chip } from "@/components/settings"
+import { EmptyState } from "@/components/ui/EmptyState"
 
 /**
  * AdminFeatureFlagsFeature — Wave 164 SW2 orchestrator.
@@ -19,7 +18,6 @@ import { Chip } from "@/components/settings"
 export function AdminFeatureFlagsFeature() {
   const { data: flags = [], isPending: loading } = useAdminFeatureFlagsQuery()
   const { t } = useTranslation("admin")
-  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   if (loading) {
     return (
@@ -32,17 +30,12 @@ export function AdminFeatureFlagsFeature() {
   return (
     <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <m.div
-          initial={reducedMotion ? false : { opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={reducedMotion ? { duration: 0 } : { duration: 0.5 }}
-          className="mb-8"
-        >
+        <div className="mb-8">
           <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
             {t("featureFlags.title")}
           </h1>
           <p className="mt-2 text-base text-(--text-secondary)">{t("featureFlags.subtitle")}</p>
-        </m.div>
+        </div>
 
         <div
           role="note"
@@ -52,48 +45,52 @@ export function AdminFeatureFlagsFeature() {
           <p>{t("featureFlags.management.notice")}</p>
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
-          <div className="overflow-x-auto">
-            <table
-              className="w-full text-left border-collapse"
-              aria-label={t("featureFlags.table.aria")}
-            >
-              <thead>
-                <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
-                  <th
-                    scope="col"
-                    className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
-                  >
-                    {t("featureFlags.table.flag")}
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
-                  >
-                    {t("featureFlags.table.effective")}
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
-                  >
-                    {t("featureFlags.table.fallback")}
-                  </th>
-                  <th
-                    scope="col"
-                    className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
-                  >
-                    {t("featureFlags.table.management")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-glass-border/(--opacity-subtle)">
-                <AnimatePresence mode="popLayout">
-                  {flags.map((flag, index) => (
-                    <m.tr
+        {flags.length === 0 ? (
+          <EmptyState
+            className="mx-auto"
+            icon={<Flag className="h-7 w-7" aria-hidden="true" />}
+            title={t("featureFlags.empty.title")}
+            description={t("featureFlags.empty.description")}
+          />
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
+            <div className="overflow-x-auto">
+              <table
+                className="w-full text-left border-collapse"
+                aria-label={t("featureFlags.table.aria")}
+              >
+                <thead>
+                  <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
+                    <th
+                      scope="col"
+                      className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
+                    >
+                      {t("featureFlags.table.flag")}
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
+                    >
+                      {t("featureFlags.table.effective")}
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
+                    >
+                      {t("featureFlags.table.fallback")}
+                    </th>
+                    <th
+                      scope="col"
+                      className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
+                    >
+                      {t("featureFlags.table.management")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-glass-border/(--opacity-subtle)">
+                  {flags.map((flag) => (
+                    <tr
                       key={flag.name}
-                      initial={reducedMotion ? false : { opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={reducedMotion ? { duration: 0 } : { delay: index * 0.05 }}
                       className="transition-colors hover:bg-(--bg-surface-hover)/(--opacity-subtle)"
                     >
                       <td className="px-6 py-5">
@@ -133,13 +130,13 @@ export function AdminFeatureFlagsFeature() {
                           </code>
                         </div>
                       </td>
-                    </m.tr>
+                    </tr>
                   ))}
-                </AnimatePresence>
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

@@ -6,7 +6,10 @@ import pytest
 from httpx import AsyncClient
 
 from app.auth.security import get_password_hash
-from app.core.feature_flags import FLAG_PUSH_BATCHING
+
+# The production registry is empty; the API adapter is exercised with a
+# snapshot for a test-only flag name.
+TEST_FLAG = "test-flag"
 
 # Common strong password for tests
 TEST_PASSWORD = "StrongPass123!"  # NOSONAR
@@ -22,10 +25,10 @@ async def test_list_feature_flags_admin(root_client: AsyncClient, user_factory):
     )
 
     snapshot = {
-        "name": FLAG_PUSH_BATCHING,
+        "name": TEST_FLAG,
         "enabled": True,
         "default": True,
-        "description": "Batch push notifications before delivery.",
+        "description": "Test-only flag.",
         "provider": "flagd Provider",
         "evaluation_reason": "STATIC",
         "management": "gitops",
@@ -39,20 +42,20 @@ async def test_list_feature_flags_admin(root_client: AsyncClient, user_factory):
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    push_batching = next(f for f in data if f["name"] == FLAG_PUSH_BATCHING)
-    assert push_batching == {
-        "name": FLAG_PUSH_BATCHING,
+    test_flag = next(f for f in data if f["name"] == TEST_FLAG)
+    assert test_flag == {
+        "name": TEST_FLAG,
         "enabled": True,
         "default": True,
-        "description": "Batch push notifications before delivery.",
+        "description": "Test-only flag.",
         "provider": "flagd Provider",
         "evaluation_reason": "STATIC",
         "management": "gitops",
         "config_path": "k8s/flagd/flags.json",
     }
-    assert isinstance(push_batching["enabled"], bool)
-    assert push_batching["provider"]
-    assert push_batching["evaluation_reason"]
+    assert isinstance(test_flag["enabled"], bool)
+    assert test_flag["provider"]
+    assert test_flag["evaluation_reason"]
 
 
 @pytest.mark.asyncio
@@ -80,7 +83,7 @@ async def test_update_feature_flag_is_explicitly_read_only(
     )
 
     response = await root_client.patch(
-        f"/admin/feature-flags/{FLAG_PUSH_BATCHING}",
+        f"/admin/feature-flags/{TEST_FLAG}",
         json={"enabled": True},
     )
     assert response.status_code == 405
@@ -119,9 +122,7 @@ async def test_update_feature_flag_empty_input_is_not_treated_as_a_write(
         "/api/v1/auth/login", data={"username": admin.email, "password": TEST_PASSWORD}
     )
 
-    response = await root_client.patch(
-        f"/admin/feature-flags/{FLAG_PUSH_BATCHING}", json={}
-    )
+    response = await root_client.patch(f"/admin/feature-flags/{TEST_FLAG}", json={})
     assert response.status_code == 405
 
 

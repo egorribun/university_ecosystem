@@ -11,16 +11,28 @@ import pytest
 from fastapi import HTTPException
 from openfeature.evaluation_context import EvaluationContext
 
+from app.core import feature_flags as feature_flags_module
 from app.core.feature_flags import (
-    FLAG_GRAPHQL_SUBSCRIPTIONS,
-    FLAG_NEW_CHAT_UI,
-    FLAG_PUSH_BATCHING,
-    FLAG_SEMANTIC_SEARCH,
+    _FlagDefinition,
     initialize_feature_flags,
     is_enabled,
     is_enabled_sync,
     list_feature_flags,
     shutdown_feature_flags,
+)
+
+FLAG_ALPHA = "test-alpha"
+FLAG_BETA = "test-beta"
+FLAG_GAMMA = "test-gamma"
+FLAG_DELTA = "test-delta"
+
+# The production registry is intentionally empty until a flag has a real call
+# site, so the snapshot machinery is exercised against this test registry.
+_TEST_DEFINITIONS = (
+    _FlagDefinition(FLAG_ALPHA, False, "Alpha test flag."),
+    _FlagDefinition(FLAG_BETA, False, "Beta test flag."),
+    _FlagDefinition(FLAG_GAMMA, True, "Gamma test flag."),
+    _FlagDefinition(FLAG_DELTA, False, "Delta test flag."),
 )
 
 
@@ -31,6 +43,30 @@ def _isolate_openfeature_provider() -> Iterator[None]:
         yield
 
 
+@pytest.fixture
+def registered_flags() -> Iterator[None]:
+    with patch.object(feature_flags_module, "_FLAG_DEFINITIONS", _TEST_DEFINITIONS):
+        yield
+
+
+def test_production_registry_registers_no_unconsumed_flags():
+    """No flag is registered until a call site evaluates it."""
+    assert feature_flags_module._FLAG_DEFINITIONS == ()
+
+
+def test_list_feature_flags_is_empty_for_an_empty_registry():
+    provider_metadata = SimpleNamespace(
+        name="flagd Provider", is_default_provider=False
+    )
+    with (
+        patch("openfeature.api.get_client") as get_client,
+        patch("openfeature.api.get_provider_metadata", return_value=provider_metadata),
+    ):
+        assert list_feature_flags() == []
+
+    get_client.return_value.get_boolean_details.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_is_enabled_calls_openfeature():
     """Test that is_enabled correctly interacts with OpenFeature API."""
@@ -39,12 +75,12 @@ async def test_is_enabled_calls_openfeature():
         mock_client.get_boolean_value.return_value = True
         mock_get_client.return_value = mock_client
 
-        result = await is_enabled(FLAG_NEW_CHAT_UI, context={"user_id": "42"})
+        result = await is_enabled(FLAG_ALPHA, context={"user_id": "42"})
 
         assert result is True
         mock_client.get_boolean_value.assert_called_once()
         args, _kwargs = mock_client.get_boolean_value.call_args
-        assert args[0] == FLAG_NEW_CHAT_UI
+        assert args[0] == FLAG_ALPHA
         assert isinstance(args[2], EvaluationContext)
         assert args[2].attributes == {"user_id": "42"}
 
@@ -56,12 +92,10 @@ def test_is_enabled_sync_calls_openfeature():
         mock_client.get_boolean_value.return_value = False
         mock_get_client.return_value = mock_client
 
-        result = is_enabled_sync(FLAG_PUSH_BATCHING, default=True)
+        result = is_enabled_sync(FLAG_GAMMA, default=True)
 
         assert result is False
-        mock_client.get_boolean_value.assert_called_once_with(
-            FLAG_PUSH_BATCHING, True, None
-        )
+        mock_client.get_boolean_value.assert_called_once_with(FLAG_GAMMA, True, None)
 
 
 @pytest.mark.asyncio
@@ -72,6 +106,7 @@ async def test_is_enabled_handles_exceptions():
         assert result is True
 
 
+@pytest.mark.usefixtures("registered_flags")
 def test_list_feature_flags_reports_evaluation_and_gitops_ownership():
     details = MagicMock(
         value=True,
@@ -89,10 +124,10 @@ def test_list_feature_flags_reports_evaluation_and_gitops_ownership():
 
     assert len(flags) == 4
     assert flags[0] == {
-        "name": FLAG_NEW_CHAT_UI,
+        "name": FLAG_ALPHA,
         "enabled": True,
         "default": False,
-        "description": "Enable the next-generation chat interface.",
+        "description": "Alpha test flag.",
         "provider": "flagd Provider",
         "evaluation_reason": "TARGETING_MATCH",
         "management": "gitops",
@@ -103,10 +138,10 @@ def test_list_feature_flags_reports_evaluation_and_gitops_ownership():
         call.args[0]
         for call in get_client.return_value.get_boolean_details.call_args_list
     ] == [
-        FLAG_NEW_CHAT_UI,
-        FLAG_SEMANTIC_SEARCH,
-        FLAG_PUSH_BATCHING,
-        FLAG_GRAPHQL_SUBSCRIPTIONS,
+        FLAG_ALPHA,
+        FLAG_BETA,
+        FLAG_GAMMA,
+        FLAG_DELTA,
     ]
     assert [
         call.args[1]
@@ -114,6 +149,7 @@ def test_list_feature_flags_reports_evaluation_and_gitops_ownership():
     ] == [False, False, True, False]
 
 
+@pytest.mark.usefixtures("registered_flags")
 def test_list_feature_flags_reports_unavailable_provider_with_fallbacks():
     provider_error = RuntimeError("provider down")
     with (
@@ -136,6 +172,7 @@ def test_list_feature_flags_reports_unavailable_provider_with_fallbacks():
     assert {flag["evaluation_reason"] for flag in flags} == {"ERROR"}
 
 
+@pytest.mark.usefixtures("registered_flags")
 def test_list_feature_flags_reports_default_noop_provider_as_unavailable():
     """The SDK no-op provider must never look like a healthy control plane."""
     provider_metadata = SimpleNamespace(
@@ -158,6 +195,7 @@ def test_list_feature_flags_reports_default_noop_provider_as_unavailable():
     assert {flag["evaluation_reason"] for flag in flags} == {"ERROR"}
 
 
+@pytest.mark.usefixtures("registered_flags")
 def test_list_feature_flags_isolates_an_individual_evaluation_failure():
     details = MagicMock(value=True, reason="DEFAULT")
     evaluation_error = RuntimeError("bad flag")
@@ -189,7 +227,7 @@ def test_list_feature_flags_isolates_an_individual_evaluation_failure():
     ]
     debug.assert_called_once_with(
         "Feature flag diagnostics failed for %s: %s",
-        FLAG_NEW_CHAT_UI,
+        FLAG_ALPHA,
         evaluation_error,
     )
 
@@ -294,10 +332,10 @@ async def test_admin_feature_flag_handlers_delegate_and_reject_legacy_writes():
     from app.api.admin import feature_flags as admin_feature_flags
 
     snapshot = {
-        "name": FLAG_NEW_CHAT_UI,
+        "name": FLAG_ALPHA,
         "enabled": False,
         "default": False,
-        "description": "Enable the next-generation chat interface.",
+        "description": "Alpha test flag.",
         "provider": "unavailable",
         "evaluation_reason": "ERROR",
         "management": "gitops",
@@ -315,7 +353,7 @@ async def test_admin_feature_flag_handlers_delegate_and_reject_legacy_writes():
 
     with pytest.raises(HTTPException) as caught:
         await admin_feature_flags.reject_feature_flag_update(
-            FLAG_NEW_CHAT_UI,
+            FLAG_ALPHA,
             MagicMock(),
         )
 
