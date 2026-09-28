@@ -128,6 +128,42 @@ async def test_perform_password_reset_naive_expired_token(auth_service, request_
     )
 
 
+async def test_perform_password_reset_rejects_token_expiring_at_discovery(
+    auth_service, request_mock, monkeypatch
+):
+    """An expiry equal to the current instant is not a valid reset link."""
+    now = datetime(2030, 1, 1, tzinfo=UTC)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is None else now.astimezone(tz)
+
+    monkeypatch.setattr(auth_module, "datetime", FrozenDateTime)
+    rec = MagicMock()
+    rec.user_id = uuid.uuid4()
+    rec.expires_at = now
+    auth_service.auth_repo.get_valid_password_reset_token = AsyncMock(return_value=rec)
+    auth_service.user_repo.get = AsyncMock(
+        side_effect=AssertionError("expired token reached the user lock")
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await auth_service.perform_password_reset(
+            "boundary-token", "new-password-888", request_mock
+        )
+
+    assert exc.value.status_code == 400
+    auth_service.audit.log.assert_called_with(
+        "password.reset.failed",
+        request_mock,
+        level=logging.WARNING,
+        user_id=rec.user_id,
+        reason="token_expired",
+    )
+    auth_service.user_repo.get.assert_not_awaited()
+
+
 async def test_perform_password_reset_locked_token_disappears(
     auth_service, request_mock
 ):
@@ -257,6 +293,92 @@ async def test_perform_password_reset_rechecks_expiry_after_user_lock(
         user_id=user_id,
         reason="token_expired",
     )
+
+
+async def test_perform_password_reset_rechecks_naive_expiry_after_user_lock(
+    auth_service, request_mock
+):
+    """Legacy naive timestamps are normalized on the locked second read."""
+    user_id = uuid.uuid4()
+    discovered = MagicMock()
+    discovered.user_id = user_id
+    discovered.expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    locked = MagicMock()
+    locked.user_id = user_id
+    locked.expires_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1)
+    auth_service.auth_repo.get_valid_password_reset_token = AsyncMock(
+        side_effect=[discovered, locked]
+    )
+    user = MagicMock(spec=models.User)
+    user.id = user_id
+    user.is_active = True
+    auth_service.user_repo.get = AsyncMock(return_value=user)
+
+    with pytest.raises(HTTPException) as exc:
+        await auth_service.perform_password_reset(
+            "naive-locked-token", "new-password-888", request_mock
+        )
+
+    assert exc.value.status_code == 400
+    auth_service.audit.log.assert_called_with(
+        "password.reset.failed",
+        request_mock,
+        level=logging.WARNING,
+        user_id=user_id,
+        reason="token_expired",
+    )
+    auth_service.user_repo.update.assert_not_called()
+
+
+async def test_perform_password_reset_rejects_token_expiring_at_locked_read(
+    auth_service, request_mock, monkeypatch
+):
+    """The second expiry check rejects equality before password work starts."""
+    now = datetime(2030, 1, 1, tzinfo=UTC)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is None else now.astimezone(tz)
+
+    monkeypatch.setattr(auth_module, "datetime", FrozenDateTime)
+    user_id = uuid.uuid4()
+    discovered = MagicMock()
+    discovered.user_id = user_id
+    discovered.expires_at = now + timedelta(minutes=5)
+    locked = MagicMock()
+    locked.user_id = user_id
+    locked.expires_at = now
+    auth_service.auth_repo.get_valid_password_reset_token = AsyncMock(
+        side_effect=[discovered, locked]
+    )
+    user = MagicMock(spec=models.User)
+    user.id = user_id
+    user.is_active = True
+    auth_service.user_repo.get = AsyncMock(return_value=user)
+    monkeypatch.setattr(
+        security_module,
+        "validate_password_hibp",
+        AsyncMock(
+            side_effect=AssertionError("expired token reached password validation")
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await auth_service.perform_password_reset(
+            "boundary-token", "new-password-888", request_mock
+        )
+
+    assert exc.value.status_code == 400
+    auth_service.audit.log.assert_called_with(
+        "password.reset.failed",
+        request_mock,
+        level=logging.WARNING,
+        user_id=user_id,
+        reason="token_expired",
+    )
+    security_module.validate_password_hibp.assert_not_awaited()
+    auth_service.user_repo.update.assert_not_called()
 
 
 async def test_perform_password_reset_awaits_fallback_session_revoke(

@@ -232,7 +232,7 @@ class AuthService:
         expires_at = rec.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
-        if expires_at < now:
+        if expires_at <= now:
             self.audit.log(
                 "password.reset.failed",
                 request,
@@ -283,7 +283,7 @@ class AuthService:
         expires_at = rec.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
-        if expires_at < datetime.now(UTC):
+        if expires_at <= datetime.now(UTC):
             self.audit.log(
                 "password.reset.failed",
                 request,
