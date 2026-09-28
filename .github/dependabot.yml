@@ -18,10 +18,10 @@ updates:
       npm-dependencies:
         patterns:
           - "*"
-  - package-ecosystem: "pip"
-    # FIX-DEP-01: Was "/root" which is not a valid path in this repository and
-    # caused Dependabot to silently skip all Python dependency updates. The
-    # pyproject.toml lives at the repository root, so the correct directory is "/".
+  # The root project is managed by uv. The "pip" ecosystem edits pyproject.toml
+  # without regenerating uv.lock, which leaves `uv lock --check` failing; the
+  # "uv" ecosystem updates both files together.
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -33,8 +33,32 @@ updates:
     commit-message:
       prefix: "build"
       include: "scope"
+    ignore:
+      # semgrep (security group) requires jsonschema <4.26; the pin and its
+      # stubs move together once semgrep accepts 4.26.
+      - dependency-name: "jsonschema"
+        versions: [">=4.26"]
+      - dependency-name: "types-jsonschema"
+        versions: [">=4.26"]
     groups:
-      pip-dependencies:
+      uv-dependencies:
+        patterns:
+          - "*"
+  # The hash-pinned detect-secrets runner requirements are a plain pip file.
+  - package-ecosystem: "pip"
+    directory: "/security"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:15"
+      timezone: "UTC"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      detect-secrets-runner:
         patterns:
           - "*"
   - package-ecosystem: "github-actions"
