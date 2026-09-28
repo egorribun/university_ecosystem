@@ -10,43 +10,38 @@ run, JUnit и отчёты мутаций. Независимое ревью о�
 production-кода security/auth/data. RED→GREEN, fail-closed гейты и запрет
 timeout-инфляции, exclusions, waivers и ручной перемаркировки сохраняются.
 
-## Identity — 2026-09-28
+## Identity — 2026-09-29
 
 | Что | Значение |
 | --- | --- |
-| Ветка / PR | `egorribun` / #1266 → `main` (`481dba81e`) |
-| Последний push | `7466912e6` — merge `main` (#1292, #1293, #1295, #1296) и pip-группа #1294 |
-| CI | Полная матрица на `7466912e6` запущена; прогон на `4aed00f09` заменён новым push |
+| Ветка / PR | `egorribun` / #1266 → `main` (`be8c6a197`, #1298 влит merge-ем) |
+| Последний push | `dfbb6561f` — merge `main` поверх `ee90ce97e` |
+| CI | Полная матрица на `dfbb6561f`; прогон `36443355112` (`a4caec3bf`) дал фронтенд-инвентарь, backend-мутации там были пропущены |
 | Security-PR | #1296 смержен в `main` 2026-09-28 (admin bypass, причина в merge-коммите) |
 
-## Возобновление 2026-09-28 (после лимита)
+## Сессия 2026-09-29
 
-- CI на `63751e61d` упал на четырёх контрактах, задетых этими изменениями
-  (ledger Semgrep для SHA-1, перенос строк ошибок PowerShell на Linux, тег
-  `!reset`, хеши detect-secrets runner) — исправлено в `a4caec3bf`.
-- Блокеры стенда сняты: health-probe file-processor (`8c64befb7`) и
-  apk-пины Caddy (`acc44de4c`); стенд пересобирается.
-- **MinIO недоступен:** `quay.io/minio/minio` и `quay.io/minio/mc` отвечают
-  401. Базовый compose-стек не стартует на чистой машине, Helm backup-job не
-  скачает mc. Ф8 (SeaweedFS) стала обязательной; стенд переведён на
-  SeaweedFS (`354f967a5`). Старый том MinIO читается только MinIO-сервером,
-  собранным из исходников по тегу.
-- **P0 найден стендом:** `alembic/env.py` импортировал хелпер из `scripts/`,
-  которого нет в образе миграций, — контейнер `migrations` (и Helm migration
-  job) падал, backend не стартовал. Модуль перенесён в
-  `app/core/db/schema_drift.py` (`a314dec98`) с контрактом на состав образа.
-  Тот же дефект есть в `main` с #1257.
-- Лаунчер: проба `minio` теперь по Docker health (`06b8d85d5`); на SeaweedFS
-  задание Prometheus `minio` не требуется, с явным предупреждением. **Открыто
-  (Ф8):** метрики SeaweedFS — `weed mini` с `-metricsPort`/`-s3.metricsPort`
-  переставал слушать S3 на 9000, нужна отдельная проверка.
-- WIP агентов прошлой сессии пуст (лимит оборвал их до изменений); агент
-  по auth-файлам волны 1 перезапущен в `../ue-w1`, push-файлы ждут слота.
-
+- Прогон `36443355112`: все 64 Stryker-шарда отработали (инвентарь ниже).
+  Stats-шард mutmut 1/8 упал: `tests/test_live_stand.py` читает
+  `docker-compose.live.yml`, которого не было в песочнице mutmut, и все
+  backend-группы были пропущены. Исправлено в `862eeb7cd` с контрактом «каждый
+  корневой `docker-compose*.yml` копируется».
+- Helm backup-job: `mc` → rclone 1.75.1 по digest, ключ `backup.s3ClientImage`
+  (`ee90ce97e`); загрузка проверена вживую на SeaweedFS 4.47 (UID 1000, RO rootfs).
+- Legacy-том `university_ecosystem_minio-data`: бакет `uploads` пуст (148 КБ
+  метаданных). Кэшированный образ MinIO (digest `14cea493…`) помечен
+  `local/minio-legacy:RELEASE.2025-09-07T16-13-09Z` и сохранён в
+  `../university_ecosystem_backups/2026-09-29/` — сборка из исходников не нужна.
+- Ф8 в работе (агент, `../ue-w3`): SeaweedFS по умолчанию во всех compose,
+  удаление cutover-overlay и anti-rollback-механики, fail-closed guard на
+  непустой legacy-том без `S3_CUTOVER_ACK`, ADR-042.
+- Ф6b: индикатор силы пароля в `ResetPassword` никогда не окрашивался
+  (`ProgressBar` не принимает `color`) — дизайн-недочёт для ревью.
+- Стенд `ue-live` остановлен (тома сохранены), пересборка после волны 1.
 ## Фазы
 
 - [x] Ф0.1 CI-контракт `continue-on-error` для O9-диагностики
-- [ ] Ф0.2 Полный terminal CI на `4aed00f09`, свежий инвентарь мутаций
+- [x] Ф0.2 Terminal CI `36443355112`, фронтенд-инвентарь; backend — на `dfbb6561f`
 - [x] Ф1 Security-PR #1296 смержен; проверить закрытие алертов после обновления графа
 - [x] Ф2 Гигиена: STATUS, архив планов, память, инвентарь worktree (решения ниже)
 - [ ] Ф3 Мутации до 100% viable (волны 1–4)
@@ -64,16 +59,11 @@ timeout-инфляции, exclusions, waivers и ручной перемарки
 
 ## Мутационный долг
 
-Frontend, последний полный инвентарь (run `36194161259`, 2026-09-27):
-6 083 мутанта в 295 файлах. После него изменено 80 файлов, поэтому число
-будет пересчитано по CI на `4aed00f09`.
-
-| Очередь | Файлов | Мутантов | Остаток |
-| --- | --- | --- | --- |
-| A | 108 | 2 378 | пересчёт |
-| B | 116 | 2 220 | пересчёт |
-| C | 71 | 1 485 | пересчёт |
-
+Frontend, CI `36443355112` (`a4caec3bf`, 2026-09-28): 35 959 killed, 1 306
+ignored (ADR-040), **5 511 открыто** (5 431 survived, 36 timeout, 33 runtime
+error, 11 no coverage) в 269 файлах: hooks 1 491, features 1 286, pages 1 242,
+components 835. Инвентарь и срезы очередей — в ignored
+`artifacts/quality/inventory-a4caec3bf/` (`build_inventory.py`, `queue_slice.py`).
 Backend: известные семейства — auth reset timeouts (fork-наследование
 `_auth_executor`, доказано на Linux), `NotificationDeadLetterPurged.from_dict`,
 `_unlink_ignore_missing`, `InternalAccessMiddleware.__init__`, private static
@@ -87,8 +77,8 @@ path, chat forward, notification delivery, SMTP `cast`.
 - [x] Fork-safety `_auth_executor` (`da30b91f7`): Linux RED (зависание
   дочернего процесса) → GREEN, security-ревью APPROVE.
 - [x] `AdminFeatureFlagsFeature.tsx` — 26/26 killed (`2cdbef282`).
-- [ ] Frontend auth: `useLoginFlow`, `ResetPassword`, `Register`, `ssrAuth` (агент).
-- [ ] Frontend push: `subscribe`, `usePushPreferences`, `useDndSettings` (агент).
+- [ ] Frontend auth (агент, `../ue-w1`): `ResetPassword` 115, `Register` 66, `useAuthApi` 46, `ForgotPassword` 44, `useLoginFlow` 37, `ssrAuth` 17.
+- [ ] Frontend push (агент, `../ue-w2`): `usePushPreferences` 74, `subscribe` 70, `useDndSettings` 67.
 - [ ] Backend-семейства — по точному списку из CI.
 - [ ] Бэклог из ревью: module-level executor-ы в `analytics` и
   `minio_storage` (тот же класс fork-дефекта, сейчас не достижим: gunicorn
