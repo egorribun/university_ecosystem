@@ -70,7 +70,6 @@
     },
     // File associations
     "files.associations": {
-        ".env*": "dotenv",
-        "justfile": "makefile"
+        ".env*": "dotenv"
     }
 }

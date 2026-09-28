@@ -423,7 +423,7 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
-    # External HTTPS: HIBP, Spotify OAuth, S3/Garage object storage.
+    # External HTTPS: HIBP, Spotify OAuth, S3 object storage.
     - ports:
         - protocol: TCP
           port: 443
