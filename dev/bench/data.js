@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790591786034,
+  "lastUpdate": 1790591788390,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -12361,6 +12361,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 89737,
             "range": "± 328",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b228d61e866a141121a63efae67443ccacdf65a3",
+          "message": "fix(security): patch default-branch dependency advisories (#1296)\n\n* fix(security): patch default-branch dependency advisories\n\nRaise anyio to 4.14.2 (GHSA-82r6-8w77-94w6, GHSA-5p39-cfhj-2xmp),\nhttpx2/httpcore2 to 2.12.0 (GHSA-8xx6-hgc6-gc2m, GHSA-7mj9-2mp8-4m2p and\nrelated), the urllib3 floor to 2.7.0 (GHSA-mf9v-mfxr-j63j,\nGHSA-qccp-gfcp-xxvc) and the js-yaml override to 4.3.2\n(GHSA-2883-xcg3-v3hh). These are the versions already shipped on the\negorribun branch.\n\nThe jsonschema pin returns to 4.25.1 because semgrep requires <4.26 and\nthe committed lock already resolves 4.25.1; without it the lock cannot be\nregenerated. The lock also picks up pre-commit 4.6.2, which the manifest\nalready declares. Go modules on main are already on grpc 1.83.2 and\nOTel 1.46.0.\n\n* fix(ci): expect the locked pre-commit 4.6.2 runner\n\nThe manifest already declares pre-commit==4.6.2 and the refreshed lock now\nresolves it, so the hash-pinned runner assertion must match.\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-09-28T12:57:22+03:00",
+          "tree_id": "0a773a254faae9f07ad46bb75929ccdd78752a63",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/b228d61e866a141121a63efae67443ccacdf65a3"
+        },
+        "date": 1790591787721,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6024,
+            "range": "± 73",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6934,
+            "range": "± 81",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 10071,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10788,
+            "range": "± 47",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 101721,
+            "range": "± 498",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5384,
+            "range": "± 100",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6346,
+            "range": "± 14",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9077,
+            "range": "± 30",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9410,
+            "range": "± 47",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 95580,
+            "range": "± 564",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5246,
+            "range": "± 37",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6147,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8742,
+            "range": "± 23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9249,
+            "range": "± 38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 93149,
+            "range": "± 2588",
             "unit": "ns/iter"
           }
         ]
