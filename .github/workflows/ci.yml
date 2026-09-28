@@ -110,7 +110,7 @@ jobs:
             --no-deps \
             --force-reinstall \
             -r "$requirements_file"
-          test "$(pre-commit --version)" = "pre-commit 4.6.0"
+          test "$(pre-commit --version)" = "pre-commit 4.6.2"
 
       - name: Run fast pre-commit hooks
         env:
@@ -191,7 +191,7 @@ jobs:
             --no-deps \
             --force-reinstall \
             -r "$requirements_file"
-          test "$(pre-commit --version)" = "pre-commit 4.6.0"
+          test "$(pre-commit --version)" = "pre-commit 4.6.2"
 
       - name: Run security and type pre-commit hooks
         env:
