@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 from pathlib import Path
 
+import pytest
 import yaml
 
 from scripts.quality.validate_ci_check_catalog import (
     DEFAULT_CATALOG,
     DEFAULT_SCHEMA,
     _artifact_inventory,
+    _job_expressions,
+    _needs_references,
     _read_json,
     main,
     validate_catalog,
@@ -32,8 +36,250 @@ def _errors(value: dict[str, object]) -> list[str]:
     return validate_catalog(value, repository_root=ROOT, schema=_schema())
 
 
+def _source_repo(tmp_path: Path, value: dict[str, object]) -> Path:
+    workflow_dir = tmp_path / ".github" / "workflows"
+    shutil.copytree(ROOT / ".github" / "workflows", workflow_dir)
+    runbook_paths = {value["default_runbook"]}
+    runbook_paths.update(profile["runbook"] for profile in value["profiles"].values())
+    runbook_paths.update(entry["runbook"] for entry in value["external_checks"])
+    runbook_paths.update(entry["runbook"] for entry in value["expansions"])
+    for runbook in runbook_paths:
+        target = tmp_path / runbook
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / runbook, target)
+    return workflow_dir
+
+
+def _validate_changed_ci(tmp_path: Path, value: dict[str, object]) -> list[str]:
+    return validate_catalog(
+        value,
+        repository_root=tmp_path,
+        workflow_directory=tmp_path / ".github" / "workflows",
+        schema=_schema(),
+    )
+
+
 def test_catalog_is_a_complete_current_workflow_inventory() -> None:
     assert _errors(_catalog()) == []
+
+
+def test_every_catalog_job_declares_exact_source_needs() -> None:
+    value = _catalog()
+    for entry in value["workflows"]:
+        workflow = yaml.safe_load((ROOT / entry["path"]).read_text(encoding="utf-8"))
+        for job_id, job in entry["jobs"].items():
+            source_needs = workflow["jobs"][job_id].get("needs", [])
+            expected = [source_needs] if isinstance(source_needs, str) else source_needs
+            assert job["needs"] == expected, f"{entry['path']}::{job_id}"
+
+
+def test_needs_reference_scan_ignores_literals_and_aggregate_access() -> None:
+    assert (
+        list(_needs_references("contains('needs.ghost', 'needs') && needs.*.result"))
+        == []
+    )
+    assert list(_job_expressions({"steps": [{"run": "echo needs.ghost"}]})) == []
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "needs . no-such-job.result",
+        "needs.\n no-such-job.result",
+        "needs \n . \n no-such-job.result",
+        "needs \n [ 'no-such-job' ].result",
+        "(needs).no-such-job.result",
+        "(needs)['no-such-job'].result",
+        "(( needs )).no-such-job.result",
+        "NEEDS.no-such-job.result",
+    ],
+)
+def test_needs_reference_scan_resolves_whitespace_around_access(reference: str) -> None:
+    assert list(_needs_references(reference)) == ["no-such-job"]
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "needs /* comment */ . no-such-job.result",
+        "needs // comment\n . no-such-job.result",
+    ],
+)
+def test_unsupported_comment_between_needs_tokens_fails_closed(reference: str) -> None:
+    assert list(_needs_references(reference)) == [None]
+
+
+def test_bare_needs_context_fails_closed() -> None:
+    assert list(_needs_references("toJSON(needs)")) == [None]
+
+
+def test_source_job_needs_drift_is_rejected(tmp_path: Path) -> None:
+    value = _catalog()
+    workflow_dir = _source_repo(tmp_path, value)
+
+    ci_path = workflow_dir / "ci.yml"
+    original = ci_path.read_text(encoding="utf-8")
+    old = (
+        "  stryker-shards:\n"
+        "    name: Frontend mutation shard ${{ matrix.shard-index }}/64"
+    )
+    assert original.count(old) == 1
+    source = original.replace(
+        "      - pre-commit-security-and-types\n"
+        "    if: ${{ github.event_name == 'pull_request' && needs.stryker-preflight.result",
+        "      - pre-commit-security-and-types\n"
+        "      - ci-diagnostic\n"
+        "    if: ${{ github.event_name == 'pull_request' && needs.stryker-preflight.result",
+        1,
+    )
+    assert source != original
+    original_yaml = yaml.safe_load(original)
+    changed_yaml = yaml.safe_load(source)
+    original_needs = original_yaml["jobs"]["stryker-shards"]["needs"]
+    assert changed_yaml["jobs"]["stryker-shards"]["needs"] == [
+        *original_needs,
+        "ci-diagnostic",
+    ]
+    changed_yaml["jobs"]["stryker-shards"]["needs"] = original_needs
+    assert changed_yaml == original_yaml
+    ci_path.write_text(source, encoding="utf-8")
+
+    errors = _validate_changed_ci(tmp_path, value)
+    assert any("needs differs from workflow" in error for error in errors), errors
+
+
+@pytest.mark.parametrize(
+    ("new_needs", "expected_error"),
+    [
+        (["stryker-preflight", "coverage-policy-gate", "no-such-job"], "unknown job"),
+        (["stryker-preflight", "stryker-preflight"], "duplicate dependency"),
+        (["stryker-preflight", "stryker-shards"], "self-dependency"),
+    ],
+)
+def test_invalid_source_needs_edges_fail_closed(
+    tmp_path: Path, new_needs: list[str], expected_error: str
+) -> None:
+    value = _catalog()
+    workflow_dir = _source_repo(tmp_path, value)
+    ci_path = workflow_dir / "ci.yml"
+    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source["jobs"]["stryker-shards"]["needs"] = new_needs
+    ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
+    ci_catalog = next(
+        item for item in value["workflows"] if item["path"].endswith("ci.yml")
+    )
+    ci_catalog["jobs"]["stryker-shards"]["needs"] = new_needs
+
+    errors = _validate_changed_ci(tmp_path, value)
+    assert any(expected_error in error for error in errors), errors
+
+
+@pytest.mark.parametrize(
+    ("reference", "expected_error"),
+    [
+        ("needs.no-such-job.result", "undeclared needs reference"),
+        ("needs['no-such-job'].result", "undeclared needs reference"),
+        ('needs["no-such-job"].result', "undeclared needs reference"),
+        ("needs[github.event.inputs.job].result", "dynamic needs reference"),
+        ("(needs).no-such-job.result", "undeclared needs reference"),
+        ("(needs)['no-such-job'].result", "undeclared needs reference"),
+        ("NEEDS.no-such-job.result", "undeclared needs reference"),
+    ],
+)
+def test_undeclared_or_dynamic_needs_expression_fails_closed(
+    tmp_path: Path, reference: str, expected_error: str
+) -> None:
+    value = _catalog()
+    workflow_dir = _source_repo(tmp_path, value)
+    ci_path = workflow_dir / "ci.yml"
+    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    job = source["jobs"]["stryker-shards"]
+    assert job["if"].endswith(" }}")
+    job["if"] = job["if"][:-3] + f" && {reference} == 'success'" + " }}"
+    ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
+    ci_catalog = next(
+        item for item in value["workflows"] if item["path"].endswith("ci.yml")
+    )
+    ci_catalog["jobs"]["stryker-shards"]["guard"] = job["if"]
+
+    errors = _validate_changed_ci(tmp_path, value)
+    assert any(expected_error in error for error in errors), errors
+
+
+@pytest.mark.parametrize("literal", ["}}", "a''}}b"])
+def test_quoted_expression_delimiter_does_not_hide_needs_reference(
+    tmp_path: Path, literal: str
+) -> None:
+    value = _catalog()
+    workflow_dir = _source_repo(tmp_path, value)
+    ci_path = workflow_dir / "ci.yml"
+    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    job = source["jobs"]["stryker-shards"]
+    assert job["if"].endswith(" }}")
+    job["if"] = (
+        job["if"][:-3]
+        + f" && contains('{literal}', 'x') && needs.no-such-job.result == 'success'"
+        + " }}"
+    )
+    ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
+    ci_catalog = next(
+        item for item in value["workflows"] if item["path"].endswith("ci.yml")
+    )
+    ci_catalog["jobs"]["stryker-shards"]["guard"] = job["if"]
+
+    errors = _validate_changed_ci(tmp_path, value)
+    assert any("undeclared needs reference" in error for error in errors), errors
+
+
+def test_nested_needs_key_expression_is_validated(tmp_path: Path) -> None:
+    value = _catalog()
+    workflow_dir = _source_repo(tmp_path, value)
+    ci_path = workflow_dir / "ci.yml"
+    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source["jobs"]["stryker-shards"]["steps"][0]["with"]["needs"] = (
+        "${{ needs.no-such-job.result }}"
+    )
+    ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
+
+    errors = _validate_changed_ci(tmp_path, value)
+    assert any("undeclared needs reference" in error for error in errors), errors
+
+
+def test_unterminated_actions_expression_fails_closed(tmp_path: Path) -> None:
+    value = _catalog()
+    workflow_dir = _source_repo(tmp_path, value)
+    ci_path = workflow_dir / "ci.yml"
+    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    job = source["jobs"]["stryker-shards"]
+    job["if"] = "${{ github.event_name == 'pull_request'"
+    ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
+    ci_catalog = next(
+        item for item in value["workflows"] if item["path"].endswith("ci.yml")
+    )
+    ci_catalog["jobs"]["stryker-shards"]["guard"] = job["if"]
+
+    errors = _validate_changed_ci(tmp_path, value)
+    assert any("unterminated Actions expression" in error for error in errors), errors
+
+
+def test_whitespace_around_needs_dot_cannot_bypass_source_validation(
+    tmp_path: Path,
+) -> None:
+    value = _catalog()
+    workflow_dir = _source_repo(tmp_path, value)
+    ci_path = workflow_dir / "ci.yml"
+    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    job = source["jobs"]["stryker-shards"]
+    assert job["if"].endswith(" }}")
+    job["if"] = job["if"][:-3] + " && needs . no-such-job.result == 'success' }}"
+    ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
+    ci_catalog = next(
+        item for item in value["workflows"] if item["path"].endswith("ci.yml")
+    )
+    ci_catalog["jobs"]["stryker-shards"]["guard"] = job["if"]
+
+    errors = _validate_changed_ci(tmp_path, value)
+    assert any("undeclared needs reference" in error for error in errors), errors
 
 
 def test_backend_integration_artifact_catalog_includes_mailpit_report() -> None:

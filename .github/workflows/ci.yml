@@ -1386,10 +1386,36 @@ jobs:
           STRYKER_PREFLIGHT_MODE: validate
         run: npm run test:mutation
 
+      - name: Prepare progress diagnostic export
+        id: prepare_progress_export
+        if: ${{ steps.restore_stryker_shard.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          directory="$(mktemp -d "$RUNNER_TEMP/stryker-progress-XXXXXXXX")"
+          printf 'directory=%s\n' "$directory" >> "$GITHUB_OUTPUT"
+
       - name: Run fresh Stryker shard
+        id: run_fresh_stryker
         if: ${{ steps.restore_stryker_shard.outputs.cache-hit != 'true' }}
         working-directory: frontend
+        env:
+          STRYKER_PROGRESS_ENABLED: "1"
+          STRYKER_PROGRESS_EXPORT_DIRECTORY: ${{ steps.prepare_progress_export.outputs.directory }}
         run: npm run test:mutation
+
+      # Observer-only, attempt-scoped diagnostics never enter the successful
+      # shard cache or the canonical mutation evidence/aggregate path.
+      - name: Upload current-attempt progress diagnostic
+        if: ${{ always() && steps.prepare_progress_export.outputs.directory != '' && steps.run_fresh_stryker.outputs.progress_diagnostic == 'published' && (steps.run_fresh_stryker.outcome == 'success' || steps.run_fresh_stryker.outcome == 'failure' || steps.run_fresh_stryker.outcome == 'cancelled') }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-mutation-progress-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ matrix.shard-index }}
+          path: ${{ steps.prepare_progress_export.outputs.directory }}/diagnostic.json
+          if-no-files-found: warn
+          overwrite: false
+          retention-days: 7
 
       # Keep the cache write after the fresh run so an incomplete or failed
       # producer can never replace a successful exact transport entry.

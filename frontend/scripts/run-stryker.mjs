@@ -4,6 +4,7 @@ import { spawn } from "node:child_process"
 import { createHash, randomUUID } from "node:crypto"
 import { execFile } from "node:child_process"
 import {
+  appendFile,
   glob,
   lstat,
   mkdir,
@@ -31,6 +32,7 @@ import {
 } from "./validate-stryker-inventory.mjs"
 import { canonicalInstrumenterConfig } from "./stryker-presentation-ignorer.mjs"
 import { createStrykerProgressContext } from "./stryker-progress-context.mjs"
+import { createStrykerDiagnosticOwner } from "./stryker-progress-diagnostic.mjs"
 
 const execFileAsync = promisify(execFile)
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url))
@@ -2958,8 +2960,30 @@ async function git(args) {
  * Never validate in finally: child/signal/shutdown failures remain primary.
  */
 export async function runStrykerShardExecution(
-  { args, description, env, timeoutMs, abortSignal, shardTemp, runId, shardId, progressEnabled },
-  { runChild = runNode, createProgressContext = createStrykerProgressContext } = {}
+  {
+    args,
+    description,
+    env,
+    timeoutMs,
+    abortSignal,
+    shardTemp,
+    runId,
+    shardId,
+    progressEnabled,
+    diagnosticOutputRoot,
+    diagnosticExportDirectory,
+    diagnosticOutputFile,
+    sourceHeadSha,
+    testedSha,
+    workflowRunId,
+    workflowRunAttempt,
+  },
+  {
+    runChild = runNode,
+    createProgressContext = createStrykerProgressContext,
+    createDiagnosticOwner = createStrykerDiagnosticOwner,
+    warnDiagnostic = (message) => process.stderr.write(message),
+  } = {}
 ) {
   throwIfCancellationRequested(abortSignal)
   const context = await createProgressContext({
@@ -2970,18 +2994,85 @@ export async function runStrykerShardExecution(
     parentEnv: env,
   })
   throwIfCancellationRequested(abortSignal)
-  const windowsProcessHost = await runChild(
-    args,
-    description,
-    context.childEnv,
-    timeoutMs,
-    abortSignal,
-    progressEnabled === "1" ? context.observeLive : undefined
-  )
-  // runNode success already proves exit-zero, close and owned-tree quiescence.
-  throwIfCancellationRequested(abortSignal)
-  context.validateSuccessfulExit()
-  throwIfCancellationRequested(abortSignal)
+  const diagnosticWarning = () => {
+    try {
+      warnDiagnostic("Stryker progress diagnostic unavailable\n")
+    } catch {
+      // An informational sink cannot replace the owned Stryker outcome.
+    }
+  }
+  let diagnosticOwner = null
+  if (progressEnabled === "1") {
+    try {
+      diagnosticOwner = await createDiagnosticOwner({
+        outputRoot: diagnosticOutputRoot,
+        exportDirectory: diagnosticExportDirectory,
+        runId,
+        shardId,
+        sourceHeadSha,
+        testedSha,
+        workflowRunId,
+        workflowRunAttempt,
+      })
+    } catch {
+      diagnosticWarning()
+    }
+  }
+  let windowsProcessHost
+  let primaryError
+  let ownerSettledSuccessfully = false
+  try {
+    windowsProcessHost = await runChild(
+      args,
+      description,
+      context.childEnv,
+      timeoutMs,
+      abortSignal,
+      progressEnabled === "1" ? context.observeLive : undefined
+    )
+    ownerSettledSuccessfully = true
+    // runNode success already proves exit-zero, close and owned-tree quiescence.
+    throwIfCancellationRequested(abortSignal)
+    context.validateSuccessfulExit()
+    throwIfCancellationRequested(abortSignal)
+  } catch (error) {
+    primaryError = error
+  }
+  if (diagnosticOwner) {
+    const interrupted =
+      primaryError && (primaryError.code === "STRYKER_INTERRUPTED" || abortSignal?.aborted)
+    const failureCode = !primaryError
+      ? null
+      : interrupted
+        ? "cancelled"
+        : primaryError.code === "STRYKER_PROGRESS_INVALID"
+          ? "observer_invalid"
+          : primaryError.code === "STRYKER_PROGRESS_INCOMPLETE"
+            ? "terminal_incomplete"
+            : "child_failed"
+    const processQuiesced =
+      ownerSettledSuccessfully || !primaryError || primaryError.processQuiesced === true
+    try {
+      await diagnosticOwner.publish({
+        outcome: !primaryError ? "succeeded" : interrupted ? "interrupted" : "failed",
+        processQuiesced,
+        failureCode,
+        lastObservation: context.lastObservation?.() ?? null,
+      })
+      if (
+        processQuiesced &&
+        diagnosticExportDirectory !== undefined &&
+        diagnosticExportDirectory !== null
+      ) {
+        if (typeof diagnosticOutputFile !== "string" || !path.isAbsolute(diagnosticOutputFile))
+          throw new Error("Missing diagnostic step output")
+        await appendFile(diagnosticOutputFile, "progress_diagnostic=published\n")
+      }
+    } catch {
+      diagnosticWarning()
+    }
+  }
+  if (primaryError) throw primaryError
   return windowsProcessHost
 }
 
@@ -4425,6 +4516,13 @@ async function main() {
             runId,
             shardId: shard.id,
             progressEnabled: process.env.STRYKER_PROGRESS_ENABLED,
+            diagnosticOutputRoot: runPaths.outputRoot,
+            diagnosticExportDirectory: process.env.STRYKER_PROGRESS_EXPORT_DIRECTORY ?? null,
+            diagnosticOutputFile: process.env.GITHUB_OUTPUT ?? null,
+            sourceHeadSha: before.sourceHeadSha,
+            testedSha: before.headSha,
+            workflowRunId: process.env.GITHUB_RUN_ID ?? null,
+            workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
           })
           const durationMs = Math.max(1, Date.now() - executionStartedAt)
           const reportText = await readFile(reportPath, "utf8")

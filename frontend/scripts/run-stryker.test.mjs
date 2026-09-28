@@ -43,6 +43,11 @@ async function progressIntegrationFixture(t) {
       runId: "run-1",
       shardId: "shard-1",
       progressEnabled: "1",
+      diagnosticOutputRoot: shardTemp,
+      sourceHeadSha: "a".repeat(40),
+      testedSha: "b".repeat(40),
+      workflowRunId: null,
+      workflowRunAttempt: null,
     },
   }
 }
@@ -500,6 +505,17 @@ test("progress integration rejects exit-zero missing output before report/eviden
     { code: "STRYKER_PROGRESS_INCOMPLETE" }
   )
   assert.equal(continued, false)
+  const directories = await (
+    await import("node:fs/promises")
+  ).readdir(path.join(f.shardTemp, "progress-diagnostics"))
+  const record = JSON.parse(
+    await readFile(
+      path.join(f.shardTemp, "progress-diagnostics", directories[0], "shard-1.json"),
+      "utf8"
+    )
+  )
+  assert.equal(record.failureCode, "terminal_incomplete")
+  assert.equal(record.processQuiesced, true)
 })
 
 test("progress integration preserves owned-child failure and false-quiescence rather than validating in finally", async (t) => {
@@ -515,6 +531,226 @@ test("progress integration preserves owned-child failure and false-quiescence ra
     (error) => error === failure
   )
   assert.equal(failure.processQuiesced, false)
+  const directories = await (
+    await import("node:fs/promises")
+  ).readdir(path.join(f.shardTemp, "progress-diagnostics"))
+  assert.equal(directories.length, 1)
+  const record = JSON.parse(
+    await readFile(
+      path.join(f.shardTemp, "progress-diagnostics", directories[0], "shard-1.json"),
+      "utf8"
+    )
+  )
+  assert.equal(record.outcome, "failed")
+  assert.equal(record.processQuiesced, false)
+  assert.equal(record.failureCode, "child_failed")
+  assert.equal(record.lastObservation, null)
+  assert.equal(record.releaseEligible, false)
+})
+
+test("successful owned shard leaves a durable last validated progress observation", async (t) => {
+  const f = await progressIntegrationFixture(t)
+  const { createStrykerProgressReporter } = await import("./stryker-progress-reporter.mjs")
+  await f.runStrykerShardExecution(f.options, {
+    runChild: async (_args, _description, env, _timeout, _signal, observeLive) => {
+      const reporter = createStrykerProgressReporter({
+        enabled: true,
+        ownedDirectory: env.STRYKER_PROGRESS_DIRECTORY,
+        outputPath: env.STRYKER_PROGRESS_OUTPUT,
+        runId: env.STRYKER_PROGRESS_RUN_ID,
+        shardId: env.STRYKER_PROGRESS_SHARD_ID,
+      })
+      reporter.onMutationTestingPlanReady({ mutantPlans: [{ mutant: { id: "one" } }] })
+      reporter.onMutantTested({ id: "one", status: "Killed" })
+      observeLive()
+      reporter.onMutationTestReportReady({}, {})
+      reporter.wrapUp()
+    },
+  })
+  const directories = await (
+    await import("node:fs/promises")
+  ).readdir(path.join(f.shardTemp, "progress-diagnostics"))
+  const record = JSON.parse(
+    await readFile(
+      path.join(f.shardTemp, "progress-diagnostics", directories[0], "shard-1.json"),
+      "utf8"
+    )
+  )
+  assert.equal(record.outcome, "succeeded")
+  assert.equal(record.lastObservation.snapshot.phase, "wrapped-up")
+  assert.equal(record.lastObservation.snapshot.completedMutants, 1)
+  assert.deepEqual(record.resources, { cpuSeconds: null, rssBytes: null })
+})
+
+test("publication failure preserves child first cause and false quiescence", async (t) => {
+  const f = await progressIntegrationFixture(t)
+  const childFailure = Object.assign(new Error("child first"), {
+    code: "STRYKER_TIMEOUT",
+    processQuiesced: false,
+  })
+  const publicationFailure = new Error("publication second: token=/private/path")
+  const warnings = []
+  await assert.rejects(
+    () =>
+      f.runStrykerShardExecution(f.options, {
+        runChild: async () => {
+          throw childFailure
+        },
+        createDiagnosticOwner: async () => ({
+          publish: async () => {
+            throw publicationFailure
+          },
+        }),
+        warnDiagnostic: (message) => warnings.push(message),
+      }),
+    (error) => error === childFailure
+  )
+  assert.equal(childFailure.code, "STRYKER_TIMEOUT")
+  assert.equal(childFailure.processQuiesced, false)
+  assert.deepEqual(warnings, ["Stryker progress diagnostic unavailable\n"])
+})
+
+for (const outcome of ["succeeded", "failed"]) {
+  test(`owned ${outcome} shard publishes only to its single export directory`, async (t) => {
+    const f = await progressIntegrationFixture(t)
+    const exportDirectory = await mkdtemp(path.join(os.tmpdir(), "stryker-export-"))
+    t.after(() => rm(exportDirectory, { recursive: true, force: true }))
+    const diagnosticOutputFile = `${exportDirectory}-step-output`
+    t.after(() => rm(diagnosticOutputFile, { force: true }))
+    const options = {
+      ...f.options,
+      diagnosticExportDirectory: exportDirectory,
+      diagnosticOutputFile,
+    }
+    const failure = Object.assign(new Error("child failure"), { processQuiesced: true })
+    const runChild = async () => {
+      if (outcome === "failed") throw failure
+      return { sourceSha256: "a".repeat(64) }
+    }
+    const execution = () =>
+      f.runStrykerShardExecution(options, {
+        runChild,
+        createProgressContext: async () => ({
+          childEnv: {},
+          validateSuccessfulExit: () => undefined,
+          lastObservation: () => null,
+        }),
+      })
+    if (outcome === "failed") {
+      await assert.rejects(execution, (error) => error === failure)
+    } else {
+      await execution()
+    }
+    const record = JSON.parse(await readFile(path.join(exportDirectory, "diagnostic.json"), "utf8"))
+    assert.equal(record.outcome, outcome)
+    assert.equal(record.processQuiesced, true)
+    assert.equal(await readFile(diagnosticOutputFile, "utf8"), "progress_diagnostic=published\n")
+    assert.deepEqual(await (await import("node:fs/promises")).readdir(exportDirectory), [
+      "diagnostic.json",
+    ])
+    assert.deepEqual(await (await import("node:fs/promises")).readdir(f.shardTemp), [])
+  })
+}
+
+test("unquiesced child failure never marks a diagnostic uploadable", async (t) => {
+  const f = await progressIntegrationFixture(t)
+  const exportDirectory = await mkdtemp(path.join(os.tmpdir(), "stryker-export-"))
+  t.after(() => rm(exportDirectory, { recursive: true, force: true }))
+  const diagnosticOutputFile = `${exportDirectory}-step-output`
+  t.after(() => rm(diagnosticOutputFile, { force: true }))
+  const failure = Object.assign(new Error("child failure"), { processQuiesced: false })
+  await assert.rejects(
+    () =>
+      f.runStrykerShardExecution(
+        { ...f.options, diagnosticExportDirectory: exportDirectory, diagnosticOutputFile },
+        {
+          runChild: async () => {
+            throw failure
+          },
+          createProgressContext: async () => ({
+            childEnv: {},
+            validateSuccessfulExit: () => undefined,
+            lastObservation: () => null,
+          }),
+        }
+      ),
+    (error) => error === failure
+  )
+  const record = JSON.parse(await readFile(path.join(exportDirectory, "diagnostic.json"), "utf8"))
+  assert.equal(record.processQuiesced, false)
+  await assert.rejects(() => readFile(diagnosticOutputFile, "utf8"), { code: "ENOENT" })
+})
+
+test("preexisting export target never marks an uploadable diagnostic", async (t) => {
+  const f = await progressIntegrationFixture(t)
+  const exportDirectory = await mkdtemp(path.join(os.tmpdir(), "stryker-export-"))
+  t.after(() => rm(exportDirectory, { recursive: true, force: true }))
+  const diagnosticOutputFile = `${exportDirectory}-step-output`
+  t.after(() => rm(diagnosticOutputFile, { force: true }))
+  const target = path.join(exportDirectory, "diagnostic.json")
+  await writeFile(target, "untrusted checkout file\n")
+  const warnings = []
+  await f.runStrykerShardExecution(
+    { ...f.options, diagnosticExportDirectory: exportDirectory, diagnosticOutputFile },
+    {
+      runChild: async () => undefined,
+      createProgressContext: async () => ({
+        childEnv: {},
+        validateSuccessfulExit: () => undefined,
+        lastObservation: () => null,
+      }),
+      warnDiagnostic: (message) => warnings.push(message),
+    }
+  )
+  assert.equal(await readFile(target, "utf8"), "untrusted checkout file\n")
+  await assert.rejects(() => readFile(diagnosticOutputFile, "utf8"), { code: "ENOENT" })
+  assert.deepEqual(warnings, ["Stryker progress diagnostic unavailable\n"])
+})
+
+test("publication failure after successful child permits report continuation", async (t) => {
+  const f = await progressIntegrationFixture(t)
+  const publicationFailure = new Error("publication failed: token=/private/path")
+  const warnings = []
+  const hostEvidence = { sourceSha256: "a".repeat(64) }
+  const result = await f.runStrykerShardExecution(f.options, {
+    runChild: async () => hostEvidence,
+    createProgressContext: async () => ({
+      childEnv: {},
+      validateSuccessfulExit: () => undefined,
+    }),
+    createDiagnosticOwner: async () => ({
+      publish: async () => {
+        throw publicationFailure
+      },
+    }),
+    warnDiagnostic: (message) => warnings.push(message),
+  })
+  assert.equal(result, hostEvidence)
+  assert.deepEqual(warnings, ["Stryker progress diagnostic unavailable\n"])
+})
+
+test("diagnostic owner initialization failure cannot skip the owned child", async (t) => {
+  const f = await progressIntegrationFixture(t)
+  const warnings = []
+  let launches = 0
+  const hostEvidence = { sourceSha256: "a".repeat(64) }
+  const result = await f.runStrykerShardExecution(f.options, {
+    runChild: async () => {
+      launches++
+      return hostEvidence
+    },
+    createProgressContext: async () => ({
+      childEnv: {},
+      validateSuccessfulExit: () => undefined,
+    }),
+    createDiagnosticOwner: async () => {
+      throw new Error("unsafe path and token=/private/path")
+    },
+    warnDiagnostic: (message) => warnings.push(message),
+  })
+  assert.equal(result, hostEvidence)
+  assert.equal(launches, 1)
+  assert.deepEqual(warnings, ["Stryker progress diagnostic unavailable\n"])
 })
 
 test("disabled progress integration launches the existing child with scrubbed fields and no progress directories", async (t) => {

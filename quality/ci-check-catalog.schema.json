@@ -456,7 +456,8 @@
         "check_name_template",
         "expected_timeout_minutes",
         "expected_duration_seconds",
-        "guard"
+        "guard",
+        "needs"
       ],
       "properties": {
         "profile": {
@@ -480,6 +481,14 @@
         "guard": {
           "type": "string",
           "minLength": 1
+        },
+        "needs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "owner": {
           "$ref": "#/$defs/owner"

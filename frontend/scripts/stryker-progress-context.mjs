@@ -8,6 +8,8 @@ const progressFields = new Set([
   "STRYKER_PROGRESS_OUTPUT",
   "STRYKER_PROGRESS_RUN_ID",
   "STRYKER_PROGRESS_SHARD_ID",
+  "STRYKER_PROGRESS_EXPORT_DIRECTORY",
+  "GITHUB_OUTPUT",
 ])
 const invalid = () =>
   Object.assign(new Error("Invalid Stryker progress context"), {
@@ -74,5 +76,6 @@ export async function createStrykerProgressContext(options = {}) {
     childEnv: Object.freeze(childEnv),
     observeLive: () => monitor.observe(),
     validateSuccessfulExit: () => monitor.validateExit(0),
+    lastObservation: () => monitor.lastObservation(),
   })
 }

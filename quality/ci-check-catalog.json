@@ -398,6 +398,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "admin-smoke-reports",
@@ -433,6 +434,7 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "github.actor == 'dependabot[bot]'",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -464,6 +466,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "performance-advisory-go",
@@ -485,6 +488,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "performance-ws-hub-paired",
@@ -506,6 +510,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "performance-advisory-rust-criterion",
@@ -527,6 +532,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "performance-rust-native-paired",
@@ -548,6 +554,12 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+          "needs": [
+            "benchmark",
+            "ws-hub-regression",
+            "rust-criterion",
+            "rust-native-regression"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -575,6 +587,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "dist-linux-validation",
@@ -609,6 +622,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "quality-certification-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}",
@@ -637,6 +651,9 @@
           "expected_timeout_minutes": 180,
           "expected_duration_seconds": 10800,
           "guard": "workflow trigger",
+          "needs": [
+            "certify"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -651,6 +668,10 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [
+            "certify",
+            "build"
+          ],
           "artifacts": [
             {
               "name_pattern": "release-image-provenance-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}",
@@ -693,6 +714,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -707,6 +729,9 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "${{ always() }}",
+          "needs": [
+            "cargo-deny-crates"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -738,6 +763,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -773,6 +799,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "${{ vars.CHROMATIC_ENABLED == 'true' && vars.CHROMATIC_BILLING_ACTIVE == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'repository_dispatch') }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -805,6 +832,7 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -819,6 +847,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -833,6 +862,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -847,6 +877,9 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -861,6 +894,9 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -876,6 +912,9 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -891,6 +930,9 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -906,6 +948,9 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -920,6 +965,9 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -934,6 +982,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -951,6 +1002,9 @@
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -965,6 +1019,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -982,6 +1039,9 @@
           "expected_timeout_minutes": 120,
           "expected_duration_seconds": 7200,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -996,6 +1056,9 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [
             {
               "name_pattern": "fuzz-crash-corpus",
@@ -1017,6 +1080,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1031,6 +1097,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1045,6 +1114,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1059,6 +1131,9 @@
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
           "guard": "workflow trigger",
+          "needs": [
+            "e2e-wasm-build"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1073,6 +1148,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1087,6 +1163,11 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.event_name == 'pull_request' && needs.pre-commit-check.result == 'success' && needs.e2e-wasm-build.result == 'success' && needs.frontend-tests.result == 'success' }}",
+          "needs": [
+            "pre-commit-check",
+            "e2e-wasm-build",
+            "frontend-tests"
+          ],
           "artifacts": [
             {
               "name_pattern": "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
@@ -1111,7 +1192,18 @@
           "expected_timeout_minutes": 270,
           "expected_duration_seconds": 16200,
           "guard": "${{ github.event_name == 'pull_request' && needs.stryker-preflight.result == 'success' && needs.coverage-policy-gate.result == 'success' && needs.pre-commit-security-and-types.result == 'success' }}",
+          "needs": [
+            "stryker-preflight",
+            "coverage-policy-gate",
+            "pre-commit-security-and-types"
+          ],
           "artifacts": [
+            {
+              "name_pattern": "frontend-mutation-progress-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ matrix.shard-index }}",
+              "path_pattern": "${{ steps.prepare_progress_export.outputs.directory }}/diagnostic.json",
+              "required": false,
+              "provenance": "sha"
+            },
             {
               "name_pattern": "frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}",
               "path_pattern": "frontend/reports/mutation/shards/**/mutation.json\nfrontend/reports/mutation/shards/**/SHARD_EVIDENCE.json\n",
@@ -1132,6 +1224,12 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-preflight.result != 'skipped' && needs.coverage-policy-gate.result == 'success' && needs.pre-commit-security-and-types.result == 'success' }}",
+          "needs": [
+            "stryker-preflight",
+            "stryker-shards",
+            "coverage-policy-gate",
+            "pre-commit-security-and-types"
+          ],
           "artifacts": [
             {
               "name_pattern": "frontend-mutation-historical-costs-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
@@ -1159,6 +1257,9 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.event_name == 'pull_request' }}",
+          "needs": [
+            "stryker-aggregate"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1173,6 +1274,10 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-aggregate.result != 'skipped' }}",
+          "needs": [
+            "stryker-aggregate",
+            "stryker-evidence-roundtrip"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1190,6 +1295,10 @@
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check",
+            "e2e-wasm-build"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1207,6 +1316,10 @@
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check",
+            "e2e-wasm-build"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1221,6 +1334,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1235,6 +1349,9 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [
             {
               "name_pattern": "sbom",
@@ -1256,6 +1373,9 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1270,6 +1390,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -1285,6 +1408,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1299,6 +1425,9 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1313,6 +1442,9 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [
+            "frontend-tests"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -1328,6 +1460,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1343,6 +1478,9 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -1358,6 +1496,9 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -1373,6 +1514,7 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1390,6 +1532,9 @@
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1404,6 +1549,9 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "${{ always() && !cancelled() }}",
+          "needs": [
+            "schemathesis-api-tests-shard"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1418,6 +1566,10 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check",
+            "openapi-verify"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1432,6 +1584,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "github.event_name == 'push' ||\ngithub.event_name == 'pull_request'\n",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "asan-report",
@@ -1453,6 +1606,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "github.event_name == 'push' ||\ngithub.event_name == 'pull_request'\n",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1467,6 +1621,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "github.event_name == 'push' ||\ngithub.event_name == 'pull_request'\n",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "rust-coverage-attempt-${{ github.run_attempt }}",
@@ -1494,6 +1649,7 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1508,6 +1664,14 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [
+            "mutation-scope",
+            "pre-commit-check",
+            "pre-commit-security-and-types",
+            "backend-tests",
+            "backend-type-check",
+            "coverage-policy-gate"
+          ],
           "artifacts": [
             {
               "name_pattern": "mutmut-generation-base-${{ github.run_id }}-${{ github.run_attempt }}",
@@ -1533,6 +1697,15 @@
           "expected_timeout_minutes": 25,
           "expected_duration_seconds": 1500,
           "guard": "workflow trigger",
+          "needs": [
+            "mutation-scope",
+            "mutation-tests-universe-base",
+            "pre-commit-check",
+            "pre-commit-security-and-types",
+            "backend-tests",
+            "backend-type-check",
+            "coverage-policy-gate"
+          ],
           "artifacts": [
             {
               "name_pattern": "mutmut-stats-shard-${{ matrix.stats_shard }}-attempt-${{ github.run_attempt }}",
@@ -1555,6 +1728,13 @@
           "expected_timeout_minutes": 35,
           "expected_duration_seconds": 2100,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check",
+            "pre-commit-security-and-types",
+            "mutation-tests-universe-base",
+            "mutation-tests-stats",
+            "coverage-policy-gate"
+          ],
           "artifacts": [
             {
               "name_pattern": "mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}",
@@ -1586,6 +1766,13 @@
           "expected_timeout_minutes": 360,
           "expected_duration_seconds": 21600,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check",
+            "pre-commit-security-and-types",
+            "mutation-tests-stats",
+            "mutation-tests-universe",
+            "coverage-policy-gate"
+          ],
           "artifacts": [
             {
               "name_pattern": "mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-group-${{ matrix.group_id }}",
@@ -1608,6 +1795,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "backend-tests"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -1623,6 +1813,9 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1637,6 +1830,9 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [
+            "alembic-migrations"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -1652,6 +1848,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1666,6 +1863,12 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [
+            "backend-tests",
+            "frontend-tests",
+            "go-tests",
+            "rust-tests"
+          ],
           "artifacts": [
             {
               "name_pattern": "coverage-codecov-inputs",
@@ -1694,6 +1897,9 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}",
+          "needs": [
+            "coverage-policy-gate"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1708,6 +1914,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "model-default-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
@@ -1729,6 +1936,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -1744,6 +1952,9 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "workflow trigger",
+          "needs": [
+            "backend-tests"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1758,6 +1969,9 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "workflow trigger",
+          "needs": [
+            "backend-tests"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1772,6 +1986,60 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "${{ always() }}",
+          "needs": [
+            "pre-commit-check",
+            "pre-commit-security-and-types",
+            "compose-validate",
+            "backend-tests",
+            "backend-type-check",
+            "go-tests",
+            "frontend-tests",
+            "security-audit",
+            "sbom-generate",
+            "alembic-migrations",
+            "openapi-verify",
+            "verify-runtime-reqs",
+            "performance-gate",
+            "docker-security-scan",
+            "helm-validate",
+            "db-migration-gate",
+            "go-fuzz",
+            "go-integration-ws-hub",
+            "go-integration-file-processor",
+            "go-integration-gateway",
+            "contract-tests",
+            "schemathesis-api-tests",
+            "msw-mock-drift",
+            "provenance-check",
+            "e2e-wasm-build",
+            "e2e-tests",
+            "e2e-tests-cross-browser",
+            "rust-ffi-asan",
+            "rust-ffi-tsan",
+            "rust-tests",
+            "mutation-tests-stats",
+            "mutation-tests-universe-base",
+            "mutation-tests-universe",
+            "mutation-tests-incremental",
+            "mutation-scope",
+            "stryker-preflight",
+            "stryker-aggregate",
+            "stryker-evidence-roundtrip",
+            "frontend-mutation-required-context",
+            "chaos-tests",
+            "chaos-loadtest-orchestrator",
+            "db-migration-integrity",
+            "actionlint",
+            "dockerfile-lint",
+            "shellcheck",
+            "graphql-drift-check",
+            "quality",
+            "rust-lint",
+            "coverage-policy-gate",
+            "codecov-upload",
+            "quality-inventory-check",
+            "kyverno-test"
+          ],
           "artifacts": [
             {
               "name_pattern": "ci-health-${{ github.run_id }}-${{ github.run_attempt }}",
@@ -1821,6 +2089,7 @@
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1856,6 +2125,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "pact-contracts-${{ github.sha }}",
@@ -1877,6 +2147,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "consumer"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1891,6 +2164,9 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [
+            "consumer"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -1923,6 +2199,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1937,6 +2214,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1951,6 +2229,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -1978,6 +2257,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "cwv-field-certificate-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}",
@@ -2016,6 +2296,7 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2030,6 +2311,9 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ needs.verify-trusted-ref.result == 'success' }}",
+          "needs": [
+            "verify-trusted-ref"
+          ],
           "artifacts": [
             {
               "name_pattern": "nuclei-results-${{ github.run_id }}",
@@ -2051,6 +2335,9 @@
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
           "guard": "${{ needs.verify-trusted-ref.result == 'success' }}",
+          "needs": [
+            "verify-trusted-ref"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2078,6 +2365,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2105,6 +2393,7 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2132,6 +2421,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -2147,6 +2437,9 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "${{ always() && needs.validate.result == 'success' }}",
+          "needs": [
+            "validate"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2161,6 +2454,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "prepare"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2175,6 +2471,10 @@
           "expected_timeout_minutes": 120,
           "expected_duration_seconds": 7200,
           "guard": "workflow trigger",
+          "needs": [
+            "prepare",
+            "resolve-images"
+          ],
           "artifacts": [
             {
               "name_pattern": "staging-deployment-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}",
@@ -2197,6 +2497,9 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ inputs.environment == 'staging' }}",
+          "needs": [
+            "deploy"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -2212,6 +2515,12 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "always()",
+          "needs": [
+            "prepare",
+            "resolve-images",
+            "deploy",
+            "rollback"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2239,6 +2548,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "openapi",
@@ -2277,6 +2587,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2308,6 +2619,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2346,6 +2658,7 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2367,6 +2680,7 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "sbom-${{ matrix.service }}-${{ github.sha }}",
@@ -2412,6 +2726,7 @@
           "expected_timeout_minutes": 120,
           "expected_duration_seconds": 7200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2439,6 +2754,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "lighthouse-reports-on-demand",
@@ -2476,6 +2792,7 @@
           "expected_timeout_minutes": 25,
           "expected_duration_seconds": 1500,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "manual-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.stats_shard }}",
@@ -2500,6 +2817,9 @@
           "expected_timeout_minutes": 360,
           "expected_duration_seconds": 21600,
           "guard": "workflow trigger",
+          "needs": [
+            "manual-mutation-stats"
+          ],
           "artifacts": [
             {
               "name_pattern": "manual-mutation-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}",
@@ -2521,6 +2841,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
@@ -2545,6 +2866,9 @@
           "expected_timeout_minutes": 270,
           "expected_duration_seconds": 16200,
           "guard": "workflow trigger",
+          "needs": [
+            "manual-frontend-mutation-preflight"
+          ],
           "artifacts": [
             {
               "name_pattern": "manual-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}",
@@ -2566,6 +2890,10 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ always() && !cancelled() }}",
+          "needs": [
+            "manual-frontend-mutation-preflight",
+            "manual-frontend-mutation-shards"
+          ],
           "artifacts": [
             {
               "name_pattern": "frontend-mutation-validated-${{ github.run_id }}-${{ github.run_attempt }}",
@@ -2587,6 +2915,9 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [
+            "manual-frontend-mutation-aggregate"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2614,6 +2945,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "manual-performance-advisory-go",
@@ -2635,6 +2967,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "manual-performance-ws-hub-paired",
@@ -2656,6 +2989,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "manual-performance-advisory-rust-criterion",
@@ -2677,6 +3011,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "manual-performance-rust-native-paired",
@@ -2715,6 +3050,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "nightly-helm-dependencies-${{ github.run_id }}-${{ github.run_attempt }}",
@@ -2740,6 +3076,9 @@
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [
+            "nightly-helm-dependencies"
+          ],
           "artifacts": [
             {
               "name_pattern": "nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.stats_shard }}",
@@ -2762,6 +3101,9 @@
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [
+            "mutation-tests-full-stats"
+          ],
           "artifacts": [
             {
               "name_pattern": "nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}",
@@ -2786,6 +3128,10 @@
           "expected_timeout_minutes": 360,
           "expected_duration_seconds": 21600,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [
+            "mutation-tests-full-plan",
+            "nightly-helm-dependencies"
+          ],
           "artifacts": [
             {
               "name_pattern": "nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}",
@@ -2808,6 +3154,9 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.ref == 'refs/heads/main' && always() && !cancelled() }}",
+          "needs": [
+            "mutation-tests-full"
+          ],
           "artifacts": [
             {
               "name_pattern": "nightly-mutmut-${{ github.run_id }}-${{ github.run_attempt }}",
@@ -2829,6 +3178,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
@@ -2853,6 +3203,9 @@
           "expected_timeout_minutes": 270,
           "expected_duration_seconds": 16200,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [
+            "frontend-mutation-preflight"
+          ],
           "artifacts": [
             {
               "name_pattern": "nightly-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}",
@@ -2874,6 +3227,10 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.ref == 'refs/heads/main' && always() && !cancelled() }}",
+          "needs": [
+            "frontend-mutation-preflight",
+            "frontend-mutation-shards"
+          ],
           "artifacts": [
             {
               "name_pattern": "frontend-mutation-validated-${{ github.run_id }}-${{ github.run_attempt }}",
@@ -2895,6 +3252,9 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [
+            "frontend-mutation-tests-full"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2912,6 +3272,7 @@
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2929,6 +3290,7 @@
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2946,6 +3308,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2960,6 +3323,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2974,6 +3338,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -2991,6 +3356,9 @@
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [
+            "e2e-wasm-build"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3005,6 +3373,7 @@
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -3020,6 +3389,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -3035,6 +3405,7 @@
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3049,6 +3420,26 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "${{ github.ref == 'refs/heads/main' && always() && contains(needs.*.result, 'failure') }}",
+          "needs": [
+            "nightly-helm-dependencies",
+            "mutation-tests-full-stats",
+            "mutation-tests-full-plan",
+            "mutation-tests-full",
+            "mutation-tests-full-aggregate",
+            "frontend-mutation-preflight",
+            "frontend-mutation-shards",
+            "frontend-mutation-tests-full",
+            "frontend-mutation-roundtrip",
+            "e2e-wasm-build",
+            "backend-full",
+            "backend-integration",
+            "go-integration",
+            "container-integration-cells",
+            "browser-matrix",
+            "load-and-chaos",
+            "kyverno-test",
+            "miri"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3084,6 +3475,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3119,6 +3511,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "fuzz-crash-dumps",
@@ -3157,6 +3550,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3184,6 +3578,7 @@
           "expected_timeout_minutes": 2,
           "expected_duration_seconds": 120,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3198,6 +3593,9 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [
+            "verify-canonical-ref"
+          ],
           "artifacts": [
             {
               "name_pattern": "quality-stabilization-${{ github.run_id }}",
@@ -3232,6 +3630,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3246,6 +3645,9 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [
+            "resolve-images"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3277,6 +3679,7 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3304,6 +3707,7 @@
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
           "guard": "${{ inputs.run-unit-tests }}",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "backend-coverage-${{ inputs.test-group-name }}",
@@ -3338,6 +3742,7 @@
           "expected_timeout_minutes": 60,
           "expected_duration_seconds": 3600,
           "guard": "${{ inputs.run-integration-tests }}",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "postgres-test-failures-${{ inputs.test-group-name }}",
@@ -3373,6 +3778,7 @@
           "expected_timeout_minutes": 180,
           "expected_duration_seconds": 10800,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "image-digest-evidence-${{ inputs.image_name }}-${{ inputs.source-sha }}-attempt-${{ github.run_attempt }}",
@@ -3407,6 +3813,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3434,6 +3841,7 @@
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "frontend-e2e-coverage-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}",
@@ -3481,6 +3889,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "${{ steps.publish.outputs.artifact_name }}",
@@ -3516,6 +3925,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "frontend-wasm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
@@ -3538,6 +3948,9 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [
+            "wasm-build"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3555,6 +3968,9 @@
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
           "guard": "workflow trigger",
+          "needs": [
+            "wasm-build"
+          ],
           "artifacts": [
             {
               "name_pattern": "frontend-vitest-report-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}",
@@ -3582,6 +3998,9 @@
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
           "guard": "${{ always() }}",
+          "needs": [
+            "unit-tests-shard"
+          ],
           "artifacts": [
             {
               "name_pattern": "frontend-vitest-report-attempt-${{ github.run_attempt }}",
@@ -3609,6 +4028,9 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [
+            "wasm-build"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3623,6 +4045,9 @@
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
           "guard": "workflow trigger",
+          "needs": [
+            "wasm-build"
+          ],
           "artifacts": [
             {
               "name_pattern": "frontend-dist",
@@ -3650,6 +4075,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "build"
+          ],
           "artifacts": [
             {
               "name_pattern": "bundle-report",
@@ -3674,6 +4102,9 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "${{ inputs.run-lighthouse }}",
+          "needs": [
+            "build"
+          ],
           "artifacts": [
             {
               "name_pattern": "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}",
@@ -3695,6 +4126,9 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "${{ always() && !cancelled() && inputs.run-lighthouse }}",
+          "needs": [
+            "lighthouse-shards"
+          ],
           "artifacts": [
             {
               "name_pattern": "lighthouse-reports-attempt-${{ github.run_attempt }}",
@@ -3730,6 +4164,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "${{ steps.artifact-name.outputs.name }}-logs",
@@ -3764,6 +4199,7 @@
           "expected_timeout_minutes": 120,
           "expected_duration_seconds": 7200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "${{ steps.artifact-name.outputs.name }}",
@@ -3786,6 +4222,7 @@
           "expected_timeout_minutes": 70,
           "expected_duration_seconds": 4200,
           "guard": "${{ inputs.run-mutation-diagnostic && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "go-mutation-diagnostic-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.diagnostic-artifact-name.outputs.name }}",
@@ -3807,6 +4244,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3834,6 +4272,7 @@
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3848,6 +4287,9 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "${{ inputs.run-pip-audit }}",
+          "needs": [
+            "policy-integrity"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3862,6 +4304,9 @@
           "expected_timeout_minutes": 25,
           "expected_duration_seconds": 1500,
           "guard": "${{ inputs.run-npm-audit }}",
+          "needs": [
+            "policy-integrity"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3876,6 +4321,9 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [
+            "policy-integrity"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -3891,6 +4339,9 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [
+            "policy-integrity"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3905,6 +4356,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "policy-integrity"
+          ],
           "artifacts": [
             {
               "name_pattern": "sbom-spdx-json",
@@ -3926,6 +4380,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [
+            "policy-integrity"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3940,6 +4397,9 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "github.actor != 'dependabot[bot]'",
+          "needs": [
+            "policy-integrity"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3967,6 +4427,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3994,6 +4455,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -4033,6 +4495,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "fuzz-crashes",
@@ -4061,6 +4524,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "fuzz-crashes-${{ matrix.name }}",
@@ -4103,6 +4567,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "sbom-python",
@@ -4124,6 +4589,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "sbom-go-sarif",
@@ -4145,6 +4611,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "sbom-rust-audit",
@@ -4166,6 +4633,11 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",
+          "needs": [
+            "sbom-python",
+            "sbom-go",
+            "sbom-rust"
+          ],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -4180,6 +4652,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.event_name == 'pull_request' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -4207,6 +4680,7 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -4242,6 +4716,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -4269,6 +4744,7 @@
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -4296,6 +4772,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -4327,6 +4804,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "review-required",
@@ -4359,6 +4837,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -4397,6 +4876,7 @@
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "unauthenticated-routes-smoke-${{ matrix.theme }}",
@@ -4432,6 +4912,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "visual-audit-reports",
@@ -4471,6 +4952,7 @@
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -4505,6 +4987,7 @@
           "expected_timeout_minutes": 45,
           "expected_duration_seconds": 2700,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [
             {
               "name_pattern": "weekly-test-duration-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}",
@@ -4527,6 +5010,9 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "${{ always() && github.ref == 'refs/heads/main' }}",
+          "needs": [
+            "refresh-shard"
+          ],
           "artifacts": [
             {
               "name_pattern": "weekly-test-duration-merged-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
@@ -4565,6 +5051,7 @@
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",

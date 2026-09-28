@@ -216,6 +216,15 @@ export function createStrykerProgressMonitor(
     get failed() {
       return failure !== null
     },
+    lastObservation() {
+      return previous === null
+        ? null
+        : Object.freeze({
+            snapshot: previous,
+            observedAtMs: observedAt,
+            lastCompletionAtMs: lastCompletionAt,
+          })
+    },
     observe,
     validateExit(exitCode) {
       if (failure) throw failure

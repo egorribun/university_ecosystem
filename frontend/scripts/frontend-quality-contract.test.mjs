@@ -139,6 +139,7 @@ test("canonical Node gates retain the real test CSS pipeline contract", async ()
 test("canonical Node gates exercise the bounded progress monitor contracts", async () => {
   const packageJson = await readJson(new URL("package.json", frontendRoot))
   assert.match(packageJson.scripts["test:wasm"], /scripts\/stryker-progress-monitor\.test\.mjs/u)
+  assert.match(packageJson.scripts["test:wasm"], /scripts\/stryker-progress-diagnostic\.test\.mjs/u)
 })
 
 test("canonical Node gates exercise the Stryker factory adapter contracts", async () => {

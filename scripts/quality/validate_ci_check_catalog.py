@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Iterable
 from pathlib import Path
@@ -44,6 +45,8 @@ RETRY_MARKERS = (
     "retry-all-errors",
     "retries",
 )
+NEEDS_DOT_ID = re.compile(r"\.\s*([A-Za-z_][A-Za-z0-9_-]*)")
+NEEDS_BRACKET_ID = re.compile(r"\[\s*(['\"])([A-Za-z_][A-Za-z0-9_-]*)\1\s*\]")
 
 
 class CatalogError(ValueError):
@@ -262,6 +265,119 @@ def _matrix_governance_errors(
                         f"{location}: unbounded_justification.{field} must be non-empty"
                     )
     return errors
+
+
+def _action_expressions(value: str) -> Iterable[str]:
+    """Find expression boundaries without treating quoted `}}` as a close."""
+
+    offset = 0
+    while (start := value.find("${{", offset)) >= 0:
+        index = start + 3
+        quote: str | None = None
+        while index < len(value):
+            if quote is not None:
+                if value[index] == "\\" and quote == '"':
+                    index += 2
+                elif value[index] == quote:
+                    if quote == "'" and value[index : index + 2] == "''":
+                        index += 2
+                    else:
+                        quote = None
+                        index += 1
+                else:
+                    index += 1
+            elif value.startswith("}}", index):
+                yield value[start + 3 : index]
+                offset = index + 2
+                break
+            elif value[index] in {"'", '"'}:
+                quote = value[index]
+                index += 1
+            else:
+                index += 1
+        else:
+            raise CatalogError("unterminated Actions expression")
+
+
+def _job_expressions(
+    value: Any, *, field: str = "", job_root: bool = True
+) -> Iterable[str]:
+    """Yield Actions expressions, including bare `if` conditions, from a job."""
+
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if not job_root or key != "needs":
+                yield from _job_expressions(child, field=str(key), job_root=False)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _job_expressions(child, field=field, job_root=False)
+    elif isinstance(value, str):
+        expressions = list(_action_expressions(value))
+        yield from expressions
+        if field == "if" and not expressions:
+            yield value
+
+
+def _needs_references(expression: str) -> Iterable[str | None]:
+    """Yield static needs IDs; None marks unsupported context access."""
+
+    index = 0
+    while index < len(expression):
+        char = expression[index]
+        if char in {"'", '"'}:
+            quote = char
+            index += 1
+            while index < len(expression):
+                if expression[index] == quote:
+                    if quote == "'" and expression[index : index + 2] == "''":
+                        index += 2
+                        continue
+                    index += 1
+                    break
+                index += 1
+            continue
+        if expression[index : index + 5].lower() != "needs" or (
+            index > 0
+            and (expression[index - 1].isalnum() or expression[index - 1] in "_.")
+        ):
+            index += 1
+            continue
+        next_index = index + len("needs")
+        if next_index < len(expression) and (
+            expression[next_index].isalnum() or expression[next_index] == "_"
+        ):
+            index = next_index
+            continue
+        while next_index < len(expression) and expression[next_index].isspace():
+            next_index += 1
+        # Actions grouping can wrap the context before property access.
+        # A bare context or an unfamiliar operator must not silently pass.
+        while next_index < len(expression) and expression[next_index] == ")":
+            next_index += 1
+            while next_index < len(expression) and expression[next_index].isspace():
+                next_index += 1
+        if next_index < len(expression) and expression[next_index] == ".":
+            after_dot = next_index + 1
+            while after_dot < len(expression) and expression[after_dot].isspace():
+                after_dot += 1
+            if after_dot < len(expression) and expression[after_dot] == "*":
+                index = after_dot + 1
+                continue
+            dot = NEEDS_DOT_ID.match(expression, next_index)
+            yield dot.group(1) if dot else None
+            index = dot.end() if dot else after_dot
+            continue
+        if next_index < len(expression) and expression[next_index] == "[":
+            bracket = NEEDS_BRACKET_ID.match(expression, next_index)
+            yield bracket.group(2) if bracket else None
+            index = bracket.end() if bracket else next_index + 1
+            continue
+        if expression.startswith(("/*", "//"), next_index):
+            yield None
+            index = next_index + 2
+            continue
+        yield None
+        index = next_index
 
 
 def _job_timeout(job: dict[str, Any], *, reusable_timeouts: dict[str, int]) -> int:
@@ -758,6 +874,45 @@ def validate_catalog(
             expected_name = str(source_job.get("name", job_id))
             if effective.get("check_name_template") != expected_name:
                 errors.append(f"{job_location}.check_name_template is stale")
+            source_needs = source_job.get("needs", [])
+            if isinstance(source_needs, str):
+                source_needs = [source_needs]
+            if not isinstance(source_needs, list) or not all(
+                isinstance(need, str) and need for need in source_needs
+            ):
+                errors.append(f"{job_location}: source needs must be a list of job IDs")
+            else:
+                if job_entry.get("needs") != source_needs:
+                    errors.append(
+                        f"{job_location}: needs differs from workflow "
+                        f"(catalog={job_entry.get('needs')!r}, source={source_needs!r})"
+                    )
+                if len(source_needs) != len(set(source_needs)):
+                    errors.append(
+                        f"{job_location}: duplicate dependency in source needs"
+                    )
+                for need in source_needs:
+                    if need == job_id:
+                        errors.append(
+                            f"{job_location}: self-dependency in source needs"
+                        )
+                    elif need not in source_job_ids:
+                        errors.append(
+                            f"{job_location}: unknown job in source needs: {need!r}"
+                        )
+                try:
+                    for expression in _job_expressions(source_job):
+                        for reference in _needs_references(expression):
+                            if reference is None:
+                                errors.append(
+                                    f"{job_location}: dynamic needs reference is unsupported"
+                                )
+                            elif reference not in source_needs:
+                                errors.append(
+                                    f"{job_location}: undeclared needs reference: {reference!r}"
+                                )
+                except CatalogError as exc:
+                    errors.append(f"{job_location}: {exc}")
             source_contexts.add(expected_name)
             errors.extend(
                 _matrix_governance_errors(source_job, job_entry, job_location)

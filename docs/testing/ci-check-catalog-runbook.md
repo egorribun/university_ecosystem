@@ -15,17 +15,49 @@ uv run python scripts/quality/validate_ci_check_catalog.py
 
 The validator is fail-closed.  It compares the catalog with every
 `.github/workflows/*.yml` and `.yaml` file and rejects stale or incomplete
-workflow/job inventories, changed trigger guards, missing timeouts, invalid
-paths, absent runbook/retry/artifact metadata, and unsupported required-event
-claims.
+workflow/job inventories, changed trigger guards or job `needs` dependencies,
+missing timeouts, invalid paths, absent runbook/retry/artifact metadata, and
+unsupported required-event claims.
+
+The `stryker-shards` job enables a bounded progress observer only for a fresh
+shard attempt. Its separate `frontend-mutation-progress-*` artifact contains
+validated source/tested SHA and run/shard identities, the last observed stage
+and counters, and an explicit outcome. It is informational (`releaseEligible:
+false`); CPU/RSS remain null because they are not measured. A retry-cache hit
+or preflight-only validation has no diagnostic by design. A best-effort upload
+selects exactly one owner-published `diagnostic.json` from a fresh runner-temp
+directory outside the checkout, only after confirmed process quiescence.
+Sibling, stale, pre-existing, and potentially still-mutable files are never
+selected. Missing diagnostics never turn a failed shard green or become
+quality evidence. The existing progress monitor still validates malformed
+observations and terminal output; only the new durable publication/upload is
+advisory. Canonical mutation reports, `SHARD_EVIDENCE.json`, the 100% gate,
+process owner, and wall deadline remain unchanged. A quiet snapshot alone
+does not diagnose a stall; resource-aware inactivity policy is outside this
+rollout.
 
 ## Metadata contract
 
 Each workflow records its source path, display name, owner, and exact trigger
 guards.  Each job records the source check-name template, expected timeout and
-duration budget, job guard, and a profile.  Profiles provide the effective
-required/advisory/nightly/manual/internal classification, required event
-aliases, owner, runbook, artifact contract, and retry policy.  A job may
+duration budget, job guard, exact `needs` list, and a profile. Jobs with no
+`needs` declare `[]`; a scalar source `needs` becomes a one-item list. The
+validator compares each list, including order, to its source workflow.
+Source dependencies must name existing jobs in the same workflow, without
+duplicates or self-dependencies. Static references in Actions expressions,
+including `needs.job-id` and `needs['job-id']`, must name a dependency of that
+job. The aggregate `needs.*` form is allowed; dynamic bracket indexing is
+unsupported and fails closed because no fixed edge can be audited. Literal
+text outside Actions expressions is not treated as a dependency reference.
+Whitespace (including newlines), grouping such as `(needs).job-id`, and
+case-varied context spelling do not hide a static reference. Bare `needs`,
+dynamic access, and comment-like syntax between access tokens are unsupported
+and fail closed.
+The validator inspects nested job fields (including action inputs), respects
+quoted expression text such as `'}}'`, and rejects an unterminated `${{ ... }}`.
+Profiles provide the effective required/advisory/nightly/manual/internal
+classification, required event aliases, owner, runbook, artifact contract,
+and retry policy. A job may
 override any profile field when its artifact or retry behavior differs.
 
 The reusable security workflow starts with the required `Security policy
