@@ -114,8 +114,8 @@ def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_lock
         "requests==2.34.2": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",  # pragma: allowlist secret -- wheel checksum
         "certifi==2026.7.22": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",  # pragma: allowlist secret -- wheel checksum
         "charset-normalizer==3.5.1": "00668ebb0609751758682eb0b5857e7c35b9f00e84dfdef062e103244ec94d45",  # pragma: allowlist secret -- wheel checksum
-        "idna==3.19": "5e0811a4383b21dc5838069f801c4fb62113b7447663d2530d2bd6e77b49bf15",  # pragma: allowlist secret -- wheel checksum
-        "urllib3==2.7.0": "9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897",  # pragma: allowlist secret -- wheel checksum
+        "idna==3.20": "a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44",  # pragma: allowlist secret -- wheel checksum
+        "urllib3==2.8.0": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",  # pragma: allowlist secret -- wheel checksum
     }
     requirement_lines = {
         line.split(maxsplit=1)[0]: line

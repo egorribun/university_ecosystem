@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from hashlib import sha256
@@ -276,6 +277,17 @@ def test_cutover_rejects_arbitrary_nonempty_ack() -> None:
     assert "DOCKER_ARGV=" not in result.stdout
 
 
+def _reports(result: subprocess.CompletedProcess[str], reason: str) -> bool:
+    """Match an error despite PowerShell's ANSI colour and mid-word wrapping.
+
+    On narrow terminals PowerShell breaks a long error across lines prefixed
+    with ``|``, sometimes inside a word, so compare with layout removed.
+    """
+    text = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout + result.stderr)
+    text = re.sub(r"\n\s*\|", "", text)
+    return re.sub(r"\s+", "", reason) in re.sub(r"\s+", "", text)
+
+
 def test_extra_compose_overlay_is_applied_last() -> None:
     result = run_launcher(
         "-SeaweedFS",
@@ -316,7 +328,7 @@ def test_extra_compose_rejects_unsafe_or_missing_overlays(
 ) -> None:
     result = run_launcher("-Logs", "-ExtraCompose", f"'{overlay}'")
     assert result.returncode != 0
-    assert reason in result.stdout + result.stderr
+    assert _reports(result, reason)
     assert "DOCKER_ARGV=" not in result.stdout
 
 
@@ -327,5 +339,5 @@ def test_extra_compose_rejects_a_repeated_overlay() -> None:
         "docker-compose.observability.yml,docker-compose.observability.yml",
     )
     assert result.returncode != 0
-    assert "listed twice" in result.stdout + result.stderr
+    assert _reports(result, "listed twice")
     assert "DOCKER_ARGV=" not in result.stdout

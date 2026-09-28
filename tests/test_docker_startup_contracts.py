@@ -49,7 +49,9 @@ def _read(relative_path: str) -> str:
 def _compose(relative_path: str) -> dict:
     # Compose's custom sequence tag is meaningful to Docker Compose but not to
     # PyYAML. Removing only the tag preserves the underlying data for contracts.
-    return yaml.safe_load(_read(relative_path).replace("!override", ""))
+    return yaml.safe_load(
+        _read(relative_path).replace("!override", "").replace("!reset", "")
+    )
 
 
 def _powershell_function(script: str, name: str, next_name: str) -> str:
@@ -1983,7 +1985,7 @@ def test_only_the_caddy_edge_binds_compose_ports_on_all_interfaces() -> None:
 
 def test_infra_override_preserves_base_images_and_replaces_host_ports() -> None:
     source = _read("docker-compose.infra.yml")
-    compose = yaml.safe_load(source.replace("!override", ""))
+    compose = yaml.safe_load(source.replace("!override", "").replace("!reset", ""))
     services = compose["services"]
 
     assert "caddy" not in services
