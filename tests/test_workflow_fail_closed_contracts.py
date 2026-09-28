@@ -1225,6 +1225,11 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
             "docker-security-scan",
             "Upload Trivy results to GitHub Security tab",
         ),
+        # Advisory O9 progress diagnostic: it never enters the shard cache or
+        # the canonical mutation evidence, and run-stryker.mjs swallows its
+        # own failures, so neither step can mask the Stryker shard outcome.
+        ("ci.yml", "stryker-shards", "Prepare progress diagnostic export"),
+        ("ci.yml", "stryker-shards", "Upload current-attempt progress diagnostic"),
         ("contract-validation.yml", "spectral-lint", "Run Spectral lint"),
         (
             "contract-validation.yml",
