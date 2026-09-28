@@ -1,5 +1,35 @@
 # University Ecosystem: safe-pause handoff и план полного закрытия
 
+## Финальная публикация контрольной точки 2026-09-28 03:22 Europe/Moscow
+
+После написания нижней секции SAFE PAUSE пять коммитов, последний из которых
+`368fe27bf27005a1215930e3ae14a740fcf5c38e` содержит этот handoff,
+были успешно отправлены обычным `git push origin egorribun`.
+`HEAD == origin/egorribun == PR #1266 head` проверено на `368fe27b`, PR
+остаётся OPEN, base `481dba81ec78d7d2a33873a3a661470b0ecdd512`.
+Pre-push hook также повторно выполнил frontend typecheck — exit0.
+Новые PR workflows начали запускаться на `368fe27b`; Matrix run
+`36362309568` был `in_progress`, ещё два связанных run `36362309633` и
+`36362309670` стояли в очереди на момент snapshot. Никакого terminal CI
+verdict для этих run нет. При возобновлении определить **фактический HEAD
+этого файла и соответствующий новый run**, не считать промежуточные IDs
+сертификатом. Дополнительный docs-only commit этой верхней дельты изменит
+финальный HEAD и штатно отменит stale PR run согласно concurrency policy.
+
+GitHub push отобразил предупреждение о **16 открытых уязвимостях на default
+branch (1 critical, 7 high, 5 moderate, 3 low)** и ссылку на
+`https://github.com/egorribun/university_ecosystem/security/dependabot`.
+Это внешнее предупреждение ещё не сверено с точным alert inventory и не
+является доказательством, что все находки применимы к данному PR. Перед
+release требуется проверить состояние Dependabot/security gates и закрыть
+применимые critical/high; нельзя заявлять «без high/critical findings».
+
+Локальный tracked worktree после push чистый; остаётся только сохранённый
+пользовательский untracked `docs/audits/AUDIT_PLATFORM_FULL.md`. Четыре stash,
+все перечисленные ниже detached worktrees, ignored mutation evidence и
+legacy volume не тронуты. Goal будет переведён в `paused` после проверки
+финального docs-only push; автоматическая работа/мониторинг на паузе не идёт.
+
 ## Контрольная точка 2026-09-28 03:19 Europe/Moscow — SAFE PAUSE
 
 **При возобновлении начать здесь.** Эта секция — актуальный операционный
