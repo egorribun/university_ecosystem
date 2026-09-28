@@ -227,8 +227,12 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
             select(User)
             .outerjoin(User.profile)
             .where(
+                # ``status`` is optional free text, so a bare ``!= 'deleted'``
+                # evaluates to NULL for profiles without one and drops them.
+                # Only anonymised accounts (status set to "deleted") are hidden.
                 or_(
                     UserProfile.user_id.is_(None),  # no profile yet — still include
+                    UserProfile.status.is_(None),
                     UserProfile.status != "deleted",
                 )
             )
