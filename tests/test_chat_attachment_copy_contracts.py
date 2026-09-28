@@ -119,12 +119,17 @@ async def test_rejects_invalid_declared_sizes_in_the_callers_locale(
 async def test_rejects_a_url_the_storage_backend_does_not_manage(
     static_backend,
 ) -> None:
-    with pytest.raises(AttachmentCopyError) as error:
+    backend, _ = static_backend
+    with (
+        patch.object(backend, "read_file", new_callable=AsyncMock) as read_file,
+        pytest.raises(AttachmentCopyError) as error,
+    ):
         await ChatAttachmentService().copy_for_forward(
             _attachment(url="https://evil.example/a.png"), uuid.uuid4(), locale="en"
         )
 
     assert str(error.value) == "Attachment copy failed"
+    read_file.assert_not_awaited()
 
 
 @pytest.mark.asyncio

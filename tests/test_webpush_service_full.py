@@ -125,6 +125,31 @@ class TestSendWebPush:
         finally:
             session.close()
 
+    def test_pinned_transport_preserves_custom_ca_bundle(self):
+        """A caller-supplied trust bundle must survive IP pinning unchanged."""
+        from app.services.webpush import _create_pinned_webpush_session
+
+        endpoint = "https://push.example.test/push"
+        session = _create_pinned_webpush_session(endpoint, ("203.0.113.7", 443))
+        try:
+            request = session.prepare_request(Request("POST", endpoint))
+            adapter = session.get_adapter(endpoint)
+            custom_bundle = "/run/secrets/webpush-ca.pem"
+            with patch.object(
+                adapter,
+                "build_connection_pool_key_attributes",
+                wraps=adapter.build_connection_pool_key_attributes,
+            ) as build_pool_key:
+                pool = adapter.get_connection_with_tls_context(
+                    request, verify=custom_bundle, proxies={}, cert=None
+                )
+
+            assert build_pool_key.call_args.args[1] == custom_bundle
+            assert pool.host == "203.0.113.7"
+            assert pool.assert_hostname == "push.example.test"
+        finally:
+            session.close()
+
     def test_pinned_transport_forwards_client_certificate(self):
         """Pinned pools must preserve an explicitly configured mTLS certificate."""
         from app.services.webpush import _create_pinned_webpush_session

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
@@ -16,6 +17,7 @@ from app.core.events import (
     EventBus,
     EventCreated,
     EventEmitterMixin,
+    EventMetadata,
     EventRegistration,
     EventUpdated,
     GradeAssigned,
@@ -24,9 +26,11 @@ from app.core.events import (
     MfaEnabled,
     NewsCreated,
     NewsUpdated,
+    NotificationDeadLetterRetried,
     NotificationSent,
     NotificationsRequested,
     ScheduleCreated,
+    ScheduleDeleted,
     ScheduleUpdated,
     UserCreated,
     UserDeleted,
@@ -82,6 +86,43 @@ def test_schedule_and_grade_events_filter_schema_metadata() -> None:
         payload["unknown"] = "ignored"
         event = event_class.from_dict(payload)
         assert event.event_type == event_class.EVENT_TYPE
+
+
+def test_schedule_deleted_rebuilds_trusted_envelope_and_consumes_schema_version() -> (
+    None
+):
+    forged_time = datetime(2000, 1, 1, tzinfo=UTC)
+    payload = {
+        "_schema_version": 2,
+        "event_id": "forged-event-id",
+        "occurred_at": forged_time,
+        "metadata": EventMetadata(source="forged"),
+        "schedule_id": "lesson-1",
+        "subject": "Mathematics",
+        "unknown": "ignored",
+    }
+
+    event = ScheduleDeleted.from_dict(payload)
+
+    assert event.event_id != "forged-event-id"
+    assert event.occurred_at != forged_time
+    assert event.metadata.source == "app"
+    assert event.schedule_id == "lesson-1"
+    assert event.subject == "Mathematics"
+    assert "_schema_version" not in payload
+    assert (
+        ScheduleDeleted.from_dict({"schedule_id": "lesson-2"}).schedule_id == "lesson-2"
+    )
+
+
+def test_notification_dead_letter_retry_consumes_optional_schema_version() -> None:
+    payload = {"_schema_version": 2, "batch_count": "3"}
+
+    event = NotificationDeadLetterRetried.from_dict(payload)
+
+    assert event.batch_count == 3
+    assert "_schema_version" not in payload
+    assert NotificationDeadLetterRetried.from_dict({"batch_count": 4}).batch_count == 4
 
 
 def test_registry_accepts_class_without_event_type_without_alias() -> None:
@@ -358,12 +399,13 @@ async def test_durable_event_timeout_is_retryable_after_child_cleanup() -> None:
     event = UserCreated(email="user@example.test")
     bus = EventBus()
     started = asyncio.Event()
+    release = asyncio.Event()
     cleaned = asyncio.Event()
 
-    async def hanging_handler(_event: object) -> None:
+    async def late_handler(_event: object) -> None:
         started.set()
         try:
-            await asyncio.Future()
+            await release.wait()
         finally:
             await asyncio.sleep(0)
             cleaned.set()
@@ -373,9 +415,10 @@ async def test_durable_event_timeout_is_retryable_after_child_cleanup() -> None:
     ) -> tuple[set[asyncio.Task[object]], set[asyncio.Task[object]]]:
         del timeout
         await started.wait()
+        release.set()
         return set(), tasks
 
-    bus.subscribe(event.event_type, hanging_handler)
+    bus.subscribe(event.event_type, late_handler)
     with patch.object(events.asyncio, "wait", side_effect=pending_wait):
         with pytest.raises(TimeoutError, match="Durable event dispatch timed out"):
             await bus.publish(event, durable=True)

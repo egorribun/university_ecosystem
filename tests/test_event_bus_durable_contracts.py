@@ -66,10 +66,12 @@ async def test_all_handlers_succeeding_is_not_a_deferral() -> None:
     assert seen == [event.event_id]
 
 
-def _stall_dispatch_timer(started: asyncio.Event):
+def _stall_dispatch_timer(started: asyncio.Event, release: asyncio.Event | None = None):
     async def pending_wait(tasks, *, timeout):
         del timeout
         await started.wait()
+        if release is not None:
+            release.set()
         return set(), tasks
 
     return pending_wait
@@ -108,15 +110,16 @@ async def test_other_durable_timeouts_fail_with_a_fixed_message() -> None:
     event = UserCreated(email="a@example.test")
     bus = EventBus()
     started = asyncio.Event()
+    release = asyncio.Event()
 
-    async def hang(_event: object) -> None:
+    async def late_handler(_event: object) -> None:
         started.set()
-        await asyncio.Future()
+        await release.wait()
 
-    bus.subscribe(event.event_type, hang)
+    bus.subscribe(event.event_type, late_handler)
     with (
         patch.object(
-            events.asyncio, "wait", side_effect=_stall_dispatch_timer(started)
+            events.asyncio, "wait", side_effect=_stall_dispatch_timer(started, release)
         ),
         pytest.raises(TimeoutError) as error,
     ):

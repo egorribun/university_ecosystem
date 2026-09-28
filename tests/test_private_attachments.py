@@ -11,6 +11,7 @@ from app.core import static as static_module
 from app.core.static import PublicStaticFiles, is_private_static_path
 from app.schemas.chat import AttachmentResponse, MessageResponse
 from app.schemas.schemas import EventFileOut
+from app.services import private_attachments as private_attachments_module
 from app.services.private_attachments import (
     _path_segments,
     is_private_attachment_path,
@@ -180,13 +181,27 @@ def test_path_segments_treat_every_empty_storage_value_as_no_path(
     assert private_attachment_url("chat", uuid4(), storage_url) is storage_url  # type: ignore[arg-type]
 
 
-def test_path_segments_normalize_backslash_separators_before_splitting() -> None:
+def test_path_segments_normalize_backslash_separators_before_splitting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Windows-style separators must split into segments like forward slashes.
 
     ``is_private_attachment_path`` and the download URL builder both decide on
     whole segments, so a path that keeps its backslashes would read as a single
     opaque segment and escape the private-prefix classification entirely.
     """
+
+    real_unquote = private_attachments_module.unquote
+    decode_calls = 0
+
+    def bounded_unquote(value: str) -> str:
+        nonlocal decode_calls
+        decode_calls += 1
+        if decode_calls > 8:
+            raise AssertionError("Private attachment URL decoding did not converge")
+        return real_unquote(value)
+
+    monkeypatch.setattr(private_attachments_module, "unquote", bounded_unquote)
 
     assert _path_segments("chat_uploads\\chat_7\\report.pdf") == [
         "chat_uploads",

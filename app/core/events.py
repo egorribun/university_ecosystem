@@ -11,6 +11,7 @@ import dataclasses
 from abc import ABC
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -322,7 +323,8 @@ class ScheduleDeleted(DomainEvent):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ScheduleDeleted:
-        data.pop("_schema_version", 1)
+        with suppress(KeyError):
+            del data["_schema_version"]
         known = {
             f.name
             for f in dataclasses.fields(cls)
@@ -344,7 +346,8 @@ class NotificationDeadLetterRetried(DomainEvent):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> NotificationDeadLetterRetried:
-        data.pop("_schema_version", 1)
+        with suppress(KeyError):
+            del data["_schema_version"]
         return cls(batch_count=int(data.get("batch_count", 0)))
 
 
