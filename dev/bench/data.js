@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790593950286,
+  "lastUpdate": 1790593952756,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -12643,6 +12643,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 93149,
             "range": "± 2588",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "38700a80fca1a71fbedb0eaa133cbcb7e55587bf",
+          "message": "ci(deps): bump the github-actions group across 1 directory with 15 updates (#1295)\n\nBumps the github-actions group with 15 updates in the / directory:\n\n| Package | From | To |\n| --- | --- | --- |\n| [astral-sh/setup-uv](https://github.com/astral-sh/setup-uv) | `10.0.1` | `10.2.0` |\n| [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain) | `6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772` | `02cb101ec7c40f2c49e1d9714d64511d8e1b74de` |\n| [benchmark-action/github-action-benchmark](https://github.com/benchmark-action/github-action-benchmark) | `1.22.1` | `1.22.2` |\n| [bridgecrewio/checkov-action](https://github.com/bridgecrewio/checkov-action) | `12.3122.0` | `12.3125.0` |\n| [github/codeql-action/upload-sarif](https://github.com/github/codeql-action) | `4.37.9` | `4.38.1` |\n| [chromaui/action](https://github.com/chromaui/action) | `18.7.2` | `18.9.4` |\n| [codecov/codecov-action](https://github.com/codecov/codecov-action) | `7.0.0` | `7.1.1` |\n| [github/codeql-action/init](https://github.com/github/codeql-action) | `4.37.9` | `4.38.1` |\n| [github/codeql-action/analyze](https://github.com/github/codeql-action) | `4.37.9` | `4.38.1` |\n| [aws-actions/configure-aws-credentials](https://github.com/aws-actions/configure-aws-credentials) | `6.2.4` | `6.3.0` |\n| [docker/setup-buildx-action](https://github.com/docker/setup-buildx-action) | `4.3.0` | `4.4.1` |\n| [docker/build-push-action](https://github.com/docker/build-push-action) | `7.3.0` | `7.4.0` |\n| [SonarSource/sonarqube-scan-action](https://github.com/sonarsource/sonarqube-scan-action) | `8.2.1` | `8.2.2` |\n| [trufflesecurity/trufflehog](https://github.com/trufflesecurity/trufflehog) | `3.97.4` | `3.97.5` |\n| [zizmorcore/zizmor-action](https://github.com/zizmorcore/zizmor-action) | `0.6.3` | `0.6.4` |\n\n\n\nUpdates `astral-sh/setup-uv` from 10.0.1 to 10.2.0\n- [Release notes](https://github.com/astral-sh/setup-uv/releases)\n- [Commits](https://github.com/astral-sh/setup-uv/compare/20cfd1bf945f4377ade1205e4dbc17946fc9a30d...c18668ad3cf93ea998bef934396af7bb5c839dc7)\n\nUpdates `dtolnay/rust-toolchain` from 6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 to 02cb101ec7c40f2c49e1d9714d64511d8e1b74de\n- [Release notes](https://github.com/dtolnay/rust-toolchain/releases)\n- [Commits](https://github.com/dtolnay/rust-toolchain/compare/6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772...02cb101ec7c40f2c49e1d9714d64511d8e1b74de)\n\nUpdates `benchmark-action/github-action-benchmark` from 1.22.1 to 1.22.2\n- [Release notes](https://github.com/benchmark-action/github-action-benchmark/releases)\n- [Changelog](https://github.com/benchmark-action/github-action-benchmark/blob/master/CHANGELOG.md)\n- [Commits](https://github.com/benchmark-action/github-action-benchmark/compare/52576c92bccf6ac60c8223ec7eb2565637cae9ba...4322e5726e6334590d251fc4f92bec0efafc45dc)\n\nUpdates `bridgecrewio/checkov-action` from 12.3122.0 to 12.3125.0\n- [Release notes](https://github.com/bridgecrewio/checkov-action/releases)\n- [Commits](https://github.com/bridgecrewio/checkov-action/compare/f967808197a8d784d3e72919f38c3ff0cda7884e...444c9db6fa75e2d9c19ebf1fde7322089be9009e)\n\nUpdates `github/codeql-action/upload-sarif` from 4.37.9 to 4.38.1\n- [Release notes](https://github.com/github/codeql-action/releases)\n- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/github/codeql-action/compare/cdf488f595d80d6e07e03d4674febd5ab45fa938...1c5b675653bb5c22dbe9b12b556ec555138e09fd)\n\nUpdates `chromaui/action` from 18.7.2 to 18.9.4\n- [Release notes](https://github.com/chromaui/action/releases)\n- [Changelog](https://github.com/chromaui/action/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/chromaui/action/compare/2a0b63f30233c48591844a46d451b9cf68128186...bb3b582719a93c1828c5e520e62992b2937d7889)\n\nUpdates `codecov/codecov-action` from 7.0.0 to 7.1.1\n- [Release notes](https://github.com/codecov/codecov-action/releases)\n- [Changelog](https://github.com/codecov/codecov-action/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/codecov/codecov-action/compare/fb8b3582c8e4def4969c97caa2f19720cb33a72f...303a32d7a59b442fa8d48b6a1cc6825c09c847a5)\n\nUpdates `github/codeql-action/init` from 4.37.9 to 4.38.1\n- [Release notes](https://github.com/github/codeql-action/releases)\n- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/github/codeql-action/compare/cdf488f595d80d6e07e03d4674febd5ab45fa938...1c5b675653bb5c22dbe9b12b556ec555138e09fd)\n\nUpdates `github/codeql-action/analyze` from 4.37.9 to 4.38.1\n- [Release notes](https://github.com/github/codeql-action/releases)\n- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/github/codeql-action/compare/cdf488f595d80d6e07e03d4674febd5ab45fa938...1c5b675653bb5c22dbe9b12b556ec555138e09fd)\n\nUpdates `aws-actions/configure-aws-credentials` from 6.2.4 to 6.3.0\n- [Release notes](https://github.com/aws-actions/configure-aws-credentials/releases)\n- [Changelog](https://github.com/aws-actions/configure-aws-credentials/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/aws-actions/configure-aws-credentials/compare/cbe3b392738ccf3f987d68400dafcf4b0624a56c...e1253824e5c10ff9df46874f81ed3ec929e19cfd)\n\nUpdates `docker/setup-buildx-action` from 4.3.0 to 4.4.1\n- [Release notes](https://github.com/docker/setup-buildx-action/releases)\n- [Commits](https://github.com/docker/setup-buildx-action/compare/37fe631027851001ddb9b187196cc803df7f5f0e...f87e5991a6d7451dcb8d9637bfbc97413f497069)\n\nUpdates `docker/build-push-action` from 7.3.0 to 7.4.0\n- [Release notes](https://github.com/docker/build-push-action/releases)\n- [Commits](https://github.com/docker/build-push-action/compare/53b7df96c91f9c12dcc8a07bcb9ccacbed38856a...c3c9e263c25d99ce0380d002d59b67737d91b0dc)\n\nUpdates `SonarSource/sonarqube-scan-action` from 8.2.1 to 8.2.2\n- [Release notes](https://github.com/sonarsource/sonarqube-scan-action/releases)\n- [Commits](https://github.com/sonarsource/sonarqube-scan-action/compare/22918119ff8e1ca75a623e15c8296b6ea4fbe28f...ba9859eae8dd6bd29e412f25ddbbef3d032000f4)\n\nUpdates `trufflesecurity/trufflehog` from 3.97.4 to 3.97.5\n- [Release notes](https://github.com/trufflesecurity/trufflehog/releases)\n- [Commits](https://github.com/trufflesecurity/trufflehog/compare/363923b901c911a9164f50b6c423f47c15372b1c...f714bf454f350590f4a24c3ddb1aef02c35bf5b6)\n\nUpdates `zizmorcore/zizmor-action` from 0.6.3 to 0.6.4\n- [Release notes](https://github.com/zizmorcore/zizmor-action/releases)\n- [Commits](https://github.com/zizmorcore/zizmor-action/compare/70fb788f84895a7701f5643d103d587e460b5c99...cc914d7f3750a2d13d75c7f184a1060aa0e9d482)\n\n---\nupdated-dependencies:\n- dependency-name: astral-sh/setup-uv\n  dependency-version: 10.2.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: dtolnay/rust-toolchain\n  dependency-version: 02cb101ec7c40f2c49e1d9714d64511d8e1b74de\n  dependency-type: direct:production\n  dependency-group: github-actions\n- dependency-name: benchmark-action/github-action-benchmark\n  dependency-version: 1.22.2\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: github-actions\n- dependency-name: bridgecrewio/checkov-action\n  dependency-version: 12.3125.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: github/codeql-action/upload-sarif\n  dependency-version: 4.38.1\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: chromaui/action\n  dependency-version: 18.9.4\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: codecov/codecov-action\n  dependency-version: 7.1.1\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: github/codeql-action/init\n  dependency-version: 4.38.1\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: github/codeql-action/analyze\n  dependency-version: 4.38.1\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: aws-actions/configure-aws-credentials\n  dependency-version: 6.3.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: docker/setup-buildx-action\n  dependency-version: 4.4.1\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: docker/build-push-action\n  dependency-version: 7.4.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: SonarSource/sonarqube-scan-action\n  dependency-version: 8.2.2\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: github-actions\n- dependency-name: trufflesecurity/trufflehog\n  dependency-version: 3.97.5\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: github-actions\n- dependency-name: zizmorcore/zizmor-action\n  dependency-version: 0.6.4\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: github-actions\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-09-28T12:59:48+03:00",
+          "tree_id": "89f5651e09559c80834783d8d223c5e10e8674aa",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/38700a80fca1a71fbedb0eaa133cbcb7e55587bf"
+        },
+        "date": 1790593952072,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 5710,
+            "range": "± 226",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6592,
+            "range": "± 148",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9441,
+            "range": "± 59",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10069,
+            "range": "± 48",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 90433,
+            "range": "± 266",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5420,
+            "range": "± 143",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6301,
+            "range": "± 23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 8684,
+            "range": "± 23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 8929,
+            "range": "± 18",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 85544,
+            "range": "± 305",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5034,
+            "range": "± 69",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 5939,
+            "range": "± 27",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8152,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 8506,
+            "range": "± 30",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 84328,
+            "range": "± 284",
             "unit": "ns/iter"
           }
         ]
