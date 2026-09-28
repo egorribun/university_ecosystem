@@ -77,6 +77,14 @@ foreach ($extra in $ExtraCompose) {
     }
     $ComposeArgs += @("-f", $extra)
 }
+# The launcher knows which overlays it applied: storage is SeaweedFS after the
+# attested cutover or when an extra overlay swaps the storage image.
+$StorageIsSeaweedFS = [bool]$SeaweedFS
+foreach ($extra in $ExtraCompose) {
+    if ((Get-Content -Raw -LiteralPath (Join-Path $ProjectRoot $extra)) -match 'image:\s*ghcr\.io/chrislusf/seaweedfs') {
+        $StorageIsSeaweedFS = $true
+    }
+}
 $ComposeCommand = "docker compose $($ComposeArgs -join ' ') --env-file .env.docker"
 if ($SeaweedFS) {
     Write-Host "[*] SeaweedFS cutover overlay selected: $($ComposeArgs -join ' ')"
@@ -819,12 +827,20 @@ function Test-ServiceHttp {
 }
 
 function Wait-PrometheusTargets {
-    param([int]$Timeout = 75)
+    param([int]$Timeout = 75, [switch]$SeaweedFSStorage)
 
     $expectedJobs = @(
         "prometheus", "backend", "notifications-worker", "redis-exporter",
-        "minio", "tempo", "loki", "pyroscope", "gateway", "flagd"
+        "tempo", "loki", "pyroscope", "gateway", "flagd"
     )
+    if ($SeaweedFSStorage) {
+        # The `minio` job scrapes MinIO's /minio/v2/metrics/cluster, which
+        # SeaweedFS does not serve; storage metrics for SeaweedFS are an open
+        # follow-up, so they are reported rather than silently treated as up.
+        Write-Warn "Storage runs on SeaweedFS: the MinIO metrics job is not expected to be up."
+    } else {
+        $expectedJobs += "minio"
+    }
     $deadline = (Get-Date).AddSeconds($Timeout)
     $lastProblems = @("Prometheus target API has not responded yet")
 
@@ -1469,7 +1485,7 @@ if (-not $allReady) {
 
 if (-not $Core) {
     Write-Status "Validating Prometheus scrape targets..."
-    if (-not (Wait-PrometheusTargets)) {
+    if (-not (Wait-PrometheusTargets -SeaweedFSStorage:$StorageIsSeaweedFS)) {
         Write-Err "Prometheus has missing or unhealthy scrape targets."
         exit 1
     }

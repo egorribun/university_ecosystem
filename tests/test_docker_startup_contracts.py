@@ -2157,3 +2157,24 @@ def test_migration_image_ships_every_first_party_package_alembic_imports() -> No
     assert "scripts" not in first_party
     assert first_party <= copied, first_party - copied
     assert {"app", "alembic", "alembic.ini"} <= copied
+
+
+def test_storage_metrics_expectation_follows_the_storage_topology() -> None:
+    script = _read("start-docker.ps1")
+    wait = script[script.index("function Wait-PrometheusTargets") :]
+    wait = wait[: wait.index("\nfunction ")]
+
+    # MinIO's metrics job stays mandatory unless the launcher itself applied
+    # SeaweedFS storage (the attested cutover or an overlay swapping the image).
+    assert '$expectedJobs += "minio"' in wait
+    assert "if ($SeaweedFSStorage)" in wait
+    assert "$StorageIsSeaweedFS = [bool]$SeaweedFS" in script
+    assert "-SeaweedFSStorage:$StorageIsSeaweedFS" in script
+    detector = re.search(
+        r"-match '([^']+)'\) \{\s+\$StorageIsSeaweedFS = \$true", script
+    )
+    assert detector is not None
+    pattern = detector.group(1).replace("\\\\", "\\")
+    assert re.search(pattern, _read("docker-compose.live.yml"))
+    assert re.search(pattern, _read("docker-compose.seaweedfs-cutover.yml"))
+    assert not re.search(pattern, _read("docker-compose.observability.yml"))
