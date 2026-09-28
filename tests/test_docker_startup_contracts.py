@@ -2122,3 +2122,35 @@ def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
     assert "CGO_ENABLED=0 GOOS=linux go build" in health_probe
     assert "-X main.versionTag=${GRPC_HEALTH_PROBE_VERSION}" in health_probe
     assert "wget" not in health_probe
+
+
+def test_migration_image_ships_every_first_party_package_alembic_imports() -> None:
+    """`alembic upgrade head` runs from the backend runtime image.
+
+    alembic/env.py once imported a helper from scripts/, which that image
+    does not contain, so the migrations container crash-looped and the
+    backend never started.
+    """
+    import ast
+
+    env_tree = ast.parse(_read("alembic/env.py"))
+    imported_roots = {
+        (node.module or "").split(".")[0]
+        for node in ast.walk(env_tree)
+        if isinstance(node, ast.ImportFrom) and node.level == 0
+    } | {
+        alias.name.split(".")[0]
+        for node in ast.walk(env_tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    first_party = {root for root in imported_roots if (ROOT / root).is_dir()}
+    first_party.discard("alembic")  # the library, not the migrations directory
+
+    dockerfile = _read("backend.Dockerfile")
+    runtime = dockerfile[dockerfile.index("AS runtime") :]
+    copied = set(re.findall(r"^COPY --chown=app:app (\S+) \./", runtime, re.MULTILINE))
+
+    assert "scripts" not in first_party
+    assert first_party <= copied, first_party - copied
+    assert {"app", "alembic", "alembic.ini"} <= copied

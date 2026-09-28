@@ -8,7 +8,7 @@ from typing import Any
 
 from alembic.operations import ops
 
-from scripts.quality import alembic_schema_drift
+from app.core.db import schema_drift as alembic_schema_drift
 
 
 @dataclass
@@ -224,4 +224,57 @@ def test_partition_discovery_is_noop_for_non_postgresql_connections() -> None:
     )
     assert (
         callback(SimpleNamespace(name="events"), "events", "table", True, None) is True
+    )
+
+
+def test_table_that_loses_every_operation_is_dropped_from_the_diff() -> None:
+    flow = ops.AlterColumnOp(
+        "mfa_challenges",
+        "flow",
+        existing_nullable=True,
+        modify_nullable=False,
+    )
+    emptied = ops.ModifyTableOps("mfa_challenges", [flow])
+    unrelated = ops.AlterColumnOp(
+        "users",
+        "email",
+        existing_nullable=True,
+        modify_nullable=False,
+    )
+    kept = ops.ModifyTableOps("users", [unrelated])
+    upgrade_ops = ops.UpgradeOps([emptied, kept])
+    directive = type("Directive", (), {"upgrade_ops_list": [upgrade_ops]})()
+
+    alembic_schema_drift.filter_check_backed_nullable_diffs(
+        _MigrationContext(_Connection(_valid_checks())),
+        None,
+        [directive],
+    )
+
+    assert upgrade_ops.ops == [kept]
+    assert kept.ops == [unrelated]
+
+
+def test_container_without_an_operation_list_is_left_untouched() -> None:
+    container = SimpleNamespace(ops=("not", "mutable"))
+
+    alembic_schema_drift._filter_container(container, frozenset({("t", "c")}))
+
+    assert container.ops == ("not", "mutable")
+
+
+def test_foreign_key_is_kept_when_no_element_targets_a_partition() -> None:
+    connection = _PartitionConnection(("notifications_2026_08",))
+    callback = alembic_schema_drift.build_partition_aware_include_object(connection)
+    foreign_key = SimpleNamespace(
+        elements=(
+            SimpleNamespace(target_fullname="public.users.id"),
+            SimpleNamespace(target_fullname="groups.id"),
+        ),
+        table=SimpleNamespace(name="notification_deliveries"),
+    )
+
+    assert (
+        callback(foreign_key, "deliveries_fk", "foreign_key_constraint", True, None)
+        is True
     )
