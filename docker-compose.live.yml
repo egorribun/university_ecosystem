@@ -47,8 +47,33 @@ services:
     ports: !reset []
   postgres:
     ports: !reset []
+  # Storage runs on SeaweedFS: MinIO no longer publishes its images, so the
+  # base MinIO/mc services cannot start on a fresh machine. The stand starts
+  # empty, so there is no data to migrate and no cutover attestation to make;
+  # the volume is project-scoped and never the developer's cutover volume.
   minio:
+    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    command: !override ["mini", "-dir=/data", "-s3.port=9000"]
+    environment: !override
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      S3_BUCKET: uploads
+    volumes: !override
+      - live-seaweedfs-data:/data
+    expose: !override
+      - "9000"
     ports: !reset []
+    healthcheck: !override
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  minio-init:
+    # SeaweedFS mini creates S3_BUCKET itself; only wait for its S3 API.
+    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    entrypoint: !override ["/bin/sh", "-ec"]
+    command: !override ["wget -qO- http://minio:9000/status >/dev/null"]
+    environment: !override {}
   gateway:
     ports: !reset []
   ws-hub:
@@ -65,3 +90,6 @@ services:
     ports: !reset []
   pyroscope:
     ports: !reset []
+
+volumes:
+  live-seaweedfs-data: {}

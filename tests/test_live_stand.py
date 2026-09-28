@@ -167,7 +167,9 @@ def test_main_reports_stand_errors_with_exit_code_two(
 
 def test_live_overlay_publishes_only_caddy_and_mailpit() -> None:
     source = (ROOT / "docker-compose.live.yml").read_text(encoding="utf-8")
-    overlay: dict[str, Any] = yaml.safe_load(source.replace("!reset []", "[]"))
+    overlay: dict[str, Any] = yaml.safe_load(
+        source.replace("!reset []", "[]").replace("!override", "")
+    )
     services = overlay["services"]
 
     published = {name for name, service in services.items() if service.get("ports")}
@@ -180,3 +182,51 @@ def test_live_overlay_publishes_only_caddy_and_mailpit() -> None:
         assert environment["SMTP_HOST"] == "mailpit"
         assert environment["VAPID_PRIVATE_KEY"].startswith("${LIVE_VAPID_PRIVATE_KEY:?")
     assert "caddy" not in services
+
+
+def test_live_overlay_replaces_minio_with_a_project_scoped_seaweedfs() -> None:
+    source = (ROOT / "docker-compose.live.yml").read_text(encoding="utf-8")
+    overlay: dict[str, Any] = yaml.safe_load(
+        source.replace("!reset []", "[]").replace("!override", "")
+    )
+    storage = overlay["services"]["minio"]
+    init = overlay["services"]["minio-init"]
+
+    assert storage["image"].startswith("ghcr.io/chrislusf/seaweedfs:")
+    assert init["image"] == storage["image"]
+    assert storage["volumes"] == ["live-seaweedfs-data:/data"]
+    assert overlay["volumes"] == {"live-seaweedfs-data": {}}
+    assert "S3_CUTOVER_ACK" not in storage["environment"]
+    assert "quay.io/minio" not in source
+
+
+def test_up_stops_the_stands_own_containers_before_checking_ports(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktree = tmp_path / "ue-live"
+    worktree.mkdir()
+    (worktree / "docker-compose.live.yml").write_text("services: {}\n")
+    events: list[str] = []
+
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setattr(
+        live_stand,
+        "_run",
+        lambda command, **_: events.append(" ".join(command[-3:])),
+    )
+    monkeypatch.setattr(
+        live_stand, "require_free_ports", lambda: events.append("ports")
+    )
+    monkeypatch.setattr(
+        live_stand, "ensure_worktree", lambda ref: events.append(ref) or "sha"
+    )
+    monkeypatch.setattr(live_stand.shutil, "which", lambda name: "pwsh")
+
+    live_stand.up("HEAD")
+
+    assert events == [
+        "docker-compose.live.yml down --remove-orphans",
+        "ports",
+        "HEAD",
+        "-Build -ExtraCompose docker-compose.live.yml",
+    ]
