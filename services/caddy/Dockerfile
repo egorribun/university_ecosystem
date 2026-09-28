@@ -41,13 +41,13 @@ COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 # packages so repeated builds cannot silently resolve different inputs, then
 # create the account used by Docker Compose and Kubernetes deployments.
 RUN apk add --no-cache \
-      libapk=3.0.7-r0 \
-      apk-tools=3.0.7-r0 \
+      libapk=3.0.8-r0 \
+      apk-tools=3.0.8-r0 \
       libcrypto3=3.5.8-r0 \
       libssl3=3.5.8-r0 \
       c-ares=1.34.8-r0 \
-      libcurl=8.20.0-r0 \
-      curl=8.20.0-r0 \
+      libcurl=8.22.0-r0 \
+      curl=8.22.0-r0 \
     && addgroup -S caddy \
     && adduser -S -D -H -G caddy caddy \
     && chown -R caddy:caddy /data /config /etc/caddy

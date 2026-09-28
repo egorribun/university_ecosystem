@@ -1827,13 +1827,13 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
         "--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.2" in dockerfile
     )
     for package in (
-        "libapk=3.0.7-r0",
-        "apk-tools=3.0.7-r0",
+        "libapk=3.0.8-r0",
+        "apk-tools=3.0.8-r0",
         "libcrypto3=3.5.8-r0",
         "libssl3=3.5.8-r0",
         "c-ares=1.34.8-r0",
-        "libcurl=8.20.0-r0",
-        "curl=8.20.0-r0",
+        "libcurl=8.22.0-r0",
+        "curl=8.22.0-r0",
     ):
         assert package in dockerfile
     assert "apk upgrade" not in dockerfile
