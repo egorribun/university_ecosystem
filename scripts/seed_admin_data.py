@@ -12,7 +12,7 @@ Creates:
 - 6 additional users (mix of students + teachers across 3 groups) for AdminUsers
 - 12 audit log entries for AdminAudit (signed via SecureAuditService)
 - 4 dead-letter notification jobs for AdminNotifications
-- Feature flags: 4 hardcoded entries already shown by `feature_flags.list_flags()` — no seeding needed
+- Feature flags: none — the flagd registry is empty until a flag has a call site
 - Stories: created by seed_demo_data.py — no seeding needed here
 """
 
