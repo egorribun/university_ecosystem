@@ -244,14 +244,6 @@ def test_check_anti_patterns(tmp_path: Path) -> None:
     assert len(errors) == 0
 
 
-def test_watchdog_process_contracts_document_their_wait_bounds() -> None:
-    errors: list[str] = []
-    check_anti_patterns(
-        Path(__file__).with_name("test_heartbeat_watchdog.py"), errors, [], []
-    )
-    assert errors == []
-
-
 def test_python_duplicate_scopes(tmp_path: Path) -> None:
     test_file = tmp_path / "test_duplicates.py"
     test_file.write_text(

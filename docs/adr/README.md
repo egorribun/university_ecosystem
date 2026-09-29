@@ -42,3 +42,4 @@ This directory contains architectural decision records (ADRs) for the University
 40. [ADR-040: Frontend Mutation Presentation Ignorer](ADR-040-frontend-mutation-presentation-ignorer.md)
 41. [ADR-041: Canonical Push Topic Preferences](ADR-041-canonical-push-topic-preferences.md)
 42. [ADR-042: SeaweedFS as the Default Object Storage](ADR-042-seaweedfs-default-object-storage.md)
+45. [ADR-045: Mutation Hang Diagnostics Without a Kill Watchdog](ADR-045-mutation-hang-diagnostics-without-a-kill-watchdog.md)
