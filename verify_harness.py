@@ -8,7 +8,7 @@ Verifies all subsystems of the Antigravity Developer Harness:
 4. TestStopQualityGate: Stop hook blocking when defects exist and allowing when repository is clean.
 5. TestHierarchicalRules: Progressive AGENTS.md rule hierarchy and domain-specific invariants.
 6. TestSubagentDefinitions: Subagent JSON schemas, workspace isolation modes, permissions, and registry.
-7. TestMcpConfiguration: MCP documentation recipes, master mcp_config.json servers, and global permission grants.
+7. TestMcpConfiguration: master mcp_config.json servers and global permission grants.
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ REPO_ROOT = Path(__file__).resolve().parent
 AGENTS_DIR = REPO_ROOT / ".agents"
 HOOKS_DIR = AGENTS_DIR / "hooks"
 SUBAGENTS_DIR = AGENTS_DIR / "subagents"
-DOCS_MCP_DIR = REPO_ROOT / "docs" / "mcp"
 
 # User home config directory
 USER_HOME = Path.home()
@@ -778,45 +777,7 @@ class TestSubagentDefinitions(unittest.TestCase):
 
 
 class TestMcpConfiguration(unittest.TestCase):
-    """Test suite for MCP documentation recipes, master server configs, and global permissions."""
-
-    def test_mcp_recipe_documentation_files_exist(self) -> None:
-        """Verify all 4 MCP documentation recipes exist and have comprehensive content."""
-        required_recipes = [
-            DOCS_MCP_DIR / "MCP_RECIPES.md",
-            DOCS_MCP_DIR / "BROWSER_E2E_MCP.md",
-            DOCS_MCP_DIR / "DB_CACHE_MCP.md",
-            DOCS_MCP_DIR / "MEMORY_CONTEXT7_MCP.md",
-        ]
-        for recipe in required_recipes:
-            self.assertTrue(recipe.exists(), f"Missing recipe document: {recipe}")
-            self.assertGreater(
-                recipe.stat().st_size, 2000, f"Recipe {recipe} content is too brief"
-            )
-
-    def test_mcp_recipe_tool_and_architecture_references(self) -> None:
-        """Verify documentation files specify actual MCP tools and architecture requirements."""
-        browser_doc = (DOCS_MCP_DIR / "BROWSER_E2E_MCP.md").read_text(encoding="utf-8")
-        self.assertIn("playwright_navigate", browser_doc)
-        self.assertIn("lighthouse_audit", browser_doc)
-        self.assertIn("performance_analyze_insight", browser_doc)
-
-        db_doc = (DOCS_MCP_DIR / "DB_CACHE_MCP.md").read_text(encoding="utf-8")
-        self.assertIn("15433", db_doc)
-        self.assertIn("63791", db_doc)
-        self.assertIn("alembic_version", db_doc)
-        self.assertIn("EXPLAIN", db_doc)
-
-        memory_doc = (DOCS_MCP_DIR / "MEMORY_CONTEXT7_MCP.md").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("create_entities", memory_doc)
-        self.assertIn("create_relations", memory_doc)
-        self.assertIn("resolve-library-id", memory_doc)
-        self.assertIn("query-docs", memory_doc)
-
-        catalog_doc = (DOCS_MCP_DIR / "MCP_RECIPES.md").read_text(encoding="utf-8")
-        self.assertIn("Master MCP Server Catalog", catalog_doc)
+    """Test suite for master MCP server configs and global permissions."""
 
     def test_global_mcp_config_json(self) -> None:
         """Verify global mcp_config.json contains all configured MCP servers."""

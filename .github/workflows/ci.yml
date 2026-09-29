@@ -485,7 +485,6 @@ jobs:
           globs: |
             **/*.md
             !.agents/skills/**
-            !.opencode/**
             !.venv/**
       - name: Run cspell
         id: cspell

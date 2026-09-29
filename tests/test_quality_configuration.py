@@ -58,36 +58,23 @@ def _tracked_files(*pathspecs: str) -> list[str]:
     ).stdout.splitlines()
 
 
-def test_repository_skill_catalogs_are_exact_mirrors_without_stale_archive() -> None:
+def test_repository_has_one_skill_catalog_without_copies_or_archive() -> None:
     primary_root = ROOT / ".agents" / "skills"
-    opencode_root = ROOT / ".opencode" / "skills"
-    archive_root = ROOT / ".agents" / "skills_archive"
 
     # QUALITY-123 @egorribun — mutmut's isolated source copy intentionally
     # contains only the configured mutation sources and ``also_copy`` roots;
     # repository-owned skill catalogs are validated by the normal full-suite
     # inventory job, not by the isolated mutation baseline.
-    if not primary_root.is_dir() or not opencode_root.is_dir():
+    if not primary_root.is_dir():
         pytest.skip(  # QUALITY-123 @egorribun — isolated mutmut copy
             "repository skill catalogs are unavailable in isolated mutation copy"
         )
 
-    def catalog(root: Path) -> dict[PurePosixPath, bytes]:
-        prefix = f"{root.relative_to(ROOT).as_posix()}/"
-        return {
-            PurePosixPath(relative_name.removeprefix(prefix)): (
-                ROOT / relative_name
-            ).read_bytes()
-            for relative_name in _tracked_files(root.relative_to(ROOT).as_posix())
-        }
-
-    primary = catalog(primary_root)
-    opencode = catalog(opencode_root)
-
-    assert primary, "the canonical repository skill catalog must not be empty"
-    assert primary.keys() == opencode.keys()
-    assert primary == opencode
-    assert not any(path.is_file() for path in archive_root.rglob("*"))
+    assert _tracked_files(".agents/skills"), "the skill catalog must not be empty"
+    # One catalog only: a byte-identical .opencode mirror and a stale archive
+    # were removed on 2026-09-29 and must not return.
+    assert _tracked_files(".opencode") == []
+    assert _tracked_files(".agents/skills_archive") == []
 
 
 def test_agent_instruction_surface_has_one_canonical_source() -> None:
@@ -129,7 +116,6 @@ def test_canonical_markdown_internal_links_resolve() -> None:
     repository = ROOT.resolve()
     excluded_prefixes = (
         ".agents/",
-        ".opencode/",
         "docs/audits/archive/",
     )
     missing: list[str] = []
@@ -448,7 +434,6 @@ def test_test_image_context_preserves_required_and_safe_inputs() -> None:
         "**/.secrets/",
         ".codex-uv-cache/",
         ".agents/",
-        ".opencode/",
         ".superpowers/",
         ".quality-pytest-tmp*/",
         "/.tmp*/",

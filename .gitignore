@@ -455,7 +455,6 @@ artifacts/
 !.agents/subagents/
 !.agents/skills/
 !verify_harness.py
-!docs/mcp/
 
 # Ephemeral agent caches and transient runtime state
 .agents/**/__pycache__/

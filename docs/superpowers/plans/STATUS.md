@@ -35,7 +35,7 @@ timeout-инфляции, exclusions, waivers и ручной перемарки
 - [ ] Ф5 Живой лейн: стенд, Mailpit, VAPID, `auth-roles` и `password-reset` спеки есть; CI workflow — нет
 - [ ] Ф6 Продуктовая приёмка по ТЗ §§2–13 (+ admin, PWA/offline, SSR, слабые устройства, security-негативы)
 - [ ] Ф6b Дизайн-ревью редизайнов ТЗ по скриншотам live-стенда
-- [ ] Ф6c Чистота: мёртвые файлы и Python-зависимости сделаны; md-аудит (WIP `../ue-docs`), knip, Go, демо-данные, ws-hub нагрузка, review
+- [ ] Ф6c Чистота: мёртвые файлы, Python-зависимости и аудит md сделаны; осталось knip, Go, демо-данные, ws-hub нагрузка, review
 - [ ] Ф7 Spelling RU, zero-warning build, BE-02 all phases, O1–O9 (Rust уже запинен 1.97.1)
 - [ ] Ф8 SeaweedFS по умолчанию (WIP `../ue-w3`), Helm backup на rclone сделан, Grafana, restore
 - [ ] Ф9 Локальный kind prod-like: TLS, Kyverno, ESO, HPA, chaos, rollback

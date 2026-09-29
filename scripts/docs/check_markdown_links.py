@@ -20,7 +20,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
 
 # Vendored agent skill catalogs mirror upstream content, not project docs.
-VENDORED_PREFIXES = (".agents/skills/", ".opencode/")
+VENDORED_PREFIXES = (".agents/skills/",)
 ARCHIVE_PREFIX = "docs/audits/archive/"
 # Dated evidence is never rewritten: only file targets are checked there, as a
 # heading anchor may legitimately describe a report's past layout.

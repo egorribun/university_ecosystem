@@ -59,7 +59,6 @@ env/
 # Local agent state and disposable quality artifacts
 .codex-uv-cache/
 .agents/
-.opencode/
 .superpowers/
 .quality-pytest-tmp*/
 /.tmp*/
