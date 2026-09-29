@@ -12,7 +12,9 @@
 относительно него, и добавляет всё, чего в нём нет: фактические числа,
 принятые по ходу решения, состояние незавершённых работ и ловушки окружения.
 Если два документа расходятся, для целей и порядка действует план, для
-фактического состояния — этот файл и `git log`.
+фактического состояния — этот файл и `git log`. Снимок плана от 2026-09-28 лежит в
+репозитории: [MVP_APPROVED_PLAN.md](MVP_APPROVED_PLAN.md) — им пользоваться на другой
+машине или в агенте без доступа к домашней папке (там же таблицы приёмки по ТЗ).
 
 Иерархия: `cached-cuddling-ladybug.md` (цели) → этот файл (состояние и порядок
 продолжения) → [STATUS.md](STATUS.md) (короткая дельта). История прежних сессий —
@@ -34,9 +36,10 @@
    применила WIP в основное дерево, пока эта стояла на паузе; всё удалось
    принять, но так делать нельзя. Перед работой убедиться, что другая сессия
    не пишет в те же каталоги (`Get-Process`, время правки файлов).
-4. Если CI-прогон `36553547083` завершён — запушить (раздел 12, шаг 1). Если ещё
-   идёт — не пушить: push отменяет прогон (`cancel-in-progress`).
-5. Промпт для нового диалога — в конце файла (раздел 17).
+4. CI-прогон `36553547083` завершён (раздел 3): пушить можно, порядок — раздел 12, шаг 1.
+   Если позже идёт новый прогон — не пушить, push отменяет его (`cancel-in-progress`).
+5. Решения, которые ждут мейнтейнера, — раздел 16; перенос на другую машину или в
+   другого агента — раздел 17; промпт для нового диалога — раздел 19.
 
 ## 2. Правила, которые нельзя нарушать
 
@@ -68,7 +71,9 @@
 | Ветка / PR | `egorribun` / #1266 → `main` (`be8c6a197`, влит merge-ем `dfbb6561f`) |
 | `origin/egorribun` | `634412103` |
 | Не запушено | все коммиты после `634412103` (`git log --oneline origin/egorribun..HEAD`); копия — git-bundle `../university_ecosystem_backups/2026-09-29/egorribun-unpushed-latest.bundle` |
-| CI | Matrix `36553547083` на `634412103`: 311 из 312 job завершены, идёт `Frontend mutation shard 57/64` (старт 15:06 UTC, потолок 270 мин ≈ до 19:36 UTC) |
+| CI | Matrix `36553547083` на `634412103` **завершён, failure**: 207 job успешны, 13 пропущены, 96 упали — 93 группы mutmut, `Frontend Mutation Evidence (100%)`, `Incremental Mutation Tests (frontend)` и общий `CI Success`. Все немутационные проверки зелёные |
+| PR #1266 | `CONFLICTING`: `main` ушёл на 6 коммитов вперёд (Dependabot: go, npm, detect-secrets; `3836ddcb0`). Пробное слияние `origin/main` в HEAD даёт один конфликт — `frontend/package-lock.json` (решать пересборкой lock из `package.json`) |
+| Что в PR | только запушенное (`634412103`): в нём нет SeaweedFS по умолчанию, knip-гейта, удаления SPIFFE и мёртвого кода — они в локальных коммитах |
 | Дерево | чистое; untracked только `docs/audits/AUDIT_PLATFORM_FULL.md` (не трогать) |
 | Машина | Windows 11, 16 логических CPU, 15.3 ГБ RAM; при 4–5 агентах свободно ≈1.7 ГБ |
 
@@ -86,7 +91,7 @@
 | Ф6b | Дизайн-ревью | не начато | побочно закрыт дефект окраски индикатора пароля в `ResetPassword` |
 | Ф6c | Чистота и демо-готовность | **в основном сделано** | мёртвые файлы, зависимости (deptry, knip), аудит md, SPIFFE, O9; осталось: удаление санитайзера (WIP), Go `staticcheck`, демо-данные, нагрузка ws-hub, security- и code-review ветки |
 | Ф6d | Полный аудит мёртвого груза, лишнего кода и устаревшей документации | **не начато, добавлено 2026-09-29** | программа — раздел 14; отчёт `docs/audits/DEAD_WEIGHT_AUDIT_<дата>.md`, удаления отдельными коммитами |
-| Ф7 | Остальная quality closure | частично | Rust пин 1.97.1 уже в workflows; O9 закрыт (ADR-045); spelling RU, zero-warning build, BE-02 на все фазы, O1–O8, strict-типизация фикстур — нет |
+| Ф7 | Остальная quality closure | частично | Rust запинен на 1.97.1 в `ci.yml`, `chromatic.yml`, `admin-smoke-monitoring.yml`, но `benchmark.yml` ещё использует `stable`; O9 закрыт (ADR-045); spelling RU, zero-warning build, BE-02 на все фазы, O1–O8, strict-типизация фикстур — нет |
 | Ф8 | Docker Core/full + SeaweedFS | **частично** | SeaweedFS по умолчанию влит (`cc4ebec11`, ADR-042), Helm backup на rclone (`ee90ce97e`); осталось: реальный `up` на чистой машине, метрики SeaweedFS, Grafana provisioning, `restore_db.py` + runbook, `config --quiet` по всем комбинациям, замеры |
 | Ф9 | Локальный kind | не начато | |
 | Ф10 | Шесть immutable-образов | не начато | Trivy, `.trivyignore` просрочен (ревью до 2026-09-14) |
@@ -258,7 +263,7 @@ fork-фикса `_auth_executor` (`da30b91f7`).
 | `../ue-b3` | chat forward, delivery, events, static, storage | 10 файлов, +213/−21 | `ue-b3-wip.patch` |
 | `../ue-s2` | удаление нативного санитайзера и его CI-конвейера | 64 файла, −4 314 строк; не проверено, ADR-044 может отсутствовать | `ue-s2-wip.patch` |
 | `../ue-live` | стенд | устарел (`06b8d85d5`), контейнеры остановлены | — |
-| `../ue-s1` | удаление Python-SPIFFE | **влито** (`7c6b8faee`), можно удалить | — |
+| `../ue-s1` | удаление Python-SPIFFE | влито (`7c6b8faee`), worktree удалён | — |
 | `~/.codex/worktrees/dependabot-1304` | чужой worktree Dependabot | не трогать | — |
 
 Прочие страховки: `main-tree-18-11-full.patch` (дерево на момент записи параллельной
@@ -291,10 +296,14 @@ fork-фикса `_auth_executor` (`da30b91f7`).
 
 ## 12. Порядок продолжения
 
-1. **CI и push.** Дождаться terminal run `36553547083`. Классифицировать красные job
-   (root / downstream / by-design по `if:`/`needs:`). Затем `git push origin egorribun`
-   (все накопленные коммиты). Скачать артефакты и пересобрать инвентарь:
-   `gh run download 36553547083 -D artifacts/quality/inventory-634412103 -p 'frontend-mutation-shard-*'`,
+1. **Слияние `main` и push.** CI `36553547083` завершён. Слить `origin/main` в ветку
+   (`git merge origin/main`), конфликт в `frontend/package-lock.json` решить пересборкой
+   (`npm install --package-lock-only --prefix frontend`, затем проверить `npm ci` и
+   `npm run lint:knip`), убедиться, что версии Go-модулей из `main` не откатились
+   (`go mod tidy -diff` по 8 модулям), прогнать `scripts/fast_preflight.py` и запушить
+   одним push (запустится новый полный прогон ≈20 ч). Классификация красных job уже
+   известна: все — мутационные гейты (раздел 3). Для свежего инвентаря скачать
+   артефакты: `gh run download 36553547083 -D artifacts/quality/inventory-634412103 -p 'frontend-mutation-shard-*'`,
    `uv run python artifacts/quality/mutation-tools/build_inventory.py <dir>`.
 2. **Приёмка WIP агентов** (раздел 10): для `ue-s2` — доделать удаление санитайзера
    (ADR-044, uv.lock, workflows, контракты, полный набор тестов); для `ue-b1..b3` —
@@ -452,9 +461,57 @@ Backend-хвост (250) и security-код стоит закрыть в люб�
 именно там мутации ловят реальные дефекты (уже поймали fork-зависание executor).
 Решение о политике — за мейнтейнером **[да]**.
 
-## 16. Ссылки и артефакты
+## 16. Решения, ожидающие мейнтейнера
 
-- План: `C:\Users\egorribun\.claude\plans\cached-cuddling-ladybug.md`.
+Автономный агент не останавливается на этих пунктах: он продолжает всё, что решения не
+требует, а сам вопрос выносит мейнтейнеру с рекомендацией. Без явного «да» пункты **не
+выполняются**.
+
+| # | Решение | Рекомендация | Где подробности |
+| --- | --- | --- | --- |
+| 1 | Политика мутаций: 100% везде, гибрид или отложить | гибрид: 100% для backend и security/auth/data, порог ≈85% для остального frontend (сейчас ≈87%) | раздел 15 |
+| 2 | Слияние PR #1266 в `main`: через admin bypass с записанной причиной или после смены политики | сначала слить `main` в ветку и запушить все коммиты; затем выбрать по срочности | раздел 3, 15 |
+| 3 | Ф6d: удалить 112 архивных отчётов аудита, ужать каталог навыков (154), решить судьбу harness `.agents/`, сжатие миграций | удалить архив отчётов (история в git), оставить только используемые навыки | раздел 14 (J, C) |
+| 4 | Ф6d: политика по 3 940 меткам «Wave NNN» в коде | запретить новые линтером, старые убирать скриптом по каталогам позже | раздел 14 (K) |
+| 5 | Удаление локальных данных: `artifacts/` (>1 ГБ), кэш Docker ≈10 ГБ, тома `ue-live_*`, `artifacts/wip/*` | предложить список после переезда | раздел 9 |
+| 6 | Закрытие Dependabot PR как superseded, `build-release-images.yml`, любые публичные действия | только после слияния | Ф12 плана |
+| 7 | Удаление `docs/audits/AUDIT_PLATFORM_FULL.md` | Ф11, после переноса ledger (открыты BE-02 и RUST-P3-03) | раздел 2 |
+
+## 17. Перенос на другую машину или другому агенту
+
+Git увозит только отслеженное. Для переезда:
+
+1. Запушить ветку (раздел 12, шаг 1). Копия неотправленных коммитов лежит в bundle
+   (раздел 3) — на случай, если push не удался.
+2. Скопировать вручную, защищённым способом: `.env`, `.env.docker`, `.secrets/` (не
+   через git); `docs/audits/AUDIT_PLATFORM_FULL.md` (файл пользователя, не отслеживается);
+   `artifacts/wip/2026-09-29/` (патчи незавершённых работ), `artifacts/quality/mutation-tools/`
+   и `artifacts/quality/inventory-a4caec3bf/` (инструменты и инвентари мутаций — это
+   скрипты вне git; если переезд постоянный, стоит закоммитить инструменты в
+   репозиторий); папку памяти Claude
+   (`C:\Users\egorribun\.claude\projects\C--Users-egorribun-Documents-university-ecosystem\memory\`);
+   `../university_ecosystem_backups/`. Утверждённый план уже есть в репозитории
+   ([MVP_APPROVED_PLAN.md](MVP_APPROVED_PLAN.md)).
+3. Окружение: Python 3.14 и `uv sync --frozen`; Node 24 и `npm ci --prefix frontend`;
+   Rust 1.97.1, Go 1.26.x, Docker; после сборки фронтенда восстановить
+   `frontend/pkg/*.wasm` и provenance (`SKIP_WASM_BUILD=1`). Лаунчер `start-docker.ps1`
+   и `scripts/live_stand.py` вызывают PowerShell 7 (`pwsh`) — на Linux его нужно
+   поставить.
+4. Проверка после переезда: `git status`, `git log origin/egorribun..HEAD` (пусто),
+   `git worktree list`, `uv run python scripts/fast_preflight.py`, `npm run lint:knip --prefix frontend`.
+5. Агентские worktree не переносятся: создать заново от текущего HEAD и применить
+   нужные патчи (`git apply --3way`). Инструкции агентам — шаблоны в разделе 10.
+6. **Ограничение этого документа:** он не проходил проверку «холодным читателем».
+   Первый агент на новой машине должен записать в `STATUS.md`, чего ему не хватило.
+7. Ускорение от мощной машины: главное ограничение сейчас — 15 ГБ ОЗУ, из-за которого
+   мутационные агенты и Docker-стенд нельзя запускать одновременно; Linux с 32+ ГБ и 16+
+   ядрами снимает его и убирает ловушки Windows (раздел 11). Время полного CI (≈20 ч) от
+   машины не зависит.
+
+## 18. Ссылки и артефакты
+
+- План: `C:\Users\egorribun\.claude\plans\cached-cuddling-ladybug.md`; снимок в репозитории —
+  [MVP_APPROVED_PLAN.md](MVP_APPROVED_PLAN.md).
 - Память проекта: `C:\Users\egorribun\.claude\projects\C--Users-egorribun-Documents-university-ecosystem\memory\`
   (`mvp-decisions-2026-09-28`, `docs-consistency-feedback`, `standing-permissions-2026-09-24`,
   `windows-build-rewrites-wasm`).
@@ -468,7 +525,7 @@ Backend-хвост (250) и security-код стоит закрыть в люб�
 - Runbook хранилища: [s3-seaweedfs-cutover](../../runbooks/s3-seaweedfs-cutover.md).
 - Прежний handoff 2026-09-29 (история): [archive/2026-09-29-handoff.md](archive/2026-09-29-handoff.md).
 
-## 17. Промпт для начала нового диалога
+## 19. Промпт для начала нового диалога
 
 ```text
 Продолжаем доведение University Ecosystem до эталонного MVP.

@@ -2,8 +2,9 @@
 
 Короткий операционный срез. Полный контекст, состояние каждой фазы, незавершённые
 работы, ловушки окружения и порядок продолжения — в
-[MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md). Утверждённый план (цели и порядок фаз)
-хранится вне репозитория: `C:\Users\egorribun\.claude\plans\cached-cuddling-ladybug.md`.
+[MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md). Утверждённый план (цели и порядок фаз) — снимок
+[MVP_APPROVED_PLAN.md](MVP_APPROVED_PLAN.md); оригинал вне репозитория:
+`C:\Users\egorribun\.claude\plans\cached-cuddling-ladybug.md`.
 Требования к продукту — [ТЗ MVP](University_Ecosystem_MVP.md). Прежние handoff и
 continuation — в [archive/](archive/) и являются историей.
 
@@ -20,7 +21,7 @@ exclusions, waivers и ручной перемаркировки сохраня�
 | --- | --- |
 | Ветка / PR | `egorribun` / #1266 → `main` (`be8c6a197`, влит merge-ем `dfbb6561f`) |
 | `origin/egorribun` | `634412103`; **не запушены коммиты после него** (число — `git log --oneline origin/egorribun..HEAD`) |
-| CI | Matrix `36553547083` на `634412103`: осталась `Frontend mutation shard 57/64`; push только после terminal (иначе отмена прогона) |
+| CI | Matrix `36553547083` на `634412103` завершён: 207 успешны, 96 упали — все мутационные гейты; PR #1266 конфликтует с `main` (раздел 3 мастер-плана) |
 | Security-PR | #1296 смержен в `main` 2026-09-28 (admin bypass, причина в merge-коммите) |
 
 ## Фазы
