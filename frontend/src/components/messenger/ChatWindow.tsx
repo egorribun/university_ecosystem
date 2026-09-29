@@ -1141,5 +1141,3 @@ export const ChatWindow = memo(function ChatWindow({
     </div>
   )
 })
-
-export default ChatWindow

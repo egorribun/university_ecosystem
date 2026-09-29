@@ -82,5 +82,3 @@ export const NewsCardList = memo(function NewsCardList({
     </ul>
   )
 })
-
-export default NewsCardList

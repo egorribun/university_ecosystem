@@ -1,5 +1,3 @@
-export { useAvatarUpload } from "./useAvatarUpload"
-export { useCoverUpload } from "./useCoverUpload"
 export { useEmailMfa } from "./useEmailMfa"
 export { useDndSettings } from "./useDndSettings"
 export { useSessionManagement } from "./useSessionManagement"

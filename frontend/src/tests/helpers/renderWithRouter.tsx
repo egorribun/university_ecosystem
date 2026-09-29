@@ -58,12 +58,12 @@ import { LanguageProvider } from "@/contexts/LanguageContext"
  *     can read the returned `queryClient`.
  */
 
-export interface RouteDefinition {
+interface RouteDefinition {
   path: string
   Component: ComponentType
 }
 
-export interface AuthContextOverride {
+interface AuthContextOverride {
   isAuth?: boolean
   user?: { role: string } | null
   loading?: boolean

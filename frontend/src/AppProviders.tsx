@@ -2,7 +2,7 @@ import { useRef, useState, useSyncExternalStore, type ReactNode } from "react"
 import { LazyMotion, MotionConfig, domAnimation } from "framer-motion"
 
 import { markAppHydrated } from "@/app/hydration"
-import ErrorBoundary from "@/components/feedback/ErrorBoundary"
+import { ErrorBoundary } from "@/components/feedback/ErrorBoundary"
 import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
 import { AppShellProvider } from "./contexts/AppShellContext"
 import { AuthProvider } from "./contexts/AuthContext"

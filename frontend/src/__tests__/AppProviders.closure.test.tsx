@@ -39,7 +39,7 @@ vi.mock("framer-motion", () => ({
 }))
 
 vi.mock("@/components/feedback/ErrorBoundary", () => ({
-  default: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  ErrorBoundary: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }))
 vi.mock("@/components/ui/LiveRegionProvider", () => ({
   LiveRegionProvider: provider("live-region"),

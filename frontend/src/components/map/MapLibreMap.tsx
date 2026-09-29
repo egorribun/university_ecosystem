@@ -510,5 +510,3 @@ export function MapLibreMapComponent({
     </div>
   )
 }
-
-export default MapLibreMapComponent

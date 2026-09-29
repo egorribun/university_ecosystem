@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { Calendar as TodayIcon, Plus as AddIcon } from "lucide-react"
 import { Badge } from "@/components/ui/Badge"
 import { EmptyState } from "@/components/ui/EmptyState"
-import OfflineFallback from "@/components/feedback/OfflineFallback"
+import { OfflineFallback } from "@/components/feedback/OfflineFallback"
 import { cn } from "@/utils/cn"
 import { buildLessonsByDay, minutesDiff } from "@/components/schedule/scheduleUtils"
 import { LessonCard } from "@/components/schedule/LessonCard"
@@ -222,5 +222,3 @@ export const ScheduleListView = memo(function ScheduleListView({
     </div>
   )
 })
-
-export default ScheduleListView

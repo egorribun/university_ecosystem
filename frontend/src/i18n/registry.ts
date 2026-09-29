@@ -283,5 +283,3 @@ export const dynamicTranslationRegistry = {
     "settings:appearance.theme.hintOptions.light",
   ],
 } as const satisfies DynamicTranslationRegistry
-
-export type DynamicTranslationPattern = keyof typeof dynamicTranslationRegistry

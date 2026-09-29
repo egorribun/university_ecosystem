@@ -1,31 +1,14 @@
 import { describe, expect, it } from "vitest"
 
-import * as feedback from "@/components/feedback"
-import * as media from "@/components/media"
-import * as motion from "@/components/motion"
-import * as pwa from "@/components/pwa"
-import * as search from "@/components/search"
 import * as eventTypes from "@/features/events/types"
-import * as map from "@/features/map"
 import * as settings from "@/pages/settings/index"
 
-describe("public barrel export contracts", () => {
-  it.each([
-    ["feedback", feedback],
-    ["media", media],
-    ["motion", motion],
-    ["pwa", pwa],
-    ["search", search],
-    ["map", map],
-    ["settings", settings],
-  ])("loads every runtime export from %s", (_name, exports) => {
-    const values = Object.values(exports)
-
-    expect(values.length).toBeGreaterThan(0)
-    expect(values.every((value) => value !== undefined)).toBe(true)
+describe("remaining settings entry point", () => {
+  it("exports the settings appearance section", () => {
+    expect(settings.AppearanceSection).toBeDefined()
   })
 
-  it("publishes a complete immutable event-form template", () => {
+  it("provides the complete initial event-form state", () => {
     expect(eventTypes.initialEventFormState).toEqual({
       title: "",
       description: "",

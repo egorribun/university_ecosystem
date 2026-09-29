@@ -59,9 +59,7 @@ import { EmptyState } from "@/components/ui/EmptyState"
 import { GlobalHapticsListener } from "@/components/ui/GlobalHapticsListener"
 import { MediaSlot } from "@/components/ui/MediaSlot"
 import { NotificationRelevanceScore } from "@/components/ui/NotificationRelevanceScore"
-import NewsCardSkeleton, {
-  NewsCardSkeleton as NamedNewsCardSkeleton,
-} from "@/components/ui/NewsCardSkeleton"
+import { NewsCardSkeleton } from "@/components/ui/NewsCardSkeleton"
 import { ProfileCardSkeleton } from "@/components/ui/ProfileCardSkeleton"
 import { ProgressBar } from "@/components/ui/ProgressBar"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/RadioGroup"
@@ -594,7 +592,7 @@ describe("NewsCardSkeleton survivor contract", () => {
     const content = image?.nextElementSibling
     expect(content).toHaveClass("sm:p-6", "lg:p-8", "lg:justify-center")
     expect(container.querySelector(".bg-input-mix .skeleton")).toHaveClass("rounded-none")
-    expect(NamedNewsCardSkeleton.displayName).toBe("NewsCardSkeleton")
+    expect(NewsCardSkeleton.displayName).toBe("NewsCardSkeleton")
     expect(
       Array.from(container.querySelectorAll<HTMLElement>("[aria-hidden='true']")).map(
         (skeleton) => [skeleton.style.width, skeleton.style.height]

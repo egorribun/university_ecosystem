@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
-import DetailRow from "@/components/profile/DetailRow"
+import { DetailRow } from "@/components/profile/DetailRow"
 
 describe("DetailRow mutation contracts", () => {
   it.each([undefined, null, ""])("omits nullish or empty values (%s)", (value) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
-import { mixColorWithWhite, lightenColor } from "@/utils/color"
+import { mixColorWithWhite } from "@/utils/color"
 
 describe("color utilities", () => {
   describe("mixColorWithWhite", () => {
@@ -105,12 +105,6 @@ describe("color utilities", () => {
     it("returns empty string color as-is for invalid input", () => {
       const result = mixColorWithWhite("", 0.5)
       expect(result).toBe("")
-    })
-  })
-
-  describe("lightenColor", () => {
-    it("is an alias for mixColorWithWhite", () => {
-      expect(lightenColor).toBe(mixColorWithWhite)
     })
   })
 })

@@ -13,5 +13,3 @@ const editField = v.fallback(
 export const profileSearchSchema = v.object({
   edit: editField,
 })
-
-export type ProfileSearch = v.InferOutput<typeof profileSearchSchema>

@@ -114,5 +114,3 @@ function DataTableInner<TData extends RowData>({ columns, data }: DataTableProps
 export const DataTable = React.memo(DataTableInner) as <TData extends RowData>(
   props: DataTableProps<TData>
 ) => React.ReactElement
-
-export default DataTable

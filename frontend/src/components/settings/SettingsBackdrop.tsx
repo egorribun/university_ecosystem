@@ -115,5 +115,3 @@ export function SettingsBackdrop({
     </div>
   )
 }
-
-export default SettingsBackdrop

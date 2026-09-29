@@ -54,7 +54,7 @@ const mapProps = vi.hoisted(() => ({
   current: null as Record<string, unknown> | null,
 }))
 vi.mock("@/components/map/MapLibreMap", () => ({
-  default: (props: Record<string, unknown>) => {
+  MapLibreMapComponent: (props: Record<string, unknown>) => {
     mapProps.current = props
     return null
   },
@@ -65,7 +65,8 @@ vi.mock("@/components/map/MapLibreMap", () => ({
    module still executes loadMapLibre's browser-only Promise.all path in a
    Stryker sandbox where those assets are unavailable. */
 vi.mock("@/features/map/loadMapLibre", () => ({
-  loadMapLibre: () => import("@/components/map/MapLibreMap"),
+  loadMapLibre: () =>
+    import("@/components/map/MapLibreMap").then((m) => ({ default: m.MapLibreMapComponent })),
 }))
 
 /* Capture the keyboard-shortcut options so we can invoke them directly. */

@@ -312,5 +312,3 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     </a>
   )
 })
-
-export default NowPlayingCard

@@ -84,7 +84,7 @@ export const normalizeFileSelection = (files: FileList | null): File[] => Array.
 export const hasSelectedFiles = (files: readonly File[]): boolean => files.length > 0
 
 /** Reset a file picker to its browser-provided empty default value. */
-export const resetFileInput = (input: HTMLInputElement): void => {
+const resetFileInput = (input: HTMLInputElement): void => {
   input.value = input.defaultValue
 }
 
@@ -412,5 +412,3 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
     </div>
   )
 }
-
-export default MessageInput

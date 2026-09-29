@@ -44,7 +44,7 @@ import {
 } from "@/utils/telemetryContext"
 
 type ChallengeMethod = PendingMfaState["methods"][number]
-export type ChallengeWithAttempts = ChallengeMethod &
+type ChallengeWithAttempts = ChallengeMethod &
   Partial<{ attempt_limit: number | null; remaining_attempts: number | null }>
 
 /**

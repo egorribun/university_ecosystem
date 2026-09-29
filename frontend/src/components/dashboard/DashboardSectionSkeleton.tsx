@@ -71,5 +71,3 @@ export const DashboardSectionSkeleton = memo(function DashboardSectionSkeleton({
     </Card>
   )
 })
-
-export default DashboardSectionSkeleton

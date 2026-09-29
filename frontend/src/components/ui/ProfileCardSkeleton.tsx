@@ -69,5 +69,3 @@ function ProfileCardSkeletonInner({ showCover = true, className = "" }: ProfileC
 }
 
 export const ProfileCardSkeleton = memo(ProfileCardSkeletonInner)
-
-export default ProfileCardSkeleton

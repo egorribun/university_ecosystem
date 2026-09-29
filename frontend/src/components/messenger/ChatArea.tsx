@@ -548,5 +548,3 @@ export const ChatArea = memo(function ChatArea({
     </m.div>
   )
 })
-
-export default ChatArea

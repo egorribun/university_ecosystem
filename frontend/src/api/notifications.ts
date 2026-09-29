@@ -94,8 +94,6 @@ export type ReleaseAnnouncementResult = v.InferOutput<typeof releaseAnnouncement
 
 export type NotificationEntry = v.InferOutput<typeof notificationSchema>
 export type NotificationsListResult = v.InferOutput<typeof notificationsListSchema>
-export type DeadLetterJob = v.InferOutput<typeof deadLetterJobSchema>
-export type DeadLetterListResult = v.InferOutput<typeof deadLetterListSchema>
 
 export const fetchNotificationsList = async (params?: {
   cursor?: string | null

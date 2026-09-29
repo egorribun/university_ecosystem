@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/Textarea"
 import { Switch } from "@/components/ui/Switch"
 import { RadioGroup, RadioGroupItem as Radio } from "@/components/ui/RadioGroup"
 
-export { Input, Textarea, Switch, RadioGroup, Radio }
+export { Input, Textarea, RadioGroup, Radio }
 
 // Compatible Button wrapper types
 type LegacyVariant = "contained" | "outlined" | "text"

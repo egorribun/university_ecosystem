@@ -168,5 +168,3 @@ export function Dialog({
     portalNode
   )
 }
-
-export default Dialog

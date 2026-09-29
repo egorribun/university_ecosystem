@@ -13,7 +13,7 @@ import { StorageItem } from "@/utils/storage"
 // ============================================================================
 
 export type LessonParity = "odd" | "even" | "both"
-export type LessonWeekday = string
+type LessonWeekday = string
 
 export type Lesson = {
   id: string
@@ -182,7 +182,6 @@ export function minutesDiff(a?: string | null, b?: string | null): number {
 }
 
 // Moved to utils/date.ts or used directly
-export { toDate }
 
 export function getTodayIdx(): number {
   const d = new Date()

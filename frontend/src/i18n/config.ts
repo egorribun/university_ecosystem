@@ -6,7 +6,7 @@ import i18n, {
   type i18n as I18nInstance,
 } from "i18next"
 import { initReactI18next } from "react-i18next"
-import { defaultNS, fallbackLng, localeMeta, namespaces, supportedLngs } from "./metadata"
+import { defaultNS, fallbackLng, namespaces, supportedLngs } from "./metadata"
 
 // Keep the locale graph explicit. Besides making the bundled resource
 // denominator deterministic, static JSON imports are understood by both Vite
@@ -143,6 +143,6 @@ export const resolveBootstrapLanguage = (): string => {
 
 configureInstance(i18n, resolveBootstrapLanguage())
 
-export { defaultNS, fallbackLng, supportedLngs, namespaces, localeMeta }
+export { fallbackLng, supportedLngs, namespaces }
 
 export default i18n

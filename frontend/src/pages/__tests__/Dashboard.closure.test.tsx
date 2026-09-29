@@ -195,7 +195,7 @@ vi.mock("@/components/dashboard/EventsCard", () => ({
 }))
 
 vi.mock("@/components/dashboard/DashboardSkeleton", () => ({
-  default: () => <span data-testid="dashboard-skeleton" />,
+  DashboardSkeleton: () => <span data-testid="dashboard-skeleton" />,
 }))
 
 vi.mock("@/components/ui/SkeletonMorph", () => ({

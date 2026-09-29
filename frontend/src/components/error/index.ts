@@ -1,16 +1,12 @@
 /**
  * Error Boundaries
  *
- * Hierarchical error boundary components for different levels of the app.
+ * Feature- and widget-level error boundaries. The page-level boundary is
+ * imported directly from `@/components/error/PageErrorBoundary`.
  *
  * @example
  * ```tsx
- * import { PageErrorBoundary, FeatureErrorBoundary, WidgetErrorBoundary } from '@/components/error'
- *
- * // Page level - shows page error with navigation
- * <PageErrorBoundary pageName="Events">
- *   <Events />
- * </PageErrorBoundary>
+ * import { FeatureErrorBoundary, WidgetErrorBoundary } from '@/components/error'
  *
  * // Feature level - shows compact error with retry
  * <FeatureErrorBoundary featureName="Schedule">
@@ -24,9 +20,5 @@
  * ```
  */
 
-export { PageErrorBoundary, default as PageErrorBoundaryDefault } from "./PageErrorBoundary"
 export { FeatureErrorBoundary } from "./FeatureErrorBoundary"
 export { WidgetErrorBoundary } from "./WidgetErrorBoundary"
-
-// Re-export existing app-level boundary
-export { ErrorBoundary as AppErrorBoundary } from "@/components/feedback/ErrorBoundary"

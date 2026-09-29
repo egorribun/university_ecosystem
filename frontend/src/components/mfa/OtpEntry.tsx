@@ -282,5 +282,3 @@ export const OtpEntry = ({
     </div>
   )
 }
-
-export default OtpEntry

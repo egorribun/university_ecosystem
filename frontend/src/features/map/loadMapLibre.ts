@@ -7,7 +7,7 @@ async function importMapLibre() {
     import("maplibre-gl/dist/maplibre-gl-worker.mjs?url"),
   ])
   maplibre.setWorkerUrl(workerAsset.default)
-  return mapModule
+  return { default: mapModule.MapLibreMapComponent }
 }
 
 /** Shared loader used by route intent preloading and React.lazy rendering. */

@@ -44,5 +44,3 @@ export const mixColorWithWhite = (color: string, coefficient: number) => {
 
   return tryMixHexWithWhite(trimmed, clamped) ?? trimmed
 }
-
-export const lightenColor = mixColorWithWhite

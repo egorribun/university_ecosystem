@@ -46,13 +46,3 @@ export {
   useThemeMode,
   useAppShellActions,
 } from "./appShellStore"
-
-// Types
-export type {
-  NotificationTopicKey,
-  NotificationPermissionState,
-  Toast,
-  ToastSeverity,
-  ScheduleViewMode,
-  ThemeMode,
-} from "./types"

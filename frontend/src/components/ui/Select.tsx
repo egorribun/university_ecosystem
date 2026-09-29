@@ -312,4 +312,4 @@ const Select = ({
 }
 
 export { Select }
-export type { SelectOption, SelectProps }
+export type { SelectOption }

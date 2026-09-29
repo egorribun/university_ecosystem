@@ -104,5 +104,3 @@ export class WidgetErrorBoundary extends Component<
     return this.props.children
   }
 }
-
-export default WidgetErrorBoundary

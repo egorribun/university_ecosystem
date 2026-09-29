@@ -92,5 +92,3 @@ export const NewsCard = memo(function NewsCard({
     </Card>
   )
 })
-
-export default NewsCard

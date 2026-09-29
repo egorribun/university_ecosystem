@@ -114,5 +114,3 @@ export function AuthBackdrop({
     </div>
   )
 }
-
-export default AuthBackdrop

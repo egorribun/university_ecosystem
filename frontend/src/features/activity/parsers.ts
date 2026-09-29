@@ -70,20 +70,3 @@ export const parseParticipationRecent = (value: unknown): ParticipationStats["re
     })
     .filter((item): item is ParticipationStats["recent"][number] => item != null)
 }
-
-export const DEFAULT_ATTENDANCE_RECENT: AttendanceStats["recent"] = [
-  { date: "2025-09-19", status: "present", course: "Algebra" },
-  { date: "2025-09-18", status: "late", course: "History" },
-  { date: "2025-09-17", status: "present", course: "Physics" },
-]
-
-export const DEFAULT_GRADE_RECENT: GradeStats["recent"] = [
-  { course: "Algebra", score: 5, date: "2025-09-18" },
-  { course: "Physics", score: 4, date: "2025-09-16" },
-  { course: "Literature", score: 5, date: "2025-09-13" },
-]
-
-export const DEFAULT_PARTICIPATION_RECENT: ParticipationStats["recent"] = [
-  { title: "Department hackathon", date: "2025-09-14", role: "participant" },
-  { title: "Basketball tournament", date: "2025-09-07", role: "team" },
-]

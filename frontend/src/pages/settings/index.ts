@@ -3,13 +3,4 @@
 // - sections/: UI sections for each tab
 // - hooks/: Reusable logic hooks
 
-export {
-  AppearanceSection,
-  NotificationsSection,
-  SpotifySection,
-  ProfileSection,
-  SessionsSection,
-  PasswordSection,
-} from "./sections"
-export { useAvatarUpload, useCoverUpload, useEmailMfa } from "./hooks"
-export type { SnackbarState, SetSnackbar, SettingsSectionProps } from "./types"
+export { AppearanceSection } from "./sections"

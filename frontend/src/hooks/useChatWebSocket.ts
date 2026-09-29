@@ -48,7 +48,7 @@ const MAX_RECONNECT_ATTEMPTS = 10
 // convention). Typing indicator clears 3s after the last typing event from
 // a peer; if peer continues typing, the next event resets the timeout.
 const TYPING_INDICATOR_TIMEOUT_MS = 3000
-export const LIVE_MESSAGE_CACHE_LIMIT = 200
+const LIVE_MESSAGE_CACHE_LIMIT = 200
 // Retain the 4096 most-recently-seen composite chat/message IDs. This is wide
 // enough to bridge ordinary reconnect replay windows while keeping hook memory
 // strictly bounded; LRU refresh protects IDs that are actively replayed.
@@ -265,36 +265,6 @@ export function applyReactionChangedFrame(
       return { ...m, reactions }
     }),
   }
-}
-
-// WebSocket message types
-export type WebSocketMessageType =
-  | "pong"
-  | "typing"
-  | "read"
-  | "new_message"
-  | "online"
-  | "online_list"
-  | "presence"
-  | "error"
-  | "rate_limit_exceeded"
-  | "message_edited"
-  | "message_deleted"
-  | "reaction_changed"
-  | "replay_checkpoint"
-
-export interface WebSocketMessage {
-  type: WebSocketMessageType
-  chat_id?: string
-  message_id?: string
-  user_id?: string
-  user_name?: string
-  message?: Message
-  status?: boolean
-  users?: string[]
-  active?: boolean
-  last_seen?: string | null
-  read_at?: string | null // Wave 203 — chat-level read-receipt timestamp
 }
 
 export interface UseChatWebSocketOptions {

@@ -294,8 +294,8 @@ const createTestNews = (): NewsItem[] => {
   })
 }
 
-export const testStories = createTestStories()
-export const testNewsItems = createTestNews()
+const testStories = createTestStories()
+const testNewsItems = createTestNews()
 
 export const resetTestStories = () => {
   const stories = createTestStories()

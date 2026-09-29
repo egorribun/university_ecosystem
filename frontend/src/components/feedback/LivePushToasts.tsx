@@ -63,7 +63,7 @@ export function getBufferStorageKey(): string {
 }
 
 /** @internal Pure normalizer exported for contract tests. */
-export function trimString(value: unknown): string | undefined {
+function trimString(value: unknown): string | undefined {
   return typeof value === "string" ? value.trim() : undefined
 }
 

@@ -9,8 +9,6 @@ export { SettingsBackdrop } from "./SettingsBackdrop"
 export {
   // Types and helpers
   type ThemeMode,
-  fadeDelayStyle,
-  securityStatusChipClassName,
   // Section components
   SectionCard,
   SectionTitle,

@@ -35,7 +35,8 @@ vi.mock("@/components/settings", () => ({
   ),
 }))
 
-import OtpEntry, {
+import {
+  OtpEntry,
   createEmptyOtpDigits,
   distributeOtpDigits,
   focusOtpInput,

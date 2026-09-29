@@ -3,7 +3,7 @@ import { createRoot, hydrateRoot } from "react-dom/client"
 // dayjs removed
 
 import App from "./App"
-import ErrorBoundary from "@/components/feedback/ErrorBoundary"
+import { ErrorBoundary } from "@/components/feedback/ErrorBoundary"
 import { initGlobalErrorHandlers } from "./app/globalErrorHandlers"
 import { logError } from "./app/logger"
 // W149 SW2 — PersistQueryClientProvider + queryClient + idbPersister moved to

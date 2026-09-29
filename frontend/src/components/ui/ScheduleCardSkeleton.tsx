@@ -63,5 +63,3 @@ function ScheduleCardSkeletonInner({ items = 3, className = "" }: ScheduleCardSk
 }
 
 export const ScheduleCardSkeleton = memo(ScheduleCardSkeletonInner)
-
-export default ScheduleCardSkeleton

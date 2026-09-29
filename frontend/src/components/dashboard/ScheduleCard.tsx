@@ -314,5 +314,3 @@ export const ScheduleCard = memo(function ScheduleCard({
     </Card>
   )
 })
-
-export default ScheduleCard

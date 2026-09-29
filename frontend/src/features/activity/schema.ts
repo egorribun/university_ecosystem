@@ -11,5 +11,3 @@ import { PERIOD_VALUES } from "./types"
 export const activitySearchSchema = v.object({
   p: v.optional(v.picklist(PERIOD_VALUES)),
 })
-
-export type ActivitySearch = v.InferOutput<typeof activitySearchSchema>

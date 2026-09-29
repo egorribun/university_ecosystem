@@ -7,7 +7,7 @@ import Magnetic from "./Magnetic"
 const BASE_BOTTOM = 24 // px — default distance from viewport bottom
 const FOOTER_GAP = 16 // px — gap between FAB and footer top edge
 
-export const scrollToTop = (): void => {
+const scrollToTop = (): void => {
   try {
     window.scrollTo({ top: 0, behavior: "smooth" })
   } catch {

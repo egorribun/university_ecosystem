@@ -17,14 +17,14 @@ vi.mock("@/components/settings", () => ({
 }))
 
 vi.mock("../DetailRow", () => ({
-  default: ({ label, value }: { label: string; value?: React.ReactNode }) => (
+  DetailRow: ({ label, value }: { label: string; value?: React.ReactNode }) => (
     <div data-testid="detail-row">
       {label}:{value}
     </div>
   ),
 }))
 
-import ProfileDetails from "../ProfileDetails"
+import { ProfileDetails } from "../ProfileDetails"
 
 describe("ProfileDetails role and disclosure branches", () => {
   it("renders collapsed student details and placeholder text", () => {

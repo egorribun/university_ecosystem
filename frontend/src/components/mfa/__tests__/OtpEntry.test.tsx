@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
-import OtpEntry from "../OtpEntry"
+import { OtpEntry } from "../OtpEntry"
 
 // Mock translations
 vi.mock("react-i18next", () => ({

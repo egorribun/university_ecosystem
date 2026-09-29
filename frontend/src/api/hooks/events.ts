@@ -292,7 +292,7 @@ const normalizeMyEventsParams = (params: MyEventsQueryParams): NormalizedMyEvent
 
 type MyEventsQueryKeyTuple = readonly ["events", "my", NormalizedMyEventsParams]
 
-export type MyEventsQueryKey = MyEventsQueryKeyTuple
+type MyEventsQueryKey = MyEventsQueryKeyTuple
 
 const createMyEventsEtagKey = (params: NormalizedMyEventsParams) =>
   ["events", "my", params.language, params.userId ?? "anon"].join(":")

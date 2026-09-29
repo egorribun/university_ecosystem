@@ -53,5 +53,3 @@ export const NewsCardSkeleton = memo(({ featured }: NewsCardSkeletonProps) => {
 })
 
 NewsCardSkeleton.displayName = "NewsCardSkeleton"
-
-export default NewsCardSkeleton

@@ -1,7 +1,7 @@
 import { useRef } from "react"
 import type { Meta, StoryObj, Decorator } from "@storybook/react-vite"
 import type { MapRef } from "react-map-gl/maplibre"
-import MapLibreMapComponent from "./MapLibreMap"
+import { MapLibreMapComponent } from "./MapLibreMap"
 
 // Wave 199 SW1 — MapLibreMap story (CONTEXT-tier, attempt-or-defer).
 //

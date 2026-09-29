@@ -13,7 +13,7 @@ export interface Contact {
   memberCount?: number
 }
 
-export interface Attachment {
+interface Attachment {
   id: string
   url: string
   type: "image" | "video" | "file"

@@ -24,7 +24,7 @@ vi.mock("@/components/events/EventCard/EventCardSkeleton", () => ({
 }))
 
 vi.mock("@/components/feedback/OfflineFallback", () => ({
-  default: ({ onRetry }: { onRetry: () => void }) => (
+  OfflineFallback: ({ onRetry }: { onRetry: () => void }) => (
     <button type="button" onClick={onRetry}>
       offline-retry
     </button>

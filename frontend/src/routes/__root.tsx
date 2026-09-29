@@ -6,8 +6,8 @@ import {
   useRouteContext,
 } from "@tanstack/react-router"
 import type { RouterContext } from "@/router"
-import MainLayout from "@/components/layout/MainLayout"
-import DeferredGlobalOverlays from "@/components/layout/DeferredGlobalOverlays"
+import { MainLayout } from "@/components/layout/MainLayout"
+import { DeferredGlobalOverlays } from "@/components/layout/DeferredGlobalOverlays"
 import { BrandBootLoader } from "@/components/feedback/BrandBootLoader"
 import { BRAND_BOOT_LOADER_CSS } from "@/components/feedback/brandBootLoaderCss"
 import { PageErrorBoundary } from "@/components/error/PageErrorBoundary"

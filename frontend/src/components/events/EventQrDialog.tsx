@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/Button"
-import Dialog from "@/components/ui/Dialog"
+import { Dialog } from "@/components/ui/Dialog"
 import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"
 

@@ -11,7 +11,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 
-import OfflineFallback from "@/components/feedback/OfflineFallback"
+import { OfflineFallback } from "@/components/feedback/OfflineFallback"
 
 describe("OfflineFallback closure paths", () => {
   let originalLocation: Location

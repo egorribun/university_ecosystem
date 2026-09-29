@@ -150,5 +150,3 @@ export const DashboardSkeleton = memo(function DashboardSkeleton() {
     </div>
   )
 })
-
-export default DashboardSkeleton

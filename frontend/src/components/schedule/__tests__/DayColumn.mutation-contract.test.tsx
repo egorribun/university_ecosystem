@@ -59,7 +59,7 @@ vi.mock("@/components/schedule/DraggableLessonCard", () => ({
 }))
 
 vi.mock("@/components/feedback/OfflineFallback", () => ({
-  default: ({ onRetry }: { onRetry: () => void }) => (
+  OfflineFallback: ({ onRetry }: { onRetry: () => void }) => (
     <button type="button" onClick={onRetry}>
       schedule:offline.retry
     </button>

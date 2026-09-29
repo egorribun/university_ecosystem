@@ -467,5 +467,3 @@ export const ContactList = memo(function ContactList({
     </div>
   )
 })
-
-export default ContactList

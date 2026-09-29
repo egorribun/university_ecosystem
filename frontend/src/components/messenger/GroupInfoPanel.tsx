@@ -381,5 +381,3 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
     </AnimatePresence>
   )
 })
-
-export default GroupInfoPanel

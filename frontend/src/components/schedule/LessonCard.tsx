@@ -211,5 +211,3 @@ export const LessonCard = memo(function LessonCard({
     </div>
   )
 })
-
-export default LessonCard

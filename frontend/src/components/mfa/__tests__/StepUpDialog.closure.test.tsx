@@ -54,7 +54,7 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/components/mfa/OtpEntry", () => ({
-  default: ({
+  OtpEntry: ({
     loading,
     error,
     helperText,
@@ -75,7 +75,7 @@ vi.mock("@/components/mfa/OtpEntry", () => ({
   ),
 }))
 
-import StepUpDialog from "@/components/mfa/StepUpDialog"
+import { StepUpDialog } from "@/components/mfa/StepUpDialog"
 
 const makePending = (
   methodOverrides: Partial<PendingMfaState["methods"][number]> = {},

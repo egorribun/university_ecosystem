@@ -66,5 +66,3 @@ export function OfflineFallback({ onRetry }: OfflineFallbackProps) {
     </div>
   )
 }
-
-export default OfflineFallback

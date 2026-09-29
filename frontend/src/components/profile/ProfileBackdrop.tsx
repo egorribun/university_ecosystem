@@ -99,5 +99,3 @@ export function ProfileBackdrop({
     </div>
   )
 }
-
-export default ProfileBackdrop

@@ -9,9 +9,6 @@
  * delegates to MessengerFeature.
  */
 
-// Re-export hooks from existing locations
-export { useChatWebSocket } from "@/hooks/useChatWebSocket"
-
 // API
 export * from "@/api/chat"
 

@@ -3,7 +3,7 @@ import type { ImgHTMLAttributes } from "react"
 import { describe, expect, it, vi } from "vitest"
 
 vi.mock("@/components/ui/Dialog", () => ({
-  default: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
+  Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
     open ? <div role="dialog">{children}</div> : null,
 }))
 

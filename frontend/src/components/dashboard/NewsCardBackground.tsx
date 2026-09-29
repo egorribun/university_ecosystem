@@ -12,5 +12,3 @@ export const NewsCardBackground: FC = memo(function NewsCardBackground() {
     />
   )
 })
-
-export default NewsCardBackground

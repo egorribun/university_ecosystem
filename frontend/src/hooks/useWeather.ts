@@ -27,7 +27,7 @@ export interface UseWeatherOptions {
   cacheTtlMs?: number
 }
 
-export interface WeatherData extends WeatherSnapshot {
+interface WeatherData extends WeatherSnapshot {
   icon: string
   translationKey: string
   translationKeySuffix: string

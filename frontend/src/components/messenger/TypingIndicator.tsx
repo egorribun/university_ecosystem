@@ -81,5 +81,3 @@ export function TypingIndicator({ users, prefersReducedMotion = false }: TypingI
     </div>
   )
 }
-
-export default TypingIndicator

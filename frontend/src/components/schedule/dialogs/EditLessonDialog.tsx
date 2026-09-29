@@ -53,7 +53,7 @@ export function updateLessonTimeField(
   return { ...lesson, [field]: `${datePart}T${value}:00` }
 }
 
-export function updateLessonChoice(lesson: Lesson, value: string): Lesson {
+function updateLessonChoice(lesson: Lesson, value: string): Lesson {
   return { ...lesson, lesson_type: value }
 }
 

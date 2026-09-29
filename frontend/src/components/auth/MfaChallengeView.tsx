@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { Mail, RotateCcw, ShieldCheck, Zap } from "lucide-react"
 
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
-import OtpEntry from "@/components/mfa/OtpEntry"
+import { OtpEntry } from "@/components/mfa/OtpEntry"
 import { Button } from "@/components/ui/Button"
 import type { useMfaFlow } from "@/hooks/auth/useLoginFlow"
 

@@ -32,13 +32,13 @@ vi.mock("@/components/feedback/LivePushToasts", () => ({
   default: () => <div data-testid="live-push-toasts" />,
 }))
 vi.mock("@/components/feedback/OfflineIndicator", () => ({
-  default: () => <div data-testid="offline-indicator" />,
+  OfflineIndicator: () => <div data-testid="offline-indicator" />,
 }))
 vi.mock("@/components/pwa/InstallPrompt", () => ({
   default: () => <div data-testid="install-prompt" />,
 }))
 vi.mock("@/components/layout/MainLayout", () => ({
-  default: ({ children }: any) => <div data-testid="main-layout">{children}</div>,
+  MainLayout: ({ children }: any) => <div data-testid="main-layout">{children}</div>,
 }))
 vi.mock("@/components/error/PageErrorBoundary", () => ({
   PageErrorBoundary: ({ children }: any) => <div data-testid="page-error-boundary">{children}</div>,

@@ -5,7 +5,7 @@ import { createRef } from "react"
 import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 
-import { Badge, Chip, type BadgeProps } from "@/components/ui/Badge"
+import { Badge, type BadgeProps } from "@/components/ui/Badge"
 import { Checkbox } from "@/components/ui/Checkbox"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { ProgressBar } from "@/components/ui/ProgressBar"
@@ -118,9 +118,8 @@ describe("Badge", () => {
     }
   })
 
-  it("exposes a diagnostic display name shared by the Chip alias", () => {
+  it("exposes a diagnostic display name", () => {
     expect(Badge.displayName).toBe("Badge")
-    expect(Chip).toBe(Badge)
   })
 })
 

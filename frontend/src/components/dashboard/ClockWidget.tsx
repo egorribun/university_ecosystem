@@ -43,5 +43,3 @@ export const ClockWidget = memo(function ClockWidget() {
     </div>
   )
 })
-
-export default ClockWidget

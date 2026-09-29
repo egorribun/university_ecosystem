@@ -60,7 +60,7 @@ vi.mock("qrcode.react", () => ({
   QRCodeSVG: ({ value }: { value: string }) => <svg data-testid="qr-code" data-value={value} />,
 }))
 
-import ProfileHeader from "../ProfileHeader"
+import { ProfileHeader } from "../ProfileHeader"
 
 const baseProps = {
   avatarVersion: 1,

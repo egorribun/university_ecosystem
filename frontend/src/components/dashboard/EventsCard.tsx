@@ -253,5 +253,3 @@ export const EventsCard = memo(function EventsCard({
     </Card>
   )
 })
-
-export default EventsCard

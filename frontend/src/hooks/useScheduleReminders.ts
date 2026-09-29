@@ -12,7 +12,7 @@ import { logError } from "@/app/logger"
 const REMINDER_PREFS_KEY = "schedule:reminder-prefs"
 const REMINDED_TODAY_KEY = "schedule:reminded-today"
 
-export type ReminderTiming = 0 | 5 | 10 | 15 | 30
+type ReminderTiming = 0 | 5 | 10 | 15 | 30
 
 export interface ReminderPrefs {
   /** Minutes before lesson start. 0 = disabled */

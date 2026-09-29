@@ -179,5 +179,3 @@ export const ActivityTimeline = memo(function ActivityTimeline({
     </section>
   )
 })
-
-export default ActivityTimeline

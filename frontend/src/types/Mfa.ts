@@ -14,9 +14,6 @@ export type { PendingMfaResponse }
 
 export type MfaMethod = "totp" | "email_otp" | "recovery_code"
 
-export type MfaStepUpStatus = PendingMfaResponse
-
-export type MfaEnrollment = MfaTotpEnrollmentOut
 export type MfaTotpEnrollment = MfaTotpEnrollmentOut
 
 export type TotpEnrollmentStart = TotpEnrollmentStartOut

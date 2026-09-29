@@ -13,7 +13,7 @@ import {
   type NotificationsListResult,
 } from "@/api/notifications"
 
-export type NotificationItem = NotificationEntry & { link?: string }
+type NotificationItem = NotificationEntry & { link?: string }
 
 type NotificationsResponse = NotificationsListResult
 

@@ -105,5 +105,3 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
     </div>
   )
 }
-
-export default TotpQrDisplay

@@ -28,7 +28,7 @@ import { evaluateAdminGuard, getAdminRedirectTarget } from "./guards"
 // post-hydration → setMounted(true) triggers re-render with real hook
 // values. Single-frame visual flicker on mobile (~16ms at 60fps) is
 // imperceptible and acceptable per W156 SW3 trade-off.
-export function AdminLayout() {
+function AdminLayout() {
   const [mounted, setMounted] = useState(false)
   const user = useAuthStore((state) => state.user)
   const loading = useAuthStore((state) => state.loading)

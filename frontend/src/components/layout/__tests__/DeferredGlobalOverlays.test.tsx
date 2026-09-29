@@ -30,7 +30,7 @@ vi.mock("@/components/feedback/LivePushToasts", () => ({
   default: () => <div data-testid="deferred-live-push" />,
 }))
 vi.mock("@/components/feedback/OfflineIndicator", () => ({
-  default: MockOfflineIndicator,
+  OfflineIndicator: MockOfflineIndicator,
 }))
 vi.mock("@/components/pwa/InstallPrompt", () => ({
   default: () => <div data-testid="deferred-install" />,

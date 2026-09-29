@@ -102,5 +102,3 @@ export function MessengerBackdrop({
     </div>
   )
 }
-
-export default MessengerBackdrop

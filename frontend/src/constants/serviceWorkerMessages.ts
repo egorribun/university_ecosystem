@@ -6,9 +6,6 @@ export const SERVICE_WORKER_MESSAGE_TYPES = {
   PROCESS_OFFLINE_QUEUES: "PROCESS_OFFLINE_QUEUES",
 } as const
 
-export type ServiceWorkerMessageType =
-  (typeof SERVICE_WORKER_MESSAGE_TYPES)[keyof typeof SERVICE_WORKER_MESSAGE_TYPES]
-
 export type ApiCacheControlMessage =
   | {
       type: typeof SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY

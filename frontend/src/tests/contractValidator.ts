@@ -206,16 +206,6 @@ function _matchOpenApiPath(concretePath: string, spec: OpenApiDocument): string 
   return null
 }
 
-// ── Public API ───────────────────────────────────────────────────────────────
-
-export interface ContractViolation {
-  readonly path: string
-  readonly method: string
-  readonly direction: "request" | "response"
-  readonly statusCode?: number
-  readonly errors: string[]
-}
-
 /**
  * Validate a JSON request body against the OpenAPI spec.
  *

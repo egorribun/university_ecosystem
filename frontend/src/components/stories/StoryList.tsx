@@ -297,5 +297,3 @@ export const StoryList = memo(function StoryList({
     </div>
   )
 })
-
-export default StoryList

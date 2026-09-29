@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useSyncExternalStore } from "react"
-import OfflineIndicator from "@/components/feedback/OfflineIndicator"
+import { OfflineIndicator } from "@/components/feedback/OfflineIndicator"
 import { ensurePushMessageBridge } from "@/push/pushMessageBus"
 
 // Keep optional global surfaces outside the first interaction window. A zero
@@ -178,5 +178,3 @@ export function DeferredGlobalOverlays() {
     </>
   )
 }
-
-export default DeferredGlobalOverlays

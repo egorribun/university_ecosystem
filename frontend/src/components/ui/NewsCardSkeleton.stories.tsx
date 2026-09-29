@@ -1,5 +1,5 @@
 import type { Meta, StoryObj, Decorator } from "@storybook/react-vite"
-import NewsCardSkeleton from "./NewsCardSkeleton"
+import { NewsCardSkeleton } from "./NewsCardSkeleton"
 
 // Wave 198 SW3 — NewsCardSkeleton Storybook fixture (shimmer; `featured?` prop).
 //

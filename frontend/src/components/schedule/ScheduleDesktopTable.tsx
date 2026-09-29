@@ -2,7 +2,7 @@ import { memo, useMemo, useRef, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { Plus as AddIcon, Calendar as TodayIcon } from "lucide-react"
 import { EmptyState } from "@/components/ui/EmptyState"
-import OfflineFallback from "@/components/feedback/OfflineFallback"
+import { OfflineFallback } from "@/components/feedback/OfflineFallback"
 import { cn } from "@/utils/cn"
 import { buildTable, minutesDiff } from "@/components/schedule/scheduleUtils"
 import { LessonCard } from "@/components/schedule/LessonCard"
@@ -308,5 +308,3 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
     </div>
   )
 })
-
-export default ScheduleDesktopTable

@@ -89,5 +89,3 @@ export function OfflineIndicator() {
 
   return createPortal(content, portalTarget)
 }
-
-export default OfflineIndicator

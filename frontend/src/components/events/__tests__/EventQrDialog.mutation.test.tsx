@@ -3,7 +3,7 @@ import { renderToString } from "react-dom/server"
 import { describe, expect, it, vi } from "vitest"
 
 vi.mock("@/components/ui/Dialog", () => ({
-  default: ({ open, children }: { open: boolean; children: React.ReactNode }) => (
+  Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) => (
     <div role="dialog" data-open={String(open)}>
       {children}
     </div>

@@ -25,7 +25,7 @@ vi.mock("react-dom/client", () => ({
 }))
 vi.mock("../App", () => ({ default: () => null }))
 vi.mock("@/components/feedback/ErrorBoundary", () => ({
-  default: ({ children }: { children: ReactNode }) => children,
+  ErrorBoundary: ({ children }: { children: ReactNode }) => children,
 }))
 vi.mock("../app/globalErrorHandlers", () => ({
   initGlobalErrorHandlers: mocks.initGlobalErrorHandlers,

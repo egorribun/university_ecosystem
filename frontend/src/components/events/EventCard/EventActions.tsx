@@ -119,5 +119,3 @@ export const EventActions = memo(function EventActions({
     </div>
   )
 })
-
-export default EventActions

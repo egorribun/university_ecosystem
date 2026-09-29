@@ -6,7 +6,7 @@ import { Plus as AddIcon, CalendarOff as EmptyDayIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { Badge } from "@/components/ui/Badge"
 import { EmptyState } from "@/components/ui/EmptyState"
-import OfflineFallback from "@/components/feedback/OfflineFallback"
+import { OfflineFallback } from "@/components/feedback/OfflineFallback"
 
 import { type Lesson, minutesDiff } from "./scheduleUtils"
 import { LessonCard } from "./LessonCard"
