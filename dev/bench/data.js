@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790693333496,
+  "lastUpdate": 1790693336167,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -13207,6 +13207,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 90222,
             "range": "± 622",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2723f268d73f72dca94ae25693ef35fe200a50ed",
+          "message": "build(deps): bump the go-file-processor group (#1299)\n\nBumps the go-file-processor group in /services/file-processor with 3 updates: [github.com/nats-io/nats.go](https://github.com/nats-io/nats.go), [github.com/pact-foundation/pact-go/v2](https://github.com/pact-foundation/pact-go) and [google.golang.org/grpc](https://github.com/grpc/grpc-go).\n\n\nUpdates `github.com/nats-io/nats.go` from 1.53.1 to 1.54.0\n- [Release notes](https://github.com/nats-io/nats.go/releases)\n- [Commits](https://github.com/nats-io/nats.go/compare/v1.53.1...v1.54.0)\n\nUpdates `github.com/pact-foundation/pact-go/v2` from 2.7.1 to 2.8.0\n- [Release notes](https://github.com/pact-foundation/pact-go/releases)\n- [Changelog](https://github.com/pact-foundation/pact-go/blob/master/CHANGELOG.md)\n- [Commits](https://github.com/pact-foundation/pact-go/compare/v2.7.1...v2.8.0)\n\nUpdates `google.golang.org/grpc` from 1.83.2 to 1.84.0\n- [Release notes](https://github.com/grpc/grpc-go/releases)\n- [Commits](https://github.com/grpc/grpc-go/compare/v1.83.2...v1.84.0)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/nats-io/nats.go\n  dependency-version: 1.54.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: github.com/pact-foundation/pact-go/v2\n  dependency-version: 2.8.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: google.golang.org/grpc\n  dependency-version: 1.84.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-09-29T17:29:22+03:00",
+          "tree_id": "ca8915106b243dbf72d7bd595435264ee29e48e5",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/2723f268d73f72dca94ae25693ef35fe200a50ed"
+        },
+        "date": 1790693335384,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 4773,
+            "range": "± 117",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 5427,
+            "range": "± 89",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 7748,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 8287,
+            "range": "± 333",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 72422,
+            "range": "± 762",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 4268,
+            "range": "± 33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 4969,
+            "range": "± 61",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 6966,
+            "range": "± 19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 7187,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 68424,
+            "range": "± 293",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 4161,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 4809,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 6944,
+            "range": "± 193",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 7048,
+            "range": "± 27",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 66501,
+            "range": "± 217",
             "unit": "ns/iter"
           }
         ]
