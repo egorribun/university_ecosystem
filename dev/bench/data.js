@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1790695375679,
+  "lastUpdate": 1790695378535,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -13489,6 +13489,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 66501,
             "range": "± 217",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3836ddcb0242d8280d27d6efab77b89508e0cb45",
+          "message": "fix(security): reconcile Dependabot PR with main\n\nBumps the uv-dependencies group with 1 update: [idna](https://github.com/kjd/idna).\n\n\nUpdates `idna` from 3.19 to 3.20\n- [Release notes](https://github.com/kjd/idna/releases)\n- [Changelog](https://github.com/kjd/idna/blob/master/HISTORY.md)\n- [Commits](https://github.com/kjd/idna/compare/v3.19...v3.20)\n\n---\nupdated-dependencies:\n- dependency-name: idna\n  dependency-version: '3.20'\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: uv-dependencies\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-09-29T17:43:59+03:00",
+          "tree_id": "6e6605b085b13f21f66b159e69924e139f1cef5f",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/3836ddcb0242d8280d27d6efab77b89508e0cb45"
+        },
+        "date": 1790695377682,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 3634,
+            "range": "± 174",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 4212,
+            "range": "± 179",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 6128,
+            "range": "± 413",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 6427,
+            "range": "± 75",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 69568,
+            "range": "± 5339",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5703,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6274,
+            "range": "± 382",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 8033,
+            "range": "± 544",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 8056,
+            "range": "± 519",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 59206,
+            "range": "± 691",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 3200,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 4134,
+            "range": "± 271",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 5368,
+            "range": "± 207",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 5502,
+            "range": "± 371",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 56367,
+            "range": "± 3356",
             "unit": "ns/iter"
           }
         ]
