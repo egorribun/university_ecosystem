@@ -42,7 +42,7 @@
     "lhci": "node ./scripts/run-lhci.mjs",
     "lhci:windows": "node ./scripts/lhci-windows-fallback.mjs",
     "analyze": "ANALYZE=1 vite build",
-    "lint-staged": "lint-staged",
+    "lint-staged": "lint-staged --max-arg-length 6000",
     "prepare": "node ./scripts/setup-husky.cjs",
     "postinstall": "node ./scripts/setup-lhci-binaries.cjs",
     "generate:api": "openapi-ts && msw-auto-mock ./openapi.json -o src/tests/mocks/generated --typescript && node ./scripts/normalize-generated-msw.mjs",
