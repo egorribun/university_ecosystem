@@ -136,8 +136,8 @@ def build_partition_aware_include_object(connection: Any) -> Any:
             # partition.  Those physical edges are not part of the ORM's
             # logical metadata and must not appear as remove_fk drift.
             for element in getattr(object_, "elements", ()):
-                target = getattr(element, "target_fullname", "")
-                target_table = target.rsplit(".", 1)[0].rsplit(".", 1)[-1]
+                target = element.target_fullname
+                target_table = target.rsplit(".", 1)[0].rpartition(".")[2]
                 if target_table in names:
                     return False
         parent = getattr(object_, "table", None)

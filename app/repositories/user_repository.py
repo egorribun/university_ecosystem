@@ -230,8 +230,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
                 # ``status`` is optional free text, so a bare ``!= 'deleted'``
                 # evaluates to NULL for profiles without one and drops them.
                 # Only anonymised accounts (status set to "deleted") are hidden.
+                # A user without a profile row yet has a NULL ``status`` from the
+                # outer join, so the NULL branch keeps it too.
                 or_(
-                    UserProfile.user_id.is_(None),  # no profile yet — still include
                     UserProfile.status.is_(None),
                     UserProfile.status != "deleted",
                 )
@@ -244,7 +245,6 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
                 # the same ORM path (raises InvalidRequestError). The JOIN already
                 # replaces the joinedload with zero extra round-trips.
                 contains_eager(User.profile),
-                selectinload(User.group),
             )
         )
         if filters.group_id:

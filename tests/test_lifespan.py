@@ -303,6 +303,7 @@ async def test_handle_schema_and_extensions_pgvector_fail() -> None:
         patch("app.core.lifespan.settings") as mock_settings,
         patch("app.core.lifespan.engine") as mock_engine,
         patch("app.core.lifespan.runtime_flags") as mock_flags,
+        patch("app.core.lifespan._logger") as mock_logger,
     ):
         mock_settings.auto_create_schema = True
         mock_settings.environment = "testing"
@@ -318,6 +319,11 @@ async def test_handle_schema_and_extensions_pgvector_fail() -> None:
 
         await _handle_schema_and_extensions()
         mock_flags.disable.assert_called_once_with("semantic_search_enabled")
+        (statement,) = mock_conn.execute.await_args.args
+        assert str(statement) == "CREATE EXTENSION IF NOT EXISTS vector"
+        mock_logger.warning.assert_called_once_with(
+            "pgvector unavailable: %s", mock_conn.execute.side_effect
+        )
 
 
 @pytest.mark.asyncio
@@ -1482,6 +1488,7 @@ async def test_cdc_outbox_worker_replaces_the_polling_worker_when_enabled() -> N
         patch(
             "app.core.lifespan.CdcOutboxWorker", return_value=mock_cdc
         ) as mock_cdc_cls,
+        patch("app.core.lifespan._logger") as mock_logger,
     ):
         mock_settings.environment = "production"
         mock_settings.partition_management_enabled = False
@@ -1490,6 +1497,10 @@ async def test_cdc_outbox_worker_replaces_the_polling_worker_when_enabled() -> N
 
         await _startup_background_workers(app)
         await asyncio.wait_for(started.wait(), timeout=5)
+
+        mock_logger.info.assert_called_once_with(
+            "Embedded CdcOutboxWorker enabled; polling OutboxWorker suppressed"
+        )
 
         task_names = {task.get_name() for task in app.state.background_tasks}
         assert "cdc_outbox_worker" in task_names
