@@ -1,3 +1,5 @@
+name: university_ecosystem
+
 services:
   caddy:
     # HTTP/3 (QUIC) edge reverse proxy — sole public HTTPS entry point.
@@ -759,51 +761,54 @@ services:
           cpus: "0.25"
           memory: 128M
 
+  # S3-compatible object storage (ADR-042). The service keeps the `minio` DNS
+  # name that backend, Caddy and file-processor use as `minio:9000`, but runs
+  # SeaweedFS: MinIO stopped publishing its images. SeaweedFS cannot read a
+  # MinIO data directory, so it gets its own volume; a legacy MinIO volume is
+  # never declared here and stays untouched on disk. Migrate it with
+  # docs/runbooks/s3-seaweedfs-cutover.md.
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    # Ports only exposed on internal network for security
-    # Access via backend service or SSH tunnel for console
+    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    # `mini` runs master, volume, filer and S3 in one process and creates
+    # S3_BUCKET on first start. There is no console; the S3 API stays on the
+    # internal network.
+    command: ["mini", "-dir=/data", "-s3.port=9000"]
     expose:
       - "9000"
-      - "9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
-    command: server /data --console-address ":9001"
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
+      S3_BUCKET: uploads
     volumes:
-      - minio_data:/data
+      - seaweedfs_data:/data
     networks:
       - service_net
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/status"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
     deploy:
       resources:
         limits:
           cpus: "0.25"
+          # The single-process mini server runs four components; the owned
+          # live stand runs it within 512M (the disposable sandbox, which
+          # holds almost no data, uses 256M).
           memory: 512M
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    # SeaweedFS creates the bucket itself; keep the dependency name and only
+    # wait until its S3 API answers, so dependants start on ready storage.
+    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
     entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
-        mc mb local/uploads --ignore-existing
-    environment:
-      MC_CONFIG_DIR: /mc-config
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
+    command: ["wget -qO- http://minio:9000/status >/dev/null"]
     depends_on:
       minio:
         condition: service_healthy
     networks:
       - service_net
     read_only: true
-    tmpfs:
-      - /mc-config:size=1m,mode=0700
     cap_drop:
       - ALL
     security_opt:
@@ -972,7 +977,7 @@ volumes:
   postgres-data:
   static-data:
   temporal_data:
-  minio_data:
+  seaweedfs_data:
   # Caddy ACME certificates and OCSP staples — persist TLS state across restarts.
   caddy_data:
   # Caddy auto-save config (optional, enables zero-downtime reloads on restart).

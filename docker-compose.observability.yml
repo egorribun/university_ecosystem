@@ -12,10 +12,6 @@ services:
       METRICS_BASIC_AUTH_PASSWORD: ${METRICS_BASIC_AUTH_PASSWORD:?METRICS_BASIC_AUTH_PASSWORD is required - run start-docker.ps1}
       METRICS_ALLOWLIST: ""
 
-  minio:
-    environment:
-      MINIO_PROMETHEUS_AUTH_TYPE: public
-
   # Grafana Tempo - Distributed tracing backend
   tempo:
     image: grafana/tempo:2.10.3@sha256:cac9de2ac9f6da8efca5b64b690a7cb8c786a0c49cac7b4517dd1b0089a6c703

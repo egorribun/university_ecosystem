@@ -62,10 +62,7 @@
       "description": "Keep security-sensitive Docker images on manual review schedule",
       "matchManagers": ["docker-compose", "dockerfile"],
       "matchPackageNames": [
-        "minio/minio",
-        "quay.io/minio/minio",
-        "minio/mc",
-        "quay.io/minio/mc",
+        "ghcr.io/chrislusf/seaweedfs",
         "authzed/spicedb",
         "temporalio/server",
         "temporalio/ui"

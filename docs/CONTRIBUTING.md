@@ -82,7 +82,7 @@ full CI matrix, coverage/mutation gates or SHA-bound release evidence.
 - **Linting**: `.golangci.yml` with `exhaustive` and `gosec` linters. Run `golangci-lint run ./...` inside service directories.
 - **Unit & Integration Testing**:
   - `go test ./...` in each service directory.
-  - `make test-integration` (runs ADR-022 Testcontainers-go integration suite covering NATS, Redis, and MinIO).
+  - `make test-integration` (runs ADR-022 Testcontainers-go integration suite covering NATS, Redis, and S3 storage on SeaweedFS).
 
 ---
 

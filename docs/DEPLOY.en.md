@@ -31,7 +31,7 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Session revocation must use one shared, dedicated store across services: the backend, gateway, and ws-hub use only `REVOCATION_REDIS_URL`. The supported Compose and Helm topology provisions a separate Redis/Valkey process with AOF, persistent storage, and `maxmemory-policy noeviction`; neither the cache (`CACHE_REDIS_URL`) nor the rate-limit Redis (`REDIS_URL`, DB 3) is authoritative security state. Reusing a cache/rate-limit process is unsupported because evicting `revoked:jti:*` could make a revoked JWT valid again.
 - Control the object-storage health probe with `HEALTH_STORAGE_PROBE_ENABLED` (run a write/delete check when set to `true`) and `HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS` (cache probe results between intervals). When disabled, the probe uses cheap bucket/list calls when available, which is friendlier to external providers.
 - Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory. Create the Compose secrets `secret_key`, `database_url`, and `nats_auth_token`, and provide the PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. The `database_url` secret must point to `postgresql+asyncpg://...@pgbouncer:5432/university`. Then run `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d` with `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` set explicitly; the Go overlay is required because Caddy routes API and WebSocket traffic through gateway/ws-hub.
-- The Helm chart reads connections from the pre-created `university-connections` Secret (all required keys are documented in `charts/university-ecosystem/values.yaml`). In production, set `applicationSecrets.existingSecret`; it must contain the listed JWT/RSA keys, independent HMAC/integration secrets, MinIO credentials, and Temporal API key. Production rendering rejects plaintext MinIO, Temporal, gRPC, and OTLP so unsafe configuration never reaches the cluster or Helm release state.
+- The Helm chart reads connections from the pre-created `university-connections` Secret (all required keys are documented in `charts/university-ecosystem/values.yaml`). In production, set `applicationSecrets.existingSecret`; it must contain the listed JWT/RSA keys, independent HMAC/integration secrets, S3 credentials (the `minio-access-key`/`minio-secret-key` keys), and Temporal API key. Production rendering rejects plaintext S3, Temporal, gRPC, and OTLP so unsafe configuration never reaches the cluster or Helm release state.
 
 ## Local Docker resource modes
 
@@ -45,8 +45,8 @@ For a laptop or a resource-constrained Docker Desktop, opt in explicitly:
 ```
 
 Core mode uses the same reviewed Compose file but scopes startup to the
-application and required dependencies: PostgreSQL, Valkey, NATS, MinIO,
-SpiceDB, flagd, backend, frontend, gateway, ws-hub, workers, imgproxy, and
+application and required dependencies: PostgreSQL, Valkey, NATS, SeaweedFS
+object storage, SpiceDB, flagd, backend, frontend, gateway, ws-hub, workers, imgproxy, and
 Caddy. File processing and Temporal-backed attachment workflows are intentionally
 unavailable because `file-processor` is omitted. It stops already-running search, Temporal, and observability containers
 (`redis-exporter`, Elasticsearch, Grafana, Prometheus, Tempo, Loki, Alloy,
@@ -149,8 +149,8 @@ reconciliation proof, and an explicit rollout applies the new values.
   Disable `migrations.enabled` only when a separate verified deployment pipeline
   owns schema migrations.
 - Enable Helm backups with `backup.enabled=true`: an init container creates a
-  custom-format `pg_dump`, then `minio/mc` uploads it to the configured bucket.
-  This requires `backup-database-url` in the connection Secret and
+  custom-format `pg_dump`, then `rclone` (`backup.s3ClientImage`) uploads it
+  to the configured bucket. This requires `backup-database-url` in the connection Secret and
   `minio-access-key`/`minio-secret-key` in the application Secret.
 
 ### Database connection pool

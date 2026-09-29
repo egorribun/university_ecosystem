@@ -167,19 +167,14 @@ def test_main_reports_stand_errors_with_exit_code_two(
 
 def test_live_overlay_adds_mailpit_and_keeps_the_base_host_ports() -> None:
     source = (ROOT / "docker-compose.live.yml").read_text(encoding="utf-8")
-    overlay: dict[str, Any] = yaml.safe_load(
-        source.replace("!reset []", "[]").replace("!override", "")
-    )
+    overlay: dict[str, Any] = yaml.safe_load(source.replace("!reset", ""))
     services = overlay["services"]
 
-    # The launcher's readiness probes use the base 127.0.0.1 ports, so only
-    # the storage console port (absent on SeaweedFS) is removed.
+    # The launcher's readiness probes use the base 127.0.0.1 ports, so the
+    # overlay publishes only Mailpit and never resets a base binding.
     assert {name for name, service in services.items() if "ports" in service} == {
-        "mailpit",
-        "minio",
+        "mailpit"
     }
-    assert services["minio"]["ports"] == []
-    assert source.count("!reset") == 1
     assert services["mailpit"]["ports"] == [
         "127.0.0.1:${LIVE_MAILPIT_PORT:-18025}:8025"
     ]
@@ -190,19 +185,17 @@ def test_live_overlay_adds_mailpit_and_keeps_the_base_host_ports() -> None:
     assert "caddy" not in services
 
 
-def test_live_overlay_replaces_minio_with_a_project_scoped_seaweedfs() -> None:
+def test_live_overlay_keeps_base_storage_on_a_project_scoped_volume() -> None:
     source = (ROOT / "docker-compose.live.yml").read_text(encoding="utf-8")
-    overlay: dict[str, Any] = yaml.safe_load(
-        source.replace("!reset []", "[]").replace("!override", "")
-    )
-    storage = overlay["services"]["minio"]
-    init = overlay["services"]["minio-init"]
+    overlay: dict[str, Any] = yaml.safe_load(source.replace("!reset", ""))
 
-    assert storage["image"].startswith("ghcr.io/chrislusf/seaweedfs:")
-    assert init["image"] == storage["image"]
-    assert storage["volumes"] == ["live-seaweedfs-data:/data"]
-    assert overlay["volumes"] == {"live-seaweedfs-data": {}}
-    assert "S3_CUTOVER_ACK" not in storage["environment"]
+    # Base storage is project-scoped, so the live overlay needs no global-name
+    # reset and cannot mount the developer's storage volume.
+    assert "minio" not in overlay["services"]
+    assert "minio-init" not in overlay["services"]
+    assert "volumes" not in overlay
+    assert "!reset null" not in source
+    assert "university_ecosystem_seaweedfs_data" not in source
     assert "quay.io/minio" not in source
 
 

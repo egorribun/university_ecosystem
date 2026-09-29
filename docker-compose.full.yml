@@ -1,6 +1,8 @@
 # University Ecosystem - Full Docker Compose
 # Usage: pwsh scripts/dc.ps1 up -d
 
+name: university_ecosystem
+
 services:
   # ============================================================================
   # Core Application
@@ -577,62 +579,58 @@ services:
           memory: 64M
     restart: unless-stopped
 
-  # ── S3-compatible object storage (MinIO) ──────────────────────────────────
+  # ── S3-compatible object storage (SeaweedFS, ADR-042) ─────────────────────
+  # The service keeps the `minio` DNS name that backend, Caddy and
+  # file-processor use as `minio:9000`, but runs SeaweedFS: MinIO stopped
+  # publishing its images. SeaweedFS cannot read a MinIO data directory, so it
+  # gets its own volume; the legacy `minio-data` volume is no longer declared
+  # and stays untouched on disk. start-docker.ps1 refuses a first start next to
+  # an unmigrated legacy volume; see docs/runbooks/s3-seaweedfs-cutover.md.
   minio:
-    # NOTE: the upstream Docker Hub repository was archived in Feb 2026. The
-    # immutable manifest is consumed from the Quay mirror to keep pulls
-    # reproducible after Docker Hub retired anonymous access to the archive.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    command: server /data --console-address ":9001"
+    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    # `mini` runs master, volume, filer and S3 in one process and creates
+    # S3_BUCKET on first start. There is no console and no host port.
+    command: ["mini", "-dir=/data", "-s3.port=9000"]
+    expose:
+      - "9000"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - run start-docker.ps1}
-      # Local-only internal scrape endpoint. The console remains bound to
-      # 127.0.0.1 and production uses its own authenticated monitoring policy.
-      MINIO_PROMETHEUS_AUTH_TYPE: public
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - run start-docker.ps1}
+      S3_BUCKET: uploads
     volumes:
-      - minio-data:/data
+      - seaweedfs_data:/data
     networks:
       - internal
-      # An internal-only Docker network deliberately disables host port
-      # publishing. Keep the console loopback-only, but attach a non-internal
-      # bridge so Docker can materialize 127.0.0.1:9001.
+      # Caddy (public network only) proxies the reviewed public-media prefixes
+      # under /storage/* to minio:9000; see infrastructure/Caddyfile.
       - public
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/status"]
       interval: 10s
       timeout: 5s
-      retries: 5
-    ports:
-      - "127.0.0.1:9001:9001"
+      retries: 12
     deploy:
       resources:
         limits:
           cpus: '0.25'
+          # The single-process mini server runs four components; the owned
+          # live stand runs it within 512M (the disposable sandbox, which
+          # holds almost no data, uses 256M).
           memory: 512M
     restart: unless-stopped
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    # SeaweedFS creates the bucket itself; keep the dependency name and only
+    # wait until its S3 API answers, so dependants start on ready storage.
+    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
     entrypoint: [ "/bin/sh", "-ec" ]
-    command:
-      - |
-        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
-        mc mb local/uploads --ignore-existing
-    environment:
-      # mc defaults to /root/.mc. Keep its short-lived credential-bearing
-      # config on a private tmpfs while leaving the image filesystem read-only.
-      MC_CONFIG_DIR: /mc-config
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - run start-docker.ps1}
+    command: [ "wget -qO- http://minio:9000/status >/dev/null" ]
     depends_on:
       minio:
         condition: service_healthy
     networks:
       - internal
     read_only: true
-    tmpfs:
-      - /mc-config:size=1m,mode=0700
     cap_drop:
       - ALL
     # Replace the base stack's one-item sequence instead of appending the
@@ -1362,7 +1360,8 @@ services:
       - grafana-data:/var/lib/grafana
     networks:
       - internal
-      # Required for the loopback-only host publication; see minio above.
+      # Required for the loopback-only host publication: Docker does not
+      # publish ports from a service attached only to an internal network.
       - public
     depends_on:
       tempo-healthprobe:
@@ -1413,7 +1412,8 @@ services:
       - prometheus-data:/prometheus
     networks:
       - internal
-      # Required for the loopback-only host publication; see minio above.
+      # Required for the loopback-only host publication: Docker does not
+      # publish ports from a service attached only to an internal network.
       - public
     depends_on:
       backend:
@@ -1622,7 +1622,7 @@ networks:
 volumes:
   postgres-data:
   static-data:
-  minio-data:
+  seaweedfs_data:
   nats-data:
   elasticsearch-data:
   tempo-data:

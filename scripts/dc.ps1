@@ -15,7 +15,9 @@
 #   pwsh scripts/dc.ps1 exec frontend sh -c 'ls -la /app/dist/client/assets'
 #
 # Compose topology overrides and destructive volume removal are deliberately
-# unavailable here; use the reviewed cutover launcher/runbook for those flows.
+# unavailable here; use start-docker.ps1 (-ExtraCompose) for other topologies.
+# Storage-starting commands share the launcher's legacy MinIO volume guard
+# (ADR-042, docs/runbooks/s3-seaweedfs-cutover.md).
 #
 # Cross-reference: CLAUDE.md ## Gotchas "Docker compose helper scripts" + the
 # pre-existing W169 SW6-followup entry "`docker compose` exit code NOT a
@@ -41,16 +43,12 @@ if (-not (Test-Path -LiteralPath $envFile)) {
   exit 1
 }
 
-# This wrapper intentionally uses the legacy full Compose file. After an S3
-# cutover it must not restart that file's MinIO service against the old volume.
-# Read-only commands and shutdown remain available for diagnostics/recovery.
+# Read-only commands and shutdown never start storage and stay available for
+# diagnostics/recovery.
 $safeCommand = @("ps", "logs", "config", "down", "stop", "images", "top", "ls", "version", "events", "port")
 $deletesVolumes = @($args | Where-Object {
   [string]$_ -in @("-v", "--volume", "--volumes") -or
   [string]$_ -like "-v=*" -or [string]$_ -like "--volume=*" -or [string]$_ -like "--volumes=*"
-}).Count -gt 0
-$deletesImages = @($args | Where-Object {
-  [string]$_ -eq "--rmi" -or [string]$_ -like "--rmi=*"
 }).Count -gt 0
 $composeCommand = ""
 $composeCommandIndex = -1
@@ -60,7 +58,7 @@ for ($index = 0; $index -lt $args.Count; $index++) {
       $option -like "-f*" -or $option -eq "--file" -or $option -like "--file=*" -or
       $option -eq "--project-directory" -or $option -like "--project-directory=*" -or
       $option -eq "--env-file" -or $option -like "--env-file=*") {
-    Write-Error "scripts/dc.ps1: Compose topology overrides are not supported; use the reviewed storage launcher."
+    Write-Error "scripts/dc.ps1: Compose topology overrides are not supported; use start-docker.ps1 -ExtraCompose."
     exit 2
   }
   if ($option -in @("-p", "--project-name")) {
@@ -92,7 +90,7 @@ for ($index = 0; $index -lt $args.Count; $index++) {
       $option -eq "--project-directory" -or $option -like "--project-directory=*" -or
       $option -eq "--env-file" -or $option -like "--env-file=*" -or
       ($option -like "-f*" -and $composeCommand -notin @("logs", "exec"))) {
-    Write-Error "scripts/dc.ps1: Compose topology overrides are not supported; use the reviewed storage launcher."
+    Write-Error "scripts/dc.ps1: Compose topology overrides are not supported; use start-docker.ps1 -ExtraCompose."
     exit 2
   }
 }
@@ -100,31 +98,10 @@ if ($composeCommand -eq "down" -and $deletesVolumes) {
   Write-Error "scripts/dc.ps1: Refusing destructive Compose down --volumes; use a separately reviewed data cleanup procedure."
   exit 2
 }
-if ($composeCommand -eq "down" -and $deletesImages) {
-  Write-Error "scripts/dc.ps1: Refusing Compose down --rmi; preserve the cached legacy S3 image until migration and rollback are verified."
-  exit 2
-}
-$readOnlyCommands = @("ps", "logs", "config", "images", "top", "ls", "version", "events", "port")
-$lockOwned = $false
-$lockPath = Join-Path $root ".secrets/s3-storage-compose.lock"
-$composeExitCode = 1
-try {
-if ($composeCommand -notin $readOnlyCommands) {
-  $secretsDir = Join-Path $root ".secrets"
-  if (-not (Test-Path -LiteralPath $secretsDir)) {
-    New-Item -ItemType Directory -Path $secretsDir -ErrorAction Stop | Out-Null
-  }
-  New-Item -ItemType Directory -Path $lockPath -ErrorAction Stop | Out-Null
-  $lockOwned = $true
-}
 if ($composeCommand -notin $safeCommand) {
-  $marker = Join-Path $root ".secrets/s3-seaweedfs-cutover-initiated"
-  $volumeName = "university_ecosystem_seaweedfs_data"
-  if (Test-Path -LiteralPath $marker) {
-    Write-Error "scripts/dc.ps1: SeaweedFS cutover marker exists; refusing a possible MinIO rollback. Use start-docker.ps1 -SeaweedFS after runbook verification."
-    exit 2
-  }
-
+  # Same rule as start-docker.ps1 Assert-LegacyS3VolumeGuard: never let a
+  # wrapper create empty SeaweedFS storage next to an unmigrated legacy MinIO
+  # volume, after which nothing could tell that legacy objects were left.
   $composeProject = $env:COMPOSE_PROJECT_NAME
   if ([string]::IsNullOrWhiteSpace($composeProject)) {
     $projectEntry = Get-Content -LiteralPath $envFile |
@@ -135,7 +112,7 @@ if ($composeCommand -notin $safeCommand) {
     }
   }
   if ([string]::IsNullOrWhiteSpace($composeProject)) {
-    $composeProject = (Split-Path -Leaf $root).ToLowerInvariant()
+    $composeProject = "university_ecosystem"
   }
   for ($index = 0; $index -lt $args.Count; $index++) {
     if ([string]$args[$index] -in @("-p", "--project-name") -and $index + 1 -lt $args.Count) {
@@ -144,38 +121,36 @@ if ($composeCommand -notin $safeCommand) {
       $composeProject = ([string]$args[$index] -split '=', 2)[1]
     }
   }
-  $storageImages = @(
-    docker ps -a `
-      --filter "label=com.docker.compose.project=$composeProject" `
-      --filter "label=com.docker.compose.service=minio" `
-      --format "{{.Image}}" 2>$null
-  )
+  $legacyVolumes = @("${composeProject}_minio-data", "${composeProject}_minio_data")
+  $storageVolume = "${composeProject}_seaweedfs_data"
+  # Docker's name filter matches substrings; compare every name exactly.
+  $existing = @(docker volume ls --format "{{.Name}}" 2>$null)
   if ($LASTEXITCODE -ne 0) {
-    Write-Error "scripts/dc.ps1: Cannot inspect Compose storage containers; refusing a possible MinIO rollback."
+    Write-Error "scripts/dc.ps1: Cannot inspect Docker volumes; refusing to start storage without checking for a legacy MinIO volume."
     exit 2
   }
-  if (@($storageImages | Where-Object { $_ -match 'seaweedfs' }).Count -gt 0) {
-    Write-Error "scripts/dc.ps1: SeaweedFS storage container exists; refusing a possible MinIO rollback."
-    exit 2
-  }
-  $cutoverVolumes = @(
-    docker volume ls --filter "name=^$volumeName$" --format "{{.Name}}" 2>$null
-  )
-  if ($LASTEXITCODE -ne 0) {
-    Write-Error "scripts/dc.ps1: Cannot inspect S3 storage volumes; refusing a possible MinIO rollback."
-    exit 2
-  }
-  if ($cutoverVolumes -contains $volumeName) {
-    Write-Error "scripts/dc.ps1: SeaweedFS storage volume exists; refusing a possible MinIO rollback."
-    exit 2
+  $legacy = @($legacyVolumes | Where-Object { $existing -ccontains $_ })
+  if ($legacy.Count -gt 0) {
+    $expectedAttestation = @(
+      "schema_version=1",
+      "project_name=$composeProject",
+      "legacy_source_volumes=$($legacy -join ',')",
+      "target_volume=$storageVolume",
+      "verified=VERIFIED_S3_CUTOVER"
+    )
+    $attestationPath = Join-Path $root ".secrets/s3-cutover-attestation.txt"
+    $attestationMatches = $false
+    if (Test-Path -LiteralPath $attestationPath -PathType Leaf) {
+      $actualAttestation = @(Get-Content -LiteralPath $attestationPath)
+      $attestationMatches = $actualAttestation.Count -eq $expectedAttestation.Count -and
+        [string]::Join("`n", $actualAttestation) -ceq [string]::Join("`n", $expectedAttestation)
+    }
+    if (($existing -cnotcontains $storageVolume) -or -not $attestationMatches) {
+      Write-Error "scripts/dc.ps1: Legacy MinIO volume $($legacy -join ', ') requires existing target '$storageVolume' and exact verified attestation .secrets/s3-cutover-attestation.txt. Follow docs/runbooks/s3-seaweedfs-cutover.md first."
+      exit 2
+    }
   }
 }
 
 & docker compose -f docker-compose.full.yml --env-file $envFile @args
-$composeExitCode = $LASTEXITCODE
-} finally {
-  if ($lockOwned) {
-    Remove-Item -LiteralPath $lockPath -ErrorAction Stop
-  }
-}
-exit $composeExitCode
+exit $LASTEXITCODE

@@ -20,9 +20,9 @@ services:
       - "127.0.0.1:50052:50051"
 
   minio:
+    # SeaweedFS S3 API (ADR-042); SeaweedFS mini has no web console.
     ports: !override
-      - "127.0.0.1:9000:9000" # API
-      - "127.0.0.1:9001:9001" # Console
+      - "127.0.0.1:9000:9000"
 
   nats:
     ports: !override

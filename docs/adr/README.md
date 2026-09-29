@@ -41,3 +41,4 @@ This directory contains architectural decision records (ADRs) for the University
 39. [ADR-039: Frontend Mutation Shard Cost Model](ADR-039-frontend-mutation-shard-cost-model.md)
 40. [ADR-040: Frontend Mutation Presentation Ignorer](ADR-040-frontend-mutation-presentation-ignorer.md)
 41. [ADR-041: Canonical Push Topic Preferences](ADR-041-canonical-push-topic-preferences.md)
+42. [ADR-042: SeaweedFS as the Default Object Storage](ADR-042-seaweedfs-default-object-storage.md)

@@ -19,7 +19,6 @@ REQUIRED_ALSO_COPY = {
     ".secrets.baseline",
     ".husky",
     "start-docker.ps1",
-    "docker-compose.seaweedfs-cutover.yml",
     "alembic.ini",
     "charts/revocation-store",
     "frontend/openapi.json",

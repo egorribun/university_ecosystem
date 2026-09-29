@@ -38,7 +38,7 @@
 - 📅 **Динамический академический движок** – Расписание пар в реальном времени с параллельным разрешением конфликтов на **Rust (PyO3)** с использованием потоков Rayon.
 - 💬 **Высоконагруженный WebSocket-хаб** – Мгновенный обмен сообщениями через **Go + NATS** с поддержкой горячей перезагрузки JWKS, лимитом 60 КБ на кадр и пречеками подключений.
 - 🔒 **Управление правами на основе отношений (ReBAC)** – Гранулярный доступ на базе **SpiceDB** (Zanzibar architecture) и флаги фичей **OpenFeature** + **flagd**.
-- 🖼️ **Медиа-процессинг и воркфлоу** – Асинхронная обработка файлов и оптимизация изображений через **Go file-processor**, **Temporal.io** и **MinIO**; бэкенд может требовать проверку загрузок через настроенный сервис `clamd`.
+- 🖼️ **Медиа-процессинг и воркфлоу** – Асинхронная обработка файлов и оптимизация изображений через **Go file-processor**, **Temporal.io** и S3-совместимое хранилище **SeaweedFS**; бэкенд может требовать проверку загрузок через настроенный сервис `clamd`.
 - ⚡ **Вероятностное кэширование XFetch L1/L2** – Защита от «лавины кэша» (Cache Stampede) и Circuit Breakers в Redis/Valkey (`volatile-lru`).
 - 🗺️ **Векторный поиск и навигация** – Семантический поиск по контенту и навигация по кемпусу с использованием **pgvector** и эмбеддингов.
 - 📊 **Комплексный мониторинг (Observability)** – Сквозная трассировка (**OTEL + Tempo**), метрики (**Prometheus**), профилирование (**Pyroscope**) и централизованные логи (**Grafana Loki + Fluent Bit**).
@@ -103,7 +103,7 @@ graph TD
         Postgres[("🐘 PostgreSQL 17 + pgvector")]
         Valkey[("⚡ Valkey 8.1 кэш (volatile-lru)")]
         Revocations[("🛡️ Revocation Valkey (AOF / noeviction)")]
-        MinIO[("📦 MinIO (S3 Storage)")]
+        MinIO[("📦 SeaweedFS (S3 Storage)")]
         Temporal["⏳ Temporal.io (Workflows)"]
         SpiceDB["🔐 SpiceDB (ReBAC)"]
         Flagd["🚩 OpenFeature / flagd"]

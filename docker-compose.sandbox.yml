@@ -9,8 +9,8 @@
 #
 # Self-contained: no .env dependency, no external networks, no auth on the test
 # brokers (isolated + ephemeral — torn down with `down -v`). The S3 sandbox
-# uses SeaweedFS; persistent Core/full Compose stacks still require a separate
-# explicit object-data export/import before their MinIO service can be replaced.
+# uses the same pinned SeaweedFS image as the Core/full Compose stacks
+# (ADR-042).
 services:
   postgres:
     image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f

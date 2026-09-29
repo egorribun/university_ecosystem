@@ -42,11 +42,8 @@ scrape_configs:
       - targets: ['flagd:8014']
     metrics_path: /metrics
 
-  # MinIO
-  - job_name: 'minio'
-    static_configs:
-      - targets: ['minio:9000']
-    metrics_path: /minio/v2/metrics/cluster
+  # Object storage runs on SeaweedFS (ADR-042), which does not serve MinIO's
+  # /minio/v2/metrics API. A SeaweedFS metrics scrape is an open follow-up.
 
   # NATS' monitoring port exposes JSON endpoints (/varz, /jsz), not native
   # Prometheus text. Add a maintained exporter before restoring a NATS scrape;

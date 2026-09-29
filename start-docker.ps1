@@ -15,7 +15,6 @@
     .\start-docker.ps1 -Build     # Build (cached) then start
     .\start-docker.ps1 -Rebuild   # Build (no-cache) then start
     .\start-docker.ps1 -Core      # Start only the application/core dependencies
-    .\start-docker.ps1 -SeaweedFS # Verified S3 cutover only; see runbook
     .\start-docker.ps1 -Build -ExtraCompose docker-compose.live.yml  # Owned acceptance stand
     .\start-docker.ps1 -Down      # Stop all containers
     .\start-docker.ps1 -Logs                  # Follow all logs
@@ -25,8 +24,15 @@
     available as -Lean) is an explicit local-development opt-in: it stops any
     already-running search, Temporal, and observability services without
     deleting their volumes, then starts only the core application topology.
+
+    Object storage is SeaweedFS (ADR-042). A start with legacy MinIO volumes
+    requires the exact project/source/target-bound local migration attestation
+    described in docs/runbooks/s3-seaweedfs-cutover.md.
 #>
 
+# Advanced-script binding rejects unknown switches, such as the retired
+# -SeaweedFS cutover switch, instead of silently ignoring them.
+[CmdletBinding()]
 param(
     [switch]$Build,
     [switch]$Rebuild,
@@ -34,7 +40,6 @@ param(
     [switch]$Logs,
     [Alias("Lean")]
     [switch]$Core,
-    [switch]$SeaweedFS,
     [string[]]$ExtraCompose = @(),
     [string]$LogService = ""
 )
@@ -44,30 +49,17 @@ $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ProjectRoot
 
 $ComposeFile = "docker-compose.full.yml"
-$SeaweedFSCutoverMarker = Join-Path $ProjectRoot ".secrets/s3-seaweedfs-cutover-initiated"
-$SeaweedFSVolumeName = "university_ecosystem_seaweedfs_data"
+$S3MigrationRunbook = "docs/runbooks/s3-seaweedfs-cutover.md"
+$S3MigrationAttestation = ".secrets/s3-cutover-attestation.txt"
 $ComposeArgs = @("-f", $ComposeFile)
-if ($SeaweedFS) {
-    # The overlay points clients at a separate, initially empty volume. Require
-    # an explicit operator attestation before any Docker call or env mutation.
-    if ($env:S3_CUTOVER_ACK -cne "VERIFIED_S3_CUTOVER") {
-        throw "SeaweedFS cutover refused: complete docs/runbooks/s3-seaweedfs-cutover.md, then set S3_CUTOVER_ACK=VERIFIED_S3_CUTOVER for this deployment."
-    }
-    $overlay = "docker-compose.seaweedfs-cutover.yml"
-    if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot $overlay))) {
-        throw "SeaweedFS cutover refused: required Compose overlay is missing: $overlay"
-    }
-    $ComposeArgs += @("-f", $overlay)
-}
 foreach ($extra in $ExtraCompose) {
     # Additional overlays stay inside the checkout, follow the repository's
-    # Compose naming, apply last, and can never smuggle in the storage cutover
-    # without its own attestation.
+    # Compose naming, and apply after the base file.
     if ($extra -notmatch '^docker-compose\.[a-z0-9-]+\.yml$') {
         throw "Extra Compose overlay refused: expected a docker-compose.<name>.yml file in the project root: $extra"
     }
-    if ($extra -in @($ComposeFile, "docker-compose.seaweedfs-cutover.yml")) {
-        throw "Extra Compose overlay refused: $extra has its own launcher switch"
+    if ($extra -eq $ComposeFile) {
+        throw "Extra Compose overlay refused: $extra is the base Compose file"
     }
     if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot $extra) -PathType Leaf)) {
         throw "Extra Compose overlay refused: file not found: $extra"
@@ -77,18 +69,7 @@ foreach ($extra in $ExtraCompose) {
     }
     $ComposeArgs += @("-f", $extra)
 }
-# The launcher knows which overlays it applied: storage is SeaweedFS after the
-# attested cutover or when an extra overlay swaps the storage image.
-$StorageIsSeaweedFS = [bool]$SeaweedFS
-foreach ($extra in $ExtraCompose) {
-    if ((Get-Content -Raw -LiteralPath (Join-Path $ProjectRoot $extra)) -match 'image:\s*ghcr\.io/chrislusf/seaweedfs') {
-        $StorageIsSeaweedFS = $true
-    }
-}
 $ComposeCommand = "docker compose $($ComposeArgs -join ' ') --env-file .env.docker"
-if ($SeaweedFS) {
-    Write-Host "[*] SeaweedFS cutover overlay selected: $($ComposeArgs -join ' ')"
-}
 # Keep the full compose model as the single source of truth.  Core mode scopes
 # `up`/`build` to this audited allowlist rather than maintaining a second compose
 # file that could silently drift in images, networks, or security settings.
@@ -183,26 +164,6 @@ function Assert-CoreServiceAllowlist {
 }
 
 Assert-CoreServiceAllowlist
-
-function Enter-S3StorageComposeLock {
-    # Cross-shell protocol shared with scripts/dc.ps1 and scripts/dc.sh.
-    # Directory creation is atomic; a stale lock must be reviewed manually.
-    $lockParent = Join-Path $ProjectRoot ".secrets"
-    $lockPath = Join-Path $lockParent "s3-storage-compose.lock"
-    [void][System.IO.Directory]::CreateDirectory($lockParent)
-    try {
-        New-Item -ItemType Directory -Path $lockPath -ErrorAction Stop | Out-Null
-    } catch {
-        throw "Storage Compose lock could not be acquired at $lockPath. Another operation or a stale lock requires operator review."
-    }
-    return $lockPath
-}
-
-function Exit-S3StorageComposeLock {
-    param([Parameter(Mandatory=$true)][string]$Path)
-    # Remove only our empty lock directory, never arbitrary files or data.
-    Remove-Item -LiteralPath $Path -ErrorAction Stop
-}
 
 function New-Secret {
     param([int]$Length = 32)
@@ -827,20 +788,13 @@ function Test-ServiceHttp {
 }
 
 function Wait-PrometheusTargets {
-    param([int]$Timeout = 75, [switch]$SeaweedFSStorage)
+    param([int]$Timeout = 75)
 
+    # Storage runs on SeaweedFS, which has no scrape job yet (ADR-042).
     $expectedJobs = @(
         "prometheus", "backend", "notifications-worker", "redis-exporter",
         "tempo", "loki", "pyroscope", "gateway", "flagd"
     )
-    if ($SeaweedFSStorage) {
-        # The `minio` job scrapes MinIO's /minio/v2/metrics/cluster, which
-        # SeaweedFS does not serve; storage metrics for SeaweedFS are an open
-        # follow-up, so they are reported rather than silently treated as up.
-        Write-Warn "Storage runs on SeaweedFS: the MinIO metrics job is not expected to be up."
-    } else {
-        $expectedJobs += "minio"
-    }
     $deadline = (Get-Date).AddSeconds($Timeout)
     $lastProblems = @("Prometheus target API has not responded yet")
 
@@ -894,21 +848,16 @@ if (-not $dockerOk) {
 # -- Handle -Down -------------------------------------------------------------
 
 if ($Down) {
-    $storageLock = Enter-S3StorageComposeLock
-    try {
-        Write-Status "Stopping all containers..."
-        $envArgs = if (Test-Path $EnvFile) { @("--env-file", $EnvFile) } else { @() }
-        docker compose @ComposeArgs @envArgs down
-        $composeExitCode = $LASTEXITCODE
-        if ($composeExitCode -ne 0) {
-            Write-Err "Failed to stop containers."
-            exit $composeExitCode
-        }
-        Write-Ok "All containers stopped"
+    Write-Status "Stopping all containers..."
+    $envArgs = if (Test-Path $EnvFile) { @("--env-file", $EnvFile) } else { @() }
+    docker compose @ComposeArgs @envArgs down
+    $composeExitCode = $LASTEXITCODE
+    if ($composeExitCode -ne 0) {
+        Write-Err "Failed to stop containers."
         exit $composeExitCode
-    } finally {
-        Exit-S3StorageComposeLock -Path $storageLock
     }
+    Write-Ok "All containers stopped"
+    exit $composeExitCode
 }
 
 # -- Handle -Logs -------------------------------------------------------------
@@ -934,56 +883,66 @@ if ($Logs) {
     exit $composeExitCode
 }
 
-# -- Persistent-storage rollback guard ---------------------------------------
+# -- Legacy MinIO volume guard -----------------------------------------------
 
-function Assert-PlainS3RollbackGuard {
-    if ($SeaweedFS) { return }
-    # A plain start must never silently recreate `minio` from the old MinIO
-    # volume after a SeaweedFS cutover. Inspect the actual container image,
-    # including stopped containers, before any environment-file mutation. The
-    # marker also survives `compose down`, when no container remains to inspect.
-    if (Test-Path -LiteralPath $SeaweedFSCutoverMarker) {
-        throw "SeaweedFS cutover marker exists. Refusing silent rollback to MinIO; follow a verified migration/rollback procedure instead."
-    }
-    # Compose uses COMPOSE_PROJECT_NAME when set; otherwise it derives the
-    # project from this directory (there is no top-level `name` in full.yml).
+function Assert-LegacyS3VolumeGuard {
+    # SeaweedFS cannot read MinIO's data directory. On a machine that still
+    # holds a MinIO volume, the first start would create an empty SeaweedFS
+    # volume; after that nothing could tell that legacy objects were left
+    # behind. A target name alone cannot show that its contents were verified,
+    # so require both the exact project target and a matching durable operator
+    # attestation. Runs before environment mutation; legacy data is untouched.
+    #
+    # Compose project identity is shared with both wrapper guards and the
+    # Compose models: environment, .env.docker, then the declared default.
     $composeProject = $env:COMPOSE_PROJECT_NAME
     if ([string]::IsNullOrWhiteSpace($composeProject)) {
-        $composeProject = Get-EnvEntry -Path $EnvFile -Key "COMPOSE_PROJECT_NAME"
+        $projectEntry = Get-Content -LiteralPath (Join-Path $ProjectRoot $EnvFile) -ErrorAction SilentlyContinue |
+            Where-Object { $_ -match '^\s*COMPOSE_PROJECT_NAME\s*=' } |
+            Select-Object -Last 1
+        if ($projectEntry) {
+            $composeProject = ($projectEntry -split '=', 2)[1].Trim().Trim('"', "'")
+        }
     }
     if ([string]::IsNullOrWhiteSpace($composeProject)) {
-        $composeProject = (Split-Path -Leaf $ProjectRoot).ToLowerInvariant()
+        $composeProject = "university_ecosystem"
     }
-    $storageImages = @(
-        docker ps -a `
-            --filter "label=com.docker.compose.project=$composeProject" `
-            --filter "label=com.docker.compose.service=minio" `
-            --format "{{.Image}}" 2>$null
-    )
-    if ($LASTEXITCODE -ne 0) {
-        throw "Cannot inspect the existing Compose storage service; refusing a plain MinIO start."
-    }
-    if (@($storageImages | Where-Object { $_ -match 'seaweedfs' }).Count -gt 0) {
-        throw "Existing Compose storage service uses SeaweedFS. Refusing silent rollback to MinIO; follow a verified migration/rollback procedure instead."
-    }
+    # docker-compose.full.yml named it `minio-data`, docker-compose.yml
+    # `minio_data`; both were project-scoped.
+    $legacyVolumes = @("${composeProject}_minio-data", "${composeProject}_minio_data")
+    $storageVolume = "${composeProject}_seaweedfs_data"
 
-    # The overlay gives this volume an explicit global name, independent of
-    # COMPOSE_PROJECT_NAME. It outlives `compose down` and even a lost marker.
-    # Exact-match the returned name because Docker's name filter can be fuzzy.
-    $cutoverVolumes = @(
-        docker volume ls `
-            --filter "name=^$SeaweedFSVolumeName$" `
-            --format "{{.Name}}" 2>$null
-    )
+    # List every name and compare exactly: Docker's name filter matches
+    # substrings.
+    $existing = @(docker volume ls --format "{{.Name}}" 2>$null)
     if ($LASTEXITCODE -ne 0) {
-        throw "Cannot inspect the SeaweedFS cutover volume; refusing a plain MinIO start."
+        throw "Cannot inspect Docker volumes; refusing to start object storage without checking for a legacy MinIO volume."
     }
-    if ($cutoverVolumes -contains $SeaweedFSVolumeName) {
-        throw "SeaweedFS cutover volume exists. Refusing silent rollback to MinIO; verify storage state and follow the cutover/rollback runbook."
+    $legacy = @($legacyVolumes | Where-Object { $existing -ccontains $_ })
+    if ($legacy.Count -eq 0) { return }
+
+    $targetExists = $existing -ccontains $storageVolume
+    $expectedAttestation = @(
+        "schema_version=1",
+        "project_name=$composeProject",
+        "legacy_source_volumes=$($legacy -join ',')",
+        "target_volume=$storageVolume",
+        "verified=VERIFIED_S3_CUTOVER"
+    )
+    $attestationPath = Join-Path $ProjectRoot $S3MigrationAttestation
+    $attestationMatches = $false
+    if (Test-Path -LiteralPath $attestationPath -PathType Leaf) {
+        $actualAttestation = @(Get-Content -LiteralPath $attestationPath)
+        $attestationMatches = $actualAttestation.Count -eq $expectedAttestation.Count -and
+            [string]::Join("`n", $actualAttestation) -ceq [string]::Join("`n", $expectedAttestation)
     }
+    if (-not $targetExists -or -not $attestationMatches) {
+        throw "Legacy MinIO volume $($legacy -join ', ') exists. Refusing to start unless the exact target volume '$storageVolume' exists and $S3MigrationAttestation records the verified migration. Follow $S3MigrationRunbook first."
+    }
+    Write-Warn "Verified S3 migration attestation matches project '$composeProject', source '$($legacy -join ', ')', and target '$storageVolume'. Legacy data remains untouched."
 }
 
-Assert-PlainS3RollbackGuard
+Assert-LegacyS3VolumeGuard
 
 # -- Generate secrets ---------------------------------------------------------
 
@@ -1283,26 +1242,6 @@ if ($Rebuild) {
 
 # -- Start services -----------------------------------------------------------
 
-$storageLock = Enter-S3StorageComposeLock
-try {
-# The early check above avoids wasted build work. This second check, while
-# holding the shared lock, closes the gap where a concurrent cutover could
-# write its marker between that check and our final Compose up.
-Assert-PlainS3RollbackGuard
-
-if ($SeaweedFS -and -not (Test-Path -LiteralPath $SeaweedFSCutoverMarker)) {
-    # Record intent before the first storage-changing `up`. If startup later
-    # fails, a plain start still cannot silently attach the old MinIO volume.
-    # This local marker is ignored by Git and survives `compose down`.
-    [void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $SeaweedFSCutoverMarker))
-    [System.IO.File]::WriteAllText(
-        $SeaweedFSCutoverMarker,
-        "SeaweedFS cutover initiated. Do not run plain start-docker.ps1 without a verified rollback procedure.`n",
-        [System.Text.UTF8Encoding]::new($false)
-    )
-    Write-Warn "Recorded SeaweedFS cutover marker; plain MinIO startup is now blocked."
-}
-
 if ($Core) {
     # Keep dependency ordering for the core topology. The gateway depends on a
     # Tempo health sidecar in the full model, so it is intentionally started in
@@ -1365,9 +1304,6 @@ if ($Core) {
         exit 1
     }
 }
-} finally {
-    Exit-S3StorageComposeLock -Path $storageLock
-}
 
 # -- Health check loop --------------------------------------------------------
 
@@ -1382,8 +1318,8 @@ $services = [ordered]@{
     backend       = @{ type = "docker"; service = "backend"; ready = $false }
     elasticsearch = @{ type = "docker"; service = "elasticsearch"; ready = $false }
     gateway       = @{ type = "http"; service = "gateway"; url = "http://localhost:8080/health"; ready = $false }
-    # Docker health covers both MinIO and the SeaweedFS storage, which has no
-    # 9001 console and publishes no host port.
+    # SeaweedFS storage publishes no host port; its container healthcheck
+    # probes the internal S3 API.
     minio         = @{ type = "docker"; service = "minio"; ready = $false }
     temporal      = @{ type = "docker"; service = "temporal"; ready = $false }
     grafana       = @{ type = "http"; service = "grafana"; url = "http://localhost:3000/api/health"; ready = $false }
@@ -1405,13 +1341,6 @@ $services = [ordered]@{
     tempo         = @{ type = "docker"; service = "tempo-healthprobe"; ready = $false }
     alloy         = @{ type = "docker"; service = "alloy"; ready = $false }
     pyroscope     = @{ type = "http"; service = "pyroscope"; url = "http://localhost:4040/ready"; ready = $false }
-}
-
-if ($SeaweedFS) {
-    # The cutover overlay removes the published MinIO console on port 9001.
-    # SeaweedFS mini supplies a container healthcheck for its internal S3 API.
-    $services.Remove("minio")
-    $services["seaweedfs"] = @{ type = "docker"; service = "minio"; ready = $false }
 }
 
 if ($Core) {
@@ -1485,7 +1414,7 @@ if (-not $allReady) {
 
 if (-not $Core) {
     Write-Status "Validating Prometheus scrape targets..."
-    if (-not (Wait-PrometheusTargets -SeaweedFSStorage:$StorageIsSeaweedFS)) {
+    if (-not (Wait-PrometheusTargets)) {
         Write-Err "Prometheus has missing or unhealthy scrape targets."
         exit 1
     }
@@ -1501,9 +1430,6 @@ Write-Ok "University Ecosystem is running!"
 if ($Core) {
     Write-Host "  Mode: CORE (search, Temporal, and observability containers are stopped; volumes are preserved)" -ForegroundColor Yellow
 }
-if ($SeaweedFS) {
-    Write-Host "  Storage: SEAWEEDFS CUTOVER (old MinIO volume preserved; no host S3 console)" -ForegroundColor Yellow
-}
 Write-Host ""
 Write-Host "  >> Site (use this):  http://localhost/" -ForegroundColor Green
 Write-Host "     Caddy reverse proxy routes /api/* -> gateway:8080 -> backend:8000," -ForegroundColor DarkGray
@@ -1515,11 +1441,7 @@ Write-Host "  Gateway API:          http://localhost:8080" -ForegroundColor Dark
 Write-Host "  Backend API:          http://localhost:8000  (127.0.0.1 only)" -ForegroundColor DarkYellow
 Write-Host "  API Docs:             http://localhost:8000/docs" -ForegroundColor DarkYellow
 Write-Host "  WS Hub:               http://localhost:8083" -ForegroundColor DarkYellow
-if ($SeaweedFS) {
-    Write-Host "  SeaweedFS S3 API:     minio:9000 (internal Compose network only)" -ForegroundColor DarkYellow
-} else {
-    Write-Host "  MinIO Console:        http://localhost:9001" -ForegroundColor DarkYellow
-}
+Write-Host "  SeaweedFS S3 API:     minio:9000 (internal Compose network only)" -ForegroundColor DarkYellow
 Write-Host "  Grafana:              http://localhost:3000" -ForegroundColor DarkYellow
 Write-Host "  Prometheus:           http://localhost:9090" -ForegroundColor DarkYellow
 Write-Host "  Pyroscope:            http://localhost:4040" -ForegroundColor DarkYellow
@@ -1543,7 +1465,3 @@ Write-Host "  Build:     .\start-docker.ps1 -Build"
 Write-Host "  Rebuild:   .\start-docker.ps1 -Rebuild   (no cache)"
 Write-Host "  Core:      .\start-docker.ps1 -Core     (resource-conscious app stack)"
 Write-Host "  Lean:      .\start-docker.ps1 -Lean     (alias for -Core)"
-if ($SeaweedFS) {
-    Write-Host "  Cutover:   .\start-docker.ps1 -SeaweedFS (requires verified runbook + S3_CUTOVER_ACK)"
-    Write-Host "  Logs:      .\start-docker.ps1 -SeaweedFS -Logs"
-}

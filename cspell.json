@@ -54,7 +54,9 @@
     "hotspot",
     "behaviour",
     "behavioural",
-    "instrumenter"
+    "instrumenter",
+    "minio",
+    "seaweedfs"
   ],
   "ignorePaths": [
     "**/node_modules/**",

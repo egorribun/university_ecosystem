@@ -18,7 +18,7 @@ Security policies apply. Before rendering or installing the application:
    set `global.imageTag` to the exact Git SHA used to build those images.
 3. Reconcile the existing Secrets below and validate names and key presence
    without printing values.
-4. Make PostgreSQL, MinIO, Temporal, OTLP, Elasticsearch, SpiceDB, and flagd
+4. Make PostgreSQL, S3 object storage, Temporal, OTLP, Elasticsearch, SpiceDB, and flagd
    reachable over their production TLS contracts and permit the exact egress in
    NetworkPolicy.
 5. Replace the required ingress hosts, verify DNS, and wait for the referenced
@@ -80,7 +80,7 @@ contract.
 `redis-gateway-url`, `redis-revocation-url`, `nats-url`, and
 `nats-auth-token`. `redis-credentials` must contain `redis-password`.
 
-The backend upload path is explicitly S3/MinIO in staging and production:
+The backend upload path is explicitly S3-compatible in staging and production:
 `backend.config.storageBackend` must be `s3` or `minio`, the bucket must be
 non-empty, the endpoint must use HTTPS, and `storageS3BaseURL` must be the
 validated same-origin `/api/v1/img` delivery route. Staging uses it so public images
@@ -88,9 +88,12 @@ are read by the backend without granting public access to the S3 bucket.
 The access key and secret key are
 loaded from `minio-access-key` and `minio-secret-key` in
 `applicationSecrets.existingSecret`; never place them in Helm values.
-For an OSS S3 provider cutover, follow
+The Compose stacks run SeaweedFS
+([ADR-042](../../docs/adr/ADR-042-seaweedfs-default-object-storage.md)); the
+chart consumes external object storage. When moving existing objects from
+MinIO to another S3 provider, follow
 [`docs/runbooks/s3-seaweedfs-cutover.md`](../../docs/runbooks/s3-seaweedfs-cutover.md)
-and retain the old data volume until inventory, private-access, URL, and
+and retain the old data until inventory, private-access, URL, and
 backup-restore gates pass.
 
 JWT consumers share one explicit contract. The backend signs RS256 tokens with

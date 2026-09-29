@@ -114,7 +114,7 @@ take precedence over the corresponding plaintext variable.
 | `STORAGE_STATIC_BASE_URL` | Public URL for static files | `/static` |
 | `STORAGE_S3_BUCKET` | S3 bucket name | Empty |
 | `STORAGE_S3_REGION` | AWS Region | Empty |
-| `STORAGE_S3_ENDPOINT_URL` | Custom S3 endpoint (for MinIO) | Empty |
+| `STORAGE_S3_ENDPOINT_URL` | Custom S3 endpoint (for example the Compose SeaweedFS service `http://minio:9000`) | Empty |
 | `EVENT_FILE_SCANNER_ENABLED` | Enable ClamAV virus scanning | `false` |
 | `EVENT_FILE_MAX_SIZE_BYTES` | Max upload size (default 10MB) | `10485760` |
 | `CHAT_MAX_MESSAGE_LENGTH` | Max characters per message | `32768` |

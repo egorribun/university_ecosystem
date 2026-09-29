@@ -29,6 +29,7 @@ handoffs are intentionally not part of the canonical index.
 - [Kubernetes notes](../k8s/README.md)
 - [S3 storage migration runbook](runbooks/s3-seaweedfs-cutover.md)
 - [Dependency cooldown emergency procedure](DEPENDENCY_COOLDOWN_EMERGENCY.md)
+- [Legacy MinIO volume migration to SeaweedFS](runbooks/s3-seaweedfs-cutover.md)
 - [Manual MFA verification checklist](manual-mfa-checklist.md)
 
 ## Quality evidence

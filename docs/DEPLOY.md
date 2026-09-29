@@ -30,7 +30,7 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` и URI, полученный из защищённого хранилища через переменные окружения, включает общий сторедж для middleware и чувствительных эндпоинтов; не помещайте учётные данные в URL или историю shell. Установите `memory` или `memory://` для простого однопроцессного режима без внешнего Redis.
 - Хранилище отзыва сессий обязано быть единым и выделенным для всех сервисов: backend, gateway и ws-hub используют только `REVOCATION_REDIS_URL`. В штатных Compose/Helm-конфигурациях это отдельный Redis/Valkey с AOF, персистентным томом и `maxmemory-policy noeviction`; кэш (`CACHE_REDIS_URL`) и rate-limit Redis (`REDIS_URL`, DB 3) не являются источниками security-state. Совместное использование cache/rate-limit процесса запрещено: вытеснение `revoked:jti:*` может повторно сделать отозванный JWT действительным.
 - Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами. <!-- pragma: allowlist secret --> Создайте Compose-секреты `secret_key`, `database_url` и `nats_auth_token`, а путь к файлу пароля PostgreSQL передайте через `POSTGRES_PASSWORD_SOURCE_FILE`. Значение `database_url` должно указывать на `postgresql+asyncpg://...@pgbouncer:5432/university`. Затем запускайте `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d`, явно задав `FRONTEND_ORIGIN` и `FRONTEND_ORIGINS`; Go overlay обязателен, потому что Caddy направляет API и WebSocket-трафик через gateway/ws-hub.
-- Helm chart читает подключения из заранее созданного Secret `university-connections` (полный список ключей приведён в `charts/university-ecosystem/values.yaml`). <!-- pragma: allowlist secret --> В production обязательно задайте `applicationSecrets.existingSecret`; этот Secret должен содержать JWT/RSA-ключи, отдельные HMAC/интеграционные секреты, MinIO credentials и Temporal API key, перечисленные там же. Production-render отклоняет plaintext MinIO, Temporal, gRPC и OTLP. Так секреты не попадают в Helm release state, а небезопасная конфигурация не доходит до кластера.
+- Helm chart читает подключения из заранее созданного Secret `university-connections` (полный список ключей приведён в `charts/university-ecosystem/values.yaml`). <!-- pragma: allowlist secret --> В production обязательно задайте `applicationSecrets.existingSecret`; этот Secret должен содержать JWT/RSA-ключи, отдельные HMAC/интеграционные секреты, S3 credentials (ключи `minio-access-key`/`minio-secret-key`) и Temporal API key, перечисленные там же. Production-render отклоняет plaintext S3, Temporal, gRPC и OTLP. Так секреты не попадают в Helm release state, а небезопасная конфигурация не доходит до кластера.
 
 ## Локальный Docker: режимы ресурсов
 
@@ -44,8 +44,8 @@ Docker Desktop используйте явный opt-in режим:
 ```
 
 Core-режим использует тот же проверенный Compose-файл, но запускает только
-приложение и необходимые зависимости: PostgreSQL, Valkey, NATS, MinIO,
-SpiceDB, flagd, backend, frontend, gateway, ws-hub, workers, imgproxy и Caddy.
+приложение и необходимые зависимости: PostgreSQL, Valkey, NATS, объектное
+хранилище SeaweedFS, SpiceDB, flagd, backend, frontend, gateway, ws-hub, workers, imgproxy и Caddy.
 Обработка файлов и зависящие от Temporal сценарии вложений намеренно недоступны:
 `file-processor` исключён из core-топологии. Он останавливает уже работающие контейнеры поиска, Temporal и observability
 (`redis-exporter`, Elasticsearch, Grafana, Prometheus, Tempo, Loki, Alloy,
@@ -151,9 +151,9 @@ Workflow проверяет эти права до мутаций и прину�
   начинается. Отключайте `migrations.enabled` только если миграциями управляет
   отдельный проверенный deployment pipeline.
 - Резервное копирование в Helm включается через `backup.enabled=true`: init
-  container создаёт custom-format `pg_dump`, после чего `minio/mc` загружает
-  файл в настроенный bucket. Нужны `backup-database-url` в connection Secret и
-  `minio-access-key`/`minio-secret-key` в application Secret.
+  container создаёт custom-format `pg_dump`, после чего `rclone`
+  (`backup.s3ClientImage`) загружает файл в настроенный bucket. Нужны `backup-database-url` в connection
+  Secret и `minio-access-key`/`minio-secret-key` в application Secret.
 
 ### Пул соединений базы данных
 

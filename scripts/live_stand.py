@@ -144,8 +144,7 @@ def _require_worktree() -> None:
 def up(ref: str) -> None:
     if (WORKTREE / OVERLAY).is_file():
         # Stop the stand's own containers (volumes stay) so its ports are free
-        # and the launcher's storage guard does not see a running SeaweedFS
-        # container and refuse the restart as a silent MinIO rollback.
+        # for the port check and the launcher's restart.
         env = stand_environment(load_or_create_vapid(WORKTREE))
         _run(compose_command("down", "--remove-orphans"), cwd=WORKTREE, env=env)
     require_free_ports()

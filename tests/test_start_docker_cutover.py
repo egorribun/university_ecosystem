@@ -1,22 +1,27 @@
-"""Safe launcher contract tests: the Docker CLI is replaced at the process boundary."""
+"""Launcher storage contracts: the Docker CLI is replaced at the process boundary.
+
+Storage is always SeaweedFS (ADR-042). The launcher refuses a first start
+that would create empty SeaweedFS storage next to an unmigrated legacy MinIO
+volume unless a durable local attestation binds the verified migration to its
+exact project, source volumes, and target volume.
+"""
 
 import json
 import os
 import re
 import shutil
 import subprocess
+import tempfile
 from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCAL_STATE_FILES = (
-    ".env",
-    ".env.docker",
-    ".env.docker.workers",
-    ".secrets/s3-seaweedfs-cutover-initiated",
-)
+LOCAL_STATE_FILES = (".env", ".env.docker", ".env.docker.workers")
+STORAGE_VOLUME = "university_ecosystem_seaweedfs_data"
+ATTESTATION = ".secrets/s3-cutover-attestation.txt"
+RUNBOOK = "docs/runbooks/s3-seaweedfs-cutover.md"
 
 
 def local_state_digests() -> dict[str, str | None]:
@@ -30,46 +35,48 @@ def local_state_digests() -> dict[str, str | None]:
 
 def run_launcher(
     *args: str,
-    ack: str | None = None,
-    existing_image: str | None = None,
+    attestation: str | None = None,
+    volumes: tuple[str, ...] = (),
     stop_before_env_bootstrap: bool = False,
     project_name: str | None = None,
-    cutover_marker_exists: bool = False,
-    seaweedfs_volume_exists: bool = False,
-    ps_inspection_fails: bool = False,
     volume_inspection_fails: bool = False,
     script_root: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     # -Logs exercises the launcher's real Compose argument construction without
     # starting containers or changing any environment files.
-    script = (script_root or ROOT) / "start-docker.ps1"
+    isolated_root: tempfile.TemporaryDirectory[str] | None = None
+    if script_root is None:
+        isolated_root = tempfile.TemporaryDirectory(prefix="s3-cutover-launcher-")
+        script_root = Path(isolated_root.name)
+        shutil.copyfile(ROOT / "start-docker.ps1", script_root / "start-docker.ps1")
+        for overlay in ROOT.glob("docker-compose.*.yml"):
+            shutil.copyfile(overlay, script_root / overlay.name)
+    script = script_root / "start-docker.ps1"
+    if attestation is not None:
+        attestation_path = script_root / ATTESTATION
+        attestation_path.parent.mkdir(parents=True, exist_ok=True)
+        attestation_path.write_text(attestation, encoding="utf-8")
     # These are fixed test switches, not user input. Named parameters must be
     # bare tokens in PowerShell; quoting them passes positional string values.
     command_args = " ".join(args)
     safety_barrier = (
         "function Test-Path { param($Path, $LiteralPath); "
-        "if ($env:TEST_CUTOVER_MARKER_EXISTS -eq '1' -and "
-        "$LiteralPath -match 's3-seaweedfs-cutover-initiated$') { return $true }; "
         "if ($env:TEST_STOP_BEFORE_ENV_BOOTSTRAP -eq '1' -and "
         "$Path -eq '.env.docker') { throw 'TEST_BARRIER_BEFORE_ENV_BOOTSTRAP' }; "
         "Microsoft.PowerShell.Management\\Test-Path @PSBoundParameters }; "
-        if stop_before_env_bootstrap or cutover_marker_exists
+        if stop_before_env_bootstrap
         else ""
     )
     command = (
         "function docker { "
         "$global:LASTEXITCODE = 0; "
         "if ($args[0] -eq 'info') { return }; "
-        "if ($args[0] -eq 'ps') { "
-        "[Console]::Error.WriteLine('DOCKER_QUERY=' + ($args | ConvertTo-Json -Compress)); "
-        "if ($env:TEST_DOCKER_PS_FAIL -eq '1') { $global:LASTEXITCODE = 7; return }; "
-        "if ($env:TEST_EXISTING_STORAGE_IMAGE) { Write-Output $env:TEST_EXISTING_STORAGE_IMAGE }; "
-        "return }; "
         "if ($args[0] -eq 'volume') { "
-        "[Console]::Error.WriteLine('DOCKER_VOLUME_QUERY=' + ($args | ConvertTo-Json -Compress)); "
+        "[Console]::Error.WriteLine("
+        "'DOCKER_VOLUME_QUERY=' + ($args | ConvertTo-Json -Compress)); "
         "if ($env:TEST_DOCKER_VOLUME_FAIL -eq '1') { $global:LASTEXITCODE = 7; return }; "
-        "if ($env:TEST_SEAWEEDFS_VOLUME_EXISTS -eq '1') { "
-        "Write-Output 'university_ecosystem_seaweedfs_data' }; "
+        "foreach ($name in ($env:TEST_DOCKER_VOLUMES -split ',')) { "
+        "if ($name) { Write-Output $name } }; "
         "return }; "
         "Write-Output ('DOCKER_ARGV=' + ($args | ConvertTo-Json -Compress)) "
         "}; "
@@ -77,19 +84,13 @@ def run_launcher(
         f"& '{script}' {command_args}"
     )
     env = os.environ.copy()
-    env.pop("S3_CUTOVER_ACK", None)
-    if ack is not None:
-        env["S3_CUTOVER_ACK"] = ack
-    env.pop("TEST_EXISTING_STORAGE_IMAGE", None)
-    if existing_image is not None:
-        env["TEST_EXISTING_STORAGE_IMAGE"] = existing_image
+    # Simulate an old shell still carrying the retired one-shot bypass.
+    env["S3_CUTOVER_ACK"] = "VERIFIED_S3_CUTOVER"
     env.pop("COMPOSE_PROJECT_NAME", None)
     if project_name is not None:
         env["COMPOSE_PROJECT_NAME"] = project_name
-    env["TEST_CUTOVER_MARKER_EXISTS"] = "1" if cutover_marker_exists else "0"
-    env["TEST_SEAWEEDFS_VOLUME_EXISTS"] = "1" if seaweedfs_volume_exists else "0"
+    env["TEST_DOCKER_VOLUMES"] = ",".join(volumes)
     env["TEST_STOP_BEFORE_ENV_BOOTSTRAP"] = "1" if stop_before_env_bootstrap else "0"
-    env["TEST_DOCKER_PS_FAIL"] = "1" if ps_inspection_fails else "0"
     env["TEST_DOCKER_VOLUME_FAIL"] = "1" if volume_inspection_fails else "0"
     powershell = shutil.which("pwsh")
     assert powershell is not None
@@ -104,129 +105,258 @@ def run_launcher(
         check=False,
     )
     assert local_state_digests() == before, (
-        "launcher test unexpectedly changed local environment or cutover marker files"
+        "launcher test unexpectedly changed local environment files"
     )
+    if isolated_root is not None:
+        isolated_root.cleanup()
     return result
 
 
-def test_plain_start_refuses_existing_seaweedfs_before_env_bootstrap() -> None:
-    result = run_launcher(
-        "-Build",
-        existing_image="ghcr.io/chrislusf/seaweedfs:4.47",
-        stop_before_env_bootstrap=True,
-    )
-    assert result.returncode != 0
-    assert "SeaweedFS" in result.stdout + result.stderr
-    assert "rollback" in (result.stdout + result.stderr).lower()
-    assert "TEST_BARRIER_BEFORE_ENV_BOOTSTRAP" not in result.stdout + result.stderr
-    assert "DOCKER_QUERY=" in result.stderr
-    query = json.loads(result.stderr.split("DOCKER_QUERY=", 1)[1].splitlines()[0])
-    assert query[:2] == ["ps", "-a"]
-    # Without COMPOSE_PROJECT_NAME Compose (and the launcher) derive the
-    # project from the checkout directory, e.g. mutmut's isolated `mutants`.
-    assert f"label=com.docker.compose.project={ROOT.name.lower()}" in query
-    assert "label=com.docker.compose.service=minio" in query
+def _passed_storage_guard(result: subprocess.CompletedProcess[str]) -> bool:
+    # The barrier sits right after the guard, before any environment mutation.
+    return "TEST_BARRIER_BEFORE_ENV_BOOTSTRAP" in result.stdout + result.stderr
 
 
-def test_plain_first_start_passes_storage_guard_without_existing_container() -> None:
-    result = run_launcher("-Build", stop_before_env_bootstrap=True)
-    assert "DOCKER_QUERY=" in result.stderr
-    assert "TEST_BARRIER_BEFORE_ENV_BOOTSTRAP" in result.stderr
-    assert "rollback" not in (result.stdout + result.stderr).lower()
-
-
-def test_plain_start_inspects_custom_compose_project() -> None:
-    result = run_launcher(
-        "-Build",
-        project_name="other_project",
-        existing_image="ghcr.io/chrislusf/seaweedfs:4.47",
-        stop_before_env_bootstrap=True,
-    )
-    assert "rollback" in (result.stdout + result.stderr).lower()
-    query = json.loads(result.stderr.split("DOCKER_QUERY=", 1)[1].splitlines()[0])
-    assert "label=com.docker.compose.project=other_project" in query
-
-
-def test_plain_start_refuses_prior_cutover_after_containers_are_removed() -> None:
-    result = run_launcher(
+def _start(
+    *,
+    attestation: str | None = None,
+    volumes: tuple[str, ...] = (),
+    project_name: str | None = None,
+    volume_inspection_fails: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    return run_launcher(
         "-Build",
         stop_before_env_bootstrap=True,
-        cutover_marker_exists=True,
+        attestation=attestation,
+        volumes=volumes,
+        project_name=project_name,
+        volume_inspection_fails=volume_inspection_fails,
     )
-    assert result.returncode != 0
-    assert "rollback" in (result.stdout + result.stderr).lower()
-    assert "TEST_BARRIER_BEFORE_ENV_BOOTSTRAP" not in result.stdout + result.stderr
 
 
-def test_plain_start_refuses_persistent_cutover_volume_without_marker_or_container() -> (
-    None
-):
-    result = run_launcher(
-        "-Build",
-        stop_before_env_bootstrap=True,
-        seaweedfs_volume_exists=True,
+def test_fresh_machine_starts_seaweedfs_without_acknowledgement() -> None:
+    result = _start(project_name="university_ecosystem")
+
+    assert _passed_storage_guard(result)
+    query = json.loads(
+        result.stderr.split("DOCKER_VOLUME_QUERY=", 1)[1].splitlines()[0]
     )
-    assert result.returncode != 0
-    assert "rollback" in (result.stdout + result.stderr).lower()
-    assert "TEST_BARRIER_BEFORE_ENV_BOOTSTRAP" not in result.stdout + result.stderr
-    assert "DOCKER_VOLUME_QUERY=" in result.stderr
+    assert query[:2] == ["volume", "ls"]
 
 
-def test_plain_start_fails_closed_when_storage_inspection_fails() -> None:
-    result = run_launcher(
-        "-Build", stop_before_env_bootstrap=True, ps_inspection_fails=True
-    )
-    assert (
-        "Cannot inspect the existing Compose storage service"
-        in result.stdout + result.stderr
-    )
-    assert "TEST_BARRIER_BEFORE_ENV_BOOTSTRAP" not in result.stdout + result.stderr
-
-
-def test_plain_start_fails_closed_when_volume_inspection_fails() -> None:
-    result = run_launcher(
-        "-Build", stop_before_env_bootstrap=True, volume_inspection_fails=True
-    )
-    assert (
-        "Cannot inspect the SeaweedFS cutover volume" in result.stdout + result.stderr
-    )
-    assert "TEST_BARRIER_BEFORE_ENV_BOOTSTRAP" not in result.stdout + result.stderr
-
-
-def test_down_remains_available_with_cutover_marker() -> None:
-    result = run_launcher("-Down", cutover_marker_exists=True)
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert compose_argv(result)[-1] == "down"
-    assert "DOCKER_QUERY=" not in result.stderr
-
-
-def test_down_refuses_another_storage_operation_holding_the_shared_lock(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    "legacy", ["university_ecosystem_minio-data", "university_ecosystem_minio_data"]
+)
+def test_legacy_volume_without_storage_volume_refuses_before_env_bootstrap(
+    legacy: str,
 ) -> None:
+    result = _start(project_name="university_ecosystem", volumes=(legacy,))
+
+    assert result.returncode != 0
+    assert not _passed_storage_guard(result)
+    assert _reports(result, legacy)
+    assert _reports(result, RUNBOOK)
+    assert _reports(result, ATTESTATION)
+
+
+def test_existing_matching_target_without_attestation_still_refuses() -> None:
+    result = _start(
+        project_name="university_ecosystem",
+        volumes=("university_ecosystem_minio-data", STORAGE_VOLUME),
+    )
+    assert result.returncode != 0
+    assert not _passed_storage_guard(result)
+
+
+def test_ephemeral_acknowledgement_does_not_bypass_the_guard() -> None:
+    result = _start(
+        project_name="university_ecosystem",
+        volumes=("university_ecosystem_minio-data",),
+    )
+    assert result.returncode != 0
+    assert not _passed_storage_guard(result)
+
+
+def test_matching_attestation_and_target_allow_start_and_keep_legacy_volume() -> None:
+    result = _start(
+        project_name="university_ecosystem",
+        volumes=("university_ecosystem_minio-data", STORAGE_VOLUME),
+        attestation=(
+            "schema_version=1\n"
+            "project_name=university_ecosystem\n"
+            "legacy_source_volumes=university_ecosystem_minio-data\n"
+            f"target_volume={STORAGE_VOLUME}\n"
+            "verified=VERIFIED_S3_CUTOVER\n"
+        ),
+    )
+    assert _passed_storage_guard(result)
+
+
+def test_attestation_must_include_every_matching_legacy_volume() -> None:
+    legacy = (
+        "university_ecosystem_minio-data",
+        "university_ecosystem_minio_data",
+        STORAGE_VOLUME,
+    )
+    incomplete = _start(
+        project_name="university_ecosystem",
+        volumes=legacy,
+        attestation=(
+            "schema_version=1\n"
+            "project_name=university_ecosystem\n"
+            "legacy_source_volumes=university_ecosystem_minio-data\n"
+            f"target_volume={STORAGE_VOLUME}\n"
+            "verified=VERIFIED_S3_CUTOVER\n"
+        ),
+    )
+    assert not _passed_storage_guard(incomplete)
+
+    complete = _start(
+        project_name="university_ecosystem",
+        volumes=legacy,
+        attestation=(
+            "schema_version=1\n"
+            "project_name=university_ecosystem\n"
+            "legacy_source_volumes=university_ecosystem_minio-data,university_ecosystem_minio_data\n"
+            f"target_volume={STORAGE_VOLUME}\n"
+            "verified=VERIFIED_S3_CUTOVER\n"
+        ),
+    )
+    assert _passed_storage_guard(complete)
+
+
+def test_legacy_volume_name_follows_the_compose_project() -> None:
+    other = _start(
+        project_name="other_project",
+        volumes=("university_ecosystem_minio-data",),
+    )
+    assert _passed_storage_guard(other)
+
+    refused = _start(
+        project_name="other_project", volumes=("other_project_minio-data",)
+    )
+    assert not _passed_storage_guard(refused)
+    assert _reports(refused, "other_project_minio-data")
+
+
+def test_default_project_name_is_university_ecosystem() -> None:
+    # Compose files retain the stable default project name in detached trees.
+    result = _start(volumes=("university_ecosystem_minio-data",))
+    assert not _passed_storage_guard(result)
+
+
+def test_project_scoped_target_alone_does_not_prove_migration() -> None:
+    result = _start(
+        project_name="ue-live",
+        volumes=("ue-live_minio-data", "ue-live_seaweedfs_data"),
+    )
+    assert not _passed_storage_guard(result)
+
+
+@pytest.mark.parametrize(
+    "attestation",
+    [
+        "schema_version=1\nproject_name=other\nlegacy_source_volumes=review_minio-data\ntarget_volume=review_seaweedfs_data\nverified=VERIFIED_S3_CUTOVER\n",  # pragma: allowlist secret -- attestation fixture
+        "schema_version=1\nproject_name=review\nlegacy_source_volumes=review_minio_data\ntarget_volume=review_seaweedfs_data\nverified=VERIFIED_S3_CUTOVER\n",  # pragma: allowlist secret -- attestation fixture
+        f"schema_version=1\nproject_name=review\nlegacy_source_volumes=review_minio-data\ntarget_volume={STORAGE_VOLUME}\nverified=VERIFIED_S3_CUTOVER\n",  # pragma: allowlist secret -- attestation fixture
+        "schema_version=1\nproject_name=review\nlegacy_source_volumes=review_minio-data\ntarget_volume=review_seaweedfs_data\nverified=NO\n",  # pragma: allowlist secret -- attestation fixture
+    ],
+    ids=["project-mismatch", "source-mismatch", "target-mismatch", "unverified"],
+)
+def test_custom_project_rejects_mismatched_attestation(attestation: str) -> None:
+    result = _start(
+        project_name="review",
+        volumes=("review_minio-data", "review_seaweedfs_data"),
+        attestation=attestation,
+    )
+    assert not _passed_storage_guard(result)
+
+
+def test_custom_project_requires_its_exact_target_volume() -> None:
+    result = _start(
+        project_name="review",
+        volumes=("review_minio-data", STORAGE_VOLUME),
+        attestation=(
+            "schema_version=1\n"
+            "project_name=review\n"
+            "legacy_source_volumes=review_minio-data\n"
+            "target_volume=review_seaweedfs_data\n"
+            "verified=VERIFIED_S3_CUTOVER\n"
+        ),
+    )
+    assert not _passed_storage_guard(result)
+
+
+def test_volume_lookup_is_exact_not_substring() -> None:
+    result = _start(
+        project_name="university_ecosystem",
+        volumes=("university_ecosystem_minio-data", f"{STORAGE_VOLUME}_copy"),
+    )
+    assert not _passed_storage_guard(result)
+
+
+def test_local_attestation_is_ignored_by_git() -> None:
+    result = subprocess.run(  # noqa: S603 - fixed read-only Git query
+        [shutil.which("git") or "git", "check-ignore", "-q", "--", ATTESTATION],
+        cwd=ROOT,
+        check=False,
+    )
+    assert result.returncode == 0
+
+
+def test_start_fails_closed_when_volume_inspection_fails() -> None:
+    result = _start(project_name="university_ecosystem", volume_inspection_fails=True)
+
+    assert result.returncode != 0
+    assert not _passed_storage_guard(result)
+    assert _reports(result, "Cannot inspect Docker volumes")
+
+
+def test_down_and_logs_do_not_inspect_storage() -> None:
+    down = run_launcher("-Down", volumes=("university_ecosystem_minio-data",))
+    assert down.returncode == 0, down.stdout + down.stderr
+    assert compose_argv(down)[-1] == "down"
+    assert "DOCKER_VOLUME_QUERY=" not in down.stderr
+
+    logs = run_launcher("-Logs", volumes=("university_ecosystem_minio-data",))
+    assert logs.returncode == 0, logs.stdout + logs.stderr
+    assert "DOCKER_VOLUME_QUERY=" not in logs.stderr
+
+
+def test_down_ignores_a_stale_lock_from_the_retired_cutover(tmp_path: Path) -> None:
     shutil.copyfile(ROOT / "start-docker.ps1", tmp_path / "start-docker.ps1")
     lock_dir = tmp_path / ".secrets" / "s3-storage-compose.lock"
     lock_dir.mkdir(parents=True)
 
     result = run_launcher("-Down", script_root=tmp_path)
 
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert compose_argv(result)[-1] == "down"
+    assert lock_dir.is_dir(), "the launcher never removes directories it did not create"
+
+
+def test_launcher_has_no_cutover_or_rollback_machinery() -> None:
+    source = (ROOT / "start-docker.ps1").read_text(encoding="utf-8")
+
+    for retired in (
+        "[switch]$SeaweedFS",
+        "docker-compose.seaweedfs-cutover.yml",
+        "s3-seaweedfs-cutover-initiated",
+        "s3-storage-compose.lock",
+        "S3StorageComposeLock",
+        "Assert-PlainS3RollbackGuard",
+        "StorageIsSeaweedFS",
+        "SeaweedFSStorage",
+        "localhost:9001",
+        "S3_CUTOVER_ACK",
+    ):
+        assert retired not in source, retired
+
+
+def test_retired_cutover_switch_is_rejected_before_any_docker_call() -> None:
+    result = run_launcher("-SeaweedFS", "-Logs")
     assert result.returncode != 0
     assert "DOCKER_ARGV=" not in result.stdout
-    assert lock_dir.is_dir(), "a competing lock must never be removed"
-
-
-def test_launcher_rechecks_storage_under_lock_before_final_up() -> None:
-    source = (ROOT / "start-docker.ps1").read_text(encoding="utf-8")
-    start = source.index("# -- Start services")
-    end = source.index("# -- Health check loop", start)
-    startup = source[start:end]
-
-    assert startup.index("Enter-S3StorageComposeLock") < startup.index(
-        "Assert-PlainS3RollbackGuard"
-    )
-    assert startup.index("Assert-PlainS3RollbackGuard") < startup.index(
-        "docker compose @ComposeArgs --env-file $EnvFile up"
-    )
-    assert "finally" in startup and "Exit-S3StorageComposeLock" in startup
 
 
 def compose_argv(result: subprocess.CompletedProcess[str]) -> list[str]:
@@ -239,42 +369,13 @@ def compose_argv(result: subprocess.CompletedProcess[str]) -> list[str]:
     return json.loads(calls[0])
 
 
-def test_default_logs_use_only_base_compose_even_with_cutover_ack() -> None:
-    result = run_launcher("-Logs", ack="VERIFIED_S3_CUTOVER")
+def test_logs_use_only_the_full_compose_file() -> None:
+    result = run_launcher("-Logs")
     assert result.returncode == 0, result.stdout + result.stderr
     args = compose_argv(result)
     assert args[:3] == ["compose", "-f", "docker-compose.full.yml"]
-    assert "docker-compose.seaweedfs-cutover.yml" not in args
+    assert args.count("-f") == 2  # the compose file and the follow flag
     assert args[-2:] == ["logs", "-f"]
-    assert "DOCKER_QUERY=" not in result.stderr
-
-
-def test_cutover_logs_put_overlay_last() -> None:
-    result = run_launcher("-SeaweedFS", "-Logs", ack="VERIFIED_S3_CUTOVER")
-    assert result.returncode == 0, result.stdout + result.stderr
-    args = compose_argv(result)
-    assert args[:5] == [
-        "compose",
-        "-f",
-        "docker-compose.full.yml",
-        "-f",
-        "docker-compose.seaweedfs-cutover.yml",
-    ]
-    assert args[-2:] == ["logs", "-f"]
-
-
-def test_cutover_without_ack_fails_before_docker_call() -> None:
-    result = run_launcher("-SeaweedFS", "-Logs")
-    assert result.returncode != 0
-    assert "S3_CUTOVER_ACK" in result.stdout + result.stderr
-    assert "DOCKER_ARGV=" not in result.stdout
-
-
-def test_cutover_rejects_arbitrary_nonempty_ack() -> None:
-    result = run_launcher("-SeaweedFS", "-Logs", ack="yes")
-    assert result.returncode != 0
-    assert "S3_CUTOVER_ACK" in result.stdout + result.stderr
-    assert "DOCKER_ARGV=" not in result.stdout
 
 
 def _reports(result: subprocess.CompletedProcess[str], reason: str) -> bool:
@@ -289,21 +390,13 @@ def _reports(result: subprocess.CompletedProcess[str], reason: str) -> bool:
 
 
 def test_extra_compose_overlay_is_applied_last() -> None:
-    result = run_launcher(
-        "-SeaweedFS",
-        "-Logs",
-        "-ExtraCompose",
-        "docker-compose.observability.yml",
-        ack="VERIFIED_S3_CUTOVER",
-    )
+    result = run_launcher("-Logs", "-ExtraCompose", "docker-compose.observability.yml")
     assert result.returncode == 0, result.stdout + result.stderr
     args = compose_argv(result)
-    assert args[:7] == [
+    assert args[:5] == [
         "compose",
         "-f",
         "docker-compose.full.yml",
-        "-f",
-        "docker-compose.seaweedfs-cutover.yml",
         "-f",
         "docker-compose.observability.yml",
     ]
@@ -318,8 +411,8 @@ def test_extra_compose_overlay_is_applied_last() -> None:
         ("sub/docker-compose.evil.yml", "expected a docker-compose.<name>.yml"),
         ("docker-compose.yaml", "expected a docker-compose.<name>.yml"),
         ("compose.live.yml", "expected a docker-compose.<name>.yml"),
-        ("docker-compose.seaweedfs-cutover.yml", "has its own launcher switch"),
-        ("docker-compose.full.yml", "has its own launcher switch"),
+        ("docker-compose.full.yml", "is the base Compose file"),
+        ("docker-compose.seaweedfs-cutover.yml", "file not found"),
         ("docker-compose.missing-overlay.yml", "file not found"),
     ],
 )
