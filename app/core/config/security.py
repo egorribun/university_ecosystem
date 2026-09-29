@@ -282,19 +282,6 @@ class SecuritySettings(
     # value (e.g. `openssl rand -hex 32`) and set it on BOTH gateway and backend.
     internal_hmac_secret: str = Field(default="", validate_default=True)
 
-    # ── SPIFFE Workload API & mTLS ──────────────────────────────────────────
-    spiffe_enabled: bool = False
-    spiffe_socket_path: str = Field(default="/tmp/spire-agent/public/api.sock")  # noqa: S108 # nosec B108
-    spiffe_trust_domain: str = "university.ecosystem"
-    spiffe_app_id: str = "spiffe://university.ecosystem/ns/default/sa/app"
-    spiffe_allowed_clients: list[str] = Field(
-        default_factory=lambda: [
-            "spiffe://university.ecosystem/ns/default/sa/gateway",
-            "spiffe://university.ecosystem/ns/default/sa/ws-hub",
-            "spiffe://university.ecosystem/ns/default/sa/file-processor",
-        ]
-    )
-
     @field_validator("audit_log_secret")
     @classmethod
     def _validate_audit_log_secret(cls, value: str, info: ValidationInfo) -> str:

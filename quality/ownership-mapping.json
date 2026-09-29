@@ -77,8 +77,6 @@
     "tests/test_l1_cache.py",
     "frontend/**",
     "services/gateway/**",
-    "tests/test_spiffe_concurrency_stress.py",
-    "tests/test_spiffe_stress_concurrency.py",
     "tests/test_vector_sharding.py"
   ],
   "allowed_dynamic_skips": [

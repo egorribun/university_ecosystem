@@ -542,9 +542,6 @@ pyroscope-io = "pyroscope"
 # gunicorn - production server command; python-dotenv - seed scripts in the
 # backend image; protobuf - flagd/Authzed gRPC runtime (feature-flag contract).
 DEP002 = ["aiosqlite", "email-validator", "gunicorn", "protobuf", "python-dotenv", "python-multipart"]
-# pyspiffe is an optional SPIFFE Workload API client; the module degrades
-# without it and the SPIFFE middleware stays fail-closed.
-DEP001 = ["pyspiffe"]
 # Framework internals imported alongside the frameworks that pin them.
 DEP003 = ["graphql", "pydantic_core"]
 # OPEN DECISION (STATUS.md): the production image installs --no-dev, so it
