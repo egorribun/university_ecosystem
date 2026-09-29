@@ -34,6 +34,8 @@ handoffs are intentionally not part of the canonical index.
 
 ## Quality evidence
 
+- [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md) — the single consolidated
+  plan, progress and continuation guide.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
   operational status; earlier handoff and continuation plans live under
   `superpowers/plans/archive/` as history.
