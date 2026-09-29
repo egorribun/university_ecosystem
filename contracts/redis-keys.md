@@ -21,8 +21,6 @@ shares the Redis instance.
 | `{chat_id}`      | Chat/Room UUID                       |
 | `{key}`          | Hashed composite identifier (SHA256) |
 | `{challenge_type}` | MFA challenge type string          |
-| `{method}`       | Auth method string                   |
-| `{token}`        | Short-lived challenge token          |
 
 ---
 
@@ -119,7 +117,9 @@ shares the Redis instance.
 | Key Pattern | TTL | Owner | Readers | Purpose |
 |-------------|-----|-------|---------|---------|
 | `mfa:{challenge_type}:{user_id}` | challenge TTL | Python `app/auth/mfa/challenge.py` | Python MFA handlers | Active MFA challenge tracking |
-| `mfa:fp:{token}` | challenge remaining TTL | Python `app/core/fingerprint.py` | Python fingerprint validator | Device fingerprint for MFA step-up |
+
+The MFA client fingerprint (`app/core/fingerprint.py`, HMAC-SHA256 digest) is
+not a Redis key: it is stored in PostgreSQL as `mfa_challenges.client_fingerprint`.
 
 ---
 
@@ -127,7 +127,9 @@ shares the Redis instance.
 
 | Key Pattern | TTL | Owner | Readers | Purpose |
 |-------------|-----|-------|---------|---------|
-| `ue:etag-cache:v{VERSION}:{path}` | 30s debounce flush | Python ETag service | Frontend (via HTTP ETag header) | Per-path ETag cache with schema version |
+There is no separate ETag key. Each cached response entry (`CacheEntry` in
+`app/deps/cache.py`) carries the SHA-256 ETag of its serialized payload, and
+`app/api/deps/etag.py` answers `If-None-Match` from that entry.
 
 ---
 
@@ -135,16 +137,14 @@ shares the Redis instance.
 
 | Key Pattern | Value | TTL | Owner | Consumer |
 |-------------|-------|-----|-------|----------|
-| `idempotency:{method}:{user_id}:{key_hash}` | `{response_body_json}` | 86400s (24h) | Python backend (`app/core/middleware.py`) | Python backend (same module) |
+| `idm:msg:{digest}` | `{"status": "pending"}`, then `{"status": "completed", "message_id": "<uuid>"}` | 300s while pending (`SET NX`), 86400s (24h) once completed | Python backend (`app/services/chat/command_service.py`, `_make_idempotency_key`) | Python backend (same module) |
 
 **Field details:**
-- `{method}`: HTTP method + path, e.g., `POST:/api/v1/messages`
-- `{user_id}`: User UUID (prevents cross-user replay)
-- `{key_hash}`: SHA-256 of the `Idempotency-Key` header value (hex, 64 chars)
+- `{digest}`: HMAC-BLAKE2b of `{chat_id}:{user_id}:{Idempotency-Key}` keyed with `IDEMPOTENCY_HMAC_SECRET`; plain BLAKE2b (16-byte digest) when the secret is empty. Neither the chat, the user nor the raw header value is recoverable from the key.
 
-**Behaviour on cache hit:** Returns `200 OK` with the cached response body; the request handler is not invoked a second time.
+**Behaviour on cache hit:** A completed entry stores only the message ID; the backend re-reads the message from the database and returns it instead of sending a duplicate. Message content never sits in Redis.
 
-> **Security note (Wave 4):** The `user_id` component prevents user A from replaying user B's idempotent request. The SHA-256 hash avoids storing the raw header value in Redis.
+> **Security note:** Binding `chat_id` and `user_id` into the digest prevents user A from replaying user B's idempotent request.
 
 ---
 
@@ -152,13 +152,14 @@ shares the Redis instance.
 
 | Key Pattern | Value | TTL | Owner | Consumer |
 |-------------|-------|-----|-------|----------|
-| `presence:{chat_id}` | Sorted Set: `{user_id}` → `last_seen_unix_ms` | 300s rolling | ws-hub (via NATS event) | Python `app/api/ws/presence.py` (`get_presence_audience`) |
+| `v{N}:user:{user_id}:presence_audience` | JSON list of user UUIDs | 3600s | Python `app/api/ws/presence.py` (`_get_presence_audience`, via the tiered cache and `versioned_key`) | Python (same module); invalidated by `invalidate_presence_audience_cache` |
 
 **Constraints:**
-- Maximum 500 members per room (`_PRESENCE_AUDIENCE_LIMIT` in `presence.py`).
-- TTL is refreshed on each heartbeat; members with stale scores are evicted server-side.
+- The audience is resolved from chat participants in PostgreSQL and capped at 500 users (`ChatRepository._PRESENCE_AUDIENCE_LIMIT`).
+- A bounded in-process cache (30 s TTL) shields the database when the shared cache is disabled or empty.
+- The optional Redis Pub/Sub bridge (`PRESENCE_PUBSUB_ENABLED`, channel `PRESENCE_PUBSUB_CHANNEL`, default `presence_updates`) only fans presence events out between backend replicas.
 
-> **Cross-service invariant (Wave 5):** The ws-hub publishes presence events to NATS; the Python backend updates the Sorted Set and enforces the 500-member cap. Presence data is advisory — authorization always goes through SpiceDB.
+> Presence data is advisory — authorization always goes through SpiceDB.
 
 ---
 
@@ -168,3 +169,4 @@ shares the Redis instance.
 |------|--------|--------|
 | 2026-03-23 | Wave 14 audit | Initial document created (MOD-W14-04) |
 | 2026-03-23 | Wave 15 audit | Added Idempotency and Presence key contracts (TD-W15-05) |
+| 2026-09-29 | Documentation audit | Aligned the Idempotency, Presence, ETag and MFA fingerprint entries with the implementation |

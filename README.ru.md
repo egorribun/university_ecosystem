@@ -68,6 +68,7 @@ university_ecosystem/
 │   ├── file-processor/# 📁 Media Engine (Go/Temporal) - Обработка файлов и медиа
 │   └── caddy/         # 🔒 Обратный прокси и TLS терминация
 ├── native/            # 🦀 Rust-расширения (PyO3/Rayon) - Высокоскоростные вычисления
+├── charts/            # ⎈ Helm-чарты (каноничный деплой приложения, ADR-034)
 ├── k8s/               # ☸️ Манифесты Kubernetes, Kyverno-политики и Chaos Mesh
 ├── alembic/           # 🗄️ Миграции базы данных (SQLAlchemy 2.0 Async)
 └── docs/              # 📖 Архитектура и ADR (см. docs/adr/)
@@ -100,7 +101,7 @@ graph TD
 
     subgraph "Данные, Управление и Воркфлоу"
         Postgres[("🐘 PostgreSQL 17 + pgvector")]
-        Valkey[("⚡ Valkey / Redis 7 (volatile-lru)")]
+        Valkey[("⚡ Valkey 8.1 кэш (volatile-lru)")]
         Revocations[("🛡️ Revocation Valkey (AOF / noeviction)")]
         MinIO[("📦 MinIO (S3 Storage)")]
         Temporal["⏳ Temporal.io (Workflows)"]
@@ -163,11 +164,10 @@ sequenceDiagram
     Gateway->>Backend: Проксирование запроса авторизации
     Backend->>Argon2: Валидация хеша пароля (Argon2id) / TOTP или Email OTP
     Argon2-->>Backend: Успешная аутентификация
-    Backend->>SpiceDB: Запрос прав и отношений пользователя
-    SpiceDB-->>Backend: Ответ с ролями и разрешениями
-    Backend->>Redis: Сохранение сессии и выдача тикета авторизации
+    Backend->>Redis: Сохранение сессии
     Backend-->>Gateway: HTTP 200 + Secure HTTP-Only Cookie + JWT
     Gateway-->>Client: Авторизованный ответ
+    Note over Backend,SpiceDB: Последующие защищённые запросы проверяют ReBAC-права в SpiceDB
 ```
 
 ### 📡 Сценарий Выборки и Отправки Сообщений в Чат
@@ -177,17 +177,18 @@ sequenceDiagram
     autonumber
     actor ClientA as 📱 Клиент A
     actor ClientB as 📱 Клиент B
-    participant Gateway as 🚀 Go Gateway
+    participant Caddy as 🔒 Caddy Edge
     participant WSHub as 📡 Go WS-Hub
     participant NATS as 📨 NATS Broker
-    participant Redis as ⚡ Redis (Кэш тикетов)
+    participant Redis as ⚡ Valkey (Кэш тикетов)
 
-    ClientA->>Gateway: GET /ws (Запрос Upgrade + Тикет авторизации)
-    Gateway->>Redis: Проверка тикета и пречек макс. клиентов (Pre-check)
-    Redis-->>Gateway: Тикет валиден
-    Gateway->>WSHub: Апгрейд соединения до WebSocket
+    ClientA->>Caddy: GET /ws/chat?ticket=<одноразовый тикет> (Запрос Upgrade)
+    Caddy->>WSHub: Проксирование Upgrade на /ws
+    WSHub->>WSHub: Пречек Origin, rate limit и макс. клиентов
+    WSHub->>Redis: GETDEL одноразового тикета
+    Redis-->>WSHub: Тикет валиден (пользователь, JTI)
     ClientA->>WSHub: Кадр сообщения чата (Защита <60 КБ)
-    WSHub->>NATS: Публикация в NATS Subject (chat.room.{id})
+    WSHub->>NATS: Публикация в NATS Subject (chat.{room})
     NATS-->>WSHub: Доставка кадра подписанным нодам WS-Hub
     WSHub-->>ClientB: Рассылка кадра соединениям получателя
 ```
@@ -231,7 +232,7 @@ Copy-Item .env.example .env
 
 - **Многофакторная аутентификация**: **TOTP**, email OTP и одноразовые recovery-коды вместе с хешированием паролей **Argon2id**.
 - **Строгая валидация**: Схемы **Valibot** на фронтенде и защита от Path Traversal в gRPC.
-- **Антивирусная защита**: Настраиваемая проверка загрузок через `clamd` (включение и обязательность зависят от окружения). Перед использованием загрузок проверьте доступность сканера.
+- **Антивирусная защита и SSRF**: Настраиваемая проверка загрузок через `clamd` (включение и обязательность зависят от окружения) и строгая валидация URL, блокирующая внутренние диапазоны IP. Перед использованием загрузок проверьте доступность сканера.
 - **Политики K8s**: Инспекция подов через **Kyverno** и профили `RuntimeDefault`.
 - **Очистка персональных данных**: Автоматическая анонимизация PII (почты, телефоны) в логах.
 
@@ -240,7 +241,7 @@ Copy-Item .env.example .env
 ### **Python (Core API)**
 ```bash
 uv sync            # Синхронизация зависимостей Python 3.14
-uv run pytest      # Запуск тестовой сюиты (2800+ тестов)
+uv run pytest      # Запуск полной тестовой сюиты
 uv run ruff check app/      # Проверка Ruff линтером
 uv run ruff format app/     # Форматирование кода
 ```
@@ -274,5 +275,5 @@ make test-integration # Запуск интеграционных тестов A
 <div align="center">
   <br />
   <h3>Сконструировано с ❤️ инженерами University Ecosystem</h3>
-  © 2026 University Ecosystem Platform • Все права защищены.
+  © 2026 University Ecosystem Platform • Распространяется по <a href="LICENSE">лицензии MIT</a>.
 </div>

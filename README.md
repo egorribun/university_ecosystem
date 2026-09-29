@@ -68,7 +68,8 @@ university_ecosystem/
 │   ├── file-processor/# 📁 Media Engine (Go/Temporal) - Secure Uploads & Processing
 │   └── caddy/         # 🔒 Edge Reverse Proxy & TLS Termination
 ├── native/            # 🦀 Rust Extensions (PyO3/Rayon) - High-Performance Hot Path
-├── k8s/               # ☸️ Kubernetes Helm Charts, Kyverno Policies & Chaos Mesh
+├── charts/            # ⎈ Helm Charts (canonical application deployment, ADR-034)
+├── k8s/               # ☸️ Kubernetes Manifests, Kyverno Policies & Chaos Mesh
 ├── alembic/           # 🗄️ Database Migrations (SQLAlchemy 2.0 Async)
 └── docs/              # 📖 Architecture Specs & ADRs (see docs/adr/)
 ```
@@ -100,7 +101,7 @@ graph TD
 
     subgraph "Data, Governance & Workflows"
         Postgres[("🐘 PostgreSQL 17 + pgvector")]
-        Valkey[("⚡ Valkey / Redis 7 (volatile-lru)")]
+        Valkey[("⚡ Valkey 8.1 cache (volatile-lru)")]
         Revocations[("🛡️ Revocation Valkey (AOF / noeviction)")]
         MinIO[("📦 MinIO (S3 Storage)")]
         Temporal["⏳ Temporal.io (Workflows)"]
@@ -163,11 +164,10 @@ sequenceDiagram
     Gateway->>Backend: Forward Auth Request
     Backend->>Argon2: Verify Password Hash (Argon2id) / TOTP or Email OTP
     Argon2-->>Backend: Authentication Success
-    Backend->>SpiceDB: Read User Permissions & Relationships
-    SpiceDB-->>Backend: Grant Granted Scopes
-    Backend->>Redis: Store Session & Issue Auth Ticket
+    Backend->>Redis: Store Session
     Backend-->>Gateway: HTTP 200 + Secure HTTP-Only Cookie + JWT
     Gateway-->>Client: Authenticated Response
+    Note over Backend,SpiceDB: Later protected requests check ReBAC permissions in SpiceDB
 ```
 
 ### 📡 High-Concurrency Real-Time Chat Sequence
@@ -177,17 +177,18 @@ sequenceDiagram
     autonumber
     actor ClientA as 📱 Client A
     actor ClientB as 📱 Client B
-    participant Gateway as 🚀 Go Gateway
+    participant Caddy as 🔒 Caddy Edge
     participant WSHub as 📡 Go WS-Hub
     participant NATS as 📨 NATS Broker
-    participant Redis as ⚡ Redis (Ticket Cache)
+    participant Redis as ⚡ Valkey (Ticket Cache)
 
-    ClientA->>Gateway: GET /ws (Upgrade Request + Auth Ticket)
-    Gateway->>Redis: Validate Auth Ticket & Max Clients (<Pre-check)
-    Redis-->>Gateway: Ticket Valid
-    Gateway->>WSHub: Upgrade Connection to WebSocket
+    ClientA->>Caddy: GET /ws/chat?ticket=<one-time ticket> (Upgrade Request)
+    Caddy->>WSHub: Proxy Upgrade to /ws
+    WSHub->>WSHub: Origin, Rate Limit & Max Clients Pre-check
+    WSHub->>Redis: GETDEL Single-Use Ticket
+    Redis-->>WSHub: Ticket Valid (user, JTI)
     ClientA->>WSHub: Send Chat Message Frame (<60 KB Guard)
-    WSHub->>NATS: Publish to NATS Subject (chat.room.{id})
+    WSHub->>NATS: Publish to NATS Subject (chat.{room})
     NATS-->>WSHub: Deliver Frame to Subscribed Hub Nodes
     WSHub-->>ClientB: Broadcast Message Frame to Target Connection
 ```
@@ -242,7 +243,7 @@ for every runtime and Prometheus target:
 ### **Python (Core API)**
 ```bash
 uv sync            # Sync Python 3.14 dependencies
-uv run pytest      # Run full pytest suite (2800+ tests)
+uv run pytest      # Run the full pytest suite
 uv run ruff check app/      # Run Ruff linter
 uv run ruff format app/     # Format Python codebase
 ```
@@ -276,5 +277,5 @@ The platform includes a production-ready observability stack:
 <div align="center">
   <br />
   <h3>Built with ❤️ by University Ecosystem Engineers</h3>
-  © 2026 University Ecosystem Platform • All Rights Reserved.
+  © 2026 University Ecosystem Platform • Released under the <a href="LICENSE">MIT License</a>.
 </div>

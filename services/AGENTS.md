@@ -118,7 +118,7 @@ if exists {
 ## 5. File Processor (`services/file-processor`)
 
 ### 5.1. Environment Variable Prefix (`FP_`)
-- All environment variables must use the `FP_` prefix (`FP_GRPC_PORT`, `FP_STORAGE_BACKEND`, `FP_MAX_FILE_SIZE_MB`) per `viper.SetEnvPrefix("FP")`.
+- All environment variables must use the `FP_` prefix (`FP_GRPC_PORT`, `FP_TEMPORAL_HOST`, `FP_JWKS_URL`) per `viper.SetEnvPrefix("FP")`.
 
 ### 5.2. File Path Traversal Defense
 - `sourceKey` and `destKey` RPC arguments must be validated against path traversal (`..`, absolute prefixes).
@@ -133,12 +133,19 @@ if exists {
 
 ## 6. Caddy Edge Proxy (`services/caddy`)
 
+`services/caddy/Caddyfile` is the TLS/HTTP/3 edge mounted by the base
+`docker-compose.yml`; `infrastructure/Caddyfile` is the plain-HTTP `:80` edge
+mounted by `docker-compose.full.yml` (the `start-docker.ps1` stack). Keep their
+routing tables in lockstep.
+
 ### 6.1. Edge Routing Table
 - Edge liveness: `/healthz` responded locally by Caddy.
 - Dynamic APIs: `/api/*` and `/graphql*` -> `gateway:8080`.
 - WS Ticket Issuance: `/ws/ticket` -> `gateway:8080`.
 - WebSocket Tunnel: `/ws/chat*` -> `ws-hub:8081` (rewriting path to `/ws`).
 - Static Assets & JWKS: `/static/*` and `/.well-known/*` -> `backend:8000`.
+- Signed images: `/imgproxy/*` -> `imgproxy:8080` (prefix stripped).
+- Public media: `/storage/*` -> S3 object storage, `GET`/`HEAD` only for the reviewed public prefixes of the `uploads` bucket; everything else returns `404`.
 - SSR & Web App: `/sw.js` and default route `/` -> `frontend:3000`.
 
 ### 6.2. Rate Limiting

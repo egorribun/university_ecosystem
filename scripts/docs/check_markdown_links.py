@@ -1,8 +1,10 @@
 """Fail-closed check for relative links in Markdown files.
 
-This intentionally validates file targets only. URL reachability and fragment
-semantics belong to the documentation host; a local check must stay
-deterministic and offline-friendly.
+Every relative inline, reference-style or HTML ``href``/``src`` link must reach
+a tracked repository path. A ``#fragment`` pointing into a Markdown document
+must name one of its headings (GitHub slug rules, Cyrillic included) or an
+explicit HTML anchor. URL reachability belongs to the documentation host; this
+check stays deterministic and offline.
 """
 
 from __future__ import annotations
@@ -12,80 +14,185 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
+from html import unescape
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
 
-INLINE_LINK_RE = re.compile(r"\[[^\]]*\]\((?:<(?P<angled>[^>]+)>|(?P<plain>[^\s)]+))")
+# Vendored agent skill catalogs mirror upstream content, not project docs.
+VENDORED_PREFIXES = (".agents/skills/", ".opencode/")
+ARCHIVE_PREFIX = "docs/audits/archive/"
+# Dated evidence is never rewritten: only file targets are checked there, as a
+# heading anchor may legitimately describe a report's past layout.
+ANCHOR_EXEMPT_PREFIXES = ("docs/audits/", "docs/superpowers/plans/archive/")
+REMOTE_PREFIXES = (
+    "http://",
+    "https://",
+    "mailto:",
+    "tel:",
+    "data:",
+    "file:",
+    "ftp://",
+    "vscode://",
+)
+
+FENCE_OPEN_RE = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})")
+FENCE_CLOSE_RE = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})[ \t]*$")
+CODE_SPAN_RE = re.compile(r"(?P<ticks>`+)(?:(?!(?P=ticks)).)+?(?P=ticks)", re.DOTALL)
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+INLINE_LINK_RE = re.compile(
+    r"\[(?:[^\[\]]|\[[^\[\]]*\])*\]\(\s*(?:<(?P<angled>[^>\n]+)>|(?P<plain>[^\s()]+))"
+)
 REFERENCE_LINK_RE = re.compile(
-    r"^\s*\[[^\]]+\]:\s*(?:<(?P<angled>[^>]+)>|(?P<plain>\S+))",
+    r"^ {0,3}\[[^\]]+\]:\s*(?:<(?P<angled>[^>\n]+)>|(?P<plain>\S+))",
     re.MULTILINE,
 )
-FENCED_CODE_RE = re.compile(r"(?ms)^ {0,3}```.*?^ {0,3}```")
-INLINE_CODE_RE = re.compile(r"`+[^`\n]*`+")
-REMOTE_PREFIXES = ("#", "http://", "https://", "mailto:", "tel:", "data:", "file:")
+HTML_LINK_RE = re.compile(
+    r"<(?:a|img|source)\b[^>]*?\b(?:href|src)\s*=\s*[\"'](?P<plain>[^\"']+)[\"']",
+    re.IGNORECASE,
+)
+ATX_HEADING_RE = re.compile(r"^ {0,3}#{1,6}(?:[ \t]+(?P<text>.*?))?[ \t]*$")
+ATX_CLOSING_RE = re.compile(r"(?:^|[ \t]+)#+[ \t]*$")
+SETEXT_UNDERLINE_RE = re.compile(r"^ {0,3}(?:=+|-+)[ \t]*$")
+NOT_SETEXT_TEXT_RE = re.compile(r"^\s*(?:[|*+>-]|<|\d+[.)]\s)")
+HTML_ANCHOR_RE = re.compile(
+    r"<[a-z][^>]*?\b(?:id|name)\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE
+)
+LINK_TEXT_RE = re.compile(r"!?\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\([^)]*\)")
+HTML_TAG_RE = re.compile(r"<[^>]+>")
+UNDERSCORE_EMPHASIS_RE = re.compile(r"(?<!\w)_{1,2}(?=\S)(.+?)(?<=\S)_{1,2}(?!\w)")
+LINE_SUFFIX_RE = re.compile(r":\d+(?:-\d+)?$")
 
 
-def _mask_code(content: str) -> str:
-    """Replace code spans/fences with spaces while preserving offsets and lines."""
-
-    masked = list(content)
-    for pattern in (FENCED_CODE_RE, INLINE_CODE_RE):
-        for match in pattern.finditer(content):
-            for index in range(match.start(), match.end()):
-                if masked[index] != "\n":
-                    masked[index] = " "
-    return "".join(masked)
-
-
-def _tracked_markdown(root: Path) -> list[Path]:
+def _git_lines(root: Path, *arguments: str) -> list[str] | None:
     git = shutil.which("git")
     if git is None:
-        return sorted(root.rglob("*.md"))
+        return None
     try:
         result = subprocess.run(  # noqa: S603 - executable resolved with shutil.which
-            [git, "ls-files", "--", "*.md"],
+            [git, "ls-files", "-z", *arguments],
             cwd=root,
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
     except (OSError, subprocess.CalledProcessError):
+        return None
+    return [name for name in result.stdout.split("\0") if name]
+
+
+def tracked_markdown(root: Path) -> list[Path]:
+    """Tracked Markdown documents, or every ``*.md`` file without Git."""
+    names = _git_lines(root, "--", "*.md")
+    if names is None:
         return sorted(root.rglob("*.md"))
-    return [root / line for line in result.stdout.splitlines() if line]
+    return [root / name for name in names]
 
 
 def tracked_targets(root: Path) -> set[str] | None:
     """Tracked files and their parent directories, or ``None`` without Git."""
-    git = shutil.which("git")
-    if git is None:
-        return None
-    try:
-        result = subprocess.run(  # noqa: S603 - executable resolved with shutil.which
-            [git, "ls-files"],
-            cwd=root,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError):
+    names = _git_lines(root)
+    if names is None:
         return None
     targets: set[str] = set()
-    for line in result.stdout.splitlines():
-        path = PurePosixPath(line)
+    for name in names:
+        path = PurePosixPath(name)
         targets.add(path.as_posix())
         targets.update(parent.as_posix() for parent in path.parents)
     return targets
 
 
-def _relative_target(document: Path, target: str, root: Path) -> Path | None:
-    target = unquote(target.split("#", maxsplit=1)[0])
-    target = re.sub(r":\d+(?:-\d+)?$", "", target)
-    if not target or target.startswith(REMOTE_PREFIXES):
+def _prose_lines(content: str) -> Iterator[tuple[int, str]]:
+    """Yield ``(line number, line)`` for every line outside fenced code."""
+    fence: str | None = None
+    for number, line in enumerate(content.splitlines(), start=1):
+        if fence is None:
+            opening = FENCE_OPEN_RE.match(line)
+            if opening:
+                fence = opening.group("fence")
+                continue
+            yield number, line
+            continue
+        closing = FENCE_CLOSE_RE.match(line)
+        if closing and closing.group("fence").startswith(fence):
+            fence = None
+
+
+def _blank(match: re.Match[str]) -> str:
+    return re.sub(r"[^\n]", " ", match.group(0))
+
+
+def _mask_code(content: str) -> str:
+    """Blank code fences, code spans and comments, preserving line numbers."""
+    lines = [""] * (content.count("\n") + 1)
+    for number, line in _prose_lines(content):
+        lines[number - 1] = line
+    prose = HTML_COMMENT_RE.sub(_blank, "\n".join(lines))
+    return CODE_SPAN_RE.sub(_blank, prose)
+
+
+def github_slug(heading: str) -> str:
+    """Reproduce GitHub's anchor slug for the rendered text of a heading."""
+    text = LINK_TEXT_RE.sub(r"\1", heading).replace("`", "")
+    text = UNDERSCORE_EMPHASIS_RE.sub(r"\1", HTML_TAG_RE.sub("", text))
+    text = re.sub(r"[^\w\- ]", "", unescape(text).strip().lower())
+    return text.replace(" ", "-")
+
+
+def heading_anchors(content: str) -> set[str]:
+    """Anchors GitHub renders for a document: heading slugs and HTML ids."""
+    lines = dict(_prose_lines(content))
+    if content.startswith("---\n"):
+        # YAML front matter renders as a table, never as a setext heading.
+        closing_line = content.count("\n", 0, content.find("\n---", 4)) + 2
+        for number in range(1, closing_line + 1):
+            lines.pop(number, None)
+    anchors: set[str] = set()
+    seen: dict[str, int] = {}
+    for number, line in sorted(lines.items()):
+        atx = ATX_HEADING_RE.match(line)
+        if atx:
+            heading = ATX_CLOSING_RE.sub("", atx.group("text") or "")
+        elif (
+            line.strip()
+            and SETEXT_UNDERLINE_RE.match(lines.get(number + 1, "x"))
+            and not lines.get(number - 1, "").strip()
+            and not NOT_SETEXT_TEXT_RE.match(line)
+        ):
+            heading = line.strip()
+        else:
+            continue
+        slug = github_slug(heading)
+        count = seen.get(slug, 0)
+        seen[slug] = count + 1
+        anchors.add(slug if count == 0 else f"{slug}-{count}")
+    anchors.update(HTML_ANCHOR_RE.findall(_mask_code(content)))
+    return anchors
+
+
+def _links(content: str) -> Iterator[tuple[int, str]]:
+    scan_content = _mask_code(content)
+    for pattern in (INLINE_LINK_RE, REFERENCE_LINK_RE, HTML_LINK_RE):
+        for match in pattern.finditer(scan_content):
+            groups = match.groupdict()
+            target = (groups.get("angled") or groups.get("plain") or "").strip()
+            if target:
+                yield scan_content.count("\n", 0, match.start()) + 1, target
+
+
+def _target_path(document: Path, target: str, root: Path) -> Path | None:
+    """Resolve a link's file part, or ``None`` for remote and same-page links."""
+    if target.lower().startswith(REMOTE_PREFIXES):
         return None
+    path_text = unquote(target.split("#", maxsplit=1)[0].split("?", maxsplit=1)[0])
+    path_text = LINE_SUFFIX_RE.sub("", path_text)
+    if not path_text:
+        return document
     return (
-        (root / target.lstrip("/"))
-        if target.startswith("/")
-        else document.parent / target
+        (root / path_text.lstrip("/"))
+        if path_text.startswith("/")
+        else document.parent / path_text
     )
 
 
@@ -106,28 +213,38 @@ def find_missing(
     include_archives: bool = False,
     tracked: set[str] | None = None,
 ) -> list[str]:
+    """Return ``document:line -> target`` for every unresolved relative link."""
     missing: list[str] = []
+    anchors: dict[Path, set[str]] = {}
     for document in documents:
         if not document.is_file():
             continue
         relative_name = document.relative_to(root).as_posix()
-        if relative_name.startswith((".agents/", ".opencode/")):
+        if relative_name.startswith(VENDORED_PREFIXES):
             continue
-        if not include_archives and relative_name.startswith("docs/audits/archive/"):
+        if not include_archives and relative_name.startswith(ARCHIVE_PREFIX):
             continue
         content = document.read_text(encoding="utf-8")
-        scan_content = _mask_code(content)
-        matches = [
-            *INLINE_LINK_RE.finditer(scan_content),
-            *REFERENCE_LINK_RE.finditer(scan_content),
-        ]
-        for match in matches:
-            target = match.group("angled") or match.group("plain") or ""
-            candidate = _relative_target(document, target, root)
-            if candidate is None or _resolves(candidate, root, tracked):
+        for line, target in _links(content):
+            candidate = _target_path(document, target, root)
+            if candidate is None:
                 continue
-            line = content.count("\n", 0, match.start()) + 1
-            missing.append(f"{relative_name}:{line} -> {target}")
+            if not _resolves(candidate, root, tracked):
+                missing.append(f"{relative_name}:{line} -> {target}")
+                continue
+            fragment = unquote(target.partition("#")[2])
+            if (
+                not fragment
+                or candidate.suffix.lower() != ".md"
+                or not candidate.is_file()
+                or relative_name.startswith(ANCHOR_EXEMPT_PREFIXES)
+            ):
+                continue
+            key = candidate.resolve()
+            if key not in anchors:
+                anchors[key] = heading_anchors(candidate.read_text(encoding="utf-8"))
+            if fragment not in anchors[key]:
+                missing.append(f"{relative_name}:{line} -> {target}")
     return missing
 
 
@@ -150,7 +267,7 @@ def main() -> int:
             path = (root / value).resolve()
             documents.extend(sorted(path.rglob("*.md")) if path.is_dir() else [path])
     else:
-        documents = _tracked_markdown(root)
+        documents = tracked_markdown(root)
     missing = find_missing(
         root,
         documents,

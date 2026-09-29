@@ -23,8 +23,10 @@ We chose **Redis** as our distributed caching layer.
 - **Hazelcast/Apache Ignite**: Overkill for our scale.
 
 ## Implementation Notes
-- L1 in-memory cache (LRU, 30s TTL) + L2 Redis (5min TTL)
-- Connection pooling configured in `config.py`
+- L1 in-memory cache (`CACHE_L1_TTL_SECONDS`, default 60s) + L2 Redis/Valkey
+  (`CACHE_DEFAULT_TTL_SECONDS`, default 300s) behind `TieredCache` in
+  `app/deps/cache.py`; the runtime store is Valkey 8.1 (Redis-compatible)
+- Cache settings live in `app/core/config/cache.py`
 - Graceful fallback when Redis unavailable
 
 ## Consequences

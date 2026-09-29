@@ -151,8 +151,10 @@ except Exception as err:  # RZ-22-01-JUSTIFIED: fail-closed auth fallback with a
   - `settings.db`
   - `settings.security`
   - `settings.cache`
-  - `settings.redis`
+  - `settings.observability`
   - `settings.storage`
+  - `settings.notifications`
+  - `settings.integrations`
 - Phase 2 implementation returns `_NamespaceView[T]` proxy objects instead of leaking monolithic `self`.
 
 ### 5.2. Redis Eviction Isolation (Cache vs. Revocation)
@@ -172,7 +174,7 @@ except Exception as err:  # RZ-22-01-JUSTIFIED: fail-closed auth fallback with a
 ### 6.1. Password Hashing (Argon2id Only)
 - **Argon2id** is the sole password hashing algorithm (`argon2-cffi`).
 - **Bcrypt Verification Removed**: Legacy bcrypt support has been completely excised (TD-21-04).
-- **Concurrency Limiting**: Argon2 hashing operations are capped at a maximum of 4 concurrent operations per worker process.
+- **Concurrency Limiting**: Argon2 hashing runs in a dedicated executor sized to the cgroup-aware CPU count (at least 2 threads); a semaphore admits at most `workers - 1` (at least 1) concurrent hashes per process (`app/auth/security.py`).
 
 ### 6.2. Dual JWKS Architecture (RS256)
 - Private RSA signing key: `.secrets/jwt_rs256.pem`.

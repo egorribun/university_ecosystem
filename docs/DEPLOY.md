@@ -26,7 +26,7 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
   отклоняет старое/частичное/чужое evidence, проверяет p75 LCP/INP/CLS и публикует
   SHA-bound artifact с build-provenance attestation. Ручная загрузка отчёта не
   является допустимым источником release evidence.
-- Backend и фронтенд должны работать по HTTPS, иначе браузер заблокирует загрузку `/media` и `/static`.
+- Backend и фронтенд должны работать по HTTPS, иначе браузер заблокирует загрузку `/static` и `/storage`.
 - Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` и URI, полученный из защищённого хранилища через переменные окружения, включает общий сторедж для middleware и чувствительных эндпоинтов; не помещайте учётные данные в URL или историю shell. Установите `memory` или `memory://` для простого однопроцессного режима без внешнего Redis.
 - Хранилище отзыва сессий обязано быть единым и выделенным для всех сервисов: backend, gateway и ws-hub используют только `REVOCATION_REDIS_URL`. В штатных Compose/Helm-конфигурациях это отдельный Redis/Valkey с AOF, персистентным томом и `maxmemory-policy noeviction`; кэш (`CACHE_REDIS_URL`) и rate-limit Redis (`REDIS_URL`, DB 3) не являются источниками security-state. Совместное использование cache/rate-limit процесса запрещено: вытеснение `revoked:jti:*` может повторно сделать отозванный JWT действительным.
 - Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами. <!-- pragma: allowlist secret --> Создайте Compose-секреты `secret_key`, `database_url` и `nats_auth_token`, а путь к файлу пароля PostgreSQL передайте через `POSTGRES_PASSWORD_SOURCE_FILE`. Значение `database_url` должно указывать на `postgresql+asyncpg://...@pgbouncer:5432/university`. Затем запускайте `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d`, явно задав `FRONTEND_ORIGIN` и `FRONTEND_ORIGINS`; Go overlay обязателен, потому что Caddy направляет API и WebSocket-трафик через gateway/ws-hub.
@@ -161,14 +161,12 @@ Workflow проверяет эти права до мутаций и прину�
 - Для dev/test окружений приложение автоматически переключается на `NullPool`, чтобы каждое соединение открывалось заново; параметры пула при этом игнорируются. Это избавляет от блокировок SQLite и полезно при локальной разработке.
 - Перед деплоем на PostgreSQL или другой продакшн-базе подберите значения в пределах возможностей СУБД. Например, для сервера с ограничением в 20 подключений можно выставить `DATABASE_POOL_SIZE=5` и `DATABASE_MAX_OVERFLOW=5`, оставив запас для фоновых задач и внешних инструментов.
 
-### Особенности SQLite
+### Поиск по событиям
 
-- Полнотекстовый поиск по событиям использует PostgreSQL-тип `tsvector` и GIN-индекс.
-  При запуске на SQLite (локальная разработка, unit-тесты) Alembic создаёт обычный
-  текстовый столбец `events.search_vector`, а `crud.get_all_events` автоматически
-  переключается на фильтрацию через `LIKE`. Это позволяет запускать приложение без
-  дополнительной настройки, но поиск в SQLite выполняется без ранжирования по
-  релевантности.
+- Поиск по событиям (`EventRepository.search_events`) использует PostgreSQL-тип
+  `tsvector` и GIN-индекс, а при включённом `SEMANTIC_SEARCH_ENABLED` (по
+  умолчанию) и наличии эмбеддинга запроса добавляет косинусную близость pgvector.
+  Fallback для SQLite нет: поиск выполняется только на PostgreSQL.
 
 ### Метрики фоновых задач
 
@@ -313,7 +311,7 @@ PY
 - `frontend.Dockerfile` использует отдельные stages для сборки Rust/WASM, установки build/runtime-зависимостей и TanStack Start SSR. Финальный образ основан на закреплённом по digest `node:24-alpine`, запускается непривилегированным пользователем `node` и содержит только production-зависимости, WASM-пакеты, `dist/` и SSR launcher.
 - `VITE_BACKEND_ORIGIN` остаётся build-time fallback для фронтенда. Node SSR сначала читает runtime-переменную `BACKEND_ORIGIN`, поэтому один immutable image можно безопасно использовать с разными Compose/Helm service names; chart и Compose уже задают внутренний адрес backend. Браузерные API-запросы остаются same-origin и идут через gateway.
 - Статику и SSR отдаёт `frontend/scripts/server-prod.mjs`: хешированные файлы в `assets/` получают `Cache-Control: public, max-age=31536000, immutable`, HTML — `no-cache`/`no-store`.
-- Контейнер слушает порт `3000`; Compose публикует frontend напрямую на `127.0.0.1:8081`, а Caddy/Gateway — на `127.0.0.1:8080`. Быстрая readiness/liveness-проверка доступна на `/healthz`.
+- Контейнер слушает порт `3000`; Compose публикует frontend напрямую на `127.0.0.1:8081`, gateway — на `127.0.0.1:8080`, а Caddy — на портах `80`/`443`. Быстрая readiness/liveness-проверка доступна на `/healthz`.
 
 ```bash
 # пример локальной сборки
@@ -323,7 +321,7 @@ docker compose up frontend
 
 ## Edge reverse proxy
 
-Каноническая конфигурация edge-маршрутизации находится в `services/caddy/Caddyfile`: Caddy проксирует SSR на `frontend:3000`, API на gateway/backend и WebSocket-трафик на ws-hub под одним origin. Это исключает CORS/Service Worker расхождения. Если окружение требует Nginx, он должен проксировать Node SSR, а не отдавать `dist/client` как SPA:
+Конфигурация edge-маршрутизации — `infrastructure/Caddyfile` для полного стека (`docker-compose.full.yml`, его запускает `start-docker.ps1`) и `services/caddy/Caddyfile` для базового `docker-compose.yml`: Caddy проксирует SSR на `frontend:3000`, API на gateway/backend и WebSocket-трафик на ws-hub под одним origin. Это исключает CORS/Service Worker расхождения. Если окружение требует Nginx, он должен проксировать Node SSR, а не отдавать `dist/client` как SPA:
 
 ```nginx
 server {
@@ -340,13 +338,6 @@ server {
 
     location /static/ {
         proxy_pass https://api.example.com/static/;
-        proxy_set_header Host api.example.com;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_redirect off;
-    }
-
-    location /media/ {
-        proxy_pass https://api.example.com/media/;
         proxy_set_header Host api.example.com;
         proxy_set_header X-Forwarded-Proto https;
         proxy_redirect off;

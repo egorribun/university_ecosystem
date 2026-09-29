@@ -26,7 +26,7 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
   and attempt, rejects stale, partial, or foreign evidence, evaluates p75
   LCP/INP/CLS, and publishes a SHA-bound artifact with a build-provenance
   attestation. A manually uploaded report is not valid release evidence.
-- Backend and frontend must run over HTTPS, otherwise the browser blocks `/media` and `/static`.
+- Backend and frontend must run over HTTPS, otherwise the browser blocks `/static` and `/storage` assets.
 - To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The `redis` backend and a URI supplied from a protected store through environment variables enable shared storage for middleware and sensitive endpoints; keep credentials out of URLs and shell history. Use `memory` or `memory://` for a simple single-process mode without external Redis.
 - Session revocation must use one shared, dedicated store across services: the backend, gateway, and ws-hub use only `REVOCATION_REDIS_URL`. The supported Compose and Helm topology provisions a separate Redis/Valkey process with AOF, persistent storage, and `maxmemory-policy noeviction`; neither the cache (`CACHE_REDIS_URL`) nor the rate-limit Redis (`REDIS_URL`, DB 3) is authoritative security state. Reusing a cache/rate-limit process is unsupported because evicting `revoked:jti:*` could make a revoked JWT valid again.
 - Control the object-storage health probe with `HEALTH_STORAGE_PROBE_ENABLED` (run a write/delete check when set to `true`) and `HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS` (cache probe results between intervals). When disabled, the probe uses cheap bucket/list calls when available, which is friendlier to external providers.
@@ -159,13 +159,12 @@ reconciliation proof, and an explicit rollout applies the new values.
 - For dev/test environments the application automatically switches to `NullPool` so each connection opens anew; pool parameters are ignored. This avoids SQLite locks and helps with local development.
 - Before deploying to PostgreSQL or another production database, choose values within the database limits. For example, on a server limited to 20 connections you could set `DATABASE_POOL_SIZE=5` and `DATABASE_MAX_OVERFLOW=5`, leaving room for background jobs and external tools.
 
-### SQLite specifics
+### Event search
 
-- Event search relies on PostgreSQL's `tsvector` type with a GIN index. When the
-  app runs on SQLite (local development, unit tests) Alembic creates a plain text
-  `events.search_vector` column and `crud.get_all_events` automatically falls back
-  to `LIKE` filtering. No additional configuration is required, but SQLite search
-  results are not ranked by relevance.
+- Event search (`EventRepository.search_events`) relies on PostgreSQL's
+  `tsvector` type with a GIN index and, while `SEMANTIC_SEARCH_ENABLED` is on
+  (the default), blends in pgvector cosine similarity when a query embedding is
+  available. There is no SQLite fallback: run search against PostgreSQL.
 
 ### Background task metrics
 
@@ -310,7 +309,7 @@ PY
 - `frontend.Dockerfile` uses separate stages for Rust/WASM compilation, build/runtime dependency installation, and the TanStack Start SSR build. The final image is based on digest-pinned `node:24-alpine`, runs as the unprivileged `node` user, and contains only production dependencies, WASM packages, `dist/`, and the SSR launcher.
 - `VITE_BACKEND_ORIGIN` remains the frontend build-time fallback. Node SSR first reads the runtime `BACKEND_ORIGIN`, so one immutable image works with different Compose/Helm service names; the chart and Compose already provide the internal backend address. Browser API requests stay same-origin and flow through the gateway.
 - Static files and SSR are served by `frontend/scripts/server-prod.mjs`: hashed files in `assets/` receive `Cache-Control: public, max-age=31536000, immutable`, while HTML receives `no-cache`/`no-store`.
-- The container listens on port `3000`; Compose publishes the frontend directly on `127.0.0.1:8081` and Caddy/Gateway on `127.0.0.1:8080`. The fast readiness/liveness endpoint is `/healthz`.
+- The container listens on port `3000`; Compose publishes the frontend directly on `127.0.0.1:8081`, the gateway on `127.0.0.1:8080`, and Caddy on ports `80`/`443`. The fast readiness/liveness endpoint is `/healthz`.
 
 ```bash
 # example local build
@@ -320,7 +319,7 @@ docker compose up frontend
 
 ## Edge reverse proxy
 
-The canonical edge-routing configuration is `services/caddy/Caddyfile`: Caddy proxies SSR to `frontend:3000`, API traffic to the gateway/backend, and WebSockets to ws-hub under one origin. This prevents CORS and Service Worker divergence. If an environment requires Nginx, it must proxy Node SSR instead of serving `dist/client` as a static SPA:
+The edge-routing configuration is `infrastructure/Caddyfile` for the full stack (`docker-compose.full.yml`, used by `start-docker.ps1`) and `services/caddy/Caddyfile` for the base `docker-compose.yml`: Caddy proxies SSR to `frontend:3000`, API traffic to the gateway/backend, and WebSockets to ws-hub under one origin. This prevents CORS and Service Worker divergence. If an environment requires Nginx, it must proxy Node SSR instead of serving `dist/client` as a static SPA:
 
 ```nginx
 server {
@@ -337,13 +336,6 @@ server {
 
     location /static/ {
         proxy_pass https://api.example.com/static/;
-        proxy_set_header Host api.example.com;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_redirect off;
-    }
-
-    location /media/ {
-        proxy_pass https://api.example.com/media/;
         proxy_set_header Host api.example.com;
         proxy_set_header X-Forwarded-Proto https;
         proxy_redirect off;

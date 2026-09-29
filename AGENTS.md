@@ -25,7 +25,7 @@ university_ecosystem/
 │   ├── src/                    # Application source code
 │   │   ├── components/         # Reusable UI & design system primitives (ARIA compliant)
 │   │   ├── features/           # Feature modules, routes, and Valibot schemas
-│   │   ├── hooks/              # Custom hooks (useDebounced, useReducedMotion)
+│   │   ├── hooks/              # Custom hooks (useDebounced, useFocusTrap)
 │   │   └── stores/             # Zustand state stores (useAuthStore)
 │   └── AGENTS.md               # Frontend domain invariants & guidelines
 ├── services/                   # Go microservices & edge infrastructure
@@ -138,6 +138,7 @@ All contributions must strictly comply with `quality/quality-contract.json`:
 ## 5. Bypass Policy
 
 GitHub admin bypass on the main-branch ruleset is intentionally left enabled for this single-maintainer repository. The accepted admin bypass risk is that a false-positive gate or third-party outage can be bypassed to avoid a deadlock.
+- Use `scripts/merge-as-admin.ps1 -PrNumber <n> [-SquashTitle <title>]` for such a merge: it temporarily disables the repository ruleset and the classic branch protection on `main`, squash-merges the PR, and immediately re-enables both guards (the `egorribun` branch is never deleted).
 - Any bypass merge **must** record an explicit bypass reason in the PR description or merge commit message.
 
 ---
@@ -147,7 +148,7 @@ GitHub admin bypass on the main-branch ruleset is intentionally left enabled for
 - **Base Images**:
   - Python backend: `python:3.14-slim-bookworm`
   - Frontend SSR: `node:24-alpine` (running on port 3000)
-  - Go microservices: digest-pinned Go 1.26 Alpine images / scratch runtime with `grpc_health_probe`
+  - Go microservices: digest-pinned `golang:1.26.6-alpine` builders and a `distroless/static-debian12` runtime; `file-processor` also ships `grpc_health_probe`
 - **Healthcheck Standards**:
   - Backend: `/health/ready` (FastAPI readiness probe)
   - File processor: `grpc_health_probe -addr=:50051`
@@ -155,7 +156,7 @@ GitHub admin bypass on the main-branch ruleset is intentionally left enabled for
   - Grafana: `/api/health`
   - Imgproxy: `imgproxy health`
   - Tempo / Loki: HTTP health endpoints
-  - Temporal dev server: binds `0.0.0.0` bridge network
+  - Temporal server (`temporalio/server`): `BIND_ON_IP=0.0.0.0` on the Compose bridge network
 - **Kubernetes Variable Interpolation**:
   - `${FRONTEND_HOST}`, `${API_HOST}`, `${TLS_SECRET_NAME}`, `${VAULT_URL}`, `${IMAGE_REGISTRY}` and `${IMAGE_TAG}` must be processed with `envsubst` through `scripts/apply_raw_k8s.sh` before executing `kubectl apply` (TD-31-02, TD-31-03). The wrapper allowlists supporting manifests, requires all variables, validates the registry path, and accepts `IMAGE_TAG` only as a 40-character commit SHA or semantic version. Direct raw `envsubst | kubectl apply` is forbidden.
 - **Kyverno Security Policies**:
@@ -193,8 +194,6 @@ The developer harness defines 5 specialized subagents configured in `.agents/sub
 
 ---
 
-## 9. Audit Trail & Wave History
+## 9. Audit Trail & Documentation Index
 
-Canonical audit index and active wave reports are maintained in [`docs/audits/INDEX.md`](docs/audits/INDEX.md).
-- Active wave audits: [`AUDIT_PR1249.md`](docs/audits/AUDIT_PR1249.md), [`AUDIT_WAVE211.md`](docs/audits/AUDIT_WAVE211.md), [`AUDIT_WAVE210.md`](docs/audits/AUDIT_WAVE210.md).
-- Archived wave audits: `docs/audits/archive/`.
+The canonical audit index, including the current reference set and the archive (`docs/audits/archive/`), is [`docs/audits/INDEX.md`](docs/audits/INDEX.md). The canonical documentation index is [`docs/README.md`](docs/README.md).

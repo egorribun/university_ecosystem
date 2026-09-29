@@ -454,7 +454,6 @@ artifacts/
 !.agents/subagents.json
 !.agents/subagents/
 !.agents/skills/
-!.agents/ORIGINAL_REQUEST.md
 !verify_harness.py
 !docs/mcp/
 

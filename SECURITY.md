@@ -10,9 +10,9 @@ If you discover a vulnerability, please report it privately so we can address it
 
 ## 🔒 Password Hashing & Authentication Architecture
 
-- **Algorithm**: Password hashing relies **exclusively on Argon2id** (Passlib parameters: Time: 3, Memory: 64 MB, Parallelism: 4).
+- **Algorithm**: Password hashing relies **exclusively on Argon2id** (`argon2-cffi` `PasswordHasher`: time cost 3, memory 32 MiB, parallelism 4; `app/auth/security.py`).
 - **Legacy Verification Removed**: Bcrypt verification has been completely removed (TD-21-04). All accounts use Argon2id.
-- **Argon2 Concurrency Cap**: Argon2 hashing concurrency is capped at 4 concurrent hashing tasks per worker process to cap peak memory allocation at 128 MiB (PERF-24-04).
+- **Argon2 Concurrency Cap**: Argon2 hashing runs in a dedicated executor sized to the cgroup-aware CPU count (at least 2 threads), and a semaphore admits at most `workers - 1` (at least 1) concurrent hashes per process, so peak hashing memory stays bounded at 32 MiB per admitted hash (PERF-02, PERF-24-04).
 - **MFA Factors**: Interactive MFA uses **TOTP** or a six-digit **email OTP**; single-use **recovery codes** remain available only as an emergency recovery factor.
 - **Factor Migration Safety**: Legacy hardware-key-only accounts are never migrated silently. A migration preflight selects an existing TOTP factor or a verified-email OTP path and blocks accounts without either path until controlled remediation is complete.
 - **Pwned Password Checks**: SHA-1 is used *exclusively* for the [Have I Been Pwned API](https://haveibeenpwned.com/API/v3#PwnedPasswords) k-anonymity check. Only the first 5 characters of the hash are transmitted; the full hash is never stored.
@@ -76,7 +76,7 @@ If you discover a vulnerability, please report it privately so we can address it
 
 - **Automated Dependency Audits**: CI runs `npm audit` on `frontend/package-lock.json`, `pip audit` on Python packages, and `govulncheck` on Go services.
 - **Automated Scanners**: Pre-commit and CI pipelines run **Semgrep**, **Trivy**, **Bandit**, and **Gitleaks** with `.secrets.baseline` integrity checks.
-- **Reporting Vulnerabilities**: Submit a GitHub Security Advisory via the **Security** tab or contact `security@university.example.com`.
+- **Reporting Vulnerabilities**: Submit a private GitHub Security Advisory via the repository's **Security** tab.
 
 ### Response SLA (MOD-W8-03)
 
@@ -90,5 +90,5 @@ If you discover a vulnerability, please report it privately so we can address it
 ---
 
 <div align="center">
-  © 2026 University Ecosystem Security Team • All Rights Reserved.
+  © 2026 University Ecosystem Platform • Released under the <a href="LICENSE">MIT License</a>.
 </div>
