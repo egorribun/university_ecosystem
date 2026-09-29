@@ -5,77 +5,41 @@
 Прежние handoff и continuation — в [archive/](archive/) и являются историей,
 а не текущим статусом.
 
+**Точка остановки 2026-09-29:** все детали, состояние worktree агентов, порядок
+продолжения и ловушки окружения — в [2026-09-29-handoff.md](2026-09-29-handoff.md).
+Начинать с него.
+
 Правила evidence (решение 2026-09-28): доказательство — это канонический CI
 run, JUnit и отчёты мутаций. Независимое ревью обязательно только для
 production-кода security/auth/data. RED→GREEN, fail-closed гейты и запрет
 timeout-инфляции, exclusions, waivers и ручной перемаркировки сохраняются.
+Мейнтейнер требует абсолютной чистоты кода и документации: документы
+обновляются в том же коммите, что и поведение.
 
 ## Identity — 2026-09-29
 
 | Что | Значение |
 | --- | --- |
-| Ветка / PR | `egorribun` / #1266 → `main` (`be8c6a197`, #1298 влит merge-ем) |
-| Последний push | `dfbb6561f` — merge `main` поверх `ee90ce97e` |
-| CI | Полная матрица на `dfbb6561f`; прогон `36443355112` (`a4caec3bf`) дал фронтенд-инвентарь, backend-мутации там были пропущены |
+| Ветка / PR | `egorribun` / #1266 → `main` (`be8c6a197`, влит merge-ем `dfbb6561f`) |
+| `origin/egorribun` | `634412103`; локально не запушен `eb2d32cd6` и коммит этого статуса |
+| CI | Matrix `36553547083` на `634412103` — ожидается первый прогон с backend-мутациями; push только после terminal |
 | Security-PR | #1296 смержен в `main` 2026-09-28 (admin bypass, причина в merge-коммите) |
 
-## Сессия 2026-09-29
-
-- Прогон `36443355112`: все 64 Stryker-шарда отработали (инвентарь ниже).
-  Stats-шард mutmut 1/8 упал: `tests/test_live_stand.py` читает
-  `docker-compose.live.yml`, которого не было в песочнице mutmut, и все
-  backend-группы были пропущены. Исправлено в `862eeb7cd` с контрактом «каждый
-  корневой `docker-compose*.yml` копируется».
-- Helm backup-job: `mc` → rclone 1.75.1 по digest, ключ `backup.s3ClientImage`
-  (`ee90ce97e`); загрузка проверена вживую на SeaweedFS 4.47 (UID 1000, RO rootfs).
-- Legacy-том `university_ecosystem_minio-data`: бакет `uploads` пуст (148 КБ
-  метаданных). Кэшированный образ MinIO (digest `14cea493…`) помечен
-  `local/minio-legacy:RELEASE.2025-09-07T16-13-09Z` и сохранён в
-  `../university_ecosystem_backups/2026-09-29/` — сборка из исходников не нужна.
-- Ф8 в работе (агент, `../ue-w3`): SeaweedFS по умолчанию во всех compose,
-  удаление cutover-overlay и anti-rollback-механики, fail-closed guard на
-  непустой legacy-том без `S3_CUTOVER_ACK`, ADR-042.
-- Ф6b: индикатор силы пароля в `ResetPassword` никогда не окрашивался
-  (`ProgressBar` не принимает `color`) — дизайн-недочёт для ревью.
-- Стенд `ue-live` остановлен (тома сохранены), пересборка после волны 1.
-## Пауза 2026-09-29 (лимит) — начинать отсюда
-
-- Не запушены `f83397f79`, `59a8090f2`, `bb83d3429` и этот коммит: идёт CI Matrix
-  `36493644432` на `dfbb6561f` (нужен backend-инвентарь mutmut). Push —
-  после terminal-статуса; затем собрать backend-инвентарь.
-- Агенты остановлены, их WIP не закоммичен и не проверен:
-  - `../ue-w1` — волна 1 auth (8 файлов; дошёл до тестов `ForgotPassword`);
-  - `../ue-w2` — волна 1 push (5 файлов);
-  - `../ue-w3` — SeaweedFS по умолчанию (17 файлов; остановлен на правке
-    базового compose, не завершён);
-  - `../ue-docs` — аудит md и `tests/test_markdown_links.py` (4 файла;
-    проверить CRLF в `README*.md`).
-- Требование мейнтейнера: абсолютная чистота кода и документации (память
-  `docs-consistency-feedback`). Сделано: `59a8090f2` удалил мёртвые
-  конфиги и скрипты. Дальше: deptry (`uv run --with deptry==0.25.1 deptry .
-  --known-first-party app`) — перенести security-пины транзитивных пакетов в
-  `constraint-dependencies`, `geoip2` → `maxminddb`, объявить импортируемые
-  транзитивные (`rich`, `botocore`, `graphql-core`), мёртвые ветки
-  `msgspec`/`pyspiffe` (пакеты не установлены нигде), gate в CI; knip для
-  frontend; решить O9 (`heartbeat_watchdog.py`); `.trivyignore` просрочен
-  (ревью до 2026-09-14) — сверить со свежим Trivy.
-- Стенд `ue-live` остановлен; live-спек сброса пароля ещё не запускался.
 ## Фазы
 
-- [x] Ф0.1 CI-контракт `continue-on-error` для O9-диагностики
-- [x] Ф0.2 Terminal CI `36443355112`, фронтенд-инвентарь; backend — на `dfbb6561f`
+- [x] Ф0 CI разблокирован; фронтенд-инвентарь (run `36443355112`); backend — ждёт `36553547083`
 - [x] Ф1 Security-PR #1296 смержен; проверить закрытие алертов после обновления графа
-- [x] Ф2 Гигиена: STATUS, архив планов, память, инвентарь worktree (решения ниже)
-- [ ] Ф3 Мутации до 100% viable (волны 1–4)
-- [x] Ф4 #1292, #1293, #1295 пришли merge-ем `main`; #1294 перенесён без `grpcio-health-checking` (не используется, 1.84 несовместим с protobuf 6). #1297 закрыт (менял `pyproject.toml` без `uv.lock`, `jsonschema` 4.26 несовместим с semgrep); #1298 переводит Dependabot на экосистему `uv` — смержен в `main`
-- [ ] Ф5 Живой лейн приёмки: compose live overlay, Mailpit, VAPID, роли
+- [x] Ф2 Гигиена процесса: STATUS, архив планов, память, worktree/stash
+- [ ] Ф3 Мутации до 100% viable — волна 1 в работе (WIP в `../ue-w1`, `../ue-w2`)
+- [x] Ф4 Dependabot #1292–#1295 и #1298 в ветке; #1297 закрыт
+- [ ] Ф5 Живой лейн: стенд, Mailpit, VAPID, `auth-roles` и `password-reset` спеки есть; CI workflow — нет
 - [ ] Ф6 Продуктовая приёмка по ТЗ §§2–13 (+ admin, PWA/offline, SSR, слабые устройства, security-негативы)
 - [ ] Ф6b Дизайн-ревью редизайнов ТЗ по скриншотам live-стенда
-- [ ] Ф6c Неиспользуемые зависимости и мёртвый код, демо-данные, нагрузка ws-hub, security- и code-review ветки
-- [ ] Ф7 Spelling RU, zero-warning build, Rust pin, BE-02 all phases, O1–O9
-- [ ] Ф8 Docker Core/full, Grafana provisioning, SeaweedFS cutover, restore
+- [ ] Ф6c Чистота: мёртвые файлы и Python-зависимости сделаны; md-аудит (WIP `../ue-docs`), knip, Go, демо-данные, ws-hub нагрузка, review
+- [ ] Ф7 Spelling RU, zero-warning build, BE-02 all phases, O1–O9 (Rust уже запинен 1.97.1)
+- [ ] Ф8 SeaweedFS по умолчанию (WIP `../ue-w3`), Helm backup на rclone сделан, Grafana, restore
 - [ ] Ф9 Локальный kind prod-like: TLS, Kyverno, ESO, HPA, chaos, rollback
-- [ ] Ф10 Шесть immutable-образов, Trivy, SBOM
+- [ ] Ф10 Шесть immutable-образов, Trivy (просрочен `.trivyignore`), SBOM
 - [ ] Ф11 Финальный SHA-bound аудит и документация
 - [ ] Ф12 Merge #1266 и post-merge (каждый шаг — с разрешения)
 
@@ -85,35 +49,37 @@ Frontend, CI `36443355112` (`a4caec3bf`, 2026-09-28): 35 959 killed, 1 306
 ignored (ADR-040), **5 511 открыто** (5 431 survived, 36 timeout, 33 runtime
 error, 11 no coverage) в 269 файлах: hooks 1 491, features 1 286, pages 1 242,
 components 835. Инвентарь и срезы очередей — в ignored
-`artifacts/quality/inventory-a4caec3bf/` (`build_inventory.py`, `queue_slice.py`).
-Backend: известные семейства — auth reset timeouts (fork-наследование
-`_auth_executor`, доказано на Linux), `NotificationDeadLetterPurged.from_dict`,
-`_unlink_ignore_missing`, `InternalAccessMiddleware.__init__`, private static
-path, chat forward, notification delivery, SMTP `cast`.
+`artifacts/quality/inventory-a4caec3bf/` (`build_inventory.py`, `queue_slice.py`
+в `artifacts/quality/mutation-tools/`).
 
-Порядок: волна 1 — security/auth; волна 2 — messenger/realtime; волна 3 —
+Backend: первый полный mutmut-прогон — `36553547083`. Известные семейства:
+`NotificationDeadLetterPurged.from_dict`, `_unlink_ignore_missing`,
+`InternalAccessMiddleware.__init__`, private static path, chat forward,
+notification delivery, SMTP `cast`.
+
+Порядок: волна 1 — security/auth/push; волна 2 — messenger/realtime; волна 3 —
 файлы с ≥50 мутантами; волна 4 — хвост.
 
-Волна 1, прогресс:
+Волна 1:
 
-- [x] Fork-safety `_auth_executor` (`da30b91f7`): Linux RED (зависание
-  дочернего процесса) → GREEN, security-ревью APPROVE.
+- [x] Fork-safety `_auth_executor` (`da30b91f7`), security-ревью APPROVE.
 - [x] `AdminFeatureFlagsFeature.tsx` — 26/26 killed (`2cdbef282`).
-- [ ] Frontend auth (агент, `../ue-w1`): `ResetPassword` 115, `Register` 66, `useAuthApi` 46, `ForgotPassword` 44, `useLoginFlow` 37, `ssrAuth` 17.
-- [ ] Frontend push (агент, `../ue-w2`): `usePushPreferences` 74, `subscribe` 70, `useDndSettings` 67.
+- [ ] Frontend auth (WIP `../ue-w1`): `ResetPassword` 115, `Register` 66,
+  `useAuthApi` 46, `ForgotPassword` 44, `useLoginFlow` 37, `ssrAuth` 17.
+- [ ] Frontend push (WIP `../ue-w2`): `usePushPreferences` 74, `subscribe` 70,
+  `useDndSettings` 67.
 - [ ] Backend-семейства — по точному списку из CI.
-- [ ] Бэклог из ревью: module-level executor-ы в `analytics` и
-  `minio_storage` (тот же класс fork-дефекта, сейчас не достижим: gunicorn
-  без `--preload`); кэши по `id(loop)` → `WeakKeyDictionary`; глобальный
-  `_push_semaphore` в `webpush`.
 
-## Незавершённая работа
+## Открытые решения
 
-Старые worktree и все stash разобраны и удалены 2026-09-28. Почти весь их WIP
-уже был в HEAD или вытеснен новыми версиями. Бэкап и классификация лежат в
-ignored `artifacts/wip/2026-09-28/`; неинтегрированные правки, которые ещё
-нужны, — в `keep/`: fork-safe `_auth_executor` (волна 1), SMTP `cast` и три
-мелких мутационных патча. Агенты фазы 3 работают в новых worktree.
+Подробности и рекомендации — handoff, раздел 10.
+
+1. SPIFFE: `pyspiffe` не объявлен и не установлен; подсистема всегда
+   «degraded», middleware fail-closed. Удалить или довести в kind.
+2. `pyo3_sanitizer`: прод (`--no-dev`) санитизирует через `nh3`, dev/CI —
+   нативно. Оставить один путь.
+3. O9: подключить `heartbeat_watchdog.py` или закрыть ADR-ом.
+4. Ф6b: индикатор силы пароля в `ResetPassword` не окрашивается.
 
 ## Решения мейнтейнера 2026-09-28
 
@@ -129,6 +95,8 @@ ignored `artifacts/wip/2026-09-28/`; неинтегрированные прав
    (deployed-catalog preflight, фазы 8–9) и RUST-P3-03 (final-SHA evidence).
    В фазе 11 его ledger переносится в финальный аудит, после чего файл
    удаляется.
+4. 2026-09-29: абсолютная чистота кода и документации; устаревшее удаляется, а
+   не копится.
 
 ## Согласованные ограничения MVP
 
