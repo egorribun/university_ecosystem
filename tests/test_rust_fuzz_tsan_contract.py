@@ -10,8 +10,6 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 FUZZ_WORKFLOW = ROOT / ".github" / "workflows" / "rust-fuzz.yml"
-OSS_BUILD = ROOT / "infra" / "oss-fuzz" / "build.sh"
-OSS_PROJECT = ROOT / "infra" / "oss-fuzz" / "project.yaml"
 TSAN_RUNNER = ROOT / "scripts" / "run_tsan_tests.sh"
 TSAN_SUPPRESSIONS = ROOT / "tests" / "tsan_suppressions.txt"
 
@@ -110,12 +108,6 @@ def test_additional_fuzz_matrix_matches_all_checked_in_targets() -> None:
         "include"
     ]
     expected = {
-        "crates/pyo3-sanitizer/fuzz": {
-            path.name.removesuffix(".rs")
-            for path in (
-                ROOT / "crates" / "pyo3-sanitizer" / "fuzz" / "fuzz_targets"
-            ).glob("*.rs")
-        },
         "frontend/wasm-sanitizer/fuzz": {
             path.name.removesuffix(".rs")
             for path in (
@@ -131,21 +123,6 @@ def test_additional_fuzz_matrix_matches_all_checked_in_targets() -> None:
     }
     actual = {entry["directory"]: set(entry["targets"].split()) for entry in entries}
     assert actual == expected
-
-
-def test_oss_fuzz_builder_is_fail_closed_and_advertises_only_libfuzzer() -> None:
-    script = OSS_BUILD.read_text(encoding="utf-8")
-    assert "set -euo pipefail" in script
-    assert "cargo fuzz build --release" in script
-    assert "cargo fuzz list" in script
-    assert "cargo fuzz build --release 2>/dev/null || true" not in script
-    assert "cp target/" not in script
-    assert "if (( ${#fuzzers[@]} == 0 )); then" in script
-    assert "did not produce executable" in script
-    assert 'find "${OUT}"' in script
-
-    project = yaml.safe_load(OSS_PROJECT.read_text(encoding="utf-8"))
-    assert project["fuzzing_engines"] == ["libfuzzer"]
 
 
 def test_tsan_runner_proves_detection_and_rejects_unsuppressed_reports() -> None:

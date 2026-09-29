@@ -49,11 +49,6 @@ coverage:
         threshold: 0%
         flags:
           - rust-native
-      rust-pyo3-sanitizer:
-        target: 100%
-        threshold: 0%
-        flags:
-          - rust-pyo3-sanitizer
       rust-wasm-sanitizer:
         target: 100%
         threshold: 0%
@@ -94,9 +89,6 @@ flags:
   rust-native:
     paths:
       - native/rust_ext/
-  rust-pyo3-sanitizer:
-    paths:
-      - crates/pyo3-sanitizer/
   rust-wasm-sanitizer:
     paths:
       - frontend/wasm-sanitizer/

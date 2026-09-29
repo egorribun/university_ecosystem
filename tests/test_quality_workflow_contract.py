@@ -151,7 +151,6 @@ REQUIRED_PERFORMANCE_CONTEXTS = frozenset(
     {
         "Run Go Benchmarks",
         "WS-Hub Go Benchmark Regression Gate",
-        "Rust Criterion Benchmarks (pyo3-sanitizer)",
         "Rust Native Optimizer Regression Gate",
     }
 )
@@ -200,7 +199,6 @@ REQUIRED_CI_CONTEXTS = frozenset(
         "Kyverno policy tests",
         "Run Go Benchmarks",
         "WS-Hub Go Benchmark Regression Gate",
-        "Rust Criterion Benchmarks (pyo3-sanitizer)",
         "Rust Native Optimizer Regression Gate",
         "Run cargo fuzz",
     }
@@ -327,7 +325,6 @@ def test_rust_codecov_reports_are_staged_for_trusted_upload() -> None:
 
     report_commands = {
         "rust-native": "cargo llvm-cov report --codecov",
-        "rust-pyo3-sanitizer": "cargo llvm-cov report --codecov",
         "rust-wasm-sanitizer": "cargo llvm-cov report --codecov",
         "rust-crypto": "cargo llvm-cov report --codecov",
     }
@@ -391,7 +388,6 @@ def test_rust_coverage_job_does_not_restore_stale_llvm_build_artifacts() -> None
 
     components = {
         "rust-native": "rust_ext — native unit tests + coverage (--no-default-features)",
-        "rust-pyo3-sanitizer": "pyo3-sanitizer — native unit tests + coverage",
         "rust-wasm-sanitizer": "wasm-sanitizer — native unit tests + coverage",
         "rust-crypto": "rust-crypto — native KAT tests + coverage",
     }
@@ -440,8 +436,8 @@ def test_rust_dependency_commands_are_lockfile_bound_and_coverage_tool_pinned() 
         for line in lint_run.splitlines()
         if line.strip().startswith("cargo +nightly udeps ")
     ]
-    assert len(clippy_lines) == 4
-    assert len(udeps_lines) == 4
+    assert len(clippy_lines) == 3
+    assert len(udeps_lines) == 3
     assert all("--locked" in line for line in [*clippy_lines, *udeps_lines])
 
     rust_tests = workflow["jobs"]["rust-tests"]
@@ -1122,7 +1118,6 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
         REPOSITORY_ROOT / ".github" / "workflows" / "visual-audit.yml",
         REPOSITORY_ROOT / "Dockerfile.test",
         REPOSITORY_ROOT / "Dockerfile.protogen",
-        REPOSITORY_ROOT / "infra" / "oss-fuzz" / "Dockerfile",
         REPOSITORY_ROOT / "k8s" / "backend" / "deployment.yaml",
         REPOSITORY_ROOT / "k8s" / "frontend" / "deployment.yaml",
     )
@@ -1155,17 +1150,7 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
         "KSV-0017",
         "KSV-0009",
         "KSV-0010",
-        "AVD-DS-0002",
     ]
-    assert trivy_ignore["misconfigurations"][-1] == {
-        "id": "AVD-DS-0002",
-        "paths": ["infra/oss-fuzz/Dockerfile"],
-        "statement": (
-            "OSS-Fuzz controls this disposable builder image and requires its "
-            "base-builder execution model; the image is never deployed or used as a "
-            "runtime container."
-        ),
-    }
 
 
 def test_checkov_sarif_filter_removes_only_source_backed_suppressions(tmp_path) -> None:
@@ -1341,7 +1326,6 @@ def test_codecov_oidc_permissions_are_scoped_to_trusted_upload_job() -> None:
         "go-file-processor": "artifacts/coverage/codecov/go-file-processor.out",
         "go-shared": "artifacts/coverage/codecov/go-shared.out",
         "rust-native": "artifacts/coverage/codecov/rust-native.json",
-        "rust-pyo3-sanitizer": ("artifacts/coverage/codecov/rust-pyo3-sanitizer.json"),
         "rust-wasm-sanitizer": ("artifacts/coverage/codecov/rust-wasm-sanitizer.json"),
         "rust-crypto": "artifacts/coverage/codecov/rust-crypto.json",
     }
@@ -3514,19 +3498,8 @@ def test_miri_workflow_scopes_to_pure_rust_crate_targets() -> None:
     assert "cargo +nightly miri setup" in run_text
     assert "cargo +nightly miri test --locked" in run_text
     assert "--test-threads=1" in run_text
-    assert "crates/pyo3-sanitizer/Cargo.toml" in run_text
     assert "frontend/rust-crypto/Cargo.toml" in run_text
     assert "components: miri" in NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
-
-    pyo3_source = (REPOSITORY_ROOT / "crates/pyo3-sanitizer/src/lib.rs").read_text(
-        encoding="utf-8"
-    )
-    for function_name in (
-        "test_panic_boundary_catches_rust_panic",
-        "test_panic_formatting_coverage",
-        "test_pyo3_bindings_coverage",
-    ):
-        assert f"#[cfg(not(miri))]\n    #[test]\n    fn {function_name}" in pyo3_source
 
 
 def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
@@ -4144,11 +4117,6 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     assert "docker-compose.ci-loadtest.yml" in chaos_steps
     assert "54321/test_ecosystem" in chaos_steps
     assert "Tear down full chaos compose stack" in chaos_steps
-    pyo3_source = (
-        REPOSITORY_ROOT / "crates" / "pyo3-sanitizer" / "src" / "lib.rs"
-    ).read_text(encoding="utf-8")
-    assert "#[cfg(miri)]" in pyo3_source
-    assert "failure_persistence: None" in pyo3_source
 
 
 def test_nightly_chaos_starts_only_its_declared_compose_dependency_closure() -> None:
@@ -4311,7 +4279,6 @@ def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:
 
     for workspace in (
         "native/rust_ext/target/",
-        "crates/pyo3-sanitizer/fuzz/target/",
         "frontend/wasm-sanitizer/fuzz/target/",
         "frontend/rust-crypto/fuzz/target/",
     ):
@@ -4319,7 +4286,6 @@ def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:
 
     for manifest in (
         "native/rust_ext/Cargo.toml",
-        "crates/pyo3-sanitizer/fuzz/Cargo.toml",
         "frontend/wasm-sanitizer/fuzz/Cargo.toml",
         "frontend/rust-crypto/fuzz/Cargo.toml",
     ):
@@ -4337,32 +4303,6 @@ def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:
     assert "../Cargo.toml" not in additional_key
 
 
-def test_pyo3_fuzz_binaries_use_the_pure_sanitizer_module() -> None:
-    """Standalone fuzzers must not link the CPython extension crate."""
-
-    manifest_path = (
-        REPOSITORY_ROOT / "crates" / "pyo3-sanitizer" / "fuzz" / "Cargo.toml"
-    )
-    manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
-    assert "pyo3-sanitizer" not in manifest["dependencies"]
-    assert manifest["dependencies"]["ammonia"] == "4.1.4"
-
-    for target in (
-        "fuzz_sanitize_rich_text.rs",
-        "fuzz_sanitize_html_basic.rs",
-        "fuzz_strip_html.rs",
-    ):
-        source = (
-            REPOSITORY_ROOT
-            / "crates"
-            / "pyo3-sanitizer"
-            / "fuzz"
-            / "fuzz_targets"
-            / target
-        ).read_text(encoding="utf-8")
-        assert '#[path = "../../src/sanitizer.rs"]' in source
-
-
 def test_cargo_deny_scans_all_release_rust_crates_in_parallel() -> None:
     workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "cargo-deny.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
@@ -4375,7 +4315,6 @@ def test_cargo_deny_scans_all_release_rust_crates_in_parallel() -> None:
     entries = matrix_job["strategy"]["matrix"]["include"]
     assert {entry["manifest-path"] for entry in entries} == {
         "native/rust_ext/Cargo.toml",
-        "crates/pyo3-sanitizer/Cargo.toml",
         "frontend/wasm-sanitizer/Cargo.toml",
         "frontend/rust-crypto/Cargo.toml",
     }
@@ -4409,22 +4348,10 @@ def test_rust_fuzz_matrix_covers_every_fuzz_workspace() -> None:
 
     by_directory = {entry["directory"]: entry for entry in entries}
     assert set(by_directory) == {
-        "crates/pyo3-sanitizer/fuzz",
         "frontend/wasm-sanitizer/fuzz",
         "frontend/rust-crypto/fuzz",
     }
-    pyo3_entry = by_directory["crates/pyo3-sanitizer/fuzz"]
-    assert pyo3_entry["parent_manifest"] == "crates/pyo3-sanitizer/Cargo.toml"
-    assert set(pyo3_entry["targets"].split()) == {
-        "fuzz_sanitize_rich_text",
-        "fuzz_sanitize_html_basic",
-        "fuzz_strip_html",
-    }
-
-    workflow_text = workflow_path.read_text(encoding="utf-8")
-    assert "crates/pyo3-sanitizer/fuzz/target/" in workflow_text
-    assert "crates/pyo3-sanitizer/fuzz/Cargo.toml" in workflow_text
-    assert "crates/pyo3-sanitizer/fuzz/Cargo.lock" in workflow_text
+    assert "crates/" not in workflow_path.read_text(encoding="utf-8")
 
 
 def test_rust_fuzz_required_context_runs_when_its_workflow_changes() -> None:
@@ -6967,11 +6894,9 @@ def test_performance_history_is_main_only_and_advisory() -> None:
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
     assert jobs["benchmark"]["name"] == "Run Go Benchmarks"
-    assert (
-        jobs["rust-criterion"]["name"] == "Rust Criterion Benchmarks (pyo3-sanitizer)"
-    )
+    assert "rust-criterion" not in jobs
 
-    for job_id in ("benchmark", "rust-criterion"):
+    for job_id in ("benchmark",):
         job = jobs[job_id]
         assert not any(
             "benchmark-action/github-action-benchmark" in str(step.get("uses", ""))
@@ -6995,7 +6920,6 @@ def test_performance_history_is_main_only_and_advisory() -> None:
     assert publisher["needs"] == [
         "benchmark",
         "ws-hub-regression",
-        "rust-criterion",
         "rust-native-regression",
     ]
     assert publisher["if"] == (
@@ -7008,7 +6932,7 @@ def test_performance_history_is_main_only_and_advisory() -> None:
         if isinstance(step, dict)
         and "benchmark-action/github-action-benchmark" in str(step.get("uses", ""))
     ]
-    assert len(publisher_steps) == 2
+    assert len(publisher_steps) == 1
     for step in publisher_steps:
         assert step["with"]["auto-push"] is True
         assert step["with"]["comment-on-alert"] is False
@@ -7108,9 +7032,6 @@ def test_manual_performance_evidence_uses_distinct_read_only_paired_contexts() -
         "benchmark": "Manual Performance Evidence / Run Go Benchmarks",
         "ws-hub-regression": (
             "Manual Performance Evidence / WS-Hub Go Benchmark Regression Gate"
-        ),
-        "rust-criterion": (
-            "Manual Performance Evidence / Rust Criterion Benchmarks (pyo3-sanitizer)"
         ),
         "rust-native-regression": (
             "Manual Performance Evidence / Rust Native Optimizer Regression Gate"
@@ -7312,14 +7233,14 @@ def test_coverage_producers_publish_closed_v2_sidecars() -> None:
     rust_provenance = _provenance_step(rust_job, "Write Rust coverage provenance")
     rust_run = str(rust_provenance["run"])
     assert '--artifact "rust-coverage-attempt-${RUN_ATTEMPT}"' in rust_run
-    assert rust_run.count("|llvm-cov-json|") == 4
-    assert rust_run.count("|llvm-cov-branch-json|") == 4
+    assert rust_run.count("|llvm-cov-json|") == 3
+    assert rust_run.count("|llvm-cov-branch-json|") == 3
     assert (
-        "test \"$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)\" -eq 4"
+        "test \"$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)\" -eq 3"
         in rust_run
     )
     assert (
-        "test \"$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)\" -eq 4"
+        "test \"$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)\" -eq 3"
         in rust_run
     )
     rust_upload = _provenance_step(rust_job, "Upload Rust coverage artifacts")
@@ -7481,8 +7402,8 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
     ):
         assert required in normalize_run
     assert normalize_run.count("--go-report ") == 4
-    assert normalize_run.count("--rust-report ") == 4
-    assert normalize_run.count("--rust-branch-report ") == 4
+    assert normalize_run.count("--rust-report ") == 3
+    assert normalize_run.count("--rust-branch-report ") == 3
     assert "ignore-outside" not in normalize_run
     assert normalize_run.count("--tool-version ") >= 7
 

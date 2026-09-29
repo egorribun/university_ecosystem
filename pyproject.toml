@@ -94,9 +94,6 @@ dependencies = [
   "openfeature-sdk>=0.8.4,<1",                         # SEC-09: cap feature-flag API major upgrades
   "openfeature-provider-flagd>=0.5.0,<0.5.3",  # 0.5.1+ requires protobuf 7, incompatible with Authzed/OTEL
   "rust_ext",
-  # PY-P1-02 (audit Wave 10): pyo3_sanitizer removed from production deps —
-  # it is a build-time / development tooling package, not a runtime dependency.
-  # Kept in [dependency-groups.dev] below so it remains available locally and in CI.
   # RZ-11 (audit 2026-03-05): virtualenv moved to [dependency-groups.dev] —
   # it is a developer tooling package that ships pip/setuptools/wheel and
   # inflates the production image with unnecessary CVE surface.
@@ -249,7 +246,6 @@ module = [
   "pyroscope",
   "magic",
   "rust_ext",
-  "pyo3_sanitizer",
   "zxcvbn",
   "redis.*",
   "grpc.*",
@@ -410,8 +406,6 @@ dev = [
   # RZ-11 (audit 2026-03-05): virtualenv belongs here — it is developer tooling,
   # not a production runtime dependency.
   "virtualenv>=21.2.1",
-  # PY-P1-02 (audit Wave 10): pyo3_sanitizer is a build-time tool, not a runtime dep.
-  "pyo3_sanitizer",
   "types-requests>=2.33.0.20260408",
   "types-pyyaml>=6.0.12.20260408",
   "types-redis>=4.6.0.20241004",
@@ -450,7 +444,7 @@ dev = [
 security = ["bandit[toml]>=1.9.4", "semgrep>=1.159.0", "pip-audit==2.10.1"]
 
 [tool.uv.workspace]
-members = ["native/rust_ext", "crates/pyo3-sanitizer"]
+members = ["native/rust_ext"]
 
 [tool.uv]
 # Keep CI independent from the latest-version manifest availability.  The
@@ -492,7 +486,6 @@ override-dependencies = [
 
 [tool.uv.sources]
 rust_ext = { workspace = true }
-pyo3_sanitizer = { workspace = true }
 
 [tool.pyright]
 # MOD-05 (audit 2026-03-11): Pyright added as an ADDITIONAL type checker alongside
@@ -544,9 +537,6 @@ pyroscope-io = "pyroscope"
 DEP002 = ["aiosqlite", "email-validator", "gunicorn", "protobuf", "python-dotenv", "python-multipart"]
 # Framework internals imported alongside the frameworks that pin them.
 DEP003 = ["graphql", "pydantic_core"]
-# OPEN DECISION (STATUS.md): the production image installs --no-dev, so it
-# sanitizes with the nh3 fallback while dev/CI import the native extension.
-DEP004 = ["pyo3_sanitizer"]
 
 [tool.mutmut]
 # mutmut 3.7.0 configuration. `source_paths` is the supported list-valued
@@ -641,7 +631,6 @@ also_copy = [
     "charts/university-ecosystem",
     "charts/revocation-store",
     "infrastructure",
-    "infra/oss-fuzz",
     "alembic",
     "alembic.ini",
     "scripts",
@@ -698,13 +687,10 @@ also_copy = [
     "native/rust_ext/fuzz/fuzz_targets",
     "native/rust_ext/Cargo.toml",
     "native/rust_ext/fuzz/Cargo.toml",
-    "crates/pyo3-sanitizer/fuzz/fuzz_targets",
-    "crates/pyo3-sanitizer/fuzz/Cargo.toml",
     "frontend/wasm-sanitizer/fuzz/fuzz_targets",
     "frontend/wasm-sanitizer/fuzz/Cargo.toml",
     "frontend/rust-crypto/fuzz/fuzz_targets",
     "frontend/rust-crypto/fuzz/Cargo.toml",
-    "crates/pyo3-sanitizer/src",
     "frontend/scripts",
     "frontend/openapi.json",
     # Generated SDK/types and MSW handlers are asserted by auth contract tests

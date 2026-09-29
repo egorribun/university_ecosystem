@@ -1,14 +1,11 @@
 """PyO3 extension-module smoke test and CI import guard.
 
-NOTE ON NAMING: the plan called this `test_smoke_pyo3_sanitizer.py` with
-"sanitizer parity", but `rust_ext` exposes schedule-conflict / partition /
-audit-signature functions — there is no HTML sanitizer in the PyO3 crate (that
-lives in the frontend `wasm-sanitizer`, covered by its own native tests). So
-this file delivers the *substance* the plan needed: a hard CI guard that the
-extension-module build still imports + a small FFI smoke that regression-checks
-the Stream-D1 feature-gate (extension-module stays the default), complementing
-the existing `test_smoke_rust_audit.py` / `test_smoke_rust_partitions.py`
-(which use a silent `importorskip` with no CI enforcement).
+`rust_ext` exposes schedule-conflict / partition / audit-signature functions.
+This file delivers a hard CI guard that the extension-module build still
+imports, plus a small FFI smoke that regression-checks the Stream-D1
+feature-gate (extension-module stays the default), complementing the existing
+`test_smoke_rust_audit.py` / `test_smoke_rust_partitions.py` (which use a
+silent `importorskip` with no CI enforcement).
 """
 
 import hashlib

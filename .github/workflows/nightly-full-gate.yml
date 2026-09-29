@@ -1519,19 +1519,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      # pyo3-sanitizer supplies an explicit no-persistence config under Miri:
-      # Config::default constructs the file provider before this env override
-      # is applied. Keep the variable for any third-party proptest tests.
+      # rust-crypto proptest suites construct Config::default, which builds the
+      # file persistence provider before this env override is applied.
       PROPTEST_DISABLE_FAILURE_PERSISTENCE: "1"
       # proptest's failure persistence probes current_dir even when persistence
       # is disabled.  Miri's default filesystem isolation rejects that syscall
       # before the pure-Rust property tests can run; disabling isolation is
       # scoped to this test-only job and keeps the source crate unchanged.
       #
-      # html5ever's string_cache 0.9.0 currently trips Miri's experimental
-      # Stacked Borrows model in its atomic ref-count drop path. Tree Borrows
-      # keeps aliasing checks enabled while avoiding that known dependency
-      # false-positive; this remains scoped to the Miri job only.
+      # Tree Borrows keeps aliasing checks enabled while avoiding known
+      # Stacked Borrows false-positives in dependency atomic ref-count drop
+      # paths; this remains scoped to the Miri job only.
       MIRIFLAGS: "-Zmiri-tree-borrows -Zmiri-disable-isolation -Zmiri-isolation-error=warn"
     steps:
       - name: Checkout
@@ -1545,12 +1543,6 @@ jobs:
 
       - name: Initialise Miri
         run: cargo +nightly miri setup
-
-      - name: Test pyo3-sanitizer pure Rust library
-        run: >-
-          cargo +nightly miri test --locked
-          --manifest-path crates/pyo3-sanitizer/Cargo.toml
-          --no-default-features --lib -- --test-threads=1
 
       - name: Test rust-crypto pure Rust library
         run: >-

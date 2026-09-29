@@ -528,16 +528,14 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             native/rust_ext/target/
-            crates/pyo3-sanitizer/target/
             frontend/wasm-sanitizer/target/
             frontend/rust-crypto/target/
-          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('native/rust_ext/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.toml', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/rust-crypto/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('native/rust_ext/Cargo.toml', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/rust-crypto/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-lint-
       - name: Check Formatting (rustfmt)
         run: |
           cargo fmt --all --manifest-path native/rust_ext/Cargo.toml -- --check
-          cargo fmt --all --manifest-path crates/pyo3-sanitizer/Cargo.toml -- --check
           cargo fmt --all --manifest-path frontend/wasm-sanitizer/Cargo.toml -- --check
           cargo fmt --all --manifest-path frontend/rust-crypto/Cargo.toml -- --check
       - name: Run Clippy (static analysis)
@@ -545,7 +543,6 @@ jobs:
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo clippy --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features --locked -- -D warnings
-          cargo clippy --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets --locked -- -D warnings
           cargo clippy --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets --locked -- -D warnings
           cargo clippy --manifest-path frontend/rust-crypto/Cargo.toml --all-targets --locked -- -D warnings
 
@@ -568,7 +565,6 @@ jobs:
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo +nightly udeps --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features --locked
-          cargo +nightly udeps --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets --locked
           cargo +nightly udeps --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets --locked
           cargo +nightly udeps --manifest-path frontend/rust-crypto/Cargo.toml --all-targets --locked
 
@@ -2838,8 +2834,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             native/rust_ext/target/
-            crates/pyo3-sanitizer/target/
-          key: ${{ runner.os }}-cargo-asan-${{ hashFiles('native/rust_ext/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-asan-${{ hashFiles('native/rust_ext/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-asan-
 
@@ -2898,8 +2893,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             native/rust_ext/target/
-            crates/pyo3-sanitizer/target/
-          key: ${{ runner.os }}-cargo-tsan-${{ hashFiles('native/rust_ext/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-tsan-${{ hashFiles('native/rust_ext/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-tsan-
 
@@ -2963,10 +2957,9 @@ jobs:
             native/rust_ext/target/
             frontend/wasm-sanitizer/target/
             frontend/rust-crypto/target/
-            crates/pyo3-sanitizer/target/
           # The v2 namespace prevents an existing cache archive that still
           # contains target/llvm-cov-target from being restored.
-          key: ${{ runner.os }}-cargo-rust-tests-v2-${{ hashFiles('native/rust_ext/Cargo.toml', 'native/rust_ext/Cargo.lock', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/wasm-sanitizer/Cargo.lock', 'frontend/rust-crypto/Cargo.toml', 'frontend/rust-crypto/Cargo.lock', 'crates/pyo3-sanitizer/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-rust-tests-v2-${{ hashFiles('native/rust_ext/Cargo.toml', 'native/rust_ext/Cargo.lock', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/wasm-sanitizer/Cargo.lock', 'frontend/rust-crypto/Cargo.toml', 'frontend/rust-crypto/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-rust-tests-v2-
 
@@ -2984,13 +2977,12 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf -- artifacts/coverage/rust/rust-native
-          rm -rf -- artifacts/coverage/rust/rust-pyo3-sanitizer
           rm -rf -- artifacts/coverage/rust/rust-wasm-sanitizer
           rm -rf -- artifacts/coverage/rust/rust-crypto
           rm -f -- artifacts/coverage/rust/coverage-provenance.json
 
       - name: Create coverage output directories
-        run: mkdir -p artifacts/coverage/rust/rust-native artifacts/coverage/rust/rust-pyo3-sanitizer artifacts/coverage/rust/rust-wasm-sanitizer artifacts/coverage/rust/rust-crypto
+        run: mkdir -p artifacts/coverage/rust/rust-native artifacts/coverage/rust/rust-wasm-sanitizer artifacts/coverage/rust/rust-crypto
 
       - name: rust_ext — native unit tests + coverage (--no-default-features)
         # extension-module produces undefined Python symbols in a standalone test
@@ -3013,23 +3005,6 @@ jobs:
           export CARGO_TARGET_DIR="$nightly_target_dir"
           cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --locked --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-native/branch-llvm.json
-
-      - name: pyo3-sanitizer — native unit tests + coverage
-        working-directory: crates/pyo3-sanitizer
-        env:
-          CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-pyo3-sanitizer
-          NIGHTLY_CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-pyo3-sanitizer-nightly
-        run: |
-          LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
-          export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
-          cargo llvm-cov clean
-          cargo llvm-cov --locked --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
-          cargo llvm-cov report --locked --codecov --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
-          # Isolate nightly branch objects from the stable coverage tree.
-          nightly_target_dir="${NIGHTLY_CARGO_TARGET_DIR:?}"
-          export CARGO_TARGET_DIR="$nightly_target_dir"
-          cargo +nightly llvm-cov clean
-          cargo +nightly llvm-cov --locked --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
 
       - name: wasm-sanitizer — native unit tests + coverage
         working-directory: frontend/wasm-sanitizer
@@ -3079,8 +3054,8 @@ jobs:
           WORKFLOW_EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          test "$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)" -eq 4
-          test "$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)" -eq 4
+          test "$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)" -eq 3
+          test "$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)" -eq 3
           while IFS= read -r report; do test -s "$report"; done < <(
             find artifacts/coverage/rust -name 'llvm.json' -type f -print
           )
@@ -3110,8 +3085,6 @@ jobs:
             --tool-version quality-provenance=2.0.0 \
             --report "rust-native|llvm-cov-json|artifacts/coverage/rust/rust-native/llvm.json|artifacts/coverage/rust/rust-native/llvm.json" \
             --report "rust-native|llvm-cov-branch-json|artifacts/coverage/rust/rust-native/branch-llvm.json|artifacts/coverage/rust/rust-native/branch-llvm.json" \
-            --report "rust-pyo3-sanitizer|llvm-cov-json|artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json|artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json" \
-            --report "rust-pyo3-sanitizer|llvm-cov-branch-json|artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json|artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json" \
             --report "rust-wasm-sanitizer|llvm-cov-json|artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json|artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json" \
             --report "rust-wasm-sanitizer|llvm-cov-branch-json|artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json|artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json" \
             --report "rust-crypto|llvm-cov-json|artifacts/coverage/rust/rust-crypto/llvm.json|artifacts/coverage/rust/rust-crypto/llvm.json" \
@@ -3124,8 +3097,6 @@ jobs:
           path: |
             artifacts/coverage/rust/rust-native/llvm.json
             artifacts/coverage/rust/rust-native/branch-llvm.json
-            artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
-            artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
             artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
             artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json
             artifacts/coverage/rust/rust-crypto/llvm.json
@@ -3139,7 +3110,6 @@ jobs:
           name: rust-codecov-reports-attempt-${{ github.run_attempt }}
           path: |
             artifacts/coverage/rust/rust-native/codecov.json
-            artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
             artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
             artifacts/coverage/rust/rust-crypto/codecov.json
           if-no-files-found: error
@@ -5011,7 +4981,6 @@ jobs:
           rm -rf -- artifacts/coverage/go/shared-inputs
           rm -rf -- artifacts/coverage/go/shared
           rm -rf -- artifacts/coverage/rust/rust-native
-          rm -rf -- artifacts/coverage/rust/rust-pyo3-sanitizer
           rm -rf -- artifacts/coverage/rust/rust-wasm-sanitizer
           rm -rf -- artifacts/coverage/rust/rust-crypto
           rm -rf -- artifacts/coverage/provenance
@@ -5285,8 +5254,8 @@ jobs:
           test "$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)" -eq 4
           test "$(find artifacts/coverage/go -name 'coverage.out' -type f | wc -l)" -eq 7
           test "$(find artifacts/coverage/go -name 'coverage-provenance.json' -type f | wc -l)" -eq 7
-          test "$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)" -eq 4
-          test "$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)" -eq 4
+          test "$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)" -eq 3
+          test "$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)" -eq 3
           test "$(find artifacts/coverage/rust -name 'codecov.json' -type f | wc -l)" -eq 4
           verify_producer() {
             local metadata="$1"
@@ -5603,11 +5572,9 @@ jobs:
             --go-report go-file-processor=artifacts/coverage/go/file-processor/coverage.out \
             --go-report go-shared=artifacts/coverage/go/shared/coverage.out \
             --rust-report rust-native=artifacts/coverage/rust/rust-native/llvm.json \
-            --rust-report rust-pyo3-sanitizer=artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json \
             --rust-report rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json \
             --rust-report rust-crypto=artifacts/coverage/rust/rust-crypto/llvm.json \
             --rust-branch-report rust-native=artifacts/coverage/rust/rust-native/branch-llvm.json \
-            --rust-branch-report rust-pyo3-sanitizer=artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json \
             --rust-branch-report rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json \
             --rust-branch-report rust-crypto=artifacts/coverage/rust/rust-crypto/branch-llvm.json
 
@@ -5660,7 +5627,6 @@ jobs:
           cp artifacts/coverage/go/file-processor/coverage.out artifacts/coverage/codecov/go-file-processor.out
           cp artifacts/coverage/go/shared/coverage.out artifacts/coverage/codecov/go-shared.out
           cp artifacts/coverage/rust/rust-native/codecov.json artifacts/coverage/codecov/rust-native.json
-          cp artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json artifacts/coverage/codecov/rust-pyo3-sanitizer.json
           cp artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json artifacts/coverage/codecov/rust-wasm-sanitizer.json
           cp artifacts/coverage/rust/rust-crypto/codecov.json artifacts/coverage/codecov/rust-crypto.json
 
@@ -5687,8 +5653,6 @@ jobs:
             artifacts/coverage/go/shared-inputs/logging/coverage.out
             artifacts/coverage/rust/rust-native/llvm.json
             artifacts/coverage/rust/rust-native/branch-llvm.json
-            artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
-            artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
             artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
             artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json
             artifacts/coverage/rust/rust-crypto/llvm.json
@@ -5798,16 +5762,6 @@ jobs:
           files: artifacts/coverage/codecov/rust-native.json
           flags: rust-native
           name: trusted-main-rust-native-${{ github.sha }}
-          fail_ci_if_error: true
-
-      - name: Upload PyO3 sanitizer coverage to Codecov via OIDC
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
-        with:
-          use_oidc: true
-          disable_search: true
-          files: artifacts/coverage/codecov/rust-pyo3-sanitizer.json
-          flags: rust-pyo3-sanitizer
-          name: trusted-main-rust-pyo3-sanitizer-${{ github.sha }}
           fail_ci_if_error: true
 
       - name: Upload WASM sanitizer coverage to Codecov via OIDC

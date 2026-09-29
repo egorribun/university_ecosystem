@@ -55,12 +55,6 @@
       "branches": ["native", "derived"],
       "functions": ["native", "derived"]
     },
-    "rust-pyo3-sanitizer": {
-      "lines": ["native", "derived"],
-      "statements": ["unsupported"],
-      "branches": ["native", "derived"],
-      "functions": ["native", "derived"]
-    },
     "rust-wasm-sanitizer": {
       "lines": ["native", "derived"],
       "statements": ["unsupported"],
@@ -100,7 +94,6 @@
     "go-file-processor": ["services/file-processor"],
     "go-shared": ["services/cmd/uni-cli", "services/pkg/logging", "services/pkg/spiffe", "services/pkg/spicedb"],
     "rust-native": ["native/rust_ext"],
-    "rust-pyo3-sanitizer": ["crates/pyo3-sanitizer"],
     "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
     "rust-crypto": ["frontend/rust-crypto"],
     "infrastructure": ["infra", "infrastructure", "k8s", "charts"],
@@ -120,7 +113,6 @@
       "services/pkg/spicedb"
     ],
     "rust-native": ["native/rust_ext"],
-    "rust-pyo3-sanitizer": ["crates/pyo3-sanitizer"],
     "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
     "rust-crypto": ["frontend/rust-crypto"]
   },
@@ -132,7 +124,6 @@
     "go-file-processor": {"coverage": {"lines": 100, "statements": 100, "branches": 0, "functions": 0}},
     "go-shared": {"coverage": {"lines": 100, "statements": 100, "branches": 0, "functions": 0}},
     "rust-native": {"coverage": {"lines": 100, "statements": 0, "branches": 100, "functions": 100}},
-    "rust-pyo3-sanitizer": {"coverage": {"lines": 100, "statements": 0, "branches": 100, "functions": 100}},
     "rust-wasm-sanitizer": {"coverage": {"lines": 100, "statements": 0, "branches": 100, "functions": 100}},
     "rust-crypto": {"coverage": {"lines": 100, "statements": 0, "branches": 100, "functions": 100}},
     "infrastructure": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
@@ -157,8 +148,6 @@
     {"component": "go-shared", "format": "go-coverprofile", "path": "artifacts/coverage/go/shared/coverage.out"},
     {"component": "rust-native", "format": "llvm-cov-json", "path": "artifacts/coverage/rust/rust-native/llvm.json"},
     {"component": "rust-native", "format": "llvm-cov-branch-json", "path": "artifacts/coverage/rust/rust-native/branch-llvm.json"},
-    {"component": "rust-pyo3-sanitizer", "format": "llvm-cov-json", "path": "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json"},
-    {"component": "rust-pyo3-sanitizer", "format": "llvm-cov-branch-json", "path": "artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json"},
     {"component": "rust-wasm-sanitizer", "format": "llvm-cov-json", "path": "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json"},
     {"component": "rust-wasm-sanitizer", "format": "llvm-cov-branch-json", "path": "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json"},
     {"component": "rust-crypto", "format": "llvm-cov-json", "path": "artifacts/coverage/rust/rust-crypto/llvm.json"},

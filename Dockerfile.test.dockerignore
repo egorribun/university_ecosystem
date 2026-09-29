@@ -80,7 +80,6 @@ env/
 target/
 **/target/
 native/rust_ext/target/
-crates/pyo3-sanitizer/target/
 
 # Misc
 Dockerfile*

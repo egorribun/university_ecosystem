@@ -29,7 +29,6 @@ mcp = "2026-08-04T00:00:00Z"
 
 [manifest]
 members = [
-    "pyo3-sanitizer",
     "rust-ext",
     "university-ecosystem",
 ]
@@ -3656,10 +3655,6 @@ crypto = [
 ]
 
 [[package]]
-name = "pyo3-sanitizer"
-source = { editable = "crates/pyo3-sanitizer" }
-
-[[package]]
 name = "pyotp"
 version = "2.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4878,7 +4873,6 @@ dev = [
     { name = "pact-python" },
     { name = "pip-audit" },
     { name = "pre-commit" },
-    { name = "pyo3-sanitizer" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -4997,7 +4991,6 @@ dev = [
     { name = "pact-python", specifier = "==3.4.1" },
     { name = "pip-audit", specifier = "==2.10.1" },
     { name = "pre-commit", specifier = ">=4.5.1" },
-    { name = "pyo3-sanitizer", editable = "crates/pyo3-sanitizer" },
     { name = "pyright", specifier = ">=1.1.408" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },

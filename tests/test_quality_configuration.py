@@ -310,7 +310,6 @@ def test_governance_quality_configuration_matches_contract() -> None:
             "services/pkg/spicedb/",
         ],
         "rust-native": ["native/rust_ext/"],
-        "rust-pyo3-sanitizer": ["crates/pyo3-sanitizer/"],
         "rust-wasm-sanitizer": ["frontend/wasm-sanitizer/"],
         "rust-crypto": ["frontend/rust-crypto/"],
     }
@@ -392,11 +391,6 @@ def test_test_image_copies_rust_benches_declared_in_workspace_manifests() -> Non
 
     assert re.search(
         r"^COPY native/rust_ext/benches native/rust_ext/benches$",
-        dockerfile,
-        re.MULTILINE,
-    )
-    assert re.search(
-        r"^COPY crates/pyo3-sanitizer/benches crates/pyo3-sanitizer/benches$",
         dockerfile,
         re.MULTILINE,
     )
@@ -505,7 +499,6 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         "containers/quality",
         "k8s/kyverno",
         "k8s/flagd",
-        "crates/pyo3-sanitizer/src",
         "frontend/scripts",
         "frontend/package.json",
         "frontend/src/hooks",

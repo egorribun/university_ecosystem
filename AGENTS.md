@@ -34,7 +34,7 @@ university_ecosystem/
 │   ├── file-processor/         # gRPC file processing & GraphQL engine
 │   ├── caddy/                  # Caddy v2 reverse proxy & TLS termination
 │   └── AGENTS.md               # Go microservices invariants & guidelines
-├── native/rust_ext/            # Rust native optimizer (PyO3 FFI — schedule conflicts, HMAC, WASM sanitizer)
+├── native/rust_ext/            # Rust native optimizer (PyO3 FFI — schedule conflicts, partitions, audit-signature HMAC)
 ├── alembic/                    # Database migration history
 ├── charts/                     # Helm deployment charts (university-ecosystem)
 ├── k8s/                        # Kubernetes manifests (OpenFeature flagd, external secrets, Kyverno policies)

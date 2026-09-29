@@ -37,16 +37,6 @@ echo "==> [TSan] Rebuilding rust_ext under TSan (nightly, force-reinstall)..."
   uv run maturin develop --release --target "${HOST_TRIPLE}" -Zbuild-std=std,panic_abort
 )
 
-echo "==> [TSan] Rebuilding pyo3-sanitizer under TSan (nightly, force-reinstall)..."
-(
-  cd "${REPO_ROOT}/crates/pyo3-sanitizer"
-  unset RUSTFLAGS
-  export RUSTUP_TOOLCHAIN=nightly
-  TRIPLE_UPPER="$(echo "${HOST_TRIPLE}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')"
-  export "CARGO_TARGET_${TRIPLE_UPPER}_RUSTFLAGS=-Zsanitizer=thread"
-  uv run maturin develop --release --target "${HOST_TRIPLE}" -Zbuild-std=std,panic_abort
-)
-
 # ── Locate TSan runtime shared library ───────────────────────────────
 echo "==> [TSan] Locating TSan runtime library..."
 TSAN_LIB=""
@@ -139,7 +129,6 @@ TSAN_OPTIONS="suppressions=${TSAN_SUPPRESSIONS_FILE}:halt_on_error=0:second_dead
     tests/test_smoke_rust_audit.py \
     tests/test_smoke_rust_partitions.py \
     tests/test_property_based.py \
-    tests/test_content_processing.py \
     tests/test_smoke_pyo3_ext.py \
     -v \
     --tb=short

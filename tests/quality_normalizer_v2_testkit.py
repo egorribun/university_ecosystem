@@ -95,7 +95,6 @@ end_of_record
 
     rust_components = {
         "rust-native": "native/rust_ext",
-        "rust-pyo3-sanitizer": "crates/pyo3-sanitizer",
         "rust-wasm-sanitizer": "frontend/wasm-sanitizer",
         "rust-crypto": "frontend/rust-crypto",
     }
@@ -162,10 +161,6 @@ CANONICAL_REPORT_ARGUMENTS = (
     "rust-native=artifacts/coverage/rust/rust-native/llvm.json",
     "--rust-branch-report",
     "rust-native=artifacts/coverage/rust/rust-native/branch-llvm.json",
-    "--rust-report",
-    "rust-pyo3-sanitizer=artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
-    "--rust-branch-report",
-    "rust-pyo3-sanitizer=artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json",
     "--rust-report",
     "rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
     "--rust-branch-report",

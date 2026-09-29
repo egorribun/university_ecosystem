@@ -31,9 +31,6 @@ jobs:
           - name: native-rust-ext
             manifest-path: native/rust_ext/Cargo.toml
             config-path: native/rust_ext/deny.toml
-          - name: pyo3-sanitizer
-            manifest-path: crates/pyo3-sanitizer/Cargo.toml
-            config-path: native/rust_ext/deny.toml
           - name: wasm-sanitizer
             manifest-path: frontend/wasm-sanitizer/Cargo.toml
             config-path: native/rust_ext/deny.toml

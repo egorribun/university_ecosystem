@@ -43,9 +43,8 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     UV_PROJECT_ENVIRONMENT="/opt/venv"
 
 # Copy workspace member sources so uv can resolve the lockfile.
-# pyo3-sanitizer and rust_ext are local Rust/PyO3 extensions declared as
-# workspace members in pyproject.toml — uv requires them at sync time.
-COPY crates ./crates
+# rust_ext is a local Rust/PyO3 extension declared as a workspace member in
+# pyproject.toml — uv requires it at sync time.
 COPY native ./native
 
 # Create virtual environment and install dependencies

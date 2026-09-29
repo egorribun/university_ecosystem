@@ -195,14 +195,6 @@ def _write_test_contract(path: Path) -> None:
                     "functions": 100,
                 }
             },
-            "rust-pyo3-sanitizer": {
-                "coverage": {
-                    "lines": 100,
-                    "statements": 0,
-                    "branches": 100,
-                    "functions": 100,
-                }
-            },
             "rust-wasm-sanitizer": {
                 "coverage": {
                     "lines": 100,
@@ -262,7 +254,6 @@ def _write_test_contract(path: Path) -> None:
             "artifacts/coverage/go/file-processor/coverage.out",
             "artifacts/coverage/go/shared/coverage.out",
             "artifacts/coverage/rust/rust-native/llvm.json",
-            "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-crypto/llvm.json",
             "artifacts/coverage/quality-manifest.json",
@@ -349,9 +340,6 @@ def _run_normalizer_in_isolated_repo(
         },
         "--rust-report": {
             "rust-native": "artifacts/coverage/rust/rust-native/llvm.json",
-            "rust-pyo3-sanitizer": (
-                "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json"
-            ),
             "rust-wasm-sanitizer": (
                 "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json"
             ),
@@ -359,9 +347,6 @@ def _run_normalizer_in_isolated_repo(
         },
         "--rust-branch-report": {
             "rust-native": "artifacts/coverage/rust/rust-native/branch-llvm.json",
-            "rust-pyo3-sanitizer": (
-                "artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json"
-            ),
             "rust-wasm-sanitizer": (
                 "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json"
             ),
@@ -575,8 +560,6 @@ def _full_report_arguments() -> list[str]:
         "--rust-report",
         f"rust-native={rust_report}",
         "--rust-report",
-        f"rust-pyo3-sanitizer={rust_report}",
-        "--rust-report",
         f"rust-wasm-sanitizer={rust_report}",
         "--rust-report",
         f"rust-crypto={rust_report}",
@@ -757,8 +740,6 @@ def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
         "artifacts/coverage/go/shared/coverage.out",
         "artifacts/coverage/rust/rust-native/llvm.json",
         "artifacts/coverage/rust/rust-native/branch-llvm.json",
-        "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
-        "artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json",
         "artifacts/coverage/rust/rust-crypto/llvm.json",
@@ -798,7 +779,6 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
         "infrastructure": ["infra", "infrastructure", "k8s", "charts"],
         "python": ["app", "alembic/versions"],
         "rust-native": ["native/rust_ext"],
-        "rust-pyo3-sanitizer": ["crates/pyo3-sanitizer"],
         "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
         "rust-crypto": ["frontend/rust-crypto"],
         "scripts": ["scripts"],
@@ -1195,7 +1175,6 @@ def test_source_identity_accepts_in_root_relative_backslash_and_absolute_paths(
         ("go-shared", "services/pkg/spiffe"),
         ("go-shared", "services/pkg/spicedb"),
         ("rust-native", "native/rust_ext"),
-        ("rust-pyo3-sanitizer", "crates/pyo3-sanitizer"),
         ("rust-wasm-sanitizer", "frontend/wasm-sanitizer"),
         ("infrastructure", "infra"),
         ("infrastructure", "infrastructure"),
@@ -2234,14 +2213,6 @@ def test_derived_go_line_metric_must_satisfy_the_strict_v2_floor(
                     "functions": 100,
                 }
             },
-            "rust-pyo3-sanitizer": {
-                "coverage": {
-                    "lines": 100,
-                    "statements": 0,
-                    "branches": 100,
-                    "functions": 100,
-                }
-            },
             "rust-wasm-sanitizer": {
                 "coverage": {
                     "lines": 100,
@@ -2286,7 +2257,6 @@ def test_derived_go_line_metric_must_satisfy_the_strict_v2_floor(
             "artifacts/coverage/go/file-processor/coverage.out",
             "artifacts/coverage/go/shared/coverage.out",
             "artifacts/coverage/rust/rust-native/llvm.json",
-            "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-crypto/llvm.json",
             "artifacts/coverage/quality-manifest.json",
@@ -3016,14 +2986,6 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
                     "functions": 100,
                 }
             },
-            "rust-pyo3-sanitizer": {
-                "coverage": {
-                    "lines": 100,
-                    "statements": 0,
-                    "branches": 100,
-                    "functions": 100,
-                }
-            },
             "rust-wasm-sanitizer": {
                 "coverage": {
                     "lines": 100,
@@ -3068,7 +3030,6 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             "artifacts/coverage/go/file-processor/coverage.out",
             "artifacts/coverage/go/shared/coverage.out",
             "artifacts/coverage/rust/rust-native/llvm.json",
-            "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-crypto/llvm.json",
             "artifacts/coverage/quality-manifest.json",

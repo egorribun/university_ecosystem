@@ -149,11 +149,8 @@ def test_dependency_ignores_are_limited_to_known_required_dependencies() -> None
 def test_ignored_binaries_are_exact_and_have_authored_call_sites() -> None:
     knip = json.loads((FRONTEND / "knip.json").read_text(encoding="utf-8"))
 
-    assert knip["ignoreBinaries"] == ["taskkill.exe", "mkfifo", "uv"]
+    assert knip["ignoreBinaries"] == ["taskkill.exe", "mkfifo"]
     assert 'spawn("taskkill.exe"' in _read_frontend("scripts/build-orchestrated.mjs")
     assert 'execFileSync("mkfifo"' in _read_frontend(
         "scripts/stryker-progress-monitor.test.mjs"
-    )
-    assert 'spawnSync("uv"' in _read_frontend(
-        "wasm-sanitizer/tests/wasm_sanitizer_node_test.js"
     )

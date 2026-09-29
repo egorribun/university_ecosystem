@@ -1,8 +1,7 @@
-/* eslint-env node */
+/* global console, process */
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
-import { spawnSync } from "child_process"
 import {
   initSync,
   sanitize_rich_text,
@@ -18,33 +17,7 @@ const wasmPath = path.resolve(__dirname, "../pkg/wasm_sanitizer_bg.wasm")
 const wasmBuffer = fs.readFileSync(wasmPath)
 initSync(wasmBuffer)
 
-// 2. Python helper for pyo3-sanitizer output
-function pythonSanitize(input, mode) {
-  const pyCode = `
-import sys
-import pyo3_sanitizer
-input_str = sys.stdin.read()
-if sys.argv[1] == 'rich':
-    sys.stdout.write(pyo3_sanitizer.sanitize_rich_text(input_str))
-elif sys.argv[1] == 'basic':
-    sys.stdout.write(pyo3_sanitizer.sanitize_html_basic(input_str))
-elif sys.argv[1] == 'strip':
-    sys.stdout.write(pyo3_sanitizer.strip_html(input_str))
-`
-  const res = spawnSync("uv", ["run", "python", "-c", pyCode, mode], {
-    input: input,
-    encoding: "utf8",
-  })
-  if (res.error) {
-    throw res.error
-  }
-  if (res.status !== 0) {
-    throw new Error(`Python execution failed: ${res.stderr}`)
-  }
-  return res.stdout
-}
-
-// 3. Test battery (25 test cases)
+// 2. Test battery (25 test cases)
 const testCases = [
   { name: "empty string", input: "" },
   { name: "plain text", input: "Hello world, no HTML tags." },
@@ -106,48 +79,74 @@ const testCases = [
   },
 ]
 
-console.log("Starting WASM vs PyO3 Sanitizer Iso-functional Parity Tests...\n")
+// 3. Invariants every sanitization mode must uphold for every input.
+const dangerousPatterns = [
+  { label: "script element", pattern: /<\s*\/?\s*script/i },
+  { label: "javascript: protocol", pattern: /javascript\s*:/i },
+  { label: "data:text/html URL", pattern: /data\s*:\s*text\/html/i },
+  { label: "inline event handler", pattern: /<[^>]*\son[a-z]+\s*=/i },
+  { label: "style attribute", pattern: /<[^>]*\sstyle\s*=/i },
+  { label: "class or id attribute", pattern: /<[^>]*\s(?:class|id)\s*=/i },
+  { label: "img element", pattern: /<\s*img\b/i },
+]
+
+const modes = [
+  { name: "RICH_TEXT", run: sanitize_rich_text },
+  { name: "BASIC", run: sanitize_html_basic },
+  { name: "STRIP", run: strip_html },
+]
+
+console.log("Starting WASM Sanitizer Safety Invariant Tests...\n")
 
 let failedCount = 0
 
 for (const tc of testCases) {
   console.log(`Testing Case: "${tc.name}"`)
 
-  // Test RICH_TEXT mode
-  const wasmRich = sanitize_rich_text(tc.input)
-  const pyRich = pythonSanitize(tc.input, "rich")
-  if (wasmRich !== pyRich) {
-    console.error(`  FAIL [RICH_TEXT] parity mismatch!`)
-    console.error(`    WASM:   "${wasmRich}"`)
-    console.error(`    Python: "${pyRich}"`)
-    failedCount++
-  }
+  for (const mode of modes) {
+    const output = mode.run(tc.input)
 
-  // Test BASIC mode
-  const wasmBasic = sanitize_html_basic(tc.input)
-  const pyBasic = pythonSanitize(tc.input, "basic")
-  if (wasmBasic !== pyBasic) {
-    console.error(`  FAIL [BASIC] parity mismatch!`)
-    console.error(`    WASM:   "${wasmBasic}"`)
-    console.error(`    Python: "${pyBasic}"`)
-    failedCount++
-  }
+    for (const { label, pattern } of dangerousPatterns) {
+      if (pattern.test(output)) {
+        console.error(`  FAIL [${mode.name}] output contains ${label}!`)
+        console.error(`    Input:  "${tc.input}"`)
+        console.error(`    Output: "${output}"`)
+        failedCount++
+      }
+    }
 
-  // Test STRIP mode
-  const wasmStrip = strip_html(tc.input)
-  const pyStrip = pythonSanitize(tc.input, "strip")
-  if (wasmStrip !== pyStrip) {
-    console.error(`  FAIL [STRIP] parity mismatch!`)
-    console.error(`    WASM:   "${wasmStrip}"`)
-    console.error(`    Python: "${pyStrip}"`)
-    failedCount++
+    // STRIP removes every tag, so no markup may survive at all.
+    if (mode.name === "STRIP" && /<\s*\/?\s*[a-z]/i.test(output)) {
+      console.error(`  FAIL [STRIP] output still contains markup!`)
+      console.error(`    Input:  "${tc.input}"`)
+      console.error(`    Output: "${output}"`)
+      failedCount++
+    }
+
+    // The sanitizer must be deterministic for the same input.
+    if (mode.run(tc.input) !== output) {
+      console.error(`  FAIL [${mode.name}] output is not deterministic!`)
+      failedCount++
+    }
+  }
+}
+
+// Plain text and Unicode content must survive every mode unchanged.
+for (const text of ["Hello world, no HTML tags.", "Hello Emojis 🚀 🌟 👋 🌍 🎉"]) {
+  for (const mode of modes) {
+    if (mode.run(text) !== text) {
+      console.error(`  FAIL [${mode.name}] altered plain text "${text}"`)
+      failedCount++
+    }
   }
 }
 
 if (failedCount > 0) {
-  console.error(`\nTest suite FAILED: ${failedCount} mismatches detected.`)
+  console.error(`\nTest suite FAILED: ${failedCount} invariant violations detected.`)
   process.exit(1)
 } else {
-  console.log("\nAll 25 test cases PASSED successfully in all 3 sanitization modes!")
+  console.log(
+    `\nAll ${testCases.length} test cases PASSED successfully in all 3 sanitization modes!`
+  )
   process.exit(0)
 }

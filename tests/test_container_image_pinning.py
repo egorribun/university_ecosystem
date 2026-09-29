@@ -58,7 +58,6 @@ def test_all_external_dockerfile_stages_are_digest_pinned() -> None:
     paths = [
         *ROOT.glob("Dockerfile*"),
         *(ROOT / ".containers").rglob("Dockerfile*"),
-        *(ROOT / "infra").rglob("Dockerfile*"),
         *(ROOT / "services").rglob("Dockerfile*"),
     ]
     for path in sorted(paths):

@@ -36,8 +36,6 @@ env:
   # become an unaudited dependency island. A contract test compares this list
   # with every tracked Cargo.lock so new crates fail closed until added here.
   RUST_AUDIT_LOCKFILES: |-
-    crates/pyo3-sanitizer/Cargo.lock
-    crates/pyo3-sanitizer/fuzz/Cargo.lock
     frontend/rust-crypto/Cargo.lock
     frontend/rust-crypto/fuzz/Cargo.lock
     frontend/tools/stryker-process-host/Cargo.lock

@@ -27,7 +27,6 @@ COMPONENTS = (
     "go-file-processor",
     "go-shared",
     "rust-native",
-    "rust-pyo3-sanitizer",
     "rust-wasm-sanitizer",
     "rust-crypto",
     "infrastructure",
@@ -42,7 +41,6 @@ COVERAGE_COMPONENTS = (
     "go-file-processor",
     "go-shared",
     "rust-native",
-    "rust-pyo3-sanitizer",
     "rust-wasm-sanitizer",
     "rust-crypto",
 )
@@ -185,16 +183,6 @@ EXPECTED_COVERAGE_REPORTS = frozenset(
             "rust-native",
             "llvm-cov-branch-json",
             "artifacts/coverage/rust/rust-native/branch-llvm.json",
-        ),
-        (
-            "rust-pyo3-sanitizer",
-            "llvm-cov-json",
-            "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
-        ),
-        (
-            "rust-pyo3-sanitizer",
-            "llvm-cov-branch-json",
-            "artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json",
         ),
         (
             "rust-wasm-sanitizer",

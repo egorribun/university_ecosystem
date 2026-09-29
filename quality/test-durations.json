@@ -186,7 +186,6 @@
     "tests/test_connection_manager_closure.py": 6.793,
     "tests/test_connection_manager_final_closure.py": 1.69,
     "tests/test_container_image_pinning.py": 18.104,
-    "tests/test_content_processing.py": 23.089,
     "tests/test_content_size_closure.py": 2.681,
     "tests/test_core_cache_closure.py": 3.115,
     "tests/test_core_config.py": 5.876,

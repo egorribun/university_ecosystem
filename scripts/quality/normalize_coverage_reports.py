@@ -37,7 +37,6 @@ COMPONENTS = (
     "go-file-processor",
     "go-shared",
     "rust-native",
-    "rust-pyo3-sanitizer",
     "rust-wasm-sanitizer",
     "rust-crypto",
     "infrastructure",
@@ -54,7 +53,6 @@ COVERAGE_COMPONENTS = (
     "go-file-processor",
     "go-shared",
     "rust-native",
-    "rust-pyo3-sanitizer",
     "rust-wasm-sanitizer",
     "rust-crypto",
 )
@@ -107,7 +105,6 @@ COVERAGE_SCOPE_ROOTS = {
         "services/pkg/spicedb",
     ),
     "rust-native": ("native/rust_ext",),
-    "rust-pyo3-sanitizer": ("crates/pyo3-sanitizer",),
     "rust-wasm-sanitizer": ("frontend/wasm-sanitizer",),
     "rust-crypto": ("frontend/rust-crypto",),
 }
@@ -125,7 +122,6 @@ SOURCE_ROOTS = {
         "services/pkg/spicedb",
     ),
     "rust-native": ("native/rust_ext",),
-    "rust-pyo3-sanitizer": ("crates/pyo3-sanitizer",),
     "rust-wasm-sanitizer": ("frontend/wasm-sanitizer",),
     "rust-crypto": ("frontend/rust-crypto",),
     "infrastructure": ("infra", "infrastructure", "k8s", "charts"),
@@ -154,13 +150,6 @@ SUPPORTED_REPORTS = {
             "artifacts/coverage/rust/rust-native/branch-llvm.json",
         ),
     ),
-    "rust-pyo3-sanitizer": (
-        ("llvm-cov-json", "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json"),
-        (
-            "llvm-cov-branch-json",
-            "artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json",
-        ),
-    ),
     "rust-wasm-sanitizer": (
         ("llvm-cov-json", "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json"),
         (
@@ -185,9 +174,7 @@ CANONICAL_RAW_ARTIFACTS = frozenset(
     path for _, _, path in CANONICAL_REPORT_DECLARATIONS
 )
 GO_COMPONENTS = frozenset({"go-gateway", "go-ws-hub", "go-file-processor", "go-shared"})
-RUST_COMPONENTS = frozenset(
-    {"rust-native", "rust-pyo3-sanitizer", "rust-wasm-sanitizer", "rust-crypto"}
-)
+RUST_COMPONENTS = frozenset({"rust-native", "rust-wasm-sanitizer", "rust-crypto"})
 # ``go test -coverprofile`` records import paths rather than repository paths.
 # Keep the accepted module-prefix map explicit and component-scoped so a report
 # cannot introduce an arbitrary path alias.  The shared component contains four

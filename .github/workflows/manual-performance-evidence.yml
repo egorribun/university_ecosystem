@@ -391,53 +391,6 @@ jobs:
             git worktree remove --force "$BASE_WORKTREE" || true
           fi
 
-  rust-criterion:
-    name: Manual Performance Evidence / Rust Criterion Benchmarks (pyo3-sanitizer)
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Install stable Rust toolchain
-        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
-        with:
-          toolchain: stable
-
-      - name: Cache Cargo registry and build artefacts
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            crates/pyo3-sanitizer/target
-          key: rust-criterion-${{ runner.os }}-${{ hashFiles('crates/pyo3-sanitizer/Cargo.toml') }}
-          restore-keys: rust-criterion-${{ runner.os }}-
-
-      - name: Capture advisory Criterion benchmark evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts/performance/advisory/rust-criterion
-          (
-            cd crates/pyo3-sanitizer
-            cargo bench -p pyo3-sanitizer --bench sanitizer_bench --no-default-features \
-              -- --output-format bencher
-          ) 2>&1 | tee artifacts/performance/advisory/rust-criterion/criterion-bench.txt
-
-      - name: Upload advisory Criterion benchmark evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: manual-performance-advisory-rust-criterion
-          path: artifacts/performance/advisory/rust-criterion
-          if-no-files-found: warn
-          retention-days: 14
-
   rust-native-regression:
     name: Manual Performance Evidence / Rust Native Optimizer Regression Gate
     runs-on: ubuntu-24.04

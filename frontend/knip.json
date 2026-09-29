@@ -26,5 +26,5 @@
   "ignoreIssues": {
     "src/theme/tokens.ts": ["exports"]
   },
-  "ignoreBinaries": ["taskkill.exe", "mkfifo", "uv"]
+  "ignoreBinaries": ["taskkill.exe", "mkfifo"]
 }

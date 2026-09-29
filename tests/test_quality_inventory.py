@@ -111,8 +111,6 @@ def test_rust_fuzz_tsan_contract_is_backed_by_repository_references() -> None:
 
     assert {
         ".github/workflows/rust-fuzz.yml",
-        "infra/oss-fuzz/build.sh",
-        "infra/oss-fuzz/project.yaml",
         "scripts/run_tsan_tests.sh",
         "tests/tsan_suppressions.txt",
     }.issubset(references)

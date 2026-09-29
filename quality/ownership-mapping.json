@@ -17,7 +17,6 @@
     "services/cmd/": "@egorribun",
     "services/": "@egorribun",
     "native/rust_ext/": "@egorribun",
-    "crates/pyo3-sanitizer/": "@egorribun",
     "gen/go/": "@egorribun",
     "frontend/wasm-sanitizer/": "@egorribun",
     "frontend/rust-crypto/": "@egorribun",
@@ -50,8 +49,7 @@
     "app/core/feature_flags.py",
     "native/rust_ext/**",
     "frontend/rust-crypto/**",
-    "frontend/wasm-sanitizer/**",
-    "crates/pyo3-sanitizer/**"
+    "frontend/wasm-sanitizer/**"
   ],
   "generated_patterns": [
     "**/routeTree.gen.ts",

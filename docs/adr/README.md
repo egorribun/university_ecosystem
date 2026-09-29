@@ -43,4 +43,5 @@ This directory contains architectural decision records (ADRs) for the University
 41. [ADR-041: Canonical Push Topic Preferences](ADR-041-canonical-push-topic-preferences.md)
 42. [ADR-042: SeaweedFS as the Default Object Storage](ADR-042-seaweedfs-default-object-storage.md)
 43. [ADR-043: Retire the Python SPIFFE and mTLS Subsystem](ADR-043-retire-python-spiffe-mtls.md)
+44. [ADR-044: Retire the Unused Native Sanitizer](ADR-044-retire-unused-native-sanitizer.md)
 45. [ADR-045: Mutation Hang Diagnostics Without a Kill Watchdog](ADR-045-mutation-hang-diagnostics-without-a-kill-watchdog.md)
