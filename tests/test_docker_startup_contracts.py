@@ -1675,7 +1675,7 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
     dump = pod_spec["initContainers"][0]
     upload = pod_spec["containers"][0]
     assert "pg_dump" in " ".join(dump["command"] + dump["args"])
-    assert "mc cp" in " ".join(upload["command"] + upload["args"])
+    assert "rclone copyto" in " ".join(upload["command"] + upload["args"])
     dump_env = {entry["name"]: entry for entry in dump["env"]}
     assert dump_env["DATABASE_URL"]["valueFrom"]["secretKeyRef"] == {
         "name": "university-connections",
@@ -1683,8 +1683,8 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
     }
     upload_env = {entry["name"]: entry for entry in upload["env"]}
     for variable, key in {
-        "MINIO_ACCESS_KEY": "minio-access-key",
-        "MINIO_SECRET_KEY": "minio-secret-key",  # pragma: allowlist secret
+        "RCLONE_CONFIG_BACKUP_ACCESS_KEY_ID": "minio-access-key",
+        "RCLONE_CONFIG_BACKUP_SECRET_ACCESS_KEY": "minio-secret-key",  # pragma: allowlist secret
     }.items():
         assert upload_env[variable]["valueFrom"]["secretKeyRef"] == {
             "name": "managed-application-secrets",

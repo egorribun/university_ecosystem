@@ -1,7 +1,7 @@
 """Fail-closed handling for PostgreSQL's validated-check nullability contract.
 
 The MFA contract migration deliberately uses validated ``CHECK`` constraints
-while the destructive WebAuthn retirement is deployed.  PostgreSQL reports
+while the destructive retirement of the legacy MFA factor is deployed.  PostgreSQL reports
 those columns as ``nullable`` in information_schema even though the check
 rejects every NULL write.  Alembic's normalizer therefore needs one narrowly
 scoped semantic adapter: it may discard *only* a nullable-only diff for the

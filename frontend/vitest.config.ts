@@ -50,6 +50,7 @@ export default defineConfig({
       "stryker-tmp/**",
       ".stryker-tmp/**",
       "tests/e2e/**",
+      "tests/e2e-live/**",
       "scripts/**/*.test.mjs",
     ],
     coverage: {
