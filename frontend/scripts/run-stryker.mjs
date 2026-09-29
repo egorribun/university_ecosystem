@@ -86,6 +86,16 @@ function normalizePath(value) {
   return value.replaceAll("\\", "/").replace(/^\.\//u, "")
 }
 
+export function selectEvidenceFiles(listedFiles, deletedFiles) {
+  const deletedPaths = new Set(deletedFiles.split(/\r?\n/u).filter(Boolean).map(normalizePath))
+  return listedFiles
+    .split(/\r?\n/u)
+    .filter(Boolean)
+    .map(normalizePath)
+    .filter((file) => !deletedPaths.has(file))
+    .sort()
+}
+
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
@@ -3077,7 +3087,7 @@ export async function runStrykerShardExecution(
 }
 
 export async function captureEvidence(sourceFiles) {
-  const [headSha, status, listedFiles] = await Promise.all([
+  const [headSha, status, listedFiles, deletedFiles] = await Promise.all([
     git(["rev-parse", "HEAD"]),
     git(["status", "--porcelain=v1", "--untracked-files=all"]),
     git([
@@ -3088,11 +3098,9 @@ export async function captureEvidence(sourceFiles) {
       "frontend",
       "quality/coverage-source-policy.json",
     ]),
+    git(["ls-files", "--deleted", "--", "frontend", "quality/coverage-source-policy.json"]),
   ])
-  const evidenceFiles = listedFiles
-    .split(/\r?\n/u)
-    .filter(Boolean)
-    .map(normalizePath)
+  const evidenceFiles = selectEvidenceFiles(listedFiles, deletedFiles)
     .filter(
       (file) =>
         !/^frontend\/(node_modules|dist|coverage|reports|\.screenshots|\.stryker-tmp)\//u.test(file)

@@ -1106,12 +1106,37 @@ test("workflow provenance maps PR source and base identities without trusting th
 })
 
 test("focused source snapshots bind the complete frontend evidence graph", async () => {
-  const { captureEvidence } = await import(runnerUrl)
+  const { captureEvidence, selectEvidenceFiles } = await import(runnerUrl)
   const selectedSource = "src/components/ui/Button.tsx"
+  const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
+  const { stdout: deletedFilesOutput } = await execFileAsync(
+    "git",
+    ["ls-files", "--deleted", "--", "frontend", "quality/coverage-source-policy.json"],
+    { cwd: repositoryRoot }
+  )
+  const deletedFiles = deletedFilesOutput.split(/\r?\n/u).filter(Boolean)
 
+  assert.deepEqual(
+    selectEvidenceFiles(
+      "frontend/src/kept.ts\nfrontend/src/deleted.ts\nfrontend/src/added.ts\n",
+      "frontend/src/deleted.ts\n"
+    ),
+    ["frontend/src/added.ts", "frontend/src/kept.ts"]
+  )
   const snapshot = await captureEvidence([selectedSource])
 
   assert.deepEqual([...snapshot.sourceByFile.keys()], [selectedSource])
+  for (const file of deletedFiles) {
+    assert.equal(
+      Object.hasOwn(snapshot.identity.inputHashes, file),
+      false,
+      `Deleted tracked file must remain represented by dirty status, not a content hash: ${file}`
+    )
+    assert.ok(
+      snapshot.identity.dirtyPaths.some((status) => status.endsWith(file)),
+      `Deleted tracked file must remain represented in dirty-path evidence: ${file}`
+    )
+  }
   assert.equal(typeof snapshot.identity.inputHashes[`frontend/${selectedSource}`], "string")
   assert.equal(
     typeof snapshot.identity.inputHashes["frontend/src/components/ui/Select.tsx"],
