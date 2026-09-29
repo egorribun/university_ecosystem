@@ -243,10 +243,10 @@
     }
   },
   "allowScripts": {
-    "esbuild@0.28.1": true,
     "core-js": false,
     "fsevents@2.3.2": false,
     "fsevents@2.3.3": false,
-    "msw": false
+    "msw": false,
+    "esbuild@0.28.2": true
   }
 }

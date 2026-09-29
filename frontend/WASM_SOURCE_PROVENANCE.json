@@ -3,8 +3,8 @@
   "source_files": [
     {
       "path": "rust-crypto/Cargo.lock",
-      "size": 22519,
-      "sha256": "e2b021c7aa642bd653a2e7bad98911ad9e2c7b9d80acda97760fd9d5251679e9"
+      "size": 22805,
+      "sha256": "e077c5179935de3d32a8ebd886acc0e2b00f4043982ab30d4d2270d7d1803b7f"
     },
     {
       "path": "rust-crypto/Cargo.toml",
@@ -18,8 +18,8 @@
     },
     {
       "path": "wasm-sanitizer/Cargo.lock",
-      "size": 29793,
-      "sha256": "31c9991d15d228e6c09744f0dea4e54126dfdd5ee26cf94c5568c1a521aaa2b6"
+      "size": 30174,
+      "sha256": "db378bedce22de4d34d0a3730a7bced988be6cad35d5bf7f848f89a2d437b51b"
     },
     {
       "path": "wasm-sanitizer/Cargo.toml",
@@ -32,7 +32,7 @@
       "sha256": "91eb2a042d5495b52b6537ee0cad8ef258afe421316f9309f650f0b63d6c4293"
     }
   ],
-  "source_tree_sha256": "631182476176f444bf15ee711d6e515e89fb72b3d50fc942712d18312eb01626",
+  "source_tree_sha256": "4c773e313bc13003d2aed35fd14264ec5455747c39d563364b93e395916cd9aa",
   "packages": {
     "rust-crypto/pkg/package.json": {
       "size": 305,
@@ -48,7 +48,7 @@
     },
     "rust-crypto/pkg/uni_wasm_crypto_bg.wasm": {
       "size": 46914,
-      "sha256": "c7ed6bd918f48e167e0fe0d96265dc6b6aa27ce25aec4ead98cb42ce3800760f"
+      "sha256": "276f05bd098645b39f9b5919776ae3e0f64d93bba9ea74cefc29d115311f83d0"
     },
     "wasm-sanitizer/pkg/package.json": {
       "size": 337,
@@ -59,12 +59,12 @@
       "sha256": "a417f6beebf9caac5bce607eeb8067b4875d25f83024866bbe49d37f5e5edac1"
     },
     "wasm-sanitizer/pkg/wasm_sanitizer.js": {
-      "size": 8607,
-      "sha256": "df1ba6e6fd517f42b9a6358b3101e747a6460add85ccc11af7fbfb9a3ef8d266"
+      "size": 8751,
+      "sha256": "51c27462afd5807aa11124745e71f79edf173d58466bc15f1d673fe0d5d65acd"
     },
     "wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm": {
-      "size": 782296,
-      "sha256": "4e20e0537cdf3b1f3c78ad2685cd6a31a112b872a6796cc1178d89efc1dd6396"
+      "size": 790296,
+      "sha256": "912841b1fe702d9bba86cede6dbf1e95cce9dd8bd3b4f9100bfe9e66c3b10b05"
     }
   }
 }
