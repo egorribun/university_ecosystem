@@ -12,7 +12,6 @@ import {
   getOwnedPushSubscription,
   setPersistedTopics,
 } from "@/push/subscribe"
-import { currentUserQueryKey } from "@/contexts/AuthContext"
 import { getConfirmedUserId } from "@/stores/authIdentity"
 import { useAuthStore } from "@/stores/useAuthStore"
 import type { PushTopicsResponse } from "@/types/notifications"
@@ -29,7 +28,7 @@ export type NotificationTopicKey = NotificationTopic
 
 export const NOTIFICATION_TOPIC_KEYS: NotificationTopicKey[] = [...CANONICAL_NOTIFICATION_TOPICS]
 
-export const DEFAULT_NOTIFICATION_TOPICS: Record<NotificationTopicKey, boolean> = {
+const DEFAULT_NOTIFICATION_TOPICS: Record<NotificationTopicKey, boolean> = {
   "news.published": true,
   "schedule.changed": true,
   "events.published": true,
@@ -55,6 +54,10 @@ function toTopicState(topics: readonly unknown[]): Record<NotificationTopicKey, 
   ) as Record<NotificationTopicKey, boolean>
 }
 
+/** Only SSR lacks the Notification API; it renders the undecided state. */
+const readNotificationPermission = (): NotificationPermission =>
+  typeof Notification === "undefined" ? "default" : Notification.permission
+
 /** The session answered for another account than the query was keyed by. */
 class PushTopicsAccountChangedError extends Error {}
 
@@ -62,7 +65,6 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const { onNotify } = options ?? {}
   const { t } = useTranslation(["notifications"])
 
-  const topicKeys = useMemo(() => NOTIFICATION_TOPIC_KEYS, [])
   // SSR stubs, cache placeholders and hydrating sessions have no identity.
   const confirmedUserId = useAuthStore(getConfirmedUserId)
   const pushTopicsQuery = useQuery({
@@ -100,24 +102,19 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         serverTopics
           ? serverTopics.has_preferences
             ? serverTopics.topics
-            : topicKeys
-          : (getPersistedTopics({ userId: confirmedUserId }) ?? topicKeys)
+            : NOTIFICATION_TOPIC_KEYS
+          : (getPersistedTopics({ userId: confirmedUserId }) ?? NOTIFICATION_TOPIC_KEYS)
       )
     )
   }
   // Topics chosen while notifications are off are sent explicitly on enable.
   const pendingExplicitTopicsRef = useRef<string[] | undefined>(undefined)
   const [pushSupported, setPushSupported] = useState(true)
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
-    () => {
-      if (typeof window === "undefined" || typeof Notification === "undefined") return "default"
-      return Notification.permission
-    }
-  )
+  const [notificationPermission, setNotificationPermission] = useState(readNotificationPermission)
   const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushInitializing, setPushInitializing] = useState(true)
-  const [safariIOS] = useState(() => isSafariIOS())
+  const [safariIOS] = useState(isSafariIOS)
   const queryClient = useQueryClient()
   const topicLabels = useMemo(
     () =>
@@ -136,12 +133,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       predicate: (query) => {
         const key = query.queryKey
         if (!Array.isArray(key)) return false
-        if (
-          key.length === currentUserQueryKey.length &&
-          key.every((value, index) => value === currentUserQueryKey[index])
-        ) {
-          return true
-        }
+        // Also matches the current-user query, ["users", "me"].
         return key.some((value) => value === "notifications" || value === "users")
       },
     })
@@ -155,18 +147,18 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   )
 
   const selectedTopics = useMemo(
-    () => topicKeys.filter((key) => topicState[key]),
-    [topicKeys, topicState]
+    () => NOTIFICATION_TOPIC_KEYS.filter((key) => topicState[key]),
+    [topicState]
   )
 
   const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null)
 
   const notificationsEnabled = optimisticEnabled ?? !!pushSubscription
 
-  const permissionText = useMemo(() => {
-    const key = notificationPermission === "default" ? "default" : notificationPermission
-    return t(`notifications:permission.${key}`)
-  }, [notificationPermission, t])
+  const permissionText = useMemo(
+    () => t(`notifications:permission.${notificationPermission}`),
+    [notificationPermission, t]
+  )
 
   const selectedTopicsDescription = useMemo(() => {
     if (!selectedTopics.length) return t("notifications:messages.noTopics")
@@ -340,7 +332,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       if (pushBusy || !topicsReady) return
       const previousState = topicState
       const nextState = { ...topicState, [key]: checked }
-      const topicsToSend = topicKeys.filter((topic) => nextState[topic])
+      const topicsToSend = NOTIFICATION_TOPIC_KEYS.filter((topic) => nextState[topic])
       setTopicState(nextState)
       if (!pushSubscription) {
         pendingExplicitTopicsRef.current = topicsToSend
@@ -370,7 +362,6 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       invalidatePushQueries,
       pushBusy,
       pushSubscription,
-      topicKeys,
       topicState,
       topicsReady,
       notify,
@@ -380,21 +371,8 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   )
 
   useEffect(() => {
-    setPushSupported(isPushSupported())
-  }, [])
-
-  useEffect(() => {
     let cancelled = false
     let removeListener: (() => void) | undefined
-
-    const syncPermission = () => {
-      if (typeof Notification === "undefined") {
-        setNotificationPermission("default")
-        return
-      }
-      setNotificationPermission(Notification.permission)
-    }
-    syncPermission()
 
     if (typeof navigator !== "undefined" && navigator.permissions?.query) {
       navigator.permissions
@@ -471,7 +449,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   }, [confirmedUserId, t])
 
   return {
-    topicKeys,
+    topicKeys: NOTIFICATION_TOPIC_KEYS,
     topicLabels,
     topicState,
     topicsReady,

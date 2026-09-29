@@ -29,12 +29,9 @@ type NormalizedTopics = string[] | undefined
 type MaybeUserId = string | number | null | undefined
 
 function normalizeUserId(input: MaybeUserId): string | null {
-  if (input == null) return null
-  if (typeof input === "string" || typeof input === "number") {
-    const normalized = String(input).trim()
-    return normalized ? normalized : null
-  }
-  return null
+  if (typeof input !== "string" && typeof input !== "number") return null
+  const normalized = String(input).trim()
+  return normalized ? normalized : null
 }
 
 function normalizeTopics(input: unknown): string[] | undefined {
@@ -56,274 +53,124 @@ function readActiveUserId(): string | null {
   return getConfirmedUserId(useAuthStore.getState())
 }
 
-function parseTopicsPayload(
-  raw: unknown,
-  options?: { userId?: MaybeUserId }
-): string[] | undefined {
-  if (!raw) return undefined
-  const userId = normalizeUserId(options?.userId) ?? readActiveUserId()
-  try {
-    // If raw is string, parse it. If it's already object/array, use it.
-    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw
+type StoredTopicsPayload = Record<string, unknown>
 
-    if (Array.isArray(parsed)) {
-      return normalizeTopics(parsed)
-    }
-    if (!parsed || typeof parsed !== "object") return undefined
+/** A versioned object payload; a legacy topic array or a primitive is not. */
+function storedPayload(value: unknown): StoredTopicsPayload | null {
+  return typeof value === "object" && !Array.isArray(value) ? (value as StoredTopicsPayload) : null
+}
 
-    const payload = parsed as {
-      version?: unknown
-      topics?: unknown
-      shared?: unknown
-      perUser?: unknown
-    }
+/** The shared selection of a payload; `topics` is its legacy name. */
+function storedSharedTopics(stored: StoredTopicsPayload): string[] | undefined {
+  return normalizeTopics(stored.shared !== undefined ? stored.shared : stored.topics)
+}
 
-    if (userId) {
-      const perUser = payload.perUser
-      if (perUser && typeof perUser === "object") {
-        const userTopics = normalizeTopics((perUser as Record<string, unknown>)[userId])
-        if (userTopics !== undefined) {
-          return userTopics
-        }
-      }
-    }
-
-    const shared =
-      "shared" in payload && payload.shared !== undefined
-        ? payload.shared
-        : (payload as { topics?: unknown }).topics
-    const sharedTopics = normalizeTopics(shared)
-    if (sharedTopics !== undefined) {
-      return sharedTopics
-    }
-
-    return undefined
-  } catch {
-    return undefined
+/** The normalized per-account selections of a payload, optionally without one account. */
+function storedPerUserTopics(
+  stored: StoredTopicsPayload | null,
+  withoutUserId?: string | null
+): Record<string, string[]> {
+  const entries: Record<string, string[]> = {}
+  for (const [key, value] of Object.entries(stored?.perUser ?? {})) {
+    const topics = normalizeTopics(value)
+    if (topics !== undefined && key !== withoutUserId) entries[key] = topics
   }
+  return entries
 }
 
 export function parseStoredTopics(
   raw: unknown,
   options?: { userId?: MaybeUserId }
 ): NormalizedTopics {
-  return parseTopicsPayload(raw, options)
+  const userId = normalizeUserId(options?.userId) ?? readActiveUserId()
+  // Legacy writers stored the payload as a JSON string.
+  let parsed = raw
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      // Not JSON: unusable like any other non-payload value.
+    }
+  }
+
+  if (Array.isArray(parsed)) {
+    return normalizeTopics(parsed)
+  }
+  const stored = storedPayload(parsed)
+  if (!stored) return undefined
+
+  if (userId) {
+    const perUser = stored.perUser as Record<string, unknown> | null | undefined
+    const userTopics = normalizeTopics(perUser?.[userId])
+    if (userTopics !== undefined) {
+      return userTopics
+    }
+  }
+  return storedSharedTopics(stored)
 }
 
 export function getPersistedTopics(options?: { userId?: MaybeUserId }): string[] | undefined {
-  const raw = pushTopicsStorage.get()
-  // emulate raw string behavior by stringifying if needed, or adapting parseTopicsPayload to accept object
-  // Since parseTopicsPayload expects string, let's keep it simple:
-  // We can pass the object directly if we update parseTopicsPayload signature,
-  // but for minimal churn, let's use JSON.stringify if it's not null.
-  // Actually, let's update parseTopicsPayload to accept unknown object/string.
-  return parseTopicsPayload(raw, options) ?? undefined
+  return parseStoredTopics(pushTopicsStorage.get(), options)
 }
 
 function buildTopicsPayload(
   nextTopics: string[] | null | undefined,
-  existingRaw: string | null,
+  stored: unknown,
   userId: string | null
-): string | null {
+): StoredTopicsPayload | null {
+  const existing = storedPayload(stored)
+
   if (nextTopics == null) {
-    if (!userId) {
-      if (!existingRaw) {
-        return null
-      }
-
-      try {
-        const parsed = JSON.parse(existingRaw)
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          return null
-        }
-
-        const payload = parsed as {
-          perUser?: unknown
-        }
-
-        if (!payload.perUser || typeof payload.perUser !== "object") {
-          return null
-        }
-
-        const perUserEntries: Record<string, string[]> = {}
-        for (const [key, value] of Object.entries(payload.perUser as Record<string, unknown>)) {
-          const normalizedEntry = normalizeTopics(value)
-          if (normalizedEntry !== undefined) {
-            perUserEntries[key] = normalizedEntry
-          }
-        }
-
-        if (Object.keys(perUserEntries).length === 0) {
-          return null
-        }
-
-        return JSON.stringify({
-          version: PUSH_TOPICS_STORAGE_VERSION,
-          perUser: perUserEntries,
-        })
-      } catch {
-        return null
-      }
-    }
-
-    if (!existingRaw) {
+    // Clearing keeps the other accounts' selections and, when an account
+    // clears its own, the shared selection.
+    const perUser = storedPerUserTopics(existing, userId)
+    const shared = userId && existing ? storedSharedTopics(existing) : undefined
+    const hasPerUser = Object.keys(perUser).length > 0
+    if (!hasPerUser && shared === undefined) {
       return null
     }
-
-    try {
-      const parsed = JSON.parse(existingRaw)
-      if (Array.isArray(parsed)) {
-        return null
-      }
-      if (!parsed || typeof parsed !== "object") {
-        return null
-      }
-
-      const payload = parsed as {
-        version?: unknown
-        shared?: unknown
-        topics?: unknown
-        perUser?: unknown
-      }
-
-      const sharedTopics = normalizeTopics(
-        "shared" in payload && payload.shared !== undefined
-          ? payload.shared
-          : (payload as { topics?: unknown }).topics
-      )
-
-      const perUserEntries: Record<string, string[]> = {}
-      if (payload.perUser && typeof payload.perUser === "object") {
-        for (const [key, value] of Object.entries(payload.perUser as Record<string, unknown>)) {
-          if (key === userId) continue
-          const normalizedEntry = normalizeTopics(value)
-          if (normalizedEntry !== undefined) {
-            perUserEntries[key] = normalizedEntry
-          }
-        }
-      }
-
-      const hasPerUser = Object.keys(perUserEntries).length > 0
-
-      if (!hasPerUser && sharedTopics === undefined) {
-        return null
-      }
-
-      const normalizedPayload: Record<string, unknown> = {
-        version: PUSH_TOPICS_STORAGE_VERSION,
-      }
-
-      if (hasPerUser) {
-        normalizedPayload.perUser = perUserEntries
-      }
-
-      if (sharedTopics !== undefined) {
-        normalizedPayload.shared = sharedTopics
-      }
-
-      return JSON.stringify(normalizedPayload)
-    } catch {
-      return null
+    // An undefined `shared` is not serialized.
+    return {
+      version: PUSH_TOPICS_STORAGE_VERSION,
+      ...(hasPerUser ? { perUser } : {}),
+      shared,
     }
   }
 
   const normalizedTopics = normalizeTopics(nextTopics) ?? []
-
-  const payload: Record<string, unknown> = {
-    version: PUSH_TOPICS_STORAGE_VERSION,
-  }
+  const perUser = storedPerUserTopics(existing)
 
   if (userId) {
-    const perUser: Record<string, string[]> = {}
-
-    if (existingRaw) {
-      try {
-        const parsed = JSON.parse(existingRaw)
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          if (parsed.perUser && typeof parsed.perUser === "object") {
-            for (const [key, value] of Object.entries(parsed.perUser as Record<string, unknown>)) {
-              const normalizedEntry = normalizeTopics(value)
-              if (normalizedEntry !== undefined) {
-                perUser[key] = normalizedEntry
-              }
-            }
-          }
-          const sharedTopics = normalizeTopics(
-            "shared" in parsed && parsed.shared !== undefined
-              ? parsed.shared
-              : (parsed as { topics?: unknown }).topics
-          )
-          if (sharedTopics !== undefined) {
-            payload.shared = sharedTopics
-          }
-        } else if (Array.isArray(parsed)) {
-          // Array input is the legacy shared-topic format. normalizeTopics()
-          // always returns an array for array input, including an empty one.
-          payload.shared = normalizeTopics(parsed)!
-        }
-      } catch {
-        /* ignore malformed data */
-      }
+    return {
+      version: PUSH_TOPICS_STORAGE_VERSION,
+      // A legacy topic array is the shared selection.
+      shared: existing ? storedSharedTopics(existing) : normalizeTopics(stored),
+      perUser: { ...perUser, [userId]: normalizedTopics },
     }
-
-    perUser[userId] = normalizedTopics
-
-    // The selected user is assigned immediately above, so this collection is
-    // non-empty by construction.
-    payload.perUser = perUser
-  } else {
-    const perUserEntries: Record<string, string[]> = {}
-
-    if (existingRaw) {
-      try {
-        const parsed = JSON.parse(existingRaw)
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          if (parsed.perUser && typeof parsed.perUser === "object") {
-            for (const [key, value] of Object.entries(parsed.perUser as Record<string, unknown>)) {
-              const normalizedEntry = normalizeTopics(value)
-              if (normalizedEntry !== undefined) {
-                perUserEntries[key] = normalizedEntry
-              }
-            }
-          }
-        }
-      } catch {
-        /* ignore malformed data */
-      }
-    }
-
-    if (Object.keys(perUserEntries).length > 0) {
-      payload.perUser = perUserEntries
-    }
-
-    payload.shared = normalizedTopics
   }
 
-  return JSON.stringify(payload)
+  return {
+    version: PUSH_TOPICS_STORAGE_VERSION,
+    ...(Object.keys(perUser).length > 0 ? { perUser } : {}),
+    shared: normalizedTopics,
+  }
 }
 
 export function setPersistedTopics(
   topics: string[] | null | undefined,
   options?: { userId?: MaybeUserId }
 ): void {
-  const normalizedUserId = normalizeUserId(options?.userId)
-  const userId = normalizedUserId ?? readActiveUserId()
-  // Retrieve current value as raw string to satisfy legacy buildTopicsPayload
-  const currentVal = pushTopicsStorage.get()
-  const currentRaw = currentVal ? JSON.stringify(currentVal) : null
+  const userId = normalizeUserId(options?.userId) ?? readActiveUserId()
+  const payload = buildTopicsPayload(topics, pushTopicsStorage.get(), userId)
 
-  const payloadStr = buildTopicsPayload(topics, currentRaw, userId)
-
-  if (payloadStr === null) {
+  if (payload === null) {
     pushTopicsStorage.remove()
     return
   }
-
   try {
-    // StorageItem handles serialization, so we need to pass the object, not the JSON string
-    pushTopicsStorage.set(JSON.parse(payloadStr))
+    pushTopicsStorage.set(payload)
   } catch {
-    // fallback if payloadStr is somehow invalid
+    // A failed write only loses the local mirror of the server preference.
   }
 }
 
@@ -489,9 +336,7 @@ export async function resolveServiceWorkerRegistration(
   } catch (error) {
     logWarning("Failed to await service worker readiness", error)
   } finally {
-    if (readinessTimeoutId !== undefined) {
-      clearTimeout(readinessTimeoutId)
-    }
+    clearTimeout(readinessTimeoutId)
   }
 
   try {
@@ -539,9 +384,9 @@ export async function resolveVapidPublicKey(): Promise<string | null> {
 }
 
 export function urlBase64ToUint8Array(base64String: string) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/")
-  const rawData = atob(base64)
+  // atob() implements forgiving-base64, which accepts unpadded input, so only
+  // the URL-safe alphabet needs mapping.
+  const rawData = atob(base64String.replace(/-/g, "+").replace(/_/g, "/"))
   return Uint8Array.from([...rawData], (character) => character.charCodeAt(0))
 }
 
@@ -758,8 +603,7 @@ export async function getExistingPushSubscription(
   const reg = await resolveServiceWorkerRegistration(registration)
   if (!reg) return null
   try {
-    const sub = await reg.pushManager.getSubscription()
-    return sub
+    return await reg.pushManager.getSubscription()
   } catch {
     return null
   }

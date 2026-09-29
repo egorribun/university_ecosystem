@@ -370,48 +370,6 @@ describe("subscribe", () => {
       })
     })
 
-    it("handles parser failures while normalizing stored payloads", () => {
-      const withSecondParseFailure = (callback: () => void) => {
-        const originalParse = JSON.parse
-        let parseCount = 0
-        const parseSpy = vi.spyOn(JSON, "parse").mockImplementation(((raw: string) => {
-          parseCount += 1
-          if (parseCount === 2) {
-            throw new SyntaxError("simulated parser failure")
-          }
-          return originalParse(raw)
-        }) as typeof JSON.parse)
-
-        try {
-          callback()
-        } finally {
-          parseSpy.mockRestore()
-        }
-      }
-
-      localStorage.setItem("push:last_topics", JSON.stringify({ perUser: { keep: ["a"] } }))
-      withSecondParseFailure(() => mod.setPersistedTopics(null, { userId: null }))
-      expect(localStorage.getItem("push:last_topics")).toBeNull()
-
-      localStorage.setItem("push:last_topics", JSON.stringify({ perUser: { keep: ["a"] } }))
-      withSecondParseFailure(() => mod.setPersistedTopics(null, { userId: "remove" }))
-      expect(localStorage.getItem("push:last_topics")).toBeNull()
-
-      localStorage.setItem("push:last_topics", JSON.stringify({ perUser: { keep: ["a"] } }))
-      withSecondParseFailure(() => mod.setPersistedTopics(["selected"], { userId: "selected" }))
-      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
-        version: 2,
-        perUser: { selected: ["selected"] },
-      })
-
-      localStorage.setItem("push:last_topics", JSON.stringify({ perUser: { keep: ["a"] } }))
-      withSecondParseFailure(() => mod.setPersistedTopics(["shared"], { userId: null }))
-      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
-        version: 2,
-        shared: ["shared"],
-      })
-    })
-
     it("swallows a storage write failure when persisting topics", () => {
       const setSpy = vi.spyOn(storageMod.StorageItem.prototype, "set").mockImplementation(() => {
         throw new Error("storage quota exceeded")
@@ -433,6 +391,21 @@ describe("subscribe", () => {
 
       mod.setPushConsent(false)
       expect(mod.hasPushConsent()).toBe(false)
+    })
+
+    it("names the storage entry that holds push consent", () => {
+      mod.setPushConsent(true)
+
+      expect(JSON.parse(localStorage.getItem(mod.PUSH_CONSENT_STORAGE_KEY) ?? "null")).toBe(
+        "granted"
+      )
+    })
+
+    it("does not look up a service worker before browser permission is granted", async () => {
+      vi.stubGlobal("Notification", { permission: "default" })
+
+      await expect(mod.recoverPushConsentFromBrowser()).resolves.toBe(false)
+      expect(mockSWContainer.getRegistration).not.toHaveBeenCalled()
     })
 
     const RECOVERY_KEY = "cmVjb3Zlcg"
@@ -657,6 +630,12 @@ describe("subscribe", () => {
 
     it("returns null when the browser has no service worker API", async () => {
       vi.stubGlobal("navigator", {})
+
+      await expect(mod.resolveServiceWorkerRegistration()).resolves.toBeNull()
+    })
+
+    it("returns null in a runtime without a navigator", async () => {
+      vi.stubGlobal("navigator", undefined)
 
       await expect(mod.resolveServiceWorkerRegistration()).resolves.toBeNull()
     })
@@ -1494,6 +1473,19 @@ describe("subscribe", () => {
   })
 
   describe("unsubscribePush", () => {
+    const seedPushLocals = () => {
+      mod.setPushConsent(true)
+      localStorage.setItem("push:last_payload", JSON.stringify({ endpoint: "http://endpoint" }))
+      localStorage.setItem("push:last_owner", JSON.stringify("owner-a"))
+      localStorage.setItem("push:last_topics", JSON.stringify(["news"]))
+    }
+    const expectPushLocalsCleared = () => {
+      expect(mod.hasPushConsent()).toBe(false)
+      expect(localStorage.getItem("push:last_payload")).toBeNull()
+      expect(localStorage.getItem("push:last_owner")).toBeNull()
+      expect(mod.getPersistedTopics()).toBeUndefined()
+    }
+
     it("unsubscribes and cleans up local storage flags", async () => {
       const unsubscribeSpy = vi.fn().mockResolvedValue(true)
       const mockSub = {
@@ -1507,11 +1499,13 @@ describe("subscribe", () => {
       }
       mockSWContainer.getRegistration.mockResolvedValue(mockReg)
 
+      seedPushLocals()
+
       const result = await mod.unsubscribePush()
       expect(result).toBe(true)
       expect(deleteSubscription).toHaveBeenCalledWith("http://endpoint")
       expect(unsubscribeSpy).toHaveBeenCalled()
-      expect(mod.hasPushConsent()).toBe(false)
+      expectPushLocalsCleared()
     })
 
     it("still unsubscribes locally when server deletion fails", async () => {
@@ -1535,12 +1529,17 @@ describe("subscribe", () => {
     })
 
     it("clears local state and returns false when service workers are unavailable", async () => {
+      seedPushLocals()
       vi.stubGlobal("navigator", {})
+      const registration = { pushManager: { getSubscription: vi.fn() } }
 
-      await expect(mod.unsubscribePush()).resolves.toBe(false)
+      await expect(mod.unsubscribePush({ registration })).resolves.toBe(false)
+      expect(registration.pushManager.getSubscription).not.toHaveBeenCalled()
+      expectPushLocalsCleared()
     })
 
     it("clears local state and returns true when no active subscription exists", async () => {
+      seedPushLocals()
       const mockReg = {
         pushManager: {
           getSubscription: vi.fn().mockResolvedValue(null),
@@ -1548,6 +1547,7 @@ describe("subscribe", () => {
       }
 
       await expect(mod.unsubscribePush({ registration: mockReg })).resolves.toBe(true)
+      expectPushLocalsCleared()
     })
 
     it("clears local state and returns false when registration cannot be resolved", async () => {
@@ -1645,6 +1645,16 @@ describe("subscribe", () => {
       expect(await mod.getExistingPushSubscription()).toBeNull()
     })
 
+    it("ignores a supplied registration when push is not supported", async () => {
+      vi.stubGlobal("navigator", {})
+      const registration = {
+        pushManager: { getSubscription: vi.fn().mockResolvedValue({ endpoint: "https://x" }) },
+      }
+
+      await expect(mod.getExistingPushSubscription(registration)).resolves.toBeNull()
+      expect(registration.pushManager.getSubscription).not.toHaveBeenCalled()
+    })
+
     it("returns null when the browser rejects getSubscription", async () => {
       const mockReg = {
         pushManager: {
@@ -1654,6 +1664,18 @@ describe("subscribe", () => {
       mockSWContainer.getRegistration.mockResolvedValue(mockReg)
 
       expect(await mod.getExistingPushSubscription()).toBeNull()
+    })
+
+    it("returns null when browser lookup throws synchronously", async () => {
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn(() => {
+            throw new Error("synchronous browser failure")
+          }),
+        },
+      }
+
+      await expect(mod.getExistingPushSubscription(mockReg)).resolves.toBeNull()
     })
 
     it("returns the active subscription when browser lookup succeeds", async () => {

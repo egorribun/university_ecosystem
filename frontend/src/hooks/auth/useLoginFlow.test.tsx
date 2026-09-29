@@ -2,7 +2,7 @@ import { renderHook, act, waitFor } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { AxiosError } from "axios"
 
-import { useLoginForm, useMfaFlow } from "./useLoginFlow"
+import { resolveAuthErrorMessage, useLoginForm, useMfaFlow } from "./useLoginFlow"
 import { ChallengeLockedError } from "@/types/Auth"
 import type { PendingMfaState } from "@/types/Auth"
 
@@ -100,6 +100,33 @@ const pendingLoginWithMethods = (methods: PendingMfaState["methods"]): PendingMf
   user_id: "u-1",
   reason: "login",
   methods,
+})
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((settle) => {
+    resolve = settle
+  })
+  return { promise, resolve }
+}
+
+describe("resolveAuthErrorMessage", () => {
+  it("falls back to the Error message when an Axios response carries no body", () => {
+    const error = new AxiosError("transport failure")
+    error.response = {
+      status: 502,
+      headers: {},
+      data: undefined,
+      statusText: "",
+      config: {} as never,
+    }
+
+    expect(resolveAuthErrorMessage(error, "fallback")).toBe("transport failure")
+  })
+
+  it("uses the fallback for an Error without a message", () => {
+    expect(resolveAuthErrorMessage(new Error(""), "fallback")).toBe("fallback")
+  })
 })
 
 describe("useMfaFlow post-login redirect", () => {
@@ -227,6 +254,7 @@ describe("useLoginForm.onSubmit", () => {
       await result.current.onSubmit()
     })
     await waitFor(() => expect(result.current.submitError).toBe("Account locked"))
+    expect(result.current.form.formState.errors.root?.type).toBe("server")
   })
 
   it("prefers axios response.data.detail for the root error (line 140-142)", async () => {
@@ -287,6 +315,37 @@ describe("useLoginForm.onSubmit", () => {
 
     expect(result.current.activeEmail).toBe("saved@example.com")
   })
+
+  it("starts with hidden caps-lock and password state and no active email", () => {
+    const { result } = renderHook(() => useLoginForm())
+
+    expect(result.current.caps).toBe(false)
+    expect(result.current.showPassword).toBe(false)
+    expect(result.current.activeEmail).toBe("")
+  })
+
+  it("uses the typed email when nothing is persisted", () => {
+    const { result } = renderHook(() => useLoginForm())
+    act(() => {
+      result.current.form.setValue("email", "typed@example.com")
+    })
+
+    expect(result.current.activeEmail).toBe("typed@example.com")
+  })
+
+  it("validates a field as soon as it loses focus", async () => {
+    const { result } = renderHook(() => useLoginForm())
+
+    await act(async () => {
+      await result.current.form
+        .register("password")
+        .onBlur({ target: { name: "password", value: "" }, type: "blur" })
+    })
+
+    await waitFor(() =>
+      expect(result.current.form.formState.errors.password?.message).toBe("Password is required")
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -341,12 +400,38 @@ describe("useLoginForm suggestion", () => {
     expect(result.current.form.getValues("email")).toBe("user@gmail.com")
   })
 
-  it("applySuggestion is a no-op when there is no suggestion (line 158 guard)", () => {
+  it("applySuggestion is a no-op when there is no suggestion (line 158 guard)", async () => {
     const { result } = renderHook(() => useLoginForm())
     act(() => {
+      result.current.form.setValue("email", "keep@example.com")
+    })
+    await act(async () => {
       result.current.applySuggestion()
     })
     expect(result.current.emailSuggestion).toBeNull()
+    expect(result.current.form.getValues("email")).toBe("keep@example.com")
+  })
+
+  it("re-validates the email after applying a suggestion", async () => {
+    mocks.suggestEmailDomain.mockReturnValue("user@gmail.com")
+    const { result } = renderHook(() => useLoginForm())
+    act(() => {
+      result.current.form.setValue("email", "user@gmail")
+    })
+    await act(async () => {
+      await result.current.handleEmailBlur()
+    })
+    await waitFor(() =>
+      expect(result.current.form.formState.errors.email?.message).toBe("auth:messages.invalidEmail")
+    )
+    await waitFor(() => expect(result.current.emailSuggestion).toBe("user@gmail.com"))
+
+    await act(async () => {
+      result.current.applySuggestion()
+    })
+
+    await waitFor(() => expect(result.current.form.formState.errors.email).toBeUndefined())
+    expect(result.current.form.getValues("email")).toBe("user@gmail.com")
   })
 
   it("does not ask for a domain suggestion when the trimmed email is empty", async () => {
@@ -795,4 +880,183 @@ describe("useMfaFlow email OTP", () => {
     expect(result.current.mfaError).toBe("auth:mfa.errors.generic")
     expect(result.current.mfaErrorSource).toBe("general")
   })
+})
+
+describe("useMfaFlow challenge lifecycle", () => {
+  it("ignores a pending step-up challenge on the login screen", async () => {
+    mocks.pendingMfa = { ...mfaLogin(), reason: "step-up" }
+    const { result } = renderHook(() => useMfaFlow())
+
+    expect(result.current.loginChallenge).toBeNull()
+    expect(result.current.emailChallenge).toBeUndefined()
+
+    await act(async () => {
+      await result.current.handleOtpVerify("123456")
+    })
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.expired")
+    expect(mocks.submitMfaChallenge).not.toHaveBeenCalled()
+  })
+
+  it("treats a login challenge without a methods list as expired", async () => {
+    mocks.pendingMfa = {
+      status: "mfa_required",
+      user_id: "u-1",
+      reason: "login",
+    } as unknown as PendingMfaState
+    const { result } = renderHook(() => useMfaFlow())
+
+    expect(result.current.emailChallenge).toBeUndefined()
+
+    await act(async () => {
+      await result.current.handleRecoveryVerify("RECOVERY")
+    })
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.expired")
+    expect(result.current.mfaErrorSource).toBe("general")
+    expect(mocks.submitMfaChallenge).not.toHaveBeenCalled()
+  })
+
+  it("picks up a login challenge that arrives after mount", async () => {
+    const { result, rerender } = renderHook(() => useMfaFlow())
+    expect(result.current.emailChallenge).toBeUndefined()
+    expect(result.current.showRecoveryInput).toBe(false)
+
+    mocks.pendingMfa = mfaLogin()
+    rerender()
+
+    expect(result.current.emailChallenge?.challenge_token).toBe("ct-email")
+    await act(async () => {
+      await result.current.handleRecoveryVerify("RECOVERY-123")
+    })
+    expect(mocks.submitMfaChallenge).toHaveBeenCalledWith({
+      method: "recovery_code",
+      code: "RECOVERY-123",
+      challengeToken: "ct-totp",
+    })
+  })
+
+  it("resends with the most recently rotated email token", async () => {
+    mocks.pendingMfa = mfaLogin()
+    mocks.resendEmailMfaChallenge
+      .mockResolvedValueOnce({
+        method: "email_otp",
+        challenge_token: "ct-email-rotated",
+        resend_available_at: "2020-01-01T00:00:00Z",
+      })
+      .mockResolvedValueOnce({
+        method: "email_otp",
+        challenge_token: "ct-email-rotated-again",
+        resend_available_at: "2020-01-01T00:00:00Z",
+      })
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(() => result.current.handleResendEmailOtp())
+    await act(() => result.current.handleResendEmailOtp())
+
+    expect(mocks.resendEmailMfaChallenge).toHaveBeenNthCalledWith(1, "ct-email")
+    expect(mocks.resendEmailMfaChallenge).toHaveBeenNthCalledWith(2, "ct-email-rotated")
+    expect(result.current.emailChallenge?.challenge_token).toBe("ct-email-rotated-again")
+  })
+
+  it("restarts the resend countdown from the moment of the resend", async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date("2026-08-25T15:50:00Z"))
+      mocks.pendingMfa = mfaLogin()
+      const { result } = renderHook(() => useMfaFlow())
+      expect(result.current.resendSeconds).toBe(0)
+
+      vi.setSystemTime(new Date("2026-08-25T15:50:30Z"))
+      await act(() => result.current.handleResendEmailOtp())
+
+      expect(result.current.resendSeconds).toBe(30)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("keeps counting down every second until resend becomes available", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date("2026-08-25T15:50:00Z"))
+      mocks.pendingMfa = mfaLogin("2026-08-25T15:50:02Z")
+      const { result } = renderHook(() => useMfaFlow())
+
+      act(() => vi.advanceTimersByTime(1000))
+      expect(result.current.resendSeconds).toBe(1)
+      act(() => vi.advanceTimersByTime(1000))
+      expect(result.current.resendSeconds).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("does not tick while no resend countdown is running", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date("2026-08-25T15:50:00Z"))
+      mocks.pendingMfa = mfaLogin("2026-08-25T15:49:00Z")
+      let renders = 0
+      const { result } = renderHook(() => {
+        renders += 1
+        return useMfaFlow()
+      })
+      const settledRenders = renders
+
+      act(() => vi.advanceTimersByTime(5000))
+
+      expect(result.current.resendSeconds).toBe(0)
+      expect(renders).toBe(settledRenders)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  type MfaAction = (flow: ReturnType<typeof useMfaFlow>) => Promise<void>
+  const inFlightActions: Array<[string, MfaAction]> = [
+    ["totp verification", (flow) => flow.handleOtpVerify("123456")],
+    ["email verification", (flow) => flow.handleEmailOtpVerify("123456")],
+    ["recovery verification", (flow) => flow.handleRecoveryVerify("RECOVERY-123")],
+    ["email resend", (flow) => flow.handleResendEmailOtp()],
+  ]
+
+  it.each(inFlightActions)(
+    "is busy and clears the previous error while %s is in flight",
+    async (label, action) => {
+      mocks.pendingMfa = mfaLogin()
+      const verification = deferred<void>()
+      const resend = deferred<unknown>()
+      mocks.submitMfaChallenge.mockReturnValueOnce(verification.promise)
+      mocks.resendEmailMfaChallenge.mockReturnValueOnce(resend.promise)
+      const { result } = renderHook(() => useMfaFlow())
+      act(() => {
+        result.current.setMfaError("Previous failure")
+        result.current.setMfaErrorSource("general")
+      })
+
+      let run: Promise<void> = Promise.resolve()
+      act(() => {
+        run = action(result.current)
+      })
+
+      expect(result.current.mfaBusy).toBe(true)
+      expect(result.current.mfaError).toBeNull()
+      expect(result.current.mfaErrorSource).toBeNull()
+      expect(result.current.generalMfaError).toBeNull()
+
+      await act(async () => {
+        verification.resolve()
+        resend.resolve({
+          method: "email_otp",
+          challenge_token: "ct-email-rotated",
+          resend_available_at: "2020-01-01T00:00:00Z",
+        })
+        await run
+      })
+
+      expect(result.current.mfaBusy, label).toBe(false)
+      expect(result.current.mfaError).toBeNull()
+    }
+  )
 })

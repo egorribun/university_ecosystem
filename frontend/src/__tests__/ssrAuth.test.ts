@@ -62,6 +62,14 @@ describe("ssrAuth.parseCookie", () => {
     // A different cookie that would match if `.` were a wildcard:
     expect(parseCookie("axb=other", "a.b")).toBeNull()
   })
+
+  it("splits cookies separated without whitespace", () => {
+    expect(parseCookie("csrf_token=tok;access_token_v2=abc123", "access_token_v2")).toBe("abc123")
+  })
+
+  it("does not fall through to a later duplicate after a malformed first value", () => {
+    expect(parseCookie("foo=%ZZ; foo=shadow", "foo")).toBeNull()
+  })
 })
 
 describe("ssrAuth.validateJwt", () => {
@@ -107,6 +115,19 @@ describe("ssrAuth.validateJwt", () => {
     })
   })
 
+  it.each([
+    ["an empty", ""],
+    ["a numeric", 42],
+  ])("rejects %s sub claim", async (_label, sub) => {
+    _setJwtVerifyOverrideForTests(async () => ({ payload: { sub, role: "admin" } }))
+
+    expect(await validateJwt("any.token.value")).toEqual({
+      isAuth: false,
+      user: null,
+      loading: false,
+    })
+  })
+
   it("defaults role to 'student' when claim missing or non-string", async () => {
     _setJwtVerifyOverrideForTests(async () => ({
       payload: { sub: "user-uuid-2", aud: "university-ecosystem-api" },
@@ -144,6 +165,48 @@ describe("ssrAuth.extractAuthFromRequest", () => {
     })
     const auth = await extractAuthFromRequest(request)
     expect(auth).toEqual(SSR_AUTH_LHCI_MOCK)
+  })
+
+  it("returns the literal student mock state for the E2E marker cookie", async () => {
+    vi.stubEnv("VITE_E2E_MODE", "1")
+    const request = new Request("http://localhost/dashboard", {
+      headers: { Cookie: "ue-e2e-auth=mock" },
+    })
+
+    expect(await extractAuthFromRequest(request)).toEqual({
+      isAuth: true,
+      user: { role: "student" },
+      loading: false,
+    })
+  })
+
+  it.each([
+    ["without a marker cookie", "csrf_token=abc"],
+    ["with a non-mock marker value", "ue-e2e-auth=admin"],
+  ])("stays unauthenticated in E2E mode %s", async (_label, cookie) => {
+    vi.stubEnv("VITE_E2E_MODE", "1")
+    const request = new Request("http://localhost/dashboard", { headers: { Cookie: cookie } })
+
+    expect(await extractAuthFromRequest(request)).toEqual({
+      isAuth: false,
+      user: null,
+      loading: false,
+    })
+  })
+
+  it("does not attempt verification without an access token cookie", async () => {
+    const verify = vi.fn(async () => ({ payload: { sub: "user-1" } }))
+    _setJwtVerifyOverrideForTests(verify)
+    const request = new Request("http://localhost/dashboard", {
+      headers: { Cookie: "csrf_token=abc" },
+    })
+
+    expect(await extractAuthFromRequest(request)).toEqual({
+      isAuth: false,
+      user: null,
+      loading: false,
+    })
+    expect(verify).not.toHaveBeenCalled()
   })
 
   it("ignores the E2E marker cookie outside E2E mode", async () => {

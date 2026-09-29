@@ -88,8 +88,11 @@ const stableTranslation = {
   t: stableT,
   i18n: { language: "en", changeLanguage: () => Promise.resolve() },
 }
+// Swapped only to model a language change; reset before every test.
+let activeTranslation = stableTranslation
+const mockUseTranslation = vi.fn((..._namespaces: unknown[]) => activeTranslation)
 vi.mock("react-i18next", () => ({
-  useTranslation: () => stableTranslation,
+  useTranslation: (...namespaces: unknown[]) => mockUseTranslation(...namespaces),
 }))
 
 import { NOTIFICATION_TOPIC_KEYS, usePushPreferences } from "../usePushPreferences"
@@ -122,6 +125,7 @@ describe("usePushPreferences", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    activeTranslation = stableTranslation
     mockIsPushSupported.mockReturnValue(true)
     mockResolveServiceWorkerRegistration.mockResolvedValue(null)
     mockEnsurePushSubscription.mockResolvedValue(null)
@@ -1295,5 +1299,58 @@ describe("usePushPreferences", () => {
     await waitFor(() => expect(result.current.notificationPermission).toBe("granted"))
     expect(() => unmount()).not.toThrow()
     expect(status.removeEventListener).toHaveBeenCalled()
+  })
+
+  it("loads the notifications namespace", async () => {
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    expect(mockUseTranslation).toHaveBeenCalledWith(["notifications"])
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+  })
+
+  it("assumes support while the first subscription detection is pending", async () => {
+    const renders: Array<[boolean, boolean]> = []
+    const { result } = renderHook(
+      () => {
+        const state = usePushPreferences()
+        renders.push([state.pushSupported, state.pushInitializing])
+        return state
+      },
+      { wrapper }
+    )
+
+    expect(renders[0]).toEqual([true, true])
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+  })
+
+  it("reads the browser permission when it mounts", async () => {
+    installNotification("granted")
+
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    expect(result.current.notificationPermission).toBe("granted")
+    expect(result.current.permissionText).toBe("notifications:permission.granted")
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+  })
+
+  it("treats a missing Notification API as an undecided permission", async () => {
+    delete (globalThis as any).Notification
+
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    expect(result.current.notificationPermission).toBe("default")
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+  })
+
+  it("relabels topics when the translation function changes", async () => {
+    const { result, rerender } = renderHook(() => usePushPreferences(), { wrapper })
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+    const label = result.current.topicLabels["news.published"]
+
+    activeTranslation = { ...stableTranslation, t: (key: string) => `ru:${key}` }
+    rerender()
+
+    expect(result.current.topicLabels["news.published"]).toBe(`ru:${label}`)
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
   })
 })

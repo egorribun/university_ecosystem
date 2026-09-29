@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react"
 import api from "@/api/client"
-import { useParams, useSearch, Link } from "@tanstack/react-router"
+import { useLocation, useParams, Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { m, AnimatePresence } from "framer-motion"
 import "@/styles/tokens/auth.css"
@@ -18,7 +18,7 @@ import { valibotResolver } from "@hookform/resolvers/valibot"
 
 import { Button, TextField, SectionCard, Alert } from "@/components/settings"
 import { ProgressBar } from "@/components/ui/ProgressBar"
-import AuthBackdrop from "@/components/auth/AuthBackdrop"
+import { AuthBackdrop } from "@/components/auth/AuthBackdrop"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { newPasswordSchema, type NewPasswordValues } from "@/features/auth/schemas"
 import { analyzePasswordStrength } from "@/utils/passwordStrength"
@@ -43,7 +43,6 @@ const PWNED_API_URL = "https://api.pwnedpasswords.com/range/"
 const HASH_PREFIX_LEN = 5
 
 async function isPwnedPassword(pwd: string, signal: AbortSignal) {
-  signal.throwIfAborted()
   const hash = await sha1Hex(pwd)
   signal.throwIfAborted()
   const prefix = hash.slice(0, HASH_PREFIX_LEN)
@@ -54,17 +53,16 @@ async function isPwnedPassword(pwd: string, signal: AbortSignal) {
   return text.split("\n").some((line) => line.split(":")[0] === suffix)
 }
 
-const isAbortError = (error: unknown): boolean =>
-  typeof error === "object" && error !== null && "name" in error && error.name === "AbortError"
-
 export default function ResetPassword() {
-  const { t, i18n } = useTranslation(["auth", "common"])
+  // Every key names its namespace explicitly ("auth:…", "common:…").
+  const { t, i18n } = useTranslation()
   const passwordStrengthLanguage = i18n.resolvedLanguage ?? i18n.language
   // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
   // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  // The token route is a child of this page's route, so read params loosely.
   const routeParameters = useParams({ strict: false })
-  const searchParameters = useSearch({ strict: false })
+  const { search: searchParameters } = useLocation()
   const token =
     (routeParameters as { token?: string }).token ||
     (searchParameters as { token?: string }).token ||
@@ -94,8 +92,7 @@ export default function ResetPassword() {
     mode: "onBlur",
   })
 
-  const password = watch("password")
-  const confirmPassword = watch("confirmPassword")
+  const { password, confirmPassword } = watch()
 
   // Password analysis effect
   useEffect(() => {
@@ -129,8 +126,8 @@ export default function ResetPassword() {
       try {
         const bad = await isPwnedPassword(password, controller.signal)
         if (active) setPwned(bad)
-      } catch (error: unknown) {
-        if (active && !isAbortError(error)) setPwned(false)
+      } catch {
+        // `pwned` was reset when this check started; an aborted or failed lookup keeps it clear.
       }
     }
 
@@ -156,12 +153,9 @@ export default function ResetPassword() {
       await telemetryContext.run(() => api.post(RESET_URL, { token, password: data.password }))
       setIsSuccess(true)
     } catch (error: unknown) {
-      let errorMessage = t("auth:reset.errorGeneric")
-      if (typeof error === "object" && error !== null && "response" in error) {
-        const axiosError = error as { response?: { data?: { detail?: string } } }
-        errorMessage = axiosError.response?.data?.detail || errorMessage
-      }
-      setError("root", { message: errorMessage })
+      const detail = (error as { response?: { data?: { detail?: string } } } | null | undefined)
+        ?.response?.data?.detail
+      setError("root", { message: detail || t("auth:reset.errorGeneric") })
     }
   }
 
@@ -185,7 +179,7 @@ export default function ResetPassword() {
       <AuthBackdrop prefersReducedMotion={prefersReducedMotion} />
 
       <m.div
-        initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
+        initial={!prefersReducedMotion && { opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-(--layout-max-modal) z-modal"
       >
@@ -195,7 +189,7 @@ export default function ResetPassword() {
               {isSuccess ? (
                 <m.div
                   key="success"
-                  initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.95 }}
+                  initial={!prefersReducedMotion && { opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   className="space-y-6 pt-4 text-center"
                 >
@@ -227,7 +221,7 @@ export default function ResetPassword() {
               ) : (
                 <m.div
                   key="form"
-                  initial={prefersReducedMotion ? false : { opacity: 0 }}
+                  initial={!prefersReducedMotion && { opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="space-y-6"
                 >
@@ -286,7 +280,13 @@ export default function ResetPassword() {
                           <div className="px-1 space-y-1">
                             <ProgressBar
                               value={STRENGTH_VALUES[strength]}
-                              color={strength < 2 ? "error" : strength < 3 ? "warning" : "success"}
+                              barClassName={
+                                strength < 2
+                                  ? "bg-error-text"
+                                  : strength < 3
+                                    ? "bg-warning-text"
+                                    : "bg-success-text"
+                              }
                               className="h-1.5"
                             />
                             <div className="flex justify-between items-center">

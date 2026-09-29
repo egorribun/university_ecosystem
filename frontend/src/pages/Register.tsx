@@ -23,7 +23,8 @@ export const resolveRegistrationEmailErrorKey = (message?: string): string =>
   message || "auth:messages.invalidFormat"
 
 const Register = () => {
-  const { t, i18n } = useTranslation(["auth"])
+  // Every key names its namespace explicitly ("auth:…").
+  const { t, i18n } = useTranslation()
   const passwordStrengthLanguage = i18n.resolvedLanguage ?? i18n.language
   const navigate = useNavigate()
   const [showPass, setShowPass] = useState(false)
@@ -40,7 +41,6 @@ const Register = () => {
     watch,
     setValue,
     setError,
-    trigger,
     formState: { errors, isSubmitting },
   } = useForm<RegisterValues>({
     resolver: valibotResolver(registerSchema),
@@ -62,15 +62,15 @@ const Register = () => {
   const confirmPassword = watch("confirmPassword")
 
   // Calculate strict checks for UI feedback chips
-  const minLenOk = (password?.length || 0) >= 8
-  const matchOk = (confirmPassword?.length || 0) > 0 && password === confirmPassword
+  const minLenOk = password.length >= 8
+  const matchOk = confirmPassword.length > 0 && password === confirmPassword
   const needsInvite = role === "teacher" || role === "admin"
 
+  // The field's own blur handler validates it (mode "onBlur").
   const handleEmailBlur = () => {
-    trigger("email")
     if (email) {
-      const suggestion = suggestEmailDomain(email)
-      setEmailSuggestion(suggestion && suggestion !== email ? suggestion : null)
+      // A suggestion always differs from the typed address (known domains yield null).
+      setEmailSuggestion(suggestEmailDomain(email))
     }
   }
 

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, type ChangeEvent, type FocusEvent } from "react"
+import { useEffect, useState, type ChangeEvent, type FocusEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 
@@ -11,23 +11,34 @@ const DEFAULT_DND_START = "22:00"
 const DEFAULT_DND_END = "07:00"
 
 /**
- * Converts time value to HH:MM format for input elements
+ * Converts a stored time value to the HH:MM format of input elements
  */
-const toInputTime = (value: unknown): string => {
-  if (!value) return ""
-  const str = String(value)
-  const match = str.match(/^(\d{2}:\d{2})/)
-  return match?.[1] ?? ""
+const toInputTime = (value: unknown): string => String(value).match(/^(\d{2}:\d{2})/)?.[1] ?? ""
+
+/**
+ * Converts HH:MM to the server format with seconds; other values are sent as-is
+ */
+const toServerTime = (value: string): string =>
+  /^\d{2}:\d{2}$/.test(value) ? `${value}:00` : value
+
+interface DndDraft {
+  enabled: boolean
+  start: string
+  end: string
 }
 
 /**
- * Converts HH:MM to server format with seconds
+ * The locally edited copy of the account's DND range. An enabled range that
+ * the server stores without times is shown with the default times.
  */
-const toServerTime = (value: string): string => {
-  const trimmed = value.trim()
-  if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`
-  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed
-  return trimmed
+const draftFromUser = (value: User | null): DndDraft => {
+  const preferences = value?.preferences
+  const enabled = Boolean(preferences?.dnd_enabled)
+  return {
+    enabled,
+    start: toInputTime(preferences?.dnd_start) || (enabled ? DEFAULT_DND_START : ""),
+    end: toInputTime(preferences?.dnd_end) || (enabled ? DEFAULT_DND_END : ""),
+  }
 }
 
 export interface UseDndSettingsReturn {
@@ -42,169 +53,130 @@ export interface UseDndSettingsReturn {
   handleDndEndBlur: (event: FocusEvent<HTMLInputElement>) => void
 }
 
+// The handlers are plain functions: React Compiler memoizes this hook, and
+// none of them is an effect dependency.
 export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
   const { t } = useTranslation(["settings"])
   const { user, setUser } = useAuth()
 
-  const [dndEnabled, setDndEnabled] = useState(false)
-  const [dndStart, setDndStart] = useState("")
-  const [dndEnd, setDndEnd] = useState("")
+  const [draft, setDraft] = useState(() => draftFromUser(null))
   const [dndSaving, setDndSaving] = useState(false)
 
-  const syncDndFromUser = useCallback((value: User | null) => {
-    const enabled = Boolean(value?.preferences?.dnd_enabled)
-    const start = toInputTime(value?.preferences?.dnd_start)
-    const end = toInputTime(value?.preferences?.dnd_end)
+  const persistDnd = async (nextEnabled: boolean, nextStart: string, nextEnd: string) => {
+    const normalizedStart = nextStart.trim()
+    const normalizedEnd = nextEnd.trim()
+    const previous = user?.preferences
+    const previousEnabled = Boolean(previous?.dnd_enabled)
+    const previousStart = toInputTime(previous?.dnd_start)
+    const previousEnd = toInputTime(previous?.dnd_end)
 
-    setDndEnabled((previous) => (previous === enabled ? previous : enabled))
-    setDndStart((previous) => {
-      const next = start || (enabled ? DEFAULT_DND_START : "")
-      return previous === next ? previous : next
-    })
-    setDndEnd((previous) => {
-      const next = end || (enabled ? DEFAULT_DND_END : "")
-      return previous === next ? previous : next
-    })
-  }, [])
+    // Validate range when enabling
+    if (nextEnabled && (!normalizedStart || !normalizedEnd)) {
+      setSnackbar({ text: t("settings:dnd.validation.missingRange"), severity: "warning" })
+      setDraft(draftFromUser(user))
+      return
+    }
 
-  const persistDnd = useCallback(
-    async (nextEnabled: boolean, nextStart: string | null, nextEnd: string | null) => {
-      const normalizedStart = nextStart?.trim() ?? ""
-      const normalizedEnd = nextEnd?.trim() ?? ""
-      const previousEnabled = Boolean(user?.preferences?.dnd_enabled)
-      const previousStart = toInputTime(user?.preferences?.dnd_start)
-      const previousEnd = toInputTime(user?.preferences?.dnd_end)
+    // Skip if no changes
+    if (
+      nextEnabled === previousEnabled &&
+      (!nextEnabled || (normalizedStart === previousStart && normalizedEnd === previousEnd))
+    ) {
+      return
+    }
 
-      // Skip if no changes
-      if (
-        nextEnabled === previousEnabled &&
-        (!nextEnabled ||
-          (normalizedStart &&
-            normalizedEnd &&
-            normalizedStart === previousStart &&
-            normalizedEnd === previousEnd))
-      ) {
-        return
-      }
+    setDndSaving(true)
+    try {
+      const response = await api.put<User>("/users/me", {
+        preferences: nextEnabled
+          ? {
+              dnd_enabled: true,
+              dnd_start: toServerTime(normalizedStart),
+              dnd_end: toServerTime(normalizedEnd),
+            }
+          : { dnd_enabled: false, dnd_start: null, dnd_end: null },
+      })
+      setUser(response.data)
+      setDraft(draftFromUser(response.data))
 
-      // Validate range when enabling
-      if (nextEnabled && (!normalizedStart || !normalizedEnd)) {
-        setSnackbar({ text: t("settings:dnd.validation.missingRange"), severity: "warning" })
-        syncDndFromUser(user)
-        return
-      }
+      let message: string
+      if (nextEnabled === previousEnabled) message = t("settings:dnd.snackbar.updated")
+      else if (nextEnabled) message = t("settings:dnd.snackbar.enabled")
+      else message = t("settings:dnd.snackbar.disabled")
 
-      setDndSaving(true)
-      try {
-        const payload: Record<string, unknown> = {
-          preferences: { dnd_enabled: nextEnabled } as Record<string, unknown>,
+      setSnackbar({ text: message, severity: "success" })
+    } catch (error: unknown) {
+      let message = t("settings:dnd.snackbar.updateFailed")
+
+      if (isAxiosError(error)) {
+        const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
+        if (typeof detail === "string") {
+          message = detail
+        } else if (Array.isArray(detail)) {
+          const collected = detail
+            .map((item: unknown) =>
+              item && typeof item === "object" && "msg" in item
+                ? String((item as { msg?: unknown }).msg)
+                : ""
+            )
+            .filter(Boolean)
+            .join("; ")
+          message = collected || message
         }
-        if (nextEnabled) {
-          ;(payload.preferences as Record<string, unknown>).dnd_start =
-            toServerTime(normalizedStart)
-          ;(payload.preferences as Record<string, unknown>).dnd_end = toServerTime(normalizedEnd)
-        } else {
-          ;(payload.preferences as Record<string, unknown>).dnd_start = null
-          ;(payload.preferences as Record<string, unknown>).dnd_end = null
-        }
-
-        const response = await api.put<User>("/users/me", payload)
-        setUser(response.data)
-        syncDndFromUser(response.data)
-
-        const wasEnabled = previousEnabled
-        let message: string
-        if (nextEnabled && !wasEnabled) message = t("settings:dnd.snackbar.enabled")
-        else if (!nextEnabled && wasEnabled) message = t("settings:dnd.snackbar.disabled")
-        else message = t("settings:dnd.snackbar.updated")
-
-        setSnackbar({ text: message, severity: "success" })
-      } catch (error: unknown) {
-        let message = t("settings:dnd.snackbar.updateFailed")
-
-        if (isAxiosError(error)) {
-          const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
-          if (typeof detail === "string") {
-            message = detail
-          } else if (Array.isArray(detail)) {
-            const collected = detail
-              .map((item: unknown) =>
-                item && typeof item === "object" && "msg" in item
-                  ? String((item as { msg?: unknown }).msg)
-                  : ""
-              )
-              .filter(Boolean)
-              .join("; ")
-            message = collected || message
-          } else {
-            message = t("settings:dnd.snackbar.updateFailed")
-          }
-        }
-
-        setSnackbar({ text: message, severity: "error" })
-        syncDndFromUser(user)
-      } finally {
-        setDndSaving(false)
-      }
-    },
-    [setUser, setSnackbar, syncDndFromUser, t, user]
-  )
-
-  const handleDndToggle = useCallback(
-    (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
-      if (dndSaving) return
-
-      const nextStart = checked ? dndStart || DEFAULT_DND_START : dndStart
-      const nextEnd = checked ? dndEnd || DEFAULT_DND_END : dndEnd
-
-      if (checked) {
-        setDndStart(nextStart)
-        setDndEnd(nextEnd)
       }
 
-      setDndEnabled(checked)
-      void persistDnd(checked, checked ? nextStart : null, checked ? nextEnd : null)
-    },
-    [dndSaving, dndEnd, dndStart, persistDnd]
-  )
+      setSnackbar({ text: message, severity: "error" })
+      setDraft(draftFromUser(user))
+    } finally {
+      setDndSaving(false)
+    }
+  }
 
-  const handleDndStartChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setDndStart(event.target.value)
-  }, [])
+  const handleDndToggle = (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+    if (dndSaving) return
 
-  const handleDndStartBlur = useCallback(
-    (event: FocusEvent<HTMLInputElement>) => {
-      if (!dndEnabled || dndSaving) return
-      const value = (event.currentTarget.value || "").trim()
-      setDndStart(value)
-      void persistDnd(true, value || null, dndEnd || null)
-    },
-    [dndEnabled, dndEnd, dndSaving, persistDnd]
-  )
+    if (checked) {
+      const start = draft.start || DEFAULT_DND_START
+      const end = draft.end || DEFAULT_DND_END
+      setDraft({ enabled: true, start, end })
+      void persistDnd(true, start, end)
+    } else {
+      setDraft((current) => ({ ...current, enabled: false }))
+      void persistDnd(false, draft.start, draft.end)
+    }
+  }
 
-  const handleDndEndChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setDndEnd(event.target.value)
-  }, [])
+  const handleDndStartChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setDraft((current) => ({ ...current, start: event.target.value }))
+  }
 
-  const handleDndEndBlur = useCallback(
-    (event: FocusEvent<HTMLInputElement>) => {
-      if (!dndEnabled || dndSaving) return
-      const value = (event.currentTarget.value || "").trim()
-      setDndEnd(value)
-      void persistDnd(true, dndStart || null, value || null)
-    },
-    [dndEnabled, dndSaving, dndStart, persistDnd]
-  )
+  const handleDndStartBlur = (event: FocusEvent<HTMLInputElement>) => {
+    if (!draft.enabled || dndSaving) return
+    const value = event.currentTarget.value.trim()
+    setDraft((current) => ({ ...current, start: value }))
+    void persistDnd(true, value, draft.end)
+  }
+
+  const handleDndEndChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setDraft((current) => ({ ...current, end: event.target.value }))
+  }
+
+  const handleDndEndBlur = (event: FocusEvent<HTMLInputElement>) => {
+    if (!draft.enabled || dndSaving) return
+    const value = event.currentTarget.value.trim()
+    setDraft((current) => ({ ...current, end: value }))
+    void persistDnd(true, draft.start, value)
+  }
 
   // Sync local state with user on mount and when user changes
   useEffect(() => {
-    syncDndFromUser(user)
-  }, [syncDndFromUser, user])
+    setDraft(draftFromUser(user))
+  }, [user])
 
   return {
-    dndEnabled,
-    dndStart,
-    dndEnd,
+    dndEnabled: draft.enabled,
+    dndStart: draft.start,
+    dndEnd: draft.end,
     dndSaving,
     handleDndToggle,
     handleDndStartChange,

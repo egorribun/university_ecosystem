@@ -14,7 +14,7 @@ const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:$
 const matchText = (text: string) => (content: string) => content.startsWith(text)
 
 const passwordAnalysis = vi.hoisted(() => ({
-  mode: "normal" as "normal" | "throw" | "unknown",
+  mode: "normal" as "normal" | "throw" | "unknown" | "locale",
   calls: 0,
   constructors: 0,
   deferred: false,
@@ -27,13 +27,17 @@ const passwordAnalysis = vi.hoisted(() => ({
 
 vi.mock("@zxcvbn-ts/core", () => ({
   ZxcvbnFactory: class {
-    constructor() {
+    private readonly locale: string
+    constructor(options: { translations: { locale: string } }) {
       passwordAnalysis.constructors += 1
+      this.locale = options.translations.locale
     }
 
     check(password: string) {
       passwordAnalysis.calls += 1
       if (passwordAnalysis.mode === "throw") throw new Error("analysis unavailable")
+      // Scores the analyzer's dictionary language: English weakest, Russian strongest.
+      if (passwordAnalysis.mode === "locale") return { score: this.locale === "en" ? 0 : 4 }
       if (passwordAnalysis.deferred) {
         return new Promise<{ score: number }>((resolve, reject) => {
           passwordAnalysis.pending.push({ password, resolve, reject })
@@ -44,6 +48,8 @@ vi.mock("@zxcvbn-ts/core", () => ({
   },
 }))
 vi.mock("@zxcvbn-ts/language-common", () => ({ adjacencyGraphs: {}, dictionary: {} }))
+vi.mock("@zxcvbn-ts/language-en", () => ({ dictionary: {}, translations: { locale: "en" } }))
+vi.mock("@zxcvbn-ts/language-ru", () => ({ dictionary: {}, translations: { locale: "ru" } }))
 
 const renderRegister = () =>
   renderWithRouter({
@@ -548,5 +554,121 @@ describe("Register page", () => {
     const { container } = await renderRegister()
     const results = await axe(container)
     expect(results).toHaveNoViolations()
+  })
+})
+
+describe("Register behaviour details", () => {
+  const field = (key: string) => screen.getByLabelText(matchText(tAuth(key)))
+  const strengthLabel = (level: string) =>
+    screen.queryByText(tAuth(`register.passwordStrengthLevel.${level}`))
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  beforeEach(() => {
+    passwordAnalysis.mode = "normal"
+    passwordAnalysis.calls = 0
+    passwordAnalysis.constructors = 0
+    passwordAnalysis.deferred = false
+    passwordAnalysis.pending = []
+  })
+
+  it("starts without Caps Lock hints or satisfied password chips", async () => {
+    await renderRegister()
+
+    expect(screen.queryByText(tAuth("messages.capsLock"))).not.toBeInTheDocument()
+    expect(screen.getByText(tAuth("register.passwordChip.minLength"))).toHaveClass(
+      "text-text-muted-subtle"
+    )
+    expect(screen.getByText(tAuth("register.passwordChip.match"))).toHaveClass(
+      "text-text-muted-subtle"
+    )
+  })
+
+  it("does not mark different passwords as matching", async () => {
+    const user = userEvent.setup()
+    await renderRegister()
+
+    await user.type(field("fields.password"), "password123")
+    await user.type(field("fields.confirmPassword"), "password124")
+
+    expect(screen.getByText(tAuth("register.passwordChip.match"))).toHaveClass(
+      "text-text-muted-subtle"
+    )
+  })
+
+  it("validates a field as soon as it loses focus", async () => {
+    const user = userEvent.setup()
+    await renderRegister()
+
+    await user.type(field("fields.name"), "A")
+    await user.tab()
+
+    expect(await screen.findByText("Name must be at least 2 characters")).toBeInTheDocument()
+  })
+
+  it("keeps the offered correction when the address is cleared", async () => {
+    const user = userEvent.setup()
+    await renderRegister()
+    const email = field("fields.email")
+
+    await user.type(email, "student@gmial.com")
+    await user.tab()
+    expect(await screen.findByRole("button", { name: /gmail\.com/i })).toBeInTheDocument()
+
+    await user.clear(email)
+    await user.tab()
+
+    expect(screen.getByRole("button", { name: /gmail\.com/i })).toBeInTheDocument()
+  })
+
+  it("hides the strength meter again when the password is cleared", async () => {
+    await renderRegister()
+
+    fireEvent.change(field("fields.password"), { target: { value: "password123" } })
+    expect(
+      await screen.findByText(tAuth("register.passwordStrengthLevel.good"))
+    ).toBeInTheDocument()
+
+    fireEvent.change(field("fields.password"), { target: { value: "" } })
+
+    await waitFor(() => expect(strengthLabel("good")).not.toBeInTheDocument())
+  })
+
+  it("drops the previous strength when a later analysis fails", async () => {
+    await renderRegister()
+
+    fireEvent.change(field("fields.password"), { target: { value: "password123" } })
+    expect(
+      await screen.findByText(tAuth("register.passwordStrengthLevel.good"))
+    ).toBeInTheDocument()
+
+    passwordAnalysis.mode = "throw"
+    fireEvent.change(field("fields.password"), { target: { value: "password456" } })
+
+    await waitFor(() => expect(strengthLabel("good")).not.toBeInTheDocument())
+    expect(
+      document.querySelector('[class~="bg-brand"][class~="transition-all"]')
+    ).not.toBeInTheDocument()
+  })
+
+  it("analyses strength in the resolved interface language", async () => {
+    const { resolvedLanguage, language } = i18n
+    passwordAnalysis.mode = "locale"
+    i18n.resolvedLanguage = "ru"
+    i18n.language = "en"
+    try {
+      await renderRegister()
+      fireEvent.change(field("fields.password"), { target: { value: "password123" } })
+
+      expect(
+        await screen.findByText(tAuth("register.passwordStrengthLevel.excellent"))
+      ).toBeInTheDocument()
+    } finally {
+      i18n.resolvedLanguage = resolvedLanguage
+      i18n.language = language
+    }
   })
 })
