@@ -12,6 +12,7 @@ handoffs are intentionally not part of the canonical index.
 - [API documentation](api/README.md)
 - [API examples](API_EXAMPLES.md)
 - [Test and quality guide](../TESTING.md)
+- [MVP requirements (Russian)](superpowers/plans/University_Ecosystem_MVP.md)
 
 ## Architecture and contracts
 
@@ -25,7 +26,9 @@ handoffs are intentionally not part of the canonical index.
 
 - [Deployment guide (Russian)](DEPLOY.md)
 - [Deployment guide (English)](DEPLOY.en.md)
+- [Helm chart](../charts/university-ecosystem/README.md)
 - [Kubernetes notes](../k8s/README.md)
+- [S3 storage migration runbook](runbooks/s3-seaweedfs-cutover.md)
 - [Dependency cooldown emergency procedure](DEPENDENCY_COOLDOWN_EMERGENCY.md)
 - [Manual MFA verification checklist](manual-mfa-checklist.md)
 
@@ -35,6 +38,8 @@ handoffs are intentionally not part of the canonical index.
   operational status; earlier handoff and continuation plans live under
   `superpowers/plans/archive/` as history.
 - [Quality dashboard](testing/dashboard.md)
+- [CI check catalog runbook](testing/ci-check-catalog-runbook.md)
+- [i18n gate](testing/i18n-gate.md)
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [Canonical audit index](audits/INDEX.md)

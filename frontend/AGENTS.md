@@ -45,20 +45,15 @@ This document defines the architectural invariants, framework constraints, acces
 - **Rationale**: Relying on stale router context on the client causes race conditions, improper redirects, and desynchronized authentication state.
 
 ```typescript
-// src/routes/_auth.tsx
-import { createFileRoute, redirect } from "@tanstack/react-router"
-import { useAuthStore } from "@/stores/authStore"
+// src/routes/_auth.tsx — the decision lives in pure, unit-tested functions
+// in src/routes/guards.ts (evaluateAuthGuard / evaluatePublicGuard /
+// evaluateAdminGuard) that throw TanStack `redirect()` values.
+import { createFileRoute } from "@tanstack/react-router"
+import { useAuthStore } from "@/stores/useAuthStore"
+import { evaluateAuthGuard } from "./guards"
 
 export const Route = createFileRoute("/_auth")({
-  beforeLoad: ({ location }) => {
-    const { user, loading } = useAuthStore.getState()
-    if (!loading && !user) {
-      throw redirect({
-        to: "/login",
-        search: { redirect: location.href },
-      })
-    }
-  },
+  beforeLoad: ({ location }) => evaluateAuthGuard(useAuthStore.getState(), location),
 })
 ```
 
@@ -188,13 +183,15 @@ Use the standardized `useDebounced` hook from `@/hooks/useDebounced` with strate
 - **Skeletons**: Must include `aria-busy="true"`.
 - **Charts / Visualizations**: Must provide an accessible hidden tabular alternative: `<table className="sr-only"/>`.
 
-### 7.4. Motion Safety (`useReducedMotion`)
+### 7.4. Motion Safety (`prefers-reduced-motion`)
 
-- All Framer Motion animations must respect the user's OS-level motion preference:
+- All Framer Motion animations must respect the user's OS-level motion
+  preference. Read it through the project's jsdom-safe `useMediaQuery` hook
+  (framer-motion's own `useReducedMotion` is not used):
   ```typescript
-  import { useReducedMotion } from "@/hooks/useReducedMotion"
+  import { useMediaQuery } from "@/hooks/useMediaQuery"
 
-  const prefersReduced = useReducedMotion()
+  const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
   const transition = prefersReduced
     ? { duration: 0 }
     : { type: "spring", stiffness: 300, damping: 25 }
@@ -204,7 +201,7 @@ Use the standardized `useDebounced` hook from `@/hooks/useDebounced` with strate
 
 ## 8. Frontend Security & Sanitization
 
-- **HTML Sanitization (`SafeHtml`)**: Uses the WASM-based sanitizer (`wasm-sanitizer`) with an ammonia fallback (`nh3`) so that any WASM initialization error safely strips tags rather than rendering a blank screen (RZ-24-04).
+- **HTML Sanitization (`SafeHtml`)**: Sanitizes with the WASM ammonia build (`wasm-sanitizer`). If the WASM module is not initialized yet, it renders the caller's `fallback` or, without one, plain text via `htmlToPlainText` — never raw HTML and never a blank screen (RZ-24-04).
 - **Cookie & Token Safety**: Never expose access tokens to `globalThis.__ssrCookieGetter()`.
 - **CSRF Cookie Guarantee**: Unsafe HTTP mutations (POST, PUT, DELETE, PATCH) must invoke `ensureCsrfCookie()` before sending requests if the cookie is missing.
 - **Cross-Tab Synchronization**:
@@ -224,5 +221,5 @@ Use the standardized `useDebounced` hook from `@/hooks/useDebounced` with strate
 | Reading `ref.current` during render              | Violates React Compiler contract                           | Extract primitives or store in `useState`         |
 | Monolithic import of `jspdf` / `MapLibre`        | Blows past 500 KB bundle budget                            | Use dynamic `import()` or `React.lazy()`          |
 | Interactive controls < 44x44px                   | Violates WCAG 2.2 AA target size criteria                  | Set minimum dimension `min-w-[44px] min-h-[44px]` |
-| Unguarded Framer Motion animations               | Induces motion sickness for vestibular disorder users      | Wrap animation props with `useReducedMotion()`    |
+| Unguarded Framer Motion animations               | Induces motion sickness for vestibular disorder users      | Gate animation props on `prefers-reduced-motion`  |
 | Blob URLs created during render                  | Memory leaks and unpredictable garbage collection          | Allocate in effects/handlers; revoke on unmount   |

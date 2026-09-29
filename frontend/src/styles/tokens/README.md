@@ -147,16 +147,14 @@ CI gates the sync via `npm run tokens:sync && git diff --exit-code`. If
 this fails, somebody's CSS source got out of sync with `tokens.ts` —
 re-run the sync and commit the result.
 
-## Wave-by-Wave Token Changes
+## Usage Rules
 
-The audit trail in `docs/audits/INDEX.md` documents per-wave
-token additions, removals, and consolidations. Notable entries:
-
-- **Wave 120 SW6**: removed 3 orphan `@property` registrations + 12
-  hardcoded radii → `--radius-{xs,sm}` token references (628 vars)
-- **Wave 121 SW4**: consolidated `--cat-*` category palette from
-  `events.css` + `news.css` to `semantics.css` (no count change — same
-  names, just relocated)
-- **Wave 121 SW5**: added 3 `--focus-ring-*` primitives (631 vars).
-  Audit revealed only 1 box-shadow focus-ring site needed tokenization;
-  others are decorative borders, animations, or use `outline:` instead.
+1. Never hardcode colors, spacing, radii, shadows or durations — use a token.
+2. Prefer semantic tokens (`--bg-surface`, `--text-primary`) over raw scale
+   values; raw primitives belong in `primitives.css` only.
+3. In `framer-motion` code, take durations and easings from the `motion`
+   export of `@/theme/tokens` so JS animation stays in step with CSS.
+4. Use Tailwind `ring` utilities for status glows instead of bespoke
+   `box-shadow` values.
+5. When a token is retired, delete it from its CSS layer and re-run
+   `npm run tokens:sync`; history lives in git, not in this file.
