@@ -1,7 +1,15 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router"
 
 import ResetPassword from "../ResetPassword"
 import api from "@/api/client"
@@ -20,7 +28,10 @@ vi.mock("zxcvbn", () => ({
 const passwordAnalysis = vi.hoisted(() => ({
   shouldThrow: false,
   score: 3,
-  suggestions: ["Add another word"],
+  warning: "",
+  suggestions: ["Add another word"] as string[] | undefined,
+  omitFeedback: false,
+  reportLocale: false,
   deferred: false,
   pending: [] as Array<{
     resolve: (result: {
@@ -32,6 +43,10 @@ const passwordAnalysis = vi.hoisted(() => ({
 }))
 vi.mock("@zxcvbn-ts/core", () => ({
   ZxcvbnFactory: class {
+    private readonly locale: string
+    constructor(options: { translations: { locale: string } }) {
+      this.locale = options.translations.locale
+    }
     check() {
       if (passwordAnalysis.shouldThrow) throw new Error("analysis unavailable")
       if (passwordAnalysis.deferred) {
@@ -39,14 +54,22 @@ vi.mock("@zxcvbn-ts/core", () => ({
           passwordAnalysis.pending.push({ resolve, reject })
         })
       }
+      if (passwordAnalysis.omitFeedback) return { score: passwordAnalysis.score }
       return {
         score: passwordAnalysis.score,
-        feedback: { warning: "", suggestions: passwordAnalysis.suggestions },
+        feedback: {
+          warning: passwordAnalysis.reportLocale
+            ? `locale:${this.locale}`
+            : passwordAnalysis.warning,
+          suggestions: passwordAnalysis.suggestions,
+        },
       }
     }
   },
 }))
 vi.mock("@zxcvbn-ts/language-common", () => ({ adjacencyGraphs: {}, dictionary: {} }))
+vi.mock("@zxcvbn-ts/language-en", () => ({ dictionary: {}, translations: { locale: "en" } }))
+vi.mock("@zxcvbn-ts/language-ru", () => ({ dictionary: {}, translations: { locale: "ru" } }))
 
 const renderWithToken = () =>
   renderWithRouter({
@@ -54,14 +77,24 @@ const renderWithToken = () =>
     // TanStack Router path param syntax is `$token` (vs react-router-dom `:token`).
     path: "/reset/$token",
     initialPath: "/reset/token123",
+    // Reset-password is a public form; no auth profile synchronization is
+    // needed for its behavior and would outlive the test's mounted tree.
+    authProvider: false,
   })
 
 describe("ResetPassword page", () => {
+  afterEach(() => {
+    cleanup()
+  })
+
   beforeEach(() => {
     localStorage.clear()
     passwordAnalysis.shouldThrow = false
     passwordAnalysis.score = 3
+    passwordAnalysis.warning = ""
     passwordAnalysis.suggestions = ["Add another word"]
+    passwordAnalysis.omitFeedback = false
+    passwordAnalysis.reportLocale = false
     passwordAnalysis.deferred = false
     passwordAnalysis.pending = []
   })
@@ -459,5 +492,417 @@ describe("ResetPassword page", () => {
 
     await waitFor(() => expect(screen.getByText(tAuth("reset.successTitle"))).toBeInTheDocument())
     expect(payloads).toEqual([{ password: "Password123!", token: "query-token" }])
+  })
+})
+
+describe("ResetPassword behaviour details", () => {
+  // SHA-1 suffix of a fixture password, the shape of an HIBP range response.
+  const breachSuffixForPassword123 = "F5F70D47ADC2DB2EB397FBEF5F7BC560E29:3\n" // pragma: allowlist secret
+  const passwordInput = () => screen.getByLabelText(matchText(tAuth("fields.password")))
+  const confirmInput = () => screen.getByLabelText(matchText(tAuth("fields.confirmPassword")))
+  const feedbackIcon = (container: HTMLElement) => container.querySelector(".lucide-shield-check")
+  const mockBreachRange = (body = "", status = 200) =>
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(body, { status }))
+  const mockReducedMotion = () =>
+    vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query === "(prefers-reduced-motion: reduce)",
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList
+    )
+  const fillMatchingPasswords = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.type(passwordInput(), "Password123!")
+    await user.type(confirmInput(), "Password123!")
+    await user.click(screen.getByRole("button", { name: tAuth("reset.saveButton") }))
+  }
+  const motionView = (element: Element | null) => element?.closest("[style]") ?? null
+  const renderNestedResetRoute = (initialPath: string) => {
+    const rootRoute = createRootRoute({ component: Outlet })
+    const pageRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/reset-password",
+      component: ResetPassword,
+    })
+    const tokenRoute = createRoute({
+      getParentRoute: () => pageRoute,
+      path: "$token",
+      component: () => null,
+    })
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([pageRoute.addChildren([tokenRoute])]),
+      history: createMemoryHistory({ initialEntries: [initialPath] }),
+    })
+    render(<RouterProvider router={router} />)
+    return router
+  }
+
+  beforeEach(() => {
+    passwordAnalysis.shouldThrow = false
+    passwordAnalysis.score = 3
+    passwordAnalysis.warning = ""
+    passwordAnalysis.suggestions = ["Add another word"]
+    passwordAnalysis.omitFeedback = false
+    passwordAnalysis.reportLocale = false
+    passwordAnalysis.deferred = false
+    passwordAnalysis.pending = []
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it("renders its guidance without transient hints for a valid link", async () => {
+    const { container } = await renderWithToken()
+
+    expect(screen.getByText(tAuth("reset.subtitle"))).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: tAuth("reset.linkHelp") })).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.queryByText(tAuth("messages.capsLock"))).not.toBeInTheDocument()
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
+    expect(feedbackIcon(container)).toBeNull()
+    expect(passwordInput()).toHaveAttribute("type", "password")
+    expect(confirmInput()).toHaveAttribute("type", "password")
+    expect(passwordInput()).toHaveAttribute("aria-invalid", "false")
+    expect(confirmInput()).toHaveAttribute("aria-invalid", "false")
+  })
+
+  it("marks both fields invalid when their validation fails", async () => {
+    mockBreachRange()
+    const user = userEvent.setup()
+    await renderWithToken()
+
+    await user.type(passwordInput(), "short")
+    await user.tab()
+    await waitFor(() => expect(passwordInput()).toHaveAttribute("aria-invalid", "true"))
+
+    await user.clear(passwordInput())
+    await user.type(passwordInput(), "Password123!")
+    await user.type(confirmInput(), "Different123!")
+    await user.tab()
+    await waitFor(() => expect(confirmInput()).toHaveAttribute("aria-invalid", "true"))
+  })
+
+  it("shows the success copy with a way back to sign in", async () => {
+    server.use(http.post("*/password/reset", () => HttpResponse.json({ ok: true })))
+    mockBreachRange()
+    const user = userEvent.setup()
+    await renderWithToken()
+
+    await fillMatchingPasswords(user)
+
+    expect(await screen.findByText(tAuth("reset.successMessage"))).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: tAuth("actions.goToLogin") })).toBeInTheDocument()
+  })
+
+  it.each([
+    [0, "strength.very_weak", 10],
+    [1, "strength.weak", 30],
+    [2, "strength.medium", 55],
+    [3, "strength.strong", 75],
+    [4, "strength.very_strong", 100],
+  ] as const)("renders score %i as %s at %i percent", async (score, labelKey, percent) => {
+    passwordAnalysis.score = score
+    mockBreachRange()
+    await renderWithToken()
+
+    fireEvent.change(passwordInput(), { target: { value: "Password123!" } })
+
+    const progress = await screen.findByRole("progressbar")
+    expect(progress).toHaveAttribute("aria-valuenow", String(percent))
+    expect(progress.firstElementChild).toHaveClass(
+      score < 2 ? "bg-error-text" : score === 2 ? "bg-warning-text" : "bg-success-text"
+    )
+    expect(screen.getByText(tCommon(labelKey))).toBeInTheDocument()
+    expect(screen.getByText(tAuth("register.passwordStrength"))).toBeInTheDocument()
+  })
+
+  it.each([
+    [
+      "a warning and suggestions",
+      "Too guessable",
+      ["Add a word", "Avoid years"],
+      "Too guessable · Add a word · Avoid years",
+    ],
+    ["only a warning", "Too guessable", [], "Too guessable"],
+    ["a warning without a suggestion list", "Too guessable", undefined, "Too guessable"],
+    ["only suggestions", "", ["Add a word"], "· Add a word"],
+  ])("composes password feedback from %s", async (_label, warning, suggestions, expected) => {
+    passwordAnalysis.warning = warning
+    passwordAnalysis.suggestions = suggestions
+    mockBreachRange()
+    await renderWithToken()
+
+    fireEvent.change(passwordInput(), { target: { value: "Password123!" } })
+
+    expect(await screen.findByText(expected)).toBeInTheDocument()
+  })
+
+  it("keeps the strength meter when the analyzer returns no feedback", async () => {
+    passwordAnalysis.omitFeedback = true
+    mockBreachRange()
+    const { container } = await renderWithToken()
+
+    fireEvent.change(passwordInput(), { target: { value: "Password123!" } })
+
+    expect(await screen.findByRole("progressbar")).toHaveAttribute("aria-valuenow", "75")
+    expect(feedbackIcon(container)).toBeNull()
+  })
+
+  it("clears strength, feedback and the breach warning when the password is emptied", async () => {
+    mockBreachRange(breachSuffixForPassword123)
+    const { container } = await renderWithToken()
+
+    fireEvent.change(passwordInput(), { target: { value: "Password123!" } })
+    expect(await screen.findByText(tAuth("reset.pwnedWarning"))).toBeInTheDocument()
+    expect(screen.getByRole("progressbar")).toBeInTheDocument()
+    expect(feedbackIcon(container)).not.toBeNull()
+
+    fireEvent.change(passwordInput(), { target: { value: "" } })
+
+    await waitFor(() => {
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
+      expect(screen.queryByText(tAuth("reset.pwnedWarning"))).not.toBeInTheDocument()
+      expect(feedbackIcon(container)).toBeNull()
+    })
+  })
+
+  it("drops the previous strength when a later analysis fails", async () => {
+    mockBreachRange()
+    const { container } = await renderWithToken()
+
+    fireEvent.change(passwordInput(), { target: { value: "Password123!" } })
+    expect(await screen.findByText("· Add another word")).toBeInTheDocument()
+
+    passwordAnalysis.shouldThrow = true
+    fireEvent.change(passwordInput(), { target: { value: "Password456!" } })
+
+    await waitFor(() => {
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
+      expect(feedbackIcon(container)).toBeNull()
+    })
+  })
+
+  it("analyses only the latest password typed within the debounce window", async () => {
+    passwordAnalysis.deferred = true
+    mockBreachRange()
+    await renderWithToken()
+
+    fireEvent.change(passwordInput(), { target: { value: "Password1!" } })
+    fireEvent.change(passwordInput(), { target: { value: "Password2!" } })
+    await waitFor(() => expect(passwordAnalysis.pending.length).toBeGreaterThan(0))
+    await act(() => new Promise((resolve) => setTimeout(resolve, 400)))
+
+    expect(passwordAnalysis.pending).toHaveLength(1)
+  })
+
+  it.each(["resolve", "reject"] as const)(
+    "ignores a superseded analysis that settles last (%s)",
+    async (outcome) => {
+      passwordAnalysis.deferred = true
+      passwordAnalysis.suggestions = []
+      mockBreachRange()
+      await renderWithToken()
+
+      fireEvent.change(passwordInput(), { target: { value: "Password1!" } })
+      await waitFor(() => expect(passwordAnalysis.pending).toHaveLength(1))
+      fireEvent.change(passwordInput(), { target: { value: "Password2!" } })
+      await waitFor(() => expect(passwordAnalysis.pending).toHaveLength(2))
+
+      await act(async () => {
+        passwordAnalysis.pending[1]!.resolve({
+          score: 4,
+          feedback: { warning: "", suggestions: [] },
+        })
+      })
+      expect(await screen.findByText(tCommon("strength.very_strong"))).toBeInTheDocument()
+
+      await act(async () => {
+        if (outcome === "resolve") {
+          passwordAnalysis.pending[0]!.resolve({
+            score: 0,
+            feedback: { warning: "", suggestions: [] },
+          })
+        } else {
+          passwordAnalysis.pending[0]!.reject(new Error("analysis unavailable"))
+        }
+      })
+
+      expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100")
+      expect(screen.getByText(tCommon("strength.very_strong"))).toBeInTheDocument()
+    }
+  )
+
+  it("does not query the breach range when the page unmounts while hashing", async () => {
+    let finishDigest!: (hash: ArrayBuffer) => void
+    const digest = vi
+      .spyOn(crypto.subtle, "digest")
+      .mockImplementation(() => new Promise<ArrayBuffer>((resolve) => (finishDigest = resolve)))
+    const fetchMock = mockBreachRange()
+    const { unmount } = await renderWithToken()
+
+    fireEvent.change(passwordInput(), { target: { value: "Password123!" } })
+    await waitFor(() => expect(digest).toHaveBeenCalled())
+    unmount()
+    await act(async () => {
+      finishDigest(new ArrayBuffer(20))
+    })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("queries only the hash prefix and ignores a failed range response", async () => {
+    const fetchMock = mockBreachRange(breachSuffixForPassword123, 503)
+    await renderWithToken()
+
+    fireEvent.change(passwordInput(), { target: { value: "Password123!" } })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://api.pwnedpasswords.com/range/49EFE")
+    expect(screen.queryByText(tAuth("reset.pwnedWarning"))).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ["null", null],
+    ["a response without data", { response: {} }],
+  ])("uses the generic error when the reset request rejects with %s", async (_label, error) => {
+    vi.spyOn(api, "post").mockRejectedValueOnce(error)
+    mockBreachRange()
+    const user = userEvent.setup()
+    await renderWithToken()
+
+    await fillMatchingPasswords(user)
+
+    expect(await screen.findByText(tAuth("reset.errorGeneric"))).toBeInTheDocument()
+  })
+
+  it("does not send a reset request without a token", async () => {
+    const post = vi.spyOn(api, "post")
+    mockBreachRange()
+    const user = userEvent.setup()
+    await renderWithRouter({ ui: ResetPassword, path: "/reset", initialPath: "/reset" })
+
+    await fillMatchingPasswords(user)
+
+    expect(screen.getByText(tAuth("reset.invalidLink"))).toBeInTheDocument()
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it("reports Caps Lock from key down and key up on both fields", async () => {
+    const modifierState = vi.spyOn(window.KeyboardEvent.prototype, "getModifierState")
+    const capsOn = () => modifierState.mockImplementation((key) => key === "CapsLock")
+    const capsOff = () => modifierState.mockImplementation(() => false)
+    const capsWarning = () => screen.queryByText(tAuth("messages.capsLock"))
+    await renderWithToken()
+
+    for (const field of [passwordInput(), confirmInput()]) {
+      capsOn()
+      fireEvent.keyDown(field, { key: "a" })
+      expect(capsWarning()).toBeInTheDocument()
+      capsOff()
+      fireEvent.keyDown(field, { key: "a" })
+      expect(capsWarning()).not.toBeInTheDocument()
+      capsOn()
+      fireEvent.keyUp(field, { key: "a" })
+      expect(capsWarning()).toBeInTheDocument()
+      capsOff()
+      fireEvent.keyUp(field, { key: "a" })
+      expect(capsWarning()).not.toBeInTheDocument()
+    }
+  })
+
+  it("starts the entrance hidden and offset when motion is allowed", async () => {
+    await renderWithToken()
+
+    const formView = motionView(screen.getByRole("button", { name: tAuth("reset.saveButton") }))
+    expect(formView).toHaveStyle({ opacity: "0" })
+    expect(motionView(formView!.parentElement)).toHaveStyle({
+      opacity: "0",
+      transform: "translateY(20px)",
+    })
+  })
+
+  it("renders every view in its final state under reduced motion", async () => {
+    mockReducedMotion()
+    server.use(http.post("*/password/reset", () => HttpResponse.json({ ok: true })))
+    mockBreachRange()
+    const user = userEvent.setup()
+    await renderWithToken()
+
+    const formView = motionView(screen.getByRole("button", { name: tAuth("reset.saveButton") }))
+    expect(formView).toHaveStyle({ opacity: "1" })
+    expect(motionView(formView!.parentElement)).toHaveStyle({ opacity: "1", transform: "none" })
+
+    await fillMatchingPasswords(user)
+
+    const successView = motionView(await screen.findByText(tAuth("reset.successTitle")))
+    expect(successView).toHaveStyle({ opacity: "1", transform: "none" })
+  })
+
+  it("starts the success view faded and scaled down when motion is allowed", async () => {
+    server.use(http.post("*/password/reset", () => HttpResponse.json({ ok: true })))
+    mockBreachRange()
+    const user = userEvent.setup()
+    await renderWithToken()
+
+    await fillMatchingPasswords(user)
+
+    const successView = motionView(await screen.findByText(tAuth("reset.successTitle")))
+    expect(successView).toHaveStyle({ opacity: "0", transform: "scale(0.95)" })
+  })
+
+  it("reads the reset token from the nested token route", async () => {
+    const payloads: unknown[] = []
+    server.use(
+      http.post("*/password/reset", async ({ request }) => {
+        payloads.push(await request.json())
+        return HttpResponse.json({ ok: true })
+      })
+    )
+    mockBreachRange()
+    const user = userEvent.setup()
+    renderNestedResetRoute("/reset-password/nested-token")
+
+    await screen.findByRole("button", { name: tAuth("reset.saveButton") })
+    await fillMatchingPasswords(user)
+
+    await screen.findByText(tAuth("reset.successTitle"))
+    expect(payloads).toEqual([{ password: "Password123!", token: "nested-token" }])
+  })
+
+  it("flags the link as invalid once navigation drops the token", async () => {
+    const router = renderNestedResetRoute("/reset-password/nested-token")
+    await screen.findByRole("button", { name: tAuth("reset.saveButton") })
+    expect(screen.queryByText(tAuth("reset.invalidLink"))).not.toBeInTheDocument()
+
+    await act(() => router.navigate({ to: "/reset-password" }))
+
+    expect(await screen.findByText(tAuth("reset.invalidLink"))).toBeInTheDocument()
+  })
+
+  it("analyses strength in the resolved interface language", async () => {
+    const { resolvedLanguage, language } = i18n
+    passwordAnalysis.reportLocale = true
+    passwordAnalysis.suggestions = []
+    mockBreachRange()
+    i18n.resolvedLanguage = "ru"
+    i18n.language = "en"
+    try {
+      await renderWithToken()
+      fireEvent.change(passwordInput(), { target: { value: "Password123!" } })
+
+      expect(await screen.findByText("locale:ru")).toBeInTheDocument()
+    } finally {
+      i18n.resolvedLanguage = resolvedLanguage
+      i18n.language = language
+    }
   })
 })

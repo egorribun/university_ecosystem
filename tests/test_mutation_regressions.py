@@ -454,7 +454,14 @@ def test_uuid_rust_conversion_uses_stable_four_byte_prefix() -> None:
     rust_item = service._to_rust_item(item)
 
     expected_id = int.from_bytes(item_id.bytes[:4], "big") & 0x7FFFFFFF
-    assert rust_item.id == expected_id
+    assert rust_item.id == expected_id, (
+        "UUID conversion produced no Rust id. _to_rust_item captures "
+        "app.services.schedule_optimizer._UNSET as a keyword default at "
+        "definition time but re-reads it from module globals at call time, so "
+        "an importlib.reload elsewhere that rebinds the module namespace "
+        "without restoring it strands the sentinel and silently selects the "
+        "override branch. See test_logic_misc_coverage."
+    )
 
 
 @pytest.mark.parametrize(

@@ -128,11 +128,213 @@ async def test_s3_delete_file(s3_storage, mock_s3_client):
 def test_s3_extract_key(s3_storage):
     """Test extracting key from S3 URL."""
     assert s3_storage._extract_key("https://cdn.example.com/my-key") == "my-key"
-    assert s3_storage._extract_key("/my-key") == "my-key"
+    assert s3_storage._extract_key("/my-key") is None
     assert (
         s3_storage._extract_key("s3://test-bucket/direct/key.jpg") == "direct/key.jpg"
     )
     assert s3_storage._extract_key("s3://other-bucket/key.jpg") is None
+
+
+@pytest.mark.parametrize(
+    "file_url",
+    [
+        "http://cdn.example.com:8443/uploads/image.png",
+        "https://cdn.example.com:443/uploads/image.png",
+        "https://evil.example.com:8443/uploads/image.png",
+        "https://cdn.example.com:8443/uploads-extra/image.png",
+        "https://cdn.example.com:8443/other/image.png",
+        "https://cdn.example.com:8443/uploads",
+        "//evil.example.com/uploads/image.png",
+        "ftp://cdn.example.com:8443/uploads/image.png",
+    ],
+)
+def test_s3_rejects_urls_outside_exact_public_origin_and_base_path(file_url):
+    storage = S3Storage(
+        bucket="uploads", base_url="https://cdn.example.com:8443/uploads"
+    )
+
+    assert storage._extract_key(file_url) is None
+
+
+def test_s3_extract_key_preserves_valid_canonical_urls_and_raw_keys():
+    storage = S3Storage(
+        bucket="uploads", base_url="https://cdn.example.com:8443/uploads"
+    )
+
+    assert (
+        storage._extract_key("https://cdn.example.com:8443/uploads/a/b.png")
+        == "a/b.png"
+    )
+    assert storage._extract_key("a/b.png") == "a/b.png"
+    assert storage._extract_key("/a/b.png") is None
+    assert storage._extract_key("s3://uploads/a/b.png") == "a/b.png"
+
+
+@pytest.mark.asyncio
+async def test_s3_saved_url_round_trips_to_exact_written_key(mock_s3_client):
+    storage = S3Storage(
+        bucket="uploads",
+        client=mock_s3_client,
+        base_url="https://cdn.example.com:8443/uploads",
+    )
+
+    url = await storage.save_file("a/b.png", b"image")
+
+    assert url == "https://cdn.example.com:8443/uploads/a/b.png"
+    assert storage._extract_key(url) == "a/b.png"
+    mock_s3_client.put_object.assert_awaited_once_with(
+        Bucket="uploads", Key="a/b.png", Body=b"image"
+    )
+
+
+@pytest.mark.parametrize("relative_path", ["a?b", "a#b", "a;b", "a/%41.png"])
+def test_s3_save_key_rejects_unencoded_url_delimiters(relative_path):
+    storage = S3Storage(bucket="uploads")
+
+    with pytest.raises(ValueError):
+        storage._normalize_key(relative_path)
+
+
+@pytest.mark.parametrize("relative_path", ["\tsecret.png", "secret.png\n"])
+def test_s3_save_key_rejects_control_characters_before_whitespace_trimming(
+    relative_path,
+):
+    storage = S3Storage(bucket="uploads")
+
+    with pytest.raises(ValueError):
+        storage._normalize_key(relative_path)
+
+
+@pytest.mark.parametrize(
+    "relative_path", [" foo", "foo ", "/foo", "foo/", "//foo", "a//b"]
+)
+def test_s3_save_key_rejects_noncanonical_slashes_and_outer_spaces(relative_path):
+    storage = S3Storage(bucket="uploads")
+
+    with pytest.raises(ValueError):
+        storage._normalize_key(relative_path)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "file_url",
+    [
+        "",
+        "   ",
+        "https://cdn.example.com:8443/uploads",
+        "https://cdn.example.com:8443/uploads-other/secret.png",
+        "https://elsewhere.example.com:8443/uploads/secret.png",
+        "s3://other-bucket/secret.png",
+    ],
+)
+async def test_s3_rejected_urls_never_reach_head_or_get_object(file_url):
+    client = AsyncMock()
+    storage = S3Storage(
+        bucket="uploads", client=client, base_url="https://cdn.example.com:8443/uploads"
+    )
+
+    assert await storage.exists(file_url) is False
+    with pytest.raises(FileNotFoundError):
+        await storage.read_file(file_url)
+
+    client.head_object.assert_not_awaited()
+    client.get_object.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "file_url", ["/storage/uploads/avatars/user.png", "/avatars/user.png"]
+)
+async def test_s3_relative_base_rejects_legacy_or_bare_slash_prefixed_urls(file_url):
+    client = AsyncMock()
+    storage = S3Storage(bucket="uploads", client=client, base_url="/api/v1/img")
+
+    assert storage._extract_key(file_url) is None
+    assert await storage.exists(file_url) is False
+    with pytest.raises(FileNotFoundError):
+        await storage.read_file(file_url)
+    await storage.delete_file(file_url)
+
+    client.head_object.assert_not_awaited()
+    client.get_object.assert_not_awaited()
+    client.delete_object.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "file_url",
+    [
+        "a/../secret.png",
+        "a/./secret.png",
+        "a//secret.png",
+        r"a\secret.png",
+        "a/\x00secret.png",
+        "a/\nsecret.png",
+        "a/\tsecret.png",
+        "\tsecret.png",
+        "secret.png\n",
+        "a/%2e%2e/secret.png",
+        "a/%252e%252e/secret.png",
+        "a/%2fsecret.png",
+        "a/%252fsecret.png",
+        "a/%5csecret.png",
+        "a/%00secret.png",
+        "a/%ffsecret.png",
+        "a/%41.png",
+        " secret.png",
+        "secret.png ",
+        "///secret.png",
+        "////secret.png",
+        "secret.png?another-key=1",
+        "secret.png#another-key",
+        "secret.png;another-key",
+        "s3://uploads/secret.png?another-key=1",
+        "s3://uploads//secret.png",
+        "s3://uploads/a/../secret.png",
+        "https://cdn.example.com:8443/uploads//secret.png",
+        "https://cdn.example.com:8443/uploads/secret.png?w=400",
+        "https://cdn.example.com:8443/uploads/a//secret.png",
+        "https://cdn.example.com:8443/uploads/a/%2e%2e/secret.png",
+    ],
+)
+async def test_s3_noncanonical_keys_cannot_reach_object_operations(file_url):
+    client = AsyncMock()
+    storage = S3Storage(
+        bucket="uploads", client=client, base_url="https://cdn.example.com:8443/uploads"
+    )
+
+    assert storage._extract_key(file_url) is None
+    assert await storage.exists(file_url) is False
+    with pytest.raises(FileNotFoundError):
+        await storage.read_file(file_url)
+    await storage.delete_file(file_url)
+
+    client.head_object.assert_not_awaited()
+    client.get_object.assert_not_awaited()
+    client.delete_object.assert_not_awaited()
+
+
+def test_s3_root_public_url_rejects_repeated_path_delimiter():
+    storage = S3Storage(bucket="uploads", base_url="https://cdn.example.com:8443")
+
+    assert storage._extract_key("https://cdn.example.com:8443//secret.png") is None
+
+
+@pytest.mark.asyncio
+async def test_s3_relative_image_proxy_url_round_trips_to_original_key(
+    mock_s3_client,
+):
+    storage = S3Storage(bucket="uploads", client=mock_s3_client, base_url="/api/v1/img")
+
+    url = await storage.save_file("avatars/user.png", b"image")
+
+    assert url == "/api/v1/img/avatars/user.png"
+    assert storage._extract_key("/api/v1/img") is None
+    assert storage._extract_key(f"{url}?w=400") is None
+    await storage.delete_file(url)
+    mock_s3_client.delete_object.assert_awaited_once_with(
+        Bucket="uploads", Key="avatars/user.png"
+    )
 
 
 # ============================================================

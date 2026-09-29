@@ -53,6 +53,7 @@ import { createNotFoundResponse, shouldServeNotFoundDocument } from "./not-found
 import { pipeResponseBody } from "./server-response-stream.mjs"
 import { warmSsrRuntime } from "./server-readiness.mjs"
 import { sanitizeRequestTarget } from "./server-request-log.mjs"
+import { resolveStaticFile } from "./server-static.mjs"
 import {
   acceptsGzip,
   gzipResponse,
@@ -128,13 +129,10 @@ if (typeof handler?.fetch !== "function") {
 // (chat — the only feature exercising crypto.worker) was Phase 5 punted.
 
 function serveStatic(req, res, urlPath) {
-  // Security: reject paths that escape staticRoot via `..`. path.join +
-  // resolve would silently accept `/../etc/passwd`-style traversal under
-  // some cwd setups, so we do an explicit prefix check after resolve.
-  const requested = path.normalize(decodeURIComponent(urlPath)).replace(/^[/\\]+/, "")
-  if (requested.includes("..")) return false
-  const filePath = path.resolve(staticRoot, requested)
-  if (!filePath.startsWith(staticRoot)) return false
+  // Security: resolve and validate the decoded path before touching the
+  // filesystem.  Malformed URI encoding and traversal both fail closed.
+  const filePath = resolveStaticFile(staticRoot, urlPath)
+  if (!filePath) return false
   let stat
   try {
     stat = statSync(filePath)

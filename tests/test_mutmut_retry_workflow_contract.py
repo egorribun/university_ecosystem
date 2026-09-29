@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,33 @@ def _workflow() -> dict[str, Any]:
 
 def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
     return next(step for step in job["steps"] if step.get("name") == name)
+
+
+def test_stats_sidecar_uses_the_locked_installed_producer_interpreter() -> None:
+    stats = _workflow()["jobs"]["mutation-tests-stats"]
+    sidecar = _step(stats, "Create retry-bound mutmut stats sidecar")
+    command = next(
+        line.rstrip().removesuffix("\\").strip()
+        for line in sidecar["run"].splitlines()
+        if "scripts.mutmut_retry_artifacts create-stats" in line
+    )
+    assert shlex.split(command) == [
+        "uv",
+        "run",
+        "--frozen",
+        "--no-sync",
+        "python",
+        "-m",
+        "scripts.mutmut_retry_artifacts",
+        "create-stats",
+    ]
+    dependencies = _step(stats, "Install dependencies")
+    collection = _step(stats, "Collect mutmut stats shard")
+    assert stats["steps"].index(dependencies) < stats["steps"].index(collection)
+    assert stats["steps"].index(collection) < stats["steps"].index(sidecar)
+    assert sidecar["if"] == collection["if"] == dependencies["if"]
+    assert "set -euo pipefail" in sidecar["run"]
+    assert "continue-on-error" not in sidecar
 
 
 def test_primary_ci_mutmut_chain_selects_only_complete_retry_safe_candidates() -> None:
@@ -69,8 +97,21 @@ def test_primary_ci_mutmut_chain_selects_only_complete_retry_safe_candidates() -
         "python -m scripts.mutmut_retry_artifacts create-universe"
         in universe_create["run"]
     )
+    assert "--include-helm-dependencies" in universe_create["run"]
     universe_upload = _step(universe, "Upload central mutmut universe")
     assert universe_upload["with"]["retention-days"] == 30
+    assert (
+        "charts/university-ecosystem/charts/redis-20.13.4.tgz"
+        in universe_upload["with"]["path"]
+    )
+    assert (
+        "charts/university-ecosystem/charts/nats-8.5.4.tgz"
+        in universe_upload["with"]["path"]
+    )
+    assert universe_upload["if"] == "steps.mutation_scope.outputs.has_python == 'true'"
+    empty_upload = _step(universe, "Upload empty central mutmut universe")
+    assert empty_upload["if"] == "steps.mutation_scope.outputs.has_python != 'true'"
+    assert "charts/university-ecosystem/charts" not in empty_upload["with"]["path"]
 
     scope = _step(incremental, "Detect changed Python source")
     universe_selector = _step(

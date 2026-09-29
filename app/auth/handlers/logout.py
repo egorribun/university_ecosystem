@@ -9,19 +9,21 @@ import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, Request, Response
 from redis.exceptions import RedisError
 from sqlalchemy import select
 from starlette import status
 
-from app.api.deps import get_db
 from app.auth.security import decode_token
+from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.models import ActiveSession
+from app.services.audit_service import AuditService
 from app.services.auth.login_service import LoginService
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    pass
 
 router = APIRouter(tags=["auth"])
 
@@ -31,10 +33,12 @@ router = APIRouter(tags=["auth"])
     status_code=status.HTTP_200_OK,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def logout(
     response: Response,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: FromDishka[AsyncDatabaseSession],
+    audit: FromDishka[AuditService],
 ) -> dict[str, str]:
     """Terminate the client session.
 
@@ -76,9 +80,6 @@ async def logout(
         if session:
             await db.commit()
 
-            from app.core.container import get_audit_service
-
-            audit = get_audit_service()
             audit.log(
                 "auth.logout.revoked",
                 request,

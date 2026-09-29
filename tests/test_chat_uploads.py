@@ -139,7 +139,7 @@ async def test_send_message_blocks_infected_file(
 
 
 @pytest.mark.asyncio
-async def test_send_message_generates_public_urls(
+async def test_send_message_exposes_authorized_attachment_urls(
     monkeypatch, db_session, user_factory
 ):
     sender = await user_factory()
@@ -190,15 +190,18 @@ async def test_send_message_generates_public_urls(
     assert len(message.attachments) == 1
     attachment = message.attachments[0]
 
-    assert attachment.url.startswith("https://cdn.example/chat_uploads/")
+    assert attachment.url.startswith(
+        f"/api/v1/chats/{chat.id}/attachments/chat_{chat.id}_"
+    )
+    assert attachment.url.endswith(".txt")
     assert attachment.size == 5
 
     stored = await db_session.execute(
         select(Attachment).where(Attachment.id == attachment.id)
     )
-    assert stored.scalar_one().url == attachment.url
+    assert stored.scalar_one().url.startswith("https://cdn.example/chat_uploads/chat_")
 
     method, (relative_path, _data), kwargs = backend.calls[0]
     assert method == "save"
-    assert relative_path.startswith("chat_uploads/")
+    assert relative_path.startswith(f"chat_uploads/chat_{chat.id}_")
     assert kwargs["content_type"] == "text/plain"

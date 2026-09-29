@@ -95,7 +95,7 @@ jobs:
             > artifacts/quality/quality-artifact-pages.json
           python scripts/quality/validate_release_artifact_evidence.py \
             --pages artifacts/quality/quality-artifact-pages.json \
-            --expected-name "quality-evidence-$RELEASE_SHA"
+            --expected-name "quality-evidence-$RELEASE_SHA-attempt-$run_attempt"
 
       - name: Clean quality evidence destinations
         run: |
@@ -106,7 +106,7 @@ jobs:
       - name: Download SHA-bound quality evidence
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: quality-evidence-${{ inputs.release-sha }}
+          name: quality-evidence-${{ inputs.release-sha }}-attempt-${{ steps.quality-run.outputs.run-attempt }}
           run-id: ${{ inputs.quality-run-id }}
           github-token: ${{ github.token }}
           path: .
@@ -270,7 +270,9 @@ jobs:
               "quality": {
                   "run_id": quality_run_id,
                   "run_attempt": quality_run_attempt,
-                  "evidence_artifact_name": f"quality-evidence-{release_sha}",
+                  "evidence_artifact_name": (
+                      f"quality-evidence-{release_sha}-attempt-{quality_run_attempt}"
+                  ),
                   "contract_sha256": contract_sha256,
                   "check_policy_sha256": policy_sha256,
                   "check_event": "push_main",

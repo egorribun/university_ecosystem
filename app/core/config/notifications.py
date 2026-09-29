@@ -54,10 +54,11 @@ def _validate_webpush_subject(value: str) -> str:
 class NotificationSettings(BaseAppSettings):
     smtp_host: str = ""
     smtp_port: int = 0
+    smtp_starttls: bool = False
+    smtp_security: str = Field(default="none", validate_default=True)
     smtp_user: str = ""
     smtp_password: str = ""
-    smtp_security: str = "none"
-    smtp_starttls: bool = False
+    smtp_mfa_total_timeout_seconds: float = Field(default=60, gt=0, le=90)
     mail_from: str = "no-reply@example.com"
 
     vapid_public_key: str = ""
@@ -90,6 +91,15 @@ class NotificationSettings(BaseAppSettings):
     outbox_batch_size: int = 20
     outbox_max_retries: int = 5
     embedded_outbox_worker_enabled: bool = True
+    # BE-08: the CDC worker consumes PostgreSQL logical replication instead of
+    # polling stored_events. It is an alternative to the polling worker above,
+    # never an addition -- both publish the same DomainEvents to the same
+    # JetStream stream, so running them together would double-deliver. It stays
+    # off by default. Enabling it currently fails startup before resources are
+    # opened: asyncpg does not support this prototype's replication API and the
+    # replay/integration gates in ADR-037 remain deferred. Logical WAL alone is
+    # not sufficient to enable it safely.
+    embedded_cdc_outbox_worker_enabled: bool = False
 
     # RZ-20-02 (audit 2026-03-24): Docker Secrets / K8s Secrets support.
     @field_validator("vapid_private_key", mode="before")
@@ -104,10 +114,12 @@ class NotificationSettings(BaseAppSettings):
 
     @field_validator("smtp_security", mode="before")
     @classmethod
-    def _normalize_smtp_security(cls, value: str | None) -> str:
+    def _normalize_smtp_security(cls, value: str | None, info: ValidationInfo) -> str:
         normalized = (value or "none").strip().lower()
         if normalized not in {"none", "ssl", "starttls"}:
             raise ValueError("SMTP_SECURITY must be one of: none, ssl, starttls")
+        if normalized == "none" and info.data.get("smtp_starttls") is True:
+            return "starttls"
         return normalized
 
     @field_validator("smtp_user")
@@ -116,7 +128,9 @@ class NotificationSettings(BaseAppSettings):
         if not value:
             return value
         security = str(info.data.get("smtp_security") or "none").lower()
-        environment = str(info.data.get("environment") or "production").lower()
+        environment = str(
+            info.data.get("environment") or os.environ.get("ENVIRONMENT", "production")
+        ).lower()
         if security == "none" and environment not in _DEVELOPMENT_ENVIRONMENTS:
             _logger.warning(
                 "SMTP_USER is configured while SMTP_SECURITY=none for ENVIRONMENT=%s. "

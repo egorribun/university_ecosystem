@@ -20,17 +20,20 @@ import type { SsrAuthState } from "@/ssrAuth"
  * back to the safe `null` user state.
  */
 export function readSsrAuthHint(): SsrAuthState | undefined {
+  let serverHint: SsrAuthState | undefined
   try {
-    const serverHint = globalThis.__ssrAuthGetter__?.()
-    if (serverHint) return serverHint
-
-    if (typeof document === "undefined") return undefined
-    const marker = document.getElementById("root")?.getAttribute("data-ssr-auth")
-    if (!marker?.startsWith("authenticated:")) return undefined
-    const role = marker.slice("authenticated:".length)
-    if (!role || role.trim() !== role) return undefined
-    return { isAuth: true, user: { role }, loading: false }
+    serverHint = globalThis.__ssrAuthGetter__?.()
   } catch {
     return undefined
   }
+
+  if (serverHint) return serverHint
+
+  // Optional access keeps the DOM bridge total in the Node SSR runtime and
+  // avoids manufacturing a fake document implementation.
+  const marker = globalThis.document?.getElementById("root")?.getAttribute("data-ssr-auth")
+  if (!marker?.startsWith("authenticated:")) return undefined
+  const role = marker.slice("authenticated:".length)
+  if (!role || role.trim() !== role) return undefined
+  return { isAuth: true, user: { role }, loading: false }
 }

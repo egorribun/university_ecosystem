@@ -1,6 +1,6 @@
 import type { Meta, StoryObj, Decorator } from "@storybook/react-vite"
 import { LazyMotion, domAnimation } from "framer-motion"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import { Dialog, DialogTitle, DialogContent, DialogActions } from "./Dialogs"
 
 // Wave 199 SW1 — settings/ui Dialogs composite (CONTEXT-tier, no infra).

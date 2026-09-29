@@ -13,5 +13,11 @@ describe("dynamic translation registry", () => {
       "auth:mfa.otp.methods.totp",
       "auth:mfa.otp.methods.email_otp",
     ])
+    expect(dynamicTranslationRegistry["feedback.key"]).toEqual([
+      "common:errors.generic",
+      "settings:integrations.spotify.snackbar.openFailed",
+      "settings:integrations.spotify.snackbar.connectFailed",
+      "settings:integrations.spotify.snackbar.disconnectFailed",
+    ])
   })
 })

@@ -2,6 +2,7 @@ import { cn } from "@/utils/cn"
 
 interface NavbarPillProps {
   isCompact: boolean
+  isPhone?: boolean
   prefersReducedMotion: boolean
   children: React.ReactNode
 }
@@ -20,14 +21,20 @@ interface NavbarPillProps {
  * - glass-noise texture for frosted glass feel
  * - 6s breathing animation (slower, more organic)
  */
-export function NavbarPill({ isCompact, prefersReducedMotion, children }: NavbarPillProps) {
+export function NavbarPill({
+  isCompact,
+  isPhone = false,
+  prefersReducedMotion,
+  children,
+}: NavbarPillProps) {
   const dur = prefersReducedMotion ? "duration-0" : "duration-500"
   const ease = "ease-[var(--ease-premium)]"
 
   return (
     <div
       className={cn(
-        "flex w-full items-center box-border",
+        "flex items-center box-border",
+        isCompact && isPhone ? "w-[calc(100%-1rem)]" : "w-full",
         "transition-[transform,opacity]",
         dur,
         ease,
@@ -37,7 +44,7 @@ export function NavbarPill({ isCompact, prefersReducedMotion, children }: Navbar
               "relative mx-auto h-(--navbar-pill-h)",
               "max-w-(--navbar-pill-max-w) rounded-[var(--navbar-pill-radius)]",
               "bg-(--pill-bg) border border-(--pill-border)",
-              "px-(--navbar-pill-px)",
+              isPhone ? "px-2" : "px-(--navbar-pill-px)",
             ]
           : [
               // Expanded: full width, full height, no decoration

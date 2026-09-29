@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Annotated, Any
 
+from dishka import FromComponent
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.deps import get_current_admin_user
-from app.core.container import get_secure_audit_service_dep
-from app.core.database import get_db, get_read_db
+# Imported at runtime rather than under TYPE_CHECKING: Dishka resolves an
+# injected endpoint's annotations with typing.get_type_hints() when the route
+# is registered, so every name in those annotations -- not only the injected
+# ones -- has to exist at runtime.
+import app.models as models
+from app.api.deps import get_current_admin_user_from_dishka
+from app.core.di.read_replica import READ_COMPONENT
+from app.core.protocols import AsyncDatabaseSession
 from app.schemas.schemas import (
     NotificationDeadLetterJobOut,
     NotificationDeadLetterListOut,
@@ -24,11 +31,6 @@ from app.services.notification_queue import (
     purge_dead_lettered_jobs,
     retry_dead_lettered_jobs,
 )
-
-if TYPE_CHECKING:
-    import app.models as models
-    from app.core.protocols import AsyncDatabaseSession
-
 
 router = APIRouter(
     prefix="/notifications/admin/dead-letter",
@@ -73,11 +75,12 @@ def _to_public_job(job: object) -> NotificationDeadLetterJobOut:
     summary="List notification queue dead letters",
     responses=_ADMIN_ERROR_RESPONSES,
 )
+@inject
 async def list_notification_dead_letters(
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=10_000),
-    db: AsyncDatabaseSession = Depends(get_read_db),
-    _: models.User = Depends(get_current_admin_user),
+    _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> NotificationDeadLetterListOut:
     jobs, total = await list_dead_lettered_jobs(db, limit=limit, offset=offset)
     return NotificationDeadLetterListOut(
@@ -100,11 +103,12 @@ def _stale_selection() -> HTTPException:
     summary="Retry notification queue dead letters",
     responses=_MUTATION_ERROR_RESPONSES,
 )
+@inject
 async def retry_notification_dead_letters(
     payload: NotificationDeadLetterReplayIn,
-    db: AsyncDatabaseSession = Depends(get_db),
-    user: models.User = Depends(get_current_admin_user),
-    audit: SecureAuditService = Depends(get_secure_audit_service_dep),
+    db: FromDishka[AsyncDatabaseSession],
+    audit: FromDishka[SecureAuditService],
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> NotificationDeadLetterMutationOut:
     try:
         affected = await retry_dead_lettered_jobs(
@@ -129,11 +133,12 @@ async def retry_notification_dead_letters(
     summary="Purge notification queue dead letters",
     responses=_MUTATION_ERROR_RESPONSES,
 )
+@inject
 async def purge_notification_dead_letters(
     payload: NotificationDeadLetterPurgeIn,
-    db: AsyncDatabaseSession = Depends(get_db),
-    user: models.User = Depends(get_current_admin_user),
-    audit: SecureAuditService = Depends(get_secure_audit_service_dep),
+    db: FromDishka[AsyncDatabaseSession],
+    audit: FromDishka[SecureAuditService],
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> NotificationDeadLetterMutationOut:
     try:
         affected = await purge_dead_lettered_jobs(

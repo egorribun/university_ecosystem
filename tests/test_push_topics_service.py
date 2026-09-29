@@ -1,6 +1,6 @@
 """Behavioral tests for app/services/push_topics.py.
 
-Covers normalize_topic, normalize_topics, resolve_topics, sort_topics,
+Covers normalize_topic, normalize_topics, sort_topics,
 get_allowed_topics, subscription_supports_topic, and async DB operations.
 """
 
@@ -15,7 +15,6 @@ from app.services.push_topics import (
     get_allowed_topics,
     normalize_topic,
     normalize_topics,
-    resolve_topics,
     sort_topics,
     subscription_supports_topic,
     synchronize_user_topics,
@@ -135,29 +134,6 @@ def test_sort_topics_unknown_topics_go_to_end():
     result = sort_topics(["unknown", "news"], allowed_topics=ALLOWED)
     assert "unknown" not in result
     assert "news" in result
-
-
-# ---------------------------------------------------------------------------
-# resolve_topics
-# ---------------------------------------------------------------------------
-
-
-def test_resolve_topics_none_falls_back_to_existing():
-    existing = ["news", "events"]
-    result = resolve_topics(None, existing=existing, allowed_topics=ALLOWED)
-    assert "news" in result
-    assert "events" in result
-
-
-def test_resolve_topics_raw_topics_used_when_provided():
-    result = resolve_topics(["news"], existing=["events"], allowed_topics=ALLOWED)
-    assert "news" in result
-    assert "events" not in result  # raw_topics overrides existing
-
-
-def test_resolve_topics_none_raw_and_none_existing():
-    result = resolve_topics(None, existing=None, allowed_topics=ALLOWED)
-    assert result == []
 
 
 # ---------------------------------------------------------------------------

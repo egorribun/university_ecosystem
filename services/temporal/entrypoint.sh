@@ -42,4 +42,9 @@ sed \
 
 # Start temporal-server reading from the rendered /tmp/docker.yaml.
 # --root /tmp + --config . + --env docker → temporal-server reads /tmp/docker.yaml.
-exec temporal-server --allow-no-auth --root /tmp --config . --env docker start
+# The shared Compose path must retain Temporal's configured authentication
+# boundary.  In particular, do not pass Temporal's no-authorizer CLI switch
+# here: that option would also affect
+# the production-like Compose stack.  The mounted config's JWT claim mapper
+# remains responsible for authenticating service calls.
+exec temporal-server --root /tmp --config . --env docker start

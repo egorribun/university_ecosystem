@@ -65,4 +65,24 @@ describe("levenshtein", () => {
     expect(levenshtein("gmail.com", "gmai.com")).toBe(1)
     expect(levenshtein("gmail.com", "gmial.com")).toBe(2)
   })
+
+  it("counts every deletion when the longer string shrinks to one character", () => {
+    expect(levenshtein("abc", "x")).toBe(3)
+    expect(levenshtein("abc", "c")).toBe(2)
+  })
+})
+
+describe("levenshtein reference distances", () => {
+  it.each([
+    ["kitten", "sitting", 3],
+    ["flaw", "lawn", 2],
+    ["gumbo", "gambol", 2],
+    ["ab", "ba", 2],
+    ["", "", 0],
+    ["gmial.com", "gmail.com", 2],
+    ["yandx.ru", "yandex.ru", 1],
+  ])("levenshtein(%j, %j) = %i", (a, b, distance) => {
+    expect(levenshtein(a, b)).toBe(distance)
+    expect(levenshtein(b, a)).toBe(distance)
+  })
 })

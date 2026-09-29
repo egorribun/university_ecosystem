@@ -53,4 +53,10 @@ describe("estimateReadingTime", () => {
     const words = Array.from({ length: 2200 }, () => "word").join(" ")
     expect(estimateReadingTime(words)).toBe(10)
   })
+
+  it("treats a multi-character tag between words as a word boundary", () => {
+    // 165 "left<br/>right" pairs are 330 words (1.5 → 2 minutes) once tags are stripped.
+    const text = Array.from({ length: 165 }, () => "left<br/>right").join(" ")
+    expect(estimateReadingTime(text)).toBe(2)
+  })
 })

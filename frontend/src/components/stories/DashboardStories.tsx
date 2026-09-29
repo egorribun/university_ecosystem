@@ -30,6 +30,7 @@ export default function DashboardStories({
   }, [stories, maxVisibleStories])
 
   const [openIndex, setOpenIndex] = useState<number | null>(null)
+  const activeStoryId = openIndex === null ? undefined : displayStories[openIndex]?.id
   const [progress, setProgress] = useState(0)
   const [isInteractionPaused, setIsInteractionPaused] = useState(false)
   const [isDocumentHidden, setIsDocumentHidden] = useState(false)
@@ -40,33 +41,23 @@ export default function DashboardStories({
   const pauseStartedRef = useRef(false)
   const isPaused = isInteractionPaused || isDocumentHidden
 
-  useEffect(() => {
-    return () => {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current)
-        rafRef.current = null
-      }
-    }
-  }, [])
-
-  const closeViewer = useCallback(() => {
+  const [closeViewer] = useState<() => void>(() => () => {
     setOpenIndex(null)
     setProgress(0)
     setIsInteractionPaused(false)
     pausedElapsedRef.current = 0
     pauseStartedRef.current = false
-  }, [])
+  })
 
   const goToIndex = useCallback(
     (nextIndex: number) => {
-      const next = Math.max(0, Math.min(displayStories.length - 1, nextIndex))
-      const story = displayStories[next]
+      const story = displayStories[nextIndex]
       if (!story) {
         closeViewer()
         return
       }
       setProgress(0)
-      setOpenIndex(next)
+      setOpenIndex(nextIndex)
       onStoryOpen?.(story)
     },
     [closeViewer, displayStories, onStoryOpen]
@@ -74,16 +65,14 @@ export default function DashboardStories({
 
   const goNext = useCallback(() => {
     if (openIndex === null) return
-    if (openIndex >= displayStories.length - 1) {
-      closeViewer()
-      return
-    }
     goToIndex(openIndex + 1)
-  }, [openIndex, displayStories.length, goToIndex, closeViewer])
+  }, [openIndex, goToIndex])
 
   const goPrev = useCallback(() => {
     if (openIndex === null) return
     if (openIndex <= 0) {
+      autoStartRef.current = performance.now()
+      pausedElapsedRef.current = 0
       setProgress(0)
       return
     }
@@ -92,21 +81,26 @@ export default function DashboardStories({
 
   useEffect(() => {
     if (openIndex === null) {
-      setProgress(0)
+      return
+    }
+    if (activeStoryId === undefined) {
+      closeViewer()
       return
     }
     setProgress(0)
     autoStartRef.current = performance.now()
     pausedElapsedRef.current = 0
     pauseStartedRef.current = document.visibilityState === "hidden"
-  }, [openIndex])
+  }, [openIndex, activeStoryId, closeViewer])
 
   useEffect(() => {
-    if (openIndex === null || prefersReducedMotion || isPaused) {
+    if (activeStoryId === undefined || prefersReducedMotion || isPaused) {
       return
     }
 
+    let ownsPlayback = true
     const step = (timestamp: number) => {
+      if (!ownsPlayback) return
       const elapsed = timestamp - autoStartRef.current
       const ratio = Math.min(1, elapsed / STORY_AUTO_ADVANCE_MS)
       setProgress(ratio * 100)
@@ -121,12 +115,13 @@ export default function DashboardStories({
     rafRef.current = requestAnimationFrame(step)
 
     return () => {
-      if (rafRef.current) {
+      ownsPlayback = false
+      if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current)
         rafRef.current = null
       }
     }
-  }, [openIndex, goNext, prefersReducedMotion, isPaused])
+  }, [openIndex, activeStoryId, goNext, prefersReducedMotion, isPaused])
 
   useEffect(() => {
     if (openIndex === null) return
@@ -151,33 +146,31 @@ export default function DashboardStories({
   const openStory = useCallback(
     (story: StoryItem, index: number) => {
       autoStartRef.current = performance.now()
-      setProgress(0)
       setOpenIndex(index)
       onStoryOpen?.(story)
     },
     [onStoryOpen]
   )
 
-  const pausePlayback = useCallback(() => {
+  const [pausePlayback] = useState<() => void>(() => () => {
     if (pauseStartedRef.current) return
     pausedElapsedRef.current = performance.now() - autoStartRef.current
     pauseStartedRef.current = true
-  }, [])
+  })
 
-  const resumePlayback = useCallback(() => {
+  const [resumePlayback] = useState<() => void>(() => () => {
     autoStartRef.current = performance.now() - pausedElapsedRef.current
     pauseStartedRef.current = false
-  }, [])
+  })
 
-  const handlePause = useCallback(() => {
+  const [handlePause] = useState<() => void>(() => () => {
     pausePlayback()
     setIsInteractionPaused(true)
-  }, [pausePlayback])
+  })
 
-  const handleResume = useCallback(() => {
+  const [handleResume] = useState<() => void>(() => () => {
     setIsInteractionPaused(false)
-    if (!isDocumentHidden) resumePlayback()
-  }, [isDocumentHidden, resumePlayback])
+  })
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -204,7 +197,7 @@ export default function DashboardStories({
         loading={loading}
         onPrefetch={onPrefetch}
         onOpenStory={openStory}
-        activeStoryId={openIndex !== null ? displayStories[openIndex]?.id : undefined}
+        activeStoryId={activeStoryId}
       />
       <StoryViewer
         stories={displayStories}

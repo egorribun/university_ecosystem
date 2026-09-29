@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect, useMemo } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { useDebounced } from "@/hooks/useDebounced"
+import { useStableListHeight } from "@/hooks/ui/useStableListHeight"
 import { useSearch, useNavigate } from "@tanstack/react-router"
 import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
 import { resetEtagCache } from "@/api/client"
@@ -216,6 +217,16 @@ export const EventsFeature = () => {
     requiresCompleteDataset,
   ])
 
+  // A narrower filter first shows only the loaded matches (or nothing while a
+  // refetch runs); hold the list's height until it settles so the page cannot
+  // jump up.
+  const listContainerRef = useRef<HTMLDivElement>(null)
+  const listMinHeight = useStableListHeight(
+    listContainerRef,
+    `${tab}|${activeCategory}|${dateRange}|${sortMode}`,
+    isFetching || (requiresCompleteDataset && Boolean(hasNextPage))
+  )
+
   /* ── Keyboard navigation ── */
   const { activeIndex, registerRef } = useEventsKeyboardNav(filteredEvents)
 
@@ -251,22 +262,24 @@ export const EventsFeature = () => {
           onLocationChange={(v: string) => handleURLChange("loc", v)}
         />
 
-        <EventsList
-          eventsList={filteredEvents}
-          isInitialLoading={isInitialLoading}
-          isFetching={isFetching}
-          isFetchingNextPage={isFetchingNextPage}
-          hasNextPage={canFetchMore}
-          fetchNextPage={fetchNextPage}
-          refreshEvents={refreshEvents}
-          onAddClick={() => setCreateOpen(true)}
-          isAdmin={isAdmin}
-          isOnline={isOnline}
-          tab={tab}
-          onTabChange={setTab}
-          activeKeyboardIndex={activeIndex}
-          registerCardRef={registerRef}
-        />
+        <div ref={listContainerRef} style={{ minHeight: listMinHeight }}>
+          <EventsList
+            eventsList={filteredEvents}
+            isInitialLoading={isInitialLoading}
+            isFetching={isFetching}
+            isFetchingNextPage={isFetchingNextPage}
+            hasNextPage={canFetchMore}
+            fetchNextPage={fetchNextPage}
+            refreshEvents={refreshEvents}
+            onAddClick={() => setCreateOpen(true)}
+            isAdmin={isAdmin}
+            isOnline={isOnline}
+            tab={tab}
+            onTabChange={setTab}
+            activeKeyboardIndex={activeIndex}
+            registerCardRef={registerRef}
+          />
+        </div>
 
         <EventFormDialog
           open={createOpen}

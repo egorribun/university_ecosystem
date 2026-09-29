@@ -330,5 +330,3 @@ export const ProfileEditor = ({
     </div>
   )
 }
-
-export default ProfileEditor

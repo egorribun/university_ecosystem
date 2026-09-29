@@ -12,6 +12,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from app.api.internal import INTERNAL_ROUTE_PREFIXES
 from app.core.csrf import CSRFMiddleware
 from app.core.internal_access import InternalAccessMiddleware
+from app.core.logging import get_logger
 from app.core.ratelimit import EndpointRateLimit, RateLimitMiddleware, parse_rate_limit
 from app.core.security_headers import SecurityHeadersMiddleware
 
@@ -20,6 +21,8 @@ from .request_id import RequestIDMiddleware
 from .response_hardening import http_response_hardening
 from .tenant import TenantContextMiddleware
 
+logger = get_logger(__name__)
+
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 except ImportError:
@@ -27,6 +30,9 @@ except ImportError:
 
 if TYPE_CHECKING:
     from app.core.config import Settings
+
+
+_MISSING_DEVELOPMENT_SETTING = object()
 
 
 def _configure_security_core(app: FastAPI, settings: Settings) -> None:
@@ -39,13 +45,23 @@ def _configure_security_core(app: FastAPI, settings: Settings) -> None:
     )
     app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 
-    # Internal Access — only allowed IPs & tokens.
+    # Internal Access — only allowed IPs & tokens.  Settings normally always
+    # provides this field, but test doubles and older embedding applications
+    # may omit it.  Keep that compatibility path fail-closed and observable so
+    # a malformed configuration cannot silently opt into the IP fallback.
+    development_setting = getattr(
+        settings, "is_development", _MISSING_DEVELOPMENT_SETTING
+    )
+    if development_setting is _MISSING_DEVELOPMENT_SETTING:
+        logger.warning("middleware_development_setting_missing")
+
     app.add_middleware(
         InternalAccessMiddleware,
         allowed_ips=settings.internal_allowed_ips_list,
         header_name=settings.internal_auth_header,
         header_token=settings.internal_auth_token,
         internal_prefixes=INTERNAL_ROUTE_PREFIXES,
+        allow_ip_fallback=development_setting is True,
     )
 
 

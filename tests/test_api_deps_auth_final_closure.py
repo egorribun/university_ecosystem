@@ -8,6 +8,8 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
+from tests.conftest import call_injected
+
 
 def _request() -> MagicMock:
     request = MagicMock()
@@ -320,7 +322,14 @@ async def test_get_current_user_dto_helpers_and_full_loader():
     ):
         assert await module.get_current_user_dto(user) is dto
         assert await module.get_current_user_auth_dto(user) is auth_dto
-        assert await module.get_current_user_full(user, db) is user
+        assert (
+            await call_injected(
+                module.get_current_user_full,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
+            is user
+        )
 
     make_dto.assert_called_once_with(user)
     make_auth_dto.assert_called_once_with(user)

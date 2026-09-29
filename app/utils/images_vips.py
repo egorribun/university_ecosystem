@@ -40,6 +40,7 @@ def optimize_image_vips(
     max_width: int = 1920,
     max_height: int = 1920,
     quality: int = 85,
+    max_pixels: int | None = None,
 ) -> tuple[bytes, str]:
     """Process and optimize image using pyvips (10x faster than Pillow).
 
@@ -59,6 +60,18 @@ def optimize_image_vips(
         raise RuntimeError("pyvips is not available")
 
     try:
+        if max_pixels is not None:
+            # Import lazily to avoid the images -> images_vips optional-import
+            # cycle while sharing one policy validator with Pillow.
+            from app.utils.images import validate_image_dimensions
+
+            dimensions = pyvips.Image.new_from_buffer(data, "")
+            validate_image_dimensions(
+                dimensions.width,
+                dimensions.height,
+                max_pixels=max_pixels,
+            )
+
         # Load image from buffer with auto-rotation based on EXIF
         # thumbnail_buffer is optimized for this use case
         image = pyvips.Image.thumbnail_buffer(
@@ -82,6 +95,10 @@ def optimize_image_vips(
         return bytes(buffer), "image/webp"
 
     except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts pyvips errors to ValueError (reviewed TD-27-04)
+        from app.utils.images import ImagePixelLimitError
+
+        if isinstance(exc, ImagePixelLimitError):
+            raise
         logger.warning("pyvips processing failed: %s", exc)
         raise ValueError(f"Failed to process image with pyvips: {exc}") from exc
 

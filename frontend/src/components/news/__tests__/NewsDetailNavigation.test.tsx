@@ -2,11 +2,16 @@ import type { ReactNode } from "react"
 import { render, screen } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 
+const namespaceMock = vi.hoisted(() => vi.fn())
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: (namespaces: unknown) => {
+    namespaceMock(namespaces)
+    return {
+      t: (key: string) => key,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    }
+  },
 }))
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
@@ -41,6 +46,7 @@ describe("NewsDetailNavigation", () => {
 
   it("renders both prev and next links when both ids are set", () => {
     render(<NewsDetailNavigation {...baseProps} />)
+    expect(namespaceMock).toHaveBeenCalledWith(["news"])
     expect(screen.getByRole("navigation", { name: "news:navigation.label" })).toBeInTheDocument()
     expect(screen.getByText("news:navigation.prev")).toBeInTheDocument()
     expect(screen.getByText("news:navigation.next")).toBeInTheDocument()

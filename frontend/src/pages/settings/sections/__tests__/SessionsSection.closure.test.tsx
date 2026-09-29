@@ -17,11 +17,27 @@ vi.mock("@/components/settings", () => ({
       children?: ReactNode
       onClick?: () => void
       disabled?: boolean
+      leadingIcon?: ReactNode
+      startIcon?: ReactNode
+      color?: string
+      variant?: string
       "data-testid"?: string
     }
-  >(function MockButton({ children, onClick, ...props }, ref) {
+  >(function MockButton(
+    {
+      children,
+      onClick,
+      disabled,
+      leadingIcon: _leadingIcon,
+      startIcon: _startIcon,
+      color: _color,
+      variant: _variant,
+      ...props
+    },
+    ref
+  ) {
     return (
-      <button ref={ref} type="button" onClick={onClick} {...props}>
+      <button ref={ref} type="button" onClick={onClick} disabled={disabled} {...props}>
         {children}
       </button>
     )

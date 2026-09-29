@@ -50,7 +50,7 @@ Wave 119 delivered five surgical commits on top of Wave 118's content-CLS pass:
 
 ## SW1 — `perf(wave119-sw1-cls-push-gate)`: re-documented
 
-**File**: [`frontend/src/components/pwa/InstallPrompt.tsx`](frontend/src/components/pwa/InstallPrompt.tsx)
+**File**: [`frontend/src/components/pwa/InstallPrompt.tsx`](../../../frontend/src/components/pwa/InstallPrompt.tsx)
 
 **Root cause** (re-stated): Wave 118 SW2-SW4 left /dashboard at CLS 0.124, with 0.124 of that attributed to `<div className="space-y-4">` inside `showPushPanel` block (LHR `nodeLabel: "Уведомления"`). Push-permission state branching shifted inner content height as `usePushPreferences` async-resolved. Wave 118 SW4 step 3's `min-h-[260px]` + push-panel inner additions did NOT close the gap — committed but never re-verified due to LHCI Windows EPERM hangs.
 
@@ -69,7 +69,7 @@ LHCI builds (which set `VITE_LHCI=true` via `scripts/run-lhci.mjs:14`) skip the 
 
 ## SW2 — `perf(wave119-sw2-lhci-sweep)`: 3-run median measurements
 
-**File**: [`frontend/scripts/run-lhci.mjs`](frontend/scripts/run-lhci.mjs)
+**File**: [`frontend/scripts/run-lhci.mjs`](../../../frontend/scripts/run-lhci.mjs)
 
 Two infra fixes:
 1. Added `/` and `/404` to `defaultPaths` so all scorable URLs measure in CI sweep
@@ -102,7 +102,7 @@ Wrapper approach:
 
 ## SW3 — `chore(wave119-sw3-gate-ratchet)`: Perf 0.30 → 0.40, CLS warn → error@0.15
 
-**File**: [`frontend/scripts/run-lhci.mjs:148-180`](frontend/scripts/run-lhci.mjs)
+**File**: [`frontend/scripts/run-lhci.mjs:148-180`](../../../frontend/scripts/run-lhci.mjs)
 
 **Methodology** (Wave 117 SW8 + Wave 118 SW5 ratchet pattern): `floor = min(measured medians) − 0.05 safety − ~0.05 variance margin`.
 
@@ -129,8 +129,8 @@ A11y/BP/SEO gates unchanged (already production-grade `error@0.95`). LCP + TBT r
 ## SW4 — `chore(wave119-sw4-renovate-eslint-boundaries)`: 5.4 → 6.0.2
 
 **Files**:
-- [`frontend/package.json`](frontend/package.json) (1 line)
-- [`frontend/eslint.config.mjs`](frontend/eslint.config.mjs) (rule migration)
+- [`frontend/package.json`](../../../frontend/package.json) (1 line)
+- [`frontend/eslint.config.mjs`](../../../frontend/eslint.config.mjs) (rule migration)
 - `frontend/package-lock.json` (regenerated)
 
 **Vuln coverage** (closes 3 of 9 audit entries: 1 critical + 2 high):
@@ -156,7 +156,7 @@ npm audit: **9 → 6** (1c + 2h closed; 6 moderate remain in workbox-build chain
 
 ## SW5 — `chore(wave119-sw5-transitive-overrides)`: serialize-javascript + uuid
 
-**File**: [`frontend/package.json`](frontend/package.json) (overrides block, 2 entries)
+**File**: [`frontend/package.json`](../../../frontend/package.json) (overrides block, 2 entries)
 
 **Override changes**:
 ```json
@@ -372,7 +372,7 @@ already verified post-SW4/SW5/end-of-wave. Polish ran vitest one more time —
 
 ## SW7 — `perf(wave119-sw7-install-panel-cls)`: install panel min-h close
 
-**File**: [`frontend/src/components/pwa/InstallPrompt.tsx:282`](frontend/src/components/pwa/InstallPrompt.tsx)
+**File**: [`frontend/src/components/pwa/InstallPrompt.tsx:282`](../../../frontend/src/components/pwa/InstallPrompt.tsx)
 
 **Root cause** (post-polish discovery): polish full 7-URL × 3 LHCI sweep
 revealed CLS variance 0.061 → 0.141 cluster on /, /login, /dashboard, /news.

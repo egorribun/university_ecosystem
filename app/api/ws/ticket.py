@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from redis.exceptions import RedisError
 
-from app.api.deps.auth import get_current_user
+from app.api.deps.auth import get_current_user_from_dishka
 from app.api.validation import raise_unauthorized
 from app.core.config import settings
 from app.core.localization import resolve_locale
@@ -72,7 +72,7 @@ class WsTicketResponse(BaseModel):
 )
 async def issue_ws_upgrade_ticket(
     request: Request,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> WsTicketResponse:
     """RZ-W14-01: issue a one-time-use WebSocket upgrade ticket.
 

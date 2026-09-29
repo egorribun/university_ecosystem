@@ -1,15 +1,23 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
+import { createRequire } from "node:module"
 import test from "node:test"
 
 import strykerConfig, { mutationRunnerReuse, mutationThresholds } from "../stryker.config.mjs"
 
 const frontendRoot = new URL("../", import.meta.url)
 const repositoryRoot = new URL("../../", import.meta.url)
+const require = createRequire(import.meta.url)
 
 async function readJson(url) {
   return JSON.parse(await readFile(url, "utf8"))
 }
+
+test("frontend is explicitly a private application package", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+
+  assert.equal(packageJson.private, true)
+})
 
 test("the production-only Vitest command uses the supported single-worker flag", async () => {
   const packageJson = await readJson(new URL("package.json", frontendRoot))
@@ -40,7 +48,12 @@ test("Stryker mutation scope is derived from the complete frontend coverage deno
     "Stryker must discover the complete Vitest suite instead of a hand-picked test allow-list"
   )
   assert.deepEqual(strykerConfig.mutator, { plugins: null, excludedMutations: [] })
-  assert.deepEqual(strykerConfig.ignorers, [])
+  // ADR-040: exactly one governed ignore policy, loaded from the repository.
+  assert.deepEqual(strykerConfig.ignorers, ["presentation-class-names"])
+  assert.deepEqual(strykerConfig.plugins, [
+    "@stryker-mutator/*",
+    "./scripts/stryker-presentation-ignorer.mjs",
+  ])
   assert.equal(strykerConfig.incremental, false)
   assert.equal(
     strykerConfig.vitest?.related,
@@ -65,7 +78,7 @@ test("Stryker mutation scope is derived from the complete frontend coverage deno
   }
   assert.equal(
     strykerConfig.dryRunTimeoutMinutes,
-    15,
+    30,
     "Stryker's initial test run deadline must be explicit and long enough for the full suite"
   )
 })
@@ -121,6 +134,81 @@ test("canonical test:ci executes the frontend quality contract tests", async () 
   assert.match(command, /scripts\/lhci-route-policy\.test\.mjs/u)
 })
 
+test("canonical Node gates exercise the non-release progress reporter contracts", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+  assert.match(packageJson.scripts["test:wasm"], /scripts\/stryker-progress-reporter\.test\.mjs/u)
+})
+
+test("canonical Node gates retain the real test CSS pipeline contract", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+  assert.match(packageJson.scripts["test:wasm"], /scripts\/vitest-css-pipeline\.test\.mjs/u)
+})
+
+test("canonical Node gates exercise the bounded progress monitor contracts", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+  assert.match(packageJson.scripts["test:wasm"], /scripts\/stryker-progress-monitor\.test\.mjs/u)
+  assert.match(packageJson.scripts["test:wasm"], /scripts\/stryker-progress-diagnostic\.test\.mjs/u)
+})
+
+test("canonical Node gates exercise the Stryker factory adapter contracts", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+  assert.match(packageJson.scripts["test:wasm"], /scripts\/stryker-progress-plugin\.test\.mjs/u)
+})
+
+test("canonical Node gates execute the runner-owned progress context contracts exactly once", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+  const argumentsList = packageJson.scripts["test:wasm"].split(/\s+/u)
+  assert.equal(
+    argumentsList.filter((argument) => argument === "scripts/stryker-progress-context.test.mjs")
+      .length,
+    1
+  )
+})
+
+test("profile bootstrap keeps the LHCI branch compile-time tree-shakeable", async () => {
+  const profileSyncSource = await readFile(
+    new URL("src/hooks/auth/useProfileSync.ts", frontendRoot),
+    "utf8"
+  )
+  const hookStart = profileSyncSource.indexOf("export const useProfileSync")
+  assert.ok(hookStart >= 0, "useProfileSync export must remain discoverable")
+  const initializerStart = profileSyncSource.indexOf("useState<UserState>", hookStart)
+  const initializerEnd = profileSyncSource.indexOf("const [pendingMfaState", initializerStart)
+  assert.ok(initializerStart >= 0 && initializerEnd > initializerStart)
+  const initializer = profileSyncSource.slice(initializerStart, initializerEnd)
+
+  assert.match(
+    initializer,
+    /if \(import\.meta\.env\.VITE_LHCI === "true"\)/u,
+    "the production initializer must expose a static VITE_LHCI guard"
+  )
+  assert.match(
+    initializer,
+    /resolveInitialUserStateWithoutLhci\(/u,
+    "the non-LHCI initializer must delegate to the covered cache resolver"
+  )
+  assert.doesNotMatch(
+    initializer,
+    /resolveInitialUserState\(/u,
+    "the production initializer must not route through a runtime LHCI boolean"
+  )
+
+  const initializingStart = profileSyncSource.indexOf("const [initializing", initializerEnd)
+  const initializingEnd = profileSyncSource.indexOf("const [authOperation", initializingStart)
+  assert.ok(initializingStart >= 0 && initializingEnd > initializingStart)
+  const initializingInitializer = profileSyncSource.slice(initializingStart, initializingEnd)
+  assert.match(
+    initializingInitializer,
+    /if \(import\.meta\.env\.VITE_LHCI === "true"\)/u,
+    "the loading initializer must expose a static VITE_LHCI guard"
+  )
+  assert.match(
+    initializingInitializer,
+    /resolveInitialInitializingStateWithoutLhci\(/u,
+    "the non-LHCI loading initializer must delegate to the covered resolver"
+  )
+})
+
 test("Lighthouse configuration keeps SEO route-aware and invokes the privacy policy", async () => {
   const rootConfig = await readFile(new URL("../.lighthouserc.js", frontendRoot), "utf8")
   const runner = await readFile(new URL("./scripts/run-lhci.mjs", frontendRoot), "utf8")
@@ -144,12 +232,38 @@ test("Lighthouse configuration keeps SEO route-aware and invokes the privacy pol
   assert.match(policyConfig, /defaultLhciPaths/u)
 })
 
+test("LHCI binary setup skips Unix symlink operations on Windows only", async () => {
+  const { runSetupForPlatform } = require("./setup-lhci-binaries.cjs")
+  const invoked = []
+
+  await runSetupForPlatform("win32", async () => invoked.push("win32"))
+  assert.deepEqual(invoked, [])
+
+  await runSetupForPlatform("linux", async () => invoked.push("linux"))
+  assert.deepEqual(invoked, ["linux"])
+})
+
+test("Knip analyzes frontend tests as export consumers", async () => {
+  const knipConfig = await readJson(new URL("knip.json", frontendRoot))
+
+  assert.equal(
+    knipConfig.treatConfigHintsAsErrors,
+    true,
+    "Knip configuration hints must fail the quality gate instead of remaining advisory"
+  )
+
+  // Only patterns that match real files: Knip reports unmatched entries as
+  // configuration hints, which this gate treats as errors.
+  for (const pattern of ["src/**/*.test.ts", "src/**/*.test.tsx"]) {
+    assert.ok(knipConfig.entry.includes(pattern), `Missing Knip test entry: ${pattern}`)
+  }
+})
+
 test("dependency install scripts use a reviewed fail-closed allow-list", async () => {
   const packageJson = await readJson(new URL("package.json", frontendRoot))
   const npmConfig = await readFile(new URL(".npmrc", frontendRoot), "utf8")
 
   assert.deepEqual(packageJson.allowScripts, {
-    "@sentry/cli@2.58.6": true,
     "esbuild@0.28.1": true,
     "core-js": false,
     "fsevents@2.3.2": false,

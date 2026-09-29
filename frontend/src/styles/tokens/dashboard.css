@@ -136,16 +136,15 @@
      all 10 other themed surfaces have @media print blocks).
      Pattern mirrors profile.css:213-222 + admin.css:366-396
      using FIX-72-04 doubled-class specificity (.theme.theme)
-     to avoid !important. Targets .dash-tilt-card (Dashboard
-     widget card class confirmed at pages/Dashboard.tsx:409,
-     429, 449) + hides decoratives (aria-hidden orbs/flares).
+     to avoid !important. Targets the shared .card-matte widget
+     surface + hides decoratives (aria-hidden orbs/flares).
      ═══════════════════════════════════════════════════════ */
   @media print {
     .dashboard-theme.dashboard-theme {
       background: white;
       color: black;
     }
-    .dashboard-theme.dashboard-theme .dash-tilt-card {
+    .dashboard-theme.dashboard-theme .card-matte {
       background: white;
       box-shadow: 0 0 0 1px var(--color-slate-200, #e5e7eb);
       break-inside: avoid;

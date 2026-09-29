@@ -39,7 +39,6 @@ import json
 # Pact availability guard (same pattern as test_ws_hub_contract.py)
 # ---------------------------------------------------------------------------
 import sys
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -70,8 +69,6 @@ else:
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-PACT_DIR = Path(__file__).parent / "pacts"
 
 CONSUMER_NAME = "university-backend"
 PROVIDER_NAME = "file-processor"
@@ -142,11 +139,15 @@ def _backend_callback_handler(
 
 @pytest.fixture(scope="module")
 def pact() -> Pact:
-    """Session-scoped Pact instance. Writes the contract file on teardown."""
-    PACT_DIR.mkdir(parents=True, exist_ok=True)
+    """Consumer-only schema Pact; no provider replay exists yet.
+
+    The file-processor worker currently returns a Temporal result but does not
+    send the documented HTTP callback.  Keep this schema sentinel in the
+    consumer-side suite without publishing an unverified Pact artifact that
+    could be mistaken for a provider contract.
+    """
     p = Pact(CONSUMER_NAME, PROVIDER_NAME)
     yield p.with_specification("V4")
-    p.write_file(PACT_DIR, overwrite=True)
 
 
 # ---------------------------------------------------------------------------

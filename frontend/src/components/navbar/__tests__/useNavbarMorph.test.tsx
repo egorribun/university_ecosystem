@@ -32,4 +32,35 @@ describe("useNavbarMorph", () => {
     expect(result.current.priorityLinks).toHaveLength(6)
     expect(result.current.overflowLinks).toHaveLength(5)
   })
+
+  it("shows every link inline on phones with an empty overflow menu", () => {
+    const { result } = renderHook(() =>
+      useNavbarMorph(links, { isScrolled: false, viewport: "phone", prefersReducedMotion: true })
+    )
+
+    expect(result.current).toMatchObject({
+      isCompact: false,
+      isPhone: true,
+      isTablet: false,
+      isDesktop: false,
+      prefersReducedMotion: true,
+    })
+    expect(result.current.priorityLinks).toEqual(links)
+    expect(result.current.overflowLinks).toEqual([])
+  })
+
+  it("reports exactly one active viewport flag for tablet and desktop", () => {
+    const { result, rerender } = renderHook(
+      ({ viewport }: { viewport: "tablet" | "desktop" }) =>
+        useNavbarMorph(links, { isScrolled: false, viewport, prefersReducedMotion: false }),
+      { initialProps: { viewport: "tablet" as "tablet" | "desktop" } }
+    )
+
+    expect(result.current).toMatchObject({ isPhone: false, isTablet: true, isDesktop: false })
+    expect(result.current.priorityLinks).toEqual(links.slice(0, 4))
+
+    rerender({ viewport: "desktop" })
+    expect(result.current).toMatchObject({ isPhone: false, isTablet: false, isDesktop: true })
+    expect(result.current.overflowLinks).toEqual(links.slice(6))
+  })
 })

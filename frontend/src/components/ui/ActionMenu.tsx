@@ -18,7 +18,7 @@ import {
   useState,
   useRef,
   useEffect,
-  useCallback,
+  useId,
   type ReactNode,
   type MouseEvent,
   type KeyboardEvent,
@@ -43,6 +43,10 @@ export interface ActionMenuItem {
   ariaLabel?: string
 }
 
+type DataAttributes = {
+  [key: `data-${string}`]: string | number | boolean | undefined
+}
+
 export interface ActionMenuProps {
   /** Menu items to display */
   items: ActionMenuItem[]
@@ -56,6 +60,42 @@ export interface ActionMenuProps {
   placement?: "bottom-end" | "bottom-start"
   /** Aria label for trigger button */
   ariaLabel?: string
+  /** Stable identifier for the trigger button */
+  triggerId?: string
+  /** Stable identifier for the menu */
+  menuId?: string
+  /** Whether the trigger is disabled */
+  disabled?: boolean
+  /** Focus the first enabled item when the menu opens */
+  autoFocusFirstItem?: boolean
+  /** Data attributes forwarded to the trigger */
+  triggerDataAttributes?: DataAttributes
+  /** Data attributes forwarded to the menu */
+  menuDataAttributes?: DataAttributes
+}
+
+const ENABLED_MENU_ITEM_SELECTOR = "button:not(:disabled)"
+
+/** Return the currently enabled menu controls, tolerating an unmounted menu. */
+export function getEnabledMenuItems(menu: HTMLDivElement | null): HTMLButtonElement[] {
+  return menu
+    ? Array.from(menu.querySelectorAll<HTMLButtonElement>(ENABLED_MENU_ITEM_SELECTOR))
+    : []
+}
+
+/** Focus an element only while it is mounted and focusable. */
+export function focusElementIfPresent(element: HTMLElement | null): void {
+  if (element !== null) element.focus()
+}
+
+/** Focus the first enabled control, or a supplied fallback when the menu is unavailable. */
+export function focusFirstEnabledMenuItem(
+  menu: HTMLDivElement | null,
+  fallback?: HTMLElement
+): void {
+  const firstItem = getEnabledMenuItems(menu)[0]
+  const focusTarget = firstItem ?? fallback ?? null
+  focusElementIfPresent(focusTarget)
 }
 
 export const ActionMenu = ({
@@ -65,70 +105,83 @@ export const ActionMenu = ({
   menuClassName,
   placement = "bottom-end",
   ariaLabel,
+  triggerId,
+  menuId,
+  disabled,
+  autoFocusFirstItem,
+  triggerDataAttributes,
+  menuDataAttributes,
 }: ActionMenuProps) => {
   const { t } = useTranslation("navigation")
-  const resolvedAriaLabel = ariaLabel ?? t("navigation:aria.openMenu")
+  const resolvedAriaLabel = ariaLabel ?? t("aria.openMenu")
+  const generatedId = useId()
+  const resolvedMenuId = menuId ?? (triggerId ? `${triggerId}-menu` : `action-menu-${generatedId}`)
+  const resolvedTriggerId = triggerId ?? (menuId ? `${menuId}-button` : `${resolvedMenuId}-button`)
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
-  const handleToggle = useCallback((event: MouseEvent) => {
+  const handleClose = () => {
+    setIsOpen(false)
+    const trigger = triggerRef.current
+    focusElementIfPresent(trigger)
+  }
+
+  // Seed the ref with the real close handler so the outside-click listener
+  // never needs an uncovered no-op initializer before the first render.
+  const handleCloseRef = useRef<() => void>(handleClose)
+
+  const handleToggle = (event: MouseEvent) => {
     event.stopPropagation()
     setIsOpen((prev) => !prev)
-  }, [])
+  }
 
-  const handleClose = useCallback(() => {
-    setIsOpen(false)
-    triggerRef.current?.focus()
-  }, [])
+  const handleItemClick = (item: ActionMenuItem) => (event: MouseEvent) => {
+    event.stopPropagation()
+    item.onClick()
+    handleClose()
+  }
 
-  const handleItemClick = useCallback(
-    (item: ActionMenuItem) => (event: MouseEvent) => {
+  handleCloseRef.current = handleClose
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement | HTMLDivElement>) => {
+    if (event.key === "Escape" && isOpen) {
+      event.preventDefault()
       event.stopPropagation()
-      item.onClick()
       handleClose()
-    },
-    [handleClose]
-  )
+    } else if (event.key === "ArrowDown" && isOpen) {
+      event.preventDefault()
+      focusFirstEnabledMenuItem(menuRef.current, event.currentTarget)
+    }
+  }
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLButtonElement | HTMLDivElement>) => {
-      if (event.key === "Escape") {
-        handleClose()
-      } else if (event.key === "ArrowDown" && isOpen) {
-        event.preventDefault()
-        const firstItem = menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")
-        firstItem?.focus()
-      }
-    },
-    [handleClose, isOpen]
-  )
+  const handleItemKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    const menuItems = getEnabledMenuItems(menuRef.current)
 
-  const handleItemKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLButtonElement>) => {
-      const menuItems =
-        menuRef.current!.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")
+    if (menuItems.length === 0) return
 
-      // `index` from the source items array is not safe here because disabled
-      // items are excluded from `menuItems`. Navigate relative to the actual
-      // enabled control that received the event instead.
-      const currentIndex = Array.from(menuItems).indexOf(event.currentTarget)
+    // `index` from the source items array is not safe here because disabled
+    // items are excluded from `menuItems`. Navigate relative to the actual
+    // enabled control that received the event instead.
+    const currentIndex = Array.from(menuItems).indexOf(event.currentTarget)
 
-      if (event.key === "ArrowDown") {
-        event.preventDefault()
-        const nextIndex = (currentIndex + 1) % menuItems.length
-        menuItems[nextIndex]?.focus()
-      } else if (event.key === "ArrowUp") {
-        event.preventDefault()
-        const prevIndex = (currentIndex - 1 + menuItems.length) % menuItems.length
-        menuItems[prevIndex]?.focus()
-      } else if (event.key === "Escape") {
-        handleClose()
-      }
-    },
-    [handleClose]
-  )
+    if (event.key === "ArrowDown") {
+      event.preventDefault()
+      const nextIndex = (currentIndex + 1) % menuItems.length
+      // `menuItems.length > 0` and modulo arithmetic guarantee a mounted item.
+      menuItems[nextIndex]!.focus()
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault()
+      const prevIndex = (currentIndex - 1 + menuItems.length) % menuItems.length
+      // `menuItems.length > 0` and modulo arithmetic guarantee a mounted item.
+      menuItems[prevIndex]!.focus()
+    } else if (event.key === "Escape") {
+      event.preventDefault()
+      handleClose()
+    }
+  }
 
   // Click outside handler
   useEffect(() => {
@@ -136,13 +189,23 @@ export const ActionMenu = ({
 
     const handleClickOutside = (event: globalThis.MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        handleClose()
+        handleCloseRef.current()
       }
     }
 
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [isOpen, handleClose])
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen || !autoFocusFirstItem) return
+
+    focusFirstEnabledMenuItem(menuRef.current)
+  }, [autoFocusFirstItem, isOpen])
+
+  useEffect(() => {
+    if (disabled && isOpen) setIsOpen(false)
+  }, [disabled, isOpen])
 
   const placementStyles = {
     "bottom-end": "right-0",
@@ -153,12 +216,16 @@ export const ActionMenu = ({
     <div ref={containerRef} className="relative">
       <button
         ref={triggerRef}
+        id={resolvedTriggerId}
         type="button"
+        disabled={disabled}
         onClick={handleToggle}
         onKeyDown={handleKeyDown}
         aria-label={resolvedAriaLabel}
         aria-haspopup="menu"
         aria-expanded={isOpen}
+        aria-controls={isOpen ? resolvedMenuId : undefined}
+        {...triggerDataAttributes}
         className={cn(
           "flex h-11 w-11 items-center justify-center rounded-full text-(--text-secondary) transition-fast hover:bg-(--bg-surface-hover) hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
           triggerClassName
@@ -170,9 +237,12 @@ export const ActionMenu = ({
       {isOpen && (
         <div
           ref={menuRef}
+          id={resolvedMenuId}
           role="menu"
+          aria-labelledby={resolvedTriggerId}
           tabIndex={-1}
           onKeyDown={handleKeyDown}
+          {...menuDataAttributes}
           className={cn(
             "absolute top-full z-overlay mt-1 w-40 overflow-hidden rounded-lg border border-glass-border-subtle bg-glass-elevated shadow-lg backdrop-blur-md",
             placementStyles[placement],

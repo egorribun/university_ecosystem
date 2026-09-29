@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import gc
 import json
+import os
+import subprocess
+import sys
+import weakref
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -8,6 +14,317 @@ import pytest
 import scripts.run_mutmut_with_stats as run_module
 from scripts.mutmut_stats_shard import _stats_selection_args
 from scripts.run_mutmut_with_stats import run_mutmut_from_stats
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.parametrize("isolation", ["forkserver", "unknown", None])
+def test_execution_rejects_unsupported_isolation_before_hooks(
+    tmp_path, monkeypatch, isolation
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_module, "_require_precomputed_stats", lambda: None)
+    config = SimpleNamespace(process_isolation=isolation)
+    cli = SimpleNamespace(config=lambda: config)
+    with pytest.raises(RuntimeError, match="requires fork process isolation"):
+        run_mutmut_from_stats(
+            mutant_names=("module.fn_mutmut_1",), max_children=1, mutmut_cli=cli
+        )
+    assert config.process_isolation is isolation
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_mutation_worker_atfork_guard_skips_dead_otel_weakmethod(
+    monkeypatch,
+) -> None:
+    """A dead OTel weak callback must not raise from a mutation fork."""
+
+    registered: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        run_module.os,
+        "register_at_fork",
+        lambda **kwargs: registered.append(kwargs),
+        raising=False,
+    )
+    monkeypatch.setattr(run_module, "_ATFORK_GUARD_INSTALLED", False)
+    monkeypatch.setattr(run_module, "_ATFORK_ORIGINAL", None)
+
+    run_module.install_mutation_atfork_guard()
+
+    class Target:
+        def callback(self) -> str:
+            return "alive"
+
+    target = Target()
+    weak_method = weakref.WeakMethod(target.callback)
+    callback = lambda: weak_method()()  # noqa: E731 - mirrors the OTel callback
+    run_module.os.register_at_fork(after_in_child=callback)
+
+    guarded = registered[0]["after_in_child"]
+    assert callable(guarded)
+    assert guarded() == "alive"
+
+    del target
+    gc.collect()
+    assert guarded() is None
+
+    run_module.restore_mutation_atfork_guard()
+
+
+def test_mutation_worker_atfork_guard_preserves_unrelated_callbacks() -> None:
+    """Callbacks without weak targets and their failures remain untouched."""
+
+    called: list[str] = []
+
+    def callback() -> str:
+        called.append("called")
+        return "result"
+
+    guarded = run_module._guard_atfork_callback(callback)
+    assert guarded is callback
+    assert guarded() == "result"
+    assert called == ["called"]
+
+    def failing_callback() -> None:
+        raise TypeError("unrelated callback failure")
+
+    guarded_failure = run_module._guard_atfork_callback(failing_callback)
+    with pytest.raises(TypeError, match="unrelated callback failure"):
+        guarded_failure()
+
+
+def test_mutation_worker_atfork_guard_omits_unset_callbacks(monkeypatch) -> None:
+    """Python 3.14's native API requires absent callbacks to be omitted."""
+
+    registered: list[dict[str, object]] = []
+
+    def strict_register(**kwargs: object) -> None:
+        if any(value is None for value in kwargs.values()):
+            raise TypeError("callbacks must be callable when supplied")
+        registered.append(kwargs)
+
+    monkeypatch.setattr(
+        run_module.os, "register_at_fork", strict_register, raising=False
+    )
+    monkeypatch.setattr(run_module, "_ATFORK_GUARD_INSTALLED", False)
+    monkeypatch.setattr(run_module, "_ATFORK_ORIGINAL", None)
+
+    run_module.install_mutation_atfork_guard()
+    try:
+        run_module.os.register_at_fork()
+        assert registered == [{}]
+
+        def before() -> None:
+            return None
+
+        def after_in_parent() -> None:
+            return None
+
+        run_module.os.register_at_fork(before=before, after_in_parent=after_in_parent)
+        assert registered[1] == {"before": before, "after_in_parent": after_in_parent}
+    finally:
+        run_module.restore_mutation_atfork_guard()
+
+
+def test_mutation_worker_installs_atfork_guard_before_running_mutmut(
+    monkeypatch,
+) -> None:
+    """The guard must be active before mutmut can import/collect the app."""
+
+    events: list[str] = []
+    monkeypatch.setattr(
+        run_module,
+        "_parse_args",
+        lambda: SimpleNamespace(
+            mutant_names=("app.fn__mutmut_1",),
+            max_children=2,
+            reuse_generated_universe=True,
+        ),
+    )
+    monkeypatch.setattr(
+        run_module,
+        "install_mutation_atfork_guard",
+        lambda: events.append("guard"),
+    )
+    monkeypatch.setattr(
+        run_module,
+        "run_mutmut_from_stats",
+        lambda **_: events.append("run"),
+    )
+
+    run_module.main()
+
+    assert events == ["guard", "run"]
+
+
+def test_mutation_worker_guard_covers_finite_otel_reader(monkeypatch) -> None:
+    """Exercise the real SDK callback shape, not only a synthetic weak method."""
+
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import (
+        ConsoleMetricExporter,
+        PeriodicExportingMetricReader,
+    )
+
+    registered: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        run_module.os,
+        "register_at_fork",
+        lambda **kwargs: registered.append(kwargs),
+        raising=False,
+    )
+    monkeypatch.setattr(run_module, "_ATFORK_GUARD_INSTALLED", False)
+    monkeypatch.setattr(run_module, "_ATFORK_ORIGINAL", None)
+
+    run_module.install_mutation_atfork_guard()
+    reader = PeriodicExportingMetricReader(
+        ConsoleMetricExporter(), export_interval_millis=60_000
+    )
+    provider = MeterProvider(metric_readers=[reader])
+    try:
+        provider.shutdown()
+        assert registered
+        callback = registered[0]["after_in_child"]
+        assert callable(callback)
+        del reader, provider
+        gc.collect()
+        assert callback() is None
+    finally:
+        run_module.restore_mutation_atfork_guard()
+
+
+def test_mutation_worker_assigns_process_local_pytest_cache(
+    tmp_path, monkeypatch
+) -> None:
+    """Forked mutmut workers must not share ``mutants/.pytest_cache``."""
+
+    cache_root = tmp_path / "automatic-db"
+    cache_root.mkdir()
+    monkeypatch.setenv(run_module._AUTO_DATABASE_DIR_ENV, str(cache_root))
+    runner = SimpleNamespace(
+        _pytest_add_cli_args=["--timeout=120", "--cache-dir", "shared-cache"]
+    )
+
+    cache_dir = run_module._configure_process_local_pytest_cache(runner)
+
+    assert cache_dir == (cache_root / f"mutmut-cache-{os.getpid()}").resolve()
+    assert cache_dir.is_dir()
+    assert runner._pytest_add_cli_args == [
+        "--timeout=120",
+        "-o",
+        f"cache_dir={cache_dir}",
+    ]
+
+
+def test_mutation_worker_cache_override_is_accepted_by_pytest(
+    tmp_path, monkeypatch
+) -> None:
+    """The isolation override must be valid pytest CLI syntax."""
+
+    cache_root = tmp_path / "automatic-db"
+    cache_root.mkdir()
+    monkeypatch.setenv(run_module._AUTO_DATABASE_DIR_ENV, str(cache_root))
+    runner = SimpleNamespace(_pytest_add_cli_args=[])
+
+    cache_dir = run_module._configure_process_local_pytest_cache(runner)
+
+    assert cache_dir is not None
+    result = subprocess.run(  # noqa: S603 - fixed interpreter and test node id
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--collect-only",
+            "-q",
+            "-o",
+            f"cache_dir={cache_dir}",
+            "tests/test_run_mutmut_with_stats.py::test_mutation_worker_cache_override_is_accepted_by_pytest",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_mutation_worker_replaces_stale_cache_overrides(tmp_path, monkeypatch) -> None:
+    """Repeated parent/child setup must leave one private cache override."""
+
+    cache_root = tmp_path / "automatic-db"
+    cache_root.mkdir()
+    monkeypatch.setenv(run_module._AUTO_DATABASE_DIR_ENV, str(cache_root))
+    runner = SimpleNamespace(
+        _pytest_add_cli_args=[
+            "-o",
+            "cache_dir=shared-cache",
+            "-o",
+            "console_output_style=classic",
+            "--override-ini",
+            "cache_dir=split-legacy-cache",
+            "--cache-dir=/tmp/inline-legacy-cache",
+            "--override-ini=cache_dir=legacy-cache",
+        ]
+    )
+
+    cache_dir = run_module._configure_process_local_pytest_cache(runner)
+
+    assert cache_dir is not None
+    assert runner._pytest_add_cli_args == [
+        "-o",
+        "console_output_style=classic",
+        "-o",
+        f"cache_dir={cache_dir}",
+    ]
+
+
+def test_mutation_worker_database_isolation_preserves_explicit_database(
+    monkeypatch,
+) -> None:
+    """The mutation-only rebind must never rewrite an explicit database."""
+
+    explicit_url = "sqlite+aiosqlite:///./explicit.db"
+    monkeypatch.setenv(run_module._DATABASE_MODE_ENV, "explicit")
+    monkeypatch.setenv(run_module._AUTO_DATABASE_URL_ENV, explicit_url)
+
+    assert run_module._isolate_mutation_child_database() is None
+
+
+def test_mutation_worker_rebinds_and_cleans_owned_sqlite_in_fresh_process() -> None:
+    """A worker gets a new owned file and leaves no fork-only artifacts."""
+
+    environment = os.environ.copy()
+    for variable in (
+        "DATABASE_URL",
+        run_module._AUTO_DATABASE_URL_ENV,
+        run_module._AUTO_DATABASE_DIR_ENV,
+        run_module._DATABASE_MODE_ENV,
+        "UNIVERSITY_ECOSYSTEM_PYTEST_EXTERNAL_DATABASE_URL",
+    ):
+        environment.pop(variable, None)
+    command = (
+        "import os; import tests.conftest; "
+        "old=os.environ['UNIVERSITY_ECOSYSTEM_PYTEST_AUTO_DATABASE_URL']; "
+        "import scripts.run_mutmut_with_stats as runner; "
+        "new_dir=runner._isolate_mutation_child_database(); "
+        "assert new_dir is not None; "
+        "assert os.environ['UNIVERSITY_ECOSYSTEM_PYTEST_AUTO_DATABASE_URL'] != old; "
+        "runner._cleanup_mutation_child_database(new_dir); "
+        "assert not new_dir.exists()"
+    )
+    process = subprocess.run(  # noqa: S603 - fixed interpreter and inline probe
+        [sys.executable, "-c", command],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert process.returncode == 0, process.stdout + process.stderr
 
 
 class _FakeListAllTestsResult:
@@ -51,6 +368,199 @@ def _write_complete_stats(tmp_path) -> None:
     )
 
 
+@pytest.mark.parametrize("sentinel_valid", [True, False], ids=["valid", "invalid-utf8"])
+@pytest.mark.parametrize("in_child", [False, True])
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+@pytest.mark.parametrize("fails", [False, True])
+@pytest.mark.parametrize("allocates", [False, True])
+def test_runner_cleans_late_child_database_and_fallback_cache(
+    tmp_path, monkeypatch, fails, allocates, cleanup_fails, in_child, sentinel_valid
+) -> None:
+    """Late bootstrap allocations must be gone before a child uses os._exit."""
+    _write_complete_stats(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv(run_module._AUTO_DATABASE_URL_ENV, raising=False)
+    monkeypatch.delenv(run_module._AUTO_DATABASE_DIR_ENV, raising=False)
+    monkeypatch.delenv(run_module._DATABASE_MODE_ENV, raising=False)
+    monkeypatch.delitem(sys.modules, "tests.conftest", raising=False)
+    monkeypatch.setattr(run_module, "_MUTATION_CACHE_DIR_BY_PID", {})
+    monkeypatch.setattr(run_module, "_MUTATION_OWNED_CACHE_DIR_BY_PID", {})
+    cache_root = tmp_path / "cache-root"
+    cache_root.mkdir()
+    monkeypatch.setattr(run_module.tempfile, "tempdir", str(cache_root))
+    database_root = tmp_path / "owned-root"
+    database_root.mkdir()
+    parent_pid = os.getpid()
+    child_pid = parent_pid + 10000 if in_child else parent_pid
+    database_dir = database_root / f"pytest-{child_pid}-late"
+    failure = RuntimeError("original test failure")
+    cleanup_failure = OSError("fixture cleanup denied")
+    original_rmtree = run_module.shutil.rmtree
+
+    def cleanup(path):
+        if cleanup_fails:
+            raise cleanup_failure
+        return original_rmtree(path)
+
+    monkeypatch.setattr(run_module.shutil, "rmtree", cleanup)
+    disposed = []
+    monkeypatch.setattr(
+        run_module, "_dispose_inherited_database", lambda: disposed.append(True)
+    )
+
+    class Runner:
+        def __init__(self):
+            self._pytest_add_cli_args = []
+
+        def list_all_tests(self):
+            return None
+
+        def run_forced_fail(self):
+            return 1
+
+        def run_tests(self, *, mutant_name, tests):
+            if not allocates:
+                if fails:
+                    raise failure
+                return 1
+            database_dir.mkdir()
+            (database_dir / ".pytest-owned").write_text(
+                f"university-ecosystem-pytest:{child_pid}:{database_dir.name}\n",
+                encoding="utf-8",
+            )
+            if not sentinel_valid:
+                (database_dir / ".pytest-owned").write_bytes(b"\xff")
+            (database_dir / "test.db").write_bytes(b"actual owned fixture bytes")
+            monkeypatch.setitem(
+                sys.modules,
+                "tests.conftest",
+                SimpleNamespace(_AUTO_DATABASE_ROOT=database_root),
+            )
+            monkeypatch.setenv(run_module._DATABASE_MODE_ENV, "harness-sqlite")
+            monkeypatch.setenv(
+                run_module._AUTO_DATABASE_URL_ENV,
+                f"sqlite+aiosqlite:///{database_dir}/test.db",
+            )
+            monkeypatch.setenv(run_module._AUTO_DATABASE_DIR_ENV, str(database_dir))
+            if fails:
+                raise failure
+            return 1
+
+    def execute(names, max_children):
+        with monkeypatch.context() as child:
+            child.setattr(run_module.os, "getpid", lambda: child_pid)
+            Runner().run_tests(mutant_name=names[0], tests=())
+
+    cli = SimpleNamespace(
+        config=lambda: SimpleNamespace(process_isolation="fork"),
+        PytestRunner=Runner,
+        _run=execute,
+    )
+    if not in_child:
+        if fails:
+            with pytest.raises(RuntimeError) as raised:
+                run_mutmut_from_stats(
+                    mutant_names=("app.fn__mutmut_1",), max_children=1, mutmut_cli=cli
+                )
+            assert raised.value is failure
+        else:
+            run_mutmut_from_stats(
+                mutant_names=("app.fn__mutmut_1",), max_children=1, mutmut_cli=cli
+            )
+        assert database_dir.exists() is allocates
+        assert len(list(cache_root.iterdir())) == 1
+        assert disposed == []
+        return
+    if cleanup_fails:
+        with pytest.raises(BaseExceptionGroup) as raised:
+            run_mutmut_from_stats(
+                mutant_names=("app.fn__mutmut_1",), max_children=1, mutmut_cli=cli
+            )
+        if fails:
+            assert raised.value.exceptions[0] is failure
+            assert raised.value.__cause__ is failure
+            cleanup_group = raised.value.exceptions[1]
+        else:
+            cleanup_group = raised.value
+        assert isinstance(cleanup_group, BaseExceptionGroup)
+        assert all(error is cleanup_failure for error in cleanup_group.exceptions)
+        assert len(cleanup_group.exceptions) == (
+            2 if allocates and sentinel_valid else 1
+        )
+        assert database_dir.exists() is allocates
+        assert len(list(cache_root.iterdir())) == 1
+        return
+    if fails:
+        with pytest.raises(RuntimeError) as raised:
+            run_mutmut_from_stats(
+                mutant_names=("app.fn__mutmut_1",), max_children=1, mutmut_cli=cli
+            )
+        assert raised.value is failure
+    else:
+        run_mutmut_from_stats(
+            mutant_names=("app.fn__mutmut_1",), max_children=1, mutmut_cli=cli
+        )
+    assert database_dir.exists() is (allocates and not sentinel_valid)
+    assert list(cache_root.iterdir()) == []
+    assert disposed == ([True] if allocates and sentinel_valid else [])
+
+
+@pytest.mark.parametrize(
+    "ownership",
+    [
+        "parent",
+        "foreign-root",
+        "wrong-sentinel",
+        "unloaded",
+        "directory-symlink",
+        "sentinel-symlink",
+        "root-symlink",
+    ],
+)
+def test_cleanup_does_not_delete_unowned_or_import_bootstrap(
+    tmp_path, monkeypatch, ownership
+) -> None:
+    root = tmp_path / "owned-root"
+    root.mkdir()
+    pid = os.getpid() - 1 if ownership == "parent" else os.getpid()
+    directory = root / f"pytest-{pid}-fixture"
+    directory.mkdir()
+    sentinel = directory / ".pytest-owned"
+    sentinel.write_text(
+        "foreign owner"
+        if ownership == "wrong-sentinel"
+        else f"university-ecosystem-pytest:{pid}:{directory.name}\n",
+        encoding="utf-8",
+    )
+    original_is_symlink = Path.is_symlink
+    rejected_path = {
+        "directory-symlink": directory,
+        "sentinel-symlink": sentinel,
+        "root-symlink": root,
+    }.get(ownership)
+    if rejected_path is not None:
+        monkeypatch.setattr(
+            Path,
+            "is_symlink",
+            lambda path: path == rejected_path or original_is_symlink(path),
+        )
+    if ownership == "unloaded":
+        monkeypatch.delitem(sys.modules, "tests.conftest", raising=False)
+    else:
+        monkeypatch.setitem(
+            sys.modules,
+            "tests.conftest",
+            SimpleNamespace(
+                _AUTO_DATABASE_ROOT=tmp_path if ownership == "foreign-root" else root,
+            ),
+        )
+    run_module._cleanup_mutation_child_database(directory)
+    assert directory.is_dir()
+    assert sentinel.is_file()
+    if ownership == "unloaded":
+        assert "tests.conftest" not in sys.modules
+
+
 def test_run_mutmut_from_stats_skips_the_second_in_process_pytest_collection(
     tmp_path, monkeypatch
 ) -> None:
@@ -69,7 +579,6 @@ def test_run_mutmut_from_stats_skips_the_second_in_process_pytest_collection(
 
     fake_cli = SimpleNamespace(
         PytestRunner=_FakePytestRunner,
-        ListAllTestsResult=_FakeListAllTestsResult,
         collected_test_names=lambda: {"tests/test_fn.py::test_fn"},
         _run=_run,
     )

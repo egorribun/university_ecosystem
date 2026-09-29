@@ -5,7 +5,7 @@ import { useTranslation, Trans } from "react-i18next"
 import "@/styles/tokens/auth.css"
 import { Button, TextField, SectionCard, Chip } from "@/components/settings"
 import { m, AnimatePresence } from "framer-motion"
-import AuthBackdrop from "@/components/auth/AuthBackdrop"
+import { AuthBackdrop } from "@/components/auth/AuthBackdrop"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { ChevronLeft, Send as SendIcon, CheckCircle2 } from "lucide-react"
 import { useForm } from "react-hook-form"
@@ -22,7 +22,8 @@ const FORGOT_URL = "/password/forgot"
 const RESEND_COOLDOWN_SEC = 30
 
 export default function ForgotPassword() {
-  const { t } = useTranslation(["auth"])
+  // Every key names its namespace explicitly ("auth:…").
+  const { t } = useTranslation()
   // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
   // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -58,8 +59,8 @@ export default function ForgotPassword() {
   const onBlurEmail = async () => {
     await trigger("email")
     if (email) {
-      const s = suggestEmailDomain(email)
-      setEmailSuggestion(s && s !== email ? s : null)
+      // A suggestion always differs from the typed address (known domains yield null).
+      setEmailSuggestion(suggestEmailDomain(email))
     }
   }
 
@@ -91,7 +92,7 @@ export default function ForgotPassword() {
   const resetRequest = () => {
     setIsSuccess(false)
     reset()
-    setCooldown(0)
+    // Reachable only once the cooldown has run out, so it is already 0.
     setEmailSuggestion(null)
   }
 
@@ -189,7 +190,7 @@ export default function ForgotPassword() {
                         autoComplete="email"
                         error={!!errors.email}
                         helperText={errors.email?.message ? t(errors.email.message) : ""}
-                        disabled={isSubmitting || cooldown > 0}
+                        disabled={isSubmitting}
                         className="rounded-lg h-14"
                       />
 
@@ -220,7 +221,8 @@ export default function ForgotPassword() {
                         type="submit"
                         variant="solid"
                         className="w-full h-14 rounded-lg text-base font-black shadow-premium hover:shadow-glass hover:-translate-y-0.5 active:translate-y-0"
-                        disabled={isSubmitting || cooldown > 0 || !isValid}
+                        // `loading` also disables the button; the form never shows during a cooldown.
+                        disabled={!isValid}
                         loading={isSubmitting}
                         startIcon={<SendIcon className="h-5 w-5" />}
                       >

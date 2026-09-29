@@ -74,4 +74,37 @@ describe("roomStatus utils", () => {
     status = getRoomStatus("ГУК-305", lessons, new Date("2026-07-07T02:00:00"))
     expect(status).toEqual({ status: "free" })
   })
+
+  it("marks a room busy from the exact start minute of a lesson crossing midnight", () => {
+    const lessons = [{ room: "ГУК-305", start_time: "23:00", end_time: "02:00" }]
+    expect(getRoomStatus("ГУК-305", lessons, new Date("2026-07-06T23:00:00"))).toEqual({
+      status: "busy",
+      busyUntil: "02:00",
+    })
+  })
+})
+
+describe("getRoomStatus edge cases", () => {
+  const noon = new Date(2026, 6, 6, 12, 0)
+
+  it("treats a zero-length lesson as not occupying the room", () => {
+    expect(
+      getRoomStatus("R", [{ room: "R", start_time: "08:00", end_time: "08:00" }], noon)
+    ).toEqual({ status: "free" })
+  })
+
+  it.each(["", "noon", "12", ":30", "12:", "x12:00"])(
+    "ignores a lesson with an unparseable start time %j",
+    (start) => {
+      expect(
+        getRoomStatus("R", [{ room: "R", start_time: start, end_time: "13:00" }], noon)
+      ).toEqual({ status: "free" })
+    }
+  )
+
+  it("accepts seconds and single-digit parts", () => {
+    expect(
+      getRoomStatus("R", [{ room: "R", start_time: "9:5", end_time: "12:30:00" }], noon)
+    ).toEqual({ status: "busy", busyUntil: "12:30:00" })
+  })
 })

@@ -76,6 +76,20 @@ func TestValidateProcessFileRequest_RejectionArms(t *testing.T) {
 			},
 			wantContains: "exceeds size limit",
 		},
+		{
+			name: "absolute source key",
+			req: &pb.ProcessFileRequest{
+				Id: "x", Type: "image_resize", SourceKey: "/etc/passwd", DestKey: "d",
+			},
+			wantContains: "absolute path",
+		},
+		{
+			name: "absolute destination key",
+			req: &pb.ProcessFileRequest{
+				Id: "x", Type: "image_resize", SourceKey: "s", DestKey: `\\etc\\passwd`,
+			},
+			wantContains: "absolute path",
+		},
 	}
 
 	for _, tc := range cases {

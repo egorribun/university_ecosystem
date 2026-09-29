@@ -19,8 +19,15 @@ def _development_env(monkeypatch):
 def _production_env(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("SECRET_KEY", "s" * 48)  # pragma: allowlist secret
+    monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "internal-route-token-for-test")
     monkeypatch.setenv("AUDIT_LOG_SECRET", "a" * 48)  # pragma: allowlist secret
-    monkeypatch.setenv("INTERNAL_HMAC_SECRET", "i" * 48)  # pragma: allowlist secret
+    monkeypatch.setenv(
+        "INTERNAL_HMAC_SECRET",
+        "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!",  # pragma: allowlist secret
+    )
+    monkeypatch.setenv(
+        "TOKEN_HMAC_SECRET", "token-hmac-closure-random-material-0123456789"
+    )  # pragma: allowlist secret
     monkeypatch.setenv("ALGORITHM", "RS256")
     monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", "")
 
@@ -63,6 +70,19 @@ def test_production_placeholder_audience_logs_warning(monkeypatch, caplog):
     settings = SecuritySettings()
     assert settings.jwt_audience == "api"
     assert "generic placeholder" in caplog.text
+
+
+def test_jwt_issuer_is_required_and_normalized(monkeypatch):
+    _development_env(monkeypatch)
+    assert SecuritySettings(jwt_issuer="  https://issuer.example  ").jwt_issuer == (
+        "https://issuer.example"
+    )
+
+    with pytest.raises(ValueError, match="JWT_ISSUER must not be empty"):
+        SecuritySettings(jwt_issuer="   ")
+
+    with pytest.raises(ValueError, match="JWT_ISSUER contains invalid characters"):
+        SecuritySettings(jwt_issuer="issuer\nwith-control")
 
 
 def test_rs256_private_key_missing_falls_back_only_in_development(monkeypatch):
@@ -151,6 +171,9 @@ def test_jwt_validators_reject_empty_and_short_production_values(monkeypatch):
 
     with pytest.raises(ValueError, match="JWT_AUDIENCE must not be empty"):
         SecuritySettings(jwt_audience="")
+
+    with pytest.raises(ValueError, match="JWT_ISSUER must not be empty"):
+        SecuritySettings(jwt_issuer="")
 
 
 def test_jwt_signing_registry_parses_entries_caches_and_exposes_aliases():

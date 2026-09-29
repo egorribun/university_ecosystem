@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -32,7 +31,7 @@ from redis.exceptions import RedisError
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
-audit_logger = logging.getLogger("app.users.audit")
+audit_logger = get_logger("app.users.audit")
 
 
 def _utcnow() -> datetime:

@@ -1,7 +1,8 @@
 export function isIOS(): boolean {
   if (typeof navigator === "undefined") return false
-  const platform = navigator.platform || ""
-  const userAgent = navigator.userAgent || ""
+  // Missing values match nothing below: includes() and RegExp.test() see "undefined".
+  const platform = navigator.platform
+  const userAgent = navigator.userAgent
   const iosPlatforms = ["iPad", "iPhone", "iPod"]
   if (iosPlatforms.includes(platform)) return true
   // iPadOS 13+ returns MacIntel, so additionally check for touch support
@@ -11,8 +12,8 @@ export function isIOS(): boolean {
 
 export function isSafari(): boolean {
   if (typeof navigator === "undefined") return false
-  const ua = navigator.userAgent || ""
-  const vendor = navigator.vendor || ""
+  const ua = navigator.userAgent
+  const vendor = navigator.vendor
   const isSafariVendor = /Apple Computer/.test(vendor)
   const isSafariUA = /Safari/.test(ua)
   const isExcluded = /CriOS|FxiOS|OPiOS|EdgiOS|Chrome|Firefox|OPR|Edg/.test(ua)

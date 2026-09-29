@@ -144,6 +144,15 @@ const mockNews = [
 const MOCK_EVENTS_COUNT = 50
 const ONE_HOUR_MS = 60 * 60 * 1000
 const ONE_DAY_MS = 24 * ONE_HOUR_MS
+const MOCK_EVENT_TYPES = [
+  "lecture",
+  "seminar",
+  "conference",
+  "workshop",
+  "meetup",
+  "sport",
+  "other",
+] as const
 
 const now = new Date("2026-06-27T10:00:00Z")
 const mockEvents = Array.from({ length: MOCK_EVENTS_COUNT }, (_, index) => {
@@ -158,8 +167,8 @@ const mockEvents = Array.from({ length: MOCK_EVENTS_COUNT }, (_, index) => {
     description_en: `Event description ${id}`,
     location: `Корпус A, зал ${index + 1}`,
     location_en: `Building A, hall ${index + 1}`,
-    event_type: null,
-    event_type_en: null,
+    event_type: MOCK_EVENT_TYPES[index % MOCK_EVENT_TYPES.length],
+    event_type_en: MOCK_EVENT_TYPES[index % MOCK_EVENT_TYPES.length],
     starts_at: start.toISOString(),
     ends_at: end.toISOString(),
     created_at: now.toISOString(),
@@ -453,8 +462,7 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
       msg.text().includes("[sw]") ||
       msg.text().includes("[mock]") ||
       msg.text().includes("[test]") ||
-      msg.text().includes("LivePushToasts") ||
-      msg.text().includes("[usePushSync]")
+      msg.text().includes("LivePushToasts")
     ) {
       // eslint-disable-next-line no-console
       console.log(
@@ -599,6 +607,23 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
       console.log(`[mock] Simulating OFFLINE for ${normPath}`)
 
       await route.abort("failed")
+      return
+    }
+
+    // These requests are made by the shared authenticated shell even when a
+    // scenario does not exercise their feature. Keep their mock contracts
+    // explicit so an unhandled route cannot accidentally look successful.
+    if (normPath === "api/auth/csrf-cookie" && method === "GET") {
+      await route.fulfill({ status: 204 })
+      return
+    }
+
+    if (normPath === "api/chats" && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], has_more: false, next_cursor: null }),
+      })
       return
     }
 
@@ -1102,6 +1127,28 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
       return
     }
 
+    // Push preferences hydrate from the server once auth confirms the user.
+    // No stored preference means the backend default: every topic enabled.
+    if (normPath === "api/push/topics" && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          allowed: [
+            "news.published",
+            "schedule.changed",
+            "events.published",
+            "chat.message.created",
+            "system.release",
+          ],
+          topics: [],
+          has_preferences: false,
+          updated_at: null,
+        }),
+      })
+      return
+    }
+
     if (
       normPath.startsWith("api/notifications") ||
       normPath.startsWith("api/notifications/check-schedule")
@@ -1119,12 +1166,19 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
       return
     }
 
-    // --- Catch-all for API/Auth to prevent external hits during tests ---
+    // --- Catch-all for API/Auth: fail closed instead of fabricating success ---
 
     if (normPath.startsWith("api/") || normPath.startsWith("auth/")) {
-      // eslint-disable-next-line no-console
-      console.log(`[mock] Generic 200 for unhandled path: ${normPath}`)
-      await route.fulfill({ status: 200, body: "{}" })
+      console.error(`[mock] Unhandled E2E API mock route: ${method} ${normPath}`)
+      await route.fulfill({
+        status: 501,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: "Unhandled E2E API mock route",
+          method,
+          path: `/${normPath}`,
+        }),
+      })
       return
     }
 

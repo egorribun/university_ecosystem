@@ -106,7 +106,9 @@ async def test_auth_change_password_success(auth_service):
     with (
         patch("app.services.auth_service.resolve_locale", return_value="en"),
         patch("app.services.auth_service.verify_password", side_effect=[True, False]),
-        patch("app.auth.security.validate_password_hibp", return_value=None),
+        # change_password uses the service's imported validator directly;
+        # patch that exact binding so the unit test never reaches HIBP.
+        patch("app.services.auth_service.validate_password_hibp", return_value=None),
         patch("app.services.auth_service.get_password_hash", return_value="new_hash"),
         patch("app.core.csrf.signal_csrf_rotation", return_value=None),
     ):

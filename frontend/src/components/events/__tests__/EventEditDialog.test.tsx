@@ -48,7 +48,7 @@ vi.mock("@/components/ui/Dialog", () => {
       </div>
     ) : null
 
-  return { Dialog: MockDialog, default: MockDialog }
+  return { Dialog: MockDialog }
 })
 
 vi.mock("@/components/media/SmartImage", () => ({

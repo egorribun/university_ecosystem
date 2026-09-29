@@ -8,7 +8,7 @@ import client from "@/api/client"
 import type { User } from "@/types/User"
 import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
-import { TextField } from "@/components/ui"
+import { TextField } from "@/components/ui/TextField"
 // PERF-20-05 (audit 2026-03-24): Debounce search to prevent API spam.
 import { useDebounced } from "@/hooks/useDebounced"
 import useFocusTrap from "@/hooks/useFocusTrap"

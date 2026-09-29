@@ -18,6 +18,7 @@ from app.models import (
     Schedule,
     User,
 )
+from app.models.domain_events import StoredEvent
 from app.services import notifications as notifications_module
 from app.services import webpush as webpush_module
 from app.services.notifications import (
@@ -269,6 +270,100 @@ async def test_create_notifications_records_webpush_deliveries(
     key = {(row["channel"], row["status"]): row for row in stats}
     assert key[("webpush", "sent")]["count"] == 1
     assert key[("webpush", "sent")]["delivered"] == 1
+
+
+@pytest.mark.asyncio
+async def test_outbox_only_creation_persists_push_metadata_without_sending(
+    db_session, user_factory, configured_push_settings, monkeypatch
+) -> None:
+    user = await user_factory()
+    db_session.add(
+        PushSubscription(
+            user_id=user.id,
+            endpoint="https://push.example.test/deferred",
+            p256dh="key",
+            auth="auth",
+            topics=["system.release"],
+        )
+    )
+    await db_session.commit()
+    send = unittest.mock.Mock(side_effect=AssertionError("push before commit"))
+    monkeypatch.setattr(notifications_delivery, "send_web_push", send)
+
+    created = await create_notifications_for_users(
+        db_session,
+        title="Platform version 9.0.0 is available",
+        type="system.message",
+        user_ids=[user.id],
+        topic="system.release",
+        payload_data={"category": "system", "version": "9.0.0", "groupId": user.id},
+        push_via_outbox_only=True,
+    )
+
+    assert created == 1
+    send.assert_not_called()
+    assert (
+        await db_session.execute(select(NotificationDelivery))
+    ).scalars().all() == []
+    notifications = (await db_session.execute(select(Notification))).scalars().all()
+    events = (
+        (
+            await db_session.execute(
+                select(StoredEvent).where(
+                    StoredEvent.event_type == "notification.delivery_requested"
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(notifications) == len(events) == 1
+    assert events[0].payload["notification_ids"] == [str(notifications[0].id)]
+    assert events[0].payload["payload_data"] == {
+        "category": "system",
+        "version": "9.0.0",
+        "groupId": str(user.id),
+    }
+
+
+@pytest.mark.asyncio
+async def test_outbox_only_push_without_extra_metadata_stores_null_payload(
+    db_session, user_factory, monkeypatch
+) -> None:
+    user = await user_factory()
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: False)
+
+    created = await create_notifications_for_users(
+        db_session,
+        title="Reminder",
+        user_ids=[user.id],
+        push_via_outbox_only=True,
+    )
+
+    assert created == 1
+    events = (await db_session.execute(select(StoredEvent))).scalars().all()
+    assert len(events) == 1
+    assert events[0].payload["payload_data"] is None
+
+
+@pytest.mark.asyncio
+async def test_direct_push_producer_keeps_legacy_outbox_payload_shape(
+    db_session, user_factory, monkeypatch
+) -> None:
+    user = await user_factory()
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: False)
+
+    created = await create_notifications_for_users(
+        db_session,
+        title="Reminder",
+        user_ids=[user.id],
+        payload_data={"groupId": user.id},
+    )
+
+    assert created == 1
+    events = (await db_session.execute(select(StoredEvent))).scalars().all()
+    assert len(events) == 1
+    assert "payload_data" not in events[0].payload
 
 
 @pytest.mark.asyncio

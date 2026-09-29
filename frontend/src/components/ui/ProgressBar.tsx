@@ -27,7 +27,7 @@ export function ProgressBar({
     typeof value === "number" && Number.isFinite(value)
       ? Math.min(Math.max(value, 0), safeMax)
       : null
-  const percent = normalized === null ? 0 : (normalized / safeMax) * 100
+  const percent = ((normalized ?? 0) / safeMax) * 100
 
   return (
     <div

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import pytest
 
 from app.core.config.mixins.cors_settings import CorsSettingsMixin
 from app.core.config.security import SecuritySettings
@@ -148,21 +148,25 @@ class TestCorsSettingsClosure:
         ]
         assert settings.trusted_proxies_list == ["10.0.0.1"]
 
-    def test_internal_auth_token_validator_warns_only_for_non_development(
-        self, monkeypatch
-    ):
+    def test_internal_auth_token_is_required_for_non_development(self, monkeypatch):
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.setenv("AUDIT_LOG_SECRET", "a" * 32)  # pragma: allowlist secret
         monkeypatch.setenv("SECRET_KEY", "p" * 48)  # pragma: allowlist secret
-        monkeypatch.setenv("INTERNAL_HMAC_SECRET", "i" * 48)  # pragma: allowlist secret
+        monkeypatch.setenv(
+            "INTERNAL_HMAC_SECRET",
+            "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!",  # pragma: allowlist secret
+        )
+        monkeypatch.setenv(
+            "TOKEN_HMAC_SECRET", "token-hmac-closure-random-material-0123456789"
+        )  # pragma: allowlist secret
         monkeypatch.setenv("ALGORITHM", "RS256")
         monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", "")
 
-        with patch("app.core.logging.get_logger") as get_logger:
+        with pytest.raises(
+            ValueError,
+            match="INTERNAL_AUTH_TOKEN must be configured in production",
+        ):
             SecuritySettings(internal_auth_token=None)
-
-        message = get_logger.return_value.warning.call_args.args[0]
-        assert "Internal route shared guard is not configured" in message
 
     def test_internal_auth_token_validator_returns_configured_value(self, monkeypatch):
         monkeypatch.setenv("ENVIRONMENT", "testing")

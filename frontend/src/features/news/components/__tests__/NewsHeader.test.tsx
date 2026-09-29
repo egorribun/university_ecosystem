@@ -4,7 +4,7 @@
  * Functions coverage was 1/8 — the inline JSX handlers (search change/clear,
  * category pills, saved filter, sort toggle, admin add) were unexercised.
  */
-import { fireEvent, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -89,6 +89,28 @@ describe("NewsHeader", () => {
     allButton.blur()
     fireEvent.keyDown(toolbar, { key: "ArrowRight" })
     expect(document.activeElement).not.toBe(categoryButtons[1])
+  })
+
+  it("keeps the sticky category bar below a changing mobile visual viewport offset", async () => {
+    const originalViewport = Object.getOwnPropertyDescriptor(window, "visualViewport")
+    const viewport = Object.assign(new EventTarget(), { offsetTop: 132 })
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport })
+
+    try {
+      await renderHeader()
+      const bar = document.querySelector<HTMLElement>(".news-sticky-categories")
+      expect(bar?.style.getPropertyValue("--visual-viewport-offset-top")).toBe("132px")
+
+      viewport.offsetTop = 80
+      act(() => viewport.dispatchEvent(new Event("scroll")))
+      await waitFor(() =>
+        expect(bar?.style.getPropertyValue("--visual-viewport-offset-top")).toBe("80px")
+      )
+    } finally {
+      cleanup()
+      if (originalViewport) Object.defineProperty(window, "visualViewport", originalViewport)
+      else Reflect.deleteProperty(window, "visualViewport")
+    }
   })
 
   it("shows the saved filter only when bookmarks exist and selects it", async () => {

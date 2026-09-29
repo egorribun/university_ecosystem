@@ -37,7 +37,7 @@ vi.mock("@/components/ui/Dialog", () => {
 
   return {
     __esModule: true,
-    default: MockDialog,
+    Dialog: MockDialog,
   }
 })
 

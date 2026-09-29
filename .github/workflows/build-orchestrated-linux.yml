@@ -85,7 +85,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Install wasm-pack
         # W142 polish-v3 — taiki-e/install-action wasm-pack tool resolution
@@ -107,8 +107,13 @@ jobs:
         env:
           RUNS_INPUT: ${{ inputs.runs }}
         run: |
-          set -e
+          set -euo pipefail
           RUNS="${RUNS_INPUT:-3}"
+          RUNS_MAX=10
+          if ! [[ "$RUNS" =~ ^[1-9][0-9]*$ ]] || (( RUNS > RUNS_MAX )); then
+            echo "::error::runs must be a positive integer no greater than $RUNS_MAX."
+            exit 1
+          fi
           echo "Running build × $RUNS for reproducibility check"
 
           declare -a SHELL_STABLE_HASHES

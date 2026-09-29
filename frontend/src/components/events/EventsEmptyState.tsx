@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next"
 import { Calendar as EventNoteIcon } from "lucide-react"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 
 type EventTabKey = "active" | "archive" | "my"
 

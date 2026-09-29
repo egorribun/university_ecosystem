@@ -7,6 +7,7 @@ from app.api import news
 from app.core.config import settings
 from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
+from tests.conftest import call_injected
 
 
 @pytest.mark.asyncio
@@ -38,8 +39,13 @@ async def test_update_news_removes_replaced_image(
 
     payload = schemas.NewsUpdate(image_url="/static/news_images/new.png")
 
-    updated = await news.update_news(
-        record.id, request=None, data=payload, service=service, user=admin
+    updated = await call_injected(
+        news.update_news,
+        record.id,
+        request=None,
+        data=payload,
+        user=admin,
+        provides={"NewsService": service},
     )
 
     assert updated.image_url == "/static/news_images/new.png"
@@ -71,8 +77,12 @@ async def test_delete_news_removes_image_file(
     uow = uow_from_session(db_session)
     service = NewsService(uow, vector_service)
 
-    result = await news.delete_news(
-        record.id, request=None, service=service, user=admin
+    result = await call_injected(
+        news.delete_news,
+        record.id,
+        request=None,
+        user=admin,
+        provides={"NewsService": service},
     )
 
     assert result == {"ok": True}

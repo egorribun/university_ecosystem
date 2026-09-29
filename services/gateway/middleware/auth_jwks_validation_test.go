@@ -303,7 +303,13 @@ func TestValidate_Optional_Gin(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
 		require.NoError(t, err)
-		req.AddCookie(&http.Cookie{Name: AccessTokenCookieName, Value: tokenStr}) // nosemgrep
+		req.AddCookie(&http.Cookie{
+			Name:     AccessTokenCookieName,
+			Value:    tokenStr,
+			Secure:   true,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		})
 
 		router.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -335,7 +341,13 @@ func TestValidate_Optional_Gin(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
 		require.NoError(t, err)
-		req.AddCookie(&http.Cookie{Name: AccessTokenCookieName, Value: tokenStr}) // nosemgrep
+		req.AddCookie(&http.Cookie{
+			Name:     AccessTokenCookieName,
+			Value:    tokenStr,
+			Secure:   true,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		})
 
 		router.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)

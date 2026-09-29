@@ -180,7 +180,7 @@ Diff stats: 2 files changed, 5 insertions(+), 620 deletions(-) — package.json 
 
 **Change** (in user .claude profile file, NOT repo — auto-loaded across sessions):
 - File: `C:\Users\egorribun\.claude\projects\C--Users-egorribun-Documents-university-ecosystem\memory\MEMORY.md`
-- W154 row: ~3,235 chars verbose → ~720 chars one-liner pointing to `[archive/AUDIT_WAVE154.md](docs/audits/archive/AUDIT_WAVE154.md)`
+- W154 row: ~3,235 chars verbose → ~720 chars one-liner pointing to `[archive/AUDIT_WAVE154.md](../../../docs/audits/archive/AUDIT_WAVE154.md)`
 - **Size delta**: 24,048 → **21,673 bytes (-2,375 b / -9.9%)**
 
 Headroom for W157 row addition at SW4: ~3-4 KB → total post-SW4 ~25 KB. Approaching but below ceiling for now; W158+ likely needs another compaction round.

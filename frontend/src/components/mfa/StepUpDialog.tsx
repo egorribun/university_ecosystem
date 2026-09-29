@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth, ChallengeLockedError } from "@/contexts/AuthContext"
 import type { PendingMfaState, SubmitMfaChallengePayload } from "@/types/Auth"
-import OtpEntry from "./OtpEntry"
+import { OtpEntry } from "./OtpEntry"
 
 type StepUpDialogProps = {
   open: boolean
@@ -211,5 +211,3 @@ export const StepUpDialog = ({
     document.body
   )
 }
-
-export default StepUpDialog

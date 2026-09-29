@@ -154,4 +154,97 @@ describe("scrollUtils", () => {
       expect(sessionStorage.getItem("__scrollTopNext")).toBeNull()
     })
   })
+
+  describe("scroll ownership detection", () => {
+    const makeElement = (
+      tag: string,
+      overflowY: string,
+      scrollHeight: number,
+      clientHeight = 100
+    ) => {
+      const el = document.createElement(tag)
+      el.style.overflowY = overflowY
+      Object.defineProperties(el, {
+        clientHeight: { value: clientHeight, configurable: true },
+        scrollHeight: { value: scrollHeight, configurable: true },
+      })
+      document.body.appendChild(el)
+      return el
+    }
+    const fallbackRoot = () => document.scrollingElement || document.documentElement
+
+    it("accepts a marker with overflow-y scroll", () => {
+      const marker = makeElement("div", "scroll", 200)
+      marker.setAttribute("data-scroll-root", "")
+      expect(getScrollRoot()).toBe(marker)
+    })
+
+    it("rejects overflowing content that is not a scroll container", () => {
+      const marker = makeElement("div", "visible", 200)
+      marker.setAttribute("data-scroll-root", "")
+      expect(getScrollRoot()).toBe(fallbackRoot())
+    })
+
+    it("rejects a scroll container whose content fits exactly", () => {
+      const marker = makeElement("div", "auto", 100, 100)
+      marker.setAttribute("data-scroll-root", "")
+      expect(getScrollRoot()).toBe(fallbackRoot())
+    })
+
+    it("skips a non-scrollable main element", () => {
+      makeElement("main", "visible", 100, 100)
+      expect(getScrollRoot()).toBe(fallbackRoot())
+    })
+  })
+
+  describe("smoothToTop animation fallback", () => {
+    it("eases from the start position to the top over 420ms and then stops", () => {
+      const el = document.createElement("div")
+      Object.defineProperty(el, "scrollTo", {
+        value: () => {
+          throw new Error("unsupported")
+        },
+      })
+      Object.defineProperty(el, "scrollTop", { value: 100, writable: true })
+      const frames: FrameRequestCallback[] = []
+      vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+        frames.push(cb)
+        return frames.length
+      })
+
+      smoothToTop(el)
+      expect(frames).toHaveLength(1)
+
+      frames[0]!(1000)
+      expect(el.scrollTop).toBe(100)
+      expect(frames).toHaveLength(2)
+
+      frames[1]!(1210)
+      // p = 0.5 -> eased = 1 - 0.5^3 = 0.875 -> round(100 * 0.125)
+      expect(el.scrollTop).toBe(13)
+      expect(frames).toHaveLength(3)
+
+      frames[2]!(1420)
+      expect(el.scrollTop).toBe(0)
+      expect(frames).toHaveLength(3)
+    })
+  })
+
+  describe("markIfFromBottom threshold", () => {
+    it("treats a position exactly at the 24px threshold as near the bottom", () => {
+      const root = document.createElement("div")
+      root.setAttribute("data-scroll-root", "")
+      root.style.overflowY = "auto"
+      Object.defineProperties(root, {
+        scrollTop: { value: 176, configurable: true },
+        clientHeight: { value: 100, configurable: true },
+        scrollHeight: { value: 300, configurable: true },
+      })
+      document.body.appendChild(root)
+
+      markIfFromBottom()
+
+      expect(sessionStorage.getItem("__scrollTopNext")).toBe("1")
+    })
+  })
 })

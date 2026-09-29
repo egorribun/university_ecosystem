@@ -31,4 +31,21 @@ describe("ThemeToggle", () => {
     expect(darkLabel).toBeTruthy()
     expect(darkLabel).not.toBe(lightLabel)
   })
+
+  it.each([
+    { size: "sm" as const, iconClasses: ["h-4", "w-4"] },
+    { size: "md" as const, iconClasses: ["h-5", "w-5"] },
+  ])(
+    "keeps the $size target at least 44px without enlarging its glyph",
+    async ({ size, iconClasses }) => {
+      await renderWithRouter({
+        ui: () => <ThemeToggle isDark={false} onToggle={() => {}} size={size} />,
+        authProvider: false,
+      })
+
+      const button = screen.getByRole("button")
+      expect(button).toHaveClass("min-h-11", "min-w-11")
+      expect(button.querySelector("svg")).toHaveClass(...iconClasses)
+    }
+  )
 })

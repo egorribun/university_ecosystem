@@ -49,7 +49,7 @@ type SpotlightProps = PropsWithChildren<{
   className?: string
 }>
 
-export function Spotlight({ children, className = "" }: SpotlightProps) {
+export function Spotlight({ children, className }: SpotlightProps) {
   const { mouseX, mouseY, onMouseMove } = useSpotlight()
 
   return (

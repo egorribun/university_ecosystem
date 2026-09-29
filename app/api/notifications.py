@@ -3,8 +3,10 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
+from dishka import FromComponent
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import ValidationError
 from sqlalchemy import (
@@ -21,9 +23,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.exc import NoSuchTableError, SQLAlchemyError
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user_from_dishka
 from app.api.validation import ensure_exists, raise_not_found, raise_validation_error
-from app.core.database import get_db, get_read_db
+from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import localized_text, resolve_locale, translate
 from app.core.logging import get_logger
 from app.core.middleware import _ensure_vary_header as ensure_vary_header
@@ -378,15 +380,23 @@ def _serialize_notification(
         return NotificationOut.model_construct(**data)
 
 
-@router.get("", response_model=NotificationsListOut)
-async def list_notifications(
+async def _collect_notifications(
+    *,
     request: Request,
     response: Response,
-    cursor: str | None = Query(None),
-    limit: int = Query(20, ge=1, le=100),
-    db: AsyncDatabaseSession = Depends(get_read_db),
-    user: User = Depends(get_current_user),
+    db: AsyncDatabaseSession,
+    user: User,
+    cursor: str | None,
+    limit: int,
 ) -> NotificationsListOut:
+    """Build the notification page for ``user``.
+
+    Kept separate from the route so ``check_schedule_and_generate`` can reuse
+    it: calling the decorated route would make Dishka inject ``db`` a second
+    time on top of the one already passed, which raises "got multiple values
+    for keyword argument".
+    """
+
     locale = resolve_locale(request=request, user=user)
     response.headers["Content-Language"] = locale or ""
     _ensure_vary_header(response, "Accept-Language")
@@ -458,12 +468,33 @@ async def list_notifications(
     )
 
 
+@router.get("", response_model=NotificationsListOut)
+@inject
+async def list_notifications(
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    cursor: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    user: User = Depends(get_current_user_from_dishka),
+) -> NotificationsListOut:
+    return await _collect_notifications(
+        request=request,
+        response=response,
+        db=db,
+        user=user,
+        cursor=cursor,
+        limit=limit,
+    )
+
+
 @router.patch("/{notif_id}/read")
+@inject
 async def mark_read_single(
     notif_id: uuid.UUID,
     request: Request,
-    db: AsyncDatabaseSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    db: FromDishka[AsyncDatabaseSession],
+    user: User = Depends(get_current_user_from_dishka),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     notif = (
@@ -488,9 +519,10 @@ async def mark_read_single(
 
 
 @router.post("/read-all")
+@inject
 async def mark_all_read(
-    db: AsyncDatabaseSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    db: FromDishka[AsyncDatabaseSession],
+    user: User = Depends(get_current_user_from_dishka),
 ) -> dict[str, Any]:
     now = datetime.now(UTC)
     result = await db.execute(
@@ -504,11 +536,12 @@ async def mark_all_read(
 
 
 @router.delete("/{notif_id}")
+@inject
 async def delete_notification(
     notif_id: uuid.UUID,
     request: Request,
-    db: AsyncDatabaseSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    db: FromDishka[AsyncDatabaseSession],
+    user: User = Depends(get_current_user_from_dishka),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     notif = (
@@ -527,9 +560,10 @@ async def delete_notification(
 
 
 @router.delete("")
+@inject
 async def clear_notifications(
-    db: AsyncDatabaseSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    db: FromDishka[AsyncDatabaseSession],
+    user: User = Depends(get_current_user_from_dishka),
 ) -> dict[str, Any]:
     result = await db.execute(
         delete(Notification).where(Notification.user_id == user.id)
@@ -540,18 +574,17 @@ async def clear_notifications(
 
 
 @router.post("/check-schedule", response_model=NotificationsListOut)
+@inject
 async def check_schedule_and_generate(
     request: Request,
     response: Response,
+    db: FromDishka[AsyncDatabaseSession],
     lookahead_minutes: int = Query(15, ge=1, le=180),
-    db: AsyncDatabaseSession = Depends(
-        get_db
-    ),  # RZ-W19-14: write DB — this endpoint creates notifications
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_from_dishka),
 ) -> NotificationsListOut:
     locale = resolve_locale(request=request, user=user)
     if not user.group_id:
-        return await list_notifications(
+        return await _collect_notifications(
             request=request, response=response, db=db, user=user, limit=20, cursor=None
         )
 
@@ -637,7 +670,7 @@ async def check_schedule_and_generate(
             topic="schedule",
         )
 
-    return await list_notifications(
+    return await _collect_notifications(
         request=request,
         response=response,
         db=db,

@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
-import NewsCardSkeleton from "@/components/ui/NewsCardSkeleton"
+import { NewsCardSkeleton } from "@/components/ui/NewsCardSkeleton"
 
 describe("NewsCardSkeleton variants", () => {
   it("renders the compact card variant", () => {

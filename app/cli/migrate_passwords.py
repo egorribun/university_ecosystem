@@ -1,185 +1,149 @@
-"""Batch bcrypt → Argon2id password migration tooling.
+"""Read-only preflight tooling for legacy bcrypt password hashes.
 
-TD-W14-02 / TD-W15-04 (audit 2026-03-23 Wave 15):
-Deadline 2026-09-01 — all bcrypt hashes must be migrated before that date.
-
-Background
-----------
-Bcrypt hashes cannot be re-hashed to Argon2id without the user's plaintext password.
-The on-login migration in ``app/auth/security.py:verify_password()`` handles users
-who log in — their hash is transparently upgraded on first successful login.
-
-This CLI handles the remaining population: users with bcrypt hashes who have NOT
-logged in since the Argon2id migration was deployed.  It has two modes:
-
-1. ``report``  — count and list accounts still on bcrypt (dry-run, no writes)
-2. ``force-reset`` — mark bcrypt-hash accounts as "password reset required" so
-   users are forced to set a new password on next login (which produces an Argon2id
-   hash).  This is the safest path: no plaintext exposure, no data loss.
-
-Usage
------
-    # Dry run — see what would be migrated
-    python -m app.cli migrate-passwords report
-
-    # Batch mark accounts for forced reset (500 at a time)
-    python -m app.cli migrate-passwords force-reset --batch-size 500
-
-    # Full run without confirmation prompts (for K8s Job use)
-    python -m app.cli migrate-passwords force-reset --batch-size 500 --yes
+Bcrypt hashes cannot be converted to Argon2id without the user's plaintext
+password.  Authentication deliberately rejects bcrypt (the sole supported
+algorithm is Argon2id), so this command only inventories the remaining legacy
+rows and provides a fail-closed assertion for deployment gates.  It never
+mutates user records, fabricates a reset flag, or prints account PII.
 """
 
 from __future__ import annotations
 
-import asyncio
-from typing import Annotated
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Annotated, Any
 
 import typer
-from sqlalchemy import select, update
+from sqlalchemy import and_, func, or_, select
 
 from app.core.database import async_session
-from app.core.logging import get_logger
+from app.core.tenant import bypass_rls_ctx, set_bypass_rls
 from app.models.users import User
 
-logger = get_logger(__name__)
-
 app = typer.Typer(
-    help="Bcrypt → Argon2id password migration commands.",
+    help="Read-only bcrypt inventory and migration-completion assertions.",
     no_args_is_help=True,
 )
 
-# Bcrypt hashes start with one of these cost prefixes.
-_BCRYPT_PREFIXES = ("$2b$", "$2a$", "$2y$")
+# Bcrypt hashes start with one of these cost prefixes.  Keep this tuple as the
+# single source for both the SQL predicate and the small Python unit helper.
+_BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
 
 
 def _is_bcrypt(hashed_password: str) -> bool:
+    """Return whether a stored hash uses one of the legacy bcrypt prefixes."""
+
     return hashed_password.startswith(_BCRYPT_PREFIXES)
+
+
+def _bcrypt_predicate() -> Any:
+    """Build the dialect-portable SQL predicate for active bcrypt rows."""
+
+    return and_(
+        User.is_active.is_(True),
+        or_(*(User.hashed_password.like(f"{prefix}%") for prefix in _BCRYPT_PREFIXES)),
+    )
+
+
+@asynccontextmanager
+async def _privileged_session() -> AsyncIterator[Any]:
+    """Run inventory queries with an explicitly scoped RLS bypass.
+
+    The context variable is reset in ``finally`` even when connection setup or
+    a query fails, so a privileged preflight cannot bleed into later work in
+    the same asyncio task.
+    """
+
+    bypass_token = set_bypass_rls(True)
+    try:
+        async with async_session() as session:
+            yield session
+    finally:
+        bypass_rls_ctx.reset(bypass_token)
 
 
 async def _count_bcrypt_users() -> int:
     """Return the number of active users still using a bcrypt hash."""
-    async with async_session() as session:
-        result = await session.execute(select(User).where(User.is_active.is_(True)))
-        users = result.scalars().all()
-        return sum(1 for u in users if _is_bcrypt(u.hashed_password))
+
+    async with _privileged_session() as session:
+        result = await session.execute(select(func.count()).where(_bcrypt_predicate()))
+        return int(result.scalar_one())
 
 
-async def _report_bcrypt_users(limit: int = 50) -> list[dict[str, str]]:
-    """Return up to *limit* active users still using a bcrypt hash."""
-    async with async_session() as session:
-        result = await session.execute(select(User).where(User.is_active.is_(True)))
-        users = result.scalars().all()
-        bcrypt_users = [
-            {"id": str(u.id), "email": u.email}
-            for u in users
-            if _is_bcrypt(u.hashed_password)
-        ]
-        return bcrypt_users[:limit]
+async def _report_bcrypt_users(
+    limit: int = 50, *, show_ids: bool = False
+) -> list[dict[str, str]]:
+    """Return an optional, bounded sample of opaque IDs.
 
-
-async def _force_reset_batch(batch_size: int) -> tuple[int, int]:
-    """Mark up to *batch_size* bcrypt-hash users as requiring password reset.
-
-    Returns (processed, remaining) counts.
+    The default is deliberately count-only.  ``show_ids`` is an explicit
+    operator opt-in and selects only UUIDs (never email addresses or hashes).
     """
-    async with async_session() as session:
+
+    if limit < 0:
+        raise ValueError("limit must be zero or positive")
+    if limit == 0 or not show_ids:
+        return []
+
+    async with _privileged_session() as session:
         result = await session.execute(
-            select(User).where(User.is_active.is_(True)).limit(batch_size)
+            select(User.id).where(_bcrypt_predicate()).order_by(User.id).limit(limit)
         )
-        users = result.scalars().all()
-        bcrypt_batch = [u for u in users if _is_bcrypt(u.hashed_password)]
-
-        if not bcrypt_batch:
-            return 0, 0
-
-        user_ids = [u.id for u in bcrypt_batch]
-        await session.execute(
-            update(User).where(User.id.in_(user_ids)).values(must_reset_password=True)
-        )
-        await session.commit()
-
-        processed = len(bcrypt_batch)
-
-    remaining = await _count_bcrypt_users()
-    return processed, remaining
+        return [{"id": str(user_id)} for user_id in result.scalars().all()]
 
 
 @app.command()
 def report(
-    limit: Annotated[int, typer.Option(help="Max accounts to list.")] = 20,
+    limit: Annotated[int, typer.Option(help="Max opaque IDs to list.")] = 20,
+    show_ids: Annotated[
+        bool,
+        typer.Option(
+            "--show-ids",
+            help="Explicitly print a bounded sample of opaque user IDs.",
+        ),
+    ] = False,
 ) -> None:
-    """Show accounts still using legacy bcrypt hashes (no writes)."""
+    """Show the active legacy bcrypt count without mutating the database."""
+
+    if limit < 0:
+        raise typer.BadParameter("must be zero or positive", param_hint="--limit")
 
     async def _run() -> None:
         count = await _count_bcrypt_users()
-        typer.echo(f"Bcrypt accounts remaining: {count}")
+        typer.echo(f"Legacy bcrypt accounts remaining: {count}")
 
         if count == 0:
-            typer.echo("Migration complete — all active accounts use Argon2id.")
+            typer.echo(
+                "No active legacy bcrypt accounts are currently reported; "
+                "no records were changed."
+            )
             return
 
-        sample = await _report_bcrypt_users(limit=limit)
-        typer.echo(f"\nSample (first {limit}):")
-        for entry in sample:
-            typer.echo(f"  {entry['id']}  {entry['email']}")
-
-        if count > limit:
-            typer.echo(f"  ... and {count - limit} more")
-
+        if show_ids and limit > 0:
+            sample = await _report_bcrypt_users(limit=limit, show_ids=True)
+            typer.echo(f"\nOpaque ID sample (first {limit}):")
+            for entry in sample:
+                typer.echo(f"  {entry['id']}")
         typer.echo(
-            "\nTo migrate: python -m app.cli migrate-passwords force-reset --batch-size 500"
+            "\nNo records were changed. Resolve legacy accounts through the "
+            "public password reset flow before asserting completion."
         )
+
+    import asyncio
 
     asyncio.run(_run())
 
 
-@app.command(name="force-reset")
-def force_reset(
-    batch_size: Annotated[
-        int, typer.Option(help="Accounts processed per batch.")
-    ] = 500,
-    yes: Annotated[
-        bool, typer.Option("--yes", "-y", help="Skip confirmation prompt.")
-    ] = False,
-) -> None:
-    """Mark bcrypt-hash accounts as requiring a password reset on next login.
-
-    Safe alternative to re-hashing: users must set a new password, which
-    will be hashed with Argon2id automatically.
-    """
+@app.command(name="assert-none")
+def assert_none() -> None:
+    """Exit 1 while any active legacy bcrypt account remains."""
 
     async def _run() -> None:
         count = await _count_bcrypt_users()
-        if count == 0:
-            typer.echo("No bcrypt accounts found — migration already complete.")
-            raise typer.Exit(0)
+        if count:
+            typer.echo(f"Legacy bcrypt accounts remain: {count}")
+            raise typer.Exit(1)
+        typer.echo("No active legacy bcrypt accounts found.")
 
-        typer.echo(f"Found {count} active account(s) with bcrypt hashes.")
-        if not yes:
-            typer.confirm(
-                f"Mark up to {batch_size} account(s) as 'must reset password'?",
-                abort=True,
-            )
-
-        total_processed = 0
-        while True:
-            processed, remaining = await _force_reset_batch(batch_size)
-            if processed == 0:
-                break
-            total_processed += processed
-            typer.echo(
-                f"  Batch done: {processed} marked for reset. Remaining: {remaining}"
-            )
-            if remaining == 0:
-                break
-
-        typer.echo(
-            f"\nDone. {total_processed} account(s) marked for forced password reset."
-        )
-        typer.echo(
-            "Users will be prompted to set a new (Argon2id) password on next login."
-        )
-
-        # TD-33-03: bcrypt metrics removed in Wave 33 (dead code).
+    import asyncio
 
     asyncio.run(_run())

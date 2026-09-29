@@ -6,7 +6,6 @@ import {
   useSyncExternalStore,
   createContext,
   useContext,
-  useMemo,
 } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import {
@@ -20,6 +19,15 @@ import { logError } from "@/app/logger"
 import { parseWsMessage } from "@/api/schemas/wsMessage"
 import api from "@/api/client"
 import { getDatabaseLazily } from "@/db/lazy"
+import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
+import {
+  clearReplayCheckpoints,
+  peekReplayCheckpoint,
+  readAndTouchReplayCheckpoint,
+  removeReplayCheckpoint,
+  retainReplayCheckpoints,
+  writeReplayCheckpoint,
+} from "@/hooks/chatReplayCheckpoints"
 
 // Reconnection configuration
 const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
@@ -40,153 +48,11 @@ const MAX_RECONNECT_ATTEMPTS = 10
 // convention). Typing indicator clears 3s after the last typing event from
 // a peer; if peer continues typing, the next event resets the timeout.
 const TYPING_INDICATOR_TIMEOUT_MS = 3000
-export const LIVE_MESSAGE_CACHE_LIMIT = 200
+const LIVE_MESSAGE_CACHE_LIMIT = 200
 // Retain the 4096 most-recently-seen composite chat/message IDs. This is wide
 // enough to bridge ordinary reconnect replay windows while keeping hook memory
 // strictly bounded; LRU refresh protects IDs that are actively replayed.
 const LIVE_MESSAGE_DEDUP_LIMIT = 4096
-const REPLAY_CHECKPOINT_PREFIX = "university.chat.replay.v2:"
-const REPLAY_CHECKPOINT_LIMIT = 256
-const REPLAY_CHECKPOINT_USER_LIMIT = 16
-const REPLAY_CHECKPOINT_STORAGE_LIMIT = 65_536
-type ReplayCheckpoint = { sequence: number; resumeToken: string }
-const replayCheckpointMemory = new Map<string, Map<string, ReplayCheckpoint>>()
-const replayCheckpointMounts = new Map<string, number>()
-
-function replayCheckpointKey(userId: string): string {
-  return `${REPLAY_CHECKPOINT_PREFIX}${encodeURIComponent(userId)}`
-}
-
-function persistReplayCheckpoints(userId: string, registry: Map<string, ReplayCheckpoint>): void {
-  try {
-    window.sessionStorage.setItem(
-      replayCheckpointKey(userId),
-      JSON.stringify({
-        entries: [...registry.entries()].map(([chatId, checkpoint]) => [
-          chatId,
-          checkpoint.sequence,
-          checkpoint.resumeToken,
-        ]),
-      })
-    )
-  } catch {
-    // The in-memory registry still protects this mounted browser session.
-  }
-}
-
-function replayCheckpointRegistry(userId: string): Map<string, ReplayCheckpoint> {
-  const cached = replayCheckpointMemory.get(userId)
-  if (cached) {
-    replayCheckpointMemory.delete(userId)
-    replayCheckpointMemory.set(userId, cached)
-    return cached
-  }
-
-  const registry = new Map<string, ReplayCheckpoint>()
-  replayCheckpointMemory.set(userId, registry)
-  while (replayCheckpointMemory.size > REPLAY_CHECKPOINT_USER_LIMIT) {
-    // size > limit proves the iterator has a first key.
-    const oldestUserId = replayCheckpointMemory.keys().next().value!
-    replayCheckpointMemory.delete(oldestUserId)
-  }
-  try {
-    const key = replayCheckpointKey(userId)
-    const stored = window.sessionStorage.getItem(key)
-    if (stored === null) return registry
-    if (stored.length > REPLAY_CHECKPOINT_STORAGE_LIMIT)
-      throw new Error("checkpoint registry too large")
-    const parsed = JSON.parse(stored) as { entries?: unknown }
-    if (!Array.isArray(parsed.entries)) throw new Error("invalid checkpoint registry")
-    for (const entry of parsed.entries.slice(-REPLAY_CHECKPOINT_LIMIT)) {
-      if (
-        !Array.isArray(entry) ||
-        entry.length !== 3 ||
-        typeof entry[0] !== "string" ||
-        entry[0].length === 0 ||
-        entry[0].length > 512 ||
-        typeof entry[1] !== "number" ||
-        !Number.isSafeInteger(entry[1]) ||
-        entry[1] < 1 ||
-        typeof entry[2] !== "string" ||
-        entry[2].length === 0 ||
-        entry[2].length > 4096
-      ) {
-        throw new Error("invalid checkpoint entry")
-      }
-      registry.delete(entry[0])
-      registry.set(entry[0], { sequence: entry[1], resumeToken: entry[2] })
-    }
-  } catch {
-    registry.clear()
-    try {
-      window.sessionStorage.removeItem(replayCheckpointKey(userId))
-    } catch {
-      // Storage can be disabled; the in-memory registry is already fail-closed.
-    }
-  }
-  return registry
-}
-
-function readAndTouchReplayCheckpoint(
-  userId: string | undefined,
-  chatId: string
-): ReplayCheckpoint | undefined {
-  if (!userId) return undefined
-  const registry = replayCheckpointRegistry(userId)
-  const checkpoint = registry.get(chatId)
-  if (checkpoint === undefined) return undefined
-  registry.delete(chatId)
-  registry.set(chatId, checkpoint)
-  persistReplayCheckpoints(userId, registry)
-  return checkpoint
-}
-
-function peekReplayCheckpoint(
-  userId: string | undefined,
-  chatId: string
-): ReplayCheckpoint | undefined {
-  if (!userId) return undefined
-  return replayCheckpointRegistry(userId).get(chatId)
-}
-
-function writeReplayCheckpoint(
-  userId: string | undefined,
-  chatId: string,
-  sequence: number,
-  resumeToken: string,
-  protectedChatId: string | null
-): void {
-  if (!userId) return
-  const registry = replayCheckpointRegistry(userId)
-  registry.delete(chatId)
-  registry.set(chatId, { sequence, resumeToken })
-  while (registry.size > REPLAY_CHECKPOINT_LIMIT) {
-    const evictionCandidate = [...registry.keys()].find(
-      (candidate) => candidate !== protectedChatId && candidate !== chatId
-    )
-    // A registry over the limit contains more entries than the two protected
-    // ids, so a candidate necessarily exists.
-    registry.delete(evictionCandidate!)
-  }
-  persistReplayCheckpoints(userId, registry)
-}
-
-function clearReplayCheckpoints(userId: string): void {
-  replayCheckpointMemory.delete(userId)
-  try {
-    window.sessionStorage.removeItem(replayCheckpointKey(userId))
-  } catch {
-    // Storage can be disabled; the in-memory state was already cleared.
-  }
-}
-
-function removeReplayCheckpoint(userId: string | undefined, chatId: string): void {
-  if (!userId) return
-  const registry = replayCheckpointRegistry(userId)
-  if (!registry.delete(chatId)) return
-  persistReplayCheckpoints(userId, registry)
-}
-
 function joinFrame(userId: string | undefined, chatId: string) {
   const checkpoint = readAndTouchReplayCheckpoint(userId, chatId)
   return checkpoint === undefined
@@ -195,7 +61,7 @@ function joinFrame(userId: string | undefined, chatId: string) {
 }
 
 export function rememberLiveMessage(
-  seenMessageIds: Map<string, true>,
+  seenMessageIds: Set<string>,
   chatId: string,
   messageId: string
 ): boolean {
@@ -204,11 +70,11 @@ export function rememberLiveMessage(
     // Refresh duplicate entries so frequently replayed frames remain protected
     // when the bounded window evicts its least-recently-seen member.
     seenMessageIds.delete(key)
-    seenMessageIds.set(key, true)
+    seenMessageIds.add(key)
     return false
   }
 
-  seenMessageIds.set(key, true)
+  seenMessageIds.add(key)
   if (seenMessageIds.size > LIVE_MESSAGE_DEDUP_LIMIT) {
     seenMessageIds.delete(seenMessageIds.keys().next().value!)
   }
@@ -222,7 +88,7 @@ function messageEpochMicroseconds(createdAt: string): bigint | null {
   // Date.parse keeps only millisecond precision. Preserve the final three
   // fractional digits so the cursor exactly matches the backend's integer
   // microsecond keyset contract.
-  const fractional = /\.(\d{1,6})(?:Z|[+-]\d{2}:\d{2})$/u.exec(createdAt)?.[1] ?? ""
+  const fractional = /\.(\d{1,6})(?:Z|[+-]\d{2}:\d{2})/u.exec(createdAt)?.[1] ?? ""
   const subMillisecondDigits = fractional.padEnd(6, "0").slice(3, 6)
   return BigInt(epochMilliseconds) * 1000n + BigInt(subMillisecondDigits)
 }
@@ -401,36 +267,6 @@ export function applyReactionChangedFrame(
   }
 }
 
-// WebSocket message types
-export type WebSocketMessageType =
-  | "pong"
-  | "typing"
-  | "read"
-  | "new_message"
-  | "online"
-  | "online_list"
-  | "presence"
-  | "error"
-  | "rate_limit_exceeded"
-  | "message_edited"
-  | "message_deleted"
-  | "reaction_changed"
-  | "replay_checkpoint"
-
-export interface WebSocketMessage {
-  type: WebSocketMessageType
-  chat_id?: string
-  message_id?: string
-  user_id?: string
-  user_name?: string
-  message?: Message
-  status?: boolean
-  users?: string[]
-  active?: boolean
-  last_seen?: string | null
-  read_at?: string | null // Wave 203 — chat-level read-receipt timestamp
-}
-
 export interface UseChatWebSocketOptions {
   enabled?: boolean
   // Wave 204 SW4 — the current user's id, used to drop self-echoes: the
@@ -493,18 +329,26 @@ import { createElement } from "react"
 export const WebSocketStoreContext = createContext<WebSocketStore | null>(null)
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
-  const store = useMemo(() => new WebSocketStore(), [])
+  const [store] = useState(() => new WebSocketStore())
   return createElement(WebSocketStoreContext.Provider, { value: store }, children)
 }
+const noop = () => {}
+
+/** A value created once per hook instance (a stable callback without dependencies). */
+function useConstant<T>(create: () => T): T {
+  return useState(create)[0]
+}
+
 export function useChatWebSocket({
   enabled = true,
   currentUserId,
-  onNewMessage,
-  onTyping,
-  onRead,
-  onOnlineStatus,
-  onPresenceUpdate,
-  onAuthError,
+  // Absent callbacks default to a no-op so every event can invoke its handler.
+  onNewMessage = noop,
+  onTyping = noop,
+  onRead = noop,
+  onOnlineStatus = noop,
+  onPresenceUpdate = noop,
+  onAuthError = noop,
 }: UseChatWebSocketOptions) {
   const wsStore = useContext(WebSocketStoreContext)
   if (!wsStore) {
@@ -512,13 +356,11 @@ export function useChatWebSocket({
   }
 
   const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const socketAccountEpochRef = useRef(-1)
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const reconnectAttemptRef = useRef(0)
-  const connectionGenerationRef = useRef(0)
-  const ticketRequestRef = useRef<{
-    generation: number
-    controller: AbortController
-  } | null>(null)
+  // The controller of the ticket request in flight, if any.
+  const ticketRequestRef = useRef<AbortController | null>(null)
 
   // MOD-11: Subscribe to external store for connection state
   // W127 SW1: 3rd arg getServerSnapshot returns `false` — no WS connection
@@ -529,6 +371,8 @@ export function useChatWebSocket({
   const isConnected = useSyncExternalStore(wsStore.subscribe, wsStore.getSnapshot, () => false)
 
   const [typingUsers, setTypingUsers] = useState<Map<string, TypingUser>>(new Map())
+  // Timer ownership must not depend on React executing a state updater during cleanup.
+  const typingUsersRef = useRef<Map<string, TypingUser>>(new Map())
   const queryClient = useQueryClient()
   const lastSentRef = useRef<Map<string, number>>(new Map())
 
@@ -538,7 +382,8 @@ export function useChatWebSocket({
   const onOnlineStatusRef = useRef(onOnlineStatus)
   const onPresenceUpdateRef = useRef(onPresenceUpdate)
   const onAuthErrorRef = useRef(onAuthError)
-  const mountedRef = useRef(false)
+  // Unset (falsy) until the mount effect runs.
+  const mountedRef = useRef<boolean | undefined>(undefined)
   // Assigned by the first effect before the connection effect can schedule a
   // retry. Avoid a never-invoked placeholder callback in the runtime graph.
   const connectRef = useRef<() => void>(null!)
@@ -546,20 +391,26 @@ export function useChatWebSocket({
   // should be joined to (re-sent on every (re)connect in ws.onopen, since
   // ws-hub room membership is per-connection).
   const currentUserIdRef = useRef(currentUserId)
+  const transportEnabledRef = useRef(enabled)
+  // Changes only at account boundaries, not ordinary reconnects of the same account.
+  const accountEpochRef = useRef(0)
   const activeRoomRef = useRef<string | null>(null)
   // At-least-once delivery can replay a message after it has left the smaller
   // render cache. Keep transport deduplication independent and bounded for the
   // complete authenticated hook session, including reconnects.
-  const seenMessageIdsRef = useRef<Map<string, true>>(new Map())
+  const seenMessageIdsRef = useRef<Set<string>>(new Set())
   const seenMessageSessionRef = useRef(currentUserId)
 
-  useEffect(() => {
+  // Invalidate old-account callbacks during commit, before passive reconnect effects.
+  useIsomorphicLayoutEffect(() => {
     if (seenMessageSessionRef.current !== currentUserId) {
-      if (seenMessageSessionRef.current) {
-        clearReplayCheckpoints(seenMessageSessionRef.current)
-      }
+      accountEpochRef.current += 1
+      clearReplayCheckpoints(seenMessageSessionRef.current)
       seenMessageIdsRef.current.clear()
       seenMessageSessionRef.current = currentUserId
+      activeRoomRef.current = null
+      lastSentRef.current.clear()
+      reconnectAttemptRef.current = 0
     }
     onNewMessageRef.current = onNewMessage
     onTypingRef.current = onTyping
@@ -568,43 +419,34 @@ export function useChatWebSocket({
     onPresenceUpdateRef.current = onPresenceUpdate
     onAuthErrorRef.current = onAuthError
     currentUserIdRef.current = currentUserId
+    transportEnabledRef.current = enabled
   })
 
-  useEffect(
-    () => () => {
-      seenMessageIdsRef.current.clear()
-    },
-    []
-  )
-
-  useEffect(() => {
-    if (!currentUserId) return
-    replayCheckpointMounts.set(currentUserId, (replayCheckpointMounts.get(currentUserId) ?? 0) + 1)
+  useIsomorphicLayoutEffect(() => {
+    mountedRef.current = true
     return () => {
-      // This cleanup exists only after the setup increment above.
-      const remaining = replayCheckpointMounts.get(currentUserId)! - 1
-      if (remaining > 0) {
-        replayCheckpointMounts.set(currentUserId, remaining)
-        return
-      }
-      replayCheckpointMounts.delete(currentUserId)
-      replayCheckpointMemory.delete(currentUserId)
+      mountedRef.current = false
     }
-  }, [currentUserId])
-
-  const cleanup = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current)
-      reconnectTimeoutRef.current = null
-    }
-    setTypingUsers((currentMap) => {
-      currentMap.forEach((user) => clearTimeout(user.timeout))
-      return new Map()
-    })
   }, [])
 
+  useEffect(() => retainReplayCheckpoints(currentUserId), [currentUserId])
+
+  const cleanup = useConstant(() => () => {
+    clearTimeout(reconnectTimeoutRef.current)
+    typingUsersRef.current.forEach((user) => clearTimeout(user.timeout))
+    const empty = new Map<string, TypingUser>()
+    typingUsersRef.current = empty
+    setTypingUsers(empty)
+  })
+
   const connect = useCallback(() => {
-    if (!enabled || !mountedRef.current || navigator.onLine === false) return
+    const accountEpoch = accountEpochRef.current
+    const ownsAccount = () =>
+      mountedRef.current &&
+      currentUserIdRef.current === currentUserId &&
+      accountEpochRef.current === accountEpoch
+    const ownsSession = () => ownsAccount() && transportEnabledRef.current
+    if (!enabled || !ownsSession() || navigator.onLine === false) return
 
     if (
       ticketRequestRef.current ||
@@ -612,9 +454,8 @@ export function useChatWebSocket({
     ) {
       return
     }
-    const requestGeneration = ++connectionGenerationRef.current
     const ticketController = new AbortController()
-    ticketRequestRef.current = { generation: requestGeneration, controller: ticketController }
+    ticketRequestRef.current = ticketController
 
     // RZ-W14-01 (audit 2026-03-23 Wave 14): fetch a short-lived upgrade ticket
     // before opening the WebSocket.  This eliminates the JWT from the URL and
@@ -651,13 +492,14 @@ export function useChatWebSocket({
         )
         ticket = resp.data.ticket
       } catch (e: unknown) {
-        if (ticketController.signal.aborted || !mountedRef.current) return
+        // A disconnect (including unmount) aborts the request it supersedes.
+        if (ticketController.signal.aborted || !ownsSession()) return
         const axiosErr = e as { response?: { status: number } }
         const status = axiosErr?.response?.status
         if (status === 401 || status === 403) {
           // Session expired or revoked — do not attempt to connect.
           logError("[WebSocket] Session invalid (status %s); aborting connection.", status)
-          onAuthErrorRef.current?.()
+          onAuthErrorRef.current()
         } else {
           // Transient server/network error — schedule backoff reconnect.
           if (navigator.onLine === false) return
@@ -675,24 +517,25 @@ export function useChatWebSocket({
         return
       } finally {
         clearTimeout(ticketTimeout) // TD-26-03: clean up timeout
-        if (ticketRequestRef.current?.generation === requestGeneration) {
+        // A disconnect or a newer request may own the ref by now; release it
+        // only while it still belongs to this request.
+        if (ticketRequestRef.current === ticketController) {
           ticketRequestRef.current = null
         }
       }
 
-      if (
-        !mountedRef.current ||
-        ticketController.signal.aborted ||
-        !enabled ||
-        connectionGenerationRef.current !== requestGeneration
-      )
-        return
+      // Disconnecting (also on unmount or when disabled) aborts the request,
+      // as does the ticket timeout; only a live request may open a socket.
+      if (ticketController.signal.aborted || !ownsSession()) return
 
       try {
         const ws = new WebSocket(`${baseWsUrl}?ticket=${encodeURIComponent(ticket)}`)
         wsRef.current = ws
+        socketAccountEpochRef.current = accountEpoch
+        const ownsTransport = () => ownsSession() && wsRef.current === ws
 
         ws.onopen = () => {
+          if (!ownsTransport()) return
           wsStore.setConnected(true)
           reconnectAttemptRef.current = 0
 
@@ -702,7 +545,7 @@ export function useChatWebSocket({
           // nothing after a reconnect until the next chat-select.
           if (activeRoomRef.current) {
             try {
-              ws.send(JSON.stringify(joinFrame(currentUserIdRef.current, activeRoomRef.current)))
+              ws.send(JSON.stringify(joinFrame(currentUserId, activeRoomRef.current)))
             } catch {
               /* WS closed between open and send — the next connect re-joins */
             }
@@ -715,6 +558,7 @@ export function useChatWebSocket({
         }
 
         ws.onmessage = (event) => {
+          if (!ownsTransport()) return
           try {
             const validated = parseWsMessage(event.data)
             if (!validated) {
@@ -736,40 +580,31 @@ export function useChatWebSocket({
             if (
               sequencedChatId !== undefined &&
               incomingSequence <=
-                (peekReplayCheckpoint(currentUserIdRef.current, sequencedChatId)?.sequence ?? 0)
+                (peekReplayCheckpoint(currentUserId, sequencedChatId)?.sequence ?? 0)
             ) {
               return
             }
 
             switch (validated.type) {
               case "new_message": {
-                // A self-authored live echo is usually already present from the
-                // optimistic mutation. A replay can arrive after that optimistic
-                // cache entry was lost, though, so cache presence—not authorship—
-                // decides whether reconciliation may be skipped.
-                const selfAuthored = validated.message.sender_id === currentUserIdRef.current
+                // Presence in the render cache, not the dedup memory, decides
+                // whether a frame still needs reconciling: a self-authored
+                // replay can arrive after its optimistic cache entry was lost,
+                // while a peer's replay is dropped once seen, even after it
+                // left the bounded render cache.
+                const selfAuthored = validated.message.sender_id === currentUserId
+                const firstDelivery = rememberLiveMessage(
+                  seenMessageIdsRef.current,
+                  validated.chat_id,
+                  validated.message.id
+                )
                 const cachedMessages = queryClient.getQueryData<MessagesListResponse>([
                   "messages",
                   validated.chat_id,
                 ])
-                const selfMessageAlreadyPresent =
-                  selfAuthored &&
-                  cachedMessages?.items.some((message) => message.id === validated.message.id)
-                if (selfMessageAlreadyPresent) {
-                  rememberLiveMessage(
-                    seenMessageIdsRef.current,
-                    validated.chat_id,
-                    validated.message.id
-                  )
-                  break
-                }
                 if (
-                  !rememberLiveMessage(
-                    seenMessageIdsRef.current,
-                    validated.chat_id,
-                    validated.message.id
-                  ) &&
-                  !selfAuthored
+                  cachedMessages?.items.some((message) => message.id === validated.message.id) ||
+                  (!firstDelivery && !selfAuthored)
                 )
                   break
 
@@ -780,34 +615,28 @@ export function useChatWebSocket({
                 // → a single `as Message` is valid (collapsed from the prior, redundant
                 // `as unknown as Message` double-cast; the `unknown` hop was never needed).
                 // Do NOT delete the cast — `ParsedMessage` is NOT structurally `Message`.
-                let inserted = false
-                let requiresHistoryRecovery =
-                  messageEpochMicroseconds(validated.message.created_at) === null
+                const requiresHistoryRecovery = [
+                  validated.message,
+                  ...(cachedMessages?.items ?? []),
+                ].some((message) => messageEpochMicroseconds(message.created_at) === null)
                 queryClient.setQueryData<MessagesListResponse>(
                   ["messages", validated.chat_id],
-                  (old) => {
-                    if (!old) {
-                      inserted = true
-                      return {
-                        items: [validated.message as Message],
-                        has_more: false,
-                        next_cursor: null,
-                      }
-                    }
-                    if (old.items.some((m) => m.id === validated.message.id)) return old
-                    requiresHistoryRecovery ||= old.items.some(
-                      (message) => messageEpochMicroseconds(message.created_at) === null
-                    )
-                    inserted = true
-                    return appendLiveMessageToCache(old, validated.message as Message)
-                  }
+                  (old) =>
+                    old
+                      ? appendLiveMessageToCache(old, validated.message as Message)
+                      : {
+                          items: [validated.message as Message],
+                          has_more: false,
+                          next_cursor: null,
+                        }
                 )
-                if (!inserted) break
 
                 // Persist only newly accepted frames to RxDB. A repeated delivery
                 // is idempotent across the in-memory cache, unread count and callbacks.
                 getDatabaseLazily()
                   .then((db) => {
+                    // Account changes invalidate deferred writes; same-account reconnects do not.
+                    if (!ownsAccount()) return
                     const msg = validated.message as Message
                     db.messages
                       .upsert({
@@ -852,8 +681,9 @@ export function useChatWebSocket({
                   }
                 })
                 queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
+                if (!ownsTransport()) return
                 if (!selfAuthored) {
-                  onNewMessageRef.current?.(validated.message as Message, validated.chat_id)
+                  onNewMessageRef.current(validated.message as Message, validated.chat_id)
                 }
                 break
               }
@@ -862,38 +692,34 @@ export function useChatWebSocket({
                 // PERF-26-02: per-chat cap replaces global 100 cap (was PERF-W18-02).
                 // Global cap starved low-activity chats when many chats were active.
                 const MAX_TYPING_PER_CHAT = 20
-                setTypingUsers((prev) => {
-                  const key = `${validated.chat_id}:${validated.user_id}`
-                  // Allow updates to existing keys but reject new keys when at per-chat capacity
-                  if (!prev.has(key)) {
-                    let chatCount = 0
-                    for (const k of prev.keys()) {
-                      if (k.startsWith(`${validated.chat_id}:`)) chatCount++
-                    }
-                    if (chatCount >= MAX_TYPING_PER_CHAT) return prev
-                  }
-                  const newMap = new Map(prev)
-                  const existing = newMap.get(key)
+                const key = `${validated.chat_id}:${validated.user_id}`
+                const currentMap = typingUsersRef.current
+                const existing = currentMap.get(key)
+                let chatCount = 0
+                for (const k of currentMap.keys()) {
+                  if (k.startsWith(`${validated.chat_id}:`)) chatCount++
+                }
+                // Refresh existing users even at capacity; allocate timers only for accepted entries.
+                if (existing || chatCount < MAX_TYPING_PER_CHAT) {
                   if (existing) clearTimeout(existing.timeout)
-
-                  const timeout = setTimeout(() => {
-                    if (!mountedRef.current) return
-                    setTypingUsers((p) => {
-                      if (!p.has(key)) return p
-                      const updated = new Map(p)
-                      updated.delete(key)
-                      return updated
-                    })
-                  }, TYPING_INDICATOR_TIMEOUT_MS)
-
-                  newMap.set(key, {
+                  const entry: TypingUser = {
                     userId: validated.user_id,
                     userName: validated.user_name,
-                    timeout,
-                  })
-                  return newMap
-                })
-                onTypingRef.current?.(validated.chat_id, validated.user_id, validated.user_name)
+                    timeout: setTimeout(() => {
+                      // A queued callback from a replaced or released entry cannot expire its successor.
+                      if (typingUsersRef.current.get(key) !== entry) return
+                      const updated = new Map(typingUsersRef.current)
+                      updated.delete(key)
+                      typingUsersRef.current = updated
+                      setTypingUsers(updated)
+                    }, TYPING_INDICATOR_TIMEOUT_MS),
+                  }
+                  const updated = new Map(currentMap)
+                  updated.set(key, entry)
+                  typingUsersRef.current = updated
+                  setTypingUsers(updated)
+                }
+                onTypingRef.current(validated.chat_id, validated.user_id, validated.user_name)
                 break
               }
 
@@ -904,7 +730,7 @@ export function useChatWebSocket({
                 // to read in the reader's own cache (harmless but pointless
                 // churn). The SENDER (user_id !== me) DOES process it → their
                 // sent bubbles flip to "Seen · HH:MM" live.
-                if (validated.user_id === currentUserIdRef.current) break
+                if (validated.user_id === currentUserId) break
                 // Wave 203 SW5 — chat-level read receipt. Flip every message NOT
                 // sent by the reader (validated.user_id) to read + stamp the
                 // chat-level read_at. applyReadFrame is the pure, unit-tested core.
@@ -916,7 +742,7 @@ export function useChatWebSocket({
                   queryKey: ["messages", validated.chat_id],
                   refetchType: "none",
                 })
-                onReadRef.current?.(validated.chat_id, validated.user_id, validated.read_at)
+                onReadRef.current(validated.chat_id, validated.user_id, validated.read_at)
                 break
               }
 
@@ -954,7 +780,7 @@ export function useChatWebSocket({
                 // optimistically in toggleReactionMutation, so applying its own echo
                 // would double-count. Other participants apply the delta live; a
                 // missed/duplicate frame self-heals on the next GET /messages.
-                if (validated.user_id === currentUserIdRef.current) break
+                if (validated.user_id === currentUserId) break
                 queryClient.setQueryData<MessagesListResponse>(
                   ["messages", validated.chat_id],
                   (old) => applyReactionChangedFrame(old, validated)
@@ -967,29 +793,24 @@ export function useChatWebSocket({
               }
 
               case "online": {
-                onOnlineStatusRef.current?.(validated.user_id, validated.status)
+                onOnlineStatusRef.current(validated.user_id, validated.status)
                 break
               }
 
               case "presence": {
-                onPresenceUpdateRef.current?.(
+                onPresenceUpdateRef.current(
                   validated.user_id,
                   validated.active,
                   validated.last_seen
                 )
-                onOnlineStatusRef.current?.(validated.user_id, validated.active)
+                if (!ownsTransport()) return
+                onOnlineStatusRef.current(validated.user_id, validated.active)
                 break
               }
 
-              case "replay_checkpoint":
-                // The server terminated a permanently malformed replay event.
-                // Advancing the durable sequence below prevents that poison event
-                // from being requested again on every reconnect.
-                break
-
               case "error":
                 if (validated.code === "invalid_resume_token" && validated.room !== undefined) {
-                  removeReplayCheckpoint(currentUserIdRef.current, validated.room)
+                  removeReplayCheckpoint(currentUserId, validated.room)
                   void queryClient.invalidateQueries({
                     queryKey: ["messages", validated.room],
                     refetchType: "all",
@@ -1002,13 +823,18 @@ export function useChatWebSocket({
                 logError("[WebSocket] Server error:", validated)
                 break
             }
+            // Every sequenced frame advances the durable checkpoint, including a
+            // `replay_checkpoint` that terminates a permanently malformed replay
+            // event, so that poison event is not requested again on reconnect.
+            // A consumer callback may synchronously switch accounts while handling the frame.
+            if (!ownsTransport()) return
             if (
               validated.stream_seq !== undefined &&
               validated.resume_token !== undefined &&
               sequencedChatId !== undefined
             ) {
               writeReplayCheckpoint(
-                currentUserIdRef.current,
+                currentUserId,
                 sequencedChatId,
                 validated.stream_seq,
                 validated.resume_token,
@@ -1023,7 +849,7 @@ export function useChatWebSocket({
         ws.onclose = (event) => {
           // A late close from a superseded transport must not tear down the
           // connection state or timers belonging to the newer socket.
-          if (wsRef.current !== ws) return
+          if (!ownsTransport()) return
           wsRef.current = null
           wsStore.setConnected(false)
           cleanup()
@@ -1055,38 +881,35 @@ export function useChatWebSocket({
         }
 
         ws.onerror = (error) => {
+          if (!ownsTransport()) return
           logError("[WebSocket] Error:", error)
         }
       } catch (e) {
         logError("[WebSocket] Failed to connect:", e)
       }
     })() // end async IIFE — ticket fetch + WS connect
-  }, [enabled, cleanup, queryClient, wsStore])
+  }, [enabled, currentUserId, cleanup, queryClient, wsStore])
 
-  const disconnect = useCallback(() => {
+  // Only refs, the constant cleanup and the provider's store are captured.
+  const disconnect = useConstant(() => () => {
     cleanup()
-    connectionGenerationRef.current += 1
-    ticketRequestRef.current?.controller.abort()
+    ticketRequestRef.current?.abort()
     ticketRequestRef.current = null
-    if (wsRef.current) {
-      wsRef.current.close(1000)
-      wsRef.current = null
-    }
+    // Invalidate ownership before close can synchronously deliver stale callbacks.
+    const ws = wsRef.current
+    wsRef.current = null
+    ws?.close(1000)
     wsStore.setConnected(false)
-  }, [cleanup, wsStore])
+  })
 
   useEffect(() => {
     connectRef.current = connect
   }, [connect])
 
   useEffect(() => {
-    mountedRef.current = true
-    if (enabled) connect()
+    connect()
 
-    return () => {
-      mountedRef.current = false
-      disconnect()
-    }
+    return disconnect
   }, [enabled, connect, disconnect])
 
   useEffect(() => {
@@ -1113,7 +936,7 @@ export function useChatWebSocket({
   // rate, complements the server's 180/60 limiter). NO WS-open guard: delivery depends
   // on the RECIPIENT's socket (server-side), not the sender's — so it fires whenever
   // the user is typing. Fire-and-forget; typing is ephemeral, errors are swallowed.
-  const sendTyping = useCallback((chatId: string) => {
+  const sendTyping = useConstant(() => (chatId: string) => {
     const key = `typing:${chatId}`
     const now = Date.now()
     if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.typing!) return
@@ -1121,7 +944,7 @@ export function useChatWebSocket({
     void chatApi.sendTyping(chatId).catch(() => {
       /* typing is ephemeral — swallow transient errors */
     })
-  }, [])
+  })
 
   // W204 SW4 — join/leave a ws-hub room (room == chat_id). A client must JOIN
   // to RECEIVE chat.{room} fan-out: ws-hub's collectRecipients returns nil for
@@ -1129,26 +952,38 @@ export function useChatWebSocket({
   // /api/internal/chat/check-participant before adding the client. activeRoomRef
   // is set FIRST (before the OPEN check) so a chat selected before the socket
   // is open is still joined on the next ws.onopen.
-  const sendJoin = useCallback((roomId: string) => {
+  const openSocketForCurrentAccount = useConstant(() => () => {
+    const ws = wsRef.current
+    return mountedRef.current &&
+      transportEnabledRef.current &&
+      socketAccountEpochRef.current === accountEpochRef.current &&
+      ws?.readyState === WebSocket.OPEN
+      ? ws
+      : null
+  })
+
+  const sendJoin = useConstant(() => (roomId: string) => {
     activeRoomRef.current = roomId
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    const ws = openSocketForCurrentAccount()
+    if (!ws) return
     try {
       // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send.
-      wsRef.current.send(JSON.stringify(joinFrame(currentUserIdRef.current, roomId)))
+      ws.send(JSON.stringify(joinFrame(currentUserIdRef.current, roomId)))
     } catch {
       /* WS closed between readyState check and send — onopen re-joins activeRoomRef */
     }
-  }, [])
+  })
 
-  const sendLeave = useCallback((roomId: string) => {
+  const sendLeave = useConstant(() => (roomId: string) => {
     if (activeRoomRef.current === roomId) activeRoomRef.current = null
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    const ws = openSocketForCurrentAccount()
+    if (!ws) return
     try {
-      wsRef.current.send(JSON.stringify({ type: "leave", room: roomId }))
+      ws.send(JSON.stringify({ type: "leave", room: roomId }))
     } catch {
       /* WS closed — ws-hub strips room membership on disconnect anyway */
     }
-  }, [])
+  })
 
   const getTypingUsersForChat = useCallback(
     (chatId: string) => {

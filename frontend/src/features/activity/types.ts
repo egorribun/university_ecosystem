@@ -1,5 +1,3 @@
-export const EASE_OUT_EXPO = [0.22, 1, 0.36, 1] as const
-
 export const PERIOD_VALUES = ["30d", "90d", "180d"] as const
 export type PeriodKey = (typeof PERIOD_VALUES)[number]
 
@@ -73,8 +71,6 @@ export type ParticipationSummaryResponse = {
   trend?: unknown
   recent?: unknown
 }
-
-export type DetailSection = "" | "attendance" | "grades" | "participation"
 
 /** Unified timeline entry — discriminated union for merged activity feed */
 export type TimelineEntry =

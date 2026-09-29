@@ -5,6 +5,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from functools import cache, partial
+from types import ModuleType
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -17,6 +18,7 @@ from jwt import PyJWTError as JWTError
 from zxcvbn import zxcvbn
 
 from app.core.config import settings
+from app.core.config.database import _cgroup_aware_cpu_count
 from app.core.localization import translate
 from app.core.logging import get_logger
 
@@ -36,37 +38,25 @@ _logger = get_logger(__name__)
 # (TD-W8-03: corrected from 65536/64 MB — reduced in PERF-02, audit 2026-03-04.)
 # Bounding pool size to cpu_count prevents memory exhaustion under login bursts.
 # Python's default (cpu_count + 4) is designed for I/O-bound work — not suitable here.
-# PERF-2: os.cpu_count() returns HOST core count inside containers; use
-# sched_getaffinity (cgroups v2) or cfs_quota (cgroups v1) for correctness.
-# A 2-CPU container on a 32-core host would otherwise spin up 32 Argon2
-# threads × 64 MB = 2 GB RAM instead of the expected 128 MB.
+# PERF-2: os.cpu_count() returns HOST core count inside containers.  The shared
+# cgroup-aware helper honours cgroups v2/v1 quotas before affinity so a 2-CPU
+# container on a 32-core host cannot spin up 32 Argon2 workers.
 def _container_cpu_count() -> int:
     """Return cgroup-aware CPU count for container environments."""
-    try:
-        sched = getattr(os, "sched_getaffinity", None)
-        if sched:
-            return len(sched(0))  # Linux cgroups v2 — most accurate
-    except (AttributeError, NotImplementedError):  # RZ-28-01
-        pass
-    try:  # Fallback for cgroups v1 (Docker legacy)
-        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as _f:
-            quota = int(_f.read().strip())
-        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us") as _f:
-            period = int(_f.read().strip())
-        if quota > 0 and period > 0:
-            # LOW-W19: cap at 32 to prevent runaway thread/memory usage on
-            # hosts where cgroups v1 quota is set to an unreasonably high value.
-            return min(max(1, quota // period), 32)
-    except (FileNotFoundError, ValueError, OSError):  # RZ-28-01
-        pass
-    return os.cpu_count() or 2
+    return _cgroup_aware_cpu_count()
 
 
 _AUTH_EXECUTOR_WORKERS: int = max(2, _container_cpu_count())
-_auth_executor = ThreadPoolExecutor(
-    max_workers=_AUTH_EXECUTOR_WORKERS,
-    thread_name_prefix="auth_worker",
-)
+
+
+def _new_auth_executor() -> ThreadPoolExecutor:
+    return ThreadPoolExecutor(
+        max_workers=_AUTH_EXECUTOR_WORKERS,
+        thread_name_prefix="auth_worker",
+    )
+
+
+_auth_executor = _new_auth_executor()
 
 # Semaphore that caps concurrent async Argon2 operations to (worker_count - 1).
 # Without this, a login burst fans out 100+ simultaneous 32MB/~300ms hash calls,
@@ -86,7 +76,8 @@ def _get_argon2_semaphore_for_loop(loop_id: int) -> asyncio.Semaphore:
     """Return a Semaphore scoped to a specific event loop instance.
 
     Called lazily at request-time, AFTER the worker's event loop is running.
-    Fork-safe: each forked Gunicorn worker gets its own loop with a unique id.
+    A forked child can reuse a parent loop's id, so the at-fork reset below
+    clears this cache.
     Free-threading safe: lru_cache dict operations are GIL-free safe (dict is
     protected by its own per-object lock in Python 3.13 free-threading).
     """
@@ -102,6 +93,33 @@ def _get_argon2_semaphore() -> asyncio.Semaphore:
     """
     loop = asyncio.get_running_loop()
     return _get_argon2_semaphore_for_loop(id(loop))
+
+
+def _reset_auth_state_after_fork() -> None:
+    """Give a forked child its own auth pool, loop primitives and HIBP client.
+
+    Worker threads do not survive fork, but an inherited ThreadPoolExecutor
+    still counts its idle workers, so work submitted in the child would queue
+    forever.  A child's event loop can also reuse a parent loop's id and would
+    then be handed a semaphore or lock bound to the parent's loop.  The HIBP
+    client's pooled sockets and a public-key cache lock held by a parent pool
+    thread must not be shared with the child either.
+    """
+    global _auth_executor, _hibp_client, _public_key_cache_lock
+    _auth_executor = _new_auth_executor()
+    _get_argon2_semaphore_for_loop.cache_clear()
+    _get_hibp_lock_for_loop.cache_clear()
+    _hibp_client = None
+    _public_key_cache_lock = threading.Lock()
+
+
+def _register_fork_reset(os_module: ModuleType = os) -> None:
+    register_at_fork = getattr(os_module, "register_at_fork", None)
+    if register_at_fork is not None:
+        register_at_fork(after_in_child=_reset_auth_state_after_fork)
+
+
+_register_fork_reset()
 
 
 class SecurityError(Exception):
@@ -164,7 +182,8 @@ def _get_hibp_client_lock() -> asyncio.Lock:
 
     RZ-NEW-002 (audit 2026-03-19): Uses lru_cache keyed on event loop id
     to avoid threading.Lock dependency (free-threading Python 3.13 safe).
-    Fork-safe: each forked Gunicorn worker gets its own loop with a unique id.
+    A forked child can reuse a parent loop's id, so the at-fork reset clears
+    this cache.
     """
     loop = asyncio.get_running_loop()
     return _get_hibp_lock_for_loop(id(loop))
@@ -471,6 +490,11 @@ def _mint_pure_jwt(
     payload: dict[str, Any] = {
         "sub": str(subject),
         "aud": settings.jwt_audience,
+        "iss": settings.jwt_issuer,
+        # Downstream zero-trust consumers require an explicit activity claim;
+        # callers issuing a bare/internal token may still override it through
+        # ``extra_claims`` when the token represents a different lifecycle.
+        "is_active": True,
         "iat": now,
         "nbf": now,
         "exp": now + timedelta(minutes=minutes),

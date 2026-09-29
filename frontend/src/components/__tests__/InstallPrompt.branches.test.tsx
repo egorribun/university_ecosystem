@@ -1,12 +1,19 @@
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, render as rtlRender, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type ReactNode } from "react"
 import { renderToString } from "react-dom/server"
-import InstallPrompt, { togglePushNotifications } from "@/components/pwa/InstallPrompt"
-import { PWA_REFRESH_EVENT } from "@/app/pwaEvents"
+import InstallPrompt from "@/components/pwa/InstallPrompt"
+import { PWA_REFRESH_EVENT, requestPushEducation } from "@/app/pwaEvents"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { User } from "@/types/User"
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mockUsePushPreferences = vi.fn()
+const render = (ui: Parameters<typeof rtlRender>[0]) => {
+  const result = rtlRender(ui)
+  act(() => requestPushEducation("1"))
+  return result
+}
 
 const lastNotify = { fn: null as ((toast: unknown) => void) | null }
 
@@ -76,6 +83,11 @@ beforeAll(() => {
 
 beforeEach(() => {
   localStorage.clear()
+  useAuthStore.setState({
+    user: { id: "1", email: "student@example.test", is_active: true } satisfies User,
+    loading: false,
+  })
+  window.history.replaceState(null, "", "/events")
   lastNotify.fn = null
   mockUsePushPreferences.mockReturnValue(createPushPreferencesState())
 })
@@ -102,14 +114,10 @@ describe("InstallPrompt — branches", () => {
     })
   })
 
-  it("renders the unsupported warning when push is not supported", async () => {
+  it("does not offer push education when push is unsupported", () => {
     mockUsePushPreferences.mockReturnValue(createPushPreferencesState({ pushSupported: false }))
     render(<InstallPrompt />)
-
-    await waitFor(() => {
-      expect(screen.getByText("system:installPrompt.manageNotifications")).toBeInTheDocument()
-    })
-    expect(screen.getByText("system:installPrompt.unsupported")).toBeInTheDocument()
+    expect(screen.queryByText("system:installPrompt.manageNotifications")).not.toBeInTheDocument()
   })
 
   it("ignores malformed dismissal timestamps", async () => {
@@ -159,40 +167,18 @@ describe("InstallPrompt — branches", () => {
     rerender(<InstallPrompt />)
 
     expect(screen.queryByText("system:installPrompt.toggleLabel")).not.toBeInTheDocument()
-    togglePushNotifications(false, enableNotifications, disableNotifications)
-    togglePushNotifications(true, enableNotifications, disableNotifications)
-    expect(enableNotifications).toHaveBeenCalledOnce()
-    expect(disableNotifications).toHaveBeenCalledOnce()
+    expect(enableNotifications).not.toHaveBeenCalled()
+    expect(disableNotifications).not.toHaveBeenCalled()
     expect(topicToggle).not.toHaveBeenCalled()
   })
 
-  it("renders the blocked state when permission is denied", async () => {
+  it("does not offer push education when permission is denied", () => {
     mockUsePushPreferences.mockReturnValue(
       createPushPreferencesState({ notificationPermission: "denied" })
     )
     render(<InstallPrompt />)
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("system:installPrompt.blocked navigation:brandName")
-      ).toBeInTheDocument()
-    })
-    expect(screen.getByText("system:installPrompt.check")).toBeInTheDocument()
-  })
-
-  it("shows the Safari iOS guide in the denied state", async () => {
-    mockUsePushPreferences.mockReturnValue(
-      createPushPreferencesState({
-        notificationPermission: "denied",
-        safariIOS: true,
-        safariGuideUrl: "https://example.com/guide",
-      })
-    )
-    render(<InstallPrompt />)
-
-    await waitFor(() => {
-      expect(screen.getByText("system:installPrompt.safariGuide")).toBeInTheDocument()
-    })
+    expect(screen.queryByText("system:installPrompt.manageNotifications")).not.toBeInTheDocument()
   })
 
   it("shows an informational feedback toast with the neutral style", async () => {
@@ -207,20 +193,6 @@ describe("InstallPrompt — branches", () => {
     })
 
     expect(await screen.findByText("info")).toBeInTheDocument()
-  })
-
-  it("invokes enableNotifications from the denied state check button", async () => {
-    const enableNotifications = vi.fn()
-    mockUsePushPreferences.mockReturnValue(
-      createPushPreferencesState({ notificationPermission: "denied", enableNotifications })
-    )
-    render(<InstallPrompt />)
-
-    const user = userEvent.setup()
-    const checkButton = await screen.findByText("system:installPrompt.check")
-    await user.click(checkButton)
-
-    expect(enableNotifications).toHaveBeenCalledTimes(1)
   })
 
   it("invokes enableNotifications from the default-permission allow button", async () => {

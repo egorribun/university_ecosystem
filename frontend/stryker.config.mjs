@@ -3,6 +3,10 @@ import path from "node:path"
 import process from "node:process"
 
 import coverageSourcePolicy from "../quality/coverage-source-policy.json" with { type: "json" }
+import { PRESENTATION_IGNORER } from "./scripts/stryker-presentation-ignorer.mjs"
+import { STRYKER_PROGRESS_REPORTER_NAME } from "./scripts/stryker-progress-plugin.mjs"
+
+const progressEnabled = process.env.STRYKER_PROGRESS_ENABLED === "1"
 
 const strykerTempRoot =
   process.env.STRYKER_TEMP_DIR ?? path.join(os.tmpdir(), "university-ecosystem-stryker-unscoped")
@@ -112,14 +116,23 @@ export default {
     plugins: null,
     excludedMutations: [],
   },
-  ignorers: [],
+  // ADR-040: the only governed ignore policy. It skips presentation-only class
+  // and literal style leaves; every other Ignored mutant fails the inventory.
+  plugins: [
+    "@stryker-mutator/*",
+    "./scripts/stryker-presentation-ignorer.mjs",
+    ...(progressEnabled ? ["./scripts/stryker-progress-plugin.mjs"] : []),
+  ],
+  ignorers: [PRESENTATION_IGNORER],
   // Canonical release evidence is always a fresh run. Incremental reports are
   // useful for local feedback only and must never enter this evidence path.
   incremental: false,
-  reporters:
-    process.env.STRYKER_SHARD_RUN === "1"
+  reporters: [
+    ...(process.env.STRYKER_SHARD_RUN === "1"
       ? ["clear-text", "progress", "json"]
-      : ["clear-text", "progress", "html", "json"],
+      : ["clear-text", "progress", "html", "json"]),
+    ...(progressEnabled ? [STRYKER_PROGRESS_REPORTER_NAME] : []),
+  ],
   jsonReporter: { fileName: jsonReport },
   htmlReporter: { fileName: htmlReport },
   thresholds: mutationThresholds(),
@@ -134,6 +147,16 @@ export default {
   // Keep an explicit bounded deadline for the related-mode discovery pass.
   // Mutation thresholds remain fail-closed at 100%; the outer shard timeout is
   // still enforced by the canonical runner.
-  dryRunTimeoutMinutes: 15,
+  //
+  // The dry run's cost scales with how many distinct sources a shard owns,
+  // because vitest.related expands each one into its related test graph --
+  // not with the shard's mutant count.  Flattening the mutant distribution
+  // moved more sources into previously light shards, and run 35463029375
+  // shard 26/64 (1,418 mutants across 44 patterns, up from 483 across 14)
+  // exceeded the 15-minute deadline during discovery alone.  The shard job
+  // now allows 180 minutes and the mutation phase itself finishes well
+  // inside it, so widen the discovery deadline rather than re-concentrating
+  // mutants into a few multi-hour runners.
+  dryRunTimeoutMinutes: 30,
   timeoutFactor: 2,
 }

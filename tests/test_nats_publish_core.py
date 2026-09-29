@@ -7,10 +7,12 @@ core subscription so frames reach browser clients LIVE.
 Three contracts under test:
   1. orjson serialisation handles the raw ``uuid.UUID`` + ``datetime`` values
      the ``new_message`` frame carries (stdlib ``json.dumps`` would TypeError).
-  2. connect-if-needed: a None core connection triggers ``connect()`` first.
+  2. disconnected-core guard: a None or disconnected core connection is
+     skipped without triggering a connect on the hot path.
   3. best-effort: a raising ``_nc.publish`` (infra error) is swallowed, and a
-     still-None connection after connect logs + returns without raising — the
-     in-process delivery + refetch fallback must stay intact.
+     disconnected connection is observable through the warning/counter while
+     returning without raising — the in-process delivery + refetch fallback
+     must stay intact.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import app.core.nats_broker as nats_broker_module
 from app.core.nats_broker import NatsTaskBroker
 
 
@@ -79,18 +82,27 @@ async def test_publish_core_serializes_uuid_and_datetime() -> None:
 
 @pytest.mark.asyncio
 async def test_publish_core_skips_when_nc_is_none() -> None:
-    """No connection → skip silently. publish_core must NOT trigger a connect
+    """No connection → skip observably. publish_core must NOT trigger a connect
     from this ephemeral hot path: a connect would add a multi-second timeout to
     the message-send path during a NATS outage and would raise in test/CLI
-    contexts where NATS isn't running. The frame self-heals via refetch."""
+    contexts where NATS isn't running. The frame self-heals via refetch, while
+    the warning and counter make the bounded loss visible to operators."""
     broker = NatsTaskBroker()
     assert broker._nc is None
 
-    with patch("app.core.nats_broker.nats.connect", new=AsyncMock()) as mock_connect:
+    before = nats_broker_module.nats_publish_core_skipped_total._value.get()
+    with (
+        patch("app.core.nats_broker.nats.connect", new=AsyncMock()) as mock_connect,
+        patch.object(nats_broker_module._logger, "warning") as warning,
+    ):
         # No exception; crucially, NO connect attempted.
         await broker.publish_core("chat.abc", {"type": "read", "room": "abc"})
 
     mock_connect.assert_not_awaited()
+    warning.assert_called_once_with(
+        "nats_publish_skipped_not_connected", subject="chat.abc"
+    )
+    assert nats_broker_module.nats_publish_core_skipped_total._value.get() == before + 1
     assert broker._nc is None
 
 
@@ -120,6 +132,12 @@ async def test_publish_core_skips_when_not_connected() -> None:
     mock_nc.publish = AsyncMock()
     broker._nc = mock_nc
 
-    await broker.publish_core("chat.abc", {"type": "read", "room": "abc"})
+    before = nats_broker_module.nats_publish_core_skipped_total._value.get()
+    with patch.object(nats_broker_module._logger, "warning") as warning:
+        await broker.publish_core("chat.abc", {"type": "read", "room": "abc"})
 
     mock_nc.publish.assert_not_awaited()
+    warning.assert_called_once_with(
+        "nats_publish_skipped_not_connected", subject="chat.abc"
+    )
+    assert nats_broker_module.nats_publish_core_skipped_total._value.get() == before + 1

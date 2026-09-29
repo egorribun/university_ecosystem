@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
+from dishka import FromComponent
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -20,10 +22,8 @@ from sqlalchemy import exists, func, literal, select
 
 import app.models as models
 from app.api.deps import (
-    get_current_user,
-    get_current_user_optional,
-    get_news_service,
-    get_read_news_service,
+    get_current_user_from_dishka,
+    get_current_user_optional_from_dishka,
 )
 from app.api.deps.etag import _set_language_headers, cached_endpoint
 from app.api.utils import save_upload
@@ -35,8 +35,7 @@ from app.api.validation import (
 )
 from app.core.cache_versioning import news_cache_version
 from app.core.config import settings
-from app.core.container import get_notification_service, get_vector_service
-from app.core.database import get_read_db
+from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import (
     DEFAULT_LOCALE,
     SUPPORTED_LOCALES,
@@ -51,6 +50,7 @@ from app.schemas import schemas
 from app.services.file_scanner import scan_for_malware
 from app.services.news_service import NewsService
 from app.services.notification_service import NotificationService
+from app.services.vector_service import VectorService
 
 logger = get_logger(__name__)
 
@@ -98,19 +98,19 @@ def _legacy_news_item_cache_key(id: uuid.UUID | int) -> str:
     response_model=schemas.NewsOut,
     dependencies=[Depends(sensitive_route_limit(limit_value=settings.rate_limit_news))],
 )
+@inject
 async def create_news(
     data: schemas.NewsCreate,
     request: Request,
     background: BackgroundTasks,
-    service: NewsService = Depends(get_news_service),
-    user: models.User = Depends(get_current_user),
-    notifications: NotificationService = Depends(get_notification_service),
+    service: FromDishka[NewsService],
+    notifications: FromDishka[NotificationService],
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.NewsOut:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
     record = await service.create_news(data)
-    if request:
-        await _increment_news_list_version(getattr(request.app.state, "cache", None))
+    await _increment_news_list_version(getattr(request.app.state, "cache", None))
     serialized = service.serialize_news(record, locale)
     await notifications.dispatch_news_created(record.id, locale, background)
     return serialized
@@ -127,14 +127,15 @@ async def create_news(
     cache_prefix=_NEWS_LIST_CACHE_PREFIX,
     cache_control=_NEWS_CACHE_CONTROL,
 )
+@inject
 async def news_list(
     request: Request,
     response: Response,
+    service: Annotated[NewsService, FromComponent(READ_COMPONENT)],
     limit: int = Query(20, ge=1, le=100, description="Number of items to return"),
     cursor: str | None = Query(None, description="Pagination cursor"),
     if_none_match: str | None = Header(default=None),
-    service: NewsService = Depends(get_read_news_service),
-    user: models.User | None = Depends(get_current_user_optional),
+    user: models.User | None = Depends(get_current_user_optional_from_dishka),
 ) -> schemas.PaginatedNews | Response | Any:
     """
     Get paginated list of news articles.
@@ -169,14 +170,15 @@ async def news_list(
     cache_prefix="ue:news:item",
     cache_control=_NEWS_CACHE_CONTROL,
 )
+@inject
 async def get_news(
     id: uuid.UUID,
     request: Request,
     response: Response,
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    service: Annotated[NewsService, FromComponent(READ_COMPONENT)],
     if_none_match: str | None = Header(default=None),
-    user: models.User | None = Depends(get_current_user_optional),
-    db: AsyncDatabaseSession = Depends(get_read_db),
-    service: NewsService = Depends(get_read_news_service),
+    user: models.User | None = Depends(get_current_user_optional_from_dishka),
 ) -> schemas.NewsOut | Response | Any:
     """
     Get a specific news article by ID.
@@ -244,12 +246,13 @@ async def get_news(
     response_model=schemas.NewsOut,
     dependencies=[Depends(sensitive_route_limit(limit_value=settings.rate_limit_news))],
 )
+@inject
 async def update_news(
     id: uuid.UUID,
     request: Request,
+    service: FromDishka[NewsService],
     data: schemas.NewsUpdate | None = Body(default=None),
-    service: NewsService = Depends(get_news_service),
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.NewsOut:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
@@ -259,8 +262,7 @@ async def update_news(
     except ValueError:
         raise_not_found("news", locale)
 
-    if request:
-        await _increment_news_list_version(getattr(request.app.state, "cache", None))
+    await _increment_news_list_version(getattr(request.app.state, "cache", None))
     cache = get_cache()
     if cache.enabled:
         await cache.invalidate(
@@ -275,11 +277,12 @@ async def update_news(
     response_model=dict,
     dependencies=[Depends(sensitive_route_limit(limit_value=settings.rate_limit_news))],
 )
+@inject
 async def delete_news(
     id: uuid.UUID,
     request: Request,
-    service: NewsService = Depends(get_news_service),
-    user: models.User = Depends(get_current_user),
+    service: FromDishka[NewsService],
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
@@ -288,8 +291,7 @@ async def delete_news(
     if not deleted:
         raise_not_found("news", locale)
 
-    if request:
-        await _increment_news_list_version(getattr(request.app.state, "cache", None))
+    await _increment_news_list_version(getattr(request.app.state, "cache", None))
     cache = get_cache()
     if cache.enabled:
         await cache.invalidate(
@@ -304,11 +306,12 @@ async def delete_news(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_interactions))
     ],
 )
+@inject
 async def like_news(
     id: uuid.UUID,
     request: Request,
-    service: NewsService = Depends(get_news_service),
-    user: models.User = Depends(get_current_user),
+    service: FromDishka[NewsService],
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     news = await service.get_news_item(id)
@@ -325,14 +328,15 @@ async def like_news(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_interactions))
     ],
 )
+@inject
 async def comment_on_news(
     id: uuid.UUID,
     request: Request,
     background: BackgroundTasks,
+    service: FromDishka[NewsService],
+    notifications: FromDishka[NotificationService],
     content: str = Body(..., embed=True),
-    service: NewsService = Depends(get_news_service),
-    user: models.User = Depends(get_current_user),
-    notifications: NotificationService = Depends(get_notification_service),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.NewsCommentOut | dict[str, Any]:
     locale = resolve_locale(request=request, user=user)
     news = await service.get_news_item(id)
@@ -358,16 +362,14 @@ async def comment_on_news(
 
 
 @router.get("/{id}/interactions", response_model=schemas.NewsInteractionsOut)
+@inject
 async def get_news_interact(
     id: uuid.UUID,
     request: Request,
+    service: Annotated[NewsService, FromComponent(READ_COMPONENT)],
     limit: int = Query(50, ge=1, le=100),
-    # AUDIT-BE-01: cap offset to prevent DoS via O(N) sequential Postgres scan.
-    # An unbounded offset=999999 forces the DB to skip ~1M rows before returning 1.
-    # Hard cap at 10_000 while a full keyset-cursor migration is planned (Sprint 2).
     offset: int = Query(0, ge=0, le=10_000),
-    service: NewsService = Depends(get_read_news_service),
-    user: models.User | None = Depends(get_current_user_optional),
+    user: models.User | None = Depends(get_current_user_optional_from_dishka),
 ) -> schemas.NewsInteractionsOut:
     locale = resolve_locale(request=request)
     news = await service.get_news_item(id)
@@ -384,12 +386,13 @@ async def get_news_interact(
 
 
 @router.patch("/comments/{comment_id}", response_model=schemas.NewsCommentOut)
+@inject
 async def update_comment(
     comment_id: uuid.UUID,
     request: Request,
     data: schemas.NewsCommentUpdate,
-    service: NewsService = Depends(get_news_service),
-    user: models.User = Depends(get_current_user),
+    service: FromDishka[NewsService],
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> schemas.NewsCommentOut | dict[str, Any]:
     locale = resolve_locale(request=request, user=user)
     try:
@@ -408,11 +411,12 @@ async def update_comment(
 
 
 @router.delete("/comments/{comment_id}")
+@inject
 async def delete_comment(
     comment_id: uuid.UUID,
     request: Request,
-    service: NewsService = Depends(get_news_service),
-    user: models.User = Depends(get_current_user),
+    service: FromDishka[NewsService],
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     try:
@@ -438,7 +442,7 @@ async def upload_news_image(
     file: UploadFile = File(...),
     *,
     request: Request,
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> dict[str, str]:
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
@@ -454,17 +458,18 @@ async def upload_news_image(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_graphql))
     ],
 )
+@inject
 async def semantic_search(
     request: Request,
     response: Response,
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    vector_service: FromDishka[VectorService],
+    service: Annotated[NewsService, FromComponent(READ_COMPONENT)],
     query: str = Query(..., min_length=3),
     limit: int = Query(5, ge=1, le=20),
     min_score: float = Query(0.7, ge=0.0, le=1.0),
     if_none_match: str | None = Header(default=None),
-    db: AsyncDatabaseSession = Depends(get_read_db),
-    vector_service: Any = Depends(get_vector_service),
-    service: NewsService = Depends(get_read_news_service),
-    _user: models.User = Depends(get_current_user),  # P0-W5-01: auth gate
+    _user: models.User = Depends(get_current_user_from_dishka),
 ) -> list[schemas.NewsOut] | Response:
     """
     Semantic search for news articles using embeddings.

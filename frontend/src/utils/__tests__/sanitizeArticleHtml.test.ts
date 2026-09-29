@@ -28,7 +28,7 @@ describe("sanitizeArticleHtml", () => {
 
   it("preserves allowed HTML structure (p, h2, ul, li, a, img)", () => {
     const html =
-      "<h2>Title</h2><p>Some <strong>bold</strong> text.</p><ul><li>Item</li></ul>" +
+      "<h2>Title</h2><p>Some <b>bold</b> <i>italic</i> <strike>old</strike> text.</p><ul><li>Item</li></ul>" +
       '<a href="https://example.com">Link</a>' +
       '<img src="https://img.example.com/photo.jpg" alt="Photo">'
     expect(sanitizeArticleHtml(html)).toBe(html)
@@ -155,5 +155,54 @@ describe("sanitizeArticleHtml", () => {
     const result = sanitizeArticleHtml(sneaky)
     expect(result).not.toContain("ONerror")
     expect(result).not.toContain("onerror")
+  })
+
+  it("removes SVG, MathML, namespace attributes, and unknown active elements", () => {
+    const html =
+      "<p>Approved <strong>editorial</strong> markup</p>" +
+      '<svg><a xlink:href="javascript:alert(1)">svg payload</a></svg>' +
+      '<math><maction xlink:href="javascript:alert(2)">math payload</maction></math>' +
+      '<custom-active data-action="javascript:alert(3)">custom payload</custom-active>' +
+      '<a href="https://example.com" xlink:href="javascript:alert(4)">safe link</a>' +
+      "<table><thead><tr><th>Column</th></tr></thead><tbody><tr><td>Value</td></tr></tbody></table>"
+
+    const result = sanitizeArticleHtml(html)
+
+    expect(result).toContain("<p>Approved <strong>editorial</strong> markup</p>")
+    expect(result).toContain("<table>")
+    expect(result).toContain('<a href="https://example.com">safe link</a>')
+    expect(result).not.toMatch(/<(svg|math|maction|custom-active)\b/i)
+    expect(result).not.toMatch(/xlink:href|javascript:/i)
+  })
+
+  it("keeps only safe editorial attributes and normalizes their values", () => {
+    const html =
+      '<h2 id="campus-heading">Heading</h2>' +
+      '<h2 id="bad heading">Invalid heading id</h2>' +
+      '<pre class="language-ts extra">code</pre>' +
+      '<code class="not-a-language">plain</code>' +
+      '<table align="CENTER"><tr><td align="nope" colspan="2" rowspan="1">Cell</td></tr></table>' +
+      '<a href="/relative" target="_blank" rel="opener external">new tab</a>' +
+      '<a href="/relative" target="_blank">new tab without rel</a>' +
+      '<a href="/relative" target="_self">same tab</a>' +
+      '<a href="/relative" target="javascript">invalid target</a>' +
+      '<img src="/image.png" loading="lazy" decoding="async">' +
+      '<img src="/image.png" loading="eagerly" decoding="fast">'
+
+    const result = sanitizeArticleHtml(html)
+
+    expect(result).toContain('<h2 id="campus-heading">Heading</h2>')
+    expect(result).not.toContain('id="bad heading"')
+    expect(result).toContain('<pre class="language-ts">code</pre>')
+    expect(result).not.toContain('class="not-a-language"')
+    expect(result).toContain('<table align="center">')
+    expect(result).not.toContain('align="nope"')
+    expect(result).toContain('rel="external noopener noreferrer"')
+    expect(result).toContain('rel="noopener noreferrer"')
+    expect(result).not.toContain('target="javascript"')
+    expect(result).toContain('loading="lazy"')
+    expect(result).not.toContain('loading="eagerly"')
+    expect(result).toContain('decoding="async"')
+    expect(result).not.toContain('decoding="fast"')
   })
 })

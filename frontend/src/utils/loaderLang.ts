@@ -18,7 +18,6 @@
  */
 import type { ResolvedLang } from "@/ssrTheme"
 
-const SUPPORTED_LANGS: readonly ResolvedLang[] = ["ru", "en"]
 const STORAGE_KEY = "ue:language"
 const DEFAULT_LANG: ResolvedLang = "ru"
 
@@ -33,10 +32,8 @@ export const resolveLoaderLang = (): ResolvedLang => {
   // try/catch for Safari private-browsing (RZ-31-03 pattern).
   if (typeof window !== "undefined") {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored && SUPPORTED_LANGS.includes(stored as ResolvedLang)) {
-        return stored as ResolvedLang
-      }
+      // Only English differs from the Russian default.
+      if (localStorage.getItem(STORAGE_KEY) === "en") return "en"
     } catch {
       // Safari private browsing — localStorage throws on access
     }

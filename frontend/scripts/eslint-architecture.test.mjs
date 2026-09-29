@@ -128,6 +128,34 @@ test("alias traversal is unresolved and remains a lint violation", async () => {
   )
 })
 
+test("UI barrel imports are rejected while exact leaf imports remain allowed", async () => {
+  const barrelMessages = await lintMessages(
+    'import "@/components/ui"\n',
+    "src/components/__architecture_fixture__.ts"
+  )
+  const explicitIndexMessages = await lintMessages(
+    'import "@/components/ui/index"\n',
+    "src/components/__architecture_fixture__.ts"
+  )
+  const leafMessages = await lintMessages(
+    'import "@/components/ui/Button"\n',
+    "src/components/__architecture_fixture__.ts"
+  )
+
+  assert.equal(
+    barrelMessages.some(({ ruleId }) => ruleId === "no-restricted-imports"),
+    true
+  )
+  assert.equal(
+    explicitIndexMessages.some(({ ruleId }) => ruleId === "no-restricted-imports"),
+    true
+  )
+  assert.equal(
+    leafMessages.some(({ ruleId }) => ruleId === "no-restricted-imports"),
+    false
+  )
+})
+
 test("alias resolution rejects a lexical in-root path whose realpath escapes", () => {
   const target = path.join(frontendRoot, "src")
   const lexicalPath = path.join(target, "features", "index.ts")

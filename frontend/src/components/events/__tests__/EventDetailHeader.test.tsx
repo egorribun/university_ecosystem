@@ -213,8 +213,7 @@ describe("EventDetailHeader", () => {
   it("keeps the end separator out when no end time is supplied", () => {
     const { container } = render(<EventDetailHeader {...baseProps} endsAt={undefined} />)
 
-    expect(container.querySelector("time")).toHaveTextContent("formatted:2026-06-15T14:00:00Z")
-    expect(container.querySelector("time")).not.toHaveTextContent(" — ")
+    expect(container.querySelector("time")).toHaveTextContent(/^formatted:2026-06-15T14:00:00Z$/)
   })
 
   it("announces a registered status before the ended status in the live region", () => {

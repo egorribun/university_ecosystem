@@ -15,8 +15,5 @@ export { AdminFeatureFlagsFeature } from "./AdminFeatureFlagsFeature"
 export { AdminAuditFeature } from "./AdminAuditFeature"
 export { AdminNotificationsFeature } from "./AdminNotificationsFeature"
 
-// Decorative backdrop (Wave 150 SW1; rendered by routes/_admin.tsx layout)
-export { AdminBackdrop } from "./components/AdminBackdrop"
-
 // API
 export * from "@/api/notifications"

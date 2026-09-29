@@ -5,6 +5,12 @@ import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 
+import {
+  PRESENTATION_IGNORE_REASON,
+  PRESENTATION_IGNORER,
+  canonicalInstrumenterConfig,
+} from "./stryker-presentation-ignorer.mjs"
+
 const inventoryModuleUrl = new URL("./validate-stryker-inventory.mjs", import.meta.url)
 
 const policy = {
@@ -47,7 +53,7 @@ function mutationReport(overrides = {}) {
       coverageAnalysis: "perTest",
       incremental: false,
       mutator: { plugins: null, excludedMutations: [] },
-      ignorers: [],
+      ignorers: [PRESENTATION_IGNORER],
     },
     files: {
       "src/a.ts": {
@@ -102,7 +108,7 @@ test("preflights each source with the same Stryker instrumenter semantics", asyn
   const result = await generateInstrumenterPreflight({
     sourceFiles: ["src/a.ts", "src/b.ts"],
     sourceByFile: new Map(Object.entries(sources)),
-    instrumenterOptions: { plugins: null, ignorers: [], excludedMutations: [] },
+    instrumenterOptions: canonicalInstrumenterConfig,
   })
 
   assert.ok(result.get("src/a.ts").mutants.length > 0)
@@ -122,7 +128,7 @@ test("rejects Stryker ignore directives during instrumenter preflight", async ()
         sourceByFile: new Map([
           ["src/ignored.ts", "// Stryker disable all: forbidden\nexport const value = true\n"],
         ]),
-        instrumenterOptions: { plugins: null, ignorers: [], excludedMutations: [] },
+        instrumenterOptions: canonicalInstrumenterConfig,
       }),
     /ignore directive.*src\/ignored\.ts/u
   )
@@ -162,6 +168,7 @@ test("accounts for a missing report file only after a zero-mutant instrumenter p
     totalMutants: 1,
     killedMutants: 1,
     nonViableMutants: 0,
+    ignoredMutants: 0,
     viableMutantScore: 100,
   })
 })
@@ -308,7 +315,7 @@ test("fails closed when the report scope or current source differs", async () =>
               coverageAnalysis: "perTest",
               incremental: false,
               mutator: { plugins: null, excludedMutations: [] },
-              ignorers: [],
+              ignorers: [PRESENTATION_IGNORER],
             },
           }),
         })
@@ -326,7 +333,7 @@ test("fails closed when the report scope or current source differs", async () =>
 
 test("rejects every non-killed viable mutant status", async () => {
   const { buildMutationInventory } = await import(inventoryModuleUrl)
-  for (const status of ["Survived", "NoCoverage", "Timeout", "RuntimeError", "Ignored"]) {
+  for (const status of ["Survived", "NoCoverage", "Timeout", "RuntimeError"]) {
     assert.throws(
       () =>
         buildMutationInventory(
@@ -376,6 +383,111 @@ test("accounts for explained compile errors as non-viable", async () => {
     totalMutants: 2,
     killedMutants: 1,
     nonViableMutants: 1,
+    ignoredMutants: 0,
     viableMutantScore: 100,
   })
+})
+
+const governedIgnored = {
+  ...killedMutant,
+  id: "3",
+  replacement: '""',
+  mutatorName: "StringLiteral",
+  status: "Ignored",
+  statusReason: PRESENTATION_IGNORE_REASON,
+}
+
+test("excludes ADR-040 presentation mutants from the viable denominator", async () => {
+  const { buildMutationInventory } = await import(inventoryModuleUrl)
+  const inventory = buildMutationInventory(
+    buildArgs({
+      preflightByFile: preflight([["src/a.ts", [killedMutant, governedIgnored]]]),
+      report: mutationReport({
+        files: {
+          "src/a.ts": { source: sources["src/a.ts"], mutants: [killedMutant, governedIgnored] },
+        },
+      }),
+    })
+  )
+
+  assert.deepEqual(inventory.summary, {
+    denominatorFiles: 1,
+    mutatedFiles: 1,
+    zeroMutantFiles: 0,
+    totalMutants: 2,
+    killedMutants: 1,
+    nonViableMutants: 0,
+    ignoredMutants: 1,
+    viableMutantScore: 100,
+  })
+})
+
+test("rejects an Ignored mutant the preflight policy did not ignore", async () => {
+  const { buildMutationInventory } = await import(inventoryModuleUrl)
+  const activeTwin = { ...governedIgnored, status: undefined, statusReason: undefined }
+  assert.throws(
+    () =>
+      buildMutationInventory(
+        buildArgs({
+          preflightByFile: preflight([["src/a.ts", [killedMutant, activeTwin]]]),
+          report: mutationReport({
+            files: {
+              "src/a.ts": {
+                source: sources["src/a.ts"],
+                mutants: [killedMutant, governedIgnored],
+              },
+            },
+          }),
+        })
+      ),
+    /ignored mutants differ from the instrumenter preflight/u
+  )
+})
+
+test("rejects an Ignored mutant with any reason other than the governed policy", async () => {
+  const { buildMutationInventory } = await import(inventoryModuleUrl)
+  const directive = { ...governedIgnored, statusReason: "Stryker disable: not tested" }
+  assert.throws(
+    () =>
+      buildMutationInventory(
+        buildArgs({
+          preflightByFile: preflight([["src/a.ts", [killedMutant, directive]]]),
+          report: mutationReport({
+            files: {
+              "src/a.ts": { source: sources["src/a.ts"], mutants: [killedMutant, directive] },
+            },
+          }),
+        })
+      ),
+    /has unacceptable status Ignored/u
+  )
+})
+
+test("still requires a killed mutant when every other mutant is ignored", async () => {
+  const { buildMutationInventory } = await import(inventoryModuleUrl)
+  assert.throws(
+    () =>
+      buildMutationInventory(
+        buildArgs({
+          preflightByFile: preflight([["src/a.ts", [governedIgnored]]]),
+          report: mutationReport({
+            files: { "src/a.ts": { source: sources["src/a.ts"], mutants: [governedIgnored] } },
+          }),
+        })
+      ),
+    /no viable mutants/u
+  )
+})
+
+test("allows the governed presentation policy during instrumenter preflight", async () => {
+  const { generateInstrumenterPreflight } = await import(inventoryModuleUrl)
+  const source = `export const A = () => <b className={"font-bold"} />`
+  const result = await generateInstrumenterPreflight({
+    sourceFiles: ["src/view.tsx"],
+    sourceByFile: new Map([["src/view.tsx", source]]),
+    instrumenterOptions: canonicalInstrumenterConfig,
+  })
+  const ignored = result.get("src/view.tsx").mutants.filter((m) => m.status === "Ignored")
+  assert.equal(ignored.length, 1)
+  assert.equal(ignored[0].statusReason, PRESENTATION_IGNORE_REASON)
 })

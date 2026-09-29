@@ -6,7 +6,7 @@
 import { Calendar, MapPin, Users, Mic2, Share2, Pencil, Trash2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { formatDate } from "@/utils/date"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import { EventCategoryBadge } from "./EventCategoryBadge"
 import { inferEventCategory } from "@/features/events/categories"
 

@@ -298,7 +298,7 @@ constraints, (z) risk register, plan deviation triggers.
 ### SW1 (`ceaae7ef7`) — Backend FILES_PROCESS stream creation
 
 NEW second `await self._js.add_stream` call in
-[app/core/nats_broker.py:128](app/core/nats_broker.py:128)
+[app/core/nats_broker.py:128](../../../app/core/nats_broker.py:128)
 alongside existing TASK_QUEUE creation. Stream name `FILES_PROCESS`,
 subject `["files.process"]`. Idempotent per nats-py contract.
 
@@ -579,7 +579,7 @@ results.
 
 - Plan: `C:\Users\egorribun\.claude\plans\c-users-egorribun-claude-projects-c-use-functional-hennessy.md`
 - Design doc: [docs/plans/2026-05-11-wave140-tier123-design.md](docs/plans/2026-05-11-wave140-tier123-design.md)
-- W139 audit (8 §Honesty pre-W140): [docs/audits/AUDIT_WAVE139.md](docs/audits/AUDIT_WAVE139.md)
+- W139 audit (8 §Honesty pre-W140): [docs/audits/AUDIT_WAVE139.md](../../../docs/audits/archive/AUDIT_WAVE139.md)
 - W139 backlog (closure summary source): `.claude` profile `memory/wave139_backlog.md`
 - W139 Temporal pivot narrative: `.claude` profile `memory/wave139_temporal_path_a_pivot.md`
 - W140 opening prompt (session-start scope): `.claude` profile `memory/wave140_opening_prompt.md`

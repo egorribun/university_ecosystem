@@ -13,6 +13,9 @@ from app.core.config.base import (
     _coerce_str_list,
     _load_file_secret,
 )
+from app.core.logging import get_logger
+
+_logger = get_logger(__name__)
 
 
 class JwtSettingsMixin:
@@ -30,6 +33,11 @@ class JwtSettingsMixin:
     # operators SHOULD override via JWT_AUDIENCE to a service-specific audience string to
     # prevent cross-service token reuse (e.g. dev service accepting staging token).
     jwt_audience: str = "university-ecosystem-api"
+    # Stable token issuer shared by the backend and downstream service
+    # verifiers.  Release deployments should override this with the canonical
+    # environment-specific issuer; keeping a local default makes development
+    # and test tokens structurally identical to release tokens.
+    jwt_issuer: str = "university-ecosystem"
     algorithm: str = "RS256"
     access_token_expire_minutes: int = 60
     max_sessions_per_user: int = 5
@@ -162,15 +170,31 @@ class JwtSettingsMixin:
             {"api", "app", "service", "my-api", "example"}
         )
         if v.lower() in _AUDIENCE_PLACEHOLDERS and env not in _DEVELOPMENT_ENVIRONMENTS:
-            import logging
-
-            logging.getLogger(__name__).warning(
+            _logger.warning(
                 "JWT_AUDIENCE='%s' looks like a generic placeholder. "
                 "Set JWT_AUDIENCE to a service-specific string to prevent "
                 "cross-service token reuse.",
                 v,
             )
         return v.strip()
+
+    @field_validator("jwt_issuer")
+    @classmethod
+    def _validate_jwt_issuer(cls, v: str) -> str:
+        """Require a stable, non-blank issuer for every minted access token.
+
+        The file-processor and other zero-trust consumers use ``iss`` as an
+        explicit trust-boundary binding.  Accepting a blank value would make
+        those consumers either reject every backend token or fall back to an
+        issuer-agnostic policy.  Control characters are also rejected so the
+        value cannot be split or obscured in configuration and audit output.
+        """
+        normalized = v.strip()
+        if not normalized:
+            raise ValueError("JWT_ISSUER must not be empty")
+        if len(normalized) > 512 or any(ord(char) < 0x20 for char in normalized):
+            raise ValueError("JWT_ISSUER contains invalid characters")
+        return normalized
 
     def _build_jwt_signing_key_entries(self) -> list[tuple[str, str]]:
         entries: list[tuple[str, str]] = []
@@ -217,9 +241,7 @@ class JwtSettingsMixin:
                         raise RuntimeError(
                             f"Failed to load JWT_PRIVATE_KEY_PATH: {exc}"
                         ) from exc
-                    import logging
-
-                    logging.getLogger(__name__).warning(
+                    _logger.warning(
                         "Failed to load RS256 private key from %s: %s. "
                         "Falling back to HMAC signing with SECRET_KEY for local development.",
                         self.jwt_private_key_path,

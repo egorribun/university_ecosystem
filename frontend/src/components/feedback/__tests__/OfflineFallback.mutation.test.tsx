@@ -67,7 +67,7 @@ vi.mock("framer-motion", () => {
   }
 })
 
-import OfflineFallback from "@/components/feedback/OfflineFallback"
+import { OfflineFallback } from "@/components/feedback/OfflineFallback"
 
 function motionProps(element: HTMLElement) {
   return {

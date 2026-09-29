@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
+import { createContext, useContext, useEffect, useState } from "react"
 import type { ReactNode } from "react"
 import { I18nextProvider } from "react-i18next"
 import type { i18n as I18nInstance } from "i18next"
@@ -7,7 +7,9 @@ import { fallbackLng, localeMeta, supportedLngs, type SupportedLanguage } from "
 export type { SupportedLanguage } from "@/i18n/metadata"
 
 const storageKey = "ue:language"
-const COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60 // 1 year
+// Keep the wire value explicit so the cookie contract cannot drift through a
+// partially-mutated unit (365 days in seconds).
+const COOKIE_MAX_AGE_SECONDS = 31_536_000
 
 // Wave 127 SW3 — cookie-mirror for SSR language parity. Server reads this
 // cookie + exposes via globalThis.__ssrLangGetter__ (W127 SW4); RootShell
@@ -26,8 +28,10 @@ const setLangCookie = (lang: SupportedLanguage) => {
   document.cookie = `${storageKey}=${encodeURIComponent(lang)}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax${secureAttr}`
 }
 
-const isSupportedLanguage = (value: unknown): value is SupportedLanguage =>
-  typeof value === "string" && supportedLngs.includes(value as SupportedLanguage)
+const isSupportedLanguage = (value: unknown): value is SupportedLanguage => {
+  if (typeof value !== "string") return false
+  return supportedLngs.includes(value as SupportedLanguage)
+}
 
 export const resolveInitialLanguage = (instance: I18nInstance): SupportedLanguage => {
   if (typeof window === "undefined") {
@@ -86,19 +90,17 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     }
     document.documentElement.setAttribute("lang", language)
     document.documentElement.setAttribute("dir", locale.dir)
-    document.body?.setAttribute("dir", locale.dir)
+    const body = document.body
+    if (body) body.setAttribute("dir", locale.dir)
     // Wave 127 SW3 — cookie-mirror alongside localStorage write
     setLangCookie(language)
   }, [instance, language])
 
-  const setLanguage = useCallback((lng: SupportedLanguage) => {
+  const setLanguage = (lng: SupportedLanguage) => {
     setLanguageState(lng)
-  }, [])
+  }
 
-  const value = useMemo<LanguageContextValue>(
-    () => ({ language, setLanguage, available: supportedLngs }),
-    [language, setLanguage]
-  )
+  const value: LanguageContextValue = { language, setLanguage, available: supportedLngs }
 
   return (
     <I18nextProvider i18n={instance}>

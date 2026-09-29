@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from datetime import UTC
 from typing import Any
 
@@ -7,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
-from app.core.logging import get_logger
+from app.core.logging import configure_logging, get_logger
 from app.models.auth import (
     ActiveSession,
     EmailChangeToken,
@@ -31,7 +30,6 @@ from app.models.notifications import (
 from app.models.users import InviteCode, User
 from app.utils.uuid_v7 import generate_uuid7
 
-logging.basicConfig(level=logging.INFO)
 logger = get_logger(__name__)
 
 # Config for tables that just need their own UUID populated
@@ -192,6 +190,9 @@ async def backfill_foreign_uuids(
 
 
 async def main() -> None:
+    # This script is commonly invoked directly and therefore does not inherit
+    # the web application's logging bootstrap.
+    configure_logging()
     async with async_session() as session:
         try:
             # 1. First ensure all Users have a UUID (we need them for mapping)

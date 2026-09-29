@@ -187,3 +187,14 @@ describe("browser utilities", () => {
     })
   })
 })
+
+describe("isIOS touch heuristic", () => {
+  it("does not treat a touch-enabled non-Mac desktop as iOS", () => {
+    mockNavigator({
+      platform: "Win32",
+      maxTouchPoints: 10,
+      userAgent: "Mozilla/5.0 (Windows NT 10.0)",
+    })
+    expect(isIOS()).toBe(false)
+  })
+})

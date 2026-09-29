@@ -97,7 +97,7 @@ async def test_update_schedule_success_records_audit_and_commits():
 @pytest.mark.asyncio
 async def test_update_schedule_rejects_repository_miss_after_initial_lookup():
     uow = _uow()
-    uow.schedules.get = AsyncMock(return_value=SimpleNamespace())
+    uow.schedules.get = AsyncMock(return_value=_schedule(uuid.uuid4()))
     uow.schedules.update = AsyncMock(return_value=None)
     service = ScheduleService(uow, MagicMock())
 

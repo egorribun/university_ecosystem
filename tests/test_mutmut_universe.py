@@ -12,15 +12,76 @@ from scripts.mutmut_universe import (
     GENERATION_MANIFEST_SCHEMA_VERSION,
     UniverseValidationError,
     _also_copy_inventory,
+    get_mutmut_config,
     load_reused_generation_stats,
     prepare_mutants_directory,
     prepare_reused_generation,
+    require_mutmut_fork_isolation,
     validate_configured_paths,
     validate_generation_manifest,
     validate_universe_manifest,
     write_generation_manifest,
     write_universe_manifest,
 )
+
+
+@pytest.mark.parametrize("as_enum", [False, True])
+def test_mutmut_fork_guard_accepts_actual_mode_without_rewriting(as_enum) -> None:
+    from mutmut.configuration import ProcessIsolation
+
+    isolation = ProcessIsolation.FORK if as_enum else "fork"
+    config = SimpleNamespace(process_isolation=isolation)
+    cli = SimpleNamespace(config=lambda: config)
+    require_mutmut_fork_isolation(cli)
+    assert config.process_isolation is isolation
+
+
+def test_mutmut_config_uses_pinned_dependency_singleton(tmp_path, monkeypatch) -> None:
+    """The installed 3.8 accessor works without removed Config class methods."""
+    from mutmut import configuration
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.mutmut]\nsource_paths = ["src"]\n', encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(configuration, "_config", None)
+    cli = SimpleNamespace(config=configuration.config)
+    actual = get_mutmut_config(cli)
+    assert actual is configuration.config()
+    assert actual.source_paths == [Path("src")]
+    assert actual.timeout_multiplier == configuration.config().timeout_multiplier
+
+
+def test_mutmut_config_rejects_malformed_new_accessor() -> None:
+    with pytest.raises(TypeError, match="accessor must be callable"):
+        get_mutmut_config(SimpleNamespace(config=object()))
+
+
+def test_mutmut_config_does_not_mask_configuration_failure() -> None:
+    failure = ValueError("invalid source configuration")
+
+    def accessor():
+        raise failure
+
+    with pytest.raises(ValueError) as raised:
+        get_mutmut_config(SimpleNamespace(config=accessor))
+    assert raised.value is failure
+
+
+def test_mutmut_config_preserves_legacy_explicit_loading() -> None:
+    state = SimpleNamespace(loaded=False)
+    config = SimpleNamespace(source_paths=[Path("src")])
+
+    def ensure_loaded():
+        state.loaded = True
+
+    def get():
+        assert state.loaded
+        return config
+
+    cli = SimpleNamespace(Config=SimpleNamespace(ensure_loaded=ensure_loaded, get=get))
+    assert get_mutmut_config(cli) is config
 
 
 @dataclass

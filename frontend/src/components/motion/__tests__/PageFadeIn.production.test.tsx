@@ -181,4 +181,44 @@ describe("PageFadeIn — production scheduling and media-query fallbacks", () =>
       })
     }
   })
+
+  it("schedules one frame and installs one media listener across rerenders", () => {
+    let frameCallback: FrameRequestCallback | undefined
+    const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      frameCallback = callback
+      return 31
+    })
+    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame)
+    vi.stubGlobal("cancelAnimationFrame", vi.fn())
+    const query = createMediaQuery(false, "event")
+    const matchMedia = vi.spyOn(window, "matchMedia").mockReturnValue(query)
+
+    const { rerender } = render(<PageFadeIn>stable</PageFadeIn>)
+    act(() => frameCallback?.(0))
+    rerender(<PageFadeIn>stable again</PageFadeIn>)
+    rerender(<PageFadeIn>stable once more</PageFadeIn>)
+
+    expect(screen.getByText("stable once more").closest("[data-page-fade]")).toHaveAttribute(
+      "data-ready",
+      "true"
+    )
+    expect(requestAnimationFrame).toHaveBeenCalledOnce()
+    expect(matchMedia).toHaveBeenCalledOnce()
+    expect(query.addEventListener).toHaveBeenCalledOnce()
+  })
+
+  it("honours an already-active reduced-motion preference on mount", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn(() => 41)
+    )
+    vi.stubGlobal("cancelAnimationFrame", vi.fn())
+    vi.spyOn(window, "matchMedia").mockReturnValue(createMediaQuery(true, "event"))
+
+    render(<PageFadeIn effect="soft-blur">reduced from start</PageFadeIn>)
+
+    expect(screen.getByText("reduced from start").closest("[data-page-fade]")).not.toHaveAttribute(
+      "data-effect"
+    )
+  })
 })

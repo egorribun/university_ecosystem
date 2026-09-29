@@ -35,9 +35,6 @@ ENV PATH="/uv/bin:$PATH"
 COPY native/rust_ext/pyproject.toml native/rust_ext/Cargo.toml native/rust_ext/Cargo.lock native/rust_ext/
 COPY native/rust_ext/src native/rust_ext/src
 COPY native/rust_ext/benches native/rust_ext/benches
-COPY crates/pyo3-sanitizer/pyproject.toml crates/pyo3-sanitizer/Cargo.toml crates/pyo3-sanitizer/Cargo.lock crates/pyo3-sanitizer/
-COPY crates/pyo3-sanitizer/src crates/pyo3-sanitizer/src
-COPY crates/pyo3-sanitizer/benches crates/pyo3-sanitizer/benches
 
 COPY pyproject.toml uv.lock ./
 

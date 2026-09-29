@@ -106,6 +106,34 @@ func TestMain_ExitOnMissingInternalSecret(t *testing.T) {
 	t.Fatalf("process ran without expected exit status 1: %v, stdout: %s, stderr: %s", err, errStdout.String(), errStderr.String())
 }
 
+func TestValidateInternalAuthToken(t *testing.T) {
+	tests := []struct {
+		name        string
+		environment string
+		token       string
+		wantErr     string
+	}{
+		{name: "development may omit callback token", environment: "development"},
+		{name: "staging requires callback token", environment: "staging", wantErr: "INTERNAL_AUTH_TOKEN is not set for staging/production"},
+		{name: "production accepts configured callback token", environment: "production", token: "configured-token"},
+		{name: "environment matching is normalized", environment: " Production ", token: "configured-token"},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := validateInternalAuthToken(&config.Config{
+				Environment:       testCase.environment,
+				InternalAuthToken: testCase.token,
+			})
+			if testCase.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.EqualError(t, err, testCase.wantErr)
+		})
+	}
+}
+
 // TestMain_ExitOnJWKSFailure verifies that main() exits with 1 when the JWKS setup fails.
 func TestMain_ExitOnJWKSFailure(t *testing.T) {
 	if os.Getenv("RUN_CRASHING_MAIN") == "JWKS" {

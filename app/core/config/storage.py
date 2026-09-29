@@ -39,6 +39,10 @@ class StorageSettings(BaseAppSettings):
     static_dir: str = "app/static"
     image_max_width: int = 1920
     image_max_height: int = 1920
+    # Guard decoder allocations before EXIF transpose/load. The upper bound is
+    # intentionally finite so deployments cannot disable the resource policy
+    # by supplying an unbounded environment value.
+    image_max_pixels: int = Field(default=25_000_000, ge=1, le=100_000_000)
     response_compression_enabled: bool = Field(
         default=True,
         validation_alias=AliasChoices(

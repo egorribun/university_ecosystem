@@ -58,8 +58,43 @@ def test_security_core_contract_passes_all_security_arguments():
             header_name="X-Internal-Auth",
             header_token="internal-token",
             internal_prefixes=INTERNAL_ROUTE_PREFIXES,
+            allow_ip_fallback=False,
         ),
     ]
+
+
+def test_security_core_reports_missing_development_setting_and_fails_closed():
+    """Missing compatibility settings are observable while remaining denied."""
+    app = MagicMock()
+    settings = SimpleNamespace(
+        internal_allowed_ips_list=[],
+        internal_auth_header="X-Internal-Auth",
+        internal_auth_token="internal-token",
+        internal_hmac_secret="internal-hmac-secret",  # pragma: allowlist secret
+    )
+
+    with patch.object(setup.logger, "warning") as warning:
+        setup._configure_security_core(app, settings)
+
+    warning.assert_called_once_with("middleware_development_setting_missing")
+    internal_access = app.add_middleware.call_args_list[-1]
+    assert internal_access.kwargs["allow_ip_fallback"] is False
+
+
+def test_security_core_enables_ip_fallback_only_for_development_mode():
+    app = MagicMock()
+    settings = SimpleNamespace(
+        internal_allowed_ips_list=[],
+        internal_auth_header="X-Internal-Auth",
+        internal_auth_token="internal-token",
+        internal_hmac_secret="internal-hmac-secret",  # pragma: allowlist secret
+        is_development=True,
+    )
+
+    setup._configure_security_core(app, settings)
+
+    internal_access = app.add_middleware.call_args_list[-1]
+    assert internal_access.kwargs["allow_ip_fallback"] is True
 
 
 def test_csrf_contract_uses_exemptions_and_cookie_settings():

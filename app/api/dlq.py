@@ -8,23 +8,28 @@ and allow manual intervention for job processing.
 from __future__ import annotations
 
 from datetime import UTC
-from typing import TYPE_CHECKING, Any
+from typing import Annotated, Any
 
+from dishka import FromComponent
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
-from app.api.deps import get_current_admin_user, get_locale
+# Imported at runtime rather than under TYPE_CHECKING: Dishka resolves an
+# injected endpoint's annotations with typing.get_type_hints() when the route
+# is registered, so every name in those annotations must exist at runtime.
+import app.models as models
+from app.api.deps import (
+    get_current_admin_user_from_dishka,
+    get_locale,
+)
 from app.api.validation import raise_not_found, raise_validation_error
-from app.core.database import get_db, get_read_db
+from app.core.di.read_replica import READ_COMPONENT
 from app.core.event_dlq import dead_letter_queue as in_memory_dlq
+from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit.circuit_breaker import get_circuit_breaker
 from app.models import DeadLetterJob, JobStatus
 from app.workers.dead_letter_queue import DeadLetterQueue
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    import app.models as models
 
 router = APIRouter(prefix="/admin/dlq", tags=["admin"])
 
@@ -106,9 +111,10 @@ class DLQJobsListResponse(BaseModel):
         "DB-backed dead letter jobs, circuit breaker state, and replay status."
     ),
 )
+@inject
 async def get_dlq_status(
-    db: AsyncSession = Depends(get_read_db),
-    _: models.User = Depends(get_current_admin_user),
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> DLQStatusResponse:
     """Get comprehensive DLQ status and circuit breaker metrics."""
     db_dlq = DeadLetterQueue(db)
@@ -152,11 +158,12 @@ async def get_dlq_status(
         "or both, with options for batch size and forcing execution regardless of circuit breaker state."
     ),
 )
+@inject
 async def trigger_dlq_replay(
+    db: FromDishka[AsyncDatabaseSession],
     request: DLQReplayRequest = DLQReplayRequest(),
-    db: AsyncSession = Depends(get_db),
     locale: str = Depends(get_locale),
-    _: models.User = Depends(get_current_admin_user),
+    _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> DLQReplayResponse:
     """Manually trigger DLQ replay for in-memory domain events and/or DB jobs."""
     if request.target not in ("all", "in_memory", "db"):
@@ -208,9 +215,10 @@ async def trigger_dlq_replay(
         "for monitoring dashboards."
     ),
 )
+@inject
 async def get_dlq_stats(
-    db: AsyncSession = Depends(get_read_db),
-    _: models.User = Depends(get_current_admin_user),
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> DLQStatsResponse:
     """
     Get Dead Letter Queue statistics.
@@ -239,14 +247,13 @@ async def get_dlq_stats(
         "with optional status filtering."
     ),
 )
+@inject
 async def list_dlq_jobs(
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
     status: str | None = None,
-    limit: int = Query(
-        default=20, ge=1, le=500
-    ),  # MED-W19: cap at 500 to prevent large scans
-    db: AsyncSession = Depends(get_read_db),
+    limit: int = Query(default=20, ge=1, le=500),
     locale: str = Depends(get_locale),
-    _: models.User = Depends(get_current_admin_user),
+    _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> DLQJobsListResponse:
     """
     List jobs in the Dead Letter Queue.
@@ -309,11 +316,12 @@ async def list_dlq_jobs(
         "its status to pending."
     ),
 )
+@inject
 async def retry_dlq_job(
     job_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: FromDishka[AsyncDatabaseSession],
     locale: str = Depends(get_locale),
-    _: models.User = Depends(get_current_admin_user),
+    _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> dict[str, Any]:
     """
     Manually trigger a retry for a specific DLQ job.
@@ -359,10 +367,11 @@ async def retry_dlq_job(
         "(default: 7) to free up storage."
     ),
 )
+@inject
 async def cleanup_dlq(
+    db: FromDishka[AsyncDatabaseSession],
     older_than_days: int = 7,
-    db: AsyncSession = Depends(get_db),
-    _: models.User = Depends(get_current_admin_user),
+    _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> dict[str, Any]:
     """
     Clean up completed jobs from the Dead Letter Queue.

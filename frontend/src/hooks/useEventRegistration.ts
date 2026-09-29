@@ -10,9 +10,11 @@ import {
 } from "react"
 import { isAxiosError } from "axios"
 import api from "@/api/client"
+import type { EventAttendanceOut } from "@/api/generated/types.gen"
 import type { Event } from "@/types/Event"
 import type { User } from "@/types/User"
 import { useTranslation } from "react-i18next"
+import { requestPushEducation } from "@/app/pwaEvents"
 
 /** Keys for local storage */
 const regKey = (eventId: string, userId: number | string) => `event:reg:${eventId}:${userId}`
@@ -229,19 +231,22 @@ export function useEventRegistration({
         setOptimisticCount({ scope: operationScope, value: participantCount + 1 })
 
         try {
-          const res = await api.post<{ qr_code: string }>("/events/attendance", {
+          const res = await api.post<EventAttendanceOut>("/events/attendance", {
             event_id: eventId,
           })
           if (!isCurrentScope(operationScope)) return
-          const code: string = res.data.qr_code
+          const code = res.data.qr_token ?? undefined
           setIsRegistered(true)
           setQrToken(code)
           setParticipantCount((c) => c + 1)
           onNotify?.(t("events:card.messages.registerSuccess"))
-          try {
-            localStorage.setItem(qrKey(eventId, userId), code)
-          } catch {
-            // ignore
+          if (userId != null) requestPushEducation(String(userId))
+          if (code) {
+            try {
+              localStorage.setItem(qrKey(eventId, userId), code)
+            } catch {
+              // ignore
+            }
           }
         } catch (error) {
           // Optimistic state auto-reverts when transition completes
@@ -259,6 +264,7 @@ export function useEventRegistration({
             if (!isCurrentScope(operationScope)) return
             if (restored === "registered") {
               onNotify?.(t("events:card.messages.registerSuccess"))
+              if (userId != null) requestPushEducation(String(userId))
               return
             }
           }

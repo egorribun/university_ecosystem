@@ -3,7 +3,7 @@ import { createRoot, hydrateRoot } from "react-dom/client"
 // dayjs removed
 
 import App from "./App"
-import ErrorBoundary from "@/components/feedback/ErrorBoundary"
+import { ErrorBoundary } from "@/components/feedback/ErrorBoundary"
 import { initGlobalErrorHandlers } from "./app/globalErrorHandlers"
 import { logError } from "./app/logger"
 // W149 SW2 — PersistQueryClientProvider + queryClient + idbPersister moved to
@@ -90,18 +90,14 @@ async function setupServiceWorker() {
       import("./push/subscribe"),
     ])
     const { registerServiceWorker } = SWMod
-    const { ensurePushSubscription, hasPushConsent, recoverPushConsentFromBrowser } = PushMod
     const registration = await registerServiceWorker("/sw.js")
     if (!registration) return
 
-    await recoverPushConsentFromBrowser()
-
-    if (!hasPushConsent()) return
-    try {
-      await ensurePushSubscription({ registration, requestPermission: false })
-    } catch (error) {
-      logError("Failed to ensure push subscription", error)
-    }
+    // Push persistence must wait for auth hydration to confirm a real
+    // account; SSR stubs and cached placeholders must never own an endpoint.
+    PushMod.syncPushForConfirmedIdentity({ registration }).catch((error: unknown) => {
+      logError("Failed to sync push subscription", error)
+    })
   } catch (error) {
     logError("Service worker registration failed", error)
   }

@@ -17,7 +17,7 @@ import { ExportDropdown } from "@/components/schedule/ExportDropdown"
 describe("ExportDropdown", () => {
   it("renders the export trigger button", () => {
     render(<ExportDropdown />)
-    expect(screen.getByRole("button", { name: /schedule:toolbar.export/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /schedule:toolbar.export/ })).toHaveClass("min-h-11")
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
   })
 
@@ -31,6 +31,9 @@ describe("ExportDropdown", () => {
     expect(
       screen.getByRole("menuitem", { name: "schedule:export.googleCalendar" })
     ).toBeInTheDocument()
+    for (const item of screen.getAllByRole("menuitem")) {
+      expect(item).toHaveClass("min-h-11")
+    }
   })
 
   it("disables PDF/PNG export when there is no grid ref", async () => {

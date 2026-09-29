@@ -463,7 +463,12 @@ async def test_outbox_event_created_on_delivery(
     events = (await db_session.execute(select(StoredEvent))).scalars().all()
     assert len(events) == 1
     assert events[0].event_type == "notification.delivery_requested"
-    assert "notification_ids" in events[0].payload
+    notification = (await db_session.execute(select(Notification))).scalar_one()
+    assert events[0].payload == {
+        "_schema_version": 1,
+        "notification_ids": [str(notification.id)],
+        "channel": "push",
+    }
 
 
 @pytest.mark.asyncio
@@ -590,6 +595,7 @@ async def test_outbox_redelivery_is_idempotent_by_notification_and_subscription(
         db_session,
         notification_ids=[notification.id, notification.id],
         channel="push",
+        payload_data={"category": "news", "articleId": "42"},
     )
     second = await notifications_delivery.redeliver_notifications(
         db_session,
@@ -604,6 +610,8 @@ async def test_outbox_redelivery_is_idempotent_by_notification_and_subscription(
     assert len(payloads) == 1
     assert payloads[0]["tag"] == str(notification.id)
     assert payloads[0]["data"] == {
+        "category": "news",
+        "articleId": "42",
         "notificationId": str(notification.id),
         "topic": "news.published",
         "type": "news",

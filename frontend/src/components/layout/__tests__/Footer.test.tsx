@@ -9,7 +9,7 @@ import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 //   • Render contract (ARIA role, brand text, 7 footer-link-premium links,
 //     copyright year)
 //   • Social buttons (aria-labels, security attrs target+rel)
-//   • Decorative layers aria-hidden (FooterBackdrop, accent stripe)
+//   • Decorative layers aria-hidden (accent stripe)
 //   • Active-route indicator via data-status="active" (TanStack canonical)
 //   • Prefix-match active state (W176 SW4 activeOptions={{ exact: false }})
 

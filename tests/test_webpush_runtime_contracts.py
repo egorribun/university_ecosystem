@@ -111,7 +111,9 @@ def test_empty_webpush_error_message_is_not_misclassified_as_gone() -> None:
     with (
         patch.object(webpush, "settings", settings),
         patch.object(webpush, "validate_public_https_url"),
-        patch.object(webpush, "validate_url_not_internal"),
+        patch.object(
+            webpush, "validate_and_resolve", return_value=[("203.0.113.7", 443)]
+        ),
         patch.object(
             webpush,
             "webpush",

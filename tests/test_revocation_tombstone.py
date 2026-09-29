@@ -86,7 +86,11 @@ async def test_revoke_with_tombstone_requires_a_security_client() -> None:
 async def test_get_revocation_redis_client_requires_configured_url() -> None:
     with patch(
         "app.core.config.settings",
-        SimpleNamespace(revocation_redis_url="   "),
+        SimpleNamespace(
+            revocation_redis_access_enabled=True,
+            revocation_redis_url="   ",
+            environment="production",
+        ),
     ):
         with pytest.raises(
             RuntimeError, match="REVOCATION_REDIS_URL is not configured"

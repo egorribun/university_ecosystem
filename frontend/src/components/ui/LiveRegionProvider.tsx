@@ -111,5 +111,3 @@ export function LiveRegionProvider({ children }: LiveRegionProviderProps) {
     </AnnouncerContext.Provider>
   )
 }
-
-export default LiveRegionProvider

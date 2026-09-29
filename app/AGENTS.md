@@ -6,7 +6,7 @@ This document defines the architectural invariants, framework constraints, secur
 
 ## 1. Runtime & Environment Standards
 
-- **Python Runtime**: Standardized on **Python 3.14** (`requires-python = ">=3.13,<3.15"`, `target-version = "py314"`).
+- **Python Runtime**: Development and canonical CI are standardized on **Python 3.14** (`target-version = "py314"`). Package metadata and the lock currently advertise `requires-python = ">=3.12,<3.15"`; do not confuse this compatibility range with interpreter selection or claim all supported versions verified without their own evidence.
 - **Type Checking**: Strict `mypy` enforcement (`python_version = "3.14"`, `strict = true`) with plugins for `pydantic.mypy`, `sqlalchemy.ext.mypy.plugin`, and `strawberry.ext.mypy_plugin`. Code must also be compatible with `pyright` standard mode.
 - **Linting & Formatting**:
   - `python -m ruff check app/`
@@ -42,7 +42,14 @@ class Chat(Base, UUID7PrimaryKeyMixin):
 ```
 
 ### 2.2. Dual Default Declarations (Python Default + SQL Server Default)
-- **Invariant**: Any model column with default values must provide **BOTH** Python-level default (`default=...`) AND DDL server default (`server_default=...`).
+- **Invariant**: Any effective model default that may be supplied by an ORM,
+  direct SQL, or microservice writer must provide **BOTH** Python-level
+  (`default=...`) and DDL server (`server_default=...`) declarations.
+- **Explicit exceptions**: inherited UUIDv7 primary-key defaults,
+  `active_sessions.signing_key`, JSON topic defaults, `Computed` expressions,
+  and `default=None` are intentionally application-only or non-effective.
+  They must be recorded with an owner and reason in ADR-036 and the generated
+  quality inventory; adding an unreviewed exception is forbidden.
 - **Rationale**: Freshly inserted ORM entities validated against Pydantic DTOs (`model_validate(from_attributes=True)`) will fail with `MissingGreenlet` if the Python-side attribute is unpopulated and requires a DB roundtrip to resolve.
 
 ```python
@@ -144,8 +151,10 @@ except Exception as err:  # RZ-22-01-JUSTIFIED: fail-closed auth fallback with a
   - `settings.db`
   - `settings.security`
   - `settings.cache`
-  - `settings.redis`
+  - `settings.observability`
   - `settings.storage`
+  - `settings.notifications`
+  - `settings.integrations`
 - Phase 2 implementation returns `_NamespaceView[T]` proxy objects instead of leaking monolithic `self`.
 
 ### 5.2. Redis Eviction Isolation (Cache vs. Revocation)
@@ -165,7 +174,7 @@ except Exception as err:  # RZ-22-01-JUSTIFIED: fail-closed auth fallback with a
 ### 6.1. Password Hashing (Argon2id Only)
 - **Argon2id** is the sole password hashing algorithm (`argon2-cffi`).
 - **Bcrypt Verification Removed**: Legacy bcrypt support has been completely excised (TD-21-04).
-- **Concurrency Limiting**: Argon2 hashing operations are capped at a maximum of 4 concurrent operations per worker process.
+- **Concurrency Limiting**: Argon2 hashing runs in a dedicated executor sized to the cgroup-aware CPU count (at least 2 threads); a semaphore admits at most `workers - 1` (at least 1) concurrent hashes per process (`app/auth/security.py`).
 
 ### 6.2. Dual JWKS Architecture (RS256)
 - Private RSA signing key: `.secrets/jwt_rs256.pem`.
@@ -177,7 +186,7 @@ except Exception as err:  # RZ-22-01-JUSTIFIED: fail-closed auth fallback with a
 - Cookies: `access_token_v2` must be issued as an `HttpOnly` cookie with `cookie_samesite="lax"`.
 
 ### 6.3. Storage Path Traversal Prevention
-- `StaticFSStorage._validate_resolved_path()` resolves symlinks and verifies `is_relative_to(base_dir)`.
+- `StaticFSStorage._resolve_validated_path()` resolves symlinks and verifies `is_relative_to(base_dir)`.
 
 ---
 
@@ -223,7 +232,7 @@ GraphQL queries (via Strawberry GraphQL) pass through 5 protective middleware la
 | Anti-Pattern | Why It Is Forbidden | Correct Pattern |
 |---|---|---|
 | `relationship(..., lazy="select")` | Causes unmonitored N+1 queries and async MissingGreenlet | `relationship(..., lazy="noload")` + explicit `selectinload` |
-| Column default without DDL `server_default` | Causes MissingGreenlet during Pydantic validation of new instances | Provide both `default=val` and `server_default=val` |
+| Applicable column default without DDL `server_default` | Causes MissingGreenlet during Pydantic validation of new instances | Provide both `default=val` and `server_default=val`, or record an ADR-036 exception |
 | `from app.deps.user import NotificationService` | Violates DI encapsulation rule TD-33-08 (AST linter fails) | `from app.deps.content import NotificationService` |
 | `except Exception:` without tag | Swallows unexpected bugs and violates exception policy | Use narrowed exceptions or tag `# RZ-22-01-JUSTIFIED: <reason>` |
 | `except A, B:` | Python 2 syntax rejected by `no-python2-except` hook | `except (A, B):` |

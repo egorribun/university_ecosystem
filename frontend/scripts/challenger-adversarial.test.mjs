@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url"
 
 import { validateWasmArtifacts } from "./verify-wasm-artifacts.mjs"
 import { buildWasmArtifacts } from "./build-wasm.mjs"
+import { writeSourceProvenance } from "./wasm-source-provenance.mjs"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const mergeScriptPath = path.join(__dirname, "merge-vitest-coverage.mjs")
@@ -69,6 +70,7 @@ export { init as default }
 export function pbkdf2_derive() { return "derived" }
 export function scrypt_derive() { return Uint8Array.of(1) }
 export function hmac_sha256_sign() { return "signature" }
+export function hmac_sha256_sign_base64() { return "signature" }
 `
 
 async function createFixturePackage(root, name, overrides = {}) {
@@ -297,6 +299,7 @@ describe("ADVERSARIAL: verify-wasm-artifacts.mjs edge cases", () => {
 export { init as default }
 export function pbkdf2_derive() { return "derived" }
 export function hmac_sha256_sign() { return "signature" }
+export function hmac_sha256_sign_base64() { return "signature" }
 `, // omitted scrypt_derive
       })
       await assert.rejects(
@@ -318,6 +321,7 @@ export { init as default }
 export function pbkdf2_derive() { return ""; }
 export function scrypt_derive() { return new Uint8Array(); }
 export function hmac_sha256_sign() { return "sig"; }
+export function hmac_sha256_sign_base64() { return "sig"; }
 `,
       })
       await assert.rejects(
@@ -336,6 +340,15 @@ describe("ADVERSARIAL: build-wasm.mjs flags and fail-closed contracts", () => {
     try {
       await createFixturePackage(tmp, "wasm-sanitizer")
       await createFixturePackage(tmp, "rust-crypto")
+      // Skipping the build still validates source provenance, so the fixture
+      // must be a complete checkout: sources plus a matching provenance file.
+      for (const crate of ["rust-crypto", "wasm-sanitizer"]) {
+        await mkdir(path.join(tmp, crate, "src"), { recursive: true })
+        await writeFile(path.join(tmp, crate, "Cargo.toml"), `[package]\nname = "${crate}"\n`)
+        await writeFile(path.join(tmp, crate, "Cargo.lock"), "version = 4\n")
+        await writeFile(path.join(tmp, crate, "src", "lib.rs"), "pub fn fixture() {}\n")
+      }
+      await writeSourceProvenance(tmp)
 
       const originalEnv = process.env.SKIP_WASM_BUILD
       process.env.SKIP_WASM_BUILD = "1"

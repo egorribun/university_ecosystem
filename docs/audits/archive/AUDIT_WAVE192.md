@@ -272,7 +272,7 @@ Per W171 Lesson #1: maintenance mode means waves fire on real triggers OR user-c
 - [memory/wave192_backlog.md](.claude profile) — W192 closure backlog
 - [memory/wave192_lighthouse_upstream_check.md](.claude profile) — SW1 full snapshot
 - [memory/wave193_opening_prompt.md](.claude profile) — handoff for W193+ scope clarification
-- [archive/AUDIT_WAVE191.md](archive/AUDIT_WAVE191.md) — predecessor wave (Tier 4 housekeeping batch)
+- [archive/AUDIT_WAVE191.md](../../../docs/audits/archive/AUDIT_WAVE191.md) — predecessor wave (Tier 4 housekeeping batch)
 - [AUDIT_WAVE190.md](AUDIT_WAVE190.md) — broader hook migration sweep (active)
 
 ---

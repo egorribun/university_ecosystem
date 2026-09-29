@@ -41,11 +41,32 @@ test.describe("University ecosystem app", () => {
     await expect(page).toHaveURL(/\/news$/)
     await expect(page.getByRole("heading", { name: /Новости|News/i })).toBeVisible()
 
+    // A mobile WebKit view transition has previously left the News snapshot
+    // over the Dashboard and kept the schedule link geometrically unstable.
+    // Count actual transitions during the return navigation, so this regression
+    // fails deterministically even when the renderer happens not to stall.
+    if (test.info().project.name === "mobile-webkit") {
+      await page.evaluate(() => {
+        if (typeof document.startViewTransition !== "function") return
+        const startViewTransition = document.startViewTransition.bind(document)
+        document.startViewTransition = (update) => {
+          sessionStorage.setItem("e2e:route-view-transitions", "1")
+          return startViewTransition(update)
+        }
+      })
+    }
+
     await page
       .getByRole("link", { name: /На главную|На главну|Home/i })
       .first()
       .click()
     await expect(page).toHaveURL(/\/dashboard$/)
+
+    if (test.info().project.name === "mobile-webkit") {
+      expect(
+        await page.evaluate(() => sessionStorage.getItem("e2e:route-view-transitions"))
+      ).toBeNull()
+    }
 
     await page.getByRole("link", { name: /Полное расписание|Full schedule/i }).click()
     await expect(page).toHaveURL(/\/schedule$/)
@@ -59,7 +80,8 @@ test.describe("University ecosystem app", () => {
     await mock.login(page)
 
     await page.getByRole("link", { name: /Посмотреть все новости|See all news/i }).click()
-    await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
+    // The card's title link: a hover quick view repeats the title as a heading.
+    await expect(page.getByRole("link", { name: /Новость дня|News of the day/i })).toBeVisible()
 
     // Wait for the cache effect to run and verify it's saved
     await expect(async () => {
@@ -83,7 +105,7 @@ test.describe("University ecosystem app", () => {
       document.dispatchEvent(new Event("visibilitychange"))
     })
     await page.reload({ waitUntil: "networkidle" })
-    await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
+    await expect(page.getByRole("link", { name: /Новость дня|News of the day/i })).toBeVisible()
 
     expect(mock.state.newsLog.some((entry) => entry.status === 304)).toBeTruthy()
     expect(mock.state.newsLog.filter((entry) => entry.status === 200).length).toBeGreaterThan(0)
@@ -96,9 +118,7 @@ test.describe("University ecosystem app", () => {
 
     // 1. Visit news page to populate localStorage
     await page.getByRole("link", { name: /Посмотреть все новости|See all news/i }).click()
-    await expect(
-      page.getByText(/\u041d\u043e\u0432\u043e\u0441\u0442\u044c \u0434\u043d\u044f/)
-    ).toBeVisible()
+    await expect(page.getByRole("link", { name: /Новость дня|News of the day/i })).toBeVisible()
 
     // 2. Wait for localStorage to be populated
     await expect(async () => {
@@ -112,7 +132,7 @@ test.describe("University ecosystem app", () => {
     await mock.setNewsOffline(true)
     try {
       await page.reload({ waitUntil: "domcontentloaded" })
-      await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible({
+      await expect(page.getByRole("link", { name: /Новость дня|News of the day/i })).toBeVisible({
         timeout: TEST_TIMEOUTS.long,
       })
     } finally {

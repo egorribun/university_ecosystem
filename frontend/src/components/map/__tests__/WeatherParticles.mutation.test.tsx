@@ -292,6 +292,8 @@ describe("WeatherParticles mutation contracts", () => {
       expect(
         light.container.querySelector(".absolute.inset-0.pointer-events-none")
       ).toBeInTheDocument()
+      // Every particle starts its own path so earlier particles are not re-filled.
+      expect(canvasContext.beginPath).toHaveBeenCalledTimes(count)
       if (shape === "line") {
         expect(canvasContext.moveTo).toHaveBeenCalledTimes(count)
         expect(canvasContext.lineTo).toHaveBeenCalledTimes(count)

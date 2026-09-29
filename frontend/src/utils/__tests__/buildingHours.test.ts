@@ -122,5 +122,69 @@ describe("buildingHours utils", () => {
       vi.setSystemTime(new Date("2026-07-06T12:00:00"))
       expect(isOpenNow(wrapHours)).toBe(false)
     })
+
+    it("reads the Sunday and Saturday schedules on weekend days", () => {
+      const h: BuildingHours = { weekday: "closed", saturday: "10:00-18:00", sunday: "24/7" }
+
+      vi.setSystemTime(new Date("2026-07-05T12:00:00")) // Sunday
+      expect(isOpenNow(h)).toBe(true)
+
+      vi.setSystemTime(new Date("2026-07-04T12:00:00")) // Saturday
+      expect(isOpenNow(h)).toBe(true)
+    })
+
+    it("treats a day without published hours as closed", () => {
+      const partial = {
+        weekday: "08:00-22:00",
+        saturday: "08:00-22:00",
+      } as unknown as BuildingHours
+      vi.setSystemTime(new Date("2026-07-05T12:00:00")) // Sunday
+      expect(isOpenNow(partial)).toBe(false)
+    })
+
+    it("accepts whitespace around the range separator", () => {
+      vi.setSystemTime(new Date("2026-07-06T12:00:00"))
+      expect(isOpenNow({ weekday: "08:00 - 22:00", saturday: "", sunday: "" })).toBe(true)
+      expect(isOpenNow({ weekday: "08:00 – 22:00", saturday: "", sunday: "" })).toBe(true)
+    })
+
+    it("counts the minutes of the opening, closing and current time", () => {
+      const h: BuildingHours = { weekday: "08:30-22:30", saturday: "", sunday: "" }
+
+      vi.setSystemTime(new Date("2026-07-06T08:15:00"))
+      expect(isOpenNow(h)).toBe(false)
+
+      vi.setSystemTime(new Date("2026-07-06T08:45:00"))
+      expect(isOpenNow(h)).toBe(true)
+
+      vi.setSystemTime(new Date("2026-07-06T22:15:00"))
+      expect(isOpenNow(h)).toBe(true)
+
+      vi.setSystemTime(new Date("2026-07-06T22:30:00"))
+      expect(isOpenNow(h)).toBe(false)
+    })
+
+    it("treats identical opening and closing times as open around the clock", () => {
+      const h: BuildingHours = { weekday: "08:00-08:00", saturday: "", sunday: "" }
+
+      vi.setSystemTime(new Date("2026-07-06T12:00:00"))
+      expect(isOpenNow(h)).toBe(true)
+
+      vi.setSystemTime(new Date("2026-07-06T03:00:00"))
+      expect(isOpenNow(h)).toBe(true)
+    })
+
+    it("opens exactly at the opening time and closes exactly at the closing time across midnight", () => {
+      const wrapHours: BuildingHours = { weekday: "22:00-02:00", saturday: "", sunday: "" }
+
+      vi.setSystemTime(new Date("2026-07-06T22:00:00"))
+      expect(isOpenNow(wrapHours)).toBe(true)
+
+      vi.setSystemTime(new Date("2026-07-06T02:00:00"))
+      expect(isOpenNow(wrapHours)).toBe(false)
+
+      vi.setSystemTime(new Date("2026-07-06T01:59:00"))
+      expect(isOpenNow(wrapHours)).toBe(true)
+    })
   })
 })

@@ -231,10 +231,11 @@ let output = `// ---------------------------------------------------------------
 // TOKENS.TS
 // -----------------------------------------------------------------------------
 // This file is a strict TypeScript mirror of the CSS variables defined in
-// \`src/styles/theme.css\`. It is used for JS-based styling (e.g., Framer Motion).
+// \`src/styles/partials/\` and \`src/styles/tokens/\`. It is used for JS-based
+// styling (e.g., Framer Motion).
 //
 // ⚠️  WARNING: DO NOT EDIT VALUES HERE MANUALLY.
-//     Always update \`src/styles/theme.css\` first, then run \`npm run tokens:sync\`.
+//     Change the CSS token layers first, then run \`npm run tokens:sync\`.
 // -----------------------------------------------------------------------------
 
 `
@@ -303,8 +304,10 @@ GROUPS.forEach((group) => {
     }
   }
 
-  // Sort for stability
-  entries.sort((a, b) => a.key.localeCompare(b.key))
+  // Sort by Unicode code points rather than the host locale.  `localeCompare`
+  // is platform/locale dependent (notably between Windows and Linux), which
+  // can make the generated mirror drift only in CI even when CSS is identical.
+  entries.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
 
   if (entries.length === 0) {
     output += `export const ${group.name} = {} as const\n\n`

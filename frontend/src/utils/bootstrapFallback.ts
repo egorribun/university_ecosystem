@@ -1,4 +1,4 @@
-export type BootstrapFallbackLanguage = "en" | "ru"
+type BootstrapFallbackLanguage = "en" | "ru"
 
 export interface BootstrapFallbackCopy {
   title: string

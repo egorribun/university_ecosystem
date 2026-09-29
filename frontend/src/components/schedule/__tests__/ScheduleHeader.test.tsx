@@ -73,6 +73,45 @@ describe("ScheduleHeader", () => {
     expect(screen.getByText("Active Lecture")).toBeInTheDocument()
   })
 
+  it("uses the exact progress-ring geometry for desktop and mobile", () => {
+    const { rerender } = render(
+      <ScheduleHeader
+        {...baseProps}
+        currentLesson={lesson({ subject: "Geometry Lecture" })}
+        currentProgress={40}
+      />
+    )
+    const desktopRing = document.querySelector<SVGElement>(".sched-progress-ring")
+    const desktopCircles = document.querySelectorAll<SVGCircleElement>(
+      ".sched-progress-ring circle"
+    )
+    expect(desktopRing).toHaveAttribute("width", "80")
+    expect(desktopRing).toHaveAttribute("height", "80")
+    expect(desktopCircles[0]).toHaveAttribute("r", "37")
+    expect(desktopCircles[1]).toHaveAttribute("r", "37")
+    expect(desktopCircles[1]).toHaveAttribute("stroke-dasharray", String(2 * Math.PI * 37))
+    expect(Number(desktopCircles[1]?.getAttribute("stroke-dashoffset"))).toBeCloseTo(
+      0.4 * 2 * Math.PI * 37
+    )
+
+    mediaMock.mockReturnValue(true)
+    rerender(
+      <ScheduleHeader
+        {...baseProps}
+        currentLesson={lesson({ subject: "Mobile Geometry Lecture" })}
+        currentProgress={40}
+      />
+    )
+    const mobileRing = document.querySelector<SVGElement>(".sched-progress-ring")
+    const mobileCircles = document.querySelectorAll<SVGCircleElement>(".sched-progress-ring circle")
+    expect(mobileRing).toHaveAttribute("width", "64")
+    expect(mobileRing).toHaveAttribute("height", "64")
+    expect(mobileCircles[0]).toHaveAttribute("r", "29")
+    expect(Number(mobileCircles[1]?.getAttribute("stroke-dashoffset"))).toBeCloseTo(
+      0.4 * 2 * Math.PI * 29
+    )
+  })
+
   it("renders a next-lesson card when there is no current lesson", () => {
     render(
       <ScheduleHeader
@@ -82,6 +121,41 @@ describe("ScheduleHeader", () => {
     )
     expect(screen.getByText("schedule:chips.next")).toBeInTheDocument()
     expect(screen.getByText("Upcoming Seminar")).toBeInTheDocument()
+  })
+
+  it("only shows the countdown for a strictly positive interval up to 30 minutes", () => {
+    const { rerender } = render(
+      <ScheduleHeader
+        {...baseProps}
+        nextLesson={lesson({ subject: "Boundary Lesson", start_time: "10:30" })}
+      />
+    )
+    expect(screen.getByTestId("flip-countdown")).toHaveTextContent("630")
+
+    rerender(
+      <ScheduleHeader
+        {...baseProps}
+        nextLesson={lesson({ subject: "Boundary Lesson", start_time: "10:31" })}
+      />
+    )
+    expect(screen.queryByTestId("flip-countdown")).toBeNull()
+
+    rerender(
+      <ScheduleHeader
+        {...baseProps}
+        nextLesson={lesson({ subject: "Boundary Lesson", start_time: "10:00" })}
+      />
+    )
+    expect(screen.queryByTestId("flip-countdown")).toBeNull()
+
+    rerender(
+      <ScheduleHeader
+        {...baseProps}
+        currentLesson={lesson({ subject: "Current Lesson" })}
+        nextLesson={lesson({ subject: "Hidden Next", start_time: "10:15" })}
+      />
+    )
+    expect(screen.queryByTestId("flip-countdown")).toBeNull()
   })
 
   it("shows next-lesson metadata, countdown, and the remaining-time chip", () => {
@@ -107,6 +181,14 @@ describe("ScheduleHeader", () => {
   it("uses the empty-day message when there are no lessons", () => {
     render(<ScheduleHeader {...baseProps} todayLessons={[]} />)
     expect(screen.getByText("schedule:summary.noMoreToday")).toBeInTheDocument()
+  })
+
+  it("renders the selected group name only when a group matches", () => {
+    const { rerender } = render(<ScheduleHeader {...baseProps} />)
+    expect(screen.getByText("schedule:header.groupName")).toBeInTheDocument()
+
+    rerender(<ScheduleHeader {...baseProps} selectedGroup="missing" />)
+    expect(screen.queryByText("schedule:header.groupName")).toBeNull()
   })
 
   it("treats an omitted lesson list as an empty day", () => {

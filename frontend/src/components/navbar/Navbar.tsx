@@ -41,8 +41,9 @@ const Navbar = () => {
     prefersReducedMotion,
   })
 
-  // Desktop: full morph to pill. Mobile: just glass bg on scroll (no pill).
-  const showPill = morph.isCompact && !isMobile
+  // Keep one hysteresis-driven compact state on phone and desktop. The shell
+  // retains its fixed height, so the inset phone pill cannot shift content.
+  const showPill = morph.isCompact
 
   return (
     <>
@@ -54,14 +55,14 @@ const Navbar = () => {
           // FIXED height — never changes, no layout shift
           "h-(--navbar-height)",
           "flex items-center justify-center",
-          showPill
-            ? "bg-transparent"
-            : isScrolled && isMobile
-              ? "bg-(--pill-bg)"
-              : "bg-nav/(--opacity-hover)"
+          showPill ? "bg-transparent" : "bg-nav/(--opacity-hover)"
         )}
       >
-        <NavbarPill isCompact={showPill} prefersReducedMotion={prefersReducedMotion}>
+        <NavbarPill
+          isCompact={showPill}
+          isPhone={morph.isPhone}
+          prefersReducedMotion={prefersReducedMotion}
+        >
           <NavbarLogo
             t={t}
             isMobile={isMobile}

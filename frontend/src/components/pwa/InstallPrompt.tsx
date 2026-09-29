@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { m, AnimatePresence } from "framer-motion"
-import { X, Bell, BellOff, Download, RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { X, Bell, Download, RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { usePushPreferences, type NotificationToast } from "@/hooks/usePushPreferences"
-import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "@/app/pwaEvents"
-import { Trans, useTranslation } from "react-i18next"
+import {
+  PWA_REFRESH_EVENT,
+  PUSH_EDUCATION_REQUEST_EVENT,
+  consumePendingPushEducation,
+  type ServiceWorkerUpdateEventDetail,
+} from "@/app/pwaEvents"
+import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
-import { Button, SwitchControl } from "@/components/settings/SettingsUI"
-import { GlassCard } from "@/components/ui"
+import { Button } from "@/components/settings/SettingsUI"
+import { GlassCard } from "@/components/ui/GlassCard"
+import { useAuthUser } from "@/stores/useAuthStore"
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms?: string[]
@@ -19,6 +25,7 @@ type NavigatorStandalone = Navigator & { standalone?: boolean }
 const DISMISS_TTL = 7 * 24 * 60 * 60 * 1000 // 7 days
 const PWA_DISMISS_STORAGE_KEY = "ecosystem.pwa.install.dismissedAt"
 const PUSH_DISMISS_STORAGE_KEY = "ecosystem.push.education.dismissedAt"
+const pushDismissKey = (userId: string | number) => `${PUSH_DISMISS_STORAGE_KEY}:${userId}`
 
 // Wave 118 SW2 (CLS-118-02): pure-opacity entrance variants. Framer Motion's
 // JS-driven inline-style mutations of `transform` DO count toward Chromium's
@@ -48,7 +55,7 @@ const UPDATE_TOAST_VARIANTS = {
   exit: { opacity: 0 },
 }
 
-const isStandalone = () => {
+export const isInstallPromptStandalone = () => {
   if (typeof window === "undefined") return false
   const navigatorWithStandalone = window.navigator as NavigatorStandalone
   return (
@@ -58,7 +65,7 @@ const isStandalone = () => {
   )
 }
 
-const readDismissedAt = (key: string) => {
+export const readInstallPromptDismissedAt = (key: string) => {
   try {
     const raw = localStorage.getItem(key)
     if (!raw) return 0
@@ -68,6 +75,9 @@ const readDismissedAt = (key: string) => {
     return 0
   }
 }
+
+export const isInstallPromptSuppressed = (now: number, suppressUntil: number): boolean =>
+  suppressUntil > 0 && now < suppressUntil
 
 const rememberDismiss = (key: string) => {
   try {
@@ -85,47 +95,34 @@ const clearDismissed = (key: string) => {
   }
 }
 
-export const togglePushNotifications = (
-  notificationsEnabled: boolean,
-  enableNotifications: () => void,
-  disableNotifications: () => void
-): void => {
-  if (notificationsEnabled) {
-    disableNotifications()
-  } else {
-    enableNotifications()
-  }
-}
-
 export default function InstallPrompt() {
   const { t } = useTranslation(["system", "navigation", "notifications", "common"])
+  const user = useAuthUser()
+  const userId = user?.id
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [installVisible, setInstallVisible] = useState(false)
   const [pushVisible, setPushVisible] = useState(false)
   const [installing, setInstalling] = useState(false)
   const [updateToastOpen, setUpdateToastOpen] = useState(false)
   const [feedback, setFeedback] = useState<NotificationToast | null>(null)
+  const [visualViewportPanel, setVisualViewportPanel] = useState<{
+    left: number
+    width: number
+  } | null>(null)
   const installSuppressUntilRef = useRef<number>(0)
-  const pushSuppressUntilRef = useRef<number>(0)
+  const pushSuppressUntilRef = useRef<{ userId: string; until: number } | null>(null)
   const pendingUpdateRef = useRef<ServiceWorkerUpdateEventDetail["update"] | null>(null)
 
-  const isEligible = useMemo(() => !isStandalone(), [])
+  const isEligible = useMemo(() => !isInstallPromptStandalone(), [])
   const appName = t("navigation:brandName")
 
   const {
-    topicKeys,
-    topicState,
     pushSupported,
     notificationPermission,
-    notificationsEnabled,
     pushBusy,
     pushInitializing,
     permissionText,
     enableNotifications,
-    disableNotifications,
-    handleTopicToggle,
-    safariIOS,
-    safariGuideUrl,
   } = usePushPreferences({ onNotify: setFeedback })
 
   useEffect(() => {
@@ -145,11 +142,12 @@ export default function InstallPrompt() {
   useEffect(() => {
     if (!isEligible) return
 
-    installSuppressUntilRef.current = readDismissedAt(PWA_DISMISS_STORAGE_KEY) + DISMISS_TTL
+    installSuppressUntilRef.current =
+      readInstallPromptDismissedAt(PWA_DISMISS_STORAGE_KEY) + DISMISS_TTL
 
     const handleBeforeInstallPrompt = (event: Event) => {
       const now = Date.now()
-      if (installSuppressUntilRef.current && now < installSuppressUntilRef.current) {
+      if (isInstallPromptSuppressed(now, installSuppressUntilRef.current)) {
         return
       }
 
@@ -179,19 +177,38 @@ export default function InstallPrompt() {
   }, [isEligible])
 
   useEffect(() => {
-    if (!pushSuppressUntilRef.current) {
-      pushSuppressUntilRef.current = readDismissedAt(PUSH_DISMISS_STORAGE_KEY) + DISMISS_TTL
+    if (!userId) {
+      setPushVisible(false)
+      return
     }
-
-    if (pushSupported && notificationPermission === "granted") {
+    const queued = consumePendingPushEducation(String(userId))
+    if (!pushSupported || notificationPermission !== "default") {
       setPushVisible(false)
       return
     }
 
-    const now = Date.now()
-    if (pushSuppressUntilRef.current && now < pushSuppressUntilRef.current) return
-    setPushVisible(true)
-  }, [notificationPermission, pushSupported])
+    const showEducation = () => {
+      if (/^\/(?:login|register)(?:\/|$)/.test(window.location.pathname)) return
+      const now = Date.now()
+      const suppressUntil = Math.max(
+        pushSuppressUntilRef.current?.userId === String(userId)
+          ? pushSuppressUntilRef.current.until
+          : 0,
+        readInstallPromptDismissedAt(pushDismissKey(userId)) + DISMISS_TTL
+      )
+      if (isInstallPromptSuppressed(now, suppressUntil)) return
+      setPushVisible(true)
+    }
+
+    const onEducationRequest = () => {
+      if (!consumePendingPushEducation(String(userId))) return
+      showEducation()
+    }
+
+    window.addEventListener(PUSH_EDUCATION_REQUEST_EVENT, onEducationRequest)
+    if (queued) showEducation()
+    return () => window.removeEventListener(PUSH_EDUCATION_REQUEST_EVENT, onEducationRequest)
+  }, [notificationPermission, pushSupported, userId])
 
   const handleInstall = useCallback(async () => {
     // The install action is rendered only while showInstallPanel guarantees a prompt.
@@ -228,10 +245,12 @@ export default function InstallPrompt() {
   }, [])
 
   const handlePushDismiss = useCallback(() => {
-    pushSuppressUntilRef.current = Date.now() + DISMISS_TTL
-    rememberDismiss(PUSH_DISMISS_STORAGE_KEY)
+    // The close action is mounted only when showPushPanel includes Boolean(userId).
+    // Its callback retains that authenticated render's user ID.
+    pushSuppressUntilRef.current = { userId: String(userId), until: Date.now() + DISMISS_TTL }
+    rememberDismiss(pushDismissKey(String(userId)))
     setPushVisible(false)
-  }, [])
+  }, [userId])
 
   const handleFeedbackClose = useCallback(() => {
     setFeedback(null)
@@ -259,14 +278,56 @@ export default function InstallPrompt() {
   // gives a clean measurement without changing prod UX. The install panel
   // still renders so LCP candidate is preserved (Wave 117 polish lesson:
   // removing the WHOLE prompt regressed LCP +1800 ms).
-  const showPushPanel = pushVisible && import.meta.env.VITE_LHCI !== "true"
+  const showPushPanel =
+    pushVisible &&
+    Boolean(userId) &&
+    pushSupported &&
+    notificationPermission === "default" &&
+    !/^\/(?:login|register)(?:\/|$)/.test(window.location.pathname) &&
+    import.meta.env.VITE_LHCI !== "true"
   const shouldRenderPrompt = showInstallPanel || showPushPanel
-  const pushToggleHandler = togglePushNotifications.bind(
-    null,
-    notificationsEnabled,
-    enableNotifications,
-    disableNotifications
-  )
+
+  useEffect(() => {
+    if (!shouldRenderPrompt) {
+      setVisualViewportPanel(null)
+      return
+    }
+    if (!window.visualViewport) return
+    const viewport = window.visualViewport
+    const updatePosition = () => {
+      // Mobile Safari can pan the visual viewport within a wider layout
+      // viewport. A fixed element otherwise remains anchored to the layout
+      // viewport and can be clipped even though it fits on screen.
+      if (
+        viewport.offsetLeft <= 0.5 &&
+        viewport.width >= document.documentElement.clientWidth - 0.5
+      ) {
+        setVisualViewportPanel(null)
+        return
+      }
+      const margin = window.matchMedia("(min-width: 640px)").matches ? 24 : 16
+      const width = Math.max(0, Math.min(384, viewport.width - 2 * margin))
+      const left = viewport.offsetLeft + (margin === 24 ? viewport.width - margin - width : margin)
+      setVisualViewportPanel({ left, width })
+    }
+    let frame: number | null = null
+    const schedulePosition = () => {
+      if (frame !== null) return
+      frame = window.requestAnimationFrame(() => {
+        frame = null
+        updatePosition()
+      })
+    }
+
+    updatePosition()
+    viewport.addEventListener("scroll", schedulePosition)
+    viewport.addEventListener("resize", schedulePosition)
+    return () => {
+      viewport.removeEventListener("scroll", schedulePosition)
+      viewport.removeEventListener("resize", schedulePosition)
+      if (frame !== null) window.cancelAnimationFrame(frame)
+    }
+  }, [shouldRenderPrompt])
 
   return (
     <>
@@ -278,18 +339,21 @@ export default function InstallPrompt() {
             initial="initial"
             animate="animate"
             exit="exit"
-            // Wave 118 SW3 (CLS-118-03): Enforced `flex-col justify-start` to anchor
-            // inner GlassCard to the TOP of the reserved 600px area. This ensures
-            // that as internal components mount (i18n, push state), they grow
-            // DOWN into the reserved space, keeping the visual top edge rock-solid.
-            // Increased to 600px (was 540) to accommodate potential Russian text
-            // expansion in low-res viewports without breaching the reservation.
-            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-[24rem] min-h-[600px] flex flex-col justify-start pointer-events-none"
+            className="fixed bottom-[calc(env(safe-area-inset-bottom)+5rem)] right-4 left-4 sm:bottom-6 sm:left-auto sm:right-6 z-toast w-auto max-w-[24rem] pointer-events-none"
+            style={
+              visualViewportPanel
+                ? {
+                    left: visualViewportPanel.left,
+                    right: "auto",
+                    width: visualViewportPanel.width,
+                  }
+                : undefined
+            }
           >
             <GlassCard
               intensity="high"
               radius="lg"
-              className="z-toast w-auto max-w-[24rem] border-glass-border shadow-2xl ring-1 ring-black/(--opacity-faint) p-6 pointer-events-auto"
+              className="z-toast w-auto max-w-[24rem] max-h-[calc(100dvh-env(safe-area-inset-bottom)-6rem)] overflow-y-auto overscroll-contain border-glass-border shadow-2xl ring-1 ring-black/(--opacity-faint) p-6 pointer-events-auto"
             >
               <div
                 className={cn(
@@ -320,7 +384,7 @@ export default function InstallPrompt() {
                       <button
                         onClick={handleInstallDismiss}
                         aria-label={t("system:installPrompt.closeOffer")}
-                        className="p-1.5 rounded-xl hover:bg-(--bg-surface-hover)/(--opacity-soft) text-(--text-secondary) transition-colors"
+                        className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl hover:bg-(--bg-surface-hover)/(--opacity-soft) text-(--text-secondary) transition-colors"
                       >
                         <X className="h-5 w-5" />
                       </button>
@@ -354,15 +418,8 @@ export default function InstallPrompt() {
                 )}
 
                 {showPushPanel && (
-                  // Wave 118 SW4 (CLS-118-04): inner space-y-4 grew as
-                  // pushInitializing flipped + permission-state branch
-                  // resolved, contributing 0.124 CLS on /dashboard after
-                  // SW1/2/3. min-h-[260px] reserves space matching the
-                  // worst push-panel branch (granted-with-toggles).
-                  // Wave 119 attempt to bump → 400px regressed CLS
-                  // (forced outer 600px to grow → 0.228 outer shift),
-                  // reverted. Real /dashboard residual fix shipped via
-                  // showPushPanel VITE_LHCI gate (see line ~225).
+                  // The default-permission education panel is only opened by a
+                  // successful authenticated event-registration action.
                   <div className="space-y-4 min-h-[260px]">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">
@@ -376,7 +433,7 @@ export default function InstallPrompt() {
                       <button
                         onClick={handlePushDismiss}
                         aria-label={t("system:installPrompt.notificationsClose")}
-                        className="p-1.5 rounded-xl hover:bg-(--bg-surface-hover)/(--opacity-soft) text-(--text-secondary) transition-colors"
+                        className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl hover:bg-(--bg-surface-hover)/(--opacity-soft) text-(--text-secondary) transition-colors"
                       >
                         <X className="h-5 w-5" />
                       </button>
@@ -386,103 +443,25 @@ export default function InstallPrompt() {
                       {t("system:installPrompt.manageNotifications")}
                     </p>
 
-                    {!pushSupported ? (
-                      <div className="p-4 rounded-2xl bg-warning-bg/(--opacity-dim) border border-warning-border/(--opacity-soft) text-warning-text text-xs font-bold flex gap-3">
-                        <AlertTriangle className="h-4 w-4 shrink-0" />
-                        {t("system:installPrompt.unsupported")}
+                    <div className="space-y-4">
+                      <p className="text-xs font-bold text-(--text-secondary) opacity-medium leading-relaxed px-1">
+                        {t("system:installPrompt.defaultPermissionDescription")}
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="solid"
+                          size="sm"
+                          onClick={() => void enableNotifications()}
+                          disabled={pushBusy || pushInitializing}
+                          className="rounded-xl font-black h-10 px-6 shadow-lg shadow-brand/(--opacity-dim)"
+                        >
+                          {t("system:installPrompt.allow")}
+                        </Button>
+                        <span className="text-label-md font-bold text-(--text-secondary) uppercase tracking-wider opacity-medium">
+                          {t("system:installPrompt.status", { status: permissionText })}
+                        </span>
                       </div>
-                    ) : notificationPermission === "denied" ? (
-                      <div className="space-y-3">
-                        <div className="p-4 rounded-2xl bg-error-bg/(--opacity-dim) border border-error-border/(--opacity-soft) text-error-text text-xs font-bold flex gap-3">
-                          <BellOff className="h-4 w-4 shrink-0" />
-                          {t("system:installPrompt.blocked", { appName })}
-                        </div>
-                        {safariIOS && (
-                          <div className="p-4 rounded-2xl bg-brand/(--opacity-dim) border border-brand/(--opacity-soft) text-brand text-xs font-bold">
-                            <Trans
-                              i18nKey="system:installPrompt.safariGuide"
-                              components={{
-                                link: (
-                                  <a
-                                    href={safariGuideUrl}
-                                    target="_blank"
-                                    rel="noreferrer noopener"
-                                    className="underline font-black"
-                                  >
-                                    {t("navigation:safariGuide")}
-                                  </a>
-                                ),
-                              }}
-                            />
-                          </div>
-                        )}
-                        <div className="flex items-center gap-3">
-                          <Button
-                            variant="solid"
-                            size="sm"
-                            onClick={() => void enableNotifications()}
-                            disabled={pushBusy}
-                            className="rounded-xl font-black h-10 px-4"
-                          >
-                            {t("system:installPrompt.check")}
-                          </Button>
-                          <span className="text-label-md font-bold text-(--text-secondary) uppercase tracking-wider opacity-medium">
-                            {t("system:installPrompt.status", { status: permissionText })}
-                          </span>
-                        </div>
-                      </div>
-                    ) : notificationPermission === "default" ? (
-                      <div className="space-y-4">
-                        <p className="text-xs font-bold text-(--text-secondary) opacity-medium leading-relaxed px-1">
-                          {t("system:installPrompt.defaultPermissionDescription")}
-                        </p>
-                        <div className="flex items-center gap-3">
-                          <Button
-                            variant="solid"
-                            size="sm"
-                            onClick={() => void enableNotifications()}
-                            disabled={pushBusy || pushInitializing}
-                            className="rounded-xl font-black h-10 px-6 shadow-lg shadow-brand/(--opacity-dim)"
-                          >
-                            {t("system:installPrompt.allow")}
-                          </Button>
-                          <span className="text-label-md font-bold text-(--text-secondary) uppercase tracking-wider opacity-medium">
-                            {t("system:installPrompt.status", { status: permissionText })}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-4 pt-2">
-                        <div className="rounded-2xl border border-glass-border/(--opacity-subtle) bg-(--bg-surface-raised)/(--opacity-soft) p-4 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-bold text-text-primary">
-                              {t("system:installPrompt.toggleLabel")}
-                            </span>
-                            <SwitchControl
-                              checked={notificationsEnabled}
-                              onChange={pushToggleHandler}
-                              disabled={pushBusy || pushInitializing}
-                            />
-                          </div>
-                          <div className="h-px bg-glass-border/(--opacity-subtle)" />
-                          {topicKeys.map((key) => (
-                            <div key={key} className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-(--text-secondary)">
-                                {t(`notifications:topics.${key}`)}
-                              </span>
-                              <SwitchControl
-                                checked={topicState[key]}
-                                onChange={handleTopicToggle(key)}
-                                disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                        <p className="text-label-md font-bold text-(--text-secondary) opacity-dim uppercase tracking-widest px-1">
-                          {t("system:installPrompt.browserPermission", { status: permissionText })}
-                        </p>
-                      </div>
-                    )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -515,7 +494,11 @@ export default function InstallPrompt() {
                 <CheckCircle2 className="h-5 w-5" />
               )}
               <p className="text-sm font-black tracking-tight flex-1">{feedback.text}</p>
-              <button onClick={handleFeedbackClose}>
+              <button
+                onClick={handleFeedbackClose}
+                aria-label={t("common:buttons.close")}
+                className="min-h-11 min-w-11 inline-flex items-center justify-center"
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -548,7 +531,8 @@ export default function InstallPrompt() {
               </Button>
               <button
                 onClick={handleCloseUpdateToast}
-                className="p-1 hover:bg-brand/(--opacity-subtle) rounded-lg transition-colors"
+                aria-label={t("common:buttons.close")}
+                className="min-h-11 min-w-11 inline-flex items-center justify-center hover:bg-brand/(--opacity-subtle) rounded-lg transition-colors"
               >
                 <X className="h-4 w-4" />
               </button>

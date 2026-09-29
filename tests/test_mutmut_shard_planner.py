@@ -16,6 +16,7 @@ from scripts.plan_mutmut_shards import (
     normalize_source_path,
     parse_unified_diff_line_ranges,
     plan_mutant_shards,
+    plan_mutant_shards_with_budget,
     write_shard_plan_bundle,
 )
 
@@ -145,6 +146,106 @@ def test_plan_mutant_shards_rejects_invalid_shard_count() -> None:
         plan_mutant_shards([], num_shards=0)
 
 
+def test_budget_aware_planner_preserves_ids_and_is_deterministic() -> None:
+    names = [
+        "app.long.x_run__mutmut_1",
+        "app.long.x_run__mutmut_2",
+        *[f"app.short.x_run__mutmut_{index}" for index in range(1, 7)],
+    ]
+    tests_by_function = {
+        "app.long.x_run": ["tests/test_long.py::test_run"],
+        "app.short.x_run": ["tests/test_short.py::test_run"],
+    }
+    durations = {
+        "tests/test_long.py::test_run": 100.0,
+        "tests/test_short.py::test_run": 1.0,
+    }
+    estimates = estimate_mutant_times(names, tests_by_function, durations)
+    kwargs = {
+        "num_shards": 2,
+        "max_children": 3,
+        "control_cycle_reserve_seconds": 5,
+        "metadata_and_startup_reserve_seconds": 120,
+        "max_timeout_seconds": 2_100,
+    }
+
+    first = plan_mutant_shards_with_budget(
+        estimates, tests_by_function, durations, **kwargs
+    )
+    second = plan_mutant_shards_with_budget(
+        estimates, tests_by_function, durations, **kwargs
+    )
+
+    assert first == second
+    assert {name for shard in first for name in shard} == set(names)
+    assert all(shard for shard in first)
+
+
+def test_budget_aware_planner_rejects_a_mutant_that_cannot_fit() -> None:
+    estimates = [MutantEstimate("app.long.x_run__mutmut_1", 100.0)]
+
+    with pytest.raises(ValueError, match="cannot fit"):
+        plan_mutant_shards_with_budget(
+            estimates,
+            {"app.long.x_run": ["tests/test_long.py::test_run"]},
+            {"tests/test_long.py::test_run": 100.0},
+            num_shards=1,
+            max_children=3,
+            control_cycle_reserve_seconds=5,
+            metadata_and_startup_reserve_seconds=120,
+            max_timeout_seconds=1_000,
+        )
+
+
+def test_budget_aware_planner_rebalances_when_greedy_seed_blocks_feasible_plan() -> (
+    None
+):
+    # The initial largest-first seeding can leave a late mutant without a
+    # direct destination even though a one-mutant move yields a valid plan.
+    durations = {
+        f"tests/test_{index}.py::test_case": duration
+        for index, duration in enumerate([32, 33, 40, 13, 20, 10, 23])
+    }
+    tests_by_function = {
+        f"app.module_{index}.run": [test_name]
+        for index, test_name in enumerate(durations)
+    }
+    names = [f"app.module_{index}.run__mutmut_1" for index in range(len(durations))]
+    estimates = [
+        MutantEstimate(name, durations[test_name])
+        for name, test_name in zip(names, durations, strict=True)
+    ]
+
+    shards = plan_mutant_shards_with_budget(
+        estimates,
+        tests_by_function,
+        durations,
+        num_shards=3,
+        max_children=1,
+        control_cycle_reserve_seconds=1,
+        metadata_and_startup_reserve_seconds=0,
+        max_timeout_seconds=1_312,
+    )
+
+    assert {name for shard in shards for name in shard} == set(names)
+    assert all(shard for shard in shards)
+
+    from scripts.mutmut_shard_budget import calculate_shard_budget
+
+    assert all(
+        calculate_shard_budget(
+            shard,
+            tests_by_function,
+            durations,
+            max_children=1,
+            control_cycle_reserve_seconds=1,
+            metadata_and_startup_reserve_seconds=0,
+        ).outer_timeout_seconds
+        <= 1_312
+        for shard in shards
+    )
+
+
 def test_write_shard_plan_bundle_persists_exact_audited_population(
     tmp_path: Path,
 ) -> None:
@@ -264,6 +365,39 @@ def test_plan_cli_accepts_all_shard_bundle_target(
     assert args.output_directory == output_directory
     assert args.output is None
     assert args.shard_id is None
+
+
+def test_plan_cli_accepts_budget_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "plan_mutmut_shards.py",
+            "--changed-files",
+            str(tmp_path / "changed.txt"),
+            "--num-shards",
+            "128",
+            "--max-children",
+            "3",
+            "--control-cycle-reserve-seconds",
+            "5",
+            "--metadata-startup-reserve-seconds",
+            "120",
+            "--max-timeout-seconds",
+            "20880",
+            "--output-directory",
+            str(tmp_path / "plan"),
+        ],
+    )
+
+    args = _parse_args()
+
+    assert args.max_children == 3
+    assert args.control_cycle_reserve_seconds == 5
+    assert args.metadata_startup_reserve_seconds == 120
+    assert args.max_timeout_seconds == 20_880
 
 
 def test_plan_cli_rejects_a_shard_id_with_bundle_output(

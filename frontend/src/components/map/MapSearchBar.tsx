@@ -4,7 +4,6 @@ import {
   useCallback,
   useRef,
   useId,
-  useEffect,
   useImperativeHandle,
   type KeyboardEvent,
 } from "react"
@@ -29,6 +28,9 @@ type SearchResult =
     }
 
 type SelectionResult = SearchResult
+
+/** Keep the combobox closed until the user supplies a query. */
+export const getInitialSearchOpenState = (): boolean => false
 
 /**
  * Dispatch a selected result to the matching consumer.  A stale keyboard or
@@ -67,6 +69,31 @@ export function focusSearchInput(input: HTMLInputElement | null): void {
   if (input) input.focus()
 }
 
+/**
+ * Keep the callback-ref lifecycle explicit: attaching a node must never cancel
+ * a pending blur close, while detaching one must cancel that close before the
+ * DOM reference is cleared. Keeping this boundary total also makes the
+ * unmount race directly testable without relying on React internals.
+ */
+export function updateSearchInputRef(
+  node: HTMLInputElement | null,
+  inputRef: { current: HTMLInputElement | null },
+  blurTimeoutRef: { current: ReturnType<typeof setTimeout> | null },
+  publicRef?: { current: HTMLInputElement | null }
+): void {
+  if (node === null && blurTimeoutRef.current !== null) {
+    clearTimeout(blurTimeoutRef.current)
+    blurTimeoutRef.current = null
+  }
+  inputRef.current = node
+  if (publicRef) publicRef.current = node
+}
+
+/** Focus may reopen the list only when the current query has results. */
+export function shouldOpenSearchOnFocus(resultCount: number): boolean {
+  return resultCount > 0
+}
+
 interface MapSearchBarProps {
   buildings: CampusBuilding[]
   onSelectBuilding: (letter: BuildingId) => void
@@ -91,7 +118,7 @@ export function MapSearchBar({
   const inputRef = useRef<HTMLInputElement>(null)
 
   const [query, setQuery] = useState("")
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(getInitialSearchOpenState)
   // null represents "no active option" without relying on a magic sentinel.
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
 
@@ -102,14 +129,18 @@ export function MapSearchBar({
   // blur must not schedule a delayed close which can race with an immediate
   // second search and swallow its Escape/Enter key handling.
   const skipNextBlurCloseRef = useRef(false)
-
-  useEffect(() => {
-    return () => {
-      if (blurTimeoutRef.current !== null) {
-        clearTimeout(blurTimeoutRef.current)
-      }
-    }
-  }, [])
+  // A stable callback ref receives `null` exactly when the input leaves the
+  // tree, so pending blur work is cancelled without an effect dependency
+  // array (which can be mutated into an equivalent static value).
+  const setInputRef = useCallback(
+    (node: HTMLInputElement | null) => {
+      updateSearchInputRef(node, inputRef, blurTimeoutRef, searchInputRef)
+    },
+    // A changed external ref represents a new parent-owned binding. Let React
+    // detach/attach the callback so pending blur work is cleaned up at the old
+    // binding boundary instead of racing the new one.
+    [blurTimeoutRef, inputRef, searchInputRef]
+  )
 
   const results = useMemo((): SearchResult[] => {
     const q = query.trim().toLowerCase()
@@ -202,13 +233,7 @@ export function MapSearchBar({
 
   // useImperativeHandle runs after the input is committed, so the local DOM
   // ref is populated even though it is nullable during render.
-  const imperativeHandleIdentity = useMemo(() => searchInputRef, [searchInputRef])
-  useImperativeHandle(searchInputRef, () => {
-    // Keep the handle tied to the current external ref identity when a
-    // parent swaps refs during a route transition.
-    void imperativeHandleIdentity
-    return inputRef.current!
-  }, [imperativeHandleIdentity])
+  useImperativeHandle(searchInputRef, () => inputRef.current!)
 
   // Group results
   const buildingResults = results.filter((r) => r.type === "building")
@@ -219,7 +244,7 @@ export function MapSearchBar({
       <div className="map-card-matte flex items-center gap-2 px-3 py-2 focus-within:ring-2 focus-within:ring-[var(--color-teal-500)]/40 transition-shadow">
         <Search className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
         <input
-          ref={inputRef}
+          ref={setInputRef}
           type="text"
           role="combobox"
           aria-expanded={isOpen && results.length > 0}
@@ -233,7 +258,9 @@ export function MapSearchBar({
             setIsOpen(true)
             setActiveIdx(null)
           }}
-          onFocus={() => results.length > 0 && setIsOpen(true)}
+          onFocus={() => {
+            setIsOpen(shouldOpenSearchOnFocus(results.length))
+          }}
           onBlur={() => {
             if (skipNextBlurCloseRef.current) {
               skipNextBlurCloseRef.current = false

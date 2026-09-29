@@ -24,14 +24,14 @@ vi.mock("@/components/events/EventCard/EventCardSkeleton", () => ({
 }))
 
 vi.mock("@/components/feedback/OfflineFallback", () => ({
-  default: ({ onRetry }: { onRetry: () => void }) => (
+  OfflineFallback: ({ onRetry }: { onRetry: () => void }) => (
     <button type="button" onClick={onRetry}>
       offline-retry
     </button>
   ),
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Button", () => ({
   Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button type="button" {...props}>
       {children}

@@ -6,13 +6,28 @@ This document defines the architectural invariants, concurrency models, error ha
 
 ## 1. Go Runtime & Tooling Standards
 
-- **Go Version**: Standardized on **Go 1.22+**.
+- **Go Version**: Standardized on **Go 1.26.4+** (CI pins 1.26.6; fuzz jobs may use 1.27.1).
 - **Static Analysis & Linting**: `.golangci.yml` must enable:
   - `exhaustive` (with `default-signifies-exhaustive: true` to catch unhandled enum switch cases).
   - `govet`, `errcheck`, `staticcheck`, and `gosec` (SAST vulnerability scanner).
 - **Zero-Warning Policy**: All packages must build with zero lint warnings and pass race detection (`go test -race ./...`).
 - **Telemetry**: All Go services must register the OpenTelemetry composite propagator combining `TraceContext` and `Baggage` (MOD-31-02).
 - **Coverage Baseline**: 100% statement coverage required per `quality/quality-contract.json`.
+
+### 1.1. Linux-equivalent tooling from a Windows host
+
+The Linux CI runner is authoritative for CGO-backed race evidence. When a
+Windows host has no C compiler, run the same checks in pinned containers rather
+than silently replacing `go test -race` with a non-race run:
+
+```powershell
+docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub docker.io/library/golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 bash -lc 'CGO_ENABLED=1 go test -race ./...'
+docker run --rm -v "${PWD}:/workspace" -w /workspace/services/ws-hub golangci/golangci-lint:v2.13.2 golangci-lint run --config /workspace/.golangci.yml --timeout 5m
+```
+
+Repeat the commands with `services/gateway` and `services/file-processor` as
+the working directory. Container output is local diagnostic evidence; the
+required release gate still comes from the current-SHA Linux CI jobs.
 
 ---
 
@@ -84,7 +99,11 @@ if exists {
 - **Configuration**:
   - `JWKS_ENDPOINT`: URL of backend RSA JWKS.
   - `JWKS_REFRESH_INTERVAL`: Default `300s` (5 minutes).
-  - Also listens for `keys.rotated` NATS subjects for instant key invalidation.
+  - The gateway is intentionally an HTTP-polling consumer and does not subscribe
+    to `keys.rotated` or `cache.invalidate`. The ws-hub owns those NATS
+    subscriptions; keeping a single consumer per subject avoids duplicate
+    invalidation and makes the trust boundary explicit. A key rotation is
+    therefore observed by the gateway on the next bounded JWKS poll.
 
 ### 4.5. Health Probe Auth Exemption
 - Selective auth interceptors (`selectiveUnaryAuth` and `selectiveStreamAuth`) must explicitly exempt `/grpc.health.v1.Health/` so that Kubernetes `grpc_health_probe` succeeds without receiving HTTP/gRPC 401 Unauthenticated.
@@ -92,14 +111,14 @@ if exists {
 ### 4.6. Handler Dispatching
 - `/api/v1/*` routes undergo JWT validation and request dispatch.
 - `ProxyOrFileHandler` intercepts `/files/process/sync` and forwards to gRPC file processor, while proxying general requests to backend.
-- Empty `room_id` NATS messages trigger `cache.invalidate` cache eviction.
+- The backend `WsHubClient` publishes verified cache-invalidation intent when a request requires it; the **ws-hub** owns the NATS listener and applies `cache.invalidate` eviction for empty-`room_id` messages. Keeping subscription ownership in ws-hub prevents duplicate consumers and makes the cache-invalidation trust boundary explicit.
 
 ---
 
 ## 5. File Processor (`services/file-processor`)
 
 ### 5.1. Environment Variable Prefix (`FP_`)
-- All environment variables must use the `FP_` prefix (`FP_GRPC_PORT`, `FP_STORAGE_BACKEND`, `FP_MAX_FILE_SIZE_MB`) per `viper.SetEnvPrefix("FP")`.
+- All environment variables must use the `FP_` prefix (`FP_GRPC_PORT`, `FP_TEMPORAL_HOST`, `FP_JWKS_URL`) per `viper.SetEnvPrefix("FP")`.
 
 ### 5.2. File Path Traversal Defense
 - `sourceKey` and `destKey` RPC arguments must be validated against path traversal (`..`, absolute prefixes).
@@ -114,12 +133,19 @@ if exists {
 
 ## 6. Caddy Edge Proxy (`services/caddy`)
 
+`services/caddy/Caddyfile` is the TLS/HTTP/3 edge mounted by the base
+`docker-compose.yml`; `infrastructure/Caddyfile` is the plain-HTTP `:80` edge
+mounted by `docker-compose.full.yml` (the `start-docker.ps1` stack). Keep their
+routing tables in lockstep.
+
 ### 6.1. Edge Routing Table
 - Edge liveness: `/healthz` responded locally by Caddy.
 - Dynamic APIs: `/api/*` and `/graphql*` -> `gateway:8080`.
 - WS Ticket Issuance: `/ws/ticket` -> `gateway:8080`.
 - WebSocket Tunnel: `/ws/chat*` -> `ws-hub:8081` (rewriting path to `/ws`).
 - Static Assets & JWKS: `/static/*` and `/.well-known/*` -> `backend:8000`.
+- Signed images: `/imgproxy/*` -> `imgproxy:8080` (prefix stripped).
+- Public media: `/storage/*` -> S3 object storage, `GET`/`HEAD` only for the reviewed public prefixes of the `uploads` bucket; everything else returns `404`.
 - SSR & Web App: `/sw.js` and default route `/` -> `frontend:3000`.
 
 ### 6.2. Rate Limiting

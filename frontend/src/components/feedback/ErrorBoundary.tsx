@@ -155,5 +155,3 @@ export class ErrorBoundaryInner extends Component<ErrorBoundaryProps, ErrorBound
 }
 
 export const ErrorBoundary = withTranslation()(ErrorBoundaryInner)
-
-export default ErrorBoundary

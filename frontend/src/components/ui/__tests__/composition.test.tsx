@@ -192,4 +192,25 @@ describe("MediaSlot", () => {
 
     expect(onError).toHaveBeenCalledTimes(1)
   })
+
+  it("resets the media state when the source changes after an error", async () => {
+    const { rerender } = render(
+      <MediaSlot src="bad.jpg" alt="Original image" fallback={<span>image fallback</span>} />
+    )
+
+    fireEvent.error(screen.getByAltText("Original image"))
+    expect(screen.getByText("image fallback")).toBeInTheDocument()
+
+    rerender(
+      <MediaSlot
+        src="replacement.jpg"
+        alt="Replacement image"
+        fallback={<span>image fallback</span>}
+      />
+    )
+
+    const replacement = await screen.findByAltText("Replacement image")
+    expect(replacement).toHaveAttribute("src", "replacement.jpg")
+    expect(replacement).toHaveClass("opacity-0")
+  })
 })

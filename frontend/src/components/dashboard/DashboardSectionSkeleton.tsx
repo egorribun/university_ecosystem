@@ -1,5 +1,6 @@
 import { memo } from "react"
-import { Skeleton, Card } from "@/components/ui"
+import { Skeleton } from "@/components/ui/Skeleton"
+import { Card } from "@/components/ui/Card"
 import { cn } from "@/utils/cn"
 
 interface DashboardSectionSkeletonProps {
@@ -70,5 +71,3 @@ export const DashboardSectionSkeleton = memo(function DashboardSectionSkeleton({
     </Card>
   )
 })
-
-export default DashboardSectionSkeleton

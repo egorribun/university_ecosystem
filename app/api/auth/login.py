@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from dishka.integrations.fastapi import FromDishka, inject
@@ -17,7 +16,7 @@ from fastapi import (
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api.deps import (
-    get_current_user,
+    get_current_user_from_dishka,
     get_current_user_optional,
 )
 from app.auth import constants, mfa
@@ -38,6 +37,7 @@ from app.auth.schemas import (
 from app.core.config import settings
 from app.core.fingerprint import extract_request_fingerprint
 from app.core.localization import resolve_locale, translate
+from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import RateLimitExceeded, sensitive_route_limit
 from app.models import User
@@ -50,7 +50,7 @@ from app.services.auth.login_service import LoginService
 from app.services.auth.mfa_coordinator import MfaCoordinator
 from app.services.user.compliance_service import UserComplianceService
 
-logger = logging.getLogger("app.auth.login")
+logger = get_logger(__name__)
 
 
 router = APIRouter(tags=["auth"])
@@ -449,7 +449,7 @@ async def register(
 
 @router.get("/session/signing-key", response_model=SessionSigningKeyOut)
 async def get_session_signing_key(
-    request: Request, _: User = Depends(get_current_user)
+    request: Request, _: User = Depends(get_current_user_from_dishka)
 ) -> SessionSigningKeyOut:
     session = getattr(request.state, "active_session", None)
     if session is None or not getattr(session, "signing_key", None):

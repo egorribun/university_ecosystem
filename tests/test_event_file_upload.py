@@ -21,6 +21,7 @@ from app.core.localization import translate
 from app.repositories.unit_of_work import uow_from_session
 from app.schemas import schemas
 from app.utils import files
+from tests.conftest import call_injected
 
 FIXTURE_UPLOADS = Path(__file__).parent / "fixtures" / "uploads"
 
@@ -135,8 +136,14 @@ async def test_upload_event_file_offloads_io(
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
-    result = await events.upload_event_file(
-        event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+    result = await call_injected(
+        events.upload_event_file,
+        event.id,
+        upload,
+        request=None,
+        user=admin,
+        checker=mock_checker,
+        provides={"AsyncDatabaseSession": db_session},
     )
 
     assert result.event_id == event.id
@@ -182,13 +189,14 @@ async def test_upload_event_file_cleans_up_on_commit_failure(
     monkeypatch.setattr(db_session, "commit", failing_commit)
 
     with pytest.raises(RuntimeError):
-        await events.upload_event_file(
+        await call_injected(
+            events.upload_event_file,
             event.id,
             upload,
             request=None,
-            db=db_session,
             user=admin,
             checker=mock_checker,
+            provides={"AsyncDatabaseSession": db_session},
         )
 
     folder = tmp_path / "event_files"
@@ -217,13 +225,14 @@ async def test_upload_event_file_rejects_large_payload(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 8)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
+        await call_injected(
+            events.upload_event_file,
             event.id,
             upload,
             request=None,
-            db=db_session,
             user=admin,
             checker=mock_checker,
+            provides={"AsyncDatabaseSession": db_session},
         )
 
     assert excinfo.value.status_code == status.HTTP_413_CONTENT_TOO_LARGE
@@ -259,13 +268,14 @@ async def test_upload_event_file_respects_scanner_limit(
     )
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
+        await call_injected(
+            events.upload_event_file,
             event.id,
             upload,
             request=None,
-            db=db_session,
             user=admin,
             checker=mock_checker,
+            provides={"AsyncDatabaseSession": db_session},
         )
 
     assert excinfo.value.status_code == status.HTTP_413_CONTENT_TOO_LARGE
@@ -293,13 +303,14 @@ async def test_upload_event_file_rejects_forbidden_type(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
+        await call_injected(
+            events.upload_event_file,
             event.id,
             upload,
             request=None,
-            db=db_session,
             user=admin,
             checker=mock_checker,
+            provides={"AsyncDatabaseSession": db_session},
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -347,13 +358,14 @@ async def test_upload_event_file_rejects_mismatched_metadata(
     )
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
+        await call_injected(
+            events.upload_event_file,
             event.id,
             upload,
             request=None,
-            db=db_session,
             user=admin,
             checker=mock_checker,
+            provides={"AsyncDatabaseSession": db_session},
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -399,13 +411,14 @@ async def test_upload_event_file_rejects_infected_payload(
     monkeypatch.setattr(files, "scan_for_malware", fake_scan)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
+        await call_injected(
+            events.upload_event_file,
             event.id,
             upload,
             request=None,
-            db=db_session,
             user=admin,
             checker=mock_checker,
+            provides={"AsyncDatabaseSession": db_session},
         )
 
     assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
@@ -434,13 +447,14 @@ async def test_upload_event_file_rejects_detected_type_not_allowed(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
+        await call_injected(
+            events.upload_event_file,
             event.id,
             upload,
             request=None,
-            db=db_session,
             user=admin,
             checker=mock_checker,
+            provides={"AsyncDatabaseSession": db_session},
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -485,8 +499,14 @@ async def test_upload_event_file_allows_multipage_pdf(
         property(lambda self: {"pdf"}),
     )
 
-    result = await events.upload_event_file(
-        event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+    result = await call_injected(
+        events.upload_event_file,
+        event.id,
+        upload,
+        request=None,
+        user=admin,
+        checker=mock_checker,
+        provides={"AsyncDatabaseSession": db_session},
     )
 
     assert result.event_id == event.id
@@ -528,13 +548,14 @@ async def test_upload_event_file_quarantines_polyglot_pdf(
     )
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
+        await call_injected(
+            events.upload_event_file,
             event.id,
             upload,
             request=None,
-            db=db_session,
             user=admin,
             checker=mock_checker,
+            provides={"AsyncDatabaseSession": db_session},
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -586,13 +607,14 @@ async def test_upload_event_file_quarantines_svg_with_js(
     )
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
+        await call_injected(
+            events.upload_event_file,
             event.id,
             upload,
             request=None,
-            db=db_session,
             user=admin,
             checker=mock_checker,
+            provides={"AsyncDatabaseSession": db_session},
         )
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
@@ -650,8 +672,14 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
 
     monkeypatch.setattr(files, "scan_for_malware", fake_scan)
 
-    result = await events.upload_event_file(
-        event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+    result = await call_injected(
+        events.upload_event_file,
+        event.id,
+        upload,
+        request=None,
+        user=admin,
+        checker=mock_checker,
+        provides={"AsyncDatabaseSession": db_session},
     )
 
     assert result.event_id == event.id
@@ -680,14 +708,14 @@ async def test_update_event_replaces_image_removes_old_file(
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
     payload = schemas.EventUpdate(image_url="/static/event_images/new.png")
-    result = await events.update_event(
+    result = await call_injected(
+        events.update_event,
         event.id,
         payload,
         request=None,
-        db=db_session,
         user=admin,
-        events=event_service,
         checker=mock_checker,
+        provides={"AsyncDatabaseSession": db_session, "EventService": event_service},
     )
 
     assert result.image_url == "/static/event_images/new.png"
@@ -726,15 +754,26 @@ async def test_delete_event_file_removes_payload(
         property(lambda self: {"txt"}),
     )
 
-    event_file = await events.upload_event_file(
-        event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
+    event_file = await call_injected(
+        events.upload_event_file,
+        event.id,
+        upload,
+        request=None,
+        user=admin,
+        checker=mock_checker,
+        provides={"AsyncDatabaseSession": db_session},
     )
 
     stored_path = tmp_path / "event_files" / event_file.file_url.rsplit("/", 1)[-1]
     assert stored_path.exists()
 
-    result = await events.delete_event_file(
-        event_file.id, request=None, db=db_session, user=admin, checker=mock_checker
+    result = await call_injected(
+        events.delete_event_file,
+        event_file.id,
+        request=None,
+        user=admin,
+        checker=mock_checker,
+        provides={"AsyncDatabaseSession": db_session},
     )
 
     assert result == {"ok": True}
@@ -778,13 +817,14 @@ async def test_delete_event_removes_all_files(
             file=io.BytesIO(f"payload-{idx}".encode()),
             headers=Headers({"content-type": "text/plain"}),
         )
-        event_file = await events.upload_event_file(
+        event_file = await call_injected(
+            events.upload_event_file,
             event.id,
             upload,
             request=None,
-            db=db_session,
             user=admin,
             checker=mock_checker,
+            provides={"AsyncDatabaseSession": db_session},
         )
         stored_paths.append(
             tmp_path / "event_files" / event_file.file_url.rsplit("/", 1)[-1]
@@ -793,8 +833,13 @@ async def test_delete_event_removes_all_files(
     for path in stored_paths:
         assert path.exists()
 
-    result = await events.delete_event(
-        event.id, request=None, events=event_service, user=admin, checker=mock_checker
+    result = await call_injected(
+        events.delete_event,
+        event.id,
+        request=None,
+        user=admin,
+        checker=mock_checker,
+        provides={"EventService": event_service},
     )
 
     assert result == {"ok": True}

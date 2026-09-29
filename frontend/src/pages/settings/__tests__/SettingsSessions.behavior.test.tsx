@@ -78,7 +78,7 @@ describe("SettingsSessions", () => {
     [{ response: { data: { detail: ["expired", "reauthenticate"] } } }, "expired,reauthenticate"],
     [new Error("Sessions offline"), "Sessions offline"],
     [{}, "settings:sessions.error"],
-  ])("normalizes a session error", (sessionsError, expected) => {
+  ])("normalizes a session error [case %#]", (sessionsError, expected) => {
     mocks.state = { ...makeState(), sessionsIsError: true, sessionsError }
     render(<SettingsSessions setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive={false} />)
     expect(screen.getByTestId("sessions-error")).toHaveTextContent(expected)

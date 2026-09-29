@@ -13,7 +13,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import get_password_hash
-from app.core.container import get_secure_audit_service_dep
 from app.main import app
 from app.models import NotificationQueueJob
 from app.schemas.schemas import NotificationDeadLetterReplayIn
@@ -22,6 +21,7 @@ from app.services.notification_queue import (
     purge_dead_lettered_jobs,
     retry_dead_lettered_jobs,
 )
+from tests.conftest import dishka_overrides
 
 TEST_PASSWORD = "StrongPass123!"  # pragma: allowlist secret  # NOSONAR
 
@@ -352,9 +352,10 @@ async def test_successful_dead_letter_mutations_are_safely_attributed(
     await db_session.commit()
     audit = MagicMock()
     audit.record_domain_event = AsyncMock()
-    app.dependency_overrides[get_secure_audit_service_dep] = lambda: audit
-
-    try:
+    # The route injects SecureAuditService through Dishka, which never
+    # reads FastAPI's dependency_overrides, so the container is what has
+    # to be bound.
+    with dishka_overrides(app, SecureAuditService=audit):
         retry = await root_client.post(
             "/api/v1/notifications/admin/dead-letter/retry",
             json={"job_ids": [str(retry_job.id)]},
@@ -363,8 +364,6 @@ async def test_successful_dead_letter_mutations_are_safely_attributed(
             "/api/v1/notifications/admin/dead-letter/purge",
             json={"job_ids": [str(purge_job.id)]},
         )
-    finally:
-        app.dependency_overrides.pop(get_secure_audit_service_dep, None)
 
     assert retry.status_code == 200
     assert purge.status_code == 200

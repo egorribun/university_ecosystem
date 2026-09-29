@@ -44,6 +44,7 @@ FIXED_APPLICATION_SECRET_KEYS = {
     "elasticsearch-password",
     "spicedb-preshared-key",
     "audit-log-secret",
+    "token-hmac-secret",
     "idempotency-hmac-secret",
     "minio-access-key",
     "minio-secret-key",

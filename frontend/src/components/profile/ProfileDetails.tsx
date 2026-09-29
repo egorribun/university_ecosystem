@@ -3,7 +3,7 @@ import { ChevronDown as ExpandMoreIcon } from "lucide-react"
 import { SectionCard } from "@/components/settings"
 import { Divider } from "@/components/settings"
 import { cn } from "@/utils/cn"
-import DetailRow from "./DetailRow"
+import { DetailRow } from "./DetailRow"
 import type { User } from "@/types/User"
 
 type ProfileDetailsProps = {
@@ -93,5 +93,3 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
     </SectionCard>
   )
 }
-
-export default ProfileDetails

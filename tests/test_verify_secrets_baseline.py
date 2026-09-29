@@ -24,6 +24,7 @@ def _document(*findings: Finding) -> dict[str, Any]:
                 "filename": path,
                 _HASHED_FIELD: digest,
                 "is_verified": False,
+                "is_secret": False,
                 "line_number": line_number,
             }
         )
@@ -234,6 +235,23 @@ def test_missing_artifact_fails_closed(tmp_path: Path) -> None:
     )
 
     assert verifier.main([str(baseline_path), str(tmp_path / "missing.json")]) == 2
+
+
+def test_baseline_requires_explicit_false_positive_triage(
+    tmp_path: Path,
+) -> None:
+    finding = ("src/a.py", "Secret Keyword", "digest-a", 10)
+    baseline = _document(finding)
+    baseline["results"]["src/a.py"][0].pop("is_secret")
+    current = _document(finding)
+    assert _verify(tmp_path, baseline, current) == 2
+
+
+def test_baseline_rejects_a_committed_secret_decision(tmp_path: Path) -> None:
+    finding = ("src/a.py", "Secret Keyword", "digest-a", 10)
+    baseline = _document(finding)
+    baseline["results"]["src/a.py"][0]["is_secret"] = True
+    assert _verify(tmp_path, baseline, _document(finding)) == 2
 
 
 def test_invalid_json_fails_closed(tmp_path: Path) -> None:

@@ -117,6 +117,21 @@ func TestInternalAPIAuthClient_CanJoinRoom(t *testing.T) {
 		assert.True(t, entry.allowed)
 	})
 
+	t.Run("internal auth token", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "unit-test-internal-token", r.Header.Get("X-Internal-Token"))
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		client := NewInternalAPIAuthClientWithToken(
+			server.URL,
+			"unit-test-internal-token",
+			nil,
+		)
+		assert.True(t, client.CanJoinRoom(context.Background(), userID, roomID))
+	})
+
 	t.Run("http request forbidden", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusForbidden)

@@ -8,7 +8,7 @@ const ACCENT_MAP = {
   warning: "var(--activity-participation-accent)",
 } as const
 
-export type CardShellTone = keyof typeof ACCENT_MAP
+type CardShellTone = keyof typeof ACCENT_MAP
 
 type CardShellProps = {
   tone?: CardShellTone

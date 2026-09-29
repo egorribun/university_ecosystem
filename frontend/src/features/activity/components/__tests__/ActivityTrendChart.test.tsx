@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { screen } from "@testing-library/react"
+import { cleanup, screen } from "@testing-library/react"
 
 import { ActivityTrendChart } from "@/features/activity/components/ActivityTrendChart"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
@@ -9,6 +9,10 @@ import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 describe("ActivityTrendChart", () => {
   afterEach(() => {
+    // Run before the shared setup hook changes i18next's language.  Leaving a
+    // chart mounted lets that external-store notification target a detached
+    // tree and React reports a late act warning.
+    cleanup()
     vi.restoreAllMocks()
   })
 
@@ -41,9 +45,6 @@ describe("ActivityTrendChart", () => {
   })
 
   it("applies formatDate to the labels when provided", async () => {
-    // 3 points so the SVG x-axis indices [first, middle, last] stay distinct —
-    // with exactly 2 points they collapse to [0,1,1] and the component emits a
-    // duplicate-React-key warning (a pre-existing edge case, out of scope here).
     await renderWithRouter({
       ui: () => (
         <ActivityTrendChart
@@ -61,6 +62,26 @@ describe("ActivityTrendChart", () => {
 
     // formatDate output appears in both the SVG x-axis and the sr-only table.
     expect(screen.getAllByText("D:01").length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("keeps SVG and table identities unique for two points and repeated labels", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <ActivityTrendChart
+          ariaLabel="Repeated trend"
+          formatDate={() => "same"}
+          data={[
+            { date: "2026-06-01", value: 10 },
+            { date: "2026-06-01", value: 11 },
+          ]}
+        />
+      ),
+      authProvider: false,
+    })
+
+    expect(screen.getByRole("img", { name: "Repeated trend" })).toBeInTheDocument()
+    expect(screen.getAllByText("same")).toHaveLength(4)
+    expect(screen.getAllByRole("row")).toHaveLength(3)
   })
 
   it("renders the empty state (no svg) with fewer than 2 points", async () => {

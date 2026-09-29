@@ -5,17 +5,20 @@ from __future__ import annotations
 import re
 import uuid
 from collections.abc import Sequence
-from typing import Annotated, Any
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response
-from sqlalchemy.ext.asyncio import AsyncSession
+from dishka import FromComponent
+from dishka.integrations.fastapi import inject
+from fastapi import APIRouter, Query, Request, Response
 
 import app.models as models
-from app.api.deps import get_read_schedule_service
 from app.api.validation import raise_not_found
-from app.core.database import get_read_db
+from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import resolve_locale, translate
+from app.core.protocols import AsyncDatabaseSession
+from app.schemas.dtos import ScheduleDTO
 from app.services.ical import generate_schedule_ics
+from app.services.schedule_service import ScheduleService
 
 router = APIRouter(prefix="/schedule", tags=["schedule"])
 
@@ -27,22 +30,23 @@ def _build_filename(group: models.Group) -> str:
     return f"schedule-{safe_name}.ics"
 
 
-@router.get("/ics", response_class=Response)
+@router.get("/ics", response_class=Response, response_model=None)
+@inject
 # nosec: public_endpoint
 async def download_schedule_ics(
     request: Request,
-    schedule_service: Annotated[Any, Depends(get_read_schedule_service)],
+    schedule_service: Annotated[ScheduleService, FromComponent(READ_COMPONENT)],
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
     group: uuid.UUID = Query(
         ..., description=translate("schedule.query.group_id_description")
     ),
-    db: AsyncSession = Depends(get_read_db),
 ) -> Response:
     locale = resolve_locale(request=request)
     group_obj = await db.get(models.Group, group)
     if not group_obj:
         raise_not_found("Group", locale=locale)
 
-    lessons: Sequence[models.Schedule] = await schedule_service.get_schedule(group)
+    lessons: Sequence[ScheduleDTO] = await schedule_service.get_schedule(group)
     ics_body = generate_schedule_ics(group_obj, lessons, locale=locale)
     filename = _build_filename(group_obj)
 

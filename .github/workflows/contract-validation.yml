@@ -237,7 +237,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Normalize generated OpenAPI schema
         working-directory: frontend

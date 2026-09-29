@@ -19,5 +19,3 @@ export const DetailRow = ({ label, value }: DetailRowProps) => {
     </div>
   )
 }
-
-export default DetailRow

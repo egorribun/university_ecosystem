@@ -9,6 +9,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ComponentType } from "react"
 import i18n from "../src/i18n/config"
+import { AppShellProvider } from "../src/contexts/AppShellContext"
 import { AuthContext } from "../src/contexts/AuthContext"
 import { LanguageProvider } from "../src/contexts/LanguageContext"
 
@@ -96,15 +97,19 @@ const preview: Preview = {
                   resetEtagCache: () => {},
                 }}
               >
-                <div
-                  style={{
-                    padding: "2rem",
-                    minHeight: "100vh",
-                    background: "var(--bg-page)",
-                  }}
-                >
-                  <RouterProvider router={router as never} />
-                </div>
+                {/* Mirror AppProviders: overlays such as StoryViewer register
+                    their scroll lock with the app shell. */}
+                <AppShellProvider>
+                  <div
+                    style={{
+                      padding: "2rem",
+                      minHeight: "100vh",
+                      background: "var(--bg-page)",
+                    }}
+                  >
+                    <RouterProvider router={router as never} />
+                  </div>
+                </AppShellProvider>
               </AuthContext.Provider>
             </LanguageProvider>
           </I18nextProvider>

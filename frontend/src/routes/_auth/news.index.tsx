@@ -28,6 +28,11 @@ export const Route = createFileRoute("/_auth/news/")({
       }),
     ])
   },
+  // The loader only warms the first feed page. Category, sort and search
+  // params filter on the client, so re-running it on every search change only
+  // risked the router's pending UI replacing the page (and its scroll
+  // position) mid-switch; React Query owns freshness after entry.
+  shouldReload: false,
   validateSearch: (search: Record<string, unknown>) => v.parse(newsSearchSchema, search),
   component: News,
 })

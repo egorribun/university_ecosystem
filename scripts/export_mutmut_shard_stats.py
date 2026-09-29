@@ -14,9 +14,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
+
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts.mutmut_universe import get_mutmut_config
 
 _STATUS_FIELD_BY_MUTMUT_STATUS = {
     "killed": "killed",
@@ -73,7 +78,7 @@ def _collect_selected_results(
     selected_mutants: Sequence[str], mutmut_cli: Any
 ) -> tuple[list[tuple[str, int | None]], Mapping[int | None, str]]:
     """Read exact records, or the complete universe when ``selected_mutants`` is empty."""
-    mutmut_cli.Config.ensure_loaded()
+    get_mutmut_config(mutmut_cli)
     selected, _ = mutmut_cli.collect_source_file_mutation_data(
         mutant_names=list(selected_mutants)
     )
@@ -92,7 +97,7 @@ def _collect_selected_results(
 
 def _collect_all_results(mutmut_cli: Any) -> list[tuple[str, int | None]]:
     """Read the complete generated mutation metadata without filtering it."""
-    mutmut_cli.Config.ensure_loaded()
+    get_mutmut_config(mutmut_cli)
     all_mutants, _ = mutmut_cli.collect_source_file_mutation_data(mutant_names=[])
     return [(mutant_name, exit_code) for _, mutant_name, exit_code in all_mutants]
 
@@ -148,7 +153,7 @@ def _selected_result_records(
     """Return canonical terminal records for the exact selected mutant IDs."""
     names = sorted(_validate_exact_mutant_names(selected_mutants))
     expected = set(names)
-    observed: dict[str, int | None] = {}
+    observed: dict[str, int] = {}
     for mutant_name, exit_code in selected_results:
         if mutant_name not in expected:
             raise ValueError(

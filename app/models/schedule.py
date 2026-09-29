@@ -68,7 +68,7 @@ class Schedule(Base, UUID7PrimaryKeyMixin):
         DateTime(timezone=True), index=True, nullable=False
     )
     parity: Mapped[str] = mapped_column(
-        String(50), default="both", index=True
+        String(50), default="both", server_default="both", index=True
     )  # LOW-W19: bounded String
     lesson_type: Mapped[str | None] = mapped_column(
         String(50), default=None

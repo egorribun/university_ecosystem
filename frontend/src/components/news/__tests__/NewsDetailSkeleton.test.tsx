@@ -4,7 +4,7 @@ import { NewsDetailSkeleton } from "../NewsDetailSkeleton"
 
 const backdrop = vi.hoisted(() => vi.fn())
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Skeleton", () => ({
   Skeleton: () => <div data-testid="skeleton" />,
 }))
 

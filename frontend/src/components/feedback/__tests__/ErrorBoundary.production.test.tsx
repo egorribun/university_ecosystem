@@ -13,7 +13,7 @@ vi.mock("react-i18next", () => ({
 vi.mock("@sentry/react", () => ({ captureException: vi.fn() }))
 vi.mock("@/app/logger", () => ({ logError: vi.fn() }))
 
-import ErrorBoundary from "@/components/feedback/ErrorBoundary"
+import { ErrorBoundary } from "@/components/feedback/ErrorBoundary"
 import { logError } from "@/app/logger"
 
 function BrokenChild(): never {

@@ -55,7 +55,7 @@ describe("readSsrAuthHint", () => {
     root.id = "root"
     document.body.append(root)
 
-    for (const marker of ["anonymous", "authenticated:", "authenticated: "]) {
+    for (const marker of ["anonymous", "anonymous:teacher", "authenticated:", "authenticated: "]) {
       root.setAttribute("data-ssr-auth", marker)
       expect(readSsrAuthHint()).toBeUndefined()
     }
@@ -120,6 +120,18 @@ describe("readSsrAuthHint", () => {
     globalThis.__ssrAuthGetter__ = () => {
       throw new Error("synthetic getter failure")
     }
+    expect(readSsrAuthHint()).toBeUndefined()
+  })
+
+  it("fails closed when the getter throws even if a DOM marker is present", () => {
+    const root = document.createElement("div")
+    root.id = "root"
+    root.dataset.ssrAuth = "authenticated:teacher"
+    document.body.append(root)
+    globalThis.__ssrAuthGetter__ = () => {
+      throw new Error("synthetic getter failure")
+    }
+
     expect(readSsrAuthHint()).toBeUndefined()
   })
 

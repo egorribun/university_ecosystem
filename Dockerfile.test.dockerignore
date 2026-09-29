@@ -58,9 +58,9 @@ env/
 # Local agent state and disposable quality artifacts
 .codex-uv-cache/
 .agents/
-.opencode/
 .superpowers/
 .quality-pytest-tmp*/
+/.tmp*/
 .worktrees/
 .pytest_tmp*/
 .uv-cache*/
@@ -80,7 +80,6 @@ env/
 target/
 **/target/
 native/rust_ext/target/
-crates/pyo3-sanitizer/target/
 
 # Misc
 Dockerfile*

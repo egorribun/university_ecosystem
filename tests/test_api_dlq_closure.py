@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 import app.api.dlq as dlq_module
 from app.api.dlq import DLQReplayRequest, get_dlq_status, trigger_dlq_replay
+from tests.conftest import call_injected
 
 
 @pytest.mark.asyncio
@@ -39,7 +40,9 @@ async def test_get_dlq_status_combines_memory_database_and_circuit_breaker_state
         ),
         patch.object(dlq_module, "get_circuit_breaker", return_value=circuit_breaker),
     ):
-        result = await get_dlq_status(db=db, _=None)
+        result = await call_injected(
+            get_dlq_status, _=None, provides={"AsyncDatabaseSession": db}
+        )
 
     assert result.in_memory_queue_depth == 7
     assert result.db_total_active == 3
@@ -61,17 +64,26 @@ async def test_trigger_dlq_replay_covers_all_and_single_targets():
         patch.object(dlq_module, "DeadLetterQueue", return_value=db_dlq),
         patch.object(dlq_module, "get_circuit_breaker", return_value=circuit_breaker),
     ):
-        all_result = await trigger_dlq_replay(
+        all_result = await call_injected(
+            trigger_dlq_replay,
             DLQReplayRequest(batch_size=7, force=True, target="all"),
-            db=db,
             locale="en",
             _=None,
+            provides={"AsyncDatabaseSession": db},
         )
-        memory_result = await trigger_dlq_replay(
-            DLQReplayRequest(target="in_memory"), db=db, locale="en", _=None
+        memory_result = await call_injected(
+            trigger_dlq_replay,
+            DLQReplayRequest(target="in_memory"),
+            locale="en",
+            _=None,
+            provides={"AsyncDatabaseSession": db},
         )
-        db_result = await trigger_dlq_replay(
-            DLQReplayRequest(target="db"), db=db, locale="en", _=None
+        db_result = await call_injected(
+            trigger_dlq_replay,
+            DLQReplayRequest(target="db"),
+            locale="en",
+            _=None,
+            provides={"AsyncDatabaseSession": db},
         )
 
     assert all_result.success is False
@@ -87,11 +99,12 @@ async def test_trigger_dlq_replay_covers_all_and_single_targets():
 @pytest.mark.asyncio
 async def test_trigger_dlq_replay_rejects_unknown_target():
     with pytest.raises(HTTPException) as exc_info:
-        await trigger_dlq_replay(
+        await call_injected(
+            trigger_dlq_replay,
             DLQReplayRequest(target="unknown"),
-            db=AsyncMock(),
             locale="en",
             _=None,
+            provides={"AsyncDatabaseSession": AsyncMock()},
         )
 
     assert exc_info.value.status_code == 400

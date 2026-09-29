@@ -88,9 +88,68 @@ def test_classify_file() -> None:
         == "source"
     )
     assert classify_file("services/gateway/main.go", generated_patterns) == "source"
+    # Authored capability code lives beside generated protobuf transport files
+    # under gen/go; generated patterns are checked first, so only the authored
+    # contract is treated as source and can own its focused Go tests.
+    assert (
+        classify_file("gen/go/file_processor/v1/capability.go", generated_patterns)
+        == "source"
+    )
+    assert (
+        classify_file("gen/go/file_processor/v1/file.pb.go", ["**/*.pb.go"])
+        == "generated"
+    )
 
     # Utility
     assert classify_file("scripts/setup.sh", generated_patterns) == "utility"
+
+
+def test_rust_fuzz_tsan_contract_is_backed_by_repository_references() -> None:
+    contract = Path(__file__).with_name("test_rust_fuzz_tsan_contract.py")
+
+    references = find_python_repository_references(contract)
+
+    assert {
+        ".github/workflows/rust-fuzz.yml",
+        "scripts/run_tsan_tests.sh",
+        "tests/tsan_suppressions.txt",
+    }.issubset(references)
+
+
+def test_api_dependency_contract_is_backed_by_repository_references() -> None:
+    contract = Path(__file__).with_name("test_api_dependency_injection_contract.py")
+
+    references = find_python_repository_references(contract)
+
+    assert "app/api" in references
+    assert matches_source(
+        "tests/test_api_dependency_injection_contract.py",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={"app/api/auth/login.py"},
+    )
+
+
+def test_inventory_ignores_root_output_backups_but_keeps_authored_artifact_modules(
+    tmp_path: Path, monkeypatch
+) -> None:
+    for relative_path in (
+        "artifacts/wip/frontend/src/example.test.ts",
+        "app/artifacts/model.py",
+        "tests/test_authored.py",
+    ):
+        path = tmp_path / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("pass", encoding="utf-8")
+    monkeypatch.setattr(inventory, "REPOSITORY_ROOT", tmp_path)
+    records = scan_repository(
+        {"teams": {}, "tier0_rules": [], "generated_patterns": []}
+    )
+    assert {record["path"] for record in records} == {
+        "app/artifacts/model.py",
+        "tests/test_authored.py",
+    }
 
 
 def test_inventory_prunes_dependency_and_hidden_directories(
@@ -254,6 +313,31 @@ def test_matches_source_accepts_tests_for_utility_scripts() -> None:
             {"scripts"},
         )
         is True
+    )
+
+
+def test_matches_source_accepts_authored_test_support_module() -> None:
+    assert (
+        matches_source(
+            "tests/test_duration_sharding_contract.py",
+            set(),
+            [],
+            {"tests", "tests.conftest"},
+            reference_paths={"tests/conftest.py"},
+        )
+        is True
+    )
+
+    # Importing another test module is not an ownership relationship.
+    assert (
+        matches_source(
+            "tests/test_duration_sharding_contract.py",
+            set(),
+            [],
+            {"tests", "tests.test_other"},
+            reference_paths={"tests/conftest.py"},
+        )
+        is False
     )
 
 
@@ -763,3 +847,32 @@ def test_static_skip_condition_is_not_a_dynamic_skip(tmp_path: Path) -> None:
     check_anti_patterns(test_file, errors, [], [])
 
     assert errors == []
+
+
+@pytest.mark.parametrize(
+    ("contract_name", "support_path"),
+    [
+        ("test_conftest_jsonb_compiler.py", "tests/conftest.py"),
+        (
+            "test_service_fixture_annotations.py",
+            "tests/fixtures/services/service_fixtures.py",
+        ),
+    ],
+)
+def test_fixture_contract_declares_its_actual_repository_support_target(
+    contract_name: str, support_path: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    contract_path = root / "tests" / contract_name
+    references = find_python_repository_references(contract_path)
+
+    assert (root / support_path).is_file()
+    assert classify_file(support_path, []) != "test"
+    assert support_path in references
+    assert matches_source(
+        f"tests/{contract_name}",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={support_path},
+    )

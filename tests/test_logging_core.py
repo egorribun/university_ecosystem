@@ -139,18 +139,29 @@ def test_configure_logging_skips_otel_in_testing_environment(monkeypatch):
 
 def test_configure_logging_first_time_console_no_otel():
     """Test configure_logging fallback when OTel SDK is not available."""
-    with (
-        patch.object(logging_mod, "_configured", False),
-        patch("structlog.configure") as mock_structlog_conf,
-        patch("structlog.dev.ConsoleRenderer") as renderer,
-        patch("logging.basicConfig"),
-        patch.dict("sys.modules", {"opentelemetry._logs": None}),
-    ):
-        configure_logging(json_output=False)
+    # ``configure_logging`` intentionally replaces formatters on existing
+    # root handlers.  This test patches the renderer with a MagicMock, so the
+    # formatter must be restored before the next test emits a real event;
+    # otherwise ProcessorFormatter would retain the mock across test orderings.
+    root_handlers = [
+        (handler, handler.formatter) for handler in logging.getLogger().handlers
+    ]
+    try:
+        with (
+            patch.object(logging_mod, "_configured", False),
+            patch("structlog.configure") as mock_structlog_conf,
+            patch("structlog.dev.ConsoleRenderer") as renderer,
+            patch("logging.basicConfig"),
+            patch.dict("sys.modules", {"opentelemetry._logs": None}),
+        ):
+            configure_logging(json_output=False)
 
-        mock_structlog_conf.assert_called_once()
-        renderer.assert_called_once()
-        assert renderer.call_args.kwargs["colors"] is True
+            mock_structlog_conf.assert_called_once()
+            renderer.assert_called_once()
+            assert renderer.call_args.kwargs["colors"] is True
+    finally:
+        for handler, formatter in root_handlers:
+            handler.setFormatter(formatter)
 
 
 def test_console_logging_formats_positional_arguments(monkeypatch, caplog):

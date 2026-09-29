@@ -4,9 +4,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import status
 
-from app.api.deps import get_current_user, get_db, get_event_service
+from app.api.deps import get_current_user, get_db
 from app.api.deps.auth import get_permission_checker
 from app.main import app
+from tests.conftest import install_dishka_override
 
 
 @pytest.mark.asyncio
@@ -52,7 +53,7 @@ async def test_update_event_rebac_allowed(async_client, user_factory):
 
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = lambda: mock_session
-    app.dependency_overrides[get_event_service] = lambda: mock_event_service
+    install_dishka_override(app, EventService=mock_event_service)
     app.dependency_overrides[get_permission_checker] = lambda: mock_checker
 
     try:

@@ -10,10 +10,10 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![Python Coverage Gate](https://img.shields.io/badge/Python_Coverage_Gate-100%25-brightgreen.svg?logo=pytest&logoColor=white)](TESTING.md)
-[![Go Coverage Gate](https://img.shields.io/badge/Go_Coverage_Gate-100%25-brightgreen.svg?logo=go&logoColor=white)](TESTING.md)
-[![Rust Coverage Gate](https://img.shields.io/badge/Rust_Coverage_Gate-100%25-brightgreen.svg?logo=rust&logoColor=white)](TESTING.md)
-[![Frontend Coverage Gate](https://img.shields.io/badge/Frontend_Coverage_Gate-100%25-brightgreen.svg?logo=vitest&logoColor=white)](TESTING.md)
+[![Python coverage policy target](https://img.shields.io/badge/Python_Coverage_Policy_Target-100%25-brightgreen.svg?logo=pytest&logoColor=white)](quality/quality-contract.json)
+[![Go coverage policy target](https://img.shields.io/badge/Go_Coverage_Policy_Target-100%25-brightgreen.svg?logo=go&logoColor=white)](quality/quality-contract.json)
+[![Rust coverage policy target](https://img.shields.io/badge/Rust_Coverage_Policy_Target-100%25-brightgreen.svg?logo=rust&logoColor=white)](quality/quality-contract.json)
+[![Frontend coverage policy target](https://img.shields.io/badge/Frontend_Coverage_Policy_Target-100%25-brightgreen.svg?logo=vitest&logoColor=white)](quality/quality-contract.json)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
 [![Vite 8 / Rolldown](https://img.shields.io/badge/Vite-8_%2F_Rolldown-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8.svg?logo=go&logoColor=white)](https://go.dev/)
@@ -22,7 +22,9 @@
 
 ---
 
-**University Ecosystem** — это высокопроизводительная полиглотразностная микросервисная платформа, созданная для объединения и автоматизации всех сфер университетской жизни. От расписания в реальном времени и навигации по кемпусу до корпоративной безопасности и автоматических воркфлоу.
+> Бейджи покрытия показывают целевые значения политики из [`quality/quality-contract.json`](quality/quality-contract.json), а не текущую сертификацию. Актуальные подтверждения публикуются в [панели качества](docs/testing/dashboard.md); сборку подтверждает только свежий CI/release-артефакт с точным SHA.
+
+**University Ecosystem** — это высокопроизводительная полиглотная микросервисная платформа, созданная для объединения и автоматизации всех сфер университетской жизни. От расписания в реальном времени и навигации по кемпусу до корпоративной безопасности и автоматических воркфлоу.
 
 [Документация](docs/README.md) • [Инструкция по деплою](docs/DEPLOY.md) • [Тестирование](TESTING.md) • [Безопасность](SECURITY.md) • [Вклад в проект](docs/CONTRIBUTING.md)
 
@@ -36,12 +38,14 @@
 - 📅 **Динамический академический движок** – Расписание пар в реальном времени с параллельным разрешением конфликтов на **Rust (PyO3)** с использованием потоков Rayon.
 - 💬 **Высоконагруженный WebSocket-хаб** – Мгновенный обмен сообщениями через **Go + NATS** с поддержкой горячей перезагрузки JWKS, лимитом 60 КБ на кадр и пречеками подключений.
 - 🔒 **Управление правами на основе отношений (ReBAC)** – Гранулярный доступ на базе **SpiceDB** (Zanzibar architecture) и флаги фичей **OpenFeature** + **flagd**.
-- 🖼️ **Медиа-процессинг и воркфлоу** – Асинхронная обработка файлов, оптимизация изображений и проверка на вирусы через **Go file-processor**, **Temporal.io**, **MinIO** и **ClamAV**.
+- 🖼️ **Медиа-процессинг и воркфлоу** – Асинхронная обработка файлов и оптимизация изображений через **Go file-processor**, **Temporal.io** и S3-совместимое хранилище **SeaweedFS**; бэкенд может требовать проверку загрузок через настроенный сервис `clamd`.
 - ⚡ **Вероятностное кэширование XFetch L1/L2** – Защита от «лавины кэша» (Cache Stampede) и Circuit Breakers в Redis/Valkey (`volatile-lru`).
 - 🗺️ **Векторный поиск и навигация** – Семантический поиск по контенту и навигация по кемпусу с использованием **pgvector** и эмбеддингов.
 - 📊 **Комплексный мониторинг (Observability)** – Сквозная трассировка (**OTEL + Tempo**), метрики (**Prometheus**), профилирование (**Pyroscope**) и централизованные логи (**Grafana Loki + Fluent Bit**).
 
 ## ⚡ Производительность и Бенчмарки
+
+> Приведённые ниже значения — исторические ориентиры и инженерные цели, а не актуальное подтверждение релиза. Для любого релизного заявления нужен датированный benchmark-артефакт с точным SHA и ссылкой на CI-запуск; см. [базовую линию производительности](docs/testing/performance-regression-baseline.md) и [workflow бенчмарков](.github/workflows/benchmark.yml).
 
 Полиглотная архитектура обеспечивает максимальную пропускную способность при минимальном потреблении ресурсов:
 
@@ -64,9 +68,10 @@ university_ecosystem/
 │   ├── file-processor/# 📁 Media Engine (Go/Temporal) - Обработка файлов и медиа
 │   └── caddy/         # 🔒 Обратный прокси и TLS терминация
 ├── native/            # 🦀 Rust-расширения (PyO3/Rayon) - Высокоскоростные вычисления
+├── charts/            # ⎈ Helm-чарты (каноничный деплой приложения, ADR-034)
 ├── k8s/               # ☸️ Манифесты Kubernetes, Kyverno-политики и Chaos Mesh
 ├── alembic/           # 🗄️ Миграции базы данных (SQLAlchemy 2.0 Async)
-└── docs/              # 📖 Архитектура и ADR (ADR-001 — ADR-032)
+└── docs/              # 📖 Архитектура и ADR (см. docs/adr/)
 ```
 
 ## 🧠 Архитектурная философия
@@ -96,9 +101,9 @@ graph TD
 
     subgraph "Данные, Управление и Воркфлоу"
         Postgres[("🐘 PostgreSQL 17 + pgvector")]
-        Valkey[("⚡ Valkey / Redis 7 (volatile-lru)")]
+        Valkey[("⚡ Valkey 8.1 кэш (volatile-lru)")]
         Revocations[("🛡️ Revocation Valkey (AOF / noeviction)")]
-        MinIO[("📦 MinIO (S3 Storage)")]
+        MinIO[("📦 SeaweedFS (S3 Storage)")]
         Temporal["⏳ Temporal.io (Workflows)"]
         SpiceDB["🔐 SpiceDB (ReBAC)"]
         Flagd["🚩 OpenFeature / flagd"]
@@ -159,11 +164,10 @@ sequenceDiagram
     Gateway->>Backend: Проксирование запроса авторизации
     Backend->>Argon2: Валидация хеша пароля (Argon2id) / TOTP или Email OTP
     Argon2-->>Backend: Успешная аутентификация
-    Backend->>SpiceDB: Запрос прав и отношений пользователя
-    SpiceDB-->>Backend: Ответ с ролями и разрешениями
-    Backend->>Redis: Сохранение сессии и выдача тикета авторизации
+    Backend->>Redis: Сохранение сессии
     Backend-->>Gateway: HTTP 200 + Secure HTTP-Only Cookie + JWT
     Gateway-->>Client: Авторизованный ответ
+    Note over Backend,SpiceDB: Последующие защищённые запросы проверяют ReBAC-права в SpiceDB
 ```
 
 ### 📡 Сценарий Выборки и Отправки Сообщений в Чат
@@ -173,32 +177,33 @@ sequenceDiagram
     autonumber
     actor ClientA as 📱 Клиент A
     actor ClientB as 📱 Клиент B
-    participant Gateway as 🚀 Go Gateway
+    participant Caddy as 🔒 Caddy Edge
     participant WSHub as 📡 Go WS-Hub
     participant NATS as 📨 NATS Broker
-    participant Redis as ⚡ Redis (Кэш тикетов)
+    participant Redis as ⚡ Valkey (Кэш тикетов)
 
-    ClientA->>Gateway: GET /ws (Запрос Upgrade + Тикет авторизации)
-    Gateway->>Redis: Проверка тикета и пречек макс. клиентов (Pre-check)
-    Redis-->>Gateway: Тикет валиден
-    Gateway->>WSHub: Апгрейд соединения до WebSocket
+    ClientA->>Caddy: GET /ws/chat?ticket=<одноразовый тикет> (Запрос Upgrade)
+    Caddy->>WSHub: Проксирование Upgrade на /ws
+    WSHub->>WSHub: Пречек Origin, rate limit и макс. клиентов
+    WSHub->>Redis: GETDEL одноразового тикета
+    Redis-->>WSHub: Тикет валиден (пользователь, JTI)
     ClientA->>WSHub: Кадр сообщения чата (Защита <60 КБ)
-    WSHub->>NATS: Публикация в NATS Subject (chat.room.{id})
+    WSHub->>NATS: Публикация в NATS Subject (chat.{room})
     NATS-->>WSHub: Доставка кадра подписанным нодам WS-Hub
     WSHub-->>ClientB: Рассылка кадра соединениям получателя
 ```
 
 ## 🛠️ Технологический стек
 
-| Слой | Технологии | Роль | Гейт покрытия |
+| Слой | Технологии | Роль | Целевой порог / текущие доказательства |
 | :--- | :--- | :--- | :---: |
-| **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, доступность (WCAG 2.2 AA), PWA | **100%** |
-| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Основная бизнес-логика, REST и GraphQL API | **100%** |
-| **Микросервисы** | Go 1.26, NATS, gRPC, Temporal Go SDK | Высоконагруженный чат и обработка медиа | **100%** |
-| **Производительность**| Rust, PyO3, Rayon, Maturin | Нативное вычисление расписания и HMAC | **100%** |
-| **Авторизация и безопасность** | Argon2id, SpiceDB, TOTP/email OTP, recovery-коды, Kyverno, CSRF nonces | Zero-Trust ReBAC, step-up MFA и политики | Подтверждено |
-| **Данные и Кэш** | PostgreSQL 17, pgvector, кэш Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Реляционные/векторные данные, вероятностный L1/L2 кэш и изолированный отзыв сессий | Подтверждено |
-| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Полный 360° мониторинг, трассы и логи | Подтверждено |
+| **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, доступность (WCAG 2.2 AA), PWA | Цель политики: 100%; нужны свежие SHA-доказательства |
+| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Основная бизнес-логика, REST и GraphQL API | Цель политики: 100%; нужны свежие SHA-доказательства |
+| **Микросервисы** | Go 1.26, NATS, gRPC, Temporal Go SDK | Высоконагруженный чат и обработка медиа | Цель политики: 100%; нужны свежие SHA-доказательства |
+| **Производительность**| Rust, PyO3, Rayon, Maturin | Нативное вычисление расписания и HMAC | Цель политики: 100%; нужны свежие SHA-доказательства |
+| **Авторизация и безопасность** | Argon2id, SpiceDB, TOTP/email OTP, recovery-коды, Kyverno, CSRF nonces | Zero-Trust ReBAC, step-up MFA и политики | Реализовано; нужны свежие SHA-доказательства |
+| **Данные и Кэш** | PostgreSQL 17, pgvector, кэш Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Реляционные/векторные данные, вероятностный L1/L2 кэш и изолированный отзыв сессий | Реализовано; нужны свежие SHA-доказательства |
+| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Полный 360° мониторинг, трассы и логи | Реализовано; нужны свежие SHA-доказательства |
 
 ## 🚀 Быстрый старт
 
@@ -227,7 +232,7 @@ Copy-Item .env.example .env
 
 - **Многофакторная аутентификация**: **TOTP**, email OTP и одноразовые recovery-коды вместе с хешированием паролей **Argon2id**.
 - **Строгая валидация**: Схемы **Valibot** на фронтенде и защита от Path Traversal в gRPC.
-- **Антивирусная защита**: Сканирование файлов в **ClamAV** перед сохранением в MinIO S3.
+- **Антивирусная защита и SSRF**: Настраиваемая проверка загрузок через `clamd` (включение и обязательность зависят от окружения) и строгая валидация URL, блокирующая внутренние диапазоны IP. Перед использованием загрузок проверьте доступность сканера.
 - **Политики K8s**: Инспекция подов через **Kyverno** и профили `RuntimeDefault`.
 - **Очистка персональных данных**: Автоматическая анонимизация PII (почты, телефоны) в логах.
 
@@ -236,7 +241,7 @@ Copy-Item .env.example .env
 ### **Python (Core API)**
 ```bash
 uv sync            # Синхронизация зависимостей Python 3.14
-uv run pytest      # Запуск тестовой сюиты (2800+ тестов)
+uv run pytest      # Запуск полной тестовой сюиты
 uv run ruff check app/      # Проверка Ruff линтером
 uv run ruff format app/     # Форматирование кода
 ```
@@ -244,7 +249,7 @@ uv run ruff format app/     # Форматирование кода
 ### **React (Frontend)**
 ```bash
 cd frontend
-npm install        # Загрузка npm-пакетов
+npm ci              # Воспроизводимая установка по package-lock.json
 npm run dev        # Запуск Vite 8 dev-сервера
 npx tsc --noEmit   # Проверка типов TypeScript
 npm run test       # Запуск Vitest тестов
@@ -270,5 +275,5 @@ make test-integration # Запуск интеграционных тестов A
 <div align="center">
   <br />
   <h3>Сконструировано с ❤️ инженерами University Ecosystem</h3>
-  © 2026 University Ecosystem Platform • Все права защищены.
+  © 2026 University Ecosystem Platform • Распространяется по <a href="LICENSE">лицензии MIT</a>.
 </div>

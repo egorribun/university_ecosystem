@@ -88,7 +88,10 @@ describe("RelatedEvents", () => {
     const sparseEvent = {
       ...ITEMS[0],
       id: "sparse",
-      title: undefined,
+      // The API is untrusted at this boundary. A non-string title must use
+      // the same empty fallback as an absent title instead of leaking a
+      // number into the card heading.
+      title: 123,
       title_en: undefined,
       event_type: undefined,
       event_type_en: undefined,

@@ -30,7 +30,12 @@ if REPO_ROOT is None or not (REPO_ROOT / "docker-compose.yml").is_file():
 
 def _compose(name: str) -> dict:
     assert REPO_ROOT is not None
-    return yaml.safe_load((REPO_ROOT / name).read_text(encoding="utf-8"))
+    # ``!override`` is a Docker Compose extension for replacing (rather than
+    # merging) a sequence during an overlay.  PyYAML's SafeLoader does not
+    # know that extension, so parse the underlying YAML value while retaining
+    # the tag in the Compose source itself for Docker's merge semantics.
+    source = (REPO_ROOT / name).read_text(encoding="utf-8")
+    return yaml.safe_load(source.replace("!override", ""))
 
 
 def test_full_compose_uses_one_revocation_namespace() -> None:

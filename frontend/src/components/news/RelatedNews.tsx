@@ -7,7 +7,6 @@ import { Link } from "@tanstack/react-router"
 import { ArrowUpRight } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useLanguage } from "@/contexts/LanguageContext"
-import { useMemo } from "react"
 import { getMoscowDate } from "@/utils/date"
 import { NewsCategoryBadge } from "./NewsCategoryBadge"
 import { inferCategory } from "@/features/news/categories"
@@ -40,20 +39,9 @@ export function RelatedNews({ items }: RelatedNewsProps) {
 function RelatedCard({ item, language }: { item: NewsItem; language: string }) {
   const { t } = useTranslation(["news", "common"])
 
-  const title = useMemo(
-    () => localizeField(item.title, item.title_en, language),
-    [language, item.title, item.title_en]
-  )
-
-  const category = useMemo(
-    () => inferCategory(item.title, item.content),
-    [item.title, item.content]
-  )
-
-  const dateLabel = useMemo(
-    () => (item.created_at ? getMoscowDate(item.created_at) : ""),
-    [item.created_at]
-  )
+  const title = localizeField(item.title, item.title_en, language)
+  const category = inferCategory(item.title, item.content)
+  const dateLabel = item.created_at ? getMoscowDate(item.created_at) : ""
 
   return (
     <Link

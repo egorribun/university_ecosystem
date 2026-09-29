@@ -27,7 +27,9 @@ import {
   SectionCard,
   Divider,
 } from "@/components/settings"
-import { Badge, Card, ConfirmDialog } from "@/components/ui"
+import { Badge } from "@/components/ui/Badge"
+import { Card } from "@/components/ui/Card"
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 
 // dayjs extensions removed
@@ -460,7 +462,9 @@ export default function StoriesAdmin() {
   const handleSubmit = async () => {
     setFormError(null)
     setFormSuccess(null)
-    if (!formState.titleRu.trim() || !formState.shortTextRu.trim()) {
+    const titleRu = formState.titleRu.trim()
+    const shortTextRu = formState.shortTextRu.trim()
+    if (!titleRu || !shortTextRu) {
       setFormError(t("stories:errors.required"))
       return
     }
@@ -485,8 +489,8 @@ export default function StoriesAdmin() {
       }
       await telemetryContext.run(() =>
         createStory({
-          title: formState.titleRu,
-          short_text: formState.shortTextRu,
+          title: titleRu,
+          short_text: shortTextRu,
           ...(formState.titleEn.trim() ? { title_en: formState.titleEn.trim() } : {}),
           ...(formState.shortTextEn.trim() ? { short_text_en: formState.shortTextEn.trim() } : {}),
           ...(formState.ctaUrl.trim() ? { cta_url: formState.ctaUrl.trim() } : {}),

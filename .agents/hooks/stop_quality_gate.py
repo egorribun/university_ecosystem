@@ -111,6 +111,7 @@ def check_services_subsystem(repo_root: Path) -> tuple[bool, str]:
         "ws-hub",
         "file-processor",
         "cmd/uni-cli",
+        "pkg/logging",
         "pkg/spiffe",
         "pkg/spicedb",
     ]

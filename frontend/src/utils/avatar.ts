@@ -4,14 +4,9 @@ const DUMMY_ORIGIN = "http://__avatar__"
 // eslint-disable-next-line security/detect-unsafe-regex -- linear pattern, no backtracking risk
 const ABSOLUTE_URL_PATTERN = /^(?:https?:)?\/\//i
 
-const getLocationOrigin = (): string | undefined => {
-  if (typeof window === "undefined") return undefined
-  try {
-    return window.location?.origin
-  } catch {
-    return undefined
-  }
-}
+// Reading the page's own location never throws; only SSR lacks a window.
+const getLocationOrigin = (): string | undefined =>
+  typeof window === "undefined" ? undefined : window.location.origin
 
 type ResolveOptions = {
   baseURL?: string

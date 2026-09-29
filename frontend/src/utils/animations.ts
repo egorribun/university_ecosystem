@@ -44,10 +44,8 @@ export const slideUpVariants: Variants = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: {
-      type: "spring",
-      ...springSoft,
-    },
+    // springSoft already carries type: "spring".
+    transition: { ...springSoft },
   },
   exit: {
     opacity: 0,

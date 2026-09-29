@@ -5,7 +5,7 @@ import { createRef } from "react"
 import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 
-import { Badge } from "@/components/ui/Badge"
+import { Badge, type BadgeProps } from "@/components/ui/Badge"
 import { Checkbox } from "@/components/ui/Checkbox"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { ProgressBar } from "@/components/ui/ProgressBar"
@@ -62,6 +62,64 @@ describe("Badge", () => {
       </Badge>
     )
     expect(screen.getByText("link").closest("a")).toBeInTheDocument()
+  })
+
+  it("adds 44px floors only to explicit interactive polymorphic variants", () => {
+    const { container, rerender } = render(
+      <Badge data-testid="badge" size="xs">
+        status
+      </Badge>
+    )
+    const decorative = container.firstElementChild
+    expect(decorative).toHaveClass("min-h-6")
+    expect(decorative).not.toHaveClass("min-h-11", "min-w-11")
+
+    rerender(
+      <Badge as="button" data-testid="badge" size="xs">
+        action
+      </Badge>
+    )
+    expect(screen.getByTestId("badge")).toHaveClass("min-h-11", "min-w-11")
+
+    rerender(
+      <Badge as="a" data-testid="badge" size="xs" href="/target">
+        link
+      </Badge>
+    )
+    expect(screen.getByTestId("badge")).toHaveClass("min-h-11", "min-w-11")
+  })
+
+  it("gives every variant value its own styling on top of the neutral badge", () => {
+    // `null` opts a badge out of an axis (and of the compound rules that
+    // depend on it), so it is the neutral baseline each value must change.
+    // Only the difference is asserted; the concrete classes are presentation.
+    const classesOf = (props: BadgeProps) => {
+      const { container, unmount } = render(<Badge {...props}>probe</Badge>)
+      const classes = [...(container.firstElementChild?.classList ?? [])].sort()
+      unmount()
+      return classes
+    }
+    const expectStyled = (props: BadgeProps, neutral: BadgeProps) =>
+      expect(classesOf({ ...neutral, ...props }), JSON.stringify(props)).not.toEqual(
+        classesOf(neutral)
+      )
+
+    for (const variant of ["solid", "outline"] as const) {
+      expectStyled({ variant }, { variant: null, tone: null })
+      for (const tone of ["default", "primary", "success", "danger", "info"] as const) {
+        expectStyled({ tone }, { variant, tone: null })
+      }
+    }
+    for (const shape of ["pill", "circle"] as const) {
+      expectStyled({ shape }, { shape: null, size: null })
+      for (const size of ["xs", "sm", "md"] as const) {
+        expectStyled({ size }, { shape, size: null })
+      }
+    }
+  })
+
+  it("exposes a diagnostic display name", () => {
+    expect(Badge.displayName).toBe("Badge")
   })
 })
 
@@ -228,16 +286,16 @@ describe("Switch", () => {
 
     expect({ baselineDigest, interactiveDigest, checkedDigest, disabledDigest }).toEqual({
       baselineDigest: expectedDigest(
-        "c049_96b1_cc0a_a735_7c87_b55c_adcf_6c7b_4aa5_1d45_d491_a116_df52_66a3_afde_4cbd"
+        "2d28_6809_f643_90dc_ff83_d296_922c_511a_ab9b_0771_9f2a_a10b_65ce_2aaf_1276_88c5"
       ),
       interactiveDigest: expectedDigest(
-        "93b6_f3b7_08d4_b19d_f5f3_eb90_44ae_f3b0_6a3a_7286_72fc_b087_4453_3c3a_6f9f_1b81"
+        "6999_d5e3_1760_cf23_857f_17a3_b2bb_3c69_fb04_e139_9eea_f995_724b_fee8_07fd_75cf"
       ),
       checkedDigest: expectedDigest(
-        "67e7_ec53_6a5c_2ffd_e8be_5daf_5ab4_06f2_8f0f_82aa_ace1_cd35_98d1_f9ce_daf0_db1e"
+        "0715_8c6c_9057_63e3_ac6e_7361_878c_eab4_53a2_3d48_bb6a_858c_62bb_91c3_1922_8608"
       ),
       disabledDigest: expectedDigest(
-        "984e_0dc5_debe_1af4_cc79_c659_f379_bd74_908d_18cf_78a0_a6d2_761e_0ecf_5dca_67b8"
+        "5c06_7440_2f1a_9fad_198f_9be1_fe68_91fe_ec1e_268f_40a7_37d2_b670_265b_554d_95f6"
       ),
     })
   })

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC
 from typing import TYPE_CHECKING, Any, cast
 
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import insert, select
 from sqlalchemy.orm import selectinload
 
@@ -161,6 +162,7 @@ async def redeliver_notifications(
     *,
     notification_ids: Sequence[uuid.UUID | str],
     channel: str = "push",
+    payload_data: Mapping[str, Any] | None = None,
 ) -> NotificationRedeliveryOutcome:
     """Deliver stored notifications and persist an idempotency journal.
 
@@ -261,6 +263,7 @@ async def redeliver_notifications(
                     topic=topic,
                     notification_type=notification.type,
                     url=notification.url,
+                    extra=payload_data,
                 ),
             }
             if topic:
@@ -378,8 +381,9 @@ async def create_notifications_for_users(
     user_ids: Sequence[uuid.UUID],
     topic: str | None = None,
     user_filter: Callable[[Select[Any]], Select[Any]] | None = None,
+    push_via_outbox_only: bool = False,
 ) -> int:
-    """Create notifications for multiple users and send push notifications."""
+    """Create notifications, optionally leaving push delivery to the outbox."""
     # DEBT-06 (audit 2026-03-15): Fail-fast before any DB operations when push is
     # not configured.  Notification rows are still created for in-app display only;
     # the early-exit here prevents creating delivery rows with status "skipped".
@@ -447,23 +451,28 @@ async def create_notifications_for_users(
 
     # RED-02 (audit 2026-03-14): Record a NotificationsRequested outbox event
     # atomically with the Notification rows so the OutboxWorker can drive push
-    # delivery with at-least-once semantics.  The direct push dispatch below is
-    # kept as the primary path; the outbox acts as a durability record and
-    # retry mechanism when the in-process delivery fails or the process crashes.
+    # delivery with at-least-once semantics. Most producers still dispatch
+    # directly below and use the outbox for recovery; deduplicated producers
+    # leave all network delivery to the worker after their transaction commits.
     if notification_ids_by_user:  # pragma: no branch - uids is non-empty here
         from app.core.events import NotificationsRequested
         from app.models.domain_events import StoredEvent
 
         _batch_id = str(_uuid_mod.uuid4())
+        event_payload: dict[str, Any] = {
+            "_schema_version": 1,
+            "notification_ids": [str(v) for v in notification_ids_by_user.values()],
+            "channel": "push",
+        }
+        if push_via_outbox_only:
+            event_payload["payload_data"] = (
+                jsonable_encoder(dict(payload_data)) if payload_data else None
+            )
         outbox_event = StoredEvent(
             event_type=NotificationsRequested.EVENT_TYPE,
             aggregate_type="NotificationBatch",
             aggregate_id=_batch_id,
-            payload={
-                "_schema_version": 1,
-                "notification_ids": [str(v) for v in notification_ids_by_user.values()],
-                "channel": "push",
-            },
+            payload=event_payload,
         )
         db.add(outbox_event)
 
@@ -472,6 +481,9 @@ async def create_notifications_for_users(
             user_ids=list(notification_ids_by_user.keys()),
             kinds=("grades",),
         )
+
+    if push_via_outbox_only:
+        return len(notification_ids_by_user)
 
     delivery_rows: list[dict[str, Any]] = []
 

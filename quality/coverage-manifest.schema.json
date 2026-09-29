@@ -73,7 +73,6 @@
         "go-file-processor",
         "go-shared",
         "rust-native",
-        "rust-pyo3-sanitizer",
         "rust-wasm-sanitizer",
         "rust-crypto",
         "infrastructure",
@@ -97,7 +96,6 @@
         "go-file-processor",
         "go-shared",
         "rust-native",
-        "rust-pyo3-sanitizer",
         "rust-wasm-sanitizer",
         "rust-crypto",
         "infrastructure",
@@ -112,7 +110,6 @@
         "go-file-processor": {"$ref": "#/$defs/pathArray"},
         "go-shared": {"$ref": "#/$defs/pathArray"},
         "rust-native": {"$ref": "#/$defs/pathArray"},
-        "rust-pyo3-sanitizer": {"$ref": "#/$defs/pathArray"},
         "rust-wasm-sanitizer": {"$ref": "#/$defs/pathArray"},
         "rust-crypto": {"$ref": "#/$defs/pathArray"},
         "infrastructure": {"$ref": "#/$defs/pathArray"},
@@ -131,7 +128,6 @@
         "go-file-processor",
         "go-shared",
         "rust-native",
-        "rust-pyo3-sanitizer",
         "rust-wasm-sanitizer",
         "rust-crypto"
       ],
@@ -143,7 +139,6 @@
         "go-file-processor": {"$ref": "#/$defs/pathArray"},
         "go-shared": {"$ref": "#/$defs/pathArray"},
         "rust-native": {"$ref": "#/$defs/pathArray"},
-        "rust-pyo3-sanitizer": {"$ref": "#/$defs/pathArray"},
         "rust-wasm-sanitizer": {"$ref": "#/$defs/pathArray"},
         "rust-crypto": {"$ref": "#/$defs/pathArray"}
       }
@@ -208,6 +203,7 @@
       }
     },
     "metric": {
+      "description": "A native or trusted derived metric is applicable evidence and must carry counters; unsupported is an explicit N/A with null counters and a machine-readable reason_code.",
       "type": "object",
       "additionalProperties": false,
       "required": ["status", "covered", "total", "percent"],
@@ -217,7 +213,11 @@
         "total": {"type": ["integer", "null"], "minimum": 0},
         "percent": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
         "derivation": {"type": "string", "minLength": 1},
-        "reason_code": {"type": "string", "minLength": 1}
+        "reason_code": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_]*(?:-[a-z0-9_]+)*$"
+        }
       },
       "oneOf": [
         {
@@ -292,7 +292,6 @@
         "go-file-processor",
         "go-shared",
         "rust-native",
-        "rust-pyo3-sanitizer",
         "rust-wasm-sanitizer",
         "rust-crypto",
         "infrastructure",
@@ -307,7 +306,6 @@
         "go-file-processor": {"$ref": "#/$defs/component"},
         "go-shared": {"$ref": "#/$defs/component"},
         "rust-native": {"$ref": "#/$defs/component"},
-        "rust-pyo3-sanitizer": {"$ref": "#/$defs/component"},
         "rust-wasm-sanitizer": {"$ref": "#/$defs/component"},
         "rust-crypto": {"$ref": "#/$defs/component"},
         "infrastructure": {"$ref": "#/$defs/component"},

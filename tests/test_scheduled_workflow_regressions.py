@@ -28,7 +28,7 @@ def test_quality_history_is_sha_addressed_tracked_and_idempotent() -> None:
     )
 
     assert 'history_path="docs/testing/quality-history/${head_sha}.json"' in scripts
-    assert 'artifact_name="quality-evidence-$head_sha"' in scripts
+    assert 'artifact_name="quality-evidence-$head_sha-attempt-$run_attempt"' in scripts
     assert '--expected-commit-sha "$head_sha"' in scripts
     assert "cmp --silent" in scripts
     assert 'echo "available=false" >> "$GITHUB_OUTPUT"' in scripts
@@ -68,15 +68,23 @@ def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:
     assert "mutants/mutmut-stats-full.json" in reduction
     assert "mutants/mutmut-stats-reduction.json" in reduction
     assert plan_job["needs"] == "mutation-tests-full-stats"
-    assert job["needs"] == "mutation-tests-full-plan"
+    assert job["needs"] == ["mutation-tests-full-plan", "nightly-helm-dependencies"]
     assert "--output-directory mutants/mutmut-full-plan" in preflight
     assert "for shard in $(seq 1 128)" in preflight
     assert "scripts/mutmut_shard_budget.py" in preflight
+    assert "--max-children 8" in preflight
+    assert "--control-cycle-reserve-seconds 1" in preflight
     assert "--max-timeout-seconds 20970" in preflight
+    assert "--metadata-startup-reserve-seconds 120" in preflight
     assert "plan-manifest.json" in preflight
     assert "cmp --silent" in run_script
+    assert "scripts/plan_mutmut_shards.py" in run_script
+    assert "--control-cycle-reserve-seconds 1" in run_script
+    assert "--metadata-startup-reserve-seconds 120" in run_script
+    assert "--max-timeout-seconds 20970" in run_script
     assert "--max-children 8" in run_script
     assert "--control-cycle-reserve-seconds 1" in run_script
+    assert "--metadata-startup-reserve-seconds 120" in run_script
     assert "--max-timeout-seconds 20970" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 8" in run_script
     # The nightly plan artifact currently carries stats/IDs, not the generated
@@ -88,6 +96,7 @@ def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:
     assert "full-map-survivors.txt" in run_script
     assert '.status == "survived"' in run_script
     assert "--stats mutants/mutmut-stats-full.json" in run_script
+    assert "--metadata-startup-reserve-seconds 120" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 2" in run_script
     assert "full-map survivor confirmation cannot fit" in run_script
     assert "refusing unconfirmed evidence" in run_script

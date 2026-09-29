@@ -49,7 +49,9 @@ def _read(relative_path: str) -> str:
 def _compose(relative_path: str) -> dict:
     # Compose's custom sequence tag is meaningful to Docker Compose but not to
     # PyYAML. Removing only the tag preserves the underlying data for contracts.
-    return yaml.safe_load(_read(relative_path).replace("!override", ""))
+    return yaml.safe_load(
+        _read(relative_path).replace("!override", "").replace("!reset", "")
+    )
 
 
 def _powershell_function(script: str, name: str, next_name: str) -> str:
@@ -367,17 +369,19 @@ def test_all_caddy_configs_expose_the_same_auth_and_websocket_routes() -> None:
     assert "health_uri /healthz" not in api_block
 
 
-def test_minio_bucket_initialization_is_compose_managed_and_fail_fast() -> None:
+def test_storage_initialization_is_compose_managed_and_fail_fast() -> None:
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
         services = _compose(relative_path)["services"]
         init = services["minio-init"]
 
+        # SeaweedFS mini creates the uploads bucket itself (S3_BUCKET); the
+        # init service only gates dependants on a reachable S3 API.
         assert init["depends_on"]["minio"]["condition"] == "service_healthy"
-        assert init["environment"]["MC_CONFIG_DIR"] == "/mc-config"
+        assert init["image"] == services["minio"]["image"]
+        assert services["minio"]["environment"]["S3_BUCKET"] == "uploads"
+        assert init["command"] == ["wget -qO- http://minio:9000/status >/dev/null"]
+        assert "environment" not in init
         assert init["read_only"] is True
-        assert "/mc-config:size=1m,mode=0700" in init["tmpfs"]
-        assert "mc mb local/uploads --ignore-existing" in init["command"][0]
-        assert "$${MINIO_ROOT_PASSWORD}" in init["command"][0]
         assert services["backend"]["depends_on"]["minio-init"]["condition"] == (
             "service_completed_successfully"
         )
@@ -443,8 +447,11 @@ def test_start_script_removes_obsolete_containers_and_waits_for_the_full_stack()
     }
     for service in critical_services:
         assert f'service = "{service}"' in services_block, service
+    minio = re.search(r"minio\s+= @\{([^\n]+)", services_block)
+    assert minio is not None
+    assert 'type = "docker"' in minio.group(1)
+    assert 'service = "minio"' in minio.group(1)
     for name, url in {
-        "minio": "http://localhost:9001/",
         "grafana": "http://localhost:3000/api/health",
         "prometheus": "http://localhost:9090/-/healthy",
         "frontend": "http://localhost:8081/login",
@@ -704,7 +711,9 @@ def test_prometheus_scrapes_the_authenticated_backend_and_real_exporters() -> No
         == "metrics_scraper"
     )
     assert "redis-exporter" in full
-    assert full["minio"]["environment"]["MINIO_PROMETHEUS_AUTH_TYPE"] == ("public")
+    # SeaweedFS does not serve MinIO's metrics API (ADR-042 follow-up).
+    assert "MINIO_PROMETHEUS_AUTH_TYPE" not in full["minio"]["environment"]
+    assert "job_name: 'minio'" not in prometheus_config
     prometheus_volumes = full["prometheus"]["volumes"]
     assert any(
         "prometheus.yml:/etc/prometheus/prometheus.yml:ro" in item
@@ -821,9 +830,19 @@ def test_compose_files_do_not_claim_global_project_or_container_names() -> None:
     for compose_path in compose_paths:
         relative_path = compose_path.relative_to(ROOT).as_posix()
         compose = _compose(relative_path)
-        assert "name" not in compose, (
-            f"{relative_path} fixes a global Compose project name instead of "
-            "allowing the launcher or worktree directory to provide one"
+        # ADR-042: the two base stacks declare one stable default project so
+        # the SeaweedFS volume (`<project>_seaweedfs_data`) and the legacy
+        # MinIO volume guard resolve the same names from any checkout or
+        # detached worktree. COMPOSE_PROJECT_NAME and `-p` still override it
+        # (the live stand runs as `ue-live`); overlays must not name a project.
+        expected_name = (
+            "university_ecosystem"
+            if relative_path in {"docker-compose.yml", "docker-compose.full.yml"}
+            else None
+        )
+        assert compose.get("name") == expected_name, (
+            f"{relative_path} fixes an unexpected global Compose project name "
+            "instead of allowing the launcher or worktree directory to provide one"
         )
         services = compose.get("services", {})
         offenders = sorted(
@@ -842,15 +861,19 @@ def test_launcher_seed_commands_are_compose_project_safe() -> None:
 
     assert "university_ecosystem-backend-1" not in launcher
     assert "docker compose -f `$ComposeFile --env-file `$EnvFile cp" not in launcher
+    assert (
+        "$ComposeCommand = \"docker compose $($ComposeArgs -join ' ') "
+        '--env-file .env.docker"'
+    ) in launcher
     expected_commands = (
-        "docker compose -f $ComposeFile --env-file $EnvFile cp "
-        "scripts/seed_demo_data.py backend:/app/seed_demo_data.py",
-        "docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app "
-        "backend python seed_demo_data.py",
-        "docker compose -f $ComposeFile --env-file $EnvFile cp "
-        "scripts/seed_admin_data.py backend:/app/seed_admin_data.py",
-        "docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app "
-        "backend python seed_admin_data.py",
+        'Write-Host "       $ComposeCommand cp '
+        'scripts/seed_demo_data.py backend:/app/seed_demo_data.py"',
+        'Write-Host "       $ComposeCommand exec -T -w /app '
+        'backend python seed_demo_data.py"',
+        'Write-Host "       $ComposeCommand cp '
+        'scripts/seed_admin_data.py backend:/app/seed_admin_data.py"',
+        'Write-Host "       $ComposeCommand exec -T -w /app '
+        'backend python seed_admin_data.py"',
     )
     for command in expected_commands:
         assert launcher.count(command) == 1, (
@@ -875,8 +898,31 @@ def test_smoke_script_is_printable_in_the_windows_launcher_console() -> None:
     _read("scripts/smoke_test.py").encode("cp1251")
 
 
-def test_local_temporal_and_spicedb_opt_out_of_external_auth_telemetry_noise() -> None:
-    assert "--allow-no-auth" in _read("services/temporal/entrypoint.sh")
+def test_production_temporal_entrypoint_never_enables_no_auth() -> None:
+    """The shared Compose entrypoint must not opt Temporal out of auth.
+
+    Both supported Compose stacks mount this same entrypoint, so a flag that
+    enables the no-authorizer mode here would also be active in the
+    production-like stack.  Local development can use an explicit override
+    when needed; the production-capable path must remain fail-closed.
+    """
+    entrypoint = _read("services/temporal/entrypoint.sh")
+    assert "--allow-no-auth" not in entrypoint
+    assert "TEMPORAL_ALLOW_NO_AUTH" not in entrypoint
+
+    temporal_config = yaml.safe_load(_read("services/temporal/config.yaml"))
+    authorization = temporal_config["global"]["authorization"]
+    assert authorization["claimMapper"] == "default"
+    assert authorization["jwtKeyProvider"]["keySourceURIs"]
+
+    for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
+        temporal = _compose(relative_path)["services"]["temporal"]
+        assert temporal["entrypoint"] == [
+            "/bin/sh",
+            "/etc/temporal/wave144-entrypoint.sh",
+        ]
+        assert "TEMPORAL_ALLOW_NO_AUTH" not in temporal.get("environment", {})
+
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
         command = _compose(relative_path)["services"]["spicedb"]["command"]
         assert "--telemetry-endpoint=" in command
@@ -916,6 +962,7 @@ def test_launcher_manages_independent_application_secrets() -> None:
     launcher = _read("start-docker.ps1")
     example = _env_values(".env.docker.example")
     managed = {
+        "TOKEN_HMAC_SECRET",
         "CSRF_HMAC_SECRET",
         "INTERNAL_HMAC_SECRET",
         "IDEMPOTENCY_HMAC_SECRET",
@@ -931,6 +978,9 @@ def test_launcher_manages_independent_application_secrets() -> None:
 
     gateway = _compose("docker-compose.full.yml")["services"]["gateway"]
     assert gateway["environment"]["INTERNAL_HMAC_SECRET"] == (
+        "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
+    )
+    assert gateway["environment"]["FILE_PROCESSING_CAPABILITY_SECRET"] == (
         "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
     )
 
@@ -1059,6 +1109,20 @@ def test_compose_has_no_hardcoded_or_optional_secret_fallbacks() -> None:
 def test_go_overlay_uses_the_base_nats_credential_contract() -> None:
     services = _compose("docker-compose.go.yml")["services"]
 
+    expected_internal_token = "${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - set in .env file}"
+    assert (
+        services["backend"]["environment"]["INTERNAL_AUTH_TOKEN"]
+        == expected_internal_token
+    )
+    assert (
+        services["ws-hub"]["environment"]["WS_HUB_INTERNAL_SECRET"]
+        == expected_internal_token
+    )
+    assert (
+        services["ws-hub"]["environment"]["INTERNAL_AUTH_TOKEN"]
+        == expected_internal_token
+    )
+
     for service_name, env_name in (
         ("ws-hub", "NATS_URL"),
         ("file-processor", "FP_NATS_URL"),
@@ -1072,10 +1136,27 @@ def test_go_overlay_uses_the_base_nats_credential_contract() -> None:
     ]["NATS_URL"]
     assert "${NATS_PASSWORD:?" in ci_ws_hub_url
     assert "NATS_AUTH_TOKEN" not in ci_ws_hub_url
+    ci_services = _compose("docker-compose.ci-loadtest.yml")["services"]
+    assert (
+        ci_services["backend"]["environment"]["INTERNAL_AUTH_TOKEN"]
+        == "${WS_HUB_INTERNAL_SECRET}"
+    )
+    assert (
+        ci_services["ws-hub"]["environment"]["INTERNAL_AUTH_TOKEN"]
+        == "${WS_HUB_INTERNAL_SECRET}"
+    )
 
     nightly = _read(".github/workflows/nightly-full-gate.yml")
     load_job = nightly.split("  load-and-chaos:", maxsplit=1)[1]
     assert "NATS_PASSWORD: nightly-nats-token" in load_job
+
+
+def test_full_compose_propagates_internal_chat_auth_token() -> None:
+    services = _compose("docker-compose.full.yml")["services"]
+    expected_token = "${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - run start-docker.ps1}"
+
+    assert services["backend"]["environment"]["INTERNAL_AUTH_TOKEN"] == expected_token
+    assert services["ws-hub"]["environment"]["INTERNAL_AUTH_TOKEN"] == expected_token
 
 
 def test_postgres_does_not_enable_retired_cdc_replication_settings() -> None:
@@ -1099,10 +1180,31 @@ def test_file_processor_uses_prefixed_env_and_file_based_rs256_verification() ->
         assert environment["FP_RSA_PUBLIC_KEY_FILE"] == (
             "/app/.secrets/jwt_rs256.pub.pem"
         )
+        assert (
+            environment["FP_JWT_AUDIENCE"]
+            == "${JWT_AUDIENCE:-university-ecosystem-api}"
+        )
+        assert environment["FP_JWT_ISSUER"] == "${JWT_ISSUER:-university-ecosystem}"
+        assert environment["FP_JWKS_URL"] == "http://backend:8000/.well-known/jwks.json"
+        assert (
+            environment["FP_JWKS_REFRESH_INTERVAL"] == "${JWKS_REFRESH_INTERVAL:-300}"
+        )
+        assert environment["FP_JWT_ACTIVE_KID"] == "${JWT_ACTIVE_KID:-primary}"
+        assert "FP_REVOCATION_REDIS_URL" in environment
         assert all(
             not key.startswith(("NATS_", "MINIO_", "JWT_")) for key in environment
         )
         assert "./.secrets:/app/.secrets:ro" in service["volumes"]
+
+        revocation_service = (
+            "revocation-redis"
+            if relative_path == "docker-compose.full.yml"
+            else "revocation-valkey"
+        )
+        assert (
+            service["depends_on"][revocation_service]["condition"] == "service_healthy"
+        )
+        assert "revocation_net" in service["networks"]
 
 
 def test_outbox_healthcheck_requires_a_recent_event_loop_heartbeat() -> None:
@@ -1297,6 +1399,8 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "--set",
         "backend.config.auditLogSecret=ci-placeholder",
         "--set",
+        "backend.config.tokenHMACSecret=ci-placeholder",
+        "--set",
         "backend.config.idempotencyHMACSecret=ci-placeholder",
         "--set",
         "backend.config.mfaEmailOtpHMACKeys=test-key:ci-placeholder",
@@ -1464,6 +1568,9 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "name": "contract-secrets",
         "key": "internal-hmac-secret",
     }
+    assert gateway_env["FILE_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
+        "secretKeyRef"
+    ] == {"name": "contract-secrets", "key": "internal-hmac-secret"}
     outbox = deployments["contract-university-ecosystem-outbox-worker"]
     outbox_env = {
         entry["name"]: entry
@@ -1517,6 +1624,9 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     assert file_processor_env["FP_OTLP_INSECURE"]["value"] == "true"
     assert file_processor_env["FP_TEMPORAL_TLS_DISABLED"]["value"] == "true"
     assert file_processor_env["FP_MINIO_SECURE"]["value"] == "false"
+    assert file_processor_env["FP_PROCESSING_CAPABILITY_SECRET"]["valueFrom"][
+        "secretKeyRef"
+    ] == {"name": "contract-secrets", "key": "internal-hmac-secret"}
 
     for item in resources:
         if item.get("kind") == "Service" and (
@@ -1579,7 +1689,7 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
     dump = pod_spec["initContainers"][0]
     upload = pod_spec["containers"][0]
     assert "pg_dump" in " ".join(dump["command"] + dump["args"])
-    assert "mc cp" in " ".join(upload["command"] + upload["args"])
+    assert "rclone copyto" in " ".join(upload["command"] + upload["args"])
     dump_env = {entry["name"]: entry for entry in dump["env"]}
     assert dump_env["DATABASE_URL"]["valueFrom"]["secretKeyRef"] == {
         "name": "university-connections",
@@ -1587,8 +1697,8 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
     }
     upload_env = {entry["name"]: entry for entry in upload["env"]}
     for variable, key in {
-        "MINIO_ACCESS_KEY": "minio-access-key",
-        "MINIO_SECRET_KEY": "minio-secret-key",  # pragma: allowlist secret
+        "RCLONE_CONFIG_BACKUP_ACCESS_KEY_ID": "minio-access-key",
+        "RCLONE_CONFIG_BACKUP_SECRET_ACCESS_KEY": "minio-secret-key",  # pragma: allowlist secret
     }.items():
         assert upload_env[variable]["valueFrom"]["secretKeyRef"] == {
             "name": "managed-application-secrets",
@@ -1731,16 +1841,16 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     assert "--replace golang.org/x/net=golang.org/x/net@v0.56.0" in dockerfile
     assert "--replace golang.org/x/text=golang.org/x/text@v0.39.0" in dockerfile
     assert (
-        "--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.1" in dockerfile
+        "--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.2" in dockerfile
     )
     for package in (
-        "libapk=3.0.7-r0",
-        "apk-tools=3.0.7-r0",
+        "libapk=3.0.8-r0",
+        "apk-tools=3.0.8-r0",
         "libcrypto3=3.5.8-r0",
         "libssl3=3.5.8-r0",
         "c-ares=1.34.8-r0",
-        "libcurl=8.20.0-r0",
-        "curl=8.20.0-r0",
+        "libcurl=8.22.0-r0",
+        "curl=8.22.0-r0",
     ):
         assert package in dockerfile
     assert "apk upgrade" not in dockerfile
@@ -1892,7 +2002,7 @@ def test_only_the_caddy_edge_binds_compose_ports_on_all_interfaces() -> None:
 
 def test_infra_override_preserves_base_images_and_replaces_host_ports() -> None:
     source = _read("docker-compose.infra.yml")
-    compose = yaml.safe_load(source.replace("!override", ""))
+    compose = yaml.safe_load(source.replace("!override", "").replace("!reset", ""))
     services = compose["services"]
 
     assert "caddy" not in services
@@ -2020,12 +2130,70 @@ def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
     assert "GRPC_HEALTH_PROBE_VERSION=v0.4.51" in health_probe
     for dependency in (
         "github.com/spiffe/go-spiffe/v2@v2.7.0",
-        "google.golang.org/grpc@v1.83.1",
-        "golang.org/x/net@v0.57.0",
-        "golang.org/x/text@v0.40.0",
+        "google.golang.org/grpc@v1.83.2",
+        "golang.org/x/net@v0.58.0",
+        "golang.org/x/text@v0.41.0",
     ):
         assert dependency in health_probe
     assert "go mod download" in health_probe
     assert "CGO_ENABLED=0 GOOS=linux go build" in health_probe
     assert "-X main.versionTag=${GRPC_HEALTH_PROBE_VERSION}" in health_probe
     assert "wget" not in health_probe
+
+
+def test_migration_image_ships_every_first_party_package_alembic_imports() -> None:
+    """`alembic upgrade head` runs from the backend runtime image.
+
+    alembic/env.py once imported a helper from scripts/, which that image
+    does not contain, so the migrations container crash-looped and the
+    backend never started.
+    """
+    import ast
+
+    env_tree = ast.parse(_read("alembic/env.py"))
+    imported_roots = {
+        (node.module or "").split(".")[0]
+        for node in ast.walk(env_tree)
+        if isinstance(node, ast.ImportFrom) and node.level == 0
+    } | {
+        alias.name.split(".")[0]
+        for node in ast.walk(env_tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    first_party = {root for root in imported_roots if (ROOT / root).is_dir()}
+    first_party.discard("alembic")  # the library, not the migrations directory
+
+    dockerfile = _read("backend.Dockerfile")
+    runtime = dockerfile[dockerfile.index("AS runtime") :]
+    copied = set(re.findall(r"^COPY --chown=app:app (\S+) \./", runtime, re.MULTILINE))
+
+    assert "scripts" not in first_party
+    assert first_party <= copied, first_party - copied
+    assert {"app", "alembic", "alembic.ini"} <= copied
+
+
+def test_prometheus_target_expectation_matches_the_configured_jobs() -> None:
+    script = _read("start-docker.ps1")
+    wait = script[script.index("function Wait-PrometheusTargets") :]
+    wait = wait[: wait.index("\nfunction ")]
+
+    # Storage is always SeaweedFS, which has no MinIO metrics job: every job
+    # the launcher waits for must exist in the scrape configuration, and the
+    # storage topology no longer changes the expectation.
+    expected = re.search(r"\$expectedJobs = @\(([^)]*)\)", wait)
+    assert expected is not None
+    expected_jobs = set(re.findall(r'"([^"]+)"', expected.group(1)))
+    configured = {
+        job["job_name"]
+        for job in yaml.safe_load(_read("infrastructure/observability/prometheus.yml"))[
+            "scrape_configs"
+        ]
+    }
+    assert "minio" not in expected_jobs | configured
+    assert expected_jobs <= configured
+    assert "$expectedJobs +=" not in wait
+    assert "SeaweedFSStorage" not in script
+    assert "StorageIsSeaweedFS" not in script
+    assert "MinIO Console" not in script
+    assert "localhost:9001" not in script

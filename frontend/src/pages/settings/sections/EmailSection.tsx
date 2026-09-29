@@ -91,7 +91,7 @@ export function EmailSection({
                 variant="solid"
                 disabled={emailBusy || !emailValue || !emailPassword}
                 className="h-10 shrink-0 w-full sm:w-auto"
-                startIcon={emailBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
+                leadingIcon={emailBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
               >
                 {t("common:buttons.save")}
               </Button>

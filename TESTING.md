@@ -113,6 +113,37 @@ nightly branch commands are pinned in
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml); use that workflow as the
 cross-platform report contract.
 
+## Repository gates
+
+```powershell
+# Hermetic developer-harness checks (--include-global-config also inspects
+# optional per-developer configuration)
+python verify_harness.py --repo-only
+# Skip, orphan and anti-pattern inventory
+uv run python scripts/quality/check_orphans_and_anti_patterns.py
+# Relative Markdown links and heading anchors
+uv run pytest tests/test_markdown_links.py -q
+```
+
+## Browser tests
+
+```powershell
+# Mocked-API Playwright matrix (Chromium, Firefox, WebKit, mobile WebKit)
+npm run test:e2e --prefix frontend
+
+# Live acceptance lane: real backend, database, seeded roles and Mailpit
+python scripts/live_stand.py up
+python scripts/live_stand.py seed
+npm run test:e2e:live --prefix frontend
+python scripts/live_stand.py down
+```
+
+The live stand runs from a separate `../ue-live` worktree and Compose project
+(`docker-compose.full.yml` plus `docker-compose.live.yml`), so it never touches
+the developer's own stack. Infrastructure-backed checks run only when their
+services are available; a missing optional service is reported as an explicit
+environment skip, never as a pass.
+
 ## Normalize and validate evidence
 
 Raw coverage output is not the final gate. CI normalizes all reports into

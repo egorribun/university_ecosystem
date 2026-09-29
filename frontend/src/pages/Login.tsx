@@ -1,10 +1,6 @@
 import { useEffect, useRef } from "react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
 import "@/styles/tokens/auth.css"
-import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
-import AuthBackdrop from "@/components/auth/AuthBackdrop"
-import useMediaQuery from "@/hooks/useMediaQuery"
-import { LoginHero } from "@/components/auth/LoginHero"
 import { LoginCredentialForm } from "@/components/auth/LoginCredentialForm"
 import { MfaChallengeView } from "@/components/auth/MfaChallengeView"
 import { useLoginForm, useMfaFlow } from "@/hooks/auth/useLoginFlow"
@@ -54,29 +50,16 @@ const Login = () => {
     }
   }, [user, navigate, search])
 
-  // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
-  // per W184 SW6). MotionConfig at AppProviders (W124 SW1) handles framer-
-  // motion globally; explicit prop here is for AuthBackdrop's mobile GPU
-  // blur-drop branch (per W183 SW7 + W184 SW5 convention).
-  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
-
   // MFA challenge screen — shown when backend requires second factor
   if (mfa.loginChallenge) {
     return <MfaChallengeView activeEmail={form.activeEmail} mfa={mfa} />
   }
 
-  // Primary login screen — hero panel + credential form. Wave 186 SW3 adds
-  // `.auth-theme` scope + AuthBackdrop ambient orbs (teal/cyan) coexisting
-  // with ParticleAuthBackground (W113 SW6) — Backdrop = static pixel-anchored
-  // orbs at -z-1, particles = ambient canvas overlay.
   return (
-    <div className="auth-theme relative min-h-screen w-full overflow-hidden bg-page text-text-primary">
-      <AuthBackdrop prefersReducedMotion={prefersReducedMotion} />
-      <ParticleAuthBackground />
-      <div className="relative z-content mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-12 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
-        <LoginHero />
+    <div className="auth-theme min-h-screen bg-page text-text-primary">
+      <main className="auth-shell auth-shell--login" aria-labelledby="login-heading">
         <LoginCredentialForm form={form} />
-      </div>
+      </main>
     </div>
   )
 }

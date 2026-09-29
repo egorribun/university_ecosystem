@@ -25,13 +25,11 @@ const getAllowedScriptOrigins = (base: Location): Set<string> => {
   } catch {
     // ignore
   }
-  const backendOrigin = import.meta.env.VITE_BACKEND_ORIGIN
-  if (backendOrigin) {
-    try {
-      origins.add(new URL(backendOrigin, base.href).origin)
-    } catch {
-      // ignore
-    }
+  // An unset backend origin resolves to the page origin, already allowed above.
+  try {
+    origins.add(new URL(import.meta.env.VITE_BACKEND_ORIGIN ?? base.href, base.href).origin)
+  } catch {
+    // ignore
   }
   return origins
 }
@@ -96,7 +94,7 @@ const ensureAppPolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null => {
 export const ensureTrustedTypesPolicies = async (): Promise<void> => {
   if (typeof window === "undefined") return
   const win = window as TrustedTypesWindow
-  if (!win.trustedTypes) return
+  // Both helpers return early without Trusted Types support.
   await ensureSanitizePolicy(win)
   ensureAppPolicy(win)
 }

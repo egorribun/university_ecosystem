@@ -28,6 +28,26 @@
 }
 
 @layer base {
+  .auth-shell {
+    display: flex;
+    min-height: 100vh;
+    min-height: 100dvh;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    margin-inline: auto;
+    padding: max(3rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+      max(3rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  }
+
+  .auth-shell--login {
+    max-width: 36rem;
+  }
+
+  .auth-shell--register {
+    max-width: 42rem;
+  }
+
   /* ═══════════════════════════════════════════════════════
      AUTH PAGE TOKENS
      Scoped under .auth-theme. Teal/cyan "secure access" palette —
@@ -158,6 +178,14 @@
       0 0 0 1px var(--auth-card-glow);
   }
 
+  /* Authentication forms are not interactive cards: hovering them must not
+     add decorative glow or animate the entire panel. */
+  .auth-shell .auth-card-matte,
+  .auth-shell .auth-card-matte:hover {
+    box-shadow: var(--auth-card-shadow);
+    transition: none;
+  }
+
   /* ═══════════════════════════════════════════════════════
      Auth skeleton (matches .profile-skeleton W184 SW5 +
      .messenger-skeleton W181 SW1 pattern). For loading states
@@ -223,5 +251,13 @@
       background: white;
       box-shadow: 0 0 0 1px var(--color-slate-200, #e5e7eb);
     }
+  }
+}
+
+@layer utilities {
+  .auth-shell .auth-submit {
+    background: var(--gradient-brand);
+    color: var(--text-inverse);
+    box-shadow: none;
   }
 }

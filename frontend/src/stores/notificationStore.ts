@@ -8,11 +8,7 @@
 import { create } from "zustand"
 import { devtools, persist } from "zustand/middleware"
 import { useShallow } from "zustand/react/shallow"
-import {
-  CANONICAL_NOTIFICATION_TOPICS,
-  normalizeNotificationTopic,
-  type NotificationTopic,
-} from "@/notifications/contract"
+import { normalizeNotificationTopic } from "@/notifications/contract"
 
 import type {
   NotificationTopicKey,
@@ -166,6 +162,3 @@ const notificationActionsSelector = (state: NotificationState) => ({
 
 export const useNotificationActions = () =>
   useNotificationStore(useShallow(notificationActionsSelector))
-
-export { CANONICAL_NOTIFICATION_TOPICS }
-export type { NotificationTopic }

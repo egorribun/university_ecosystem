@@ -6,6 +6,7 @@ import type { ReactNode } from "react"
 import { ChatWindow } from "@/components/messenger/ChatWindow"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { Message } from "@/components/messenger/types"
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
 const { motionState } = vi.hoisted(() => ({
   motionState: { reduced: false },
@@ -41,8 +42,8 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
-  default: ({ alt, className }: { alt?: string; className?: string }) => (
-    <img alt={alt} className={className} />
+  default: ({ alt, className, srcRaw }: { alt?: string; className?: string; srcRaw?: string }) => (
+    <img alt={alt} className={className} src={srcRaw} />
   ),
 }))
 
@@ -136,13 +137,50 @@ describe("ChatWindow — reply / forward affordances (all bubbles)", () => {
   })
 
   it("renders the empty placeholder span when no affordance applies (received, no handlers)", () => {
-    render(<ChatWindow messages={[makeMessage({ id: "p1", text: "theirs", isMe: false })]} />, {
-      wrapper,
-    })
+    const { container } = render(
+      <ChatWindow messages={[makeMessage({ id: "p1", text: "theirs", isMe: false })]} />,
+      {
+        wrapper,
+      }
+    )
     // No reply/forward/edit/delete buttons → falls into the <span aria-hidden> branch.
     expect(screen.queryByRole("button", { name: "messenger:reply" })).toBeFalsy()
     expect(screen.queryByRole("button", { name: "messenger:forward" })).toBeFalsy()
     expect(screen.queryByRole("button", { name: "messenger:editMessage" })).toBeFalsy()
+    expect(container.querySelector("div.flex.items-center.gap-0\\.5")).toBeNull()
+    expect(container.querySelector('span[aria-hidden="true"]')).not.toBeNull()
+  })
+
+  it("uses the default avatar when a sender has no avatar", () => {
+    render(<ChatWindow messages={[makeMessage({ id: "avatar-fallback", text: "hello" })]} />, {
+      wrapper,
+    })
+
+    expect(screen.getByRole("img", { name: "Alice" })).toHaveAttribute(
+      "src",
+      AVATAR_PLACEHOLDER_URL
+    )
+  })
+
+  it("preserves a sender-provided avatar URL", () => {
+    render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "avatar-custom",
+            text: "hello",
+            senderName: "Bob",
+            senderAvatar: "https://cdn.example.test/bob.png",
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+
+    expect(screen.getByRole("img", { name: "Bob" })).toHaveAttribute(
+      "src",
+      "https://cdn.example.test/bob.png"
+    )
   })
 })
 

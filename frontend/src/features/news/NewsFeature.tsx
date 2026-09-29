@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect, useMemo } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { useDebounced } from "@/hooks/useDebounced"
+import { useStableListHeight } from "@/hooks/ui/useStableListHeight"
 import { useBookmarks } from "@/hooks/useBookmarks"
 import { useNewsKeyboardNav } from "@/hooks/useNewsKeyboardNav"
 import { useURLState } from "@/hooks/useURLState"
@@ -116,6 +117,16 @@ export const NewsFeature = () => {
     requiresCompleteDataset,
   ])
 
+  // A narrower filter first shows only the loaded matches (or nothing while a
+  // refetch runs); hold the list's height until it settles so the page cannot
+  // jump up.
+  const listContainerRef = useRef<HTMLDivElement>(null)
+  const listMinHeight = useStableListHeight(
+    listContainerRef,
+    `${activeCategory}|${sortMode}|${debouncedSearch.trim()}`,
+    isFetching || (requiresCompleteDataset && Boolean(hasNextPage))
+  )
+
   /* ── Keyboard navigation ── */
   const { activeIndex, registerRef } = useNewsKeyboardNav(filteredNews)
 
@@ -134,20 +145,22 @@ export const NewsFeature = () => {
         bookmarkCount={bookmarkCount}
       />
 
-      <NewsList
-        newsList={filteredNews}
-        isInitialLoading={isInitialLoading}
-        isFetching={isFetching}
-        isFetchingNextPage={isFetchingNextPage}
-        hasNextPage={Boolean(hasNextPage)}
-        fetchNextPage={fetchNextPage}
-        refreshNews={refreshNews}
-        onAddClick={() => setAddOpen(true)}
-        isAdmin={user?.role === "admin"}
-        isOnline={isOnline}
-        activeKeyboardIndex={activeIndex}
-        registerCardRef={registerRef}
-      />
+      <div ref={listContainerRef} style={{ minHeight: listMinHeight }}>
+        <NewsList
+          newsList={filteredNews}
+          isInitialLoading={isInitialLoading}
+          isFetching={isFetching}
+          isFetchingNextPage={isFetchingNextPage}
+          hasNextPage={Boolean(hasNextPage)}
+          fetchNextPage={fetchNextPage}
+          refreshNews={refreshNews}
+          onAddClick={() => setAddOpen(true)}
+          isAdmin={user?.role === "admin"}
+          isOnline={isOnline}
+          activeKeyboardIndex={activeIndex}
+          registerCardRef={registerRef}
+        />
+      </div>
 
       <NewsFormDialog open={addOpen} onClose={() => setAddOpen(false)} />
 

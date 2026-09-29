@@ -3,9 +3,9 @@
 /**
  * crypto.worker.ts ↔ WASM parity KATs (testing session 10, Stream D).
  *
- * Drives the worker's message protocol end-to-end against the REAL
- * uni_wasm_crypto WASM build and asserts byte-exact parity with the RFC
- * vectors cross-validated in frontend/rust-crypto/src/lib.rs (session 9):
+ * Drives the worker's message protocol with an independent node:crypto
+ * implementation of the WASM boundary and checks the RFC vectors also
+ * covered by native Rust and real-WASM runtime smoke tests:
  * PBKDF2 RFC 7914 §11, HMAC RFC 4231 TC1/TC2, scrypt RFC 7914 §12 V1/V2.
  */
 
@@ -24,10 +24,10 @@ vi.mock("../../../rust-crypto/pkg/uni_wasm_crypto.js", () => {
           return derived.toString("hex")
         }
       ),
-    hmac_sha256_sign: vi.fn().mockImplementation((key: string, message: string) => {
-      const hmac = crypto.createHmac("sha256", Buffer.from(key, "binary"))
+    hmac_sha256_sign_base64: vi.fn().mockImplementation((key: string, message: string) => {
+      const hmac = crypto.createHmac("sha256", Buffer.from(key, "utf8"))
       hmac.update(message)
-      return hmac.digest("hex")
+      return hmac.digest("base64")
     }),
     scrypt_derive: vi
       .fn()

@@ -6,7 +6,7 @@ from dishka import Provider, Scope, make_async_container, provide
 from httpx import AsyncClient
 
 import app.models as models
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user_from_dishka
 from app.main import app
 from app.services.search import SearchService
 
@@ -65,7 +65,7 @@ async def test_unified_search_all_success(
         },
     ]
 
-    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_current_user_from_dishka] = lambda: mock_user
 
     class TestProvider(Provider):
         @provide(scope=Scope.APP)
@@ -131,7 +131,7 @@ async def test_unified_search_only_news(
         ],
     }
 
-    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_current_user_from_dishka] = lambda: mock_user
 
     class TestProvider(Provider):
         @provide(scope=Scope.APP)
@@ -170,7 +170,7 @@ async def test_unified_search_connection_error_fallback(
         "Failed to connect to Elasticsearch"
     )
 
-    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_current_user_from_dishka] = lambda: mock_user
 
     class TestProvider(Provider):
         @provide(scope=Scope.APP)
@@ -217,7 +217,7 @@ async def test_unified_search_only_events(
         ],
     }
 
-    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_current_user_from_dishka] = lambda: mock_user
 
     class TestProvider(Provider):
         @provide(scope=Scope.APP)
@@ -249,7 +249,7 @@ async def test_unified_search_only_events(
 async def test_unified_search_invalid_type(
     async_client: AsyncClient, mock_user, mock_search_service
 ):
-    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_current_user_from_dishka] = lambda: mock_user
 
     class TestProvider(Provider):
         @provide(scope=Scope.APP)
@@ -291,7 +291,7 @@ async def test_unified_search_non_string_fallback(
         ],
     }
 
-    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_current_user_from_dishka] = lambda: mock_user
 
     class TestProvider(Provider):
         @provide(scope=Scope.APP)

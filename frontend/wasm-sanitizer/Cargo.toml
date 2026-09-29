@@ -3,6 +3,7 @@ name = "wasm-sanitizer"
 version = "0.1.0"
 authors = ["Admin"]
 edition = "2021"
+license = "MIT"
 # Ignore false positive unused dev-dependency in cargo-udeps
 [package.metadata.cargo-udeps.ignore]
 development = ["wasm-bindgen-test"]

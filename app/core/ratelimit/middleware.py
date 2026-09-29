@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import time
 import uuid
 from typing import TYPE_CHECKING
@@ -12,16 +11,18 @@ from starlette.responses import JSONResponse, Response
 
 from app.core.exceptions.handlers import asgi_json_problem
 from app.core.localization import resolve_locale
+from app.core.logging import get_logger
 from app.core.ratelimit.contract import RateLimitStrategy
 from app.core.ratelimit.models import EndpointRateLimit, RateLimitInfo
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
 from app.core.ratelimit.utils import resolve_client_ip
+from app.core.static import is_private_static_path
 
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-logger = logging.getLogger("app.security.ratelimit")
+logger = get_logger("app.security.ratelimit")
 
 _rate_limit_fallback_total = Counter(
     "rate_limit_fallback_total",
@@ -72,7 +73,11 @@ class RateLimitMiddleware:
         method = request.method.upper()
         path = request.url.path or ""
 
-        if method == "HEAD" and self._is_static_like_path(path):
+        if (
+            method == "HEAD"
+            and self._is_static_like_path(path)
+            and not is_private_static_path(path)
+        ):
             response = Response(status_code=200)
             await response(scope, receive, send)
             return

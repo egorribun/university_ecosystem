@@ -61,6 +61,26 @@ func TestKeyFunc_HS256DowngradeRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "HS256 token rejected")
 }
 
+func TestStartJWKSRefresher_RejectsHS256BeforeFirstSuccessfulFetch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "JWKS temporarily unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	m := NewJWTMiddleware(testSecret, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	m.StartJWKSRefresher(ctx, server.URL, time.Hour, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	tok := &jwt.Token{
+		Method: jwt.SigningMethodHS256,
+		Header: map[string]interface{}{"alg": "HS256"},
+	}
+	_, err := m.keyFunc(tok)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HS256 token rejected")
+}
+
 func TestValidate_InactiveUserAccount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	m := newUnrevokedJWTMiddleware(t)

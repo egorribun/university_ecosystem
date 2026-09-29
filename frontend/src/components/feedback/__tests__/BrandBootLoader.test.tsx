@@ -151,11 +151,11 @@ describe("BrandBootLoader", () => {
     expect(loader).toHaveAttribute("data-state", "exiting")
   })
 
-  it("commits the timeout fallback when the browser timer fires outside React act", () => {
+  it("commits the timeout fallback when the browser timer fires", () => {
     render(<BrandBootLoader />)
     act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
 
-    vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
+    act(() => vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS))
 
     expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
   })

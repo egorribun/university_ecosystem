@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("framer-motion", () => {
@@ -39,7 +39,8 @@ describe("PageTransition lazy-module failure", () => {
       removeEventListener: vi.fn(),
     } as unknown as MediaQueryList)
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
-    const { default: PageTransition } = await import("@/components/motion/PageTransition")
+    const { default: PageTransition, loadMotionModule } =
+      await import("@/components/motion/PageTransition")
 
     render(
       <PageTransition>
@@ -48,6 +49,11 @@ describe("PageTransition lazy-module failure", () => {
     )
 
     expect(screen.getByText("Production fallback child")).toBeInTheDocument()
-    await waitFor(() => expect(warn).not.toHaveBeenCalled())
+    // Let the rejected import settle before asserting that nothing was logged.
+    await expect(loadMotionModule()).rejects.toBeInstanceOf(Error)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(warn).not.toHaveBeenCalled()
   })
 })

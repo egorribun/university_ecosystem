@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ChangeEvent } from "react"
-import { useQueryClient } from "@tanstack/react-query"
-import { deleteSubscription } from "@/api/notifications"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { deleteSubscription, fetchPushTopics, updatePushTopics } from "@/api/notifications"
 import { logError, logWarning } from "@/app/logger"
 import {
   isPushSupported,
@@ -9,11 +9,12 @@ import {
   ensurePushSubscription,
   setPushConsent,
   getPersistedTopics,
-  getExistingPushSubscription,
-  hasPushConsent,
+  getOwnedPushSubscription,
   setPersistedTopics,
 } from "@/push/subscribe"
-import { currentUserQueryKey, useAuth } from "@/contexts/AuthContext"
+import { getConfirmedUserId } from "@/stores/authIdentity"
+import { useAuthStore } from "@/stores/useAuthStore"
+import type { PushTopicsResponse } from "@/types/notifications"
 import { isSafariIOS } from "@/utils/browser"
 import { useTranslation } from "react-i18next"
 import {
@@ -27,7 +28,7 @@ export type NotificationTopicKey = NotificationTopic
 
 export const NOTIFICATION_TOPIC_KEYS: NotificationTopicKey[] = [...CANONICAL_NOTIFICATION_TOPICS]
 
-export const DEFAULT_NOTIFICATION_TOPICS: Record<NotificationTopicKey, boolean> = {
+const DEFAULT_NOTIFICATION_TOPICS: Record<NotificationTopicKey, boolean> = {
   "news.published": true,
   "schedule.changed": true,
   "events.published": true,
@@ -46,29 +47,74 @@ export type UsePushPreferencesOptions = {
 
 const SAFARI_IOS_GUIDE_URL = "https://support.apple.com/ru-ru/guide/iphone/iph42ab2f3a7/ios"
 
+function toTopicState(topics: readonly unknown[]): Record<NotificationTopicKey, boolean> {
+  const selected = new Set(normalizeNotificationTopics(topics))
+  return Object.fromEntries(
+    NOTIFICATION_TOPIC_KEYS.map((key) => [key, selected.has(key)])
+  ) as Record<NotificationTopicKey, boolean>
+}
+
+/** Only SSR lacks the Notification API; it renders the undecided state. */
+const readNotificationPermission = (): NotificationPermission =>
+  typeof Notification === "undefined" ? "default" : Notification.permission
+
+/** The session answered for another account than the query was keyed by. */
+class PushTopicsAccountChangedError extends Error {}
+
 export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const { onNotify } = options ?? {}
   const { t } = useTranslation(["notifications"])
 
-  const topicKeys = useMemo(() => NOTIFICATION_TOPIC_KEYS, [])
-  const { user } = useAuth()
-  const activeUserId = user?.id ?? null
-  const [topicState, setTopicState] = useState<Record<NotificationTopicKey, boolean>>(() => {
-    // Initial state needs to be synchronous, but getPersistedTopics is in subscribe.ts
-    // We'll use a local check or just default for now until effect runs
-    return { ...DEFAULT_NOTIFICATION_TOPICS }
+  // SSR stubs, cache placeholders and hydrating sessions have no identity.
+  const confirmedUserId = useAuthStore(getConfirmedUserId)
+  const pushTopicsQuery = useQuery({
+    queryKey: ["notifications", "push-topics", confirmedUserId],
+    queryFn: async (): Promise<PushTopicsResponse> => {
+      const response = await fetchPushTopics()
+      // The session answered for whoever is signed in now; never store that
+      // answer under the account this query was started for.
+      if (getConfirmedUserId(useAuthStore.getState()) !== confirmedUserId) {
+        throw new PushTopicsAccountChangedError()
+      }
+      // The local copy only mirrors the server's canonical preference.
+      setPersistedTopics(response.has_preferences ? response.topics : null, {
+        userId: confirmedUserId,
+      })
+      return response
+    },
+    enabled: confirmedUserId !== null && isPushSupported(),
   })
+  const serverTopics = pushTopicsQuery.data
+  // Until the canonical preference is known, an explicit toggle would
+  // overwrite it (e.g. an opt-out) with a placeholder selection.
+  const topicsReady = pushTopicsQuery.isSuccess
+  const [topicState, setTopicState] = useState<Record<NotificationTopicKey, boolean>>(() => ({
+    ...DEFAULT_NOTIFICATION_TOPICS,
+  }))
+  // Hydrate during render: server data wins; the cached mirror is only a
+  // placeholder for a newly confirmed account until the server responds.
+  const topicSource = serverTopics ?? confirmedUserId
+  const [appliedTopicSource, setAppliedTopicSource] = useState<typeof topicSource>(null)
+  if (topicSource !== appliedTopicSource) {
+    setAppliedTopicSource(topicSource)
+    setTopicState(
+      toTopicState(
+        serverTopics
+          ? serverTopics.has_preferences
+            ? serverTopics.topics
+            : NOTIFICATION_TOPIC_KEYS
+          : (getPersistedTopics({ userId: confirmedUserId }) ?? NOTIFICATION_TOPIC_KEYS)
+      )
+    )
+  }
+  // Topics chosen while notifications are off are sent explicitly on enable.
+  const pendingExplicitTopicsRef = useRef<string[] | undefined>(undefined)
   const [pushSupported, setPushSupported] = useState(true)
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
-    () => {
-      if (typeof window === "undefined" || typeof Notification === "undefined") return "default"
-      return Notification.permission
-    }
-  )
+  const [notificationPermission, setNotificationPermission] = useState(readNotificationPermission)
   const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushInitializing, setPushInitializing] = useState(true)
-  const [safariIOS] = useState(() => isSafariIOS())
+  const [safariIOS] = useState(isSafariIOS)
   const queryClient = useQueryClient()
   const topicLabels = useMemo(
     () =>
@@ -87,12 +133,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       predicate: (query) => {
         const key = query.queryKey
         if (!Array.isArray(key)) return false
-        if (
-          key.length === currentUserQueryKey.length &&
-          key.every((value, index) => value === currentUserQueryKey[index])
-        ) {
-          return true
-        }
+        // Also matches the current-user query, ["users", "me"].
         return key.some((value) => value === "notifications" || value === "users")
       },
     })
@@ -106,18 +147,18 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   )
 
   const selectedTopics = useMemo(
-    () => topicKeys.filter((key) => topicState[key]),
-    [topicKeys, topicState]
+    () => NOTIFICATION_TOPIC_KEYS.filter((key) => topicState[key]),
+    [topicState]
   )
 
   const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null)
 
   const notificationsEnabled = optimisticEnabled ?? !!pushSubscription
 
-  const permissionText = useMemo(() => {
-    const key = notificationPermission === "default" ? "default" : notificationPermission
-    return t(`notifications:permission.${key}`)
-  }, [notificationPermission, t])
+  const permissionText = useMemo(
+    () => t(`notifications:permission.${notificationPermission}`),
+    [notificationPermission, t]
+  )
 
   const selectedTopicsDescription = useMemo(() => {
     if (!selectedTopics.length) return t("notifications:messages.noTopics")
@@ -126,24 +167,6 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       .filter(Boolean)
       .join(", ")
   }, [selectedTopics, t, topicLabels])
-
-  const applyServerTopics = useCallback(
-    (topics?: string[] | null) => {
-      if (topics == null) return
-      const next: Record<NotificationTopicKey, boolean> = {} as Record<
-        NotificationTopicKey,
-        boolean
-      >
-      for (const key of topicKeys) {
-        next[key] = false
-      }
-      for (const normalized of normalizeNotificationTopics(topics)) {
-        next[normalized] = true
-      }
-      setTopicState(next)
-    },
-    [topicKeys]
-  )
 
   const enableNotifications = useCallback(async () => {
     if (!isPushSupported()) {
@@ -161,16 +184,36 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     setPushBusy(true)
 
     try {
+      // Safari requires the native permission request to originate from the
+      // button's user activation. Waiting for service-worker readiness first
+      // can lose that activation before the browser sees this call.
+      const requestedPermission =
+        Notification.permission === "default"
+          ? await Notification.requestPermission()
+          : Notification.permission
+      setNotificationPermission(requestedPermission)
+      if (requestedPermission !== "granted") {
+        setOptimisticEnabled(null)
+        notify({
+          text:
+            requestedPermission === "denied"
+              ? t("notifications:messages.enableInSettings")
+              : t("notifications:messages.confirmPermission"),
+          severity: "info",
+        })
+        return
+      }
       const registration = await resolveServiceWorkerRegistration()
       if (!registration) {
         setOptimisticEnabled(null) // Revert optimistic update
         notify({ text: t("notifications:messages.workerNotReady"), severity: "info" })
         return
       }
+      // Never send topics implicitly: the server binds the endpoint to the
+      // account's canonical preference, which may be an explicit opt-out.
       const subscription = await ensurePushSubscription({
         registration,
-        topics: selectedTopics,
-        requestPermission: true,
+        requestPermission: false,
       })
       const permission = Notification.permission
       setNotificationPermission(permission)
@@ -195,10 +238,21 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         setPushSubscription(subscription)
         return
       }
-      const persistedTopics = getPersistedTopics({ userId: activeUserId }) ?? selectedTopics
-      applyServerTopics(persistedTopics)
+      // The endpoint is bound now: reflect that before any topic update.
       setPushSubscription(subscription)
       setPushConsent(true)
+      const pendingTopics = pendingExplicitTopicsRef.current
+      if (pendingTopics !== undefined) {
+        try {
+          await updatePushTopics(subscription.endpoint, pendingTopics)
+          pendingExplicitTopicsRef.current = undefined
+        } catch (error) {
+          logError("Failed to update topics", error)
+          invalidatePushQueries()
+          notify({ text: t("notifications:messages.updateFailed"), severity: "error" })
+          return
+        }
+      }
       invalidatePushQueries()
       notify({ text: t("notifications:messages.enabled"), severity: "success" })
     } catch (error) {
@@ -211,7 +265,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       setPushBusy(false)
       setPushInitializing(false)
     }
-  }, [activeUserId, applyServerTopics, invalidatePushQueries, notify, selectedTopics, t])
+  }, [invalidatePushQueries, notify, t])
 
   const disableNotifications = useCallback(async () => {
     // Optimistic update: instantly show disabled
@@ -275,55 +329,27 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
 
   const handleTopicToggle = useCallback(
     (key: NotificationTopicKey) => async (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+      if (pushBusy || !topicsReady) return
       const previousState = topicState
       const nextState = { ...topicState, [key]: checked }
+      const topicsToSend = NOTIFICATION_TOPIC_KEYS.filter((topic) => nextState[topic])
       setTopicState(nextState)
-      setPersistedTopics(
-        topicKeys.filter((topic) => nextState[topic]),
-        { userId: activeUserId }
-      )
-      if (!notificationsEnabled || pushBusy) return
-      if (!isPushSupported()) {
-        setTopicState(previousState)
+      if (!pushSubscription) {
+        pendingExplicitTopicsRef.current = topicsToSend
         return
       }
       setPushBusy(true)
-      const topicsToSend = topicKeys.filter((topic) => nextState[topic])
       try {
-        const registration = await resolveServiceWorkerRegistration()
-        if (!registration) {
-          setTopicState(previousState)
-          notify({ text: t("notifications:messages.workerUnavailable"), severity: "warning" })
-          return
-        }
-        const subscription = await ensurePushSubscription({
-          registration,
-          topics: topicsToSend,
-          requestPermission: false,
-        })
-        if (!subscription) {
-          setPushSubscription(null)
-          setPushConsent(false)
-          notify({
-            text: t("notifications:messages.subscriptionPermissionHint"),
-            severity: "warning",
-          })
-          setTopicState(previousState)
-          return
-        }
-        const persisted = getPersistedTopics({ userId: activeUserId }) ?? topicsToSend
-        applyServerTopics(persisted)
-        setPushSubscription(subscription)
+        // PATCH, not POST: an empty list must mean "opt out of everything".
+        await updatePushTopics(pushSubscription.endpoint, topicsToSend)
         invalidatePushQueries()
         const label = topicLabels[key]
-        if (label) {
-          notify({
-            text: checked
-              ? t("notifications:messages.topicEnabled", { label })
-              : t("notifications:messages.topicDisabled", { label }),
-            severity: "success",
-          })
-        }
+        notify({
+          text: checked
+            ? t("notifications:messages.topicEnabled", { label })
+            : t("notifications:messages.topicDisabled", { label }),
+          severity: "success",
+        })
       } catch (error) {
         logError("Failed to update topics", error)
         setTopicState(previousState)
@@ -333,13 +359,11 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       }
     },
     [
-      activeUserId,
-      applyServerTopics,
       invalidatePushQueries,
-      notificationsEnabled,
       pushBusy,
-      topicKeys,
+      pushSubscription,
       topicState,
+      topicsReady,
       notify,
       t,
       topicLabels,
@@ -347,21 +371,8 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   )
 
   useEffect(() => {
-    setPushSupported(isPushSupported())
-  }, [])
-
-  useEffect(() => {
     let cancelled = false
     let removeListener: (() => void) | undefined
-
-    const syncPermission = () => {
-      if (typeof Notification === "undefined") {
-        setNotificationPermission("default")
-        return
-      }
-      setNotificationPermission(Notification.permission)
-    }
-    syncPermission()
 
     if (typeof navigator !== "undefined" && navigator.permissions?.query) {
       navigator.permissions
@@ -416,35 +427,13 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
           return
         }
         setPushInitializing(true)
-        const storedTopics = getPersistedTopics({ userId: activeUserId })
-        if (storedTopics !== undefined) {
-          applyServerTopics(storedTopics)
-        }
-        const consented = hasPushConsent()
-        let subscription: PushSubscription | null = null
-        if (
-          consented &&
-          typeof Notification !== "undefined" &&
-          Notification.permission === "granted"
-        ) {
-          subscription = await ensurePushSubscription({
-            topics: storedTopics,
-            requestPermission: false,
-          })
-        } else {
-          subscription = await getExistingPushSubscription()
-        }
+        // A topic choice belongs to the account that made it.
+        pendingExplicitTopicsRef.current = undefined
+        // Read-only: mounting preferences never writes to the server, and a
+        // browser endpoint enabled by another account is not this user's.
+        const subscription = await getOwnedPushSubscription(confirmedUserId)
         if (!active) return
         setPushSubscription(subscription)
-        if (subscription) {
-          if (consented) {
-            setPushConsent(true)
-          }
-          const persisted = getPersistedTopics({ userId: activeUserId })
-          if (persisted !== undefined) {
-            applyServerTopics(persisted)
-          }
-        }
       } catch (error) {
         if (active) {
           logWarning(t("notifications:messages.detectFailed"), error)
@@ -457,11 +446,13 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     return () => {
       active = false
     }
-  }, [activeUserId, applyServerTopics, t])
+  }, [confirmedUserId, t])
 
   return {
-    topicKeys,
+    topicKeys: NOTIFICATION_TOPIC_KEYS,
+    topicLabels,
     topicState,
+    topicsReady,
     setTopicState,
     pushSupported,
     notificationPermission,

@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -11,6 +12,10 @@ import (
 
 	"github.com/university-ecosystem/gateway/internal/config"
 )
+
+func empiricalTestSecrets() (string, string) {
+	return strings.Repeat("jwt-", 16), strings.Repeat("hmac-", 16)
+}
 
 // TestEmpirical_Gateway_AltSvcAndIngress verifies HTTP/3 Alt-Svc header injection and route proxying.
 func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
@@ -34,14 +39,15 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 
 	// 2. Test Gateway with H3Enabled = true
 	t.Run("Alt-Svc Header Present when H3 Enabled", func(t *testing.T) {
+		jwtSecret, hmacSecret := empiricalTestSecrets()
 		cfg := &config.Config{
 			Port:               "8080",
 			BackendURL:         wsHubServer.URL,
 			WsHubURL:           wsHubServer.URL,
 			RedisURL:           "redis://" + redisServer.Addr() + "/3",
 			RevocationRedisURL: "redis://" + redisServer.Addr() + "/0",
-			JWTSecret:          "secret-key-at-least-32-chars-long",
-			InternalHMACSecret: "test-internal-secret",
+			JWTSecret:          jwtSecret,
+			InternalHMACSecret: hmacSecret,
 			H3Enabled:          true,
 			H3Port:             "8443",
 			H3AltSvcMaxAge:     2592000,
@@ -78,14 +84,15 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 	})
 
 	t.Run("Alt-Svc Header Absent when H3 Disabled", func(t *testing.T) {
+		jwtSecret, hmacSecret := empiricalTestSecrets()
 		cfg := &config.Config{
 			Port:               "8080",
 			BackendURL:         wsHubServer.URL,
 			WsHubURL:           wsHubServer.URL,
 			RedisURL:           "redis://" + redisServer.Addr() + "/3",
 			RevocationRedisURL: "redis://" + redisServer.Addr() + "/0",
-			JWTSecret:          "secret-key-at-least-32-chars-long",
-			InternalHMACSecret: "test-internal-secret",
+			JWTSecret:          jwtSecret,
+			InternalHMACSecret: hmacSecret,
 			H3Enabled:          false,
 			AllowedOrigins:     []string{"*"},
 			Environment:        "testing",
@@ -109,14 +116,15 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 	})
 
 	t.Run("Proxy /ws and /webtransport to ws-hub", func(t *testing.T) {
+		jwtSecret, hmacSecret := empiricalTestSecrets()
 		cfg := &config.Config{
 			Port:               "8080",
 			BackendURL:         wsHubServer.URL,
 			WsHubURL:           wsHubServer.URL,
 			RedisURL:           "redis://" + redisServer.Addr() + "/3",
 			RevocationRedisURL: "redis://" + redisServer.Addr() + "/0",
-			JWTSecret:          "secret-key-at-least-32-chars-long",
-			InternalHMACSecret: "test-internal-secret",
+			JWTSecret:          jwtSecret,
+			InternalHMACSecret: hmacSecret,
 			H3Enabled:          true,
 			H3Port:             "8443",
 			H3AltSvcMaxAge:     2592000,

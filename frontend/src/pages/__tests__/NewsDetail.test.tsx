@@ -105,7 +105,7 @@ vi.mock("@/hooks/useSwipe", () => ({
 vi.mock("@/hooks/useMediaQuery", () => ({ default: () => false }))
 vi.mock("@/utils/newsTransition", () => ({ setNewsHeroId: mocks.setNewsHeroId }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Button", () => ({
   Button: ({
     children,
     onClick,
@@ -119,6 +119,9 @@ vi.mock("@/components/ui", () => ({
       {children}
     </button>
   ),
+}))
+
+vi.mock("@/components/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({
     open,
     title,

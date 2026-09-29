@@ -59,6 +59,11 @@ jobs:
             services/gateway/go.sum
             services/file-processor/go.sum
             services/ws-hub/go.sum
+            services/cmd/uni-cli/go.sum
+            services/pkg/spiffe/go.sum
+            services/pkg/spicedb/go.mod
+            services/pkg/logging/go.mod
+            gen/go/go.sum
             go.sum
 
       - name: Install dependencies
@@ -66,7 +71,8 @@ jobs:
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
         run: |
           cd "$SERVICE_DIRECTORY"
-          go mod download
+          python3 "$GITHUB_WORKSPACE/scripts/ci/go_mod_download.py" \
+            --working-directory "$PWD"
 
       - name: Clean Go coverage outputs
         shell: bash
@@ -240,7 +246,11 @@ jobs:
           # expression that older ShellCheck releases flag as SC1003.
           SANITIZED="${SERVICE_DIRECTORY//\//-}"
           SANITIZED="${SANITIZED//\\/-}"
-          echo "name=go-coverage-$SANITIZED" >> "$GITHUB_OUTPUT"
+          # Artifact names are scoped to the workflow run, but a rerun keeps
+          # the same run id and can otherwise leave a previous attempt's
+          # report selectable by a broad consumer. Include the attempt in the
+          # canonical name so every retry has a distinct producer identity.
+          echo "name=go-coverage-$SANITIZED-attempt-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
 
       - name: Write Go coverage provenance
         shell: bash
@@ -298,7 +308,6 @@ jobs:
     # runner for every changed file.  Scheduled/manual invocations opt in
     # explicitly and still receive the complete, content-addressed report.
     if: ${{ inputs.run-mutation-diagnostic && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
-    continue-on-error: true
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     permissions:
@@ -318,6 +327,7 @@ jobs:
             services/gateway/go.sum
             services/file-processor/go.sum
             services/ws-hub/go.sum
+            services/pkg/logging/go.mod
             go.sum
 
       - name: Generate mutation diagnostic artifact name
@@ -337,7 +347,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
           EVENT_NAME: ${{ github.event_name }}
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
-          EXPECTED_SHA: ${{ github.sha }}
+          TESTED_MERGE_SHA: ${{ github.sha }}
           SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -350,11 +360,33 @@ jobs:
           mkdir -p -- artifacts/go-mutation-diagnostic
           printf '%s\n' none > artifacts/go-mutation-diagnostic/diagnostic-failure.txt
           GO_VERSION="$(go env GOVERSION)"
+          validate_sha() {
+            local value="$1"
+            local label="$2"
+            if [[ ! "$value" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Go mutation provenance $label is not an exact lowercase 40-character SHA."
+              exit 1
+            fi
+          }
+          validate_sha "$TESTED_MERGE_SHA" "tested merge SHA"
+          validate_sha "$SOURCE_HEAD_SHA" "source head SHA"
+          validate_sha "$BASE_SHA" "event base SHA"
+          validate_sha "$WORKFLOW_SHA" "workflow SHA"
+          if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]] || [[ ! "$RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
+            echo "::error::Go mutation provenance workflow run identity is invalid."
+            exit 1
+          fi
+          CHECKED_OUT_SHA="$(git rev-parse --verify HEAD)"
+          if [ "$CHECKED_OUT_SHA" != "$TESTED_MERGE_SHA" ]; then
+            echo "::error::Checked-out Go mutation source does not match the tested merge SHA."
+            exit 1
+          fi
           CONFIG_PATHS=(
             "$SERVICE_DIRECTORY/go.mod"
             "$SERVICE_DIRECTORY/go.sum"
             services/pkg/spiffe/go.mod
             services/pkg/spiffe/go.sum
+            services/pkg/logging/go.mod
             gen/go/go.mod
             gen/go/go.sum
           )
@@ -398,11 +430,13 @@ jobs:
               "status": "diagnostic-only",
               "event": os.environ["EVENT_NAME"],
               "service_directory": os.environ["SERVICE_DIRECTORY"],
-              "commit_sha": os.environ["EXPECTED_SHA"],
-              "tested_commit_sha": os.environ["EXPECTED_SHA"],
+              "commit_sha": os.environ["TESTED_MERGE_SHA"],
+              "tested_commit_sha": os.environ["TESTED_MERGE_SHA"],
+              "tested_merge_sha": os.environ["TESTED_MERGE_SHA"],
               "source_head_sha": os.environ["SOURCE_HEAD_SHA"],
               "base_ref": os.environ["BASE_REF_NAME"],
               "base_sha": os.environ["BASE_SHA"],
+              "provenance_status": "event-input",
               "workflow_repository": os.environ["WORKFLOW_REPOSITORY"],
               "workflow_ref": os.environ["WORKFLOW_REF"],
               "workflow_sha": os.environ["WORKFLOW_SHA"],
@@ -419,6 +453,9 @@ jobs:
               "timestamp": generated_at,
               "outcomes": [],
               "outcome_count": 0,
+              "expected_targets": [],
+              "expected_target_count": 0,
+              "unreported_targets": [],
           }
           (root / "mutation-diagnostic-summary.json").write_text(
               json.dumps(summary, sort_keys=True, indent=2) + "\n",
@@ -432,7 +469,8 @@ jobs:
         run: |
           set -euo pipefail
           cd "$SERVICE_DIRECTORY"
-          go mod download
+          python3 "$GITHUB_WORKSPACE/scripts/ci/go_mod_download.py" \
+            --working-directory "$PWD"
 
       - name: Install go-mutesting
         run: |
@@ -450,7 +488,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
           EVENT_NAME: ${{ github.event_name }}
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
-          EXPECTED_SHA: ${{ github.sha }}
+          TESTED_MERGE_SHA: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
@@ -490,6 +528,7 @@ jobs:
           payload = json.loads(path.read_text(encoding="utf-8"))
           payload["base_sha"] = sys.argv[1]
           payload["base_ref"] = sys.argv[2]
+          payload["provenance_status"] = "resolved"
           payload["updated_at"] = (
               datetime.now(timezone.utc)
               .replace(microsecond=0)
@@ -512,11 +551,23 @@ jobs:
           root = Path(sys.argv[1])
           summary_path = Path(sys.argv[2])
           payload = json.loads(summary_path.read_text(encoding="utf-8"))
+          expected_targets_path = root / "expected-targets.txt"
+          expected_targets = (
+              [
+                  line.strip()
+                  for line in expected_targets_path.read_text(encoding="utf-8").splitlines()
+                  if line.strip()
+              ]
+              if expected_targets_path.is_file()
+              else []
+          )
           outcomes = []
+          observed_targets = set()
           for shard in sorted(root.iterdir(), key=lambda item: item.name):
               if not shard.is_dir() or not (shard / "target.txt").is_file():
                   continue
               target = (shard / "target.txt").read_text(encoding="utf-8").strip()
+              observed_targets.add(target)
               status_path = shard / "status.txt"
               source_hash_path = shard / "source.sha256"
               target_hash_path = shard / "target-hash.txt"
@@ -548,8 +599,25 @@ jobs:
                       "report_sha256": report_hash,
                   }
               )
+          unreported_targets = [
+              target for target in expected_targets if target not in observed_targets
+          ]
+          for target in unreported_targets:
+              outcomes.append(
+                  {
+                      "shard": None,
+                      "target": target,
+                      "target_hash": hashlib.sha256(target.encode("utf-8")).hexdigest(),
+                      "status": "unreported",
+                      "source_sha256": None,
+                      "report_sha256": None,
+                  }
+              )
           payload["outcomes"] = outcomes
           payload["outcome_count"] = len(outcomes)
+          payload["expected_targets"] = expected_targets
+          payload["expected_target_count"] = len(expected_targets)
+          payload["unreported_targets"] = unreported_targets
           payload["updated_at"] = (
               datetime.now(timezone.utc)
               .replace(microsecond=0)
@@ -618,6 +686,7 @@ jobs:
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "No changed Go source files found in $SERVICE_DIRECTORY."
+            : > "$EVIDENCE_ROOT/expected-targets.txt"
             write_summary no_changed_source
             DIAGNOSTIC_FINALIZED=1
             exit 0
@@ -632,6 +701,7 @@ jobs:
             fail_diagnostic "Changed Go files were found, but no diagnostic targets were resolved."
             exit 1
           fi
+          printf '%s\n' "${TARGETS[@]}" > "$EVIDENCE_ROOT/expected-targets.txt"
 
           for target in "${TARGETS[@]}"; do
             if [ ! -f "$target" ] || [ -L "$target" ]; then
@@ -660,7 +730,10 @@ jobs:
               printf '%s\n' failed > "$target_root/status.txt"
               return 1
             fi
-            for dependency in services/pkg/spiffe gen/go; do
+            for dependency in services/pkg/logging services/pkg/spiffe gen/go; do
+              if [ "$dependency" = "$SERVICE_DIRECTORY" ]; then
+                continue
+              fi
               local dependency_source="$GITHUB_WORKSPACE/$dependency"
               local dependency_destination="$isolated_root/$dependency"
               if [ ! -d "$dependency_source" ] || [ -L "$dependency_source" ]; then
@@ -751,11 +824,18 @@ jobs:
         if: always()
         env:
           DIAGNOSTIC_OUTCOME: ${{ steps.go-mutation.outcome }}
+          EVENT_NAME: ${{ github.event_name }}
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
-          EXPECTED_SHA: ${{ github.sha }}
+          TESTED_MERGE_SHA: ${{ github.sha }}
           SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           BASE_REF_NAME: ${{ github.event.pull_request.base.ref || 'main' }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          TOOL_VERSION: github.com/avito-tech/go-mutesting@v0.0.0-20251226130216-48d0401f00fb
+          GO_VERSION: unavailable
+          CONFIG_SHA256: unavailable
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
@@ -788,6 +868,33 @@ jobs:
           except (FileNotFoundError, json.JSONDecodeError):
               payload = {}
 
+          fallback_provenance = {
+              "event": os.environ["EVENT_NAME"],
+              "workflow_repository": os.environ["WORKFLOW_REPOSITORY"],
+              "workflow_ref": os.environ["WORKFLOW_REF"],
+              "workflow_sha": os.environ["WORKFLOW_SHA"],
+              "tool_version": os.environ["TOOL_VERSION"],
+              "go_version": os.environ["GO_VERSION"],
+              "config_sha256": os.environ["CONFIG_SHA256"],
+              "commit_sha": os.environ["TESTED_MERGE_SHA"],
+              "tested_commit_sha": os.environ["TESTED_MERGE_SHA"],
+              "tested_merge_sha": os.environ["TESTED_MERGE_SHA"],
+              "source_head_sha": os.environ["SOURCE_HEAD_SHA"],
+              "base_ref": os.environ["BASE_REF_NAME"],
+              "base_sha": os.environ["BASE_SHA"],
+              "run_id": os.environ["RUN_ID"],
+              "run_attempt": os.environ["RUN_ATTEMPT"],
+          }
+          for key, value in fallback_provenance.items():
+              if key not in payload or payload[key] in (None, ""):
+                  payload[key] = value
+          if payload.get("provenance_status") != "resolved":
+              payload["provenance_status"] = "fallback"
+              payload["provenance_note"] = (
+                  "Base revision or diagnostic setup was not fully resolved; "
+                  "this artifact is failure evidence only."
+              )
+
           status = payload.get("status")
           if diagnostic_outcome != "success" and status != "failed":
               reason = (
@@ -802,8 +909,9 @@ jobs:
                       "status": "failed",
                       "failure_reason": reason,
                       "service_directory": os.environ["SERVICE_DIRECTORY"],
-                      "commit_sha": os.environ["EXPECTED_SHA"],
-                      "tested_commit_sha": os.environ["EXPECTED_SHA"],
+                      "commit_sha": os.environ["TESTED_MERGE_SHA"],
+                      "tested_commit_sha": os.environ["TESTED_MERGE_SHA"],
+                      "tested_merge_sha": os.environ["TESTED_MERGE_SHA"],
                       "source_head_sha": os.environ["SOURCE_HEAD_SHA"],
                       "base_ref": os.environ["BASE_REF_NAME"],
                       "base_sha": os.environ["BASE_SHA"],
@@ -828,15 +936,32 @@ jobs:
           }:
               raise SystemExit("mutation diagnostic summary is missing or invalid")
 
+          expected_targets_path = evidence_root / "expected-targets.txt"
+          inventory_available = expected_targets_path.is_file()
+          if not inventory_available:
+              expected_targets_path.parent.mkdir(parents=True, exist_ok=True)
+              expected_targets_path.write_text("", encoding="utf-8")
+          expected_targets = (
+              [
+                  line.strip()
+                  for line in expected_targets_path.read_text(encoding="utf-8").splitlines()
+                  if line.strip()
+              ]
+              if expected_targets_path.is_file()
+              else []
+          )
           outcomes = []
+          observed_targets = set()
           for shard in sorted(evidence_root.iterdir(), key=lambda item: item.name):
               if not shard.is_dir() or not (shard / "target.txt").is_file():
                   continue
               report_path = shard / "report.json"
+              target = (shard / "target.txt").read_text(encoding="utf-8").strip()
+              observed_targets.add(target)
               outcomes.append(
                   {
                       "shard": shard.name,
-                      "target": (shard / "target.txt").read_text(encoding="utf-8").strip(),
+                      "target": target,
                       "target_hash": (
                           (shard / "target-hash.txt").read_text(encoding="utf-8").strip()
                           if (shard / "target-hash.txt").is_file()
@@ -859,8 +984,37 @@ jobs:
                       ),
                   }
               )
+          unreported_targets = [
+              target for target in expected_targets if target not in observed_targets
+          ]
+          for target in unreported_targets:
+              outcomes.append(
+                  {
+                      "shard": None,
+                      "target": target,
+                      "target_hash": hashlib.sha256(target.encode("utf-8")).hexdigest(),
+                      "status": "unreported",
+                      "source_sha256": None,
+                      "report_sha256": None,
+                  }
+              )
           payload["outcomes"] = outcomes
           payload["outcome_count"] = len(outcomes)
+          payload["expected_targets"] = expected_targets
+          payload["expected_target_count"] = len(expected_targets)
+          payload["unreported_targets"] = unreported_targets
+          payload["target_inventory_status"] = (
+              "complete" if inventory_available else "unavailable"
+          )
+          if payload.get("status") == "complete" and (
+              unreported_targets
+              or any(outcome["status"] != "success" for outcome in outcomes)
+          ):
+              payload["status"] = "failed"
+              payload["failure_reason"] = (
+                  "incomplete mutation diagnostic evidence: expected targets are "
+                  "missing or have a non-success outcome"
+              )
           payload["updated_at"] = now
           payload["timestamp"] = now
           summary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -875,6 +1029,7 @@ jobs:
         env:
           DIAGNOSTIC_OUTCOME: ${{ steps.go-mutation.outcome }}
           FINALIZER_OUTCOME: ${{ steps.finalize-diagnostic-evidence.outcome }}
+          EVIDENCE_ROOT: ${{ github.workspace }}/artifacts/go-mutation-diagnostic
         run: |
           set -euo pipefail
           if [ "$DIAGNOSTIC_OUTCOME" != "success" ]; then
@@ -885,6 +1040,72 @@ jobs:
             echo "::error::Mutation diagnostic failure finalizer failed."
             exit 1
           fi
+          SUMMARY_STATUS="$(python3 - "$EVIDENCE_ROOT/mutation-diagnostic-summary.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          required_provenance = (
+              "event",
+              "source_head_sha",
+              "tested_merge_sha",
+              "tested_commit_sha",
+              "base_sha",
+              "base_ref",
+              "workflow_repository",
+              "workflow_ref",
+              "workflow_sha",
+              "run_id",
+              "run_attempt",
+              "tool_version",
+              "go_version",
+              "config_sha256",
+              "provenance_status",
+          )
+          missing_provenance = [
+              field
+              for field in required_provenance
+              if not isinstance(payload.get(field), str) or not payload[field]
+          ]
+          if missing_provenance:
+              raise SystemExit(
+                  "mutation diagnostic summary has incomplete provenance: "
+                  + ", ".join(missing_provenance)
+              )
+          if payload["provenance_status"] != "resolved":
+              raise SystemExit("mutation diagnostic provenance is not resolved")
+          if not (
+              payload["commit_sha"]
+              == payload["tested_commit_sha"]
+              == payload["tested_merge_sha"]
+          ):
+              raise SystemExit("mutation diagnostic commit identities do not agree")
+          if payload["event"] != "pull_request" and (
+              payload["source_head_sha"] != payload["tested_merge_sha"]
+          ):
+              raise SystemExit(
+                  "non-pull-request mutation diagnostic source/tested identities differ"
+              )
+          status = payload.get("status")
+          expected_count = payload.get("expected_target_count")
+          outcome_count = payload.get("outcome_count")
+          unreported = payload.get("unreported_targets")
+          if not isinstance(expected_count, int) or not isinstance(outcome_count, int):
+              raise SystemExit("mutation diagnostic summary has invalid target counts")
+          if not isinstance(unreported, list):
+              raise SystemExit("mutation diagnostic summary has invalid unreported targets")
+          if status == "complete" and (
+              outcome_count != expected_count
+              or unreported
+          ):
+              raise SystemExit("incomplete mutation diagnostic evidence")
+          if status not in {"complete", "no_changed_source"}:
+              raise SystemExit(f"mutation diagnostic summary is not successful: {status!r}")
+          print(status)
+          PY
+          )"
+          echo "Go mutation diagnostic summary status: $SUMMARY_STATUS"
 
       - name: Upload mutation diagnostic evidence
         if: always()
@@ -894,6 +1115,7 @@ jobs:
           path: |
             artifacts/go-mutation-diagnostic/mutation-diagnostic-summary.json
             artifacts/go-mutation-diagnostic/diagnostic-failure.txt
+            artifacts/go-mutation-diagnostic/expected-targets.txt
             artifacts/go-mutation-diagnostic/**/report.json
             artifacts/go-mutation-diagnostic/**/run.log
             artifacts/go-mutation-diagnostic/**/status.txt
@@ -923,6 +1145,7 @@ jobs:
             services/cmd/uni-cli/go.sum
             services/pkg/spiffe/go.sum
             services/pkg/spicedb/go.sum
+            services/pkg/logging/go.mod
             go.sum
 
       - name: Run golangci-lint

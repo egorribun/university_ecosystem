@@ -16,6 +16,8 @@ jobs:
     explain-check:
         runs-on: ubuntu-24.04
         timeout-minutes: 30
+        env:
+            UV_PYTHON: "3.14"
         services:
             postgres:
                 image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
@@ -27,9 +29,16 @@ jobs:
                     - 5432:5432
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - name: Set up Python
+              uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+              with:
+                  python-version: "3.14"
             - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
             - name: Install dependencies
               run: uv sync --group dev
+            - name: Verify Python runtime
+              run: |
+                  uv run --frozen --no-sync python -c "import sys; print(sys.version); assert sys.version_info[:2] == (3, 14), sys.version"
             - name: Run Alembic migrations
               env:
                   DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test # pragma: allowlist secret

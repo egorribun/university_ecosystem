@@ -10,6 +10,52 @@ interface NewsDetailHeroProps {
   displayTitle: string
 }
 
+type NewsHeroFrame = {
+  container: string
+  image: string
+  imageStyle: { objectPosition: string }
+  backdrop: string
+}
+
+export function getNewsHeroFrame(heroRatio: number | null): NewsHeroFrame {
+  if (heroRatio === null || !Number.isFinite(heroRatio) || heroRatio <= 0) {
+    return {
+      container: "h-(--h-hero-sm) min-h-80 max-h-(--layout-max-modal)",
+      image: "object-cover",
+      imageStyle: { objectPosition: "50% 40%" },
+      backdrop: "bg-(--bg-surface)/(--opacity-dim)",
+    }
+  }
+  const r = Math.min(Math.max(heroRatio, 0.35), 4)
+  if (r < 0.82)
+    return {
+      container: "min-h-(--min-h-hero-lg) max-h-(--h-hero-max-portrait) aspect-3/4",
+      image: "object-contain object-center",
+      imageStyle: { objectPosition: "center" },
+      backdrop: "bg-black/(--opacity-soft)",
+    }
+  if (r < 1.18)
+    return {
+      container: "min-h-(--min-h-hero-md) max-h-(--h-hero-max-square) aspect-5/4",
+      image: "object-cover",
+      imageStyle: { objectPosition: "50% 38%" },
+      backdrop: "bg-(--bg-surface)/(--opacity-dim)",
+    }
+  if (r > 2.6)
+    return {
+      container: "min-h-(--min-h-hero-xs) max-h-(--h-hero-md) aspect-21/9",
+      image: "object-cover",
+      imageStyle: { objectPosition: "50% 46%" },
+      backdrop: "bg-black/(--opacity-dim)",
+    }
+  return {
+    container: "min-h-(--min-h-hero-sm) max-h-(--h-hero-max-landscape) aspect-video",
+    image: "object-cover",
+    imageStyle: { objectPosition: "50% 40%" },
+    backdrop: "bg-(--bg-surface)/(--opacity-dim)",
+  }
+}
+
 export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) {
   const { t } = useTranslation(["news", "common"])
   const [heroRatio, setHeroRatio] = useState<number | null>(null)
@@ -31,44 +77,7 @@ export function NewsDetailHero({ imageUrl, displayTitle }: NewsDetailHeroProps) 
     if (w && h) setHeroRatio(w / h)
   }, [])
 
-  const heroFrame = useMemo(() => {
-    if (!heroRatio || !Number.isFinite(heroRatio) || heroRatio <= 0) {
-      return {
-        container: "h-(--h-hero-sm) min-h-80 max-h-(--layout-max-modal)",
-        image: "object-cover",
-        imageStyle: { objectPosition: "50% 40%" },
-        backdrop: "bg-(--bg-surface)/(--opacity-dim)",
-      }
-    }
-    const r = Math.min(Math.max(heroRatio, 0.35), 4)
-    if (r < 0.82)
-      return {
-        container: "min-h-(--min-h-hero-lg) max-h-(--h-hero-max-portrait) aspect-3/4",
-        image: "object-contain object-center",
-        imageStyle: { objectPosition: "center" },
-        backdrop: "bg-black/(--opacity-soft)",
-      }
-    if (r < 1.18)
-      return {
-        container: "min-h-(--min-h-hero-md) max-h-(--h-hero-max-square) aspect-5/4",
-        image: "object-cover",
-        imageStyle: { objectPosition: "50% 38%" },
-        backdrop: "bg-(--bg-surface)/(--opacity-dim)",
-      }
-    if (r > 2.6)
-      return {
-        container: "min-h-(--min-h-hero-xs) max-h-(--h-hero-md) aspect-21/9",
-        image: "object-cover",
-        imageStyle: { objectPosition: "50% 46%" },
-        backdrop: "bg-black/(--opacity-dim)",
-      }
-    return {
-      container: "min-h-(--min-h-hero-sm) max-h-(--h-hero-max-landscape) aspect-video",
-      image: "object-cover",
-      imageStyle: { objectPosition: "50% 40%" },
-      backdrop: "bg-(--bg-surface)/(--opacity-dim)",
-    }
-  }, [heroRatio])
+  const heroFrame = useMemo(() => getNewsHeroFrame(heroRatio), [heroRatio])
 
   return (
     <>

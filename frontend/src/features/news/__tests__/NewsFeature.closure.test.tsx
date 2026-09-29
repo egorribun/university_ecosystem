@@ -46,6 +46,16 @@ vi.mock("@/hooks/useBookmarks", () => ({
     bookmarkCount: state.bookmarks.current.size,
   }),
 }))
+const stableHeight = vi.hoisted(() => ({
+  value: undefined as number | undefined,
+  calls: [] as unknown[][],
+}))
+vi.mock("@/hooks/ui/useStableListHeight", () => ({
+  useStableListHeight: (...args: unknown[]) => {
+    stableHeight.calls.push(args)
+    return stableHeight.value
+  },
+}))
 vi.mock("@/hooks/useNewsKeyboardNav", () => ({
   useNewsKeyboardNav: () => ({ activeIndex: 1, registerRef: state.mockRegisterRef }),
 }))
@@ -178,6 +188,8 @@ describe("NewsFeature closure", () => {
     state.mockSetParam.mockReset()
     state.mockRegisterRef.mockReset()
     mockResetEtagCache.mockReset()
+    stableHeight.value = undefined
+    stableHeight.calls = []
   })
 
   it("filters, exposes controls, refreshes, paginates, and opens the form", () => {
@@ -276,5 +288,42 @@ describe("NewsFeature closure", () => {
     renderFeature()
 
     expect(screen.getByTestId("news-list")).toHaveAttribute("data-count", "2")
+  })
+
+  describe("list height hold across filter changes", () => {
+    const lastHoldCall = () => stableHeight.calls.at(-1) as [{ current: unknown }, string, boolean]
+
+    it("keys the hold by category, sort and trimmed search around the list", () => {
+      state.debounced.current = "  sports "
+      state.url.current = { params: { q: "sports", cat: "sport", sort: "popular" } }
+      renderFeature()
+
+      const [ref, resetKey] = lastHoldCall()
+      expect(resetKey).toBe("sport|popular|sports")
+      expect(ref.current).toBe(screen.getByTestId("news-list").parentElement)
+    })
+
+    it.each([
+      ["a refetch", { isFetching: true, hasNextPage: false }, "all", true],
+      ["a narrowed list with more pages", { hasNextPage: true }, "sport", true],
+      ["an unfiltered list with more pages", { hasNextPage: true }, "all", false],
+      ["a narrowed complete list", { hasNextPage: false }, "sport", false],
+    ])("settles during %s", (_label, flags, cat, settling) => {
+      state.query.current = { ...state.query.current, ...flags }
+      state.url.current = { params: { q: "", cat, sort: "newest" } }
+      renderFeature()
+      expect(lastHoldCall()[2]).toBe(settling)
+    })
+
+    it("applies the held floor to the list container only while one is returned", () => {
+      stableHeight.value = 480
+      const { unmount } = renderFeature()
+      expect(screen.getByTestId("news-list").parentElement).toHaveStyle({ minHeight: "480px" })
+      unmount()
+
+      stableHeight.value = undefined
+      renderFeature()
+      expect(screen.getByTestId("news-list").parentElement?.style.minHeight).toBe("")
+    })
   })
 })

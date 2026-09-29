@@ -114,6 +114,7 @@ async def test_create_access_token_uses_active_signing_key(monkeypatch):
     decoded = decode_token(token)
     assert decoded is not None
     assert decoded["sub"] == "user-123"
+    assert decoded["is_active"] is True
 
 
 @pytest.mark.asyncio

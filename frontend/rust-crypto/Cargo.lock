@@ -645,6 +645,7 @@ checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
 name = "uni-wasm-crypto"
 version = "0.1.0"
 dependencies = [
+ "base64ct",
  "getrandom 0.2.17",
  "getrandom 0.3.4",
  "hex",
@@ -655,6 +656,7 @@ dependencies = [
  "sha2",
  "wasm-bindgen",
  "wasm-bindgen-test",
+ "zeroize",
 ]
 
 [[package]]
@@ -860,6 +862,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "zeroize"
+version = "1.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ced3678a2879b30306d323f4542626697a464a97c0a07c9aebf7ebca65cd4dde"
 
 [[package]]
 name = "zmij"

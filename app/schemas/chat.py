@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
 from app.schemas.base import SecureBaseModel
@@ -160,6 +160,28 @@ class MessageResponse(MessageBase):
     # W203-SW8 / W209 5-site rule. Never a nested preview (contrast reply_to) and
     # never carries the audit-only forwarded_from_*_id columns — privacy.
     forwarded_from_name: str | None = None
+
+    @model_validator(mode="after")
+    def protect_private_attachment_urls(self) -> MessageResponse:
+        """Expose chat attachments through the membership-checked API route."""
+
+        from app.services.private_attachments import private_attachment_url
+
+        object.__setattr__(
+            self,
+            "attachments",
+            [
+                attachment.model_copy(
+                    update={
+                        "url": private_attachment_url(
+                            "chat", self.chat_id, attachment.url
+                        )
+                    }
+                )
+                for attachment in self.attachments
+            ],
+        )
+        return self
 
 
 # Wave 211 — forward 1..N messages from a source chat into a destination chat.

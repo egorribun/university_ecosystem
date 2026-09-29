@@ -68,7 +68,6 @@
   },
   "shareDialog": {
     "title": "Share this news",
-    "subtitle": "",
     "description": "Choose how you'd like to share this link.",
     "copy": "Copy link",
     "copySuccess": "Link copied!",

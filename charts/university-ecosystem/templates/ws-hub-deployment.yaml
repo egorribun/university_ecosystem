@@ -70,6 +70,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
                   key: ws-hub-internal-secret
+            - name: INTERNAL_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+                  key: ws-hub-internal-secret
             - name: NATS_URL
               valueFrom:
                 secretKeyRef:

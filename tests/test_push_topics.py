@@ -76,16 +76,6 @@ def test_normalize_topics():
     ) == ["news", "alerts"]
 
 
-def test_resolve_topics():
-    allowed = ["news", "alerts"]
-    assert pt.resolve_topics(
-        None, existing=["alerts", "unknown"], allowed_topics=allowed
-    ) == ["alerts"]
-    assert pt.resolve_topics(["news"], existing=["alerts"], allowed_topics=allowed) == [
-        "news"
-    ]
-
-
 def test_subscription_supports_topic_none_topic():
     assert pt.subscription_supports_topic(None, None) is True
 

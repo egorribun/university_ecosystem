@@ -10,6 +10,7 @@ from fastapi import HTTPException, UploadFile, status
 from app.core.config import settings
 from app.core.localization import translate
 from app.core.logging import get_logger
+from app.core.static import PRIVATE_STATIC_PREFIXES
 from app.services.file_scanner import scan_for_malware
 from app.services.storage import StaticFSStorage, StorageBackend, get_storage_backend
 
@@ -88,6 +89,7 @@ ALLOWED_IMAGE_TYPES: Final[set[str]] = {
     "image/webp",
 }
 MAX_IMAGE_SIZE: Final[int] = 5 * 1024 * 1024
+_PRIVATE_ATTACHMENT_PREFIXES: Final[frozenset[str]] = frozenset(PRIVATE_STATIC_PREFIXES)
 
 _PREFIX_CLEAN_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _PREFERRED_EXTENSIONS: Final[dict[str, str]] = {
@@ -308,6 +310,20 @@ def _gen_name(prefix: str, ext: str) -> str:
     return f"{safe_prefix}_{token}{ext}"
 
 
+def _cache_control_for_subdir(subdir: str) -> str:
+    """Return a cache policy that preserves attachment privacy at the object layer."""
+
+    normalized = subdir.replace("\\", "/").strip("/ ")
+    # ``partition`` rather than ``split(sep, maxsplit)``: element zero is the
+    # text before the first separator for every maxsplit >= 1, so the argument
+    # is unobservable here and only yields equivalent mutants (run 35517610350
+    # left ``split("/",)`` and ``split("/", 2)`` alive against the 100% gate).
+    root = normalized.partition("/")[0]
+    if root in _PRIVATE_ATTACHMENT_PREFIXES:
+        return "private, no-store"
+    return "public, max-age=31536000, immutable"
+
+
 async def save_image(
     upload: UploadFile, subdir: str, prefix: str, *, locale: str | None = None
 ) -> str:
@@ -340,9 +356,19 @@ async def save_image(
             data,
             max_width=getattr(settings, "image_max_width", 0),
             max_height=getattr(settings, "image_max_height", 0),
+            max_pixels=getattr(settings, "image_max_pixels", 0),
             content_type=detected_type,
         )
     except ValueError as exc:
+        # Keep the Pillow dependency lazy while mapping the explicit resource
+        # policy to 413 instead of treating it as an unsupported media type.
+        from app.utils.images import ImagePixelLimitError
+
+        if isinstance(exc, ImagePixelLimitError):
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=translate("errors.files.too_large", locale=locale),
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=(
@@ -519,8 +545,7 @@ async def save_attachment(
     backend = _get_storage_backend()
     await _prepare_local_storage(backend, sanitized_subdir)
     relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
-    # Use aggressive caching for attachments as well
-    cache_control = "public, max-age=31536000, immutable"
+    cache_control = _cache_control_for_subdir(sanitized_subdir)
     url = await backend.save_file(
         relative_path,
         data,

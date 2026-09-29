@@ -40,12 +40,15 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Card", () => ({
   Card: ({ children, ...props }: { children?: ReactNode } & Record<string, unknown>) => (
     <section data-testid="dashboard-news-card" {...props}>
       {children}
     </section>
   ),
+}))
+
+vi.mock("@/components/ui/Button", () => ({
   Button: ({
     as: Component = "button",
     children,

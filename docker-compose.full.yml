@@ -1,6 +1,8 @@
 # University Ecosystem - Full Docker Compose
 # Usage: pwsh scripts/dc.ps1 up -d
 
+name: university_ecosystem
+
 services:
   # ============================================================================
   # Core Application
@@ -36,6 +38,8 @@ services:
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
       REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      JWT_AUDIENCE: "${JWT_AUDIENCE:-university-ecosystem-api}"
+      JWT_ISSUER: "${JWT_ISSUER:-university-ecosystem}"
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/1"
       MINIO_ENDPOINT: minio:9000
@@ -56,6 +60,9 @@ services:
       FLAGD_HOST: "flagd"
       FLAGD_PORT: "8013"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+      # Authenticate ws-hub's exact room-participant callback with the same
+      # existing internal trust secret, under the backend's canonical token key.
+      INTERNAL_AUTH_TOKEN: ${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - run start-docker.ps1}
       ENABLE_OTEL_LOGS: "false"
       ENABLE_OTEL_METRICS: "false"
       ENABLE_METRICS_ENDPOINT: "true"
@@ -68,7 +75,7 @@ services:
       # Wave 137 SW1: RS256 private key mount (read-only).
       # start-docker.ps1's New-JwtRs256Key generates ./.secrets/jwt_rs256.pem on host.
       # Backend reads it at startup via jwt_settings.py:202-205 when ALGORITHM=RS256.
-      - ./.secrets:/app/.secrets:ro
+      - ./.secrets:/app/.secrets:ro # pragma: allowlist secret; credential mount path only
     depends_on:
       postgres:
         condition: service_healthy
@@ -456,7 +463,9 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-    security_opt:
+    # Replace the base stack's one-item sequence instead of appending the
+    # same option during an overlay merge (Compose rejects duplicate entries).
+    security_opt: !override
       - no-new-privileges:true
     restart: "no"
     deploy:
@@ -570,63 +579,63 @@ services:
           memory: 64M
     restart: unless-stopped
 
-  # ── S3-compatible object storage (MinIO) ──────────────────────────────────
+  # ── S3-compatible object storage (SeaweedFS, ADR-042) ─────────────────────
+  # The service keeps the `minio` DNS name that backend, Caddy and
+  # file-processor use as `minio:9000`, but runs SeaweedFS: MinIO stopped
+  # publishing its images. SeaweedFS cannot read a MinIO data directory, so it
+  # gets its own volume; the legacy `minio-data` volume is no longer declared
+  # and stays untouched on disk. start-docker.ps1 refuses a first start next to
+  # an unmigrated legacy volume; see docs/runbooks/s3-seaweedfs-cutover.md.
   minio:
-    # NOTE: minio/minio repo archived Feb 2026. This is the last published tag.
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    command: server /data --console-address ":9001"
+    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    # `mini` runs master, volume, filer and S3 in one process and creates
+    # S3_BUCKET on first start. There is no console and no host port.
+    command: ["mini", "-dir=/data", "-s3.port=9000"]
+    expose:
+      - "9000"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - run start-docker.ps1}
-      # Local-only internal scrape endpoint. The console remains bound to
-      # 127.0.0.1 and production uses its own authenticated monitoring policy.
-      MINIO_PROMETHEUS_AUTH_TYPE: public
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - run start-docker.ps1}
+      S3_BUCKET: uploads
     volumes:
-      - minio-data:/data
+      - seaweedfs_data:/data
     networks:
       - internal
-      # An internal-only Docker network deliberately disables host port
-      # publishing. Keep the console loopback-only, but attach a non-internal
-      # bridge so Docker can materialize 127.0.0.1:9001.
+      # Caddy (public network only) proxies the reviewed public-media prefixes
+      # under /storage/* to minio:9000; see infrastructure/Caddyfile.
       - public
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9000/status"]
       interval: 10s
       timeout: 5s
-      retries: 5
-    ports:
-      - "127.0.0.1:9001:9001"
+      retries: 12
     deploy:
       resources:
         limits:
           cpus: '0.25'
+          # The single-process mini server runs four components; the owned
+          # live stand runs it within 512M (the disposable sandbox, which
+          # holds almost no data, uses 256M).
           memory: 512M
     restart: unless-stopped
 
   minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    # SeaweedFS creates the bucket itself; keep the dependency name and only
+    # wait until its S3 API answers, so dependants start on ready storage.
+    image: ghcr.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
     entrypoint: [ "/bin/sh", "-ec" ]
-    command:
-      - |
-        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
-        mc mb local/uploads --ignore-existing
-    environment:
-      # mc defaults to /root/.mc. Keep its short-lived credential-bearing
-      # config on a private tmpfs while leaving the image filesystem read-only.
-      MC_CONFIG_DIR: /mc-config
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - run start-docker.ps1}
+    command: [ "wget -qO- http://minio:9000/status >/dev/null" ]
     depends_on:
       minio:
         condition: service_healthy
     networks:
       - internal
     read_only: true
-    tmpfs:
-      - /mc-config:size=1m,mode=0700
     cap_drop:
       - ALL
-    security_opt:
+    # Replace the base stack's one-item sequence instead of appending the
+    # same option during an overlay merge (Compose rejects duplicate entries).
+    security_opt: !override
       - no-new-privileges:true
     restart: "no"
     deploy:
@@ -722,6 +731,9 @@ services:
       JWKS_ENDPOINT: http://backend:8000/.well-known/jwks.json
       JWKS_REFRESH_INTERVAL: "60"
       INTERNAL_HMAC_SECRET: "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
+      # Domain-separated capability proof key; local compose reuses the reviewed
+      # high-entropy internal secret while production obtains it from a secret.
+      FILE_PROCESSING_CAPABILITY_SECRET: "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "tempo:4317"
       OTEL_SERVICE_NAME: "gateway"
       # AUDIT-INFRA-05: explicit opt-out for local dev — production K8s must NOT set this
@@ -758,6 +770,7 @@ services:
       JWT_SECRET: ${SECRET_KEY:?SECRET_KEY is required - run start-docker.ps1}
       # AUDIT-INFRA-02: required — ws-hub fails to start if empty
       WS_HUB_INTERNAL_SECRET: ${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - run start-docker.ps1}
+      INTERNAL_AUTH_TOKEN: ${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - run start-docker.ps1}
       # Wave 173 polish-v1: ws-hub reads REDIS_URL + REDIS_PASSWORD per
       # `services/ws-hub/pkg/config/config.go:120-121` (defaults: addr
       # `redis:6379`, no password). Pre-W173-polish-v1, REDIS_PASSWORD
@@ -826,6 +839,16 @@ services:
       FP_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
       FP_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
       FP_MINIO_BUCKET: uploads
+      # The gateway/backend issue short-lived proofs for user-owned processing.
+      # Reusing the local internal secret is safe because the shared signer adds
+      # a dedicated domain separator; production uses the same secret contract.
+      FP_PROCESSING_CAPABILITY_SECRET: "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
+      FP_JWT_AUDIENCE: "${JWT_AUDIENCE:-university-ecosystem-api}"
+      FP_JWT_ISSUER: "${JWT_ISSUER:-university-ecosystem}"
+      FP_JWKS_URL: "http://backend:8000/.well-known/jwks.json"
+      FP_JWKS_REFRESH_INTERVAL: "${JWKS_REFRESH_INTERVAL:-300}"
+      FP_JWT_ACTIVE_KID: "${JWT_ACTIVE_KID:-primary}"
+      FP_REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       FP_RSA_PUBLIC_KEY_FILE: "/app/.secrets/jwt_rs256.pub.pem"
       FP_OTLP_ENDPOINT: "tempo:4317"
       FP_OTLP_INSECURE: "true"
@@ -854,11 +877,11 @@ services:
     volumes:
       # Wave 141 SW4 scaffolding preserved: read-only mount of .secrets/
       # for the Temporal service token (and any future file-based credentials).
-      # Mirrors backend pattern at line 61 (./.secrets:/app/.secrets:ro). Token
+      # Mirrors the backend credential-file mount. The service token
       # at .secrets/temporal_api_key is generated by start-docker.ps1's
       # New-TemporalServiceToken function (W141 SW4 scaffolding); W142+ will
       # activate the read via setting FP_TEMPORAL_API_KEY_FILE above.
-      - ./.secrets:/app/.secrets:ro
+      - ./.secrets:/app/.secrets:ro # pragma: allowlist secret; credential mount path only
     depends_on:
       nats:
         condition: service_healthy
@@ -881,7 +904,7 @@ services:
       #     Stage 5 _startup_background_workers → dishka_container.get(
       #     NatsTaskBroker)) creates both TASK_QUEUE and FILES_PROCESS streams
       #     (W140 SW1).
-      #   - Backend's `/healthz` (Dockerfile HEALTHCHECK at backend.Dockerfile:97-98
+      #   - Backend's `/health/ready` (Dockerfile HEALTHCHECK at backend.Dockerfile
       #     using Python stdlib urllib) only returns 200 after the lifespan
       #     startup completes (FastAPI doesn't accept HTTP traffic until lifespan
       #     finishes), so `service_healthy` means streams have been provisioned.
@@ -889,8 +912,11 @@ services:
       #     stream and subscribes successfully (closes the chain W139 §Honesty #6).
       backend:
         condition: service_healthy
+      revocation-redis:
+        condition: service_healthy
     networks:
       - internal
+      - revocation_net
     # Wave 137 SW5: gRPC healthcheck via grpc_health_probe binary baked into
     # distroless runtime (services/file-processor/Dockerfile health-probe stage).
     # main.go:277-280 already registers grpc_health_v1.HealthCheckResponse_SERVING
@@ -1001,7 +1027,9 @@ services:
       - /tmp
     cap_drop:
       - ALL
-    security_opt:
+    # Replace the base stack's one-item sequence instead of appending the
+    # same option during an overlay merge (Compose rejects duplicate entries).
+    security_opt: !override
       - no-new-privileges:true
     restart: "no"
     deploy:
@@ -1173,7 +1201,7 @@ services:
       # Defensive .secrets/ mount for any future file-based key import. The
       # primary auth path uses HTTP JWKS via global.authorization.jwtKeyProvider
       # in config.yaml (W142 (z) #6 disproved file:// URL scheme).
-      - ./.secrets:/app/.secrets:ro
+      - ./.secrets:/app/.secrets:ro # pragma: allowlist secret; credential mount path only
     depends_on:
       # The JWT key provider fetches JWKS during Temporal startup. Starting
       # before backend is ready leaves an empty key cache and rejects the first
@@ -1332,7 +1360,8 @@ services:
       - grafana-data:/var/lib/grafana
     networks:
       - internal
-      # Required for the loopback-only host publication; see minio above.
+      # Required for the loopback-only host publication: Docker does not
+      # publish ports from a service attached only to an internal network.
       - public
     depends_on:
       tempo-healthprobe:
@@ -1383,7 +1412,8 @@ services:
       - prometheus-data:/prometheus
     networks:
       - internal
-      # Required for the loopback-only host publication; see minio above.
+      # Required for the loopback-only host publication: Docker does not
+      # publish ports from a service attached only to an internal network.
       - public
     depends_on:
       backend:
@@ -1592,7 +1622,7 @@ networks:
 volumes:
   postgres-data:
   static-data:
-  minio-data:
+  seaweedfs_data:
   nats-data:
   elasticsearch-data:
   tempo-data:

@@ -81,3 +81,14 @@ def test_vips_not_available():
 
         with pytest.raises(RuntimeError, match="pyvips is not available"):
             local_iv.get_image_dimensions_vips(b"input-data")
+
+
+def test_vips_pixel_budget_is_checked_before_thumbnail():
+    mock_dimensions = MagicMock(width=2, height=2)
+    mock_pyvips.Image.new_from_buffer.return_value = mock_dimensions
+
+    with patch("app.utils.images_vips.VIPS_AVAILABLE", True):
+        with pytest.raises(ValueError, match="pixel budget"):
+            iv.optimize_image_vips(b"input-data", max_pixels=3)
+
+    mock_pyvips.Image.thumbnail_buffer.assert_not_called()

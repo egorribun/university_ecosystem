@@ -228,8 +228,9 @@ spec:
     - expression: >-
         variables.allContainers.all(container,
           container.image.startsWith('registry.example.com/') ||
-          container.image.startsWith('ghcr.io/'))
-      message: Images must come from registry.example.com or ghcr.io
+          container.image.startsWith('ghcr.io/') ||
+          container.image.matches('^docker[.]io/bitnami/(redis|redis-exporter|nats)@sha256:[0-9a-f]{64}$'))
+      message: Images must come from an approved registry or an explicitly pinned Bitnami dependency
 
 ---
 apiVersion: policies.kyverno.io/v1

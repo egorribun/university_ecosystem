@@ -1,4 +1,4 @@
-export type SnackbarState = {
+type SnackbarState = {
   text: string
   severity?: "success" | "info" | "warning" | "error"
 } | null

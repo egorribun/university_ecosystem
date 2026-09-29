@@ -3,20 +3,18 @@ package workflow
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
 	"net/http"
-	"path"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/university-ecosystem/file-processor/internal/config"
+	"github.com/university-ecosystem/file-processor/internal/objectkey"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 	"golang.org/x/image/draw"
@@ -26,10 +24,16 @@ import (
 // Shared between workflow and other packages, could be in a 'types' or 'domain' package.
 // For now, keeping it here and exporting.
 type ProcessJob struct {
-	ID          string                 `json:"id"`
-	Type        string                 `json:"type"` // resize, thumbnail, optimize
-	SourceKey   string                 `json:"source_key"`
-	DestKey     string                 `json:"dest_key"`
+	ID        string `json:"id"`
+	Type      string `json:"type"` // resize, thumbnail, optimize
+	SourceKey string `json:"source_key"`
+	DestKey   string `json:"dest_key"`
+	// Capability is retained in the wire shape for backwards-compatible job
+	// decoding, but ingress handlers deliberately clear it before starting a
+	// workflow. The proof is verified at the transport boundary and must not be
+	// persisted in durable Temporal history; the exact object-bound keys are
+	// carried as the already-authorized job fields instead.
+	Capability  string                 `json:"capability"`
 	Options     map[string]interface{} `json:"options"`
 	CallbackURL string                 `json:"callback_url,omitempty"`
 }
@@ -191,20 +195,14 @@ var (
 	pngEncodeFunc  = png.Encode
 )
 
-// sanitizeMinIOKey validates and normalises a MinIO object key.
-// MinIO keys are URI path segments; path.Clean normalises ".." sequences.
+// sanitizeMinIOKey validates and normalises a MinIO object key through the
+// shared object-key boundary. Keeping this adapter thin prevents the workflow
+// from interpreting backslashes differently from gRPC or NATS ingress.
 // AUDIT-INFRA-04: path traversal in object keys can reach outside the intended
 // prefix when MinIO uses path-style access. Classify as InvalidInputError so
 // Temporal marks the workflow non-retryable (see NonRetryableErrorTypes policy).
 func sanitizeMinIOKey(key string) (string, error) {
-	if key == "" {
-		return "", errors.New("object key must not be empty")
-	}
-	clean := path.Clean(key)
-	if strings.HasPrefix(clean, "..") || strings.Contains(clean, "/../") {
-		return "", fmt.Errorf("path traversal detected in object key: %q", key)
-	}
-	return clean, nil
+	return objectkey.Normalize(key)
 }
 
 // ResizeImageActivity performs the image resizing.

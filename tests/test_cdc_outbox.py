@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import app.workers.cdc_outbox as cdc
 from app.core.events import UserCreated
 from app.workers.cdc_outbox import (
     CDCInsertRecord,
@@ -38,6 +39,16 @@ async def test_cdc_worker_fallback_delegates_to_outbox_worker(
     await CdcOutboxWorker(nats_broker=AsyncMock())._run_fallback_worker()
 
     fallback_run.assert_awaited_once_with()
+
+
+def test_cdc_worker_stop_requested_tracks_running_state() -> None:
+    """Shutdown checks must be observable without entering a real worker loop."""
+    worker = CdcOutboxWorker(nats_broker=AsyncMock())
+
+    assert worker._stop_requested() is True
+
+    worker._is_running = True
+    assert worker._stop_requested() is False
 
 
 # ── Helpers for Building Test Binary Payloads ─────────────────────────────────
@@ -317,7 +328,7 @@ async def test_cdc_outbox_worker_provision_replication_resources() -> None:
     await worker.provision_replication_resources(conn=mock_conn)
 
     mock_conn.execute.assert_called_once_with(
-        "CREATE PUBLICATION outbox_pub FOR TABLE stored_events;"
+        'CREATE PUBLICATION "outbox_pub" FOR TABLE stored_events;'
     )
     mock_conn.fetchval.assert_called_with(
         "SELECT pg_create_logical_replication_slot($1, 'pgoutput')",
@@ -326,6 +337,57 @@ async def test_cdc_outbox_worker_provision_replication_resources() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cdc_publication_name_is_quoted_without_changing_its_identity() -> None:
+    conn = AsyncMock()
+    conn.fetchval = AsyncMock(side_effect=[None, "existing_slot"])
+
+    worker = CdcOutboxWorker(publication_name="custom_pub")
+    await worker.provision_replication_resources(conn=conn)
+
+    conn.execute.assert_awaited_once_with(
+        'CREATE PUBLICATION "custom_pub" FOR TABLE stored_events;'
+    )
+    conn.fetchval.assert_any_await(
+        "SELECT 1 FROM pg_publication WHERE pubname = $1", "custom_pub"
+    )
+
+
+@pytest.mark.parametrize(
+    "publication_name",
+    ["", "bad;DROP TABLE stored_events", "MixedCase", "a" * 64],
+)
+def test_cdc_publication_name_rejects_invalid_identifiers(
+    publication_name: str,
+) -> None:
+    with pytest.raises(ValueError, match="publication_name"):
+        CdcOutboxWorker(publication_name=publication_name)
+
+
+@pytest.mark.parametrize(
+    "slot_name",
+    ["", "slot;DROP TABLE stored_events", "MixedCase", "s" * 64],
+)
+def test_cdc_slot_name_rejects_invalid_replication_identifiers(slot_name: str) -> None:
+    with pytest.raises(ValueError, match="slot_name"):
+        CdcOutboxWorker(slot_name=slot_name)
+
+
+@pytest.mark.asyncio
+async def test_cdc_slot_name_passes_to_parameterized_slot_creation() -> None:
+    conn = AsyncMock()
+    conn.fetchval = AsyncMock(side_effect=[1, None, "custom_slot_9"])
+
+    worker = CdcOutboxWorker(slot_name="custom_slot_9")
+    await worker.provision_replication_resources(conn=conn)
+
+    conn.fetchval.assert_any_await(
+        "SELECT pg_create_logical_replication_slot($1, 'pgoutput')",
+        "custom_slot_9",
+    )
+
+
+@pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
 async def test_cdc_outbox_worker_fallback_on_provision_failure() -> None:
     mock_broker = AsyncMock()
     worker = CdcOutboxWorker(nats_broker=mock_broker)
@@ -400,6 +462,7 @@ def test_pgoutput_decoder_malformed_binary_safety() -> None:
 
 
 @pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
 async def test_cdc_outbox_worker_retries_on_interface_error() -> None:
     import asyncpg
 
@@ -428,6 +491,156 @@ async def test_cdc_outbox_worker_retries_on_interface_error() -> None:
         mock_sleep.assert_called_with(5)
 
 
+@pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
+async def test_cdc_outbox_worker_stop_closes_active_replication_stream() -> None:
+    """Stopping CDC must interrupt and close an in-flight replication stream."""
+    broker = AsyncMock()
+    broker.is_connected = True
+    worker = CdcOutboxWorker(nats_broker=broker)
+    worker.provision_replication_resources = AsyncMock()
+    stream_entered = asyncio.Event()
+    stream_released = asyncio.Event()
+    conn = AsyncMock()
+
+    async def copy_out(statement: str, writer: object, timeout: object) -> None:
+        del statement, writer, timeout
+        stream_entered.set()
+        await stream_released.wait()
+
+    async def close_connection() -> None:
+        stream_released.set()
+
+    conn._copy_out.side_effect = copy_out
+    conn.close.side_effect = close_connection
+
+    with patch.object(cdc.asyncpg, "connect", new=AsyncMock(return_value=conn)):
+        task = asyncio.create_task(worker.run_forever())
+        try:
+            await asyncio.wait_for(stream_entered.wait(), timeout=1)
+            await worker.stop()
+            await asyncio.wait_for(task, timeout=1)
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    conn.close.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
+async def test_cdc_outbox_worker_closes_connection_when_stopped_during_connect() -> (
+    None
+):
+    """A connection completed after shutdown must not start a WAL stream."""
+    broker = AsyncMock()
+    broker.is_connected = True
+    worker = CdcOutboxWorker(nats_broker=broker)
+    worker.provision_replication_resources = AsyncMock()
+    conn = AsyncMock()
+
+    async def connect_after_stop(*args: object, **kwargs: object) -> AsyncMock:
+        del args, kwargs
+        worker._is_running = False
+        return conn
+
+    with patch.object(cdc.asyncpg, "connect", new=connect_after_stop):
+        with patch.object(cdc.logger, "info") as log_info:
+            await worker.run_forever()
+
+    conn._copy_out.assert_not_awaited()
+    conn.close.assert_awaited_once_with()
+    assert any(
+        call.args == ("CdcOutboxWorker replication loop exited",)
+        for call in log_info.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
+async def test_cdc_outbox_worker_stop_stops_fallback_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CDC fallback must remain lifecycle-owned and stop with its parent."""
+    fallback_started = asyncio.Event()
+    fallback_stopped = asyncio.Event()
+    fallback_instances: list[object] = []
+
+    class FakeOutboxWorker:
+        def __init__(self) -> None:
+            fallback_instances.append(self)
+
+        async def run_forever(self) -> None:
+            fallback_started.set()
+            await fallback_stopped.wait()
+
+        async def stop(self) -> None:
+            fallback_stopped.set()
+
+    monkeypatch.setattr("app.workers.outbox.OutboxWorker", FakeOutboxWorker)
+    broker = AsyncMock()
+    broker.is_connected = True
+    worker = CdcOutboxWorker(nats_broker=broker)
+    worker.provision_replication_resources = AsyncMock(
+        side_effect=OSError("logical replication unavailable")
+    )
+
+    task = asyncio.create_task(worker.run_forever())
+    try:
+        await asyncio.wait_for(fallback_started.wait(), timeout=1)
+        await worker.stop()
+        await asyncio.wait_for(task, timeout=1)
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    assert len(fallback_instances) == 1
+
+
+@pytest.mark.asyncio
+@patch("app.workers.cdc_outbox.require_supported_cdc_transport", new=lambda: None)
+async def test_cdc_outbox_worker_stop_during_failed_provisioning_skips_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provisioning failure after shutdown must not launch a new poller."""
+    provisioning_started = asyncio.Event()
+    release_provisioning = asyncio.Event()
+    fallback_started = asyncio.Event()
+
+    async def fail_provisioning() -> None:
+        provisioning_started.set()
+        await release_provisioning.wait()
+        raise OSError("logical replication unavailable")
+
+    class FakeOutboxWorker:
+        async def run_forever(self) -> None:
+            fallback_started.set()
+
+        async def stop(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.workers.outbox.OutboxWorker", FakeOutboxWorker)
+    broker = AsyncMock()
+    broker.is_connected = True
+    worker = CdcOutboxWorker(nats_broker=broker)
+    worker.provision_replication_resources = fail_provisioning
+
+    task = asyncio.create_task(worker.run_forever())
+    try:
+        await asyncio.wait_for(provisioning_started.wait(), timeout=1)
+        await worker.stop()
+        release_provisioning.set()
+        await asyncio.wait_for(task, timeout=1)
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    assert not fallback_started.is_set()
+
+
 # ── Remediation Tests for Reviewer 2 Feedback ───────────────────────────────
 
 
@@ -450,7 +663,8 @@ async def test_cdc_outbox_worker_status_update_byte_transmission() -> None:
     assert isinstance(status_bytes, bytes)
     assert len(status_bytes) == 34
     assert status_bytes[0:1] == b"r"
-    assert worker._last_acknowledged_lsn == 88888
+    assert worker._last_acknowledged_lsn == 0
+    assert struct.unpack_from(">QQQ", status_bytes, 1) == (0, 0, 0)
 
     # 2. Feed insert record message with conn
     mock_conn.reset_mock()

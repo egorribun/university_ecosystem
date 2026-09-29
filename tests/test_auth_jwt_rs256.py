@@ -118,6 +118,7 @@ async def test_create_access_token_rs256_produces_valid_token(db_session, test_u
     assert decoded["is_active"] is True
     assert "jti" in decoded
     assert "exp" in decoded
+    assert decoded["iss"] == settings.jwt_issuer
 
 
 @pytest.mark.asyncio

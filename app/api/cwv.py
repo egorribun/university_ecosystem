@@ -7,14 +7,14 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps.auth import get_current_user
+from app.api.deps import get_current_user_from_dishka
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import sensitive_route_limit
 from app.models.cwv import CwvObservation
 from app.models.users import User
@@ -94,7 +94,7 @@ def _raise_contract_error(exc: ValueError) -> None:
 async def create_cwv_envelope(
     payload: CwvEnvelopeRequest,
     request: Request,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> CwvEnvelopeResponse:
     collector_principal_id = _manual_tester_principal(current_user)
     try:
@@ -128,11 +128,12 @@ async def create_cwv_envelope(
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(sensitive_route_limit(limit=15, window_sec=60))],
 )
+@inject
 async def ingest_cwv_observation(
     payload: CwvObservationRequest,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: FromDishka[AsyncDatabaseSession],
+    current_user: Annotated[User, Depends(get_current_user_from_dishka)],
 ) -> CwvObservationAccepted:
     collector_principal_id = _manual_tester_principal(current_user)
     try:
@@ -193,12 +194,13 @@ def _bearer(authorization: str | None) -> str:
         Depends(sensitive_route_limit(limit=10, window_sec=60, key_prefix="cwv-export"))
     ],
 )
+@inject
 async def export_cwv_report(
     release_sha: str,
     frontend_image_digest: str,
     deployment_run_id: int,
     deployment_run_attempt: int,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: FromDishka[AsyncDatabaseSession],
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, Any]:
     binding = _binding()

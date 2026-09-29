@@ -10,6 +10,7 @@ from pydantic import ConfigDict, Field, field_validator
 
 from app.core.localization import translate
 from app.schemas.base import SecureBaseModel
+from app.services.notifications.system_release import RELEASE_VERSION_PATTERN
 from app.services.push_topics import normalize_topic, normalize_topics
 
 
@@ -191,3 +192,21 @@ class PushTestRequest(NotifyBody):
     url: str | None = Field(
         default=None, description="URL to open when clicking the notification"
     )
+
+
+class ReleaseAnnouncementRequest(SecureBaseModel):
+    version: str = Field(
+        ...,
+        min_length=5,
+        max_length=48,
+        pattern=RELEASE_VERSION_PATTERN,
+        description="Released semantic version, announced once",
+    )
+    notes_ru: str | None = Field(default=None, max_length=2000)
+    notes_en: str | None = Field(default=None, max_length=2000)
+
+
+class ReleaseAnnouncementResponse(SecureBaseModel):
+    version: str
+    created: int
+    already_announced: bool

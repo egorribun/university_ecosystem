@@ -94,12 +94,17 @@ class PythonTestVisitor(ast.NodeVisitor):
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
+            self.imported_modules.add(alias.name)
             self.imported_modules.add(alias.name.split(".")[0])
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         if node.module:
+            self.imported_modules.add(node.module)
             self.imported_modules.add(node.module.split(".")[0])
+            for alias in node.names:
+                if alias.name != "*":
+                    self.imported_modules.add(f"{node.module}.{alias.name}")
         self.generic_visit(node)
 
 
@@ -715,6 +720,19 @@ def matches_source(
             or "scripts" in imported_modules
         ):
             return True
+
+        # Test support modules are authored repository utilities rather than
+        # production source.  Treat an import of one as a concrete ownership
+        # relationship only when its fully-qualified module resolves to a
+        # non-test inventory path; importing another test file must not bypass
+        # the orphan gate.
+        if imported_modules and reference_paths:
+            for module in imported_modules:
+                if not module.startswith("tests."):
+                    continue
+                module_path = module.replace(".", "/") + ".py"
+                if module_path in reference_paths:
+                    return True
 
         # Contract tests often validate authored repository assets that are not
         # executable runtime source: migrations, Helm charts, hooks, schemas,

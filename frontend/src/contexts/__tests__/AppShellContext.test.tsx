@@ -155,6 +155,29 @@ describe("AppShellContext", () => {
       act(() => result.current.setOverlayState("dialog", null))
       expect(document.body.style.overflow).toBe("clip")
     })
+
+    it("releases an active lock and blur when the shell unmounts", () => {
+      document.body.style.overflow = "clip"
+      const { result, unmount } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.setOverlayState("dialog", { blurred: true, scrollLocked: true })
+      })
+      expect(document.body.style.overflow).toBe("hidden")
+      expect(document.body.classList.contains("blurred")).toBe(true)
+
+      unmount()
+      expect(document.body.style.overflow).toBe("clip")
+      expect(document.body.classList.contains("blurred")).toBe(false)
+    })
+
+    it("leaves body overflow untouched when an unlocked shell unmounts", () => {
+      document.body.style.overflow = "clip"
+      const { unmount } = renderHook(() => useAppShell(), { wrapper })
+      document.body.style.overflow = "scroll"
+      unmount()
+      expect(document.body.style.overflow).toBe("scroll")
+    })
   })
 
   describe("scrollToTop", () => {

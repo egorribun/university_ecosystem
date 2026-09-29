@@ -7,7 +7,7 @@ runtime models were not part of that destructive migration.  This migration
 is the narrow, additive follow-up: it proves that no NULL values remain,
 verifies those checks remain validated, and creates the model indexes.  The
 catalog-level nullable representation is reconciled by the explicit,
-check-backed Alembic comparator in ``scripts/quality/alembic_schema_drift.py``
+check-backed Alembic comparator in ``app/core/db/schema_drift.py``
 so this migration never takes an ``ACCESS EXCLUSIVE`` lock to rewrite a live
 table.  Downgrade is deliberately non-destructive: because indexes can
 pre-date this revision, it never drops them without durable ownership

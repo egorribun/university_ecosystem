@@ -17,13 +17,24 @@ import {
 import { fetchCurrentUser } from "./useProfileSync"
 import i18n from "@/i18n/config"
 import {
-  recoverPushConsentFromBrowser,
   hasPushConsent,
-  softSyncPushSubscription,
+  releasePushServerBinding,
   setPushConsent,
+  syncPushForConfirmedIdentity,
 } from "@/push/subscribe"
 import { logWarning, logError } from "@/app/logger"
 import { incrementSessionEpoch } from "@/api/interceptors/etagCache"
+
+/**
+ * Starts the identity-gated push sync without awaiting it: the gate resolves
+ * only after the auth store publishes the confirmed account, which happens
+ * after the current auth operation finishes.
+ */
+const syncPushAfterAuthentication = (userId: string | number) => {
+  syncPushForConfirmedIdentity({ expectedUserId: String(userId) }).catch((error: unknown) => {
+    logWarning("Push sync after authentication failed", error)
+  })
+}
 
 type TokenWithProfileResponse = {
   user?: User
@@ -184,14 +195,7 @@ export const useAuthApi = (
             window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
           }
 
-          // Recover push consent if browser still has subscription after storage was cleared
-          recoverPushConsentFromBrowser()
-            .then((recovered) => {
-              if (recovered || hasPushConsent()) {
-                softSyncPushSubscription().catch(() => {})
-              }
-            })
-            .catch(() => {})
+          syncPushAfterAuthentication(data.user.id)
 
           void prefetchDashboardData(data.user)
         }
@@ -227,12 +231,15 @@ export const useAuthApi = (
   const logout = useCallback(async () => {
     try {
       if (user) {
-        // Don't fully unsubscribe - just clear local consent
-        // This allows push subscription to be recovered on next login
-        // The browser subscription remains, server association is cleared
+        // Keep the browser subscription so it can be recovered on the next
+        // login, but detach it from this account on the server while the
+        // session is still valid. A failed unbind must not block logout.
         if (hasPushConsent()) {
           setPushConsent(false)
         }
+        await releasePushServerBinding().catch((error: unknown) => {
+          logWarning("Failed to release push binding on logout", error)
+        })
         await api.post("/auth/logout")
       }
     } catch (error) {
@@ -267,14 +274,7 @@ export const useAuthApi = (
             window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
           }
 
-          // Recover push consent if browser still has subscription after storage was cleared
-          recoverPushConsentFromBrowser()
-            .then((recovered) => {
-              if (recovered || hasPushConsent()) {
-                softSyncPushSubscription().catch(() => {})
-              }
-            })
-            .catch(() => {})
+          syncPushAfterAuthentication(data.user.id)
 
           void prefetchDashboardData(data.user)
         }
@@ -334,17 +334,9 @@ export const useAuthApi = (
     resetEtagCache()
     setAuthOperation(true)
     try {
-      const profile = await fetchCurrentUser()
-      setUser(profile as User)
-
-      // Try to recover push consent if localStorage was cleared but browser still has subscription
-      await recoverPushConsentFromBrowser()
-
-      if (hasPushConsent()) {
-        softSyncPushSubscription().catch(() => {
-          /* ignore */
-        })
-      }
+      const profile = (await fetchCurrentUser()) as User
+      setUser(profile)
+      syncPushAfterAuthentication(profile.id)
     } catch (error) {
       if (isAxiosError(error) && error.response?.status === 401) {
         handleUnauthorized()

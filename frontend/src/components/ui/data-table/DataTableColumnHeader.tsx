@@ -1,4 +1,5 @@
 import type { RowData } from "@tanstack/react-table"
+import { useTranslation } from "react-i18next"
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react"
 
 import { cn } from "@/utils/cn"
@@ -22,11 +23,18 @@ export function DataTableColumnHeader<TData extends RowData, TValue>({
   title,
   className,
 }: DataTableColumnHeaderProps<TData, TValue>) {
+  const { t } = useTranslation("common")
   if (!column.getCanSort()) {
     return <div className={cn(className)}>{title}</div>
   }
 
   const sortDirection = column.getIsSorted()
+  const sortLabel =
+    sortDirection === "asc"
+      ? t("tableSort.ascending")
+      : sortDirection === "desc"
+        ? t("tableSort.descending")
+        : t("tableSort.none")
 
   // Wave 120 polish-v2 — `aria-sort` moved to the parent `<TableHead>`
   // (`<th>`) in DataTable.tsx where it's valid per ARIA spec. Setting it on
@@ -40,7 +48,7 @@ export function DataTableColumnHeader<TData extends RowData, TValue>({
         size="sm"
         className="-ml-3 h-8 data-[state=open]:bg-accent"
         onClick={() => column.toggleSorting(sortDirection === "asc")}
-        aria-label={`${title}, ${sortDirection === "asc" ? "sorted ascending" : sortDirection === "desc" ? "sorted descending" : "not sorted"}`}
+        aria-label={`${title}, ${sortLabel}`}
       >
         <span>{title}</span>
         {sortDirection === "desc" ? (

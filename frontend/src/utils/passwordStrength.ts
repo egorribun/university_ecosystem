@@ -9,27 +9,19 @@ export function normalizePasswordStrengthLocale(language?: string): StrengthLoca
 }
 
 export function createPasswordStrengthAnalyzer(loadAnalyzer: PasswordAnalyzerLoader) {
-  const analyzers = new Map<StrengthLocale, PasswordAnalyzer>()
+  // One cached promise per locale; a failed load is forgotten so the next
+  // check retries it.
   const analyzerPromises = new Map<StrengthLocale, Promise<PasswordAnalyzer>>()
 
-  async function loadPasswordAnalyzer(locale: StrengthLocale): Promise<PasswordAnalyzer> {
-    const analyzer = analyzers.get(locale)
-    if (analyzer) return analyzer
-
+  function loadPasswordAnalyzer(locale: StrengthLocale): Promise<PasswordAnalyzer> {
     let analyzerPromise = analyzerPromises.get(locale)
     if (!analyzerPromise) {
-      analyzerPromise = loadAnalyzer(locale)
-        .then((loadedAnalyzer) => {
-          analyzers.set(locale, loadedAnalyzer)
-          return loadedAnalyzer
-        })
-        .catch((error: unknown) => {
-          analyzerPromises.delete(locale)
-          throw error
-        })
+      analyzerPromise = loadAnalyzer(locale).catch((error: unknown) => {
+        analyzerPromises.delete(locale)
+        throw error
+      })
       analyzerPromises.set(locale, analyzerPromise)
     }
-
     return analyzerPromise
   }
 

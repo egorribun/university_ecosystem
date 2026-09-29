@@ -15,6 +15,7 @@ from app.api.events import (
     upload_event_image,
 )
 from app.schemas import schemas
+from tests.conftest import call_injected
 
 
 @pytest.fixture
@@ -43,8 +44,16 @@ async def test_create_event_value_error(request_mock):
 
     with patch("app.api.events.resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await create_event(
-                data, request_mock, MagicMock(), user, MagicMock(), events_service
+            await call_injected(
+                create_event,
+                data=data,
+                request=request_mock,
+                background=MagicMock(),
+                user=user,
+                provides={
+                    "NotificationService": MagicMock(),
+                    "EventService": events_service,
+                },
             )
         assert exc.value.status_code == 400
 
@@ -56,7 +65,16 @@ async def test_attend_forbidden_for_teacher(request_mock):
 
     with patch("app.api.events.resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await attend(MagicMock(), request_mock, MagicMock(), user, MagicMock())
+            await call_injected(
+                attend,
+                data=MagicMock(),
+                request=request_mock,
+                user=user,
+                provides={
+                    "AsyncDatabaseSession": MagicMock(),
+                    "EventService": MagicMock(),
+                },
+            )
         assert exc.value.status_code == 403
 
 
@@ -74,7 +92,13 @@ async def test_attend_registration_closed(request_mock):
 
     with patch("app.api.events.resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await attend(MagicMock(), request_mock, db, user, MagicMock())
+            await call_injected(
+                attend,
+                data=MagicMock(),
+                request=request_mock,
+                user=user,
+                provides={"AsyncDatabaseSession": db, "EventService": MagicMock()},
+            )
         assert exc.value.status_code == 409
 
 
@@ -88,13 +112,14 @@ async def test_upload_event_file_forbidden(request_mock):
 
     with patch("app.api.events.resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await upload_event_file(
+            await call_injected(
+                upload_event_file,
                 uuid.uuid4(),
                 MagicMock(),
                 request=request_mock,
-                db=db,
                 user=MagicMock(),
                 checker=checker,
+                provides={"AsyncDatabaseSession": db},
             )
         assert exc.value.status_code == 403
 
@@ -118,13 +143,14 @@ async def test_upload_event_image_exception(request_mock):
             ):
                 with patch("app.api.events.delete_static_file", AsyncMock()):
                     with pytest.raises(Exception):  # noqa: B017
-                        await upload_event_image(
+                        await call_injected(
+                            upload_event_image,
                             file,
                             request=request_mock,
                             user=MagicMock(),
                             event_id=uuid.uuid4(),
-                            db=db,
                             checker=checker,
+                            provides={"AsyncDatabaseSession": db},
                         )
 
 
@@ -135,8 +161,13 @@ async def test_delete_event_file_not_found(request_mock):
 
     with patch("app.api.events.resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
-            await delete_event_file(
-                uuid.uuid4(), request_mock, db, MagicMock(), MagicMock()
+            await call_injected(
+                delete_event_file,
+                file_id=uuid.uuid4(),
+                request=request_mock,
+                user=MagicMock(),
+                checker=MagicMock(),
+                provides={"AsyncDatabaseSession": db},
             )
         assert exc.value.status_code == 404
 
@@ -151,14 +182,17 @@ async def test_semantic_search_etag_match(request_mock):
         ):
             with patch("app.api.events.format_etag", return_value='W/"match"'):
                 with patch("app.api.events.etag_matches", return_value=True):
-                    res = await semantic_search(
+                    res = await call_injected(
+                        semantic_search,
                         request_mock,
                         MagicMock(),
                         query="test",
                         if_none_match='W/"match"',
-                        db=MagicMock(),
-                        vector_service=MagicMock(),
-                        events=MagicMock(),
                         _user=MagicMock(),
+                        provides={
+                            "AsyncDatabaseSession": MagicMock(),
+                            "VectorService": MagicMock(),
+                            "EventService": MagicMock(),
+                        },
                     )
                     assert res.status_code == 304

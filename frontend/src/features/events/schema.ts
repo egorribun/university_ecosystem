@@ -8,5 +8,3 @@ export const eventsSearchSchema = v.object({
   sort: v.optional(v.string()),
   cat: v.optional(v.string()),
 })
-
-export type EventsSearch = v.InferOutput<typeof eventsSearchSchema>

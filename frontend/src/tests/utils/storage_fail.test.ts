@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 import { etagCache } from "@/api/interceptors/etagCache"
+import { withExpectedConsole } from "@/tests/strictConsole"
 
 describe("Storage Failure and Quota Exceeded Handlers", () => {
   beforeEach(() => {
@@ -54,7 +55,7 @@ describe("Storage Failure and Quota Exceeded Handlers", () => {
     }).not.toThrow()
   })
 
-  it("logs warning on non-QuotaExceeded errors without crashing", () => {
+  it("logs warning on non-QuotaExceeded errors without crashing", async () => {
     etagCache.set("key1", '"etag1"')
 
     // Generic error
@@ -62,8 +63,10 @@ describe("Storage Failure and Quota Exceeded Handlers", () => {
       throw new Error("Security restriction or localstorage disabled")
     })
 
-    expect(() => {
-      vi.advanceTimersByTime(30_000)
-    }).not.toThrow()
+    await withExpectedConsole("warn", "Failed to flush etag cache to localStorage", () => {
+      expect(() => {
+        vi.advanceTimersByTime(30_000)
+      }).not.toThrow()
+    })
   })
 })

@@ -1,12 +1,13 @@
 """Chat notification service — fan-out for new-message events.
 
-Two delivery channels run in parallel for every new message:
+Two delivery channels are initiated for every new message:
 
 1. WebSocket broadcast via ``ws_manager.broadcast_to_chat`` — every
    connected participant *except the sender* receives a serialised
    message payload in real time.
-2. Push notification via ``create_notifications_for_users`` — every
-   non-sender participant gets an in-app + push entry. UUIDs in
+2. Durable notification via ``create_notifications_for_users`` — every
+   non-sender participant gets an in-app entry, with Web Push queued in the
+   transactional outbox for delivery after commit. UUIDs in
    ``payload_data`` are stringified because UUID is not natively
    JSON-serialisable. Wave 208 — when the message replies to another
    user, that quoted author is *superseded* off the generic
@@ -19,7 +20,10 @@ under platform-imposed size limits.
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING, Any  # TD-23-04 (audit 2026-03-25 Wave 23)
+
+from sqlalchemy import select
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -32,7 +36,20 @@ if TYPE_CHECKING:
 from app.api.ws.connection_manager import manager as ws_manager
 from app.api.ws.presence import build_presence_map
 from app.api.ws.serializers import serialize_message
+from app.models import Notification
 from app.services.notifications import create_notifications_for_users
+from app.services.notifications.dedupe import lock_notification_dedupe
+
+
+async def _already_notified(
+    session: AsyncDatabaseSession, keys: tuple[str, str]
+) -> set[tuple[uuid.UUID, str]]:
+    rows = await session.execute(
+        select(Notification.user_id, Notification.dedupe_key).where(
+            Notification.dedupe_key.in_(keys)
+        )
+    )
+    return {(uuid.UUID(str(user_id)), str(key)) for user_id, key in rows.all()}
 
 
 class ChatNotificationService:
@@ -97,13 +114,43 @@ class ChatNotificationService:
         # no chat.reply). ``replied`` is None when the message is not a reply or
         # its target was hard-deleted (the SET NULL self-FK already nulled the
         # column by the time handle_message_sent reads it).
-        is_reply_to_other = replied is not None and replied.sender_id != sender.id
+        # A historical quote may belong to a user who has since left the chat.
+        # Only current recipients may receive the private reply preview.
+        is_reply_to_other = (
+            replied is not None and replied.sender_id in other_participants
+        )
         if is_reply_to_other:
             other_participants = [
                 uid for uid in other_participants if uid != replied.sender_id
             ]
 
         if other_participants or is_reply_to_other:
+            # The outbox is at-least-once. Serialize all notification variants
+            # for this message under one transaction lock, then only insert
+            # rows that a previous committed attempt has not already written.
+            generic_key = f"chat-message:{message.id}"
+            reply_key = f"chat-reply:{message.id}"
+            await lock_notification_dedupe(self.session, generic_key)
+            already_notified = await _already_notified(
+                self.session, (generic_key, reply_key)
+            )
+            other_participants = [
+                uid
+                for uid in other_participants
+                if (uid, generic_key) not in already_notified
+            ]
+            send_reply = (
+                is_reply_to_other
+                and (
+                    replied.sender_id,
+                    reply_key,
+                )
+                not in already_notified
+            )
+
+            if not other_participants and not send_reply:
+                return
+
             sender_name = (sender.profile and sender.profile.full_name) or "User"
             content = message.content or ""
             body_preview = content[:100] + "..." if len(content) > 100 else content
@@ -130,8 +177,10 @@ class ChatNotificationService:
                     type="chat.message",
                     url=f"/messenger/{message.chat_id}",
                     tag=f"chat:{message.chat_id}",
+                    dedupe_key=generic_key,
                     user_ids=other_participants,
                     topic="chat.message.created",
+                    push_via_outbox_only=True,
                     payload_data={
                         # HIGH-W19: wrap UUID fields with str() to avoid JSON
                         # serialization errors — UUID is not natively JSON-serialisable.
@@ -141,7 +190,7 @@ class ChatNotificationService:
                     },
                 )
 
-            if is_reply_to_other:
+            if send_reply:
                 # Specific "X replied to your message" entry for the quoted author.
                 # dedupe_key is keyed on the *replying* message id so an outbox
                 # retry of the same reply is idempotent, while each new reply stays
@@ -154,9 +203,10 @@ class ChatNotificationService:
                     type="chat.reply",
                     url=f"/messenger/{message.chat_id}",
                     tag=f"chat-reply:{replied.id}",
-                    dedupe_key=f"chat-reply:{message.id}",
+                    dedupe_key=reply_key,
                     user_ids=[replied.sender_id],
                     topic="chat.message.created",
+                    push_via_outbox_only=True,
                     payload_data={
                         "chatId": str(message.chat_id),
                         "repliedToMessageId": str(replied.id),

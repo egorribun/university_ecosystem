@@ -3,20 +3,30 @@ package graphql
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/url"
-	"path"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	gql "github.com/graph-gophers/graphql-go"
+	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
+	"github.com/university-ecosystem/file-processor/internal/objectkey"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
+	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/temporal"
 )
 
 // Resolver is the root resolver for the GraphQL API.
 type Resolver struct {
-	TemporalClient client.Client
-	MinioBucket    string
+	TemporalClient    client.Client
+	CapabilitySecret  []byte
+	RequireCapability bool
+	// ReplayGuard is shared with the gRPC and NATS ingress paths by production
+	// bootstrap, preventing a capability from crossing ingress boundaries twice.
+	ReplayGuard pb.CapabilityReplayGuard
+	Now         func() time.Time
 }
 
 // Health returns the health status of the service.
@@ -25,11 +35,27 @@ func (r *Resolver) Health() string {
 }
 
 func sanitizeKey(key string) (string, error) {
-	cleaned := path.Clean("/" + key)
-	if cleaned == "/" || strings.Contains(key, "..") {
+	// GraphQL historically accepted one leading slash as a shorthand for a
+	// relative object key. Preserve that compatibility while routing the actual
+	// validation through the same platform-neutral boundary as gRPC, NATS, and
+	// Temporal activities.
+	key = strings.TrimPrefix(key, "/")
+	cleaned, err := objectkey.Normalize(key)
+	if err != nil {
 		return "", fmt.Errorf("invalid path string")
 	}
-	return cleaned[1:], nil
+	return cleaned, nil
+}
+
+// publicImagePath returns the same-origin backend image-proxy path for key.
+// Unlike a direct object-storage URL it works in every environment and keeps
+// the backend's public-prefix authorization in front of the private bucket.
+func publicImagePath(key string) string {
+	segments := strings.Split(key, "/")
+	for index, segment := range segments {
+		segments[index] = url.PathEscape(segment)
+	}
+	return "/api/v1/img/" + strings.Join(segments, "/")
 }
 
 // File returns a resolver for a specific file.
@@ -47,11 +73,9 @@ func (r *Resolver) File(args struct{ ID gql.ID }) *FileResolver {
 		safeID = "invalid-path"
 	}
 
-	escapedSafeID := url.PathEscape(safeID)
-
 	return &FileResolver{
 		id:  safeID,
-		url: fmt.Sprintf("http://localhost:9000/%s/%s", r.MinioBucket, escapedSafeID),
+		url: publicImagePath(safeID),
 	}
 }
 
@@ -75,22 +99,84 @@ func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFi
 		return nil, fmt.Errorf("invalid destination key: %v", err)
 	}
 
+	jobID := generateID()
+	var capabilityClaims pb.ProcessingCapabilityClaims
+	var capabilityNow time.Time
+	if r.RequireCapability {
+		identity, ok := pb.ProcessingIdentityFromContext(ctx)
+		if !ok {
+			return nil, fmt.Errorf("file processing authorization required")
+		}
+		now := time.Now().UTC()
+		if r.Now != nil {
+			now = r.Now().UTC()
+		}
+		capabilityNow = now
+		claims, verifyErr := pb.VerifyProcessingCapability(args.Input.Capability, r.CapabilitySecret, now)
+		if verifyErr != nil || !claims.Matches(pb.ProcessingCapabilityExpectation{
+			ID: claims.ID, Type: args.Input.Type, SourceKey: safeSourceKey,
+			DestKey: safeDestKey, UserID: identity.UserID,
+			SessionID: identity.SessionID, TenantID: identity.TenantID,
+		}) {
+			return nil, fmt.Errorf("file processing authorization required")
+		}
+		capabilityClaims = claims
+		jobID = claims.ID
+	}
+
 	job := workflow.ProcessJob{
-		ID:        generateID(),
+		ID:        jobID,
 		Type:      args.Input.Type,
 		SourceKey: safeSourceKey,
 		DestKey:   safeDestKey,
-		Options:   options,
+		// The bearer capability is an ingress proof, not workflow data. Do not
+		// persist it in Temporal history after this boundary has verified it.
+		Capability: "",
+		Options:    options,
 	}
 
 	workflowOptions := client.StartWorkflowOptions{
-		ID:        "graphql-" + job.ID,
-		TaskQueue: "FILE_PROCESSING_TASK_QUEUE",
+		// All ingresses use the same workflow namespace. This is a second line of
+		// defense if a deployment has not yet wired a shared replay guard.
+		ID:                    "file-process-" + job.ID,
+		TaskQueue:             "FILE_PROCESSING_TASK_QUEUE",
+		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 	}
 
 	run, err := r.TemporalClient.ExecuteWorkflow(ctx, workflowOptions, workflow.FileProcessingWorkflow, job)
 	if err != nil {
+		// REJECT_DUPLICATE is the shared idempotency boundary for every ingress.
+		// Treat a duplicate submission as a successful handoff to the existing
+		// deterministic workflow rather than leaking Temporal's internal error to
+		// GraphQL clients.
+		if temporal.IsWorkflowExecutionAlreadyStartedError(err) {
+			return &FileJobResolver{
+				jobID:     workflowOptions.ID,
+				status:    "STARTED",
+				resultURL: "",
+			}, nil
+		}
 		return nil, err
+	}
+	// Temporal owns idempotency for this mutation. Every ingress submits the
+	// same deterministic workflow ID with REJECT_DUPLICATE, so record the
+	// capability nonce only after the workflow has been accepted. A transient
+	// start failure therefore leaves the capability retryable, while a replay
+	// cannot create a second workflow even if this defense-in-depth registry is
+	// temporarily unavailable.
+	if r.RequireCapability && r.ReplayGuard != nil {
+		if _, replayErr := pb.ConsumeCapabilityReplay(
+			ctx,
+			r.ReplayGuard,
+			capabilityClaims.Nonce,
+			time.Unix(capabilityClaims.ExpiresAt, 0),
+			capabilityNow,
+		); replayErr != nil {
+			// The deterministic Temporal workflow ID remains the idempotency
+			// authority. Keep the accepted job successful while recording a
+			// non-sensitive diagnostic for an unavailable replay guard.
+			slog.Default().ErrorContext(ctx, "capability replay admission failed after workflow start", "error_type", fmt.Sprintf("%T", replayErr))
+		}
 	}
 
 	return &FileJobResolver{
@@ -142,11 +228,12 @@ func (r *FileJobResolver) ResultURL() *string { return &r.resultURL }
 
 // ProcessFileInput defines the input for the ProcessFile mutation.
 type ProcessFileInput struct {
-	Type      string
-	SourceKey string
-	DestKey   string
-	Width     *int32
-	Height    *int32
+	Type       string
+	SourceKey  string
+	DestKey    string
+	Capability string
+	Width      *int32
+	Height     *int32
 }
 
 // RZ-W19-17: use UUID instead of nanosecond timestamp to avoid collisions.

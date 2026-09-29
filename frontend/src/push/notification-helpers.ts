@@ -38,7 +38,7 @@ export type NotificationActionPayload = {
   url?: string
 }
 
-export type NotificationActionOption = {
+type NotificationActionOption = {
   action: string
   title: string
   icon?: string

@@ -23,14 +23,19 @@ from app.services import cwv, event_handlers
 from app.services.cwv_retention import cleanup_stale_cwv_observations
 from app.services.notifications import delivery
 from app.tasks import cleanups
+from tests.conftest import call_injected
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
 SHA = "a" * 40
 DIGEST = "sha256:" + "b" * 64
 SECRET = "cwv-signing-secret-with-at-least-32-bytes"  # pragma: allowlist secret
 INTERNAL_HMAC_SECRET = (
-    "internal-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret
+    "6d4b4a4a-fd2f-4a74-a63a-746cc0f244f1/qX8!"  # pragma: allowlist secret
 )
+TOKEN_HMAC_SECRET = (
+    "token-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret
+)
+INTERNAL_AUTH_TOKEN = "internal-route-token-for-test"  # pragma: allowlist secret
 TESTER_IDS = [f"00000000-0000-0000-0000-{index:012d}" for index in range(1, 26)]
 
 
@@ -417,8 +422,12 @@ async def test_cwv_api_ingest_commits_and_maps_duplicate(
     db = MagicMock(
         execute=AsyncMock(), commit=AsyncMock(), rollback=AsyncMock(), add=MagicMock()
     )
-    accepted = await cwv_api.ingest_cwv_observation(
-        payload, request, db, SimpleNamespace()
+    accepted = await call_injected(
+        cwv_api.ingest_cwv_observation,
+        payload,
+        request=request,
+        current_user=SimpleNamespace(),
+        provides={"AsyncDatabaseSession": db},
     )
     assert accepted.metric_id == "metric-id"
     db.add.assert_called_once()
@@ -426,7 +435,13 @@ async def test_cwv_api_ingest_commits_and_maps_duplicate(
         side_effect=IntegrityError("insert", {}, Exception("duplicate"))
     )
     with pytest.raises(HTTPException) as duplicate:
-        await cwv_api.ingest_cwv_observation(payload, request, db, SimpleNamespace())
+        await call_injected(
+            cwv_api.ingest_cwv_observation,
+            payload,
+            request=request,
+            current_user=SimpleNamespace(),
+            provides={"AsyncDatabaseSession": db},
+        )
     assert duplicate.value.status_code == 409
     db.rollback.assert_awaited_once()
     monkeypatch.setattr(
@@ -435,7 +450,13 @@ async def test_cwv_api_ingest_commits_and_maps_duplicate(
         MagicMock(side_effect=cwv.CwvEnvelopeError("invalid")),
     )
     with pytest.raises(HTTPException) as invalid:
-        await cwv_api.ingest_cwv_observation(payload, request, db, SimpleNamespace())
+        await call_injected(
+            cwv_api.ingest_cwv_observation,
+            payload,
+            request=request,
+            current_user=SimpleNamespace(),
+            provides={"AsyncDatabaseSession": db},
+        )
     assert invalid.value.status_code == 422
 
 
@@ -471,11 +492,11 @@ async def test_cwv_export_bounds_and_serializes_rows(
         frontend_image_digest=DIGEST,
         deployment_run_id=123,
         deployment_run_attempt=2,
-        db=db,
         authorization="Bearer token",
+        provides={"AsyncDatabaseSession": db},
     )
     with pytest.raises(HTTPException) as missing:
-        await cwv_api.export_cwv_report(**common)
+        await call_injected(cwv_api.export_cwv_report, **common)
     assert missing.value.status_code == 404
 
     row = SimpleNamespace(
@@ -494,14 +515,14 @@ async def test_cwv_export_bounds_and_serializes_rows(
     )
     db.execute = AsyncMock(return_value=_Rows([row] * 100_001))
     with pytest.raises(HTTPException) as bounded:
-        await cwv_api.export_cwv_report(**common)
+        await call_injected(cwv_api.export_cwv_report, **common)
     assert bounded.value.status_code == 503
 
     later = SimpleNamespace(
         **{**row.__dict__, "metric": "CLS", "observed_at": NOW + timedelta(minutes=1)}
     )
     db.execute = AsyncMock(return_value=_Rows([row, later]))
-    report = await cwv_api.export_cwv_report(**common)
+    report = await call_injected(cwv_api.export_cwv_report, **common)
     assert report["window"]["start"] == "2026-08-25T12:00:00Z"
     assert report["window"]["end"] == "2026-08-25T12:01:00Z"
     assert [item["metric"] for item in report["observations"]] == ["LCP", "CLS"]
@@ -513,15 +534,27 @@ async def test_cwv_export_rejects_wrong_release_and_unavailable_deployment(
 ) -> None:
     monkeypatch.setattr(cwv_api, "_binding", lambda: _binding())
     with pytest.raises(HTTPException) as mismatch:
-        await cwv_api.export_cwv_report(
-            "c" * 40, DIGEST, 123, 2, MagicMock(), "Bearer token"
+        await call_injected(
+            cwv_api.export_cwv_report,
+            "c" * 40,
+            DIGEST,
+            123,
+            2,
+            authorization="Bearer token",
+            provides={"AsyncDatabaseSession": MagicMock()},
         )
     assert mismatch.value.status_code == 404
     monkeypatch.setattr(cwv_api, "settings", _api_settings(deployed_at=None))
     monkeypatch.setattr(cwv_api.asyncio, "to_thread", AsyncMock(return_value={}))
     with pytest.raises(HTTPException) as unavailable:
-        await cwv_api.export_cwv_report(
-            SHA, DIGEST, 123, 2, MagicMock(), "Bearer token"
+        await call_injected(
+            cwv_api.export_cwv_report,
+            SHA,
+            DIGEST,
+            123,
+            2,
+            authorization="Bearer token",
+            provides={"AsyncDatabaseSession": MagicMock()},
         )
     assert unavailable.value.status_code == 503
 
@@ -541,8 +574,14 @@ async def test_cwv_export_maps_oidc_verification_errors(
     monkeypatch.setattr(cwv_api, "settings", _api_settings())
     monkeypatch.setattr(cwv_api.asyncio, "to_thread", AsyncMock(side_effect=error))
     with pytest.raises(HTTPException) as rejected:
-        await cwv_api.export_cwv_report(
-            SHA, DIGEST, 123, 2, MagicMock(), "Bearer token"
+        await call_injected(
+            cwv_api.export_cwv_report,
+            SHA,
+            DIGEST,
+            123,
+            2,
+            authorization="Bearer token",
+            provides={"AsyncDatabaseSession": MagicMock()},
         )
     assert rejected.value.status_code == expected_status
 
@@ -551,9 +590,18 @@ def _settings_values() -> dict[str, object]:
     return {
         "_allow_missing": True,
         "environment": "staging",
+        "event_file_scanner_enabled": True,
         "database_url": "sqlite+aiosqlite:///:memory:",
         "algorithm": "RS256",
+        "revocation_redis_url": "redis://revocation.internal:6380/0",
+        # Keep the independent audit-signing guard valid so each case below
+        # reaches the CWV validator it is intended to exercise.
+        # Deterministic low-entropy fixture; production validators still check
+        # the length and placeholder rules while detect-secrets ignores it.
+        "audit_log_secret": "auditlog-" + "a" * 56,  # pragma: allowlist secret
         "internal_hmac_secret": INTERNAL_HMAC_SECRET,
+        "token_hmac_secret": TOKEN_HMAC_SECRET,
+        "internal_auth_token": INTERNAL_AUTH_TOKEN,
         "cwv_rum_enabled": True,
         "cwv_rum_signing_secret": SECRET,
         "cwv_release_sha": SHA,

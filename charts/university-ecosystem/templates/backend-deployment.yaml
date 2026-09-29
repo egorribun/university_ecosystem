@@ -57,7 +57,7 @@ spec:
               protocol: TCP
           env:
             {{- range $key, $value := .Values.backend.env }}
-            {{- if not (has $key (list "DATABASE_URL" "CACHE_REDIS_URL" "REVOCATION_REDIS_URL" "NATS_URL" "NATS_AUTH_TOKEN" "ENVIRONMENT" "SECRET_KEY" "ALGORITHM" "JWT_PRIVATE_KEY_PATH" "INTERNAL_HMAC_SECRET" "WS_HUB_INTERNAL_SECRET" "CSRF_HMAC_SECRET" "SPOTIFY_TOKEN_SECRET" "ELASTICSEARCH_PASSWORD" "SPICEDB_PRESHARED_KEY" "AUDIT_LOG_SECRET" "IDEMPOTENCY_HMAC_SECRET" "CWV_RUM_SIGNING_SECRET" "CWV_RUM_ENABLED" "CWV_RELEASE_SHA" "CWV_FRONTEND_IMAGE_DIGEST" "CWV_DEPLOYMENT_RUN_ID" "CWV_DEPLOYMENT_RUN_ATTEMPT" "CWV_DEPLOYMENT_URL" "CWV_DEPLOYED_AT" "CWV_ALLOWED_ORIGINS" "CWV_EXPORT_OIDC_ENABLED" "CWV_EXPORT_OIDC_REPOSITORY" "CWV_EXPORT_OIDC_WORKFLOW_REF" "CWV_EXPORT_OIDC_SUBJECT" "MFA_EMAIL_OTP_HMAC_KEYS" "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID" "MFA_EMAIL_DELIVERY_KEKS" "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" "MFA_TRUSTED_DEVICE_HMAC_KEYS" "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID" "MINIO_SECURE" "ELASTICSEARCH_URL")) }}
+            {{- if not (has $key (list "DATABASE_URL" "CACHE_REDIS_URL" "REVOCATION_REDIS_URL" "NATS_URL" "NATS_AUTH_TOKEN" "ENVIRONMENT" "SECRET_KEY" "ALGORITHM" "JWT_AUDIENCE" "JWT_ISSUER" "JWT_PRIVATE_KEY_PATH" "INTERNAL_HMAC_SECRET" "WS_HUB_INTERNAL_SECRET" "INTERNAL_AUTH_TOKEN" "CSRF_HMAC_SECRET" "SPOTIFY_TOKEN_SECRET" "ELASTICSEARCH_PASSWORD" "SPICEDB_PRESHARED_KEY" "AUDIT_LOG_SECRET" "TOKEN_HMAC_SECRET" "IDEMPOTENCY_HMAC_SECRET" "CWV_RUM_SIGNING_SECRET" "CWV_RUM_ENABLED" "CWV_RELEASE_SHA" "CWV_FRONTEND_IMAGE_DIGEST" "CWV_DEPLOYMENT_RUN_ID" "CWV_DEPLOYMENT_RUN_ATTEMPT" "CWV_DEPLOYMENT_URL" "CWV_DEPLOYED_AT" "CWV_ALLOWED_ORIGINS" "CWV_EXPORT_OIDC_ENABLED" "CWV_EXPORT_OIDC_REPOSITORY" "CWV_EXPORT_OIDC_WORKFLOW_REF" "CWV_EXPORT_OIDC_SUBJECT" "MFA_EMAIL_OTP_HMAC_KEYS" "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID" "MFA_EMAIL_DELIVERY_KEKS" "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" "MFA_TRUSTED_DEVICE_HMAC_KEYS" "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID" "STORAGE_BACKEND" "STORAGE_S3_BUCKET" "STORAGE_S3_REGION" "STORAGE_S3_ACCESS_KEY_ID" "STORAGE_S3_SECRET_ACCESS_KEY" "STORAGE_S3_ENDPOINT_URL" "STORAGE_S3_BASE_URL" "MINIO_SECURE" "ELASTICSEARCH_URL")) }}
             - name: {{ $key }}
               value: {{ tpl $value $ | quote }}
             {{- end }}
@@ -135,9 +135,13 @@ spec:
                   key: jwt-secret
             - name: ALGORITHM
               value: "RS256"
+            - name: JWT_AUDIENCE
+              value: {{ required "gateway.config.jwtAudience must be set" .Values.gateway.config.jwtAudience | quote }}
+            - name: JWT_ISSUER
+              value: {{ required "global.jwtIssuer must be set" .Values.global.jwtIssuer | quote }}
             - name: JWT_PRIVATE_KEY_PATH
               value: /run/secrets/jwt-rsa-private-key.pem
-            {{- range $variable, $key := dict "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" "CSRF_HMAC_SECRET" "csrf-hmac-secret" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "AUDIT_LOG_SECRET" "audit-log-secret" "IDEMPOTENCY_HMAC_SECRET" "idempotency-hmac-secret" }}
+            {{- range $variable, $key := dict "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" "INTERNAL_AUTH_TOKEN" "ws-hub-internal-secret" "CSRF_HMAC_SECRET" "csrf-hmac-secret" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "AUDIT_LOG_SECRET" "audit-log-secret" "TOKEN_HMAC_SECRET" "token-hmac-secret" "IDEMPOTENCY_HMAC_SECRET" "idempotency-hmac-secret" }}
             - name: {{ $variable }}
               valueFrom:
                 secretKeyRef:
@@ -151,10 +155,34 @@ spec:
                   name: {{ include "university-ecosystem.applicationSecretName" $ | quote }}
                   key: {{ required (printf "applicationSecrets.keys.%s must be set" $variable) $key | quote }}
             {{- end }}
+            - name: STORAGE_BACKEND
+              value: {{ .Values.backend.config.storageBackend | quote }}
+            - name: STORAGE_S3_BUCKET
+              value: {{ .Values.backend.config.storageS3Bucket | quote }}
+            - name: STORAGE_S3_REGION
+              value: {{ .Values.backend.config.storageS3Region | quote }}
+            - name: STORAGE_S3_ENDPOINT_URL
+              value: {{ .Values.backend.config.storageS3EndpointURL | quote }}
+            - name: STORAGE_S3_BASE_URL
+              value: {{ .Values.backend.config.storageS3BaseURL | quote }}
+            {{- if has .Values.backend.config.storageBackend (list "s3" "minio") }}
+            - name: STORAGE_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" $ | quote }}
+                  key: minio-access-key
+            - name: STORAGE_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" $ | quote }}
+                  key: minio-secret-key
+            {{- end }}
             - name: MINIO_SECURE
               value: {{ .Values.backend.config.minioSecure | quote }}
             - name: ELASTICSEARCH_URL
               value: {{ .Values.backend.config.elasticsearchURL | quote }}
+            - name: EVENT_FILE_SCANNER_ENABLED
+              value: {{ .Values.backend.config.eventFileScannerEnabled | quote }}
             - name: FLAGD_HOST
               value: {{ .Values.backend.config.flagdHost | quote }}
             - name: FLAGD_PORT

@@ -6,6 +6,7 @@ import app.models as models
 from app.api.schedule import _SCHEDULE_CACHE_CONTROL
 from app.core.localization import translate, translate_lesson_type
 from app.services.ical import generate_schedule_ics
+from tests.conftest import install_dishka_override
 
 
 def test_generate_schedule_ics_includes_lessons() -> None:
@@ -47,7 +48,6 @@ def test_generate_schedule_ics_includes_lessons() -> None:
 async def test_schedule_ics_endpoint(async_client, db_session) -> None:
     from unittest.mock import AsyncMock
 
-    from app.api.deps import get_read_schedule_service
     from app.main import app
     from app.schemas.dtos.schedule import ScheduleDTO
 
@@ -78,34 +78,29 @@ async def test_schedule_ics_endpoint(async_client, db_session) -> None:
     mock_service = AsyncMock()
     mock_service.get_schedule = AsyncMock(return_value=[lesson_dto])
 
-    app.dependency_overrides[get_read_schedule_service] = lambda: mock_service
-    try:
-        response = await async_client.get(f"/schedule/ics?group={group.id}")
+    install_dishka_override(app, ScheduleService=mock_service)
+    response = await async_client.get(f"/schedule/ics?group={group.id}")
 
-        assert response.status_code == 200
-        assert response.headers.get("content-type", "").startswith("text/calendar")
-        disposition = response.headers.get("content-disposition", "")
-        assert "schedule-" in disposition.lower()
-        assert response.headers.get("content-language") == "en"
-        assert "Алгебра" in response.text
-        expected_type_en = translate_lesson_type("practice", locale="en")
-        expected_en = translate(
-            "schedule.ics.description.room", locale="en", room="А-101"
-        )
-        assert expected_en in response.text
-        assert expected_type_en in response.text
+    assert response.status_code == 200
+    assert response.headers.get("content-type", "").startswith("text/calendar")
+    disposition = response.headers.get("content-disposition", "")
+    assert "schedule-" in disposition.lower()
+    assert response.headers.get("content-language") == "en"
+    assert "Алгебра" in response.text
+    expected_type_en = translate_lesson_type("practice", locale="en")
+    expected_en = translate("schedule.ics.description.room", locale="en", room="А-101")
+    assert expected_en in response.text
+    assert expected_type_en in response.text
 
-        response_ru = await async_client.get(
-            f"/schedule/ics?group={group.id}", headers={"Accept-Language": "ru"}
-        )
-        assert response_ru.status_code == 200
-        assert response_ru.headers.get("content-language") == "ru"
-        expected_ru = translate(
-            "schedule.ics.description.teacher", locale="ru", teacher="Проф. Смирнов"
-        )
-        assert expected_ru in response_ru.text
-    finally:
-        app.dependency_overrides.pop(get_read_schedule_service, None)
+    response_ru = await async_client.get(
+        f"/schedule/ics?group={group.id}", headers={"Accept-Language": "ru"}
+    )
+    assert response_ru.status_code == 200
+    assert response_ru.headers.get("content-language") == "ru"
+    expected_ru = translate(
+        "schedule.ics.description.teacher", locale="ru", teacher="Проф. Смирнов"
+    )
+    assert expected_ru in response_ru.text
 
 
 def _contains_cyrillic(text: str) -> bool:

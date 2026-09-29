@@ -100,7 +100,7 @@ vi.mock("@/components/ui/data-table/DataTable", () => ({
   ),
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({
     open,
     onConfirm,

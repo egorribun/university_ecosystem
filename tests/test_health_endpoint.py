@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException, status
 
 from app.api import health
-from app.services.storage import StorageBackend
+from app.services.storage import StaticFSStorage, StorageBackend
 from app.utils import migrations
 
 
@@ -365,14 +365,14 @@ async def test_lightweight_storage_probe_ok_error_and_non_backend():
 
 
 @pytest.mark.asyncio
-async def test_write_delete_storage_probe_delete_failure_and_success():
-    backend = MagicMock()
-    backend.save_file = AsyncMock(return_value="healthz/probe.txt")
-    backend.delete_file = AsyncMock(side_effect=RuntimeError("delete failed"))
-    assert await health._write_delete_storage_probe(backend) == "error"
+async def test_write_delete_storage_probe_delete_failure_and_success(tmp_path):
+    failing_backend = StaticFSStorage(tmp_path / "failed")
+    failing_backend.delete_file = AsyncMock(side_effect=RuntimeError("delete failed"))
+    assert await health._write_delete_storage_probe(failing_backend) == "error"
 
-    backend.delete_file = AsyncMock(return_value=None)
+    backend = StaticFSStorage(tmp_path / "success")
     assert await health._write_delete_storage_probe(backend) == "ok"
+    assert list((backend.base_dir / "healthz").iterdir()) == []
 
 
 @pytest.mark.asyncio

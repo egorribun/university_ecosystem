@@ -3,44 +3,37 @@
  * Extracted from useScheduleData for testability.
  */
 
-import { type Lesson, parseMinutes, getTimeStr } from "@/components/schedule/scheduleUtils"
+import { type Lesson, parseMinutes } from "@/components/schedule/scheduleUtils"
 
 /**
  * Detect overlapping lessons on the same day.
  * Returns a Set of lesson IDs that have time conflicts.
  */
 export function detectConflicts(lessons: Lesson[]): Set<string> {
-  const byDay = new Map<string, Lesson[]>()
-  for (const l of lessons) {
-    const arr = byDay.get(l.weekday) ?? []
-    arr.push(l)
-    byDay.set(l.weekday, arr)
+  // An unparseable time becomes NaN, and every comparison with NaN is false,
+  // so such a lesson never conflicts.
+  const byDay = new Map<string, { id: string; start: number; end: number }[]>()
+  for (const lesson of lessons) {
+    const range = {
+      id: lesson.id,
+      start: parseMinutes(lesson.start_time) ?? Number.NaN,
+      end: parseMinutes(lesson.end_time) ?? Number.NaN,
+    }
+    const day = byDay.get(lesson.weekday)
+    if (day) day.push(range)
+    else byDay.set(lesson.weekday, [range])
   }
 
   const conflicted = new Set<string>()
-
-  for (const [, dayLessons] of byDay) {
-    dayLessons.sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
-
-    for (let i = 0; i < dayLessons.length; i++) {
-      const li = dayLessons[i]!
-      for (let j = i + 1; j < dayLessons.length; j++) {
-        const lj = dayLessons[j]!
-        const s1 = parseMinutes(li.start_time)
-        const e1 = parseMinutes(li.end_time)
-        const s2 = parseMinutes(lj.start_time)
-        const e2 = parseMinutes(lj.end_time)
-
-        if (s1 == null || e1 == null || s2 == null || e2 == null) continue
-
-        const overlap = Math.max(s1, s2) < Math.min(e1, e2)
-        if (overlap) {
-          conflicted.add(li.id)
-          conflicted.add(lj.id)
+  for (const ranges of byDay.values()) {
+    for (const [index, a] of ranges.entries()) {
+      for (const b of ranges.slice(index + 1)) {
+        if (Math.max(a.start, b.start) < Math.min(a.end, b.end)) {
+          conflicted.add(a.id)
+          conflicted.add(b.id)
         }
       }
     }
   }
-
   return conflicted
 }

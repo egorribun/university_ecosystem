@@ -347,7 +347,7 @@ All local + empirical gates GREEN end-of-W174:
 - **Plan file**: `C:\Users\egorribun\.claude\plans\c-users-egorribun-claude-projects-c-use-iridescent-bunny.md` (W174 implementation blueprint with full SW breakdown + decision rationale)
 - **W173 audit**: [AUDIT_WAVE173.md](AUDIT_WAVE173.md) (preceding wave, real-bug Q0=B pattern + W141 anti-pattern #1 27th vindication establishing W174 baseline)
 - **W171 audit**: [AUDIT_WAVE171.md](AUDIT_WAVE171.md) (admin-smoke-monitoring.yml infrastructure for future regression detection)
-- **W170 audit**: [archive/AUDIT_WAVE170.md](archive/AUDIT_WAVE170.md) (N+3 rotated by W174 SW4 — Docker cwd helper scripts at `scripts/dc.{sh,ps1}` used 4× in W174 chain)
+- **W170 audit**: [archive/AUDIT_WAVE170.md](../../../docs/audits/archive/AUDIT_WAVE170.md) (N+3 rotated by W174 SW4 — Docker cwd helper scripts at `scripts/dc.{sh,ps1}` used 4× in W174 chain)
 - **W152 Phase 1.7**: `App.tsx:30-51` (the W174 root cause — switch from reactive `<RouterProvider context={...}>` to `<StartClient />` removed the context bridge that was keeping route guards' `context.auth` fresh)
 - **W126 SW4**: `frontend/src/server.ts` + `frontend/src/ssrAuth.ts` (server-side auth-at-edge via `globalThis.__ssrAuthGetter__` — preserved by W174 SW1 for SSR-side route guards)
 - **W134 SW1**: `useProfileSync.ts:1099-1109` (reactive sync of internal state INTO Zustand — established Zustand as source of truth that W174 SW1 reads from)

@@ -27,64 +27,66 @@ function getHeatLevel(count: number, maxCount: number): number {
   return 4
 }
 
-/** Build a grid of dates going back `days` from today */
+type HeatmapCell = {
+  date: string
+  day: Date
+  dayOfWeek: number
+  weekIndex: number
+  isInRange: boolean
+}
+
+function toIsoDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+}
+
+/**
+ * Build a grid of dates going back `days` from today (inclusive). The grid
+ * starts on the ISO Monday on or before the first day of the range; the
+ * leading days before the range are kept as out-of-range placeholders.
+ * Dates are derived from calendar components, so the local clock time and
+ * DST transitions never shift a cell.
+ */
 function buildDateGrid(days: number) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const startDate = new Date(today)
-  startDate.setDate(startDate.getDate() - days + 1)
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const firstDay = now.getDate() - days + 1
+  // ISO Monday offset: Mon -> 0, Sun -> 6.
+  const leading = (new Date(year, month, firstDay).getDay() + 6) % 7
+  const total = leading + days
 
-  // Align start to the nearest previous Monday (ISO week start)
-  const dayOfWeek = startDate.getDay()
-  // ISO Monday offset without a Sunday-only branch: Mon -> 0, Sun -> -6.
-  const mondayOffset = -((dayOfWeek + 6) % 7)
-  startDate.setDate(startDate.getDate() + mondayOffset)
+  const cells = Array.from({ length: total }, (_, index): HeatmapCell => {
+    const day = new Date(year, month, firstDay - leading + index)
+    return {
+      date: toIsoDate(day),
+      day,
+      dayOfWeek: index % 7,
+      weekIndex: Math.floor(index / 7),
+      isInRange: index >= leading,
+    }
+  })
 
-  const cells: Array<{ date: string; dayOfWeek: number; weekIndex: number; isInRange: boolean }> =
-    []
-  const cursor = new Date(startDate)
-
-  const rangeStart = new Date(today)
-  rangeStart.setDate(rangeStart.getDate() - days + 1)
-
-  let weekIndex = 0
-  while (cursor <= today) {
-    const dateStr = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`
-    const dow = cursor.getDay() === 0 ? 6 : cursor.getDay() - 1 // Monday = 0
-    const isInRange = cursor >= rangeStart && cursor <= today
-    cells.push({ date: dateStr, dayOfWeek: dow, weekIndex, isInRange })
-
-    cursor.setDate(cursor.getDate() + 1)
-    if (cursor.getDay() === 1 && cursor <= today) weekIndex++
-  }
-
-  return { cells, totalWeeks: weekIndex + 1 }
+  return { cells, totalWeeks: Math.ceil(total / 7) }
 }
 
 /** Extract month labels positioned at the first Monday of each month */
-function getMonthLabels(
-  cells: Array<{ date: string; dayOfWeek: number; weekIndex: number }>,
-  locale: string
-) {
-  const seen = new Set<string>()
-  const labels: Array<{ label: string; weekIndex: number }> = []
+function getMonthLabels(cells: readonly HeatmapCell[], locale: string) {
+  const labels = new Map<string, { label: string; weekIndex: number }>()
   for (const cell of cells) {
     if (cell.dayOfWeek !== 0) continue // only check Mondays
     const month = cell.date.slice(0, 7)
-    if (!seen.has(month)) {
-      seen.add(month)
-      const date = new Date(cell.date + "T00:00:00")
-      labels.push({
-        label: new Intl.DateTimeFormat(locale, { month: "short" }).format(date),
+    if (!labels.has(month)) {
+      labels.set(month, {
+        label: new Intl.DateTimeFormat(locale, { month: "short" }).format(cell.day),
         weekIndex: cell.weekIndex,
       })
     }
   }
-  return labels
+  return [...labels.values()]
 }
 
 export function ActivityHeatmap({ data, period, ariaLabel }: ActivityHeatmapProps) {
-  const { t } = useTranslation(["activity", "common"])
+  const { t } = useTranslation("activity")
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
 
@@ -108,7 +110,7 @@ export function ActivityHeatmap({ data, period, ariaLabel }: ActivityHeatmapProp
   return (
     <CardShell tone="neutral" aria-label={ariaLabel}>
       <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-text-tertiary">
-        {t("activity:heatmap.title")}
+        {t("heatmap.title")}
       </h3>
       <div className="activity-heatmap-container overflow-x-auto">
         <div
@@ -154,8 +156,8 @@ export function ActivityHeatmap({ data, period, ariaLabel }: ActivityHeatmapProp
                     className="activity-heatmap-cell"
                     role="img"
                     style={{ backgroundColor: HEAT_LEVELS[level] }}
-                    title={t("activity:heatmap.cellLabel", { date: cell.date, count })}
-                    aria-label={t("activity:heatmap.cellLabel", { date: cell.date, count })}
+                    title={t("heatmap.cellLabel", { date: cell.date, count })}
+                    aria-label={t("heatmap.cellLabel", { date: cell.date, count })}
                   />
                 )
               }),
@@ -165,19 +167,38 @@ export function ActivityHeatmap({ data, period, ariaLabel }: ActivityHeatmapProp
 
         {/* Legend */}
         <div className="mt-3 flex items-center justify-end gap-1 text-[10px] text-text-tertiary">
-          <span>{t("activity:heatmap.legendLess")}</span>
+          <span>{t("heatmap.legendLess")}</span>
           {HEAT_LEVELS.map((color, i) => (
             <div
               key={i}
               className="activity-heatmap-cell"
               role="img"
-              aria-label={t("activity:heatmap.legendLevel", { level: i })}
+              aria-label={t("heatmap.legendLevel", { level: i })}
               style={{ backgroundColor: color }}
             />
           ))}
-          <span>{t("activity:heatmap.legendMore")}</span>
+          <span>{t("heatmap.legendMore")}</span>
         </div>
       </div>
+      <table className="sr-only">
+        <caption>{t("heatmap.title")}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{t("chartTableHeaders.date")}</th>
+            <th scope="col">{t("title")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cells
+            .filter((cell) => cell.isInRange)
+            .map((cell) => (
+              <tr key={cell.date}>
+                <th scope="row">{cell.date}</th>
+                <td>{data.get(cell.date) ?? 0}</td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
     </CardShell>
   )
 }

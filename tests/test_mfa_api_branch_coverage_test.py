@@ -38,8 +38,8 @@ async def test_confirm_totp_enrollment_failure(mock_complete):
     request.state.dishka_container.get.side_effect = mock_get
 
     with pytest.raises(HTTPException) as exc:
-        await confirm_totp_enrollment(
-            payload=payload, request=request, db=db, user=user
+        await confirm_totp_enrollment.__dishka_orig_func__(
+            payload=payload, request=request, db=db, audit=audit, user=user
         )
     assert exc.value.status_code == 400
     audit.log.assert_called_with(
@@ -72,8 +72,8 @@ async def test_confirm_totp_enrollment_not_found():
     user = MagicMock(id="user_123")
 
     with pytest.raises(HTTPException) as exc:
-        await confirm_totp_enrollment(
-            payload=payload, request=request, db=db, user=user
+        await confirm_totp_enrollment.__dishka_orig_func__(
+            payload=payload, request=request, db=db, audit=MagicMock(), user=user
         )
     assert exc.value.status_code == 404
     assert exc.value.detail == "Enrollment not found"
@@ -82,8 +82,8 @@ async def test_confirm_totp_enrollment_not_found():
     enrollment = MagicMock(user_id="user_other")
     db.get.return_value = enrollment
     with pytest.raises(HTTPException) as exc:
-        await confirm_totp_enrollment(
-            payload=payload, request=request, db=db, user=user
+        await confirm_totp_enrollment.__dishka_orig_func__(
+            payload=payload, request=request, db=db, audit=MagicMock(), user=user
         )
     assert exc.value.status_code == 404
     assert exc.value.detail == "Enrollment not found"
@@ -124,10 +124,11 @@ async def test_confirm_totp_rollback_does_not_publish_redis_revocations():
         ) as publish,
     ):
         with pytest.raises(RuntimeError, match="commit failed"):
-            await confirm_totp_enrollment(
+            await confirm_totp_enrollment.__dishka_orig_func__(
                 payload=payload,
                 request=request,
                 db=db,
+                audit=audit,
                 user=user,
             )
 
@@ -263,7 +264,9 @@ async def test_generate_recovery_codes_endpoint(mock_generate):
     request.state.dishka_container.get = AsyncMock(side_effect=mock_get)
     user = MagicMock(id="user_123")
 
-    res = await generate_recovery_codes_endpoint(request=request, db=db, user=user)
+    res = await generate_recovery_codes_endpoint.__dishka_orig_func__(
+        request=request, db=db, audit=audit, _=None, user=user
+    )
     assert res.codes == ["code1", "code2"]
     db.commit.assert_awaited_once()
     audit.log.assert_called_once()

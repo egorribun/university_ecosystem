@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { createHmac } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
@@ -14,6 +15,25 @@ const cryptoBytes = await readFile(
 
 await sanitizer.default({ module_or_path: sanitizerBytes })
 await crypto.default({ module_or_path: cryptoBytes })
+
+test("the generated crypto module exports padded base64 HMAC without removing the hex API", () => {
+  assert.equal(typeof crypto.hmac_sha256_sign_base64, "function")
+  for (const [key, message] of [
+    ["\u000b".repeat(20), "Hi There"],
+    ["Jefe", "what do ya want for nothing?"],
+    ["", ""],
+    ["ключ🔑", "сообщение🌍"],
+  ]) {
+    const expected = createHmac("sha256", key).update(message).digest("base64")
+    assert.equal(crypto.hmac_sha256_sign_base64(key, message), expected)
+    assert.equal(
+      Buffer.from(crypto.hmac_sha256_sign(key, message), "hex").toString("base64"),
+      expected
+    )
+    assert.equal(expected.length, 44)
+    assert.ok(expected.endsWith("="))
+  }
+})
 
 test("the generated sanitizer removes executable markup", () => {
   const sanitized = sanitizer.sanitize_rich_text(

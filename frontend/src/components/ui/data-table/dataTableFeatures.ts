@@ -53,7 +53,7 @@ export const dataTableFeatures = tableFeatures({
   },
 })
 
-export type DataTableFeatures = typeof dataTableFeatures
+type DataTableFeatures = typeof dataTableFeatures
 export type DataTableColumnDef<TData extends RowData, TValue = unknown> = ColumnDef<
   DataTableFeatures,
   TData,

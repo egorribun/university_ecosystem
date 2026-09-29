@@ -1,6 +1,24 @@
 # Kubernetes Manifests
 
-Kubernetes deployment manifests for the University Ecosystem application.
+The raw files in this directory are supporting Kubernetes manifests for the
+University Ecosystem platform. They are **not** a complete application
+deployment artifact.
+
+## Deployment ownership
+
+The `charts/university-ecosystem` Helm chart is the sole canonical producer
+and single canonical deployment artifact for application workloads in staging
+and production. It renders and owns the
+complete first-party workload set: `backend`, `gateway`, `ws-hub`,
+`file-processor`, `frontend`, and `outbox-worker`. Use the chart's reviewed
+values, digest-pinned images, and release gates for those environments.
+
+The raw `k8s/` tree intentionally does not duplicate the Go service
+Deployments or Services for `gateway`, `ws-hub`, and `file-processor`.
+Applying `k8s/backend/` or `k8s/frontend/` by itself therefore cannot produce
+a routable platform and must not be used as a staging or production release
+path. Individual raw files are limited to explicitly approved supporting or
+development/diagnostic operations; they do not replace the Helm release.
 
 ## Structure
 
@@ -20,19 +38,59 @@ Kubernetes deployment manifests for the University Ecosystem application.
 
 ## Usage
 
+### Canonical staging/production deployment
+
+Render and install the complete application through the Helm chart. Follow
+[`charts/university-ecosystem/README.md`](../charts/university-ecosystem/README.md)
+for the immutable-image, Secret, TLS, policy, and rollback gates:
+
 ```bash
-# Create namespace
-kubectl apply -f namespace.yaml
-
-# Apply secrets (create from secrets-example.yaml)
-kubectl apply -f secrets.yaml
-
-# Deploy backend
-kubectl apply -f backend/
-
-# Deploy frontend
-kubectl apply -f frontend/
+helm dependency build charts/university-ecosystem
+helm lint charts/university-ecosystem --strict \
+  --values charts/university-ecosystem/values-staging.yaml \
+  --values .staging-resolved-nonsecret-values.yaml
+helm upgrade --install university charts/university-ecosystem \
+  --namespace university-ecosystem \
+  --values charts/university-ecosystem/values-staging.yaml \
+  --values .staging-resolved-nonsecret-values.yaml \
+  --atomic --wait --timeout 20m --history-max 10
 ```
+
+### Supporting raw manifests
+
+Use raw files only for an explicitly approved supporting operation, such as
+creating the namespace or applying a separately reviewed policy bundle. The
+following example does **not** deploy the application and must not be used as
+a release shortcut:
+
+```bash
+kubectl apply -f namespace.yaml
+```
+
+The parameterized ingress, Vault store and development Deployments must be rendered through
+the repository wrapper. It allowlists the manifest path, requires every
+placeholder, rejects unresolved variables and empty/`:latest` image tags,
+requires `IMAGE_REGISTRY` and accepts `IMAGE_TAG` only as a 40-character commit
+SHA or semver (semantic version):
+
+```bash
+IMAGE_REGISTRY=registry.example.com IMAGE_TAG="$GIT_COMMIT_SHA" \
+bash scripts/apply_raw_k8s.sh k8s/backend/deployment.yaml
+IMAGE_REGISTRY=registry.example.com IMAGE_TAG="$GIT_COMMIT_SHA" \
+bash scripts/apply_raw_k8s.sh k8s/frontend/deployment.yaml
+CERT_MANAGER_ISSUER_NAME=letsencrypt-prod \
+FRONTEND_HOST=university.example.com API_HOST=api.university.example.com \
+TLS_SECRET_NAME=university-tls \
+bash scripts/apply_raw_k8s.sh k8s/ingress.yaml
+VAULT_URL=https://vault.example.com \
+bash scripts/apply_raw_k8s.sh k8s/backend/secret-store.yaml
+```
+
+Do not call `envsubst | kubectl apply` directly and do not use this wrapper for
+staging or production releases; those environments must use the Helm chart.
+
+Create real secrets from `secrets-example.yaml` through the configured secret
+manager; never commit or apply the example file as production credentials.
 
 ## Environment Requirements
 

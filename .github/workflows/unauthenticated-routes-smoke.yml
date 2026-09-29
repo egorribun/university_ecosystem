@@ -88,6 +88,14 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Setup Rust toolchain
+        # Keep generated WASM deterministic when the hosted runner's stable
+        # compiler advances; provenance is intentionally byte-exact.
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # pinned action
+        with:
+          toolchain: 1.97.1
+          targets: wasm32-unknown-unknown
+
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
@@ -103,9 +111,17 @@ jobs:
         with:
           tool: wasm-pack@0.13.1
 
+      - name: Setup Rust toolchain
+        # Keep generated WASM deterministic when the hosted stable channel
+        # advances; provenance is intentionally byte-exact.
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # pinned action
+        with:
+          toolchain: 1.97.1
+          targets: wasm32-unknown-unknown
+
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Build WASM modules
         # Retry transient Binaryen downloads; each build is idempotent and reuses cache.
@@ -154,7 +170,7 @@ jobs:
       - name: Install Playwright bundled Chromium
         # The runner prefers installed Chrome and falls back to this bundled browser.
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: bash ../scripts/ci/install-playwright-with-deps.sh chromium
 
       - name: Start backend
         run: |

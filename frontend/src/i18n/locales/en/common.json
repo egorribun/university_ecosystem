@@ -92,7 +92,9 @@
     "firstPage": "Go to first page",
     "prevPage": "Go to previous page",
     "nextPage": "Go to next page",
-    "lastPage": "Go to last page"
+    "lastPage": "Go to last page",
+    "selected": "{{selected}} of {{total}} row(s) selected.",
+    "pageOf": "Page {{current}} of {{total}}"
   },
   "errorBoundary": {
     "title": "Something went wrong",
@@ -124,5 +126,10 @@
   },
   "cta": {
     "learnMore": "Learn more"
+  },
+  "tableSort": {
+    "ascending": "sorted ascending",
+    "descending": "sorted descending",
+    "none": "not sorted"
   }
 }

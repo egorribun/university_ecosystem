@@ -5,9 +5,11 @@ import hashlib
 import hmac
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
+from dishka import FromComponent
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -22,22 +24,14 @@ from fastapi.responses import Response
 import app.models as models
 from app.api import deps
 from app.api.deps import (
-    get_current_admin_user,
-    get_current_user,
+    get_current_admin_user_from_dishka,
+    get_current_user_from_dishka,
     get_current_user_full,
     require_fresh_mfa,
 )
 from app.api.validation import raise_validation_error, require_admin
 from app.core.config import settings
-from app.core.container import (
-    get_audit_service,
-    get_auth_service,
-    get_group_service,
-    get_user_compliance_service,
-    get_user_media_service,
-    get_user_profile_service,
-)
-from app.core.database import get_read_db
+from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import resolve_locale
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
@@ -159,11 +153,12 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
     "/forgot",
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def forgot_password(
     payload: schemas.ForgotPasswordIn,
     request: Request,
     bg: BackgroundTasks,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: FromDishka[AuthService],
 ) -> dict[str, bool]:
     await auth_service.initiate_password_reset(payload.email, request, bg)
     return {"ok": True}
@@ -173,21 +168,23 @@ async def forgot_password(
     "/reset",
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def reset_password(
     payload: schemas.ResetPasswordIn,
     request: Request,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: FromDishka[AuthService],
 ) -> dict[str, bool]:
     await auth_service.perform_password_reset(payload.token, payload.password, request)
     return {"ok": True}
 
 
 @users_router.get("/me", response_model=schemas.UserOut, summary="Me")
+@inject
 async def me(
     request: Request,
-    db: AsyncDatabaseSession = Depends(get_read_db),
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    auth_service: FromDishka[AuthService],
     user: models.User = Depends(get_current_user_full),
-    auth_service: AuthService = Depends(get_auth_service),
 ) -> schemas.UserOut:
     _enforce_profile_cache_integrity(request)
     await auth_service.refresh_pending_email(user)
@@ -209,11 +206,12 @@ async def me(
     summary="Update Me",
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def update_me(
     data: schemas.UserProfileUpdate,
     request: Request,
+    service: FromDishka[UserProfileService],
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
-    service: UserProfileService = Depends(get_user_profile_service),
 ) -> schemas.UserOut:
     user_dto = await service.update_user_profile(user, data, request)
     return schemas.UserOut.model_validate(user_dto)
@@ -225,13 +223,14 @@ async def update_me(
     dependencies=[Depends(sensitive_route_limit())],
     summary="Change Email",
 )
+@inject
 async def change_email(
     payload: schemas.UserEmailChangeIn,
     request: Request,
     bg: BackgroundTasks,
+    auth_service: FromDishka[AuthService],
     _: None = Depends(require_fresh_mfa),
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
-    auth_service: AuthService = Depends(get_auth_service),
 ) -> schemas.UserOut:
     user_dto = await auth_service.initiate_email_change(user, payload, request, bg)
     return schemas.UserOut.model_validate(user_dto)
@@ -243,11 +242,12 @@ async def change_email(
     dependencies=[Depends(sensitive_route_limit())],
     summary="Confirm Email Change",
 )
+@inject
 async def verify_email_change(
     payload: schemas.UserEmailConfirmIn,
     request: Request,
+    auth_service: FromDishka[AuthService],
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
-    auth_service: AuthService = Depends(get_auth_service),
 ) -> schemas.UserOut:
     user_dto = await auth_service.confirm_email_change(user, payload.token, request)
     return schemas.UserOut.model_validate(user_dto)
@@ -258,12 +258,13 @@ async def verify_email_change(
     response_model=schemas.PasswordChangeOut,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def change_password(
     payload: schemas.UserPasswordChangeIn,
     request: Request,
+    auth_service: FromDishka[AuthService],
     _: None = Depends(require_fresh_mfa),
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
-    auth_service: AuthService = Depends(get_auth_service),
 ) -> schemas.PasswordChangeOut:
     ok, revoked = await auth_service.change_password(user, payload, request)
     return schemas.PasswordChangeOut(ok=ok, revoked_sessions=revoked)
@@ -274,11 +275,12 @@ async def change_password(
     response_model=schemas.DataExportOut,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def export_current_user_data(
     request: Request,
+    service: FromDishka[UserComplianceService],
     _: None = Depends(require_fresh_mfa),
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
-    service: UserComplianceService = Depends(get_user_compliance_service),
 ) -> schemas.DataExportOut:
     return await service.export_user_data(user, request)
 
@@ -288,12 +290,13 @@ async def export_current_user_data(
     response_model=schemas.DataDeletionOut,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def delete_current_user_account(
     payload: schemas.DataDeletionRequest,
     request: Request,
+    service: FromDishka[UserComplianceService],
     _: None = Depends(require_fresh_mfa),
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
-    service: UserComplianceService = Depends(get_user_compliance_service),
 ) -> schemas.DataDeletionOut:
     return await service.delete_user_data(user, request, confirm=payload.confirm)
 
@@ -305,12 +308,13 @@ async def delete_current_user_account(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_users_avatar))
     ],
 )
+@inject
 async def upload_avatar(
     file: UploadFile = File(...),
     *,
     request: Request,
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
-    service: UserMediaService = Depends(get_user_media_service),
+    service: FromDishka[UserMediaService],
 ) -> schemas.UserOut:
     await scan_for_malware(file, locale=None, size_bytes=file.size)
     user_dto = await service.upload_avatar(user, file)
@@ -324,12 +328,13 @@ async def upload_avatar(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_users_avatar))
     ],
 )
+@inject
 async def upload_cover(
     file: UploadFile = File(...),
     *,
     request: Request,
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
-    service: UserMediaService = Depends(get_user_media_service),
+    service: FromDishka[UserMediaService],
 ) -> schemas.UserOut:
     await scan_for_malware(file, locale=None, size_bytes=file.size)
     user_dto = await service.upload_cover(user, file)
@@ -343,10 +348,11 @@ async def upload_cover(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_users_avatar))
     ],
 )
+@inject
 async def delete_avatar(
     request: Request,
+    service: FromDishka[UserMediaService],
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
-    service: UserMediaService = Depends(get_user_media_service),
 ) -> schemas.UserOut:
     user_dto = await service.delete_avatar(user)
     return schemas.UserOut.model_validate(user_dto)
@@ -359,21 +365,23 @@ async def delete_avatar(
         Depends(sensitive_route_limit(limit_value=settings.rate_limit_users_avatar))
     ],
 )
+@inject
 async def delete_cover(
     request: Request,
+    service: FromDishka[UserMediaService],
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
-    service: UserMediaService = Depends(get_user_media_service),
 ) -> schemas.UserOut:
     user_dto = await service.delete_cover(user)
     return schemas.UserOut.model_validate(user_dto)
 
 
 @users_router.post("", response_model=schemas.UserOut)
+@inject
 async def create_user(
     data: schemas.UserCreate,
     request: Request,
+    service: FromDishka[UserComplianceService],
     user: UserAuthDTO = Depends(deps.get_current_user_auth_dto),
-    service: UserComplianceService = Depends(get_user_compliance_service),
 ) -> schemas.UserOut:
     user_dto = await service.create_user(data, request, user)
     return schemas.UserOut.model_validate(user_dto)
@@ -384,13 +392,14 @@ async def create_user(
     response_model=list[schemas.UserPublicOut | schemas.UserOut],
     summary="Search Users",
 )
+@inject
 async def get_users(
     request: Request,
     bg: BackgroundTasks,
+    service: FromDishka[UserProfileService],
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
     filters: schemas.UserSearchFilter = Depends(),
     current_user: UserDTO = Depends(deps.get_current_user_dto),
-    service: UserProfileService = Depends(get_user_profile_service),
-    db: AsyncDatabaseSession = Depends(get_read_db),
 ) -> list[schemas.UserPublicOut | schemas.UserOut]:
     """
     Search for users.
@@ -431,14 +440,16 @@ async def get_users(
     # potentially large DB query and CPU-intensive CSV serialization per call.
     # A compromised admin token could otherwise hammer this indefinitely.
     dependencies=[Depends(sensitive_route_limit())],
+    response_model=None,
 )
+@inject
 async def export_access_audit(
     request: Request,
+    db: Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)],
+    audit: FromDishka[AuditService],
     start_at: datetime | None = Query(None),
     end_at: datetime | None = Query(None),
-    db: AsyncDatabaseSession = Depends(get_read_db),
-    user: models.User = Depends(get_current_user),
-    audit: AuditService = Depends(get_audit_service),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> Response:
     from datetime import timedelta
 
@@ -478,34 +489,32 @@ async def export_access_audit(
 
 
 @users_router.patch("/{user_id}", response_model=schemas.UserOut)
+@inject
 async def update_user_admin(
     user_id: UUID,
     data: schemas.UserAdminUpdate,
     request: Request,
-    # TD-6: use the SpiceDB-backed fail-closed dep at the route level so that
-    # authorization is enforced in two layers (route + service).
-    user: models.User = Depends(get_current_admin_user),
-    service: UserProfileService = Depends(get_user_profile_service),
+    service: FromDishka[UserProfileService],
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.UserOut:
     user_dto = await service.admin_update_user(user_id, data, request, user)
     return schemas.UserOut.model_validate(user_dto)
 
 
 @users_router.delete("/{user_id}", response_model=dict)
+@inject
 async def delete_user_admin(
     user_id: UUID,
     request: Request,
-    # TD-6: same fail-closed SpiceDB check at the route boundary.
-    user: models.User = Depends(get_current_admin_user),
-    service: UserComplianceService = Depends(get_user_compliance_service),
+    service: FromDishka[UserComplianceService],
+    user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> dict[str, Any]:
     return await service.admin_delete_user(user_id, request, user)
 
 
 @groups_router.get("", response_model=list[schemas.GroupOut])
-async def get_groups(
-    service: GroupService = Depends(get_group_service),
-) -> list[schemas.GroupOut]:
+@inject
+async def get_groups(service: FromDishka[GroupService]) -> list[schemas.GroupOut]:
     groups = await service.get_groups()
     return [schemas.GroupOut.model_validate(g) for g in groups]
 

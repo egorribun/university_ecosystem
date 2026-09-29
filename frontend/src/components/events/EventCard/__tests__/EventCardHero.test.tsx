@@ -175,6 +175,8 @@ describe("EventCardHero", () => {
     expect(hero.style.viewTransitionName).toBe("events-hero")
     unmount()
     expect(hero.style.viewTransitionName).toBe("")
+    // The deferred cleanup timer is cancelled with the component, not left pending.
+    expect(vi.getTimerCount()).toBe(0)
     vi.runOnlyPendingTimers()
   })
 

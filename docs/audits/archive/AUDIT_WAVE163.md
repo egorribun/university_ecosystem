@@ -57,8 +57,8 @@ Phase 1 Agent surfaced strong recommendations + **5 errors caught by Phase 3 Rev
 1. **Path claim WRONG**: Agent claimed admin pages live at `frontend/src/pages/admin/*.tsx`. Phase 3 Glob proved actual location is `frontend/src/pages/Admin*.tsx` (NO `admin/` subdir).
 2. **Char count estimate WRONG**: Agent estimated W161 Active backlog ~1,633 chars. Phase 3 `awk length` proved actual is **1,273 chars** (28% off).
 3. **Char count estimate WRONG (swapped values)**: Agent estimated W161 Audit History ~1,200 chars. Phase 3 proved actual is **1,633 chars** (36% off — INVERSE of #2).
-4. **Missing AdminNotifications observation**: Agent didn't notice [AdminNotifications.tsx:21,83-86](../../frontend/src/pages/AdminNotifications.tsx:83) **ALREADY uses TanStack Query** with inline queryKey + useQuery + useMutation. NOT a from-scratch factory wave for all 4 pages — it's a refactor for 1 + new factories for 3.
-5. **SEQUENCE prerequisite DISPROVED**: Agent recommended SEQUENCE (c) features/admin/ structure → (a) factories. Phase 3 verified Activity factory pattern lives at [`frontend/src/api/hooks/activity.ts`](../../frontend/src/api/hooks/activity.ts:1) (NOT under features/activity/hooks/) — therefore features/admin/ migration is NOT a prerequisite for factories.
+4. **Missing AdminNotifications observation**: Agent didn't notice [AdminNotifications.tsx:21,83-86](../../../frontend/src/pages/AdminNotifications.tsx:83) **ALREADY uses TanStack Query** with inline queryKey + useQuery + useMutation. NOT a from-scratch factory wave for all 4 pages — it's a refactor for 1 + new factories for 3.
+5. **SEQUENCE prerequisite DISPROVED**: Agent recommended SEQUENCE (c) features/admin/ structure → (a) factories. Phase 3 verified Activity factory pattern lives at [`frontend/src/api/hooks/activity.ts`](../../../frontend/src/api/hooks/activity.ts:1) (NOT under features/activity/hooks/) — therefore features/admin/ migration is NOT a prerequisite for factories.
 
 ---
 
@@ -85,12 +85,12 @@ Phase 1 Agent surfaced strong recommendations + **5 errors caught by Phase 3 Rev
 
 **Files modified**:
 
-1. [`frontend/scripts/build-orchestrated.mjs`](../../frontend/scripts/build-orchestrated.mjs:52) — extended existing "Honest framing (W135 SW3 §Honesty)" comment block (lines 52-56 pre-W163) with explicit W163 SW2 Path (d) closure framing. Documents:
+1. [`frontend/scripts/build-orchestrated.mjs`](../../../frontend/scripts/build-orchestrated.mjs:52) — extended existing "Honest framing (W135 SW3 §Honesty)" comment block (lines 52-56 pre-W163) with explicit W163 SW2 Path (d) closure framing. Documents:
    - Worker thread leak family per W136 SW5 trace (`MessagePort + Pipe + Socket × 2`)
    - Canonical workarounds: kill-after-artifacts + W162 SW2 Promise.race + process.exit(0)
    - Production users + CI Linux UNAFFECTED
    - Upstream paths (a)+(b) deferred to W164+ ~3-5h focused scope
-2. [`CLAUDE.md`](../../CLAUDE.md) — NEW `## Gotchas` entry between Promise.race entry (line 797) and Prettier cwd entry (line 799). Long-form (~250 word) framing of the platform-limitation acceptance mirroring W162 SW1 "Linux CI Perf=null platform limitation accepted" pattern.
+2. [`CLAUDE.md`](../../../CLAUDE.md) — NEW `## Gotchas` entry between Promise.race entry (line 797) and Prettier cwd entry (line 799). Long-form (~250 word) framing of the platform-limitation acceptance mirroring W162 SW1 "Linux CI Perf=null platform limitation accepted" pattern.
 
 **Verification**:
 
@@ -112,10 +112,10 @@ All mirror W129 events.ts + W130 schedule.ts + W133 users.ts + W134 SW2 sessions
 
 | File                                                                                                 | LoC | Exports                                                                                                                                                                                                                                                                                                                           |
 | ---------------------------------------------------------------------------------------------------- | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`frontend/src/api/hooks/adminUsers.ts`](../../frontend/src/api/hooks/adminUsers.ts)                 | 164 | `adminUsersQueryKey(filters)` + `adminUsersQueryOptions(filters)` + `useAdminUsersQuery(filters)` + `adminGroupsQueryKey` + `adminGroupsQueryOptions()` + `useAdminGroupsQuery()` + `invalidateAdminUsers(qc, filters)` + `invalidateAllAdminUsers(qc)` + type re-exports `AdminUser` / `Group` / `AdminUserFilters` / `UserRole` |
-| [`frontend/src/api/hooks/adminFeatureFlags.ts`](../../frontend/src/api/hooks/adminFeatureFlags.ts)   | 99  | `adminFeatureFlagsQueryKey` + `adminFeatureFlagsQueryOptions()` + `useAdminFeatureFlagsQuery()` + `updateFeatureFlagInCache(qc, name, update)` + `invalidateAdminFeatureFlags(qc)`                                                                                                                                                |
-| [`frontend/src/api/hooks/adminAudit.ts`](../../frontend/src/api/hooks/adminAudit.ts)                 | 99  | `adminAuditLogsQueryKey(filters, pagination)` + `adminAuditLogsQueryOptions(...)` + `useAdminAuditLogsQuery(...)` + `invalidateAdminAuditLogs(qc)`                                                                                                                                                                                |
-| [`frontend/src/api/hooks/adminNotifications.ts`](../../frontend/src/api/hooks/adminNotifications.ts) | 86  | `adminDeadLetterQueueQueryKey` + `adminDeadLetterQueueQueryOptions()` + `useAdminDeadLetterQueueQuery()` + `invalidateAdminDeadLetterQueue(qc)`                                                                                                                                                                                   |
+| [`frontend/src/api/hooks/adminUsers.ts`](../../../frontend/src/api/hooks/adminUsers.ts)                 | 164 | `adminUsersQueryKey(filters)` + `adminUsersQueryOptions(filters)` + `useAdminUsersQuery(filters)` + `adminGroupsQueryKey` + `adminGroupsQueryOptions()` + `useAdminGroupsQuery()` + `invalidateAdminUsers(qc, filters)` + `invalidateAllAdminUsers(qc)` + type re-exports `AdminUser` / `Group` / `AdminUserFilters` / `UserRole` |
+| [`frontend/src/api/hooks/adminFeatureFlags.ts`](../../../frontend/src/api/hooks/adminFeatureFlags.ts)   | 99  | `adminFeatureFlagsQueryKey` + `adminFeatureFlagsQueryOptions()` + `useAdminFeatureFlagsQuery()` + `updateFeatureFlagInCache(qc, name, update)` + `invalidateAdminFeatureFlags(qc)`                                                                                                                                                |
+| [`frontend/src/api/hooks/adminAudit.ts`](../../../frontend/src/api/hooks/adminAudit.ts)                 | 99  | `adminAuditLogsQueryKey(filters, pagination)` + `adminAuditLogsQueryOptions(...)` + `useAdminAuditLogsQuery(...)` + `invalidateAdminAuditLogs(qc)`                                                                                                                                                                                |
+| [`frontend/src/api/hooks/adminNotifications.ts`](../../../frontend/src/api/hooks/adminNotifications.ts) | 86  | `adminDeadLetterQueueQueryKey` + `adminDeadLetterQueueQueryOptions()` + `useAdminDeadLetterQueueQuery()` + `invalidateAdminDeadLetterQueue(qc)`                                                                                                                                                                                   |
 
 ### MODIFIED page files (4)
 
@@ -138,7 +138,7 @@ All mirror W129 events.ts + W130 schedule.ts + W133 users.ts + W134 SW2 sessions
 
 First-pass factories shipped with `retry: 2 + retryDelay` (mirroring W134 SW2 sessions.ts). Vitest dropped from 1058 → 1057 passed (1 fail: `AdminNotifications.test.tsx "shows an error when the queue cannot be loaded"` — factory's `retry: 2` delayed error surface past `findByText` default 1s timeout when the test's QueryClient set `retry: false`).
 
-**Same mechanism + different config value (NOT a pivot)**: removed `retry + retryDelay` from all 4 admin factories to match Activity factory pattern at [`frontend/src/api/hooks/activity.ts`](../../frontend/src/api/hooks/activity.ts:132) (the canonical reference — never had `retry` override). Vitest restored to **1058p/12s/0f baseline EXACTLY**.
+**Same mechanism + different config value (NOT a pivot)**: removed `retry + retryDelay` from all 4 admin factories to match Activity factory pattern at [`frontend/src/api/hooks/activity.ts`](../../../frontend/src/api/hooks/activity.ts:132) (the canonical reference — never had `retry` override). Vitest restored to **1058p/12s/0f baseline EXACTLY**.
 
 ### Gates (post-SW3 commit)
 

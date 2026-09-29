@@ -104,6 +104,19 @@ def test_decode_datetime_cursor_non_integer_timestamp_returns_none():
     assert decode_datetime_cursor("notanumber:secondary") is None
 
 
+def test_decode_datetime_cursor_rejects_empty_secondary_id():
+    """A cursor without its tie-breaker must not reach repository UUID casting."""
+    assert decode_datetime_cursor("0:") is None
+
+
+def test_decode_datetime_cursor_accepts_epoch_with_valid_secondary_id():
+    cursor = f"0:{uuid.UUID(int=1)}"
+
+    result = decode_datetime_cursor(cursor)
+
+    assert result == (datetime(1970, 1, 1, tzinfo=UTC), str(uuid.UUID(int=1)))
+
+
 def test_encode_datetime_cursor_int_secondary():
     now = datetime.now(UTC)
     cursor = encode_datetime_cursor(now, 99)

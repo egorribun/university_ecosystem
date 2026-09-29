@@ -16,7 +16,7 @@ describe("loadMapLibre", () => {
   })
 
   it("deduplicates concurrent intent preloads", async () => {
-    vi.doMock("@/components/map/MapLibreMap", () => ({ default: () => null }))
+    vi.doMock("@/components/map/MapLibreMap", () => ({ MapLibreMapComponent: () => null }))
     const { loadMapLibre } = await import("@/features/map/loadMapLibre")
     const first = loadMapLibre()
     const second = loadMapLibre()
@@ -30,7 +30,7 @@ describe("loadMapLibre", () => {
     vi.doMock("@/components/map/MapLibreMap", () => {
       mockState.attempts += 1
       if (mockState.attempts === 1) throw new Error("transient chunk failure")
-      return { default: () => null }
+      return { MapLibreMapComponent: () => null }
     })
     const { loadMapLibre } = await import("@/features/map/loadMapLibre")
 

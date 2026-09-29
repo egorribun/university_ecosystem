@@ -61,6 +61,7 @@ def _sync_go_source_fixture(root: Path, component: str, report_path: str) -> Non
         "go-file-processor": ("services/file-processor",),
         "go-shared": (
             "services/cmd/uni-cli",
+            "services/pkg/logging",
             "services/pkg/spiffe",
             "services/pkg/spicedb",
         ),
@@ -141,7 +142,7 @@ def _write_test_contract(path: Path) -> None:
             "python": {
                 "coverage": {
                     "lines": 100,
-                    "statements": 0,
+                    "statements": 100,
                     "branches": 100,
                     "functions": 0,
                 }
@@ -149,14 +150,14 @@ def _write_test_contract(path: Path) -> None:
             "frontend": {
                 "coverage": {
                     "lines": 100,
-                    "statements": 0,
+                    "statements": 100,
                     "branches": 100,
                     "functions": 100,
                 }
             },
             "go-gateway": {
                 "coverage": {
-                    "lines": 0,
+                    "lines": 100,
                     "statements": 100,
                     "branches": 0,
                     "functions": 0,
@@ -164,7 +165,7 @@ def _write_test_contract(path: Path) -> None:
             },
             "go-ws-hub": {
                 "coverage": {
-                    "lines": 0,
+                    "lines": 100,
                     "statements": 100,
                     "branches": 0,
                     "functions": 0,
@@ -172,7 +173,7 @@ def _write_test_contract(path: Path) -> None:
             },
             "go-file-processor": {
                 "coverage": {
-                    "lines": 0,
+                    "lines": 100,
                     "statements": 100,
                     "branches": 0,
                     "functions": 0,
@@ -180,7 +181,7 @@ def _write_test_contract(path: Path) -> None:
             },
             "go-shared": {
                 "coverage": {
-                    "lines": 0,
+                    "lines": 100,
                     "statements": 100,
                     "branches": 0,
                     "functions": 0,
@@ -190,15 +191,7 @@ def _write_test_contract(path: Path) -> None:
                 "coverage": {
                     "lines": 100,
                     "statements": 0,
-                    "branches": 0,
-                    "functions": 100,
-                }
-            },
-            "rust-pyo3-sanitizer": {
-                "coverage": {
-                    "lines": 100,
-                    "statements": 0,
-                    "branches": 0,
+                    "branches": 100,
                     "functions": 100,
                 }
             },
@@ -206,7 +199,7 @@ def _write_test_contract(path: Path) -> None:
                 "coverage": {
                     "lines": 100,
                     "statements": 0,
-                    "branches": 0,
+                    "branches": 100,
                     "functions": 100,
                 }
             },
@@ -214,7 +207,7 @@ def _write_test_contract(path: Path) -> None:
                 "coverage": {
                     "lines": 100,
                     "statements": 0,
-                    "branches": 0,
+                    "branches": 100,
                     "functions": 100,
                 }
             },
@@ -261,7 +254,6 @@ def _write_test_contract(path: Path) -> None:
             "artifacts/coverage/go/file-processor/coverage.out",
             "artifacts/coverage/go/shared/coverage.out",
             "artifacts/coverage/rust/rust-native/llvm.json",
-            "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-crypto/llvm.json",
             "artifacts/coverage/quality-manifest.json",
@@ -348,9 +340,6 @@ def _run_normalizer_in_isolated_repo(
         },
         "--rust-report": {
             "rust-native": "artifacts/coverage/rust/rust-native/llvm.json",
-            "rust-pyo3-sanitizer": (
-                "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json"
-            ),
             "rust-wasm-sanitizer": (
                 "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json"
             ),
@@ -358,9 +347,6 @@ def _run_normalizer_in_isolated_repo(
         },
         "--rust-branch-report": {
             "rust-native": "artifacts/coverage/rust/rust-native/branch-llvm.json",
-            "rust-pyo3-sanitizer": (
-                "artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json"
-            ),
             "rust-wasm-sanitizer": (
                 "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json"
             ),
@@ -574,8 +560,6 @@ def _full_report_arguments() -> list[str]:
         "--rust-report",
         f"rust-native={rust_report}",
         "--rust-report",
-        f"rust-pyo3-sanitizer={rust_report}",
-        "--rust-report",
         f"rust-wasm-sanitizer={rust_report}",
         "--rust-report",
         f"rust-crypto={rust_report}",
@@ -756,8 +740,6 @@ def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
         "artifacts/coverage/go/shared/coverage.out",
         "artifacts/coverage/rust/rust-native/llvm.json",
         "artifacts/coverage/rust/rust-native/branch-llvm.json",
-        "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
-        "artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json",
         "artifacts/coverage/rust/rust-crypto/llvm.json",
@@ -789,6 +771,7 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
         "go-gateway": ["services/gateway"],
         "go-shared": [
             "services/cmd/uni-cli",
+            "services/pkg/logging",
             "services/pkg/spiffe",
             "services/pkg/spicedb",
         ],
@@ -796,7 +779,6 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
         "infrastructure": ["infra", "infrastructure", "k8s", "charts"],
         "python": ["app", "alembic/versions"],
         "rust-native": ["native/rust_ext"],
-        "rust-pyo3-sanitizer": ["crates/pyo3-sanitizer"],
         "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
         "rust-crypto": ["frontend/rust-crypto"],
         "scripts": ["scripts"],
@@ -1189,10 +1171,10 @@ def test_source_identity_accepts_in_root_relative_backslash_and_absolute_paths(
         ("go-ws-hub", "services/ws-hub"),
         ("go-file-processor", "services/file-processor"),
         ("go-shared", "services/cmd/uni-cli"),
+        ("go-shared", "services/pkg/logging"),
         ("go-shared", "services/pkg/spiffe"),
         ("go-shared", "services/pkg/spicedb"),
         ("rust-native", "native/rust_ext"),
-        ("rust-pyo3-sanitizer", "crates/pyo3-sanitizer"),
         ("rust-wasm-sanitizer", "frontend/wasm-sanitizer"),
         ("infrastructure", "infra"),
         ("infrastructure", "infrastructure"),
@@ -1258,6 +1240,40 @@ def test_go_shared_normalizes_every_module_prefix(
     normalizer = _normalizer_module()
 
     assert normalizer._canonical_source_identity("go-shared", raw_path) == expected
+
+
+def test_go_shared_coverprofile_preserves_all_module_sources() -> None:
+    """A merged profile must retain every shared module for Tier0 matching."""
+    normalizer = _normalizer_module()
+    records = (
+        "github.com/university-ecosystem/uni-cli/main.go:1.1,1.10 1 1",
+        "github.com/university-ecosystem/services/pkg/logging/logging.go:1.1,1.10 1 1",
+        "github.com/university-ecosystem/services/pkg/spiffe/spiffe.go:1.1,1.10 1 1",
+        "github.com/university-ecosystem/services/pkg/spicedb/client.go:1.1,1.10 1 1",
+    )
+    report = ("mode: atomic\n" + "\n".join(records) + "\n").encode()
+
+    metrics = normalizer._parse_go_coverprofile(report, "go-shared")
+    file_metrics = normalizer._parse_tier0_go_files(report, "go-shared")
+
+    assert metrics["statements"] == {
+        "covered": 4,
+        "percent": 100.0,
+        "status": "native",
+        "total": 4,
+    }
+    assert set(file_metrics) == {
+        "services/cmd/uni-cli/main.go",
+        "services/pkg/logging/logging.go",
+        "services/pkg/spiffe/spiffe.go",
+        "services/pkg/spicedb/client.go",
+    }
+    assert file_metrics["services/pkg/spicedb/client.go"]["statements"] == {
+        "covered": 1,
+        "percent": 100.0,
+        "status": "native",
+        "total": 1,
+    }
 
 
 def test_python_source_identity_maps_coverage_source_app_aliases() -> None:
@@ -2142,39 +2158,76 @@ def test_derived_go_line_metric_must_satisfy_the_strict_v2_floor(
         },
         "components": {
             "python": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 100,
+                    "functions": 0,
+                }
             },
             "frontend": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 100,
+                    "functions": 100,
+                }
             },
             "go-gateway": {
                 "coverage": {
                     "lines": 100,
-                    "statements": 0,
+                    "statements": 100,
                     "branches": 0,
                     "functions": 0,
                 }
             },
             "go-ws-hub": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 0,
+                    "functions": 0,
+                }
             },
             "go-file-processor": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 0,
+                    "functions": 0,
+                }
             },
             "go-shared": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 0,
+                    "functions": 0,
+                }
             },
             "rust-native": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
-            },
-            "rust-pyo3-sanitizer": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 0,
+                    "branches": 100,
+                    "functions": 100,
+                }
             },
             "rust-wasm-sanitizer": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 0,
+                    "branches": 100,
+                    "functions": 100,
+                }
             },
             "rust-crypto": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 0,
+                    "branches": 100,
+                    "functions": 100,
+                }
             },
             "infrastructure": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
@@ -2204,7 +2257,6 @@ def test_derived_go_line_metric_must_satisfy_the_strict_v2_floor(
             "artifacts/coverage/go/file-processor/coverage.out",
             "artifacts/coverage/go/shared/coverage.out",
             "artifacts/coverage/rust/rust-native/llvm.json",
-            "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-crypto/llvm.json",
             "artifacts/coverage/quality-manifest.json",
@@ -2650,6 +2702,15 @@ def test_metric_schema_rejects_incompatible_status_metadata(
         Draft202012Validator(metric_schema).validate(metric)
 
 
+def test_metric_schema_documents_explicit_na_shape() -> None:
+    schema = json.loads(QUALITY_MANIFEST_SCHEMA_PATH.read_text(encoding="utf-8"))
+    metric_schema = schema["$defs"]["metric"]
+    assert "unsupported is an explicit N/A" in metric_schema["description"]
+    assert metric_schema["properties"]["reason_code"]["pattern"] == (
+        "^[a-z][a-z0-9_]*(?:-[a-z0-9_]+)*$"
+    )
+
+
 def test_relative_report_path_is_resolved_from_repository_root(tmp_path: Path) -> None:
     output = tmp_path / "quality-manifest.json"
 
@@ -2870,39 +2931,76 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
         },
         "components": {
             "python": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 100,
+                    "functions": 0,
+                }
             },
             "frontend": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 100,
+                    "functions": 100,
+                }
             },
             "go-gateway": {
                 "coverage": {
                     "lines": 100,
-                    "statements": 0,
+                    "statements": 100,
                     "branches": 0,
                     "functions": 0,
                 }
             },
             "go-ws-hub": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 0,
+                    "functions": 0,
+                }
             },
             "go-file-processor": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 0,
+                    "functions": 0,
+                }
             },
             "go-shared": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 0,
+                    "functions": 0,
+                }
             },
             "rust-native": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
-            },
-            "rust-pyo3-sanitizer": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 0,
+                    "branches": 100,
+                    "functions": 100,
+                }
             },
             "rust-wasm-sanitizer": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 0,
+                    "branches": 100,
+                    "functions": 100,
+                }
             },
             "rust-crypto": {
-                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+                "coverage": {
+                    "lines": 100,
+                    "statements": 0,
+                    "branches": 100,
+                    "functions": 100,
+                }
             },
             "infrastructure": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
@@ -2932,7 +3030,6 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             "artifacts/coverage/go/file-processor/coverage.out",
             "artifacts/coverage/go/shared/coverage.out",
             "artifacts/coverage/rust/rust-native/llvm.json",
-            "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-crypto/llvm.json",
             "artifacts/coverage/quality-manifest.json",

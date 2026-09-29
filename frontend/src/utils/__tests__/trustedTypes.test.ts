@@ -223,6 +223,9 @@ describe("trustedTypes util", () => {
     expect(createScriptURL("https://backend.example/assets/runtime.js")).toBe(
       "https://backend.example/assets/runtime.js"
     )
+    expect(createScriptURL(`${window.location.origin}/assets/app.js`)).toBe(
+      `${window.location.origin}/assets/app.js`
+    )
   })
 
   it("ignores a malformed backend origin instead of widening the allowlist", async () => {
@@ -237,6 +240,7 @@ describe("trustedTypes util", () => {
     ;(window as unknown as { trustedTypes: unknown }).trustedTypes = factory
 
     expect(() => createScriptURL("https://evil.example/malice.js")).toThrow("Blocked script origin")
+    expect(createScriptURL("/assets/app.js")).toBe(`${window.location.origin}/assets/app.js`)
   })
 
   it("propagates createScriptURL errors to caller", () => {

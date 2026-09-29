@@ -44,7 +44,7 @@ def _sub_payload(endpoint: str | None = None, topics: list[str] | None = None):
             "p256dh": "test_p256dh_key_for_push",
             "auth": "test_auth_key",
         },
-        "topics": topics or [],
+        **({} if topics is None else {"topics": topics}),
     }
 
 
@@ -110,6 +110,15 @@ class TestSubscribe:
         assert resp.status_code == 200
         data = resp.json()
         assert data["endpoint"] == endpoint
+        assert data["topics"] == ["system.release"]
+        record = (
+            await db_session.execute(
+                select(UserPushTopic)
+                .where(UserPushTopic.user_id == user.id)
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one()
+        assert record.topics == ["system.release"]
 
     @pytest.mark.asyncio
     async def test_validation_empty_endpoint(
@@ -883,45 +892,3 @@ class TestHelperFunctions:
         summary = _aggregate_results([], failure_detail="fail")
         assert summary.total == 0
         assert summary.detail is None
-
-    @pytest.mark.asyncio
-    async def test_refresh_user_topic_preferences_creates(
-        self, db_session: AsyncSession, user_factory, push_subscription_factory
-    ):
-        from app.routers.notifications import _refresh_user_topic_preferences
-
-        user = await user_factory()
-        await push_subscription_factory(user=user, topics=["system", "events"])
-
-        await _refresh_user_topic_preferences(db_session, user_id=user.id)
-        await db_session.commit()
-
-        record = (
-            await db_session.execute(
-                select(UserPushTopic).where(UserPushTopic.user_id == user.id)
-            )
-        ).scalar_one_or_none()
-        assert record is not None
-        assert len(record.topics) > 0
-
-    @pytest.mark.asyncio
-    async def test_refresh_user_topic_preferences_deletes_when_empty(
-        self, db_session: AsyncSession, user_factory
-    ):
-        from app.routers.notifications import _refresh_user_topic_preferences
-
-        user = await user_factory()
-        # Create a topic record with data
-        db_session.add(UserPushTopic(user_id=user.id, topics=["old"]))
-        await db_session.commit()
-
-        # No subscriptions exist, so topics should be cleaned up
-        await _refresh_user_topic_preferences(db_session, user_id=user.id)
-        await db_session.commit()
-
-        record = (
-            await db_session.execute(
-                select(UserPushTopic).where(UserPushTopic.user_id == user.id)
-            )
-        ).scalar_one_or_none()
-        assert record is None

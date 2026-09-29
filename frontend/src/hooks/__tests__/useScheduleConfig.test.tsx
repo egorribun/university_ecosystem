@@ -183,6 +183,99 @@ describe("useScheduleConfig — lesson type config (valid resource)", () => {
 })
 
 describe("useScheduleConfig — fallback branches (broken resources)", () => {
+  it("filters malformed ordered ids while retaining valid order", () => {
+    const inst = makeI18n({
+      weekdays: {
+        order: ["", 0, null, "first", "second", ""],
+        items: {
+          first: { backend: ["F"], long: "First", short: "F" },
+          second: { backend: ["S"], long: "Second", short: "S" },
+        },
+      },
+      lessonTypes: {
+        order: ["", 0, null, "lecture", ""],
+        items: { lecture: { backend: ["lecture"], label: "Lecture", color: "red" } },
+      },
+    })
+    const { result } = renderHook(() => useScheduleConfig(), { wrapper: wrap(inst) })
+    expect(result.current.weekdayConfigs.map((item) => item.id)).toEqual(["first", "second"])
+    expect(result.current.lessonTypeConfigs.map((item) => item.id)).toEqual(["lecture"])
+  })
+
+  it("ignores malformed backend aliases and falls back to canonical identity", () => {
+    const inst = makeI18n({
+      weekdays: {
+        order: ["mixed", "empty"],
+        items: {
+          mixed: { backend: ["", 42, "Valid", null], long: "Mixed", short: "Mx" },
+          empty: { backend: [], long: "", short: "" },
+        },
+      },
+      lessonTypes: {
+        order: ["mixed", "empty"],
+        items: {
+          mixed: { backend: ["", 42, "valid"], label: "Mixed", color: "blue" },
+          empty: { backend: [], label: "", color: "" },
+        },
+      },
+    })
+    const { result } = renderHook(() => useScheduleConfig(), { wrapper: wrap(inst) })
+    expect(result.current.weekdayConfigs).toEqual([
+      { id: "mixed", backend: ["Valid"], long: "Mixed", short: "Mx" },
+      { id: "empty", backend: ["empty"], long: "empty", short: "emp" },
+    ])
+    expect(result.current.lessonTypeConfigs).toEqual([
+      { id: "mixed", backend: ["valid"], label: "Mixed", color: "blue" },
+      { id: "empty", backend: ["empty"], label: "empty", color: defaultLessonTypeColor },
+    ])
+  })
+
+  it("uses field fallbacks for malformed weekday and lesson-type entries", () => {
+    const inst = makeI18n({
+      weekdays: {
+        order: ["day"],
+        items: {
+          day: { backend: "backend", long: 99, short: null },
+        },
+      },
+      lessonTypes: {
+        order: ["type"],
+        items: {
+          type: { backend: "backend", label: 99, color: null },
+        },
+      },
+    })
+    const { result } = renderHook(() => useScheduleConfig(), { wrapper: wrap(inst) })
+    expect(result.current.weekdayConfigs[0]).toEqual({
+      id: "day",
+      backend: ["backend"],
+      long: "day",
+      short: "day".slice(0, 3),
+    })
+    expect(result.current.lessonTypeConfigs[0]).toEqual({
+      id: "type",
+      backend: ["backend"],
+      label: "type",
+      color: defaultLessonTypeColor,
+    })
+  })
+
+  it("guards all non-record i18n values and still exposes safe fallback maps", () => {
+    const inst = makeI18n({
+      weekdays: { items: null, order: "not-an-array" },
+      lessonTypes: { items: "not-an-object", order: false },
+    })
+    const { result } = renderHook(() => useScheduleConfig(), { wrapper: wrap(inst) })
+    expect(result.current.weekdayConfigs).toEqual(minimalWeekdayFallback)
+    expect(result.current.lessonTypeConfigs).toEqual([minimalLessonTypeFallback])
+    expect(result.current.weekdayBackend).toEqual(
+      minimalWeekdayFallback.map((item) => item.backend[0])
+    )
+    expect(result.current.lessonTypeOptions).toEqual([
+      { value: minimalLessonTypeFallback.id, label: minimalLessonTypeFallback.label },
+    ])
+  })
+
   it("weekdays.items array -> asRecord {} + empty order -> minimalWeekdayFallback", () => {
     const inst = makeI18n({ weekdays: { items: [], order: [] } })
     const { result } = renderHook(() => useScheduleConfig(), { wrapper: wrap(inst) })

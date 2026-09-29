@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable
 
 from fastapi import Request, status
@@ -8,6 +7,7 @@ from fastapi import Request, status
 from app.api.validation import raise_http_error
 from app.core.config import settings
 from app.core.localization import resolve_locale
+from app.core.logging import get_logger
 from app.core.ratelimit.contract import RateLimitStrategy
 from app.core.ratelimit.delay import ProgressiveDelayTracker
 from app.core.ratelimit.exceptions import RateLimitExceeded, RateLimitStorageUnavailable
@@ -20,7 +20,7 @@ from app.core.ratelimit.utils import (
     resolve_client_ip,
 )
 
-logger = logging.getLogger("app.security.ratelimit")
+logger = get_logger("app.security.ratelimit")
 
 
 def sensitive_route_limit(

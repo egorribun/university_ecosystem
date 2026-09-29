@@ -218,7 +218,14 @@ async def app():
         except (RuntimeError, ValueError):
             # A previous ASGI driver may already have closed this root.
             pass
-    main.app.state.dishka_container = create_dishka_container()
+    # Dishka-injected endpoints never consult dependency_overrides, so the
+    # test container resolves its session through them instead -- see
+    # tests/conftest.test_session_overrides.
+    from tests.conftest import test_session_overrides
+
+    main.app.state.dishka_container = create_dishka_container(
+        overrides=test_session_overrides(main.app)
+    )
     main.app.state._dishka_container_closed = False
     manager = LifespanManager(main.app)
     await manager.__aenter__()

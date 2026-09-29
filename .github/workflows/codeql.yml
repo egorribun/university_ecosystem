@@ -71,6 +71,47 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Verify security policy inputs against protected base
+      if: ${{ github.event_name == 'pull_request' }}
+      shell: bash
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+        PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+      run: |
+        set -euo pipefail
+        if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "::error::pull-request base SHA is not an immutable 40-hex commit" >&2
+          exit 1
+        fi
+        if [[ "$BASE_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
+          echo "::error::security policy check refuses a cross-repository pull request" >&2
+          exit 1
+        fi
+        git fetch --no-tags --depth=1 origin "$BASE_SHA"
+        policy_paths=(
+          ".github/workflows"
+          ".github/codeql"
+          "native/rust_ext/deny.toml"
+          "quality/ci-check-catalog.json"
+          "security/audit-allowlist.yaml"
+        )
+        changed=()
+        for path in "${policy_paths[@]}"; do
+          if ! git diff --quiet "$BASE_SHA" -- "$path"; then
+            changed+=("$path")
+          fi
+        done
+        if ((${#changed[@]} > 0)); then
+          if [[ "$PR_AUTHOR" != "egorribun" ]]; then
+            printf '::error::security policy changes require an owner-authored PR: %s\n' "${changed[*]}" >&2
+            exit 1
+          fi
+          printf '::notice::owner-authored policy update accepted for review: %s\n' "${changed[*]}"
+        fi
 
     # Add any setup steps before running the `github/codeql-action/init` action.
     # This includes steps like installing compilers or runtimes (`actions/setup-node`

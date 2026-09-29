@@ -15,6 +15,12 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
     import app.models as models
+    from app.schemas.dtos import ScheduleDTO
+
+    # A lesson reaches this generator either as the mapped row or as the DTO
+    # the schedule service returns (including from cache); every field is read
+    # through ``getattr``, so both shapes work and both are declared.
+    LessonLike = models.Schedule | ScheduleDTO
 
 
 def _weekday_index(value: str | None) -> int | None:
@@ -72,7 +78,7 @@ def _iter_lesson_dates(
 
 def generate_schedule_ics(
     group: models.Group,
-    lessons: Sequence[models.Schedule],
+    lessons: Sequence[LessonLike],
     *,
     weeks: int = 16,
     locale: str | None = None,

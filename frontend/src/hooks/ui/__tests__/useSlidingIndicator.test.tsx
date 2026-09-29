@@ -71,4 +71,23 @@ describe("useSlidingIndicator", () => {
     unmount()
     expect(disconnect).toHaveBeenCalled()
   })
+
+  it("measures from the padding box that an absolute indicator is positioned against", () => {
+    // `left-0 top-0` places the indicator at the container's padding edge,
+    // inside its border, so the border must not be counted a second time.
+    const container = document.createElement("div")
+    const target = document.createElement("button")
+    target.dataset.tabKey = "active"
+    container.appendChild(target)
+    Object.defineProperty(container, "clientLeft", { configurable: true, value: 1 })
+    Object.defineProperty(container, "clientTop", { configurable: true, value: 2 })
+    container.getBoundingClientRect = () =>
+      ({ left: 10, top: 20, width: 300, height: 50 }) as DOMRect
+    target.getBoundingClientRect = () => ({ left: 15, top: 25, width: 80, height: 32 }) as DOMRect
+    const ref = { current: container } as RefObject<HTMLElement | null>
+
+    const { result } = renderHook(() => useSlidingIndicator(ref, "active"))
+
+    expect(result.current).toEqual({ left: 4, top: 3, width: 80, height: 32 })
+  })
 })

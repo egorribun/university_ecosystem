@@ -15,7 +15,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Button", () => ({
   Button: ({ children, onClick }: { children: ReactNode; onClick: () => void }) => (
     <button onClick={onClick}>{children}</button>
   ),

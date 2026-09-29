@@ -6,7 +6,6 @@ import argparse
 import asyncio
 import importlib
 import inspect
-import logging
 import runpy
 import sys
 import tomllib
@@ -45,10 +44,9 @@ def test_runtime_entrypoints_are_part_of_the_coverage_universe() -> None:
     )
 
 
-def test_worker_run_configures_logging_and_executes_async_main(
+def test_worker_run_executes_async_main(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    configured = Mock()
     received: list[Coroutine[Any, Any, None]] = []
     main_factory = Mock(wraps=worker.main)
 
@@ -56,13 +54,11 @@ def test_worker_run_configures_logging_and_executes_async_main(
         received.append(coroutine)
         coroutine.close()
 
-    monkeypatch.setattr(logging, "basicConfig", configured)
     monkeypatch.setattr(asyncio, "run", run_coroutine)
     monkeypatch.setattr(worker, "main", main_factory)
 
     worker.run()
 
-    configured.assert_called_once_with(level=logging.INFO)
     main_factory.assert_called_once_with()
     assert len(received) == 1
     assert inspect.iscoroutine(received[0])

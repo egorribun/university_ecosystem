@@ -39,6 +39,12 @@ func respondRESP(write func(string), upperPart string) {
 			s := "# Memory\r\nused_memory_human:10.5M\r\n"
 			write(fmt.Sprintf("$%d\r\n%s\r\n", len(s), s))
 		}
+	case strings.Contains(upperPart, "SCAN"):
+		if strings.Contains(upperPart, "NONEXISTENT") {
+			write("*2\r\n$1\r\n0\r\n*0\r\n")
+		} else {
+			write("*2\r\n$1\r\n0\r\n*2\r\n$11\r\ncache:key_1\r\n$11\r\ncache:key_2\r\n")
+		}
 	case strings.Contains(upperPart, "KEYS"):
 		if strings.Contains(upperPart, "NONEXISTENT") {
 			write("*0\r\n")

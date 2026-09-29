@@ -22,7 +22,16 @@ def mock_outbox_session(db_session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_outbox_worker_process_batch(db_session):
+async def test_outbox_worker_process_batch(db_session, monkeypatch):
+    from app.core.events import EventBus
+
+    bus = EventBus()
+
+    async def handle_user_created(_event):
+        return None
+
+    bus.subscribe("user.created", handle_user_created)
+    monkeypatch.setattr("app.workers.outbox.event_bus", bus)
     worker = OutboxWorker()
     event_id = uuid.uuid4()
     se = StoredEvent(
@@ -157,7 +166,8 @@ async def test_outbox_worker_metadata_restoration(db_session, monkeypatch):
 
     dispatched_events = []
 
-    async def mock_dispatch(event):
+    async def mock_dispatch(event, *, durable=False):
+        assert durable is True
         dispatched_events.append(event)
 
     monkeypatch.setattr("app.core.events.event_bus.publish", mock_dispatch)
@@ -170,6 +180,39 @@ async def test_outbox_worker_metadata_restoration(db_session, monkeypatch):
     assert event.event_id == str(event_id)
     assert event.metadata.correlation_id == "corr-123"
     assert event.metadata.user_id == "user-456"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload_event_id", [None, "payload-event-id"])
+async def test_outbox_retry_uses_stored_id_without_explicit_event_metadata(
+    monkeypatch,
+    payload_event_id,
+):
+    worker = OutboxWorker()
+    stored_id = uuid.uuid4()
+    event = StoredEvent(
+        id=stored_id,
+        event_type="UserCreated",
+        aggregate_type="User",
+        aggregate_id="123",
+        payload={
+            "user_id": "123",
+            "email": "test@example.com",
+            **({"event_id": payload_event_id} if payload_event_id else {}),
+        },
+        metadata_={},
+    )
+    dispatched_ids = []
+
+    async def capture(published, *, durable=False):
+        assert durable is True
+        dispatched_ids.append(published.event_id)
+
+    monkeypatch.setattr("app.workers.outbox.event_bus.publish", capture)
+    await worker._dispatch_event(event)
+    await worker._dispatch_event(event)
+    expected_id = payload_event_id or str(stored_id)
+    assert dispatched_ids == [expected_id, expected_id]
 
 
 @pytest.mark.asyncio
@@ -291,6 +334,111 @@ async def test_outbox_worker_dispatch_exception(db_session, monkeypatch):
         result = await db.get(StoredEvent, event_id)
         assert result.error_count == 1
         assert "Publish failed" in result.last_error
+
+
+@pytest.mark.asyncio
+async def test_durable_outbox_handler_failure_retries_without_pii(
+    db_session, monkeypatch, caplog
+):
+    worker = OutboxWorker()
+    event_id = uuid.uuid4()
+    db_session.add(
+        StoredEvent(
+            id=event_id,
+            event_type="user.created",
+            aggregate_type="User",
+            aggregate_id="123",
+            payload={"user_id": "123", "email": "user@example.test"},
+            error_count=0,
+        )
+    )
+    await db_session.flush()
+
+    from app.core.events import EventBus
+
+    bus = EventBus()
+    attempts = 0
+
+    async def handler(_event):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("recipient user@example.test, code 123456")
+
+    bus.subscribe("user.created", handler)
+    monkeypatch.setattr("app.workers.outbox.event_bus", bus)
+
+    assert await worker.process_batch() == 1
+    from app.core.database import async_session
+
+    async with async_session() as db:
+        stored = await db.get(StoredEvent, event_id)
+        assert stored is not None
+        assert stored.processed_at is None
+        assert stored.error_count == 1
+        assert "Durable event handler failed" in stored.last_error
+        assert "user@example.test" not in stored.last_error
+        assert "123456" not in stored.last_error
+    assert "user@example.test" not in caplog.text
+    assert "123456" not in caplog.text
+
+    assert await worker.process_batch() == 1
+    async with async_session() as db:
+        stored = await db.get(StoredEvent, event_id)
+        assert stored is not None
+        assert stored.processed_at is not None
+        assert stored.error_count == 1
+    assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_durable_outbox_deferral_preserves_retry_budget_and_pending_event(
+    db_session, monkeypatch
+):
+    from app.core.events import DurableEventDeferred, EventBus
+
+    worker = OutboxWorker(batch_size=1)
+    event_id = uuid.uuid4()
+    db_session.add(
+        StoredEvent(
+            id=event_id,
+            event_type="user.created",
+            aggregate_type="User",
+            aggregate_id="123",
+            payload={"user_id": "123", "email": "user@example.test"},
+            error_count=0,
+        )
+    )
+    await db_session.flush()
+    bus = EventBus()
+    attempts = 0
+
+    async def handler(_event):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise DurableEventDeferred()
+
+    bus.subscribe("user.created", handler)
+    monkeypatch.setattr("app.workers.outbox.event_bus", bus)
+
+    assert await worker.process_batch() == 0
+    from app.core.database import async_session
+
+    async with async_session() as db:
+        stored = await db.get(StoredEvent, event_id)
+        assert stored is not None
+        assert stored.processed_at is None
+        assert stored.error_count == 0
+        assert stored.last_error is None
+
+    assert await worker.process_batch() == 1
+    async with async_session() as db:
+        stored = await db.get(StoredEvent, event_id)
+        assert stored is not None
+        assert stored.processed_at is not None
+        assert stored.error_count == 0
+    assert attempts == 2
 
 
 @pytest.mark.asyncio

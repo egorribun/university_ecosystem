@@ -19,7 +19,9 @@ from typing import (  # TD-23-04 (audit 2026-03-25 Wave 23)
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import requests
 from pywebpush import WebPushException, webpush
+from requests.adapters import HTTPAdapter
 from sqlalchemy import and_, create_engine, delete, or_, update
 from sqlalchemy.engine import URL, Engine, make_url
 from sqlalchemy.orm import sessionmaker
@@ -34,7 +36,7 @@ from app.core.ratelimit import (
     enforce_rate_limit,
     get_default_strategy,
 )
-from app.core.ssrf import validate_public_https_url, validate_url_not_internal
+from app.core.ssrf import validate_and_resolve, validate_public_https_url
 from app.models import PushSubscription, User
 from app.services.notification_templates import render_notification_template
 from app.services.push_topics import normalize_topic
@@ -73,6 +75,135 @@ _async_init_lock = asyncio.Lock()
 # exhausting the connection pool and triggering APNS/GCM rate-limit bans.
 # 50 concurrent slots provide high throughput (~50 msg/s) without flooding.
 _PUSH_DELIVERY_SEMAPHORE = asyncio.Semaphore(50)
+
+
+class _PinnedHTTPSAdapter(HTTPAdapter):
+    """Route one HTTPS origin to an address validated immediately beforehand."""
+
+    def __init__(
+        self,
+        *,
+        hostname: str,
+        host_header: str,
+        resolved_ip: str,
+        resolved_port: int,
+    ) -> None:
+        self._hostname = hostname
+        self._host_header = host_header
+        self._resolved_ip = resolved_ip
+        self._resolved_port = resolved_port
+        super().__init__(max_retries=0)
+
+    def add_headers(self, request: Any, **kwargs: Any) -> None:
+        """Keep the provider Host header while the socket targets the pinned IP."""
+        super().add_headers(request, **kwargs)  # type: ignore[no-untyped-call]
+        request.headers["Host"] = self._host_header
+
+    def get_connection_with_tls_context(
+        self,
+        request: Any,
+        verify: bool | str | None,
+        proxies: Mapping[str, str] | None = None,
+        cert: Any = None,
+    ) -> Any:
+        """Build an IP-addressed pool with the original TLS identity."""
+        if proxies and any(proxies.values()):
+            raise requests.exceptions.InvalidProxyURL(
+                "Pinned Web Push transport does not support proxies"
+            )
+
+        parsed = urlparse(request.url)
+        request_hostname = parsed.hostname
+        if (
+            not request_hostname
+            or request_hostname.removesuffix(".").lower()
+            != self._hostname.removesuffix(".").lower()
+        ):
+            raise requests.exceptions.InvalidURL(
+                "Pinned Web Push transport received a different hostname"
+            )
+
+        host_params, pool_kwargs = self.build_connection_pool_key_attributes(
+            request, True if verify is None else verify, cert
+        )
+        host_params["host"] = self._resolved_ip
+        host_params["port"] = self._resolved_port
+        # urllib3 uses these values for TLS SNI and certificate hostname
+        # verification while the pool host controls the TCP destination.
+        pool_options = dict(pool_kwargs)
+        pool_options["server_hostname"] = self._hostname
+        pool_options["assert_hostname"] = self._hostname
+        return self.poolmanager.connection_from_host(
+            **host_params, pool_kwargs=pool_options
+        )
+
+
+class _NoRedirectWebPushSession(requests.Session):
+    """A short-lived session that cannot follow provider redirects."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Environment proxies can resolve the hostname outside this adapter.
+        self.trust_env = False
+
+    def request(  # type: ignore[override]
+        self, method: Any, url: Any, **kwargs: Any
+    ) -> requests.Response:
+        # pywebpush delegates to requests.Session.post(), whose default is to
+        # follow redirects.  A redirect would create a new, unvalidated target.
+        kwargs["allow_redirects"] = False
+        return super().request(method, url, **kwargs)
+
+
+class _PinnedWebPushSession(_NoRedirectWebPushSession):
+    """A short-lived pywebpush session with pinned DNS and no redirects."""
+
+    def __init__(
+        self,
+        *,
+        hostname: str,
+        host_header: str,
+        resolved_ip: str,
+        resolved_port: int,
+    ) -> None:
+        super().__init__()
+        self.mount(
+            "https://",
+            _PinnedHTTPSAdapter(
+                hostname=hostname,
+                host_header=host_header,
+                resolved_ip=resolved_ip,
+                resolved_port=resolved_port,
+            ),
+        )
+
+
+def _create_pinned_webpush_session(
+    endpoint: str, resolved_address: tuple[str, int]
+) -> _PinnedWebPushSession:
+    """Create a session bound to one address returned by validate_and_resolve."""
+    parsed = urlparse(endpoint)
+    hostname = parsed.hostname
+    if not hostname or not parsed.netloc:
+        raise ValueError("URL has no hostname")
+    if parsed.scheme.lower() != "https" or parsed.username or parsed.password:
+        raise ValueError("URL must use https scheme and no credentials")
+    host_header = hostname
+    # ``urlparse`` strips the brackets from an IPv6 literal, so a colon in the
+    # hostname always means IPv6 and always needs re-bracketing here.  The
+    # "already bracketed" guard this replaces could never be false and so only
+    # produced an equivalent mutant against the 100% gate (run 35517610350).
+    if ":" in host_header:
+        host_header = f"[{host_header}]"
+    if parsed.port is not None and parsed.port != 443:
+        host_header = f"{host_header}:{parsed.port}"
+    resolved_ip, resolved_port = resolved_address
+    return _PinnedWebPushSession(
+        hostname=hostname,
+        host_header=host_header,
+        resolved_ip=resolved_ip,
+        resolved_port=resolved_port,
+    )
 
 
 def _initialize_sync_resources() -> None:
@@ -615,14 +746,14 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
         "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
     }
     user_id = getattr(sub, "user_id", None)
+    session: _NoRedirectWebPushSession | None = None
     try:
         validate_public_https_url(endpoint)
         try:
-            # Re-check immediately before the network call to fail closed on
-            # DNS changes between subscription and delivery.  Development
-            # fixtures may use non-resolving provider placeholders, but never
-            # bypass an actual private-address resolution.
-            validate_url_not_internal(endpoint)
+            # Resolve immediately before delivery and bind the transport to
+            # the returned address.  Validating the hostname alone would leave
+            # a DNS TOCTOU gap between this check and requests' connection.
+            resolved_addresses = validate_and_resolve(endpoint)
         except ValueError as exc:
             try:
                 is_development = bool(settings.is_development)
@@ -631,6 +762,19 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
                 is_development = False  # pragma: no mutate
             if not (is_development and "DNS resolution failed" in str(exc)):
                 raise
+            # Development fixtures may use provider placeholders that do not
+            # resolve.  Preserve that explicit local-only compatibility path,
+            # while every resolvable endpoint uses the pinned transport below.
+            resolved_addresses = []
+        if not isinstance(resolved_addresses, list):
+            # The resolver contract is a list.  Treat an invalid result as a
+            # failure rather than accidentally taking the unvalidated
+            # no-address fallback path.
+            raise ValueError("DNS resolver returned an invalid address list")
+        if resolved_addresses:
+            session = _create_pinned_webpush_session(endpoint, resolved_addresses[0])
+        else:
+            session = _NoRedirectWebPushSession()
         webpush(
             subscription_info=subscription_info,
             data=json_dumps(normalized_payload),
@@ -638,6 +782,7 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             vapid_claims={"sub": settings.WEBPUSH_SUBJECT},
             headers=headers,
             ttl=ttl,
+            requests_session=session,
         )
     except WebPushException as exc:
         status_code = getattr(getattr(exc, "response", None), "status_code", None)
@@ -698,6 +843,9 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             status="error",
             error=str(exc),
         )
+    finally:
+        if session is not None:
+            session.close()
 
     _log_event("send", user_id=user_id, endpoint=sub.endpoint, status="sent")
     return WebPushResult(

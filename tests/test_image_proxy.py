@@ -7,14 +7,41 @@ Coverage targets:
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import app.services.image_proxy as image_proxy
 from app.services.image_proxy import (
     _guess_mime,
     _sanitize_path_input,
     _validate_path_within_base,
 )
+from app.utils.images import DEFAULT_MAX_IMAGE_PIXELS
+
+
+def test_configured_image_max_pixels_uses_default_when_setting_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(image_proxy, "settings", SimpleNamespace())
+
+    assert image_proxy._configured_image_max_pixels() == DEFAULT_MAX_IMAGE_PIXELS
+
+
+@pytest.mark.parametrize("configured", [None, 0, 12_345])
+def test_configured_image_max_pixels_preserves_explicit_budget_contract(
+    monkeypatch: pytest.MonkeyPatch, configured: int | None
+) -> None:
+    """Configured values resolve without relying on a typing-only cast."""
+    monkeypatch.setattr(
+        image_proxy,
+        "settings",
+        SimpleNamespace(image_max_pixels=configured),
+    )
+
+    expected = DEFAULT_MAX_IMAGE_PIXELS if not configured else configured
+    assert image_proxy._configured_image_max_pixels() == expected
+
 
 # ============================================================
 # _sanitize_path_input tests
@@ -149,14 +176,19 @@ def test_guess_mime_svg():
 # ===========================================================================
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.image_proxy import _cache_encode, get_transformed_image
+from app.services.image_proxy import (
+    _cache_decode,
+    _cache_encode,
+    get_transformed_image,
+)
 from app.services.storage import StorageBackend
+from app.utils.images import ImagePixelLimitError
 
 
 @pytest.mark.anyio
 async def test_get_transformed_image_cache_hit():
     mock_redis = AsyncMock()
-    # Cache payload encoded via msgspec or base64 json
+    # Cache payload in the JSON + base64 format the service writes
     cached_payload = _cache_encode(b"cached-webp-bytes", "image/webp")
     mock_redis.get.return_value = cached_payload
 
@@ -227,7 +259,8 @@ async def test_get_transformed_image_path_traversal():
 
 
 # Additional missing unit tests added for 100% coverage
-import sys
+import base64
+import json
 
 
 @pytest.mark.anyio
@@ -337,6 +370,131 @@ async def test_get_transformed_image_pil_error_fallback():
 
 
 @pytest.mark.anyio
+async def test_get_transformed_image_rejects_oversized_original_without_passthrough():
+    """An oversized stored image must not bypass the proxy via original mode."""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    image = PILImage.new("RGB", (2, 2), color="red")
+    buf = BytesIO()
+    image.save(buf, format="PNG")
+
+    mock_redis = AsyncMock()
+    mock_redis.get.return_value = None
+    mock_backend = AsyncMock(spec=StorageBackend)
+    mock_backend.read_file.return_value = buf.getvalue()
+
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=mock_redis),
+        patch("app.services.image_proxy.settings.image_max_pixels", 3),
+    ):
+        with pytest.raises(ImagePixelLimitError, match="pixel budget"):
+            await get_transformed_image(
+                mock_backend,
+                "/static/avatar.png",
+                width=None,
+                format_preference="original",
+            )
+
+
+@pytest.mark.anyio
+async def test_get_transformed_image_reraises_pixel_limit_from_transform():
+    """The transform path must preserve the typed decompression guard."""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    image = PILImage.new("RGB", (2, 2), color="blue")
+    buf = BytesIO()
+    image.save(buf, format="PNG")
+
+    mock_redis = AsyncMock()
+    mock_redis.get.return_value = None
+    mock_backend = AsyncMock(spec=StorageBackend)
+    mock_backend.read_file.return_value = buf.getvalue()
+
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=mock_redis),
+        patch("app.services.image_proxy.settings.image_max_pixels", 3),
+    ):
+        with pytest.raises(ImagePixelLimitError, match="pixel budget"):
+            await get_transformed_image(
+                mock_backend,
+                "/static/avatar.png",
+                width=1,
+                format_preference="webp",
+            )
+
+
+@pytest.mark.anyio
+async def test_get_transformed_image_normalizes_pillow_bomb_for_original_and_cache():
+    """Original and cached payload validation share the decoder-limit contract."""
+    from PIL import Image as PILImage
+
+    bomb = PILImage.DecompressionBombError("decoder bomb")
+    mock_backend = AsyncMock(spec=StorageBackend)
+    mock_backend.read_file.return_value = b"stored-image"
+
+    cache_miss_redis = AsyncMock()
+    cache_miss_redis.get.return_value = None
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=cache_miss_redis),
+        patch("app.services.image_proxy.Image.open", side_effect=bomb),
+        patch("app.services.image_proxy.settings.image_max_pixels", 3),
+    ):
+        with pytest.raises(ImagePixelLimitError, match="pixel budget"):
+            await get_transformed_image(
+                mock_backend,
+                "/static/avatar.png",
+                width=None,
+                format_preference="original",
+            )
+
+    cached_redis = AsyncMock()
+    cached_redis.get.return_value = _cache_encode(b"cached-image", "image/png")
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=cached_redis),
+        patch("app.services.image_proxy.Image.open", side_effect=bomb),
+        patch("app.services.image_proxy.settings.image_max_pixels", 3),
+    ):
+        with pytest.raises(ImagePixelLimitError, match="pixel budget"):
+            await get_transformed_image(
+                mock_backend,
+                "/static/avatar.png",
+                width=200,
+                format_preference="webp",
+            )
+
+
+@pytest.mark.anyio
+async def test_get_transformed_image_normalizes_pillow_bomb_during_transform():
+    from PIL import Image as PILImage
+
+    mock_redis = AsyncMock()
+    mock_redis.get.return_value = None
+    mock_backend = AsyncMock(spec=StorageBackend)
+    mock_backend.read_file.return_value = b"stored-image"
+
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=mock_redis),
+        patch(
+            "app.services.image_proxy.Image.open",
+            side_effect=PILImage.DecompressionBombError("decoder bomb"),
+        ),
+        patch("app.services.image_proxy.settings.image_max_pixels", 3),
+    ):
+        with pytest.raises(ImagePixelLimitError, match="pixel budget") as exc_info:
+            await get_transformed_image(
+                mock_backend,
+                "/static/avatar.png",
+                width=200,
+                format_preference="webp",
+            )
+    assert exc_info.value.max_pixels == 3
+
+
+@pytest.mark.anyio
 async def test_get_transformed_image_avif_fallback_webp():
     mock_redis = AsyncMock()
     mock_redis.get.return_value = None
@@ -370,10 +528,8 @@ async def test_get_transformed_image_avif_fallback_webp():
                 )
                 assert mime == "image/webp"
                 assert data.startswith(b"RIFF")
-                mock_warn.assert_called_once()
-                assert (
+                mock_warn.assert_called_once_with(
                     "AVIF encoding failed, falling back to WebP"
-                    in mock_warn.call_args[0][0]
                 )
 
 
@@ -415,27 +571,13 @@ async def test_get_transformed_image_original_resize_no_format():
             assert mime == "image/jpeg"
 
 
-def test_cache_serialization_fallback():
-    # If msgspec is missing, JSON fallback should be used.
-    # Let's import the fallback implementations directly by patching msgspec.
-    with patch.dict(sys.modules, {"msgspec": None}):
-        # Reloading the module or executing the fallback code block manually
-        # since it's already imported. We can just test the fallback encoders directly
-        # or mock msgspec to not be available and run a simple test.
-        # Let's re-run the module logic for json/base64 fallback:
-        import base64
-        import json
+def test_cache_payload_is_json_and_round_trips_binary_bytes():
+    raw = bytes(range(256))
 
-        def _fallback_cache_encode(data: bytes, mime: str) -> bytes:
-            return json.dumps(
-                {"d": base64.b64encode(data).decode(), "m": mime}
-            ).encode()
+    encoded = _cache_encode(raw, "image/png")
 
-        def _fallback_cache_decode(payload: bytes) -> tuple[bytes, str]:
-            obj = json.loads(payload)
-            return base64.b64decode(obj["d"]), str(obj["m"])
-
-        encoded = _fallback_cache_encode(b"test-data", "image/png")
-        decoded_data, decoded_mime = _fallback_cache_decode(encoded)
-        assert decoded_data == b"test-data"
-        assert decoded_mime == "image/png"
+    assert json.loads(encoded) == {
+        "d": base64.b64encode(raw).decode(),
+        "m": "image/png",
+    }
+    assert _cache_decode(encoded) == (raw, "image/png")

@@ -18,8 +18,6 @@ function buildSrcSet(rawUrl: string, widths: readonly number[]): string {
     new Set(widths.filter((value) => Number.isFinite(value) && value > 0))
   ).sort((a, b) => a - b)
 
-  if (!uniqueWidths.length) return ""
-
   return uniqueWidths
     .map((width) => {
       const proxyUrl = resolveProxyImageUrl(rawUrl, width)
@@ -46,10 +44,14 @@ export default function SmartImage({
   const computed = useMemo(() => {
     // We use proxy for all images that are not blobs
     if (isBlobUrl) {
-      return sanitizeUrl(srcRaw ?? "") ? resolveMediaUrl(srcRaw) : ""
+      // `isBlobUrl` is derived from a string type guard above, so the value is
+      // guaranteed to be present in this branch. Keeping that invariant
+      // explicit avoids a dead nullish arm that cannot occur at runtime.
+      const blobUrl = srcRaw as string
+      return sanitizeUrl(blobUrl) ? resolveMediaUrl(blobUrl) : ""
     }
 
-    if (!sanitizeUrl(srcRaw || "")) return ""
+    if (typeof srcRaw !== "string" || !sanitizeUrl(srcRaw)) return ""
 
     // For original src, we don't fix width but still route through proxy for AVIF/WebP
     const resolved = resolveProxyImageUrl(srcRaw)
@@ -87,9 +89,10 @@ export default function SmartImage({
         onLoad(event)
       }}
       onError={(event) => {
-        if (!useFallback) {
-          setUseFallback(true)
-        }
+        // React bails out when the fallback state is already true, so repeated
+        // errors from a broken fallback image remain idempotent without an
+        // extra branch that can drift from the rendered source.
+        setUseFallback(true)
         onError(event)
       }}
     />

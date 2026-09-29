@@ -163,13 +163,14 @@ async def _warm_news(cache: BaseCache, db: AsyncSession) -> None:
 
     version = await _get_news_list_version()
 
-    from app.core.container import get_vector_service
     from app.repositories.unit_of_work import uow_from_session
     from app.services.news_service import NewsService
+    from app.services.vector_service import VectorService
 
     uow = uow_from_session(db)
-    # We need vector service for NewsService init
-    vector_service = get_vector_service(db)
+    # Warm-up owns its session already, so the service is constructed here
+    # rather than resolved: there is no request scope to resolve it from.
+    vector_service = VectorService(db=db)
     service = NewsService(uow, vector_service)
 
     for locale in ["ru", "en"]:

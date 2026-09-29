@@ -97,6 +97,25 @@ func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 		assert.Equal(t, http.StatusBadGateway, rec.Code)
 	})
 
+	t.Run("public image reads reach the backend without JWT", func(t *testing.T) {
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), method, "/api/v1/img/avatars/user.png", nil))
+			assert.Equal(t, http.StatusBadGateway, rec.Code, method)
+		}
+		for _, probe := range []struct {
+			method string
+			path   string
+		}{
+			{method: http.MethodPost, path: "/api/v1/img/avatars/user.png"},
+			{method: http.MethodGet, path: "/api/v1/images/avatars/user.png"},
+		} {
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), probe.method, probe.path, nil))
+			assert.Equal(t, http.StatusUnauthorized, rec.Code, probe.path)
+		}
+	})
+
 	t.Run("CWV export is OIDC-authenticated by backend only", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/cwv/export", nil)

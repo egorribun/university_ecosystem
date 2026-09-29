@@ -494,4 +494,26 @@ describe("NewChatModal", () => {
       expect(await screen.findByRole("option", { name: /Reduced User/ })).toBeDisabled()
     })
   })
+
+  it("consumes the Escape key it handles", () => {
+    const onClose = vi.fn()
+    render(<NewChatModal open onClose={onClose} onSelect={() => {}} />, { wrapper })
+
+    expect(fireEvent.keyDown(document, { key: "Escape" })).toBe(false)
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it("keeps clicks inside the dialog from reaching surrounding click handlers", () => {
+    const outerClick = vi.fn()
+    render(
+      <div role="presentation" onClick={outerClick}>
+        <NewChatModal open onClose={() => {}} onSelect={() => {}} />
+      </div>,
+      { wrapper }
+    )
+
+    fireEvent.click(screen.getByRole("dialog"))
+
+    expect(outerClick).not.toHaveBeenCalled()
+  })
 })

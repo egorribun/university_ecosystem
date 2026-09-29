@@ -36,7 +36,7 @@ async def test_generate_news_embedding_returns_when_news_is_missing(monkeypatch)
         "app.services.event_handlers.async_session", lambda: _session(db)
     )
     monkeypatch.setattr(
-        "app.services.event_handlers.get_vector_service", lambda _db: vector_service
+        "app.services.event_handlers.VectorService", lambda **_: vector_service
     )
 
     await generate_news_embedding(NewsCreated(news_id=uuid4(), title="Missing"))

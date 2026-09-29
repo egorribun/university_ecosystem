@@ -123,14 +123,14 @@ export function ActivityFeature() {
         <FadeSection delay="100ms">
           <div
             ref={periodSelectorRef}
-            className="activity-period-selector relative mx-auto mb-6 flex w-fit items-center gap-1"
+            className="activity-period-selector relative isolate mx-auto mb-6 flex w-fit items-center gap-1"
             role="radiogroup"
             aria-label={t("activity:a11y.periodSelector")}
           >
             {periodRect && (
               <span
                 aria-hidden="true"
-                className="absolute rounded-full bg-[var(--activity-present-accent)] z-negative"
+                className="absolute left-0 top-0 rounded-full bg-[var(--activity-present-accent)] z-negative"
                 style={{
                   transform: `translate3d(${periodRect.left}px, ${periodRect.top}px, 0)`,
                   width: periodRect.width,

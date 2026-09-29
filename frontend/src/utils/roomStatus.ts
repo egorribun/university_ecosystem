@@ -16,11 +16,11 @@ interface LessonSlot {
   end_time?: string | null
 }
 
-/** Parse "HH:MM" into minutes since midnight. Returns NaN on invalid input. */
-function parseMinutes(time: string): number {
-  const [h, m] = time.split(":")
-  if (h === undefined || m === undefined) return Number.NaN
-  return parseInt(h, 10) * 60 + parseInt(m, 10)
+/** Parse "HH:MM[:SS]" into minutes since midnight. Returns NaN on invalid input. */
+function parseMinutes(time: string | null | undefined): number {
+  // String(null) is "null", which never matches, so a missing time is NaN.
+  const match = /^(\d+):(\d+)/.exec(String(time))
+  return match ? Number(match[1]) * 60 + Number(match[2]) : Number.NaN
 }
 
 /**
@@ -36,21 +36,22 @@ export function getRoomStatus(roomId: string, todayLessons: LessonSlot[], now?: 
 
   for (const lesson of todayLessons) {
     if (lesson.room !== roomId) continue
-    if (!lesson.start_time || !lesson.end_time) continue
 
+    // Every comparison with NaN is false, so a missing or unparseable time
+    // never marks the room busy.
     const start = parseMinutes(lesson.start_time)
     const end = parseMinutes(lesson.end_time)
 
-    if (Number.isNaN(start) || Number.isNaN(end)) continue
-
-    // Handle midnight wraparound (e.g. start=22:00, end=02:00)
+    // Handle midnight wraparound (e.g. start=22:00, end=02:00); a zero-length
+    // lesson occupies nothing.
     const isBusy =
-      end <= start
+      end < start
         ? nowMinutes >= start || nowMinutes < end
         : start <= nowMinutes && nowMinutes < end
 
     if (isBusy) {
-      return { status: "busy", busyUntil: lesson.end_time }
+      // A busy lesson parsed its end time, so it is a string.
+      return { status: "busy", busyUntil: String(lesson.end_time) }
     }
   }
 

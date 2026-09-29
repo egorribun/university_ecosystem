@@ -48,6 +48,8 @@ describe("cryptoWorker wrapper", () => {
     mockWorker.onmessage({
       data: { id: callData.id, result: "derived-hash-value" },
     } as MessageEvent)
+    // The reply settles the request, so its later deadline changes nothing.
+    vi.advanceTimersByTime(30_000)
 
     const result = await p
     expect(result).toBe("derived-hash-value")
@@ -70,6 +72,7 @@ describe("cryptoWorker wrapper", () => {
     mockWorker.onmessage({
       data: { id: callData.id, result: [10, 20, 30] },
     } as MessageEvent)
+    vi.advanceTimersByTime(30_000)
 
     const result = await p
     expect(result).toBeInstanceOf(Uint8Array)
@@ -86,6 +89,7 @@ describe("cryptoWorker wrapper", () => {
     mockWorker.onmessage({
       data: { id: callData.id, result: "signature" },
     } as MessageEvent)
+    vi.advanceTimersByTime(30_000)
 
     const result = await p
     expect(result).toBe("signature")
@@ -98,6 +102,7 @@ describe("cryptoWorker wrapper", () => {
     mockWorker.onmessage({
       data: { id: callData.id, error: "failed calculation" },
     } as MessageEvent)
+    vi.advanceTimersByTime(30_000)
 
     await expect(p).rejects.toThrow("failed calculation")
   })
@@ -111,6 +116,7 @@ describe("cryptoWorker wrapper", () => {
     mockWorker.onerror({
       message: "Worker thread crashed due to Out Of Memory",
     } as ErrorEvent)
+    vi.advanceTimersByTime(30_000)
 
     await expect(p1).rejects.toThrow("Worker thread crashed due to Out Of Memory")
     await expect(p2).rejects.toThrow("Worker thread crashed due to Out Of Memory")
@@ -125,6 +131,7 @@ describe("cryptoWorker wrapper", () => {
     })
 
     mockWorker.onerror({ message: undefined } as unknown as ErrorEvent)
+    vi.advanceTimersByTime(30_000)
     await expect(pending).rejects.toThrow("Crypto worker crashed: unknown error")
   })
 
@@ -160,6 +167,7 @@ describe("cryptoWorker wrapper", () => {
     mockWorker.onmessage({
       data: { id: callData.id, result: "ok" },
     } as MessageEvent)
+    vi.advanceTimersByTime(30_000)
 
     await p
     expect(resolved).toBe(true)
@@ -185,5 +193,159 @@ describe("cryptoWorker wrapper", () => {
     } finally {
       if (descriptor) Object.defineProperty(globalThis, "Worker", descriptor)
     }
+  })
+})
+
+describe("cryptoWorker pending request bookkeeping", () => {
+  let cryptoWorker: typeof import("../cryptoWorker").cryptoWorker
+  let pendingCount: () => number
+
+  beforeEach(async () => {
+    vi.resetModules()
+    vi.useFakeTimers()
+    mockWorker.postMessage.mockClear()
+    vi.stubGlobal("Worker", MockWorker)
+    const mod = await import("../cryptoWorker")
+    cryptoWorker = mod.cryptoWorker
+    pendingCount = mod.getPendingCryptoRequestCountForTesting
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  const start = () => {
+    const settled = cryptoWorker
+      .pbkdf2({ value: "a", salt: "b", keySize: 128, iterations: 1 })
+      .then(
+        (value) => ({ value }),
+        (error: Error) => ({ error: error.message })
+      )
+    const { id } = mockWorker.postMessage.mock.calls.at(-1)![0] as { id: string }
+    return { id, settled }
+  }
+
+  it.each([
+    ["result", { result: "ok" }],
+    ["error", { error: "boom" }],
+  ])("releases a request once the worker replies with %s", async (_label, reply) => {
+    const first = start()
+    const second = start()
+    expect(pendingCount()).toBe(2)
+
+    mockWorker.onmessage({ data: { id: first.id, ...reply } } as MessageEvent)
+
+    expect(pendingCount()).toBe(1)
+    await first.settled
+    mockWorker.onmessage({ data: { id: second.id, result: "second" } } as MessageEvent)
+    expect(pendingCount()).toBe(0)
+    await expect(second.settled).resolves.toStrictEqual({ value: "second" })
+  })
+
+  it("releases a request that timed out", async () => {
+    const { settled } = start()
+
+    vi.advanceTimersByTime(30_000)
+
+    expect(pendingCount()).toBe(0)
+    await expect(settled).resolves.toStrictEqual({
+      error: "Crypto worker timeout after 30000ms (op: PBKDF2)",
+    })
+  })
+
+  it.each([
+    ["a clone error", new DOMException("payload could not be cloned", "DataCloneError")],
+    ["a non-Error rejection", { reason: "worker unavailable" }],
+  ])("releases a request when postMessage synchronously throws %s", async (_label, error) => {
+    mockWorker.postMessage.mockImplementationOnce(() => {
+      throw error
+    })
+
+    const request = cryptoWorker.pbkdf2({ value: "a", salt: "b", keySize: 128, iterations: 1 })
+
+    await expect(request).rejects.toBe(error)
+    expect({ pending: pendingCount(), timers: vi.getTimerCount() }).toStrictEqual({
+      pending: 0,
+      timers: 0,
+    })
+  })
+
+  it("releases every request and its timeout when the worker crashes", async () => {
+    const first = start()
+    const second = start()
+
+    mockWorker.onerror({ message: "gone" } as ErrorEvent)
+
+    expect(pendingCount()).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+    await expect(Promise.all([first.settled, second.settled])).resolves.toStrictEqual([
+      { error: "Crypto worker crashed: gone" },
+      { error: "Crypto worker crashed: gone" },
+    ])
+  })
+
+  it("ignores empty and foreign messages without releasing anything", async () => {
+    const { id, settled } = start()
+
+    for (const data of [undefined, null, "noise", 7, {}, { id: 123 }, { id: "other" }]) {
+      mockWorker.onmessage({ data } as MessageEvent)
+    }
+
+    expect(pendingCount()).toBe(1)
+    mockWorker.onmessage({ data: { id, result: "finished" } } as MessageEvent)
+    await expect(settled).resolves.toStrictEqual({ value: "finished" })
+    expect(pendingCount()).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe("cryptoWorker wrapper lifecycle", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it("spawns the crypto worker script as an ES module worker", async () => {
+    const constructed: unknown[][] = []
+    class RecordingWorker {
+      constructor(...args: unknown[]) {
+        constructed.push(args)
+        return mockWorker
+      }
+    }
+    vi.resetModules()
+    vi.stubGlobal("Worker", RecordingWorker)
+    await import("../cryptoWorker")
+
+    expect(constructed).toHaveLength(1)
+    const [url, options] = constructed[0]!
+    expect(url).toBeInstanceOf(URL)
+    expect((url as URL).pathname).toMatch(/\/workers\/crypto\.worker\.ts$/)
+    expect(options).toStrictEqual({ type: "module" })
+  })
+
+  it.each([
+    ["result", { result: "ok" }],
+    ["error", { error: "boom" }],
+  ])("cancels the 30-second timeout once the worker replies with %s", async (_label, reply) => {
+    vi.resetModules()
+    vi.useFakeTimers()
+    vi.stubGlobal("Worker", MockWorker)
+    const { cryptoWorker } = await import("../cryptoWorker")
+
+    const pending = cryptoWorker.pbkdf2({ value: "a", salt: "b", keySize: 128, iterations: 1 })
+    const settled = pending.then(
+      (value) => ({ value }),
+      (error: Error) => ({ error: error.message })
+    )
+    expect(vi.getTimerCount()).toBe(1)
+    const { id } = mockWorker.postMessage.mock.calls.at(-1)![0] as { id: string }
+    mockWorker.onmessage({ data: { id, ...reply } } as MessageEvent)
+
+    expect(vi.getTimerCount()).toBe(0)
+    await expect(settled).resolves.toStrictEqual(
+      "result" in reply ? { value: reply.result } : { error: reply.error }
+    )
   })
 })

@@ -94,17 +94,12 @@ function getJwks() {
  * spinning up a real JWKS server. Test path sets this; prod path uses the
  * real createRemoteJWKSet flow.
  */
-let jwtVerifyOverride:
-  null | ((token: string) => Promise<{ payload: Record<string, unknown> } | null>) = null
+type JwtVerifyResult = { payload: Record<string, unknown> } | null
 
-function extractJwtPayload(
-  result: { payload: Record<string, unknown> } | null
-): Record<string, unknown> | null {
-  return result?.payload ?? null
-}
+let jwtVerifyOverride: null | ((token: string) => Promise<JwtVerifyResult>) = null
 
 export function _setJwtVerifyOverrideForTests(
-  fn: ((token: string) => Promise<{ payload: Record<string, unknown> } | null>) | null
+  fn: ((token: string) => Promise<JwtVerifyResult>) | null
 ) {
   jwtVerifyOverride = fn
 }
@@ -123,18 +118,19 @@ export function _setJwtVerifyOverrideForTests(
  */
 export async function validateJwt(token: string): Promise<SsrAuthState> {
   const audience = import.meta.env.VITE_JWT_AUDIENCE || "university-ecosystem-api"
+  let result: JwtVerifyResult = null
   try {
-    const result = jwtVerifyOverride
+    result = jwtVerifyOverride
       ? await jwtVerifyOverride(token)
       : await jwtVerify(token, getJwks(), { audience })
-    const payload = extractJwtPayload(result)
-    if (!payload) return SSR_AUTH_UNAUTH
-    if (typeof payload.sub !== "string" || !payload.sub) return SSR_AUTH_UNAUTH
-    const role = typeof payload.role === "string" ? payload.role : "student"
-    return { isAuth: true, user: { role }, loading: false }
   } catch {
-    return SSR_AUTH_UNAUTH
+    // A rejected verification leaves `result` null, i.e. unauthenticated.
   }
+  const payload = result?.payload
+  if (!payload) return SSR_AUTH_UNAUTH
+  if (typeof payload.sub !== "string" || !payload.sub) return SSR_AUTH_UNAUTH
+  const role = typeof payload.role === "string" ? payload.role : "student"
+  return { isAuth: true, user: { role }, loading: false }
 }
 
 /**

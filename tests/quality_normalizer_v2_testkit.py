@@ -74,22 +74,27 @@ end_of_record
         ),
     }
     go_paths = {
-        "artifacts/coverage/go/gateway/coverage.out": "services/gateway/main.go",
-        "artifacts/coverage/go/ws-hub/coverage.out": "services/ws-hub/main.go",
+        "artifacts/coverage/go/gateway/coverage.out": ("services/gateway/main.go",),
+        "artifacts/coverage/go/ws-hub/coverage.out": ("services/ws-hub/main.go",),
         "artifacts/coverage/go/file-processor/coverage.out": (
-            "services/file-processor/main.go"
+            "services/file-processor/main.go",
         ),
-        "artifacts/coverage/go/shared/coverage.out": ("services/pkg/spicedb/client.go"),
+        "artifacts/coverage/go/shared/coverage.out": (
+            "services/pkg/logging/logging.go",
+            "services/pkg/spicedb/client.go",
+        ),
     }
-    for report_path, source_path in go_paths.items():
-        payloads[report_path] = f"mode: count\n{source_path}:1.1,1.10 1 1\n"
-        source = root / source_path
-        source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_text("package main\n", encoding="utf-8")
+    for report_path, source_paths in go_paths.items():
+        payloads[report_path] = "mode: count\n" + "".join(
+            f"{source_path}:1.1,1.10 1 1\n" for source_path in source_paths
+        )
+        for source_path in source_paths:
+            source = root / source_path
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text("package main\n", encoding="utf-8")
 
     rust_components = {
         "rust-native": "native/rust_ext",
-        "rust-pyo3-sanitizer": "crates/pyo3-sanitizer",
         "rust-wasm-sanitizer": "frontend/wasm-sanitizer",
         "rust-crypto": "frontend/rust-crypto",
     }
@@ -157,10 +162,6 @@ CANONICAL_REPORT_ARGUMENTS = (
     "--rust-branch-report",
     "rust-native=artifacts/coverage/rust/rust-native/branch-llvm.json",
     "--rust-report",
-    "rust-pyo3-sanitizer=artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
-    "--rust-branch-report",
-    "rust-pyo3-sanitizer=artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json",
-    "--rust-report",
     "rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
     "--rust-branch-report",
     "rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json",
@@ -186,5 +187,5 @@ TOOL_VERSION_ARGUMENTS = (
     "--tool-version",
     "rustc-nightly=1.92.0-nightly",
     "--tool-version",
-    "cargo-llvm-cov=0.6.19",
+    "cargo-llvm-cov=0.9.1",
 )

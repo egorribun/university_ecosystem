@@ -15,7 +15,7 @@ import {
   captureActiveTelemetryContext,
   type CapturedTelemetryContext,
 } from "@/utils/telemetryContext"
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import { resolveMediaUrl } from "@/utils/media"
 
 import type { Event } from "@/types/Event"
@@ -127,7 +127,8 @@ export function EventFileManager({
         return createUploadSuccessState()
       } catch (err) {
         logError("[EventFileManager] Upload failed:", err)
-        mutateFiles(createRemoveFileAction(optimisticId))
+        // No explicit rollback: nothing awaits after this point, and
+        // useOptimistic discards the pending placeholder when the action settles.
 
         let message = t("events:detail.messages.fileAddFailed")
         if (isAxiosError(err) && err.response?.data?.detail) {

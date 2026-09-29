@@ -75,4 +75,22 @@ describe("chatDisplayInfo defensive identity", () => {
       otherParticipant: expect.objectContaining({ id: "peer" }),
     })
   })
+
+  it("uses the translated fallback when a group name is null", () => {
+    const t = vi.fn(() => "Untitled group")
+    const chat = {
+      chat_type: "group",
+      name: null,
+      participants: [],
+    } as unknown as Chat
+
+    expect(() => chatDisplayInfo(chat, "me", t as never)).not.toThrow()
+    expect(chatDisplayInfo(chat, "me", t as never)).toMatchObject({
+      name: "Untitled group",
+      avatar: "",
+      isGroup: true,
+      memberCount: 0,
+    })
+    expect(t).toHaveBeenCalledWith("messenger:group.untitled")
+  })
 })

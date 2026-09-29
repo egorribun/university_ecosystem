@@ -254,6 +254,60 @@ describe("NotificationsBell", () => {
     expect(trigger).toHaveFocus()
   })
 
+  it("returns focus to the trigger when Escape is pressed inside the panel", async () => {
+    const state = baseState()
+    state.data = [
+      {
+        id: "focus-1",
+        title: "Focus unread",
+        body: "Body",
+        created_at: "2024-01-01T00:00:00Z",
+        read: false,
+      },
+    ]
+    useNotificationsMock.mockReturnValue(state)
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    const trigger = screen.getByRole("button", { name: "Open notifications" })
+    await user.click(trigger)
+    const clear = screen.getByRole("button", { name: "Clear" })
+    act(() => clear.focus())
+    expect(clear).toHaveFocus()
+
+    fireEvent.keyDown(document, { key: "Escape" })
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it("keeps a mark-read click from reaching surrounding click handlers", async () => {
+    const state = baseState()
+    state.data = [
+      {
+        id: "isolated-1",
+        title: "Isolated unread",
+        body: "Body",
+        created_at: "2024-01-01T00:00:00Z",
+        read: false,
+      },
+    ]
+    useNotificationsMock.mockReturnValue(state)
+    const user = userEvent.setup()
+    const outerClick = vi.fn()
+    render(
+      <div role="presentation" onClick={outerClick}>
+        <NotificationsBell />
+      </div>
+    )
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+    outerClick.mockClear()
+
+    fireEvent.click(screen.getByTitle("Mark as read"))
+
+    expect(state.markRead).toHaveBeenCalledWith("isolated-1")
+    expect(outerClick).not.toHaveBeenCalled()
+  })
+
   it("keeps the dialog open for non-Escape keys under reduced motion", async () => {
     motionState.reducedMotion = true
     useNotificationsMock.mockReturnValue(baseState())

@@ -20,7 +20,7 @@ export const COMMON_EMAIL_DOMAINS = [
 
 export function suggestEmailDomain(email: string) {
   const atIndex = email.indexOf("@")
-  if (atIndex < 0) return null
+  if (atIndex === -1) return null
 
   const localPart = email.slice(0, atIndex).trim()
   const domain = email

@@ -24,4 +24,14 @@ describe("ScheduleCardSkeleton", () => {
     })
     expect(screen.getAllByLabelText("Loading subject")).toHaveLength(5)
   })
+
+  it("labels the busy schedule card and its date placeholder", async () => {
+    await renderWithRouter({
+      ui: () => <ScheduleCardSkeleton />,
+      authProvider: false,
+    })
+
+    expect(screen.getByLabelText("Loading schedule")).toHaveAttribute("aria-busy", "true")
+    expect(screen.getByRole("status", { name: "Loading date" })).toBeInTheDocument()
+  })
 })

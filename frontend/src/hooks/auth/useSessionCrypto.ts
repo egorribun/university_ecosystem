@@ -29,24 +29,49 @@ import { SessionSigningKeyOut } from "@/api/generated"
 import { logWarning } from "@/app/logger"
 
 /** Return whether session-key synchronization is running in a browser runtime. */
-export const isSessionCryptoBrowserRuntime = (): boolean =>
-  typeof window !== "undefined" &&
-  typeof window.document !== "undefined" &&
-  typeof window.location !== "undefined"
+export function isSessionCryptoBrowserRuntime(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.document !== "undefined" &&
+    typeof window.location !== "undefined"
+  )
+}
 
-const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
-// Kept for one-time migration: clear any key previously persisted in sessionStorage.
-const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
-
-// One-time cleanup: remove legacy key that was incorrectly stored in sessionStorage.
-// Safe to run on every load — no-op if key is already absent.
-if (typeof sessionStorage !== "undefined") {
+/** Read the legacy storage location through a total, shape-stable contract. */
+const readLegacySessionStorage = (): Storage | null => {
   try {
-    sessionStorage.removeItem(SESSION_SIGNING_KEY_STORAGE_KEY)
-  } catch {
-    /* ignore */
+    return globalThis.sessionStorage ?? null
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      logWarning("Failed to access legacy session storage", { error })
+    }
+    return null
   }
 }
+
+/** Remove the legacy session signing key without allowing storage failures to
+ * interrupt module initialization or authentication state.  Keeping the
+ * cleanup behind an explicit function makes the security boundary directly
+ * testable and avoids a slow module re-import for every mutation case. */
+export const clearLegacySessionSigningKey = (): void => {
+  const storage = readLegacySessionStorage()
+  try {
+    // Keep the migration key at the call site: its value is part of the
+    // observable cleanup contract and must not be hidden in import-time state.
+    storage?.removeItem("ecosystem.profile.cache.sessionKey")
+  } catch {
+    // Storage APIs can fail even after the getter succeeds. Keep the cleanup
+    // non-fatal, but surface the failure in development without including the
+    // legacy key or any user data in telemetry.
+    if (import.meta.env.DEV) {
+      logWarning("Failed to remove legacy session signing key")
+    }
+  }
+}
+
+// One-time cleanup: remove legacy key that was incorrectly stored in
+// sessionStorage. Safe to run on every load — no-op if key is absent.
+clearLegacySessionSigningKey()
 
 type SessionSigningKeyResponse = SessionSigningKeyOut
 
@@ -86,15 +111,12 @@ async function hashSensitiveFields(obj: unknown, userSalt: string): Promise<unkn
     return Promise.all(obj.map((item) => hashSensitiveFields(item, userSalt)))
   }
   const result: Record<string, unknown> = {}
+  const record = obj as Record<string, unknown>
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      if (
-        sensitiveFields.includes(key) &&
-        typeof (obj as Record<string, unknown>)[key] === "string"
-      ) {
-        const passwordBytes = new TextEncoder().encode(
-          (obj as Record<string, unknown>)[key] as string
-        )
+      const value = record[key]
+      if (sensitiveFields.includes(key) && typeof value === "string") {
+        const passwordBytes = new TextEncoder().encode(value)
         // Offload scrypt effort to worker
         const hashed = await cryptoWorker.scrypt({
           password: passwordBytes,
@@ -107,8 +129,17 @@ async function hashSensitiveFields(obj: unknown, userSalt: string): Promise<unkn
         result[key] = Array.from(hashed)
           .map((b) => b.toString(16).padStart(2, "0"))
           .join("")
+      } else if (typeof value === "object" && value !== null) {
+        const nestedValue = await hashSensitiveFields(value, userSalt)
+        // Keep arrays as arrays while materialising object descendants as a
+        // fresh record.  Apart from preserving the payload contract, this
+        // makes the object-only branch meaningful: accidentally recursing on
+        // a scalar cannot silently become an identity operation.
+        result[key] = Array.isArray(value)
+          ? nestedValue
+          : { ...(nestedValue as Record<string, unknown>) }
       } else {
-        result[key] = await hashSensitiveFields((obj as Record<string, unknown>)[key], userSalt)
+        result[key] = value
       }
     }
   }
@@ -150,11 +181,8 @@ export const signSnapshot = async (
  * On page reload the key is re-fetched from /auth/session/signing-key (auth'd endpoint).
  * Security: key exposure requires full JS execution context control, not just storage read.
  */
-export const readStoredSessionSigningKey = (): string | null => null
-
-const persistSessionSigningKey = (_value: string | null) => {
-  // Intentionally empty — signing key must not be written to any Web Storage.
-  // The key lives only in React state (useSessionCrypto hook) for the session duration.
+export function readStoredSessionSigningKey(): string | null {
+  return null
 }
 
 /** Maximum consecutive failures before entering backoff (resets on success). */
@@ -223,10 +251,7 @@ export const useSessionCrypto = () => {
   const sessionCacheHashRef = useRef<string | null>(null)
 
   const sendServiceWorkerMessage = useCallback((message: ApiCacheControlMessage) => {
-    if (typeof navigator === "undefined") {
-      return
-    }
-    const container: ServiceWorkerContainer | undefined = navigator.serviceWorker
+    const container: ServiceWorkerContainer | undefined = globalThis.navigator?.serviceWorker
     if (!container) {
       return
     }
@@ -290,7 +315,6 @@ export const useSessionCrypto = () => {
       sessionSigningKeyRef.current = value
       signingKeyRetryCountRef.current = 0 // reset circuit breaker on explicit update
       setSessionSigningKeyState(value)
-      persistSessionSigningKey(value)
       await sendSessionCacheUpdate(value, { purge: true })
     },
     [sendSessionCacheUpdate]

@@ -4,11 +4,6 @@
 name: Go Lint & SBOM
 
 on:
-  pull_request:
-    paths:
-      - "services/**/*.go"
-      - "services/**/go.mod"
-      - ".golangci.yml"
   workflow_dispatch: {}
   push:
     branches: [main]

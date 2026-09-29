@@ -308,13 +308,31 @@ describe("ChatWindow — stable end-anchored virtualization", () => {
     Object.defineProperty(log, "clientHeight", { value: 300, configurable: true })
     Object.defineProperty(log, "scrollTop", { value: 100, configurable: true })
     fireEvent.scroll(log)
-    expect(screen.getByRole("button", { name: "messenger:aria.jumpToLatest" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "messenger:aria.jumpToLatest" })).toBeInTheDocument()
 
     rerender(<ChatWindow messages={[message]} isLoading />)
     motionMocks.buttonAriaLabels.length = 0
     rerender(<ChatWindow messages={[message]} />)
 
     expect(motionMocks.buttonAriaLabels).not.toContain("messenger:aria.jumpToLatest")
+  })
+
+  it("re-evaluates the jump button when the visible history changes while scrolled up", () => {
+    const first = makeMessage({ id: "history-1", text: "older" })
+    const { rerender } = render(<ChatWindow messages={[first]} />, { wrapper })
+    const log = screen.getByRole("log")
+    Object.defineProperty(log, "scrollHeight", { get: () => 1000, configurable: true })
+    Object.defineProperty(log, "clientHeight", { get: () => 300, configurable: true })
+    Object.defineProperty(log, "scrollTop", {
+      get: () => 100,
+      set: () => undefined,
+      configurable: true,
+    })
+    expect(screen.queryByRole("button", { name: "messenger:aria.jumpToLatest" })).toBeNull()
+
+    rerender(<ChatWindow messages={[first, makeMessage({ id: "history-2", text: "newer" })]} />)
+
+    expect(screen.getByRole("button", { name: "messenger:aria.jumpToLatest" })).toBeInTheDocument()
   })
 
   it("rebinds one passive scroll listener and removes the exact handler", () => {
@@ -822,6 +840,24 @@ describe("ChatWindow — W205 SW6 edit/delete affordance + tombstone + inline ed
     fireEvent.keyDown(textarea, { key: "ArrowLeft" })
     expect(onSaveEdit).toHaveBeenCalledTimes(1)
     expect(onCancelEdit).toHaveBeenCalledTimes(1)
+  })
+
+  it("consumes Enter and Escape in the editor but keeps Shift+Enter as a newline", () => {
+    render(
+      <ChatWindow
+        messages={[makeOwn({ id: "edit-4" })]}
+        editingMessageId="edit-4"
+        editingMessageContent="draft"
+        onSaveEdit={vi.fn()}
+        onCancelEdit={vi.fn()}
+      />,
+      { wrapper }
+    )
+    const textarea = screen.getByRole("textbox")
+
+    expect(fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })).toBe(false)
+    expect(fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true })).toBe(true)
+    expect(fireEvent.keyDown(textarea, { key: "Escape" })).toBe(false)
   })
 })
 

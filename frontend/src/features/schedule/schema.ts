@@ -40,5 +40,3 @@ export const scheduleSearchSchema = v.object({
     ])
   ),
 })
-
-export type ScheduleSearch = v.InferOutput<typeof scheduleSearchSchema>

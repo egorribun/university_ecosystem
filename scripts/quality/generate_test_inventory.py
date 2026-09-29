@@ -93,7 +93,12 @@ def classify_file(relative_path: str, generated_patterns: list[str]) -> str:
         return "test"
 
     # Source classifications
-    source_dirs = {"app", "frontend/src", "services", "native", "crates"}
+    # ``gen/go`` contains generated protobuf transport files as well as the
+    # authored capability contract that lives beside them.  Generated files
+    # are classified first by ``generated_patterns``; the authored capability
+    # source must remain a real source so its focused tests have an ownership
+    # and orphan relationship.
+    source_dirs = {"app", "frontend/src", "services", "native", "crates", "gen/go"}
     for s_dir in source_dirs:
         if posix_path.startswith(s_dir + "/"):
             # Ensure it is a source code file extension
@@ -115,8 +120,16 @@ def scan_repository(mapping_config: dict[str, object]) -> list[dict[str, object]
     # dependency/build/cache trees; pruning them before enumeration avoids
     # materializing hundreds of thousands of irrelevant paths on local runs.
     for root, dirnames, filenames in os.walk(REPOSITORY_ROOT):
-        dirnames[:] = [name for name in dirnames if not should_prune_directory(name)]
         root_path = Path(root)
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if not should_prune_directory(name)
+            # The root output tree contains reports and backup copies, not
+            # authored source (quality-contract.json source_roots). Preserve
+            # nested source modules named artifacts, e.g. app/artifacts.
+            and not (root_path == REPOSITORY_ROOT and name == "artifacts")
+        ]
         for filename in filenames:
             path = root_path / filename
             relative_path = str(path.relative_to(REPOSITORY_ROOT)).replace("\\", "/")

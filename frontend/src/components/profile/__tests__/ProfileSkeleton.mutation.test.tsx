@@ -14,12 +14,15 @@ vi.mock("@/components/motion/PageFadeIn", () => ({
   ),
 }))
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Card", () => ({
   Card: ({ children, className }: { children?: ReactNode; className?: string }) => (
     <section data-testid="profile-skeleton-card" className={className}>
       {children}
     </section>
   ),
+}))
+
+vi.mock("@/components/ui/Skeleton", () => ({
   Skeleton: ({
     width,
     height,

@@ -7,7 +7,7 @@ vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({
     open,
     title,
@@ -30,15 +30,10 @@ vi.mock("@/components/ui", () => ({
         </button>
       </div>
     ) : null,
-  Snackbar: ({
-    open,
-    message,
-    onClose,
-  }: {
-    open: boolean
-    message: string
-    onClose: () => void
-  }) =>
+}))
+
+vi.mock("@/components/ui/Snackbar", () => ({
+  default: ({ open, message, onClose }: { open: boolean; message: string; onClose: () => void }) =>
     open ? (
       <button type="button" data-testid="snackbar" onClick={onClose}>
         {message}
@@ -133,12 +128,20 @@ vi.mock("@/components/events/EventCategoryBadge", () => ({
 }))
 
 vi.mock("@/components/events/EventCard/EventAdminActions", () => ({
-  EventAdminActions: ({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) => (
-    <div data-testid="event-admin-actions">
-      <button type="button" onClick={onEdit}>
+  EventAdminActions: ({
+    onEdit,
+    onDelete,
+    disabled,
+  }: {
+    onEdit: () => void
+    onDelete: () => void
+    disabled?: boolean
+  }) => (
+    <div data-testid="event-admin-actions" data-disabled={String(Boolean(disabled))}>
+      <button type="button" disabled={disabled} onClick={onEdit}>
         admin-edit
       </button>
-      <button type="button" onClick={onDelete}>
+      <button type="button" disabled={disabled} onClick={onDelete}>
         admin-delete
       </button>
     </div>
@@ -427,6 +430,17 @@ describe("EventCardView closure paths", () => {
     expect(callbacks.onDeleteClose).toHaveBeenCalledOnce()
     expect(callbacks.onDeleteConfirm).toHaveBeenCalledOnce()
     expect(callbacks.onErrorClose).toHaveBeenCalledOnce()
+  })
+
+  it("disables lazy admin actions while an event mutation is pending", async () => {
+    await act(async () => {
+      render(<EventCardView {...makeProps({ isAdmin: true, loading: true })} />)
+    })
+
+    await waitFor(() => expect(screen.getByTestId("event-admin-actions")).toBeInTheDocument())
+    expect(screen.getByTestId("event-admin-actions")).toHaveAttribute("data-disabled", "true")
+    expect(screen.getByRole("button", { name: "admin-edit" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "admin-delete" })).toBeDisabled()
   })
 
   it("normalizes a missing admin location before opening the edit dialog", async () => {

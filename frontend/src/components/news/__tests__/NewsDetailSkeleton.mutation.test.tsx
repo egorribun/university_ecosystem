@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 
 const backdrop = vi.hoisted(() => vi.fn())
 
-vi.mock("@/components/ui", () => ({
+vi.mock("@/components/ui/Skeleton", () => ({
   Skeleton: ({
     width,
     height,

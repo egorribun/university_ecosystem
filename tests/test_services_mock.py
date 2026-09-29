@@ -4,7 +4,6 @@ Covers:
 - app/services/ws_hub_client.py
 - app/services/push_service.py
 - app/services/event_handlers.py
-- app/services/content_processing.py
 - app/services/vector_service.py
 - app/services/fraud_detection_service.py
 - app/services/ical.py (pure helpers)
@@ -20,106 +19,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-# ---------------------------------------------------------------------------
-# app/services/content_processing.py
-# ---------------------------------------------------------------------------
-
-
-def test_content_processing_strip_mode() -> None:
-    from app.services.content_processing import SanitizationMode, sanitize
-
-    result = sanitize(
-        "<b>hello</b> <script>alert(1)</script>", mode=SanitizationMode.STRIP
-    )
-    assert "<b>" not in result
-    assert "<script>" not in result
-    assert "hello" in result
-
-
-def test_content_processing_basic_mode() -> None:
-    from app.services.content_processing import SanitizationMode, sanitize
-
-    result = sanitize("<b>bold</b><script>bad</script>", mode=SanitizationMode.BASIC)
-    assert "<script>" not in result
-    assert "bold" in result
-
-
-def test_content_processing_rich_text_mode() -> None:
-    from app.services.content_processing import SanitizationMode, sanitize
-
-    result = sanitize(
-        "<p>Hello <b>world</b></p><script>bad</script>",
-        mode=SanitizationMode.RICH_TEXT,
-    )
-    assert "<script>" not in result
-    assert "Hello" in result
-
-
-def test_content_processing_default_mode_is_rich_text() -> None:
-    from app.services.content_processing import sanitize
-
-    result = sanitize("<p>text</p>")
-    # Should default to RICH_TEXT
-    assert "text" in result
-
-
-def test_content_processing_sanitization_modes_enum() -> None:
-    from app.services.content_processing import SanitizationMode
-
-    assert SanitizationMode.RICH_TEXT
-    assert SanitizationMode.BASIC
-    assert SanitizationMode.STRIP
-
-
-def test_content_processing_backend_label() -> None:
-    import app.services.content_processing as cp
-
-    assert hasattr(cp, "_BACKEND_LABEL")
-    assert isinstance(cp._BACKEND_LABEL, str)
-
-
-def test_content_processing_nh3_fallback() -> None:
-    import sys
-    from unittest.mock import patch
-
-    # Force fallback branch by deleting from sys.modules
-    if "app.services.content_processing" in sys.modules:
-        del sys.modules["app.services.content_processing"]
-
-    with patch.dict("sys.modules", {"pyo3_sanitizer": None}):
-        import app.services.content_processing as cp_fallback
-
-        # Verify backend label
-        assert cp_fallback._BACKEND_LABEL == "nh3 (fallback)"
-
-        # Verify sanitization modes using fallback
-        from app.services.content_processing import SanitizationMode
-
-        res_rich = cp_fallback.sanitize(
-            "<p>Hello <b>world</b></p><script>alert(1)</script>",
-            mode=SanitizationMode.RICH_TEXT,
-        )
-        assert "<script>" not in res_rich
-        assert "Hello" in res_rich
-
-        res_basic = cp_fallback.sanitize(
-            "<b>bold</b><script>alert(1)</script>", mode=SanitizationMode.BASIC
-        )
-        assert "<script>" not in res_basic
-        assert "bold" in res_basic
-
-        res_strip = cp_fallback.sanitize(
-            "<b>strip</b><script>alert(1)</script>", mode=SanitizationMode.STRIP
-        )
-        assert "<b>" not in res_strip
-        assert "<script>" not in res_strip
-        assert "strip" in res_strip
-
-    # Restore default backend state
-    if "app.services.content_processing" in sys.modules:
-        del sys.modules["app.services.content_processing"]
-
 
 # ---------------------------------------------------------------------------
 # app/services/ws_hub_client.py — WsHubClient.invalidate_cache
@@ -436,6 +335,7 @@ async def test_handle_notifications_requested_with_ids() -> None:
     mock_event = MagicMock()
     mock_event.notification_ids = [uuid.uuid4(), uuid.uuid4()]
     mock_event.channel = "push"
+    mock_event.payload_data = None
     db = MagicMock()
     db.commit = AsyncMock()
     session_context = MagicMock()
@@ -455,6 +355,7 @@ async def test_handle_notifications_requested_with_ids() -> None:
         db,
         notification_ids=mock_event.notification_ids,
         channel="push",
+        payload_data=None,
     )
     db.commit.assert_awaited_once()
 
@@ -503,7 +404,7 @@ async def test_handle_attachment_cleanup_with_urls() -> None:
     ):
         await handle_attachment_cleanup_requested(mock_event)
         mock_attachment_svc.cleanup_files.assert_awaited_once_with(
-            mock_event.attachment_urls
+            mock_event.attachment_urls, durable=True
         )
 
 
@@ -542,9 +443,7 @@ async def test_generate_event_embedding_not_found() -> None:
         patch(
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
-        patch(
-            "app.services.event_handlers.get_vector_service", return_value=MagicMock()
-        ),
+        patch("app.services.event_handlers.VectorService", return_value=MagicMock()),
     ):
         await generate_event_embedding(mock_event)  # returns early when not found
 
@@ -567,9 +466,7 @@ async def test_generate_news_embedding_not_found() -> None:
         patch(
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
-        patch(
-            "app.services.event_handlers.get_vector_service", return_value=MagicMock()
-        ),
+        patch("app.services.event_handlers.VectorService", return_value=MagicMock()),
     ):
         await generate_news_embedding(mock_event)
 
@@ -602,7 +499,7 @@ async def test_generate_event_embedding_found() -> None:
             "app.services.event_handlers.async_session", return_value=mock_session_ctx
         ),
         patch(
-            "app.services.event_handlers.get_vector_service",
+            "app.services.event_handlers.VectorService",
             return_value=mock_vector_svc,
         ),
     ):

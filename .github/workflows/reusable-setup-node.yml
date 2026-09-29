@@ -51,4 +51,4 @@ jobs:
 
             - name: Install dependencies
               if: ${{ inputs.install-deps }}
-              run: npm ci
+              run: npm ci --no-audit --no-fund

@@ -31,6 +31,7 @@ from app.services.notification_templates import (
     _normalize_type,
     _parse_datetime_like,
     render_notification_template,
+    render_registered_notification_template,
 )
 
 # ─── _clean_text ──────────────────────────────────────────────────────────────
@@ -443,3 +444,20 @@ def test_render_none_data_defaults_to_empty() -> None:
     out = render_notification_template("system.message", None, locale="en")
     assert out is not None
     assert out["topic"] == "system"
+
+
+def test_registered_render_returns_the_scenario_payload() -> None:
+    rendered = render_registered_notification_template(
+        "schedule.change", {"subject": "Physics"}, locale="ru"
+    )
+    assert rendered == render_notification_template(
+        "schedule.change", {"subject": "Physics"}, locale="ru"
+    )
+    assert rendered["title"] == "Изменение пары: Physics"
+
+
+def test_registered_render_rejects_an_unknown_scenario() -> None:
+    with pytest.raises(
+        KeyError, match=re.escape("Unknown notification scenario: totally.unknown")
+    ):
+        render_registered_notification_template("totally.unknown", {}, locale="en")

@@ -222,3 +222,20 @@ describe("createFallback", () => {
     expect(fn(new Error("x"))).toBeNull()
   })
 })
+
+describe("extractApiError validation field paths", () => {
+  it("joins nested issue paths with dots", () => {
+    let caught: unknown
+    try {
+      ensureValidResponse(
+        v.object({ author: v.object({ name: v.string() }) }),
+        { author: { name: 1 } },
+        "nested"
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    expect(extractApiError(caught).details?.[0]?.field).toBe("author.name")
+  })
+})

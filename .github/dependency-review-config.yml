@@ -136,11 +136,20 @@ allow-dependencies-licenses:
   - "pkg:golang/github.com/quic-go/webtransport-go"
   - "pkg:golang/github.com/spiffe/go-spiffe/v2"
   - "pkg:golang/github.com/university-ecosystem/services/pkg/spiffe"
+  - "pkg:golang/github.com/university-ecosystem/services/pkg/logging"
   - "pkg:golang/golang.org/x/sync"
   - "pkg:pypi/portalocker"
   - "pkg:pypi/qdrant-client"
   - "pkg:pypi/mmh3"
   - "pkg:cargo/ammonia"
+  # typing-extensions 4.16.0 declares `License-Expression: PSF-2.0` in its
+  # own package metadata, and PSF-2.0 is allow-listed above.  The Advisory
+  # DB instead reports the composite "Python-2.0 AND GPL-1.0-or-later AND
+  # ..." expression it derives from the bundled CPython LICENSE text, which
+  # blocked run 35470088045.  Same metadata-parsing artifact class as the
+  # pact-python and minicov entries above; the package arrives transitively
+  # through the anyio >=4.14.2 pin for CVE-2026-63374/64847.
+  - "pkg:pypi/typing-extensions"
 
 vulnerability-check: true
 license-check: true

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
 
@@ -58,7 +58,7 @@ describe("EventAboutEditor", () => {
     mockPatch.mockReset()
     mockLogError.mockReset()
     mockUseTranslation.mockClear()
-    mockTranslate.mockClear()
+    mockTranslate.mockReset().mockImplementation((key: string) => key)
   })
 
   it("renders the heading and the language-aware about text", () => {
@@ -161,6 +161,75 @@ describe("EventAboutEditor", () => {
     expect(screen.queryByLabelText("events:detail.sections.about.editAria")).not.toBeInTheDocument()
   })
 
+  it.each([
+    [
+      "en",
+      "events:detail.sections.about.fieldLabel_en",
+      "Event description (English)",
+      "Updated English baseline",
+    ],
+    [
+      "ru",
+      "events:detail.sections.about.fieldLabel",
+      "Описание мероприятия",
+      "Обновлённое описание",
+    ],
+  ] as const)(
+    "supports named %s editing, keyboard cancellation and reopening the latest baseline",
+    async (language, fieldKey, fieldLabel, updatedBaseline) => {
+      mockTranslate.mockImplementation((key: string) => (key === fieldKey ? fieldLabel : key))
+      const user = userEvent.setup()
+      const onUpdate = vi.fn(() => Promise.resolve())
+      const { rerender } = render(
+        <EventAboutEditor {...baseProps} language={language} onUpdate={onUpdate} />
+      )
+      const baseline = (language === "en" ? baseEvent.about_en : baseEvent.about) ?? ""
+
+      await user.tab()
+      expect(
+        screen.getByRole("button", { name: "events:detail.sections.about.editAria" })
+      ).toHaveFocus()
+      await user.keyboard("{Enter}")
+      const textarea = screen.getByRole("textbox", { name: fieldLabel })
+      expect(textarea).toHaveValue(baseline)
+
+      await user.tab()
+      expect(textarea).toHaveFocus()
+      await user.keyboard(" unsaved draft")
+      expect(textarea).not.toHaveValue(baseline)
+      await user.tab()
+      expect(screen.getByRole("button", { name: "common:buttons.save" })).toHaveFocus()
+      await user.tab()
+      expect(screen.getByRole("button", { name: "common:buttons.cancel" })).toHaveFocus()
+      await user.keyboard("{Enter}")
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+      expect(screen.getByText(baseline)).toBeInTheDocument()
+      expect(mockPatch).not.toHaveBeenCalled()
+      expect(onUpdate).not.toHaveBeenCalled()
+
+      rerender(
+        <EventAboutEditor
+          {...baseProps}
+          language={language}
+          event={{
+            ...baseEvent,
+            ...(language === "en" ? { about_en: updatedBaseline } : { about: updatedBaseline }),
+          }}
+          onUpdate={onUpdate}
+        />
+      )
+      await user.tab()
+      expect(
+        screen.getByRole("button", { name: "events:detail.sections.about.editAria" })
+      ).toHaveFocus()
+      await user.keyboard(" ")
+      expect(screen.getByRole("textbox", { name: fieldLabel })).toHaveValue(updatedBaseline)
+      expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+      expect(mockPatch).not.toHaveBeenCalled()
+      expect(onUpdate).not.toHaveBeenCalled()
+    }
+  )
+
   it("saves trimmed English text and refreshes the event", async () => {
     const user = userEvent.setup()
     const onUpdate = vi.fn(() => Promise.resolve())
@@ -253,14 +322,18 @@ describe("EventAboutEditor", () => {
       mockPatch.mockResolvedValue({ status: 200 })
       const { unmount } = render(<EventAboutEditor {...baseProps} onSuccess={onSuccess} />)
 
-      fireEvent.click(screen.getByLabelText("events:detail.sections.about.editAria"))
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText("events:detail.sections.about.editAria"))
+      })
       const textarea = screen.getByRole("textbox")
-      fireEvent.change(textarea, { target: { value: "Updated workshop details" } })
-      fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await act(async () => {
+        fireEvent.change(textarea, { target: { value: "Updated workshop details" } })
+        fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
 
-      // Resolve the async save/update chain while keeping the focus timer pending.
-      await Promise.resolve()
-      await Promise.resolve()
+        // Resolve the async save/update chain while keeping the focus timer pending.
+        await Promise.resolve()
+        await Promise.resolve()
+      })
       expect(onSuccess).toHaveBeenCalledWith("events:detail.messages.aboutUpdated")
 
       unmount()

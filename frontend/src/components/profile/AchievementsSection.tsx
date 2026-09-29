@@ -47,5 +47,3 @@ export const AchievementsSection = ({
     </SectionCard>
   )
 }
-
-export default AchievementsSection

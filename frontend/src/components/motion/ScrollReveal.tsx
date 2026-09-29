@@ -18,6 +18,11 @@ type Props = {
   viewportMargin?: string
 }
 
+export const shouldObserveScrollReveal = (
+  element: HTMLElement | null,
+  isVisible: boolean
+): element is HTMLElement => Boolean(element) && !isVisible
+
 const getVariants = (mode: string, direction: string): Variants => {
   const distance = motionTokens.slideMd
 
@@ -83,18 +88,19 @@ export const ScrollReveal = ({
 
   useEffect(() => {
     const el = ref.current
-    if (!el || isVisible) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          setIsVisible(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin: viewportMargin }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
+    if (shouldObserveScrollReveal(el, isVisible)) {
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry?.isIntersecting) {
+            setIsVisible(true)
+            observer.disconnect()
+          }
+        },
+        { rootMargin: viewportMargin }
+      )
+      observer.observe(el)
+      return () => observer.disconnect()
+    }
   }, [isVisible, viewportMargin])
 
   // Determine transition based on mode

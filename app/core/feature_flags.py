@@ -6,7 +6,7 @@ deployment (k8s/flagd/) for gradual rollouts, A/B testing, and kill switches.
 Usage:
     from app.core.feature_flags import is_enabled
 
-    if await is_enabled("new-chat-ui", context={"user_id": str(user.id)}):
+    if await is_enabled("example-flag", context={"user_id": str(user.id)}):
         ...
 """
 
@@ -19,13 +19,6 @@ from typing import Any, Literal, TypedDict
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
-
-# ── Known flag names (sync with k8s/flagd/flags.json) ────────────────────────
-
-FLAG_NEW_CHAT_UI = "new-chat-ui"
-FLAG_SEMANTIC_SEARCH = "semantic-search"
-FLAG_PUSH_BATCHING = "push-batching"
-FLAG_GRAPHQL_SUBSCRIPTIONS = "graphql-subscriptions"
 
 FEATURE_FLAG_CONFIG_PATH = "k8s/flagd/flags.json"
 FEATURE_FLAG_MANAGEMENT: Literal["gitops"] = "gitops"
@@ -51,28 +44,11 @@ class FeatureFlagSnapshot(TypedDict):
     config_path: str
 
 
-_FLAG_DEFINITIONS = (
-    _FlagDefinition(
-        FLAG_NEW_CHAT_UI,
-        False,
-        "Enable the next-generation chat interface.",
-    ),
-    _FlagDefinition(
-        FLAG_SEMANTIC_SEARCH,
-        False,
-        "Enable semantic search across indexed university content.",
-    ),
-    _FlagDefinition(
-        FLAG_PUSH_BATCHING,
-        True,
-        "Batch push notifications before delivery.",
-    ),
-    _FlagDefinition(
-        FLAG_GRAPHQL_SUBSCRIPTIONS,
-        False,
-        "Enable the experimental GraphQL subscription transport.",
-    ),
-)
+# Registered flags, kept in sync with k8s/flagd/flags.json by
+# tests/test_feature_flag_architecture_contract.py.  Register a flag only
+# together with the call site that evaluates it: a flag nothing reads would
+# show up on the admin diagnostics page as a switch that controls nothing.
+_FLAG_DEFINITIONS: tuple[_FlagDefinition, ...] = ()
 
 _provider_initialized = False
 _provider_lock = threading.Lock()  # RZ-33-29: DCL per RZ-30-01

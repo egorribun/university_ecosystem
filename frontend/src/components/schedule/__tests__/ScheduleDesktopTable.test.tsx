@@ -167,6 +167,11 @@ describe("ScheduleDesktopTable", () => {
 
     // canEdit=false (user:null) → no delete affordances anywhere.
     expect(within(grid).queryByRole("button", { name: "Delete lesson" })).toBeNull()
+    expect(grid).toHaveStyle({
+      gridTemplateColumns:
+        "var(--sched-grid-header-w) repeat(6, minmax(var(--sched-grid-col-min), 1fr))",
+      minWidth: "calc(var(--sched-grid-header-w) + 6 * var(--sched-grid-col-min))",
+    })
   })
 
   it("places lessons in their correct day columns", async () => {
@@ -182,6 +187,22 @@ describe("ScheduleDesktopTable", () => {
     expect(screen.getByText("Programming")).toBeInTheDocument()
     expect(screen.getByText("Databases")).toBeInTheDocument()
     expect(screen.getAllByText(/Linear Algebra|Programming|Databases/)).toHaveLength(3)
+  })
+
+  it("marks the current weekday and preserves stable ARIA row/column indexes", async () => {
+    await renderTable(baseProps({ todayIdx: 2 }))
+    const grid = screen.getByRole("grid", { name: "Schedule" })
+    const headers = within(grid).getAllByRole("columnheader")
+    expect(headers[0]).toHaveAttribute("aria-colindex", "1")
+    expect(headers[3]).toHaveAttribute("aria-colindex", "4")
+    expect(headers[3]).toHaveAttribute("aria-current", "date")
+    expect(headers[3]).toHaveClass("sched-today-header")
+    expect(within(headers[3]!).getByText("Today")).toBeInTheDocument()
+
+    const rows = within(grid).getAllByRole("row")
+    expect(rows[0]).toHaveAttribute("aria-rowindex", "1")
+    expect(rows[1]).toHaveAttribute("aria-rowindex", "2")
+    expect(within(rows[1]!).getAllByRole("gridcell")[0]).toHaveAttribute("aria-colindex", "2")
   })
 
   it("marks a conflicted lesson with the conflict label, title, and indicator", async () => {
@@ -303,6 +324,25 @@ describe("ScheduleDesktopTable", () => {
     expect(within(grid).getAllByRole("gridcell", { name: "No lesson" })).toHaveLength(5)
     // The filled Monday cell carries the stable keyboard-nav id (W120 SW3).
     expect(grid.querySelector("#sched-cell-0-0")).not.toBeNull()
+  })
+
+  it("renders break duration only for a positive gap between same-day lessons", async () => {
+    const first = { ...LESSON_MON_1, end_time: "10:00" }
+    const second = { ...LESSON_MON_2, start_time: "11:15" }
+    await renderTable(baseProps({ schedule: [first, second], rawSchedule: [first, second] }))
+    expect(screen.getByText("Break — 75 min")).toBeInTheDocument()
+  })
+
+  it("forwards compact preference and omits the expanded lesson details", async () => {
+    useScheduleUIStore.setState({ hiddenWeekdays: [], compactMode: true })
+    await renderTable(baseProps())
+    const card = screen.getByLabelText("Linear Algebra, 09:00–10:30, 101")
+    expect(card).toHaveClass("gap-1", "p-2.5")
+    expect(within(card).getByRole("heading", { name: "Linear Algebra" })).toHaveClass(
+      "text-xs",
+      "line-clamp-1"
+    )
+    expect(within(card).queryByText("Ada Lovelace")).toBeNull()
   })
 
   it("updates the overflow marker and renders current-lesson cell state", async () => {

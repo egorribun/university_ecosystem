@@ -8,6 +8,7 @@ the caller can pass the selected server-issued artifact id to a pinned action.
 from __future__ import annotations
 
 import argparse
+import contextvars
 import json
 import os
 import re
@@ -15,12 +16,13 @@ import ssl
 import stat
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TypeIs, cast
+from typing import Any, NoReturn, TypeIs, cast
 
 _ARTIFACT_PAGE_SIZE = 100
 _MAX_ARTIFACTS = 10_000
@@ -30,9 +32,14 @@ _MAX_OUTPUT_BYTES = 1024 * 1024
 _MAX_TEXT_LENGTH = 512
 _MAX_TOKEN_LENGTH = 4096
 _MAX_DECIMAL_DIGITS = 20
+# Coverage downloads receive the selected id through a GitHub expression
+# (`fromJSON(...)`), whose number representation is an IEEE-754 double.  Do
+# not emit an id that could be rounded before the download action receives it.
+_MAX_JSON_SAFE_INTEGER = 9_007_199_254_740_991
 _MAX_REQUESTS_PER_SELECTION = 1 + _MAX_CATALOG_SNAPSHOT_ATTEMPTS * (
     (_MAX_ARTIFACTS // _ARTIFACT_PAGE_SIZE) + 1
 )
+_MAX_SELECTION_SECONDS = 120
 _DECIMAL = re.compile(r"[1-9][0-9]*$")
 _SHA = re.compile(r"[0-9a-f]{40}$")
 _REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -43,6 +50,9 @@ _API_TARGET = re.compile(
     r"/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/runs/[1-9][0-9]*"
     r"(?:/artifacts\?per_page=100&page=[1-9][0-9]*)?$"
 )
+_REQUEST_DEADLINE: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "same_run_request_deadline", default=None
+)
 
 
 class SameRunArtifactError(ValueError):
@@ -51,6 +61,22 @@ class SameRunArtifactError(ValueError):
 
 class _CatalogChanged(RuntimeError):
     """Signals a concurrent catalog update that requires a bounded retry."""
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject redirects before urllib can issue a second request."""
+
+    def redirect_request(
+        self,
+        request: urllib.request.Request,
+        file_pointer: object,
+        code: int,
+        message: str,
+        headers: object,
+        new_url: str,
+    ) -> NoReturn:
+        del request, file_pointer, code, message, headers, new_url
+        raise SameRunArtifactError("GitHub REST redirects are not allowed")
 
 
 @dataclass(frozen=True)
@@ -100,9 +126,25 @@ class SelectionResult:
     artifact_id: int | None
     artifact_name: str | None
     producer_attempt: int | None
+    artifact_digest: str | None = None
 
 
 RequestTransport = Callable[[Request, int], HttpResponse]
+
+
+def _open_url(
+    request: urllib.request.Request,
+    *,
+    context: ssl.SSLContext,
+    timeout: float,
+) -> Any:
+    """Open one request with explicit TLS and no redirect following."""
+
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=context),
+        _NoRedirectHandler(),
+    )
+    return opener.open(request, timeout=timeout)
 
 
 def _is_int(value: object) -> TypeIs[int]:
@@ -143,10 +185,23 @@ def _read_limited(stream: object, maximum_bytes: int) -> bytes:
     read = getattr(stream, "read", None)
     if not callable(read):
         raise SameRunArtifactError("GitHub REST response is malformed")
-    body = read(maximum_bytes + 1)
-    if not isinstance(body, bytes) or len(body) > maximum_bytes:
-        raise SameRunArtifactError("GitHub REST response exceeds its maximum size")
-    return body
+    body = bytearray()
+    total = 0
+    # Some HTTP response implementations legally return short reads even when
+    # more bytes remain.  Keep reading until EOF so an oversized tail cannot be
+    # hidden behind a short first chunk.  The request is still bounded by one
+    # byte beyond the accepted limit.
+    while total <= maximum_bytes:
+        chunk = read(min(64 * 1024, maximum_bytes + 1 - total))
+        if not isinstance(chunk, bytes):
+            raise SameRunArtifactError("GitHub REST response is malformed")
+        if not chunk:
+            break
+        body.extend(chunk)
+        total += len(chunk)
+        if total > maximum_bytes:
+            raise SameRunArtifactError("GitHub REST response exceeds its maximum size")
+    return bytes(body)
 
 
 def _default_request(request: Request, maximum_bytes: int) -> HttpResponse:
@@ -158,19 +213,24 @@ def _default_request(request: Request, maximum_bytes: int) -> HttpResponse:
         )
     url = f"https://api.github.com{request.path}"
     try:
+        deadline = _REQUEST_DEADLINE.get()
+        if deadline is None:
+            timeout = 20.0
+        else:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise SameRunArtifactError("GitHub API selection deadline exceeded")
+            timeout = min(20.0, remaining)
         http_request = urllib.request.Request(  # noqa: S310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL is restricted to a fixed HTTPS api.github.com origin and a strict path allowlist
             url,
             method="GET",
             headers=dict(request.headers),
         )
         context = ssl.create_default_context()
-        # The URL has a fixed HTTPS origin and the path was fullmatched above;
-        # the narrowly scoped suppressions document this audited false positive.
-        with urllib.request.urlopen(  # noqa: S310  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-            http_request,
-            context=context,
-            timeout=20,
-        ) as response:
+        # The URL has a fixed HTTPS origin and the path was fullmatched above.
+        # The explicit handler rejects redirects before urllib can forward the
+        # Authorization header or consume a response from another origin.
+        with _open_url(http_request, context=context, timeout=timeout) as response:
             status = response.status
             if not _is_int(status):
                 raise SameRunArtifactError("GitHub REST response has an invalid status")
@@ -319,7 +379,7 @@ def _validate_current_run(
 
 def _candidate_from_artifact(
     artifact: Mapping[str, object], arguments: SelectionArguments
-) -> tuple[int, str, int] | None:
+) -> tuple[int, str, int, str] | None:
     name = _require_text(_required(artifact, "name"), "artifact.name")
     if not name.startswith(arguments.artifact_prefix):
         return None
@@ -339,7 +399,11 @@ def _candidate_from_artifact(
     if match is None:
         raise SameRunArtifactError("artifact has foreign or malformed provenance")
     artifact_id = _required(artifact, "id")
-    if not _is_int(artifact_id) or artifact_id <= 0:
+    if (
+        not _is_int(artifact_id)
+        or artifact_id <= 0
+        or artifact_id > _MAX_JSON_SAFE_INTEGER
+    ):
         raise SameRunArtifactError("artifact id is invalid")
     size_in_bytes = _required(artifact, "size_in_bytes")
     if not _is_int(size_in_bytes) or size_in_bytes <= 0:
@@ -347,12 +411,8 @@ def _candidate_from_artifact(
     expired = _required(artifact, "expired")
     if not isinstance(expired, bool) or expired:
         raise SameRunArtifactError("artifact is expired or malformed")
-    if (
-        _DIGEST.fullmatch(
-            _require_text(_required(artifact, "digest"), "artifact.digest")
-        )
-        is None
-    ):
+    digest = _require_text(_required(artifact, "digest"), "artifact.digest")
+    if _DIGEST.fullmatch(digest) is None:
         raise SameRunArtifactError("artifact digest is invalid")
     workflow_run = _required(artifact, "workflow_run")
     if not isinstance(workflow_run, Mapping):
@@ -377,28 +437,30 @@ def _candidate_from_artifact(
         raise SameRunArtifactError("artifact producer attempt is from the future")
     if arguments.attempt_policy == "earlier" and attempt == consumer_attempt:
         return None
-    return artifact_id, name, attempt
+    return artifact_id, name, attempt, digest
 
 
 def _select_candidate(
     artifacts: Sequence[Mapping[str, object]], arguments: SelectionArguments
 ) -> SelectionResult | None:
-    candidates: dict[int, tuple[int, str]] = {}
+    candidates: dict[int, tuple[int, str, str]] = {}
     artifact_ids: set[int] = set()
     for artifact in artifacts:
         candidate = _candidate_from_artifact(artifact, arguments)
         if candidate is None:
             continue
-        artifact_id, artifact_name, producer_attempt = candidate
+        artifact_id, artifact_name, producer_attempt, artifact_digest = candidate
         if producer_attempt in candidates or artifact_id in artifact_ids:
             raise SameRunArtifactError("artifact candidates are duplicated")
-        candidates[producer_attempt] = (artifact_id, artifact_name)
+        candidates[producer_attempt] = (artifact_id, artifact_name, artifact_digest)
         artifact_ids.add(artifact_id)
     if not candidates:
         return None
     producer_attempt = max(candidates)
-    artifact_id, artifact_name = candidates[producer_attempt]
-    return SelectionResult(True, artifact_id, artifact_name, producer_attempt)
+    artifact_id, artifact_name, artifact_digest = candidates[producer_attempt]
+    return SelectionResult(
+        True, artifact_id, artifact_name, producer_attempt, artifact_digest
+    )
 
 
 def _list_artifact_snapshot(
@@ -457,22 +519,43 @@ def _list_artifacts(
 
 
 def _bounded_request_transport(request: RequestTransport) -> RequestTransport:
-    """Bound total REST calls, including all catalog convergence retries."""
+    """Bound total REST calls and wall-clock time for one selection."""
 
     remaining = _MAX_REQUESTS_PER_SELECTION
+    deadline = time.monotonic() + _MAX_SELECTION_SECONDS
 
     def bounded(request_item: Request, maximum_bytes: int) -> HttpResponse:
         nonlocal remaining
         if remaining < 1:
             raise SameRunArtifactError("GitHub API request budget exceeded")
+        if time.monotonic() >= deadline:
+            raise SameRunArtifactError("GitHub API selection deadline exceeded")
         remaining -= 1
-        return request(request_item, maximum_bytes)
+        marker = _REQUEST_DEADLINE.set(deadline)
+        try:
+            response = request(request_item, maximum_bytes)
+        finally:
+            _REQUEST_DEADLINE.reset(marker)
+        if time.monotonic() > deadline:
+            raise SameRunArtifactError("GitHub API selection deadline exceeded")
+        return response
 
     return bounded
 
 
 def _is_link_or_junction(path: Path) -> bool:
-    if path.is_symlink():
+    # Inspect the filesystem directly instead of delegating to
+    # ``Path.is_symlink``.  The latter may perform additional ``lstat`` calls
+    # while resolving Windows paths, which makes the parent identity checks in
+    # ``_append_output`` observe a different snapshot than the one they are
+    # meant to validate.  A missing path is not a link; the caller's strict
+    # resolution check reports it as unavailable.  Other inspection failures
+    # remain fail-closed and are handled by the caller.
+    try:
+        metadata = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    if stat.S_ISLNK(metadata.st_mode):
         return True
     isjunction = getattr(os.path, "isjunction", None)
     return bool(isjunction is not None and isjunction(path))
@@ -559,7 +642,10 @@ def _append_output(path: Path, result: SelectionResult) -> None:
         f"artifact_id={result.artifact_id if result.artifact_id is not None else ''}\n"
         f"artifact_name={result.artifact_name or ''}\n"
         f"producer_attempt={result.producer_attempt if result.producer_attempt is not None else ''}\n"
-    ).encode()
+    )
+    if result.artifact_digest is not None:
+        values += f"artifact_digest={result.artifact_digest}\n"
+    values_bytes = values.encode()
     try:
         descriptor, temporary_name = tempfile.mkstemp(
             prefix=".same-run-output-", dir=parent
@@ -571,7 +657,7 @@ def _append_output(path: Path, result: SelectionResult) -> None:
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "wb") as stream:
-            stream.write(previous + values)
+            stream.write(previous + values_bytes)
             stream.flush()
             os.fsync(stream.fileno())
         if not _same_file_identity(after, _safe_output_file(path)):

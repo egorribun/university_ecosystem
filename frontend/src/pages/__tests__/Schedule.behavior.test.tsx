@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
 import { QueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -377,10 +377,12 @@ describe("Schedule page behavior", () => {
     expect(screen.queryByTestId("settings-panel")).not.toBeInTheDocument()
 
     expect(keyboardState.options).not.toBeNull()
-    keyboardState.options.onEdit()
-    keyboardState.options.onDelete()
+    act(() => {
+      keyboardState.options.onEdit()
+      keyboardState.options.onDelete()
+    })
     expect(screen.queryByTestId("confirm-delete")).not.toBeInTheDocument()
-    keyboardState.options.onToggleShortcuts()
+    act(() => keyboardState.options.onToggleShortcuts())
     await waitFor(() => expect(screen.getByTestId("shortcuts-overlay")).toBeInTheDocument())
     fireEvent.click(screen.getByRole("button", { name: "Close shortcuts" }))
     expect(screen.queryByTestId("shortcuts-overlay")).not.toBeInTheDocument()
@@ -496,10 +498,10 @@ describe("Schedule page behavior", () => {
     pageState.selectedLesson = scheduleState.schedule[0]
     await renderSchedule()
 
-    keyboardState.options.onEdit()
+    act(() => keyboardState.options.onEdit())
     expect(pageState.openDialog).toHaveBeenCalledWith("edit", scheduleState.schedule[0])
 
-    keyboardState.options.onDelete()
+    act(() => keyboardState.options.onDelete())
     await waitFor(() => expect(screen.getByTestId("confirm-delete")).toBeInTheDocument())
     fireEvent.click(screen.getByRole("button", { name: "Cancel delete" }))
     expect(screen.queryByTestId("confirm-delete")).not.toBeInTheDocument()
@@ -511,9 +513,9 @@ describe("Schedule page behavior", () => {
     pageState.selectedLesson = scheduleState.schedule[0]
     await renderSchedule()
 
-    keyboardState.options.onEdit()
+    act(() => keyboardState.options.onEdit())
     expect(pageState.openDialog).toHaveBeenCalledWith("edit", scheduleState.schedule[0])
-    keyboardState.options.onDelete()
+    act(() => keyboardState.options.onDelete())
     await waitFor(() => expect(screen.getByTestId("confirm-delete")).toBeInTheDocument())
     fireEvent.click(screen.getByRole("button", { name: "Cancel delete" }))
   })

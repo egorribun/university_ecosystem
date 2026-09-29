@@ -16,7 +16,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const pkgRoot = resolve(__dirname, "..")
 
 try {
-  await validateWasmArtifacts(pkgRoot)
+  await validateWasmArtifacts(pkgRoot, { requireSourceProvenance: true })
 } catch (error) {
   console.error(`WASM artifacts are required before npm install: ${error.message}`)
   console.error(

@@ -37,16 +37,6 @@ echo "==> [TSan] Rebuilding rust_ext under TSan (nightly, force-reinstall)..."
   uv run maturin develop --release --target "${HOST_TRIPLE}" -Zbuild-std=std,panic_abort
 )
 
-echo "==> [TSan] Rebuilding pyo3-sanitizer under TSan (nightly, force-reinstall)..."
-(
-  cd "${REPO_ROOT}/crates/pyo3-sanitizer"
-  unset RUSTFLAGS
-  export RUSTUP_TOOLCHAIN=nightly
-  TRIPLE_UPPER="$(echo "${HOST_TRIPLE}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')"
-  export "CARGO_TARGET_${TRIPLE_UPPER}_RUSTFLAGS=-Zsanitizer=thread"
-  uv run maturin develop --release --target "${HOST_TRIPLE}" -Zbuild-std=std,panic_abort
-)
-
 # ── Locate TSan runtime shared library ───────────────────────────────
 echo "==> [TSan] Locating TSan runtime library..."
 TSAN_LIB=""
@@ -68,6 +58,46 @@ fi
 
 echo "==> [TSan] Using TSan runtime: ${TSAN_LIB}"
 
+# ── Prove that this runner actually fails on a race -------------------------
+# A passing test suite is not evidence that TSan was loaded correctly. Compile
+# and execute a tiny, intentionally racy program first; a zero exit status is
+# treated as a fail-closed runner error. The canary stays outside Python so its
+# report cannot be hidden by PyO3/CPython suppressions.
+TSAN_CANARY_SOURCE="${REPO_ROOT}/tests/tsan_race_canary.c"
+TSAN_CANARY_BIN="${TMPDIR:-/tmp}/university-ecosystem-tsan-canary-$$"
+TSAN_CANARY_LOG="${TSAN_CANARY_BIN}.log"
+TSAN_CC="${CC:-cc}"
+if ! command -v "${TSAN_CC}" >/dev/null 2>&1; then
+  echo "ERROR: C compiler '${TSAN_CC}' is required for the TSan race canary." >&2
+  exit 1
+fi
+cleanup_tsan_canary() {
+  rm -f -- "${TSAN_CANARY_BIN}" "${TSAN_CANARY_LOG}"
+}
+trap cleanup_tsan_canary EXIT
+# Ubuntu hosted runners build PIE executables by default.  libtsan can then
+# reserve a conflicting address range and either miss the canary race or abort
+# before producing a diagnostic.  Keep the probe non-PIE so the runtime has a
+# stable, deterministic address space on every supported runner image.
+"${TSAN_CC}" -fsanitize=thread -fno-omit-frame-pointer -fno-pie -no-pie -O1 -g \
+  "${TSAN_CANARY_SOURCE}" -pthread -o "${TSAN_CANARY_BIN}"
+set +e
+TSAN_OPTIONS="halt_on_error=1:exitcode=66:report_signal_unsafe=0" \
+  "${TSAN_CANARY_BIN}" >"${TSAN_CANARY_LOG}" 2>&1
+TSAN_CANARY_EXIT=$?
+set -e
+if [[ "${TSAN_CANARY_EXIT}" -eq 0 ]]; then
+  echo "ERROR: TSan race canary unexpectedly exited successfully." >&2
+  cat "${TSAN_CANARY_LOG}"
+  exit 1
+fi
+if ! grep -Eq "WARNING: ThreadSanitizer|ThreadSanitizer: data race" "${TSAN_CANARY_LOG}"; then
+  echo "ERROR: TSan race canary failed without a recognizable TSan report." >&2
+  cat "${TSAN_CANARY_LOG}"
+  exit 1
+fi
+echo "==> [TSan] Race canary correctly failed with a data-race report."
+
 # ── Run tests under TSan ─────────────────────────────────────────────
 echo "==> [TSan] Running FFI tests under TSan..."
 
@@ -81,6 +111,10 @@ echo "==> [TSan] Running FFI tests under TSan..."
 TSAN_SUPPRESSIONS_FILE="${REPO_ROOT}/tests/tsan_suppressions.txt"
 PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
 TSAN_LOG_PREFIX="${REPO_ROOT}/tsan-report"
+# Never let a report left by an earlier invocation influence this run.  The
+# prefix is repository-local and deliberately explicit so cleanup cannot touch
+# unrelated files.
+rm -f -- "${TSAN_LOG_PREFIX}".*
 
 if [[ ! -x "${PYTHON_BIN}" ]]; then
   echo "ERROR: Expected the uv-managed Python environment at '${PYTHON_BIN}'."
@@ -95,18 +129,27 @@ TSAN_OPTIONS="suppressions=${TSAN_SUPPRESSIONS_FILE}:halt_on_error=0:second_dead
     tests/test_smoke_rust_audit.py \
     tests/test_smoke_rust_partitions.py \
     tests/test_property_based.py \
-    tests/test_content_processing.py \
     tests/test_smoke_pyo3_ext.py \
     -v \
     --tb=short
 TEST_EXIT_CODE=$?
 set -e
 
+TSAN_UNSUPPRESSED=0
+shopt -s nullglob
 for report in "${TSAN_LOG_PREFIX}".*; do
   if [[ -f "${report}" ]]; then
     cat "${report}"
+    if grep -Eq "WARNING: ThreadSanitizer|ThreadSanitizer: data race|ThreadSanitizer: heap-use-after-free" "${report}"; then
+      TSAN_UNSUPPRESSED=1
+    fi
   fi
 done
+
+if [[ "${TSAN_UNSUPPRESSED}" -ne 0 ]]; then
+  echo "ERROR: TSan reported an unsuppressed race or memory error." >&2
+  exit 1
+fi
 
 if [[ "${TEST_EXIT_CODE}" -ne 0 ]]; then
   exit "${TEST_EXIT_CODE}"

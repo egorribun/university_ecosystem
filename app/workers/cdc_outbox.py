@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import dataclasses
 import json
+import re
 import struct
 import time
 import uuid
@@ -15,6 +16,7 @@ from urllib.parse import urlparse, urlunparse
 import asyncpg
 from opentelemetry import trace
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram
+from psycopg import sql
 
 from app.core.config import settings
 from app.core.events import _EVENT_REGISTRY, DomainEvent, EventMetadata
@@ -24,6 +26,17 @@ from app.core.nats_broker import broker as global_nats_broker
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+
+# Keep the complete teardown contract outside the worker method so mutation
+# testing cannot silently remove an explicitly supported error class.  The
+# tuple is immutable and retains ``ConnectionError`` even though it subclasses
+# ``OSError``; the explicit name documents the public lifecycle contract.
+_REPLICATION_CLOSE_ERRORS: tuple[type[BaseException], ...] = (
+    OSError,
+    ConnectionError,
+    asyncpg.PostgresError,
+    asyncpg.InterfaceError,
+)
 
 # ── Prometheus Metrics for CDC Outbox Observability ───────────────────────────
 
@@ -431,8 +444,17 @@ class PgOutputDecoder:
 # ── CdcOutboxWorker Implementation ───────────────────────────────────────────
 
 
+def require_supported_cdc_transport() -> None:
+    """Fail closed until a real replication driver and replay contract are verified."""
+    raise RuntimeError(
+        "CDC outbox transport is unsupported by the installed asyncpg driver; "
+        "keep EMBEDDED_CDC_OUTBOX_WORKER_ENABLED=false and use the polling "
+        "OutboxWorker. Production integration is deferred under ADR-037."
+    )
+
+
 class CdcOutboxWorker:
-    """Zero-Latency CDC Outbox Worker using PostgreSQL Logical Replication (pgoutput).
+    """Deferred CDC prototype; public startup is blocked pending ADR-037 gates.
 
     Consumes WAL binary changes directly from PostgreSQL WAL logs without polling
     stored_events or using SELECT FOR UPDATE SKIP LOCKED. Reconstructs DomainEvents
@@ -452,11 +474,41 @@ class CdcOutboxWorker:
     ) -> None:
         self.dsn = dsn or str(settings.database_url)
         self.nats_broker = nats_broker or global_nats_broker
+        # START_REPLICATION does not support binding the slot identifier.
+        if re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", slot_name) is None:
+            raise ValueError("slot_name must be a lowercase PostgreSQL identifier")
         self.slot_name = slot_name
+        # PostgreSQL folds unquoted names and truncates identifiers at 63 bytes.
+        # The same name is also inserted into the replication protocol options,
+        # so reject rather than silently rewrite an invalid configuration.
+        if re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", publication_name) is None:
+            raise ValueError(
+                "publication_name must be a lowercase PostgreSQL identifier"
+            )
         self.publication_name = publication_name
         self._decoder = PgOutputDecoder()
         self._is_running = False
         self._last_acknowledged_lsn = 0
+        # Lifecycle ownership: keep references to resources opened by this
+        # worker so an application shutdown can interrupt an in-flight WAL
+        # stream and a fallback worker without leaving detached tasks behind.
+        self._replication_connection: asyncpg.Connection | None = None
+        self._fallback_worker: Any | None = None
+
+    async def _close_replication_connection(self) -> None:
+        """Close the active replication connection exactly once, if present."""
+        conn = self._replication_connection
+        self._replication_connection = None
+        if conn is None:
+            return
+        with contextlib.suppress(
+            *_REPLICATION_CLOSE_ERRORS
+        ):  # RZ-20-04: replication connection teardown is best effort
+            await conn.close()
+
+    def _stop_requested(self) -> bool:
+        """Return whether shutdown was requested while connecting to PostgreSQL."""
+        return not self._is_running
 
     def _normalize_dsn(self) -> str:
         parsed = urlparse(self.dsn)
@@ -480,15 +532,15 @@ class CdcOutboxWorker:
                 self.publication_name,
             )
             if not pub_exists:
-                # Sanitize publication name identifier to ensure safe DDL execution
-                safe_pub_name = "".join(
-                    c for c in self.publication_name if c.isalnum() or c == "_"
+                # Bind parameters cannot represent a DDL identifier. Compose it
+                # with the driver's identifier renderer, not string formatting.
+                statement = sql.SQL(
+                    "CREATE PUBLICATION {} FOR TABLE stored_events;"
+                ).format(sql.Identifier(self.publication_name))
+                await conn.execute(statement.as_string())
+                logger.info(
+                    "Provisioned replication publication '%s'", self.publication_name
                 )
-                # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query, python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
-                await conn.execute(  # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query, python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
-                    f"CREATE PUBLICATION {safe_pub_name} FOR TABLE stored_events;"  # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query, python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
-                )
-                logger.info("Provisioned replication publication '%s'", safe_pub_name)
 
             # 2. Provision Replication Slot using pgoutput plugin
             slot_exists = await conn.fetchval(
@@ -521,7 +573,16 @@ class CdcOutboxWorker:
         stored_event_id = str(data.get("id") or uuid.uuid4())
 
         if not event_type:
-            logger.warning("CDC record missing event_type: %s", data)
+            # Never interpolate the full CDC row: payload/metadata can carry
+            # emails, phone numbers, tokens, or arbitrary user content.  The
+            # central redacting processor remains defense-in-depth, while the
+            # worker itself logs only non-sensitive routing metadata.
+            logger.warning(
+                "CDC record missing event_type (relation=%s, lsn=%s, fields=%d)",
+                record.relation_name,
+                record.lsn,
+                len(data),
+            )
             return None
 
         event_cls = _EVENT_REGISTRY.get(event_type)
@@ -626,10 +687,12 @@ class CdcOutboxWorker:
             return None
 
     def send_status_update(self, lsn: int, reply_requested: bool = False) -> bytes:
-        """Advance replication slot acknowledged LSN position."""
+        """Encode a monotonic delivery checkpoint, never a server WAL-end position."""
         if lsn > self._last_acknowledged_lsn:
             self._last_acknowledged_lsn = lsn
-        return format_standby_status_update(lsn, reply_requested)
+        return format_standby_status_update(
+            self._last_acknowledged_lsn, reply_requested
+        )
 
     async def process_wal_message(
         self, raw_bytes: bytes, lsn: int = 0, conn: asyncpg.Connection | None = None
@@ -680,7 +743,8 @@ class CdcOutboxWorker:
                         slot_name=self.slot_name
                     ).set(lag_seconds)
                 status_bytes = self.send_status_update(
-                    decoded.wal_end_lsn, reply_requested=decoded.reply_requested
+                    self._last_acknowledged_lsn,
+                    reply_requested=decoded.reply_requested,
                 )
 
         if status_bytes and conn is not None:
@@ -693,6 +757,10 @@ class CdcOutboxWorker:
 
     async def run_forever(self) -> None:
         """Run CDC Outbox worker loop over asyncpg logical replication protocol."""
+        # asyncpg has neither the replication connect argument nor the public
+        # bidirectional CopyData API this prototype assumes. Do not create a
+        # slot, connect NATS, or fall back after a silent background-task failure.
+        require_supported_cdc_transport()
         self._is_running = True
         logger.info("CdcOutboxWorker starting (Zero-Latency CDC Mode)")
 
@@ -712,6 +780,12 @@ class CdcOutboxWorker:
             OSError,
             ConnectionError,
         ) as e:  # RZ-20-04: narrowed — postgres replication resources setup
+            if self._stop_requested():
+                logger.info(
+                    "CdcOutboxWorker: provisioning failed after shutdown; "
+                    "fallback skipped"
+                )
+                return
             logger.warning(
                 "CdcOutboxWorker: logical replication provisioning failed (%s). Falling back to OutboxWorker.",
                 e,
@@ -724,6 +798,10 @@ class CdcOutboxWorker:
         while self._is_running:
             try:
                 conn = await asyncpg.connect(normalised_dsn, replication="database")
+                self._replication_connection = conn
+                if self._stop_requested():
+                    await self._close_replication_connection()
+                    break
                 try:
                     logger.info(
                         "CdcOutboxWorker connected to WAL logical replication slot '%s'",
@@ -744,7 +822,7 @@ class CdcOutboxWorker:
 
                     await conn._copy_out(start_stmt, _wal_stream_writer, timeout=None)
                 finally:
-                    await conn.close()
+                    await self._close_replication_connection()
             except (
                 asyncpg.PostgresError,
                 asyncpg.InterfaceError,
@@ -760,13 +838,26 @@ class CdcOutboxWorker:
                 )
                 await asyncio.sleep(5)
 
+        logger.info("CdcOutboxWorker replication loop exited")
+
     async def _run_fallback_worker(self) -> None:
         from app.workers.outbox import OutboxWorker
 
         logger.info("CdcOutboxWorker: launching fallback OutboxWorker")
         fallback = OutboxWorker()
-        await fallback.run_forever()
+        self._fallback_worker = fallback
+        try:
+            await fallback.run_forever()
+        finally:
+            self._fallback_worker = None
 
     async def stop(self) -> None:
         self._is_running = False
+        fallback = self._fallback_worker
+        if fallback is not None:
+            try:
+                await fallback.stop()
+            finally:
+                self._fallback_worker = None
+        await self._close_replication_connection()
         logger.info("CdcOutboxWorker stopped")

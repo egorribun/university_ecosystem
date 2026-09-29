@@ -60,6 +60,11 @@ type Config struct {
 	// from the Python backend (e.g. cache invalidation). Must be set in production.
 	// TD-NEW-07 (audit 2026-03-07)
 	InternalSecret string
+	// InternalAuthToken authenticates ws-hub's room-participant callback to the
+	// backend's exact internal route. It is deliberately separate from the
+	// NATS/cache-invalidation secret in configuration, while deployments may
+	// provision both from the same existing secret during this rollout.
+	InternalAuthToken string
 	// MaxClients is the maximum number of concurrently connected WebSocket clients.
 	// 0 means unlimited (not recommended in production).
 	// RZ-F-07 (audit 2026-03-07): without a cap, Hub.Clients grows without bound
@@ -114,15 +119,18 @@ func LoadConfig() *Config {
 		}
 	}
 	return &Config{
-		Port:                     getEnv("WS_HUB_PORT", "8081"),
-		NatsURL:                  getEnv("NATS_URL", "nats://nats:4222"),
-		NatsUser:                 os.Getenv("NATS_USER"),     // empty means no auth override
-		NatsPassword:             os.Getenv("NATS_PASSWORD"), // empty means no auth override
-		NatsAuthToken:            os.Getenv("NATS_AUTH_TOKEN"),
-		JWTSecrets:               loadJWTSecrets(),
-		SentryDSN:                getEnv("SENTRY_DSN", ""),
-		Environment:              getEnv("VITE_ENVIRONMENT", "development"),
-		AllowedOrigins:           getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
+		Port:          getEnv("WS_HUB_PORT", "8081"),
+		NatsURL:       getEnv("NATS_URL", "nats://nats:4222"),
+		NatsUser:      os.Getenv("NATS_USER"),     // empty means no auth override
+		NatsPassword:  os.Getenv("NATS_PASSWORD"), // empty means no auth override
+		NatsAuthToken: os.Getenv("NATS_AUTH_TOKEN"),
+		JWTSecrets:    loadJWTSecrets(),
+		SentryDSN:     getEnv("SENTRY_DSN", ""),
+		Environment:   getEnv("VITE_ENVIRONMENT", "development"),
+		// Include the port-80 Caddy edge origin used by local compose.  Explicit
+		// origins configured through ALLOWED_ORIGINS still replace this safe local
+		// default entirely.
+		AllowedOrigins:           getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost", "http://localhost:80", "http://localhost:3000", "http://localhost:5173"}),
 		TrustedProxies:           trustedProxies,
 		TrustedProxiesSet:        trustedProxiesSet,
 		TrustedCIDRs:             trustedCIDRs,
@@ -132,6 +140,7 @@ func LoadConfig() *Config {
 		BroadcastBufferSize:      getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
 		BroadcastWorkers:         min(getEnvInt("WS_BROADCAST_WORKERS", runtime.GOMAXPROCS(0)*2), 12),
 		InternalSecret:           os.Getenv("WS_HUB_INTERNAL_SECRET"), // no default — empty secret allows HMAC forgery
+		InternalAuthToken:        os.Getenv("INTERNAL_AUTH_TOKEN"),
 		MaxClients:               getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
 		ClientMsgRateLimit:       getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
 		ClientMsgRateBurst:       getEnvInt("WS_CLIENT_MSG_BURST", 20),

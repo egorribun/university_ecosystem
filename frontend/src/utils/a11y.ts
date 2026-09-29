@@ -104,18 +104,14 @@ export class FocusTrap {
 
     this.updateFocusableElements()
 
-    if (!this.firstFocusable || !this.lastFocusable) return
-
-    if (event.shiftKey) {
-      if (document.activeElement === this.firstFocusable) {
-        event.preventDefault()
-        this.lastFocusable.focus()
-      }
-    } else {
-      if (document.activeElement === this.lastFocusable) {
-        event.preventDefault()
-        this.firstFocusable.focus()
-      }
+    // Tab leaves through the last element and wraps to the first; Shift+Tab the reverse.
+    // Both ends are null together, when the container has nothing focusable.
+    const [edge, wrapTarget] = event.shiftKey
+      ? [this.firstFocusable, this.lastFocusable]
+      : [this.lastFocusable, this.firstFocusable]
+    if (wrapTarget && document.activeElement === edge) {
+      event.preventDefault()
+      wrapTarget.focus()
     }
   }
 }

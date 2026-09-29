@@ -21,13 +21,14 @@ const mq = vi.hoisted(() => ({ value: false }))
 vi.mock("@/hooks/useMediaQuery", () => ({ default: () => mq.value }))
 
 /* Sidestep the entire maplibre stack — the lazy child is replaced with null. */
-vi.mock("@/components/map/MapLibreMap", () => ({ default: () => null }))
+vi.mock("@/components/map/MapLibreMap", () => ({ MapLibreMapComponent: () => null }))
 
 /* MapFeature's lazy loader also imports MapLibre's worker asset. Mock the
    loader at this unit-test boundary so shell renders never depend on the
    browser-only worker/CSS graph (including isolated Stryker sandboxes). */
 vi.mock("@/features/map/loadMapLibre", () => ({
-  loadMapLibre: () => import("@/components/map/MapLibreMap"),
+  loadMapLibre: () =>
+    import("@/components/map/MapLibreMap").then((m) => ({ default: m.MapLibreMapComponent })),
 }))
 
 /* Module-mock every data/router hook MapFeature reaches. */

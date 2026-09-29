@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { toDate, formatDate, formatRelativeTime, formatForInput, add, isAfter } from "../date"
+import {
+  toDate,
+  formatDate,
+  formatRelativeTime,
+  formatForInput,
+  add,
+  isAfter,
+  getMoscowDate,
+} from "../date"
 
 // ---------------------------------------------------------------------------
 // toDate
@@ -91,6 +99,32 @@ describe("formatRelativeTime", () => {
     const result = formatRelativeTime(futureDate, "en-US")
     expect(result).toMatch(/in 5 minutes/)
   })
+
+  const ago = (seconds: number) => new Date(Date.parse("2025-06-01T12:00:00Z") - seconds * 1000)
+
+  it("defaults to English phrasing when no locale is given", () => {
+    expect(formatRelativeTime(ago(30))).toBe("30 seconds ago")
+  })
+
+  it("uses natural-language phrasing for adjacent units", () => {
+    expect(formatRelativeTime(ago(0), "en-US")).toBe("now")
+    expect(formatRelativeTime(ago(24 * 3600), "en-US")).toBe("yesterday")
+  })
+
+  it("switches to the next unit exactly at each unit boundary", () => {
+    expect(formatRelativeTime(ago(59), "en-US")).toBe("59 seconds ago")
+    expect(formatRelativeTime(ago(60), "en-US")).toBe("1 minute ago")
+    expect(formatRelativeTime(ago(60 * 60), "en-US")).toBe("1 hour ago")
+    expect(formatRelativeTime(ago(2 * 3600), "en-US")).toBe("2 hours ago")
+    expect(formatRelativeTime(ago(29 * 86400), "en-US")).toBe("29 days ago")
+    expect(formatRelativeTime(ago(30 * 86400), "en-US")).toBe("last month")
+  })
+
+  it("counts whole 30-day months for older and future dates", () => {
+    expect(formatRelativeTime(ago(45 * 86400), "en-US")).toBe("last month")
+    expect(formatRelativeTime(ago(60 * 86400), "en-US")).toBe("2 months ago")
+    expect(formatRelativeTime(ago(-95 * 86400), "en-US")).toBe("in 3 months")
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -134,6 +168,7 @@ describe("add", () => {
 
   it("adds minutes", () => {
     expect(add(base, 30, "minute").getUTCMinutes()).toBe(30)
+    expect(add(base, 15, "minute").toISOString()).toBe("2025-06-01T12:15:00.000Z")
   })
 
   it("adds months", () => {
@@ -166,5 +201,16 @@ describe("isAfter", () => {
   it("returns false for equal dates", () => {
     const d = "2025-06-01T00:00:00Z"
     expect(isAfter(d, d)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getMoscowDate
+// ---------------------------------------------------------------------------
+describe("getMoscowDate", () => {
+  it("renders the long date and time in Moscow time regardless of the host zone", () => {
+    const result = getMoscowDate("2024-06-15T12:00:00Z") // 15:00 MSK (UTC+3)
+    expect(result).toContain("June 15, 2024")
+    expect(result).toMatch(/03:00\sPM/u)
   })
 })

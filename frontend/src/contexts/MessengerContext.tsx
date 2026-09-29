@@ -4,17 +4,11 @@ import { useChatWebSocket } from "@/hooks/useChatWebSocket"
 import { useAuth } from "./AuthContext"
 import { chatApi, type PresenceStatus, type ChatsListResponse, type Chat } from "@/api/chat"
 
-import {
-  getUnreadChatCount,
-  MessengerContext,
-  useMessenger,
-  type MessengerContextType,
-} from "./MessengerContextCore"
+import { getUnreadChatCount, MessengerContext, useMessenger } from "./MessengerContextCore"
 
 // Keep the public context exports source-compatible for feature code and
 // Storybook while the shell imports only the dependency-free core module.
 export { MessengerContext, useMessenger }
-export type { MessengerContextType }
 
 export function MessengerProvider({ children }: { children: ReactNode }) {
   const { isAuth, user } = useAuth()

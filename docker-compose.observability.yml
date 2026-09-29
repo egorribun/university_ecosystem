@@ -12,10 +12,6 @@ services:
       METRICS_BASIC_AUTH_PASSWORD: ${METRICS_BASIC_AUTH_PASSWORD:?METRICS_BASIC_AUTH_PASSWORD is required - run start-docker.ps1}
       METRICS_ALLOWLIST: ""
 
-  minio:
-    environment:
-      MINIO_PROMETHEUS_AUTH_TYPE: public
-
   # Grafana Tempo - Distributed tracing backend
   tempo:
     image: grafana/tempo:2.10.3@sha256:cac9de2ac9f6da8efca5b64b690a7cb8c786a0c49cac7b4517dd1b0089a6c703
@@ -36,6 +32,28 @@ services:
     networks:
       - internal
       - public
+    restart: unless-stopped
+
+  # Tempo's distroless image has no HTTP client. Keep the observability
+  # override self-contained by probing /ready from a tiny shared-namespace
+  # sidecar; the base/full compose files define the same service.
+  tempo-healthprobe:
+    image: curlimages/curl:8.10.1@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b
+    network_mode: "service:tempo"
+    depends_on:
+      - tempo
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
     restart: unless-stopped
 
   # Grafana Loki - Log aggregation

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import logging
 from typing import Any
 
 from sqlalchemy import func, select
@@ -15,9 +14,10 @@ import app.models as models
 from app.auth import mfa
 from app.core.database import async_session
 from app.core.localization import resolve_locale, translate
+from app.core.logging import configure_logging, get_stdlib_logger
 from app.services.notifications import create_notifications_for_users
 
-audit_logger = logging.getLogger("app.users.audit")
+audit_logger = get_stdlib_logger("app.users.audit")
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -95,7 +95,7 @@ async def _reset_user_mfa(
                     user_ids=[user.id],
                 )
             await session.commit()
-        except Exception:  # RZ-28-01-JUSTIFIED: transaction-boundary rollback
+        except Exception:  # RZ-22-01-JUSTIFIED: transaction-boundary rollback
             await session.rollback()
             raise
         await mfa.publish_mfa_session_revocations(stats.session_revocations)
@@ -131,7 +131,9 @@ async def _async_main(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    # Management commands bypass the ASGI bootstrap.  Use the central bridge
+    # so audit payloads receive the same PII redaction and structured renderer.
+    configure_logging()
     parser = _build_arg_parser()
     args = parser.parse_args()
     try:

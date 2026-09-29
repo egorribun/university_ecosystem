@@ -2,7 +2,7 @@ import { cn } from "@/utils/cn"
 import type { CSSProperties, ElementType } from "react"
 import type { PolymorphicComponentProps } from "@/types/polymorphic"
 
-export type StoryCircleSize = "sm" | "md" | "lg"
+type StoryCircleSize = "sm" | "md" | "lg"
 
 type StoryCircleOwnProps = {
   size?: StoryCircleSize

@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds and starts all Docker containers for the full site.
     Generates secure secrets if .env / .env.docker don't exist.
-    Reconciles the MinIO bucket and auxiliary databases on every start.
+    Reconciles the configured S3 bucket and auxiliary databases on every start.
     Use -Core (or its -Lean alias) for an explicit local resource-constrained
     topology that omits search, Temporal, and observability containers while
     preserving their images and named volumes.
@@ -15,6 +15,7 @@
     .\start-docker.ps1 -Build     # Build (cached) then start
     .\start-docker.ps1 -Rebuild   # Build (no-cache) then start
     .\start-docker.ps1 -Core      # Start only the application/core dependencies
+    .\start-docker.ps1 -Build -ExtraCompose docker-compose.live.yml  # Owned acceptance stand
     .\start-docker.ps1 -Down      # Stop all containers
     .\start-docker.ps1 -Logs                  # Follow all logs
     .\start-docker.ps1 -Logs -LogService backend  # Follow one service
@@ -23,8 +24,15 @@
     available as -Lean) is an explicit local-development opt-in: it stops any
     already-running search, Temporal, and observability services without
     deleting their volumes, then starts only the core application topology.
+
+    Object storage is SeaweedFS (ADR-042). A start with legacy MinIO volumes
+    requires the exact project/source/target-bound local migration attestation
+    described in docs/runbooks/s3-seaweedfs-cutover.md.
 #>
 
+# Advanced-script binding rejects unknown switches, such as the retired
+# -SeaweedFS cutover switch, instead of silently ignoring them.
+[CmdletBinding()]
 param(
     [switch]$Build,
     [switch]$Rebuild,
@@ -32,6 +40,7 @@ param(
     [switch]$Logs,
     [Alias("Lean")]
     [switch]$Core,
+    [string[]]$ExtraCompose = @(),
     [string]$LogService = ""
 )
 
@@ -40,6 +49,27 @@ $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ProjectRoot
 
 $ComposeFile = "docker-compose.full.yml"
+$S3MigrationRunbook = "docs/runbooks/s3-seaweedfs-cutover.md"
+$S3MigrationAttestation = ".secrets/s3-cutover-attestation.txt"
+$ComposeArgs = @("-f", $ComposeFile)
+foreach ($extra in $ExtraCompose) {
+    # Additional overlays stay inside the checkout, follow the repository's
+    # Compose naming, and apply after the base file.
+    if ($extra -notmatch '^docker-compose\.[a-z0-9-]+\.yml$') {
+        throw "Extra Compose overlay refused: expected a docker-compose.<name>.yml file in the project root: $extra"
+    }
+    if ($extra -eq $ComposeFile) {
+        throw "Extra Compose overlay refused: $extra is the base Compose file"
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot $extra) -PathType Leaf)) {
+        throw "Extra Compose overlay refused: file not found: $extra"
+    }
+    if ($ComposeArgs -contains $extra) {
+        throw "Extra Compose overlay refused: $extra is listed twice"
+    }
+    $ComposeArgs += @("-f", $extra)
+}
+$ComposeCommand = "docker compose $($ComposeArgs -join ' ') --env-file .env.docker"
 # Keep the full compose model as the single source of truth.  Core mode scopes
 # `up`/`build` to this audited allowlist rather than maintaining a second compose
 # file that could silently drift in images, networks, or security settings.
@@ -276,6 +306,7 @@ function Ensure-ApplicationSecrets {
         # cache. Do not merge this with REDIS_PASSWORD: cache-only workers must
         # be unable to erase revoked-JTI tombstones.
         @{ Key = "REVOCATION_REDIS_PASSWORD"; Length = 32; Fernet = $false },
+        @{ Key = "TOKEN_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "CSRF_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "INTERNAL_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "IDEMPOTENCY_HMAC_SECRET"; Length = 48; Fernet = $false },
@@ -347,6 +378,8 @@ function Ensure-JwtEnvironment {
     # full and base Compose modes, so keep their environment files aligned.
     foreach ($path in @($EnvFile, $EnvCompose)) {
         Set-EnvEntry -Path $path -Key "ALGORITHM" -Value "RS256"
+        Set-EnvEntry -Path $path -Key "JWT_AUDIENCE" -Value "university-ecosystem-api"
+        Set-EnvEntry -Path $path -Key "JWT_ISSUER" -Value "university-ecosystem"
         Set-EnvEntry -Path $path -Key "JWT_PRIVATE_KEY_PATH" -Value ".secrets/jwt_rs256.pem"
     }
 }
@@ -757,9 +790,10 @@ function Test-ServiceHttp {
 function Wait-PrometheusTargets {
     param([int]$Timeout = 75)
 
+    # Storage runs on SeaweedFS, which has no scrape job yet (ADR-042).
     $expectedJobs = @(
         "prometheus", "backend", "notifications-worker", "redis-exporter",
-        "minio", "tempo", "loki", "pyroscope", "gateway", "flagd"
+        "tempo", "loki", "pyroscope", "gateway", "flagd"
     )
     $deadline = (Get-Date).AddSeconds($Timeout)
     $lastProblems = @("Prometheus target API has not responded yet")
@@ -816,7 +850,7 @@ if (-not $dockerOk) {
 if ($Down) {
     Write-Status "Stopping all containers..."
     $envArgs = if (Test-Path $EnvFile) { @("--env-file", $EnvFile) } else { @() }
-    docker compose -f $ComposeFile @envArgs down
+    docker compose @ComposeArgs @envArgs down
     $composeExitCode = $LASTEXITCODE
     if ($composeExitCode -ne 0) {
         Write-Err "Failed to stop containers."
@@ -835,12 +869,12 @@ if ($Logs) {
             Write-Err "Core mode only exposes logs for core services. Unknown or optional service: $LogService"
             exit 2
         }
-        docker compose -f $ComposeFile @envArgs logs -f $LogService
+        docker compose @ComposeArgs @envArgs logs -f $LogService
     } elseif ($Core) {
         Write-Status "Following core service logs (optional services are excluded)..."
-        docker compose -f $ComposeFile @envArgs logs -f @CoreComposeServices
+        docker compose @ComposeArgs @envArgs logs -f @CoreComposeServices
     } else {
-        docker compose -f $ComposeFile @envArgs logs -f
+        docker compose @ComposeArgs @envArgs logs -f
     }
     $composeExitCode = $LASTEXITCODE
     if ($composeExitCode -ne 0) {
@@ -848,6 +882,67 @@ if ($Logs) {
     }
     exit $composeExitCode
 }
+
+# -- Legacy MinIO volume guard -----------------------------------------------
+
+function Assert-LegacyS3VolumeGuard {
+    # SeaweedFS cannot read MinIO's data directory. On a machine that still
+    # holds a MinIO volume, the first start would create an empty SeaweedFS
+    # volume; after that nothing could tell that legacy objects were left
+    # behind. A target name alone cannot show that its contents were verified,
+    # so require both the exact project target and a matching durable operator
+    # attestation. Runs before environment mutation; legacy data is untouched.
+    #
+    # Compose project identity is shared with both wrapper guards and the
+    # Compose models: environment, .env.docker, then the declared default.
+    $composeProject = $env:COMPOSE_PROJECT_NAME
+    if ([string]::IsNullOrWhiteSpace($composeProject)) {
+        $projectEntry = Get-Content -LiteralPath (Join-Path $ProjectRoot $EnvFile) -ErrorAction SilentlyContinue |
+            Where-Object { $_ -match '^\s*COMPOSE_PROJECT_NAME\s*=' } |
+            Select-Object -Last 1
+        if ($projectEntry) {
+            $composeProject = ($projectEntry -split '=', 2)[1].Trim().Trim('"', "'")
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($composeProject)) {
+        $composeProject = "university_ecosystem"
+    }
+    # docker-compose.full.yml named it `minio-data`, docker-compose.yml
+    # `minio_data`; both were project-scoped.
+    $legacyVolumes = @("${composeProject}_minio-data", "${composeProject}_minio_data")
+    $storageVolume = "${composeProject}_seaweedfs_data"
+
+    # List every name and compare exactly: Docker's name filter matches
+    # substrings.
+    $existing = @(docker volume ls --format "{{.Name}}" 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Cannot inspect Docker volumes; refusing to start object storage without checking for a legacy MinIO volume."
+    }
+    $legacy = @($legacyVolumes | Where-Object { $existing -ccontains $_ })
+    if ($legacy.Count -eq 0) { return }
+
+    $targetExists = $existing -ccontains $storageVolume
+    $expectedAttestation = @(
+        "schema_version=1",
+        "project_name=$composeProject",
+        "legacy_source_volumes=$($legacy -join ',')",
+        "target_volume=$storageVolume",
+        "verified=VERIFIED_S3_CUTOVER"
+    )
+    $attestationPath = Join-Path $ProjectRoot $S3MigrationAttestation
+    $attestationMatches = $false
+    if (Test-Path -LiteralPath $attestationPath -PathType Leaf) {
+        $actualAttestation = @(Get-Content -LiteralPath $attestationPath)
+        $attestationMatches = $actualAttestation.Count -eq $expectedAttestation.Count -and
+            [string]::Join("`n", $actualAttestation) -ceq [string]::Join("`n", $expectedAttestation)
+    }
+    if (-not $targetExists -or -not $attestationMatches) {
+        throw "Legacy MinIO volume $($legacy -join ', ') exists. Refusing to start unless the exact target volume '$storageVolume' exists and $S3MigrationAttestation records the verified migration. Follow $S3MigrationRunbook first."
+    }
+    Write-Warn "Verified S3 migration attestation matches project '$composeProject', source '$($legacy -join ', ')', and target '$storageVolume'. Legacy data remains untouched."
+}
+
+Assert-LegacyS3VolumeGuard
 
 # -- Generate secrets ---------------------------------------------------------
 
@@ -865,6 +960,7 @@ if ($needsEnvDocker -and $needsEnvCompose) {
     $minioPassword     = New-Secret -Length 32
     $redisPassword     = New-Secret -Length 32
     $revocationRedisPassword = New-Secret -Length 32
+    $tokenHmacSecret  = New-Secret -Length 48
     $elasticPassword   = New-Secret -Length 32
     $natsPassword      = New-Secret -Length 32
     $spicedbKey        = New-Secret -Length 32
@@ -886,6 +982,8 @@ POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
 SECRET_KEY=$secretKey
 ALGORITHM=RS256
+JWT_AUDIENCE=university-ecosystem-api
+JWT_ISSUER=university-ecosystem
 JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 MINIO_ROOT_USER=minioadmin
@@ -899,6 +997,7 @@ GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=$grafanaPassword
 REDIS_PASSWORD=$redisPassword
 REVOCATION_REDIS_PASSWORD=$revocationRedisPassword
+TOKEN_HMAC_SECRET=$tokenHmacSecret
 ENABLE_METRICS_ENDPOINT=true
 METRICS_BASIC_AUTH_USERNAME=metrics_scraper
 METRICS_BASIC_AUTH_PASSWORD=$metricsPassword
@@ -928,6 +1027,8 @@ POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
 SECRET_KEY=$secretKey
 ALGORITHM=RS256
+JWT_AUDIENCE=university-ecosystem-api
+JWT_ISSUER=university-ecosystem
 JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem
 MINIO_ROOT_USER=minioadmin
 MINIO_ROOT_PASSWORD=$minioPassword
@@ -940,6 +1041,7 @@ GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=$grafanaPassword
 REDIS_PASSWORD=$redisPassword
 REVOCATION_REDIS_PASSWORD=$revocationRedisPassword
+TOKEN_HMAC_SECRET=$tokenHmacSecret
 ENABLE_METRICS_ENDPOINT=true
 METRICS_BASIC_AUTH_USERNAME=metrics_scraper
 METRICS_BASIC_AUTH_PASSWORD=$metricsPassword
@@ -1101,7 +1203,7 @@ if ($Core) {
     # `stop` preserves their named volumes and makes switching back to the
     # default full mode lossless; no image, network, or data is deleted here.
     Write-Status "Stopping optional search, Temporal, and observability containers (volumes preserved)..."
-    docker compose -f $ComposeFile --env-file $EnvFile stop @CoreOptionalComposeServices
+    docker compose @ComposeArgs --env-file $EnvFile stop @CoreOptionalComposeServices
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to stop optional containers; refusing to start core mode."
         exit 1
@@ -1113,10 +1215,10 @@ if ($Core) {
 if ($Rebuild) {
     if ($Core) {
         Write-Status "Rebuilding core images (no cache; optional services are skipped)..."
-        docker compose -f $ComposeFile --env-file $EnvFile build --no-cache @CoreComposeServices
+        docker compose @ComposeArgs --env-file $EnvFile build --no-cache @CoreComposeServices
     } else {
         Write-Status "Rebuilding ALL images (no cache)..."
-        docker compose -f $ComposeFile --env-file $EnvFile build --no-cache
+        docker compose @ComposeArgs --env-file $EnvFile build --no-cache
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Build failed. Check output above."
@@ -1126,10 +1228,10 @@ if ($Rebuild) {
 } elseif ($Build) {
     if ($Core) {
         Write-Status "Building core images (cached; optional services are skipped)..."
-        docker compose -f $ComposeFile --env-file $EnvFile build @CoreComposeServices
+        docker compose @ComposeArgs --env-file $EnvFile build @CoreComposeServices
     } else {
         Write-Status "Building images (cached)..."
-        docker compose -f $ComposeFile --env-file $EnvFile build
+        docker compose @ComposeArgs --env-file $EnvFile build
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Build failed. Check output above."
@@ -1146,19 +1248,19 @@ if ($Core) {
     # a final `--no-deps` step after core dependencies are up; no optional
     # service can be pulled in implicitly.
     Write-Status "Starting core infrastructure..."
-    docker compose -f $ComposeFile --env-file $EnvFile up -d --remove-orphans $CoreBootstrapServices
+    docker compose @ComposeArgs --env-file $EnvFile up -d --remove-orphans $CoreBootstrapServices
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to start core infrastructure."
-        docker compose -f $ComposeFile --env-file $EnvFile ps --all
+        docker compose @ComposeArgs --env-file $EnvFile ps --all
         exit 1
     }
 
     Write-Status "Starting core database initialization..."
-    docker compose -f $ComposeFile --env-file $EnvFile up -d --remove-orphans $CoreInitServices
+    docker compose @ComposeArgs --env-file $EnvFile up -d --remove-orphans $CoreInitServices
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to start core database initialization."
-        docker compose -f $ComposeFile --env-file $EnvFile ps --all
-        docker compose -f $ComposeFile --env-file $EnvFile logs --tail=50 postgres postgres-databases-init minio-init migrations spicedb-migrate 2>$null
+        docker compose @ComposeArgs --env-file $EnvFile ps --all
+        docker compose @ComposeArgs --env-file $EnvFile logs --tail=50 postgres postgres-databases-init minio-init migrations spicedb-migrate 2>$null
         exit 1
     }
 
@@ -1173,20 +1275,20 @@ if ($Core) {
         "ws-hub",
         "imgproxy"
     )
-    docker compose -f $ComposeFile --env-file $EnvFile up -d --remove-orphans $coreApplicationServices
+    docker compose @ComposeArgs --env-file $EnvFile up -d --remove-orphans $coreApplicationServices
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to start core application services."
-        docker compose -f $ComposeFile --env-file $EnvFile ps --all
-        docker compose -f $ComposeFile --env-file $EnvFile logs --tail=50 backend outbox-worker ws-hub 2>$null
+        docker compose @ComposeArgs --env-file $EnvFile ps --all
+        docker compose @ComposeArgs --env-file $EnvFile logs --tail=50 backend outbox-worker ws-hub 2>$null
         exit 1
     }
 
     Write-Status "Starting gateway and Caddy without optional observability dependencies..."
-    docker compose -f $ComposeFile --env-file $EnvFile up -d --no-deps --remove-orphans gateway caddy
+    docker compose @ComposeArgs --env-file $EnvFile up -d --no-deps --remove-orphans gateway caddy
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to start the core edge services."
-        docker compose -f $ComposeFile --env-file $EnvFile ps --all
-        docker compose -f $ComposeFile --env-file $EnvFile logs --tail=50 gateway caddy 2>$null
+        docker compose @ComposeArgs --env-file $EnvFile ps --all
+        docker compose @ComposeArgs --env-file $EnvFile logs --tail=50 gateway caddy 2>$null
         exit 1
     }
 } else {
@@ -1194,11 +1296,11 @@ if ($Core) {
     # Compose recreates only services whose image or effective configuration
     # changed. This keeps repeat starts fast while --remove-orphans retires services
     # removed from the supported topology.
-    docker compose -f $ComposeFile --env-file $EnvFile up -d --remove-orphans
+    docker compose @ComposeArgs --env-file $EnvFile up -d --remove-orphans
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to start containers."
-        docker compose -f $ComposeFile --env-file $EnvFile ps --all
-        docker compose -f $ComposeFile --env-file $EnvFile logs --tail=50 migrations postgres-databases-init minio-init spicedb-migrate temporal-admin-tools temporal-namespace-init flagd flagd-healthprobe backend outbox-worker 2>$null
+        docker compose @ComposeArgs --env-file $EnvFile ps --all
+        docker compose @ComposeArgs --env-file $EnvFile logs --tail=50 migrations postgres-databases-init minio-init spicedb-migrate temporal-admin-tools temporal-namespace-init flagd flagd-healthprobe backend outbox-worker 2>$null
         exit 1
     }
 }
@@ -1216,7 +1318,9 @@ $services = [ordered]@{
     backend       = @{ type = "docker"; service = "backend"; ready = $false }
     elasticsearch = @{ type = "docker"; service = "elasticsearch"; ready = $false }
     gateway       = @{ type = "http"; service = "gateway"; url = "http://localhost:8080/health"; ready = $false }
-    minio         = @{ type = "http"; service = "minio"; url = "http://localhost:9001/"; ready = $false }
+    # SeaweedFS storage publishes no host port; its container healthcheck
+    # probes the internal S3 API.
+    minio         = @{ type = "docker"; service = "minio"; ready = $false }
     temporal      = @{ type = "docker"; service = "temporal"; ready = $false }
     grafana       = @{ type = "http"; service = "grafana"; url = "http://localhost:3000/api/health"; ready = $false }
     notifications = @{ type = "docker"; service = "notifications-worker"; ready = $false }
@@ -1259,7 +1363,7 @@ do {
 
         if ($services[$name].type -eq "docker") {
             $serviceName = $services[$name].service
-            $infoStr = & { $ErrorActionPreference = "SilentlyContinue"; docker compose -f $ComposeFile --env-file $EnvFile ps $serviceName --format json 2>$null } | Out-String
+            $infoStr = & { $ErrorActionPreference = "SilentlyContinue"; docker compose @ComposeArgs --env-file $EnvFile ps $serviceName --format json 2>$null } | Out-String
             $info = if ($infoStr -match "\{") { $infoStr | ConvertFrom-Json } else { $null }
             $h = if ($info -is [array]) { $info[0].Health } else { $info.Health }
             $state = if ($info -is [array]) { $info[0].State } else { $info.State }
@@ -1301,7 +1405,7 @@ if (-not $allReady) {
         if (-not $services[$name].ready) {
             $serviceName = $services[$name].service
             Write-Err "  $name ($serviceName) - showing last 15 log lines:"
-            docker compose -f $ComposeFile --env-file $EnvFile logs --tail=15 $serviceName 2>$null
+            docker compose @ComposeArgs --env-file $EnvFile logs --tail=15 $serviceName 2>$null
             Write-Host ""
         }
     }
@@ -1337,7 +1441,7 @@ Write-Host "  Gateway API:          http://localhost:8080" -ForegroundColor Dark
 Write-Host "  Backend API:          http://localhost:8000  (127.0.0.1 only)" -ForegroundColor DarkYellow
 Write-Host "  API Docs:             http://localhost:8000/docs" -ForegroundColor DarkYellow
 Write-Host "  WS Hub:               http://localhost:8083" -ForegroundColor DarkYellow
-Write-Host "  MinIO Console:        http://localhost:9001" -ForegroundColor DarkYellow
+Write-Host "  SeaweedFS S3 API:     minio:9000 (internal Compose network only)" -ForegroundColor DarkYellow
 Write-Host "  Grafana:              http://localhost:3000" -ForegroundColor DarkYellow
 Write-Host "  Prometheus:           http://localhost:9090" -ForegroundColor DarkYellow
 Write-Host "  Pyroscope:            http://localhost:4040" -ForegroundColor DarkYellow
@@ -1345,12 +1449,12 @@ Write-Host "  Alloy:                http://localhost:12345" -ForegroundColor Dar
 Write-Host ""
 Write-Host "Seed data:" -ForegroundColor Cyan
 Write-Host "  1) Demo content (idempotent - student user + news + events + schedule + stories):"
-Write-Host "       docker compose -f $ComposeFile --env-file $EnvFile cp scripts/seed_demo_data.py backend:/app/seed_demo_data.py"
-Write-Host "       docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app backend python seed_demo_data.py"
+Write-Host "       $ComposeCommand cp scripts/seed_demo_data.py backend:/app/seed_demo_data.py"
+Write-Host "       $ComposeCommand exec -T -w /app backend python seed_demo_data.py"
 Write-Host "       Login: test@university.dev / TestPass@2024x"
 Write-Host "  2) Admin content (idempotent - admin user + 6 users + 12 audit logs + 4 dead-letter jobs):"
-Write-Host "       docker compose -f $ComposeFile --env-file $EnvFile cp scripts/seed_admin_data.py backend:/app/seed_admin_data.py"
-Write-Host "       docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app backend python seed_admin_data.py"
+Write-Host "       $ComposeCommand cp scripts/seed_admin_data.py backend:/app/seed_admin_data.py"
+Write-Host "       $ComposeCommand exec -T -w /app backend python seed_admin_data.py"
 Write-Host "       Login: admin@university.dev / Admin@2024test"
 Write-Host ""
 Write-Host "Commands:" -ForegroundColor Gray

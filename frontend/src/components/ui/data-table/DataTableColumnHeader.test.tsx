@@ -46,9 +46,10 @@ describe("DataTableColumnHeader — non-sortable column", () => {
 
 describe("DataTableColumnHeader — sortable column", () => {
   it("renders a button with the title text", () => {
-    render(<DataTableColumnHeader column={makeColumn()} title="Created" />)
+    const { container } = render(<DataTableColumnHeader column={makeColumn()} title="Created" />)
     const btn = screen.getByRole("button")
     expect(btn).toHaveTextContent("Created")
+    expect(container.firstElementChild).toHaveClass("flex", "items-center", "space-x-2")
   })
 
   it("announces 'not sorted' when no sort direction is set", () => {
@@ -82,6 +83,17 @@ describe("DataTableColumnHeader — sortable column", () => {
     await user.click(screen.getByRole("button"))
     expect(colB.toggleSorting).toHaveBeenCalledWith(true)
   })
+
+  it.each([
+    [false, "lucide-chevrons-up-down"],
+    ["asc", "lucide-arrow-up"],
+    ["desc", "lucide-arrow-down"],
+  ] as const)("renders the icon for %s sort state", (isSorted, iconClass) => {
+    const { container } = render(
+      <DataTableColumnHeader column={makeColumn({ isSorted })} title="Created" />
+    )
+    expect(container.querySelector(`svg.${iconClass}`)).toBeInTheDocument()
+  })
 })
 
 describe("DataTableColumnHeader — accessibility", () => {
@@ -94,5 +106,15 @@ describe("DataTableColumnHeader — accessibility", () => {
     const { container } = render(<DataTableColumnHeader column={column} title="Status" />)
     const results = await axe(container)
     expect(results).toHaveNoViolations()
+  })
+})
+
+describe("DataTableColumnHeader in Russian", () => {
+  it("announces the sort state in the interface language", async () => {
+    const { default: i18n } = await import("@/i18n/config")
+    await i18n.changeLanguage("ru")
+    render(<DataTableColumnHeader column={makeColumn()} title="Создан" />)
+
+    expect(screen.getByRole("button", { name: "Создан, без сортировки" })).toBeInTheDocument()
   })
 })

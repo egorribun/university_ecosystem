@@ -22,6 +22,21 @@ def test_notification_queue_job_accepts_system_managed_assignment_flag():
     assert job.kind == "event"
 
 
+def test_notification_queue_job_keeps_python_and_server_defaults_in_sync():
+    """Queue retries must be deterministic before the INSERT reaches PostgreSQL."""
+
+    table = NotificationQueueJob.__table__
+    attempts = table.c.attempts
+    dead_lettered = table.c.dead_lettered
+
+    assert attempts.default is not None
+    assert attempts.default.arg == 0
+    assert str(attempts.server_default.arg) == "0"
+    assert dead_lettered.default is not None
+    assert dead_lettered.default.arg is False
+    assert str(dead_lettered.server_default.arg) == "false"
+
+
 def test_notification_models_accept_system_managed_assignment_flag():
     created_at = datetime.now(UTC)
     notification = Notification(

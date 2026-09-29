@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
-import DashboardSkeleton from "./DashboardSkeleton"
+import { DashboardSkeleton } from "./DashboardSkeleton"
 
 const meta: Meta<typeof DashboardSkeleton> = {
   title: "Dashboard/DashboardSkeleton",

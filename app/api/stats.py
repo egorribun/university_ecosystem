@@ -1,13 +1,15 @@
 import asyncio
 import hashlib
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
+from dishka import FromComponent
+from dishka.integrations.fastapi import inject
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 
 import app.models as models
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user_from_dishka
 from app.core.config import settings
-from app.core.container import get_read_stats_handler
+from app.core.di.read_replica import READ_COMPONENT
 from app.core.localization import resolve_locale
 
 # P2-fix (audit 2026-02-26): import _ensure_vary_header from its defining module
@@ -100,14 +102,15 @@ async def _handle_stats_query(
     response_model=None,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def attendance_summary(
     request: Request,
     response: Response,
+    handler: Annotated[GetStatsHandler, FromComponent(READ_COMPONENT)],
     period: str = Query("30d"),
     skip_cache: bool = Query(False, alias="skip_cache"),
     if_none_match: str | None = Header(default=None),
-    user: models.User = Depends(get_current_user),
-    handler: GetStatsHandler = Depends(get_read_stats_handler),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> Response | dict[str, Any]:
     return await _handle_stats_query(
         kind="attendance",
@@ -126,14 +129,15 @@ async def attendance_summary(
     response_model=None,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def grade_summary(
     request: Request,
     response: Response,
+    handler: Annotated[GetStatsHandler, FromComponent(READ_COMPONENT)],
     period: str = Query("30d"),
     skip_cache: bool = Query(False, alias="skip_cache"),
     if_none_match: str | None = Header(default=None),
-    user: models.User = Depends(get_current_user),
-    handler: GetStatsHandler = Depends(get_read_stats_handler),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> Response | dict[str, Any]:
     return await _handle_stats_query(
         kind="grades",
@@ -152,14 +156,15 @@ async def grade_summary(
     response_model=None,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def participation_summary(
     request: Request,
     response: Response,
+    handler: Annotated[GetStatsHandler, FromComponent(READ_COMPONENT)],
     period: str = Query("30d"),
     skip_cache: bool = Query(False, alias="skip_cache"),
     if_none_match: str | None = Header(default=None),
-    user: models.User = Depends(get_current_user),
-    handler: GetStatsHandler = Depends(get_read_stats_handler),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> Response | dict[str, Any]:
     return await _handle_stats_query(
         kind="participation",
@@ -178,14 +183,15 @@ async def participation_summary(
     response_model=None,
     dependencies=[Depends(sensitive_route_limit())],
 )
+@inject
 async def stats_summary(
     request: Request,
     response: Response,
+    handler: Annotated[GetStatsHandler, FromComponent(READ_COMPONENT)],
     period: str = Query("30d"),
     skip_cache: bool = Query(False, alias="skip_cache"),
     if_none_match: str | None = Header(default=None),
-    user: models.User = Depends(get_current_user),
-    handler: GetStatsHandler = Depends(get_read_stats_handler),
+    user: models.User = Depends(get_current_user_from_dishka),
 ) -> Response | dict[str, Any]:
     """Return attendance, grades and participation stats in a single request.
 

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { registerServiceWorker } from "../register-sw"
 import { PWA_REFRESH_EVENT } from "@/app/pwaEvents"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
+import { withExpectedConsole } from "@/tests/strictConsole"
 
 describe("registerServiceWorker", () => {
   let addEventListenerSpy: any
@@ -322,7 +323,9 @@ describe("registerServiceWorker", () => {
       serviceWorker: mockServiceWorkerContainer,
     })
 
-    const result = await registerServiceWorker()
+    const result = await withExpectedConsole("error", "Service worker registration failed", () =>
+      registerServiceWorker()
+    )
     expect(result).toBeNull()
   })
 })

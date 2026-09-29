@@ -8,7 +8,6 @@ configure_uvloop()
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import router as admin_api_router
 from app.api.health import router as health_router
@@ -37,6 +36,7 @@ from app.core.ratelimit.exceptions import (
     RateLimitExceeded,
     RateLimitStorageUnavailable,
 )
+from app.core.static import PublicStaticFiles
 from app.core.versioning import API_VERSION
 from app.graphql.schema import graphql_router
 from app.openapi import install_custom_openapi
@@ -125,15 +125,6 @@ configure_metrics(app)
 # Middlewares
 configure_middleware(app, settings=settings)
 
-from app.core.security.spiffe import SPIFFEAuthMiddleware
-
-app.add_middleware(
-    SPIFFEAuthMiddleware,
-    allowed_spiffe_ids=settings.security.spiffe_allowed_clients,
-    protected_prefixes=("/api/internal", "/api/v1/chat/check-participant"),
-    enabled=settings.security.spiffe_enabled,
-)
-
 from dishka.integrations.fastapi import setup_dishka
 
 from app.core.di_provider import create_dishka_container
@@ -144,7 +135,7 @@ setup_dishka(create_dishka_container(), app)
 # Static files
 static_dir = settings.static_dir_path
 static_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
+app.mount("/static", PublicStaticFiles(directory=static_dir), name="static")
 
 _logger = get_logger(__name__)
 

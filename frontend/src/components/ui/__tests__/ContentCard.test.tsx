@@ -63,6 +63,105 @@ describe("ContentCard slots", () => {
     const badge = screen.getByText("Plain")
     expect(badge.className).toContain("bg-(--bg-surface-hover)")
   })
+
+  it("preserves slot geometry and prefers a real image when both source and fallback exist", () => {
+    render(
+      <ContentCard data-testid="root" className="root-custom">
+        <ContentCard.Media
+          src="https://img.example/cover.jpg"
+          alt="cover"
+          aspectRatio="4/3"
+          className="media-custom"
+          fallback={<span>should not replace image</span>}
+        />
+        <ContentCard.Header data-testid="header">
+          <ContentCard.Title>Card title</ContentCard.Title>
+          <ContentCard.Actions data-testid="actions">Actions</ContentCard.Actions>
+        </ContentCard.Header>
+        <ContentCard.Body data-testid="body">Body</ContentCard.Body>
+        <ContentCard.Meta data-testid="meta">Meta</ContentCard.Meta>
+        <ContentCard.Footer data-testid="footer">Footer</ContentCard.Footer>
+      </ContentCard>
+    )
+
+    expect(screen.getByTestId("root")).toHaveClass("overflow-hidden", "root-custom")
+    const media = document.querySelector(".media-custom")
+    expect(media).toHaveClass("relative", "w-full", "overflow-hidden")
+    expect(media).toHaveStyle({ aspectRatio: "4/3" })
+    expect(screen.getByRole("img", { name: "cover" })).toBeInTheDocument()
+    expect(screen.queryByText("should not replace image")).not.toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Card title", level: 3 })).toHaveClass(
+      "line-clamp-2",
+      "text-lg",
+      "font-semibold"
+    )
+    expect(screen.getByTestId("header")).toHaveClass(
+      "flex",
+      "items-start",
+      "justify-between",
+      "gap-2",
+      "px-4",
+      "pt-4"
+    )
+    expect(screen.getByTestId("actions")).toHaveClass("shrink-0")
+    expect(screen.getByTestId("body")).toHaveClass(
+      "flex-1",
+      "px-4",
+      "py-3",
+      "text-sm",
+      "text-(--text-secondary)"
+    )
+    expect(screen.getByTestId("meta")).toHaveClass(
+      "flex",
+      "flex-wrap",
+      "items-center",
+      "gap-2",
+      "px-4",
+      "pb-2",
+      "text-xs"
+    )
+    expect(screen.getByTestId("footer")).toHaveClass(
+      "flex",
+      "items-center",
+      "gap-3",
+      "border-t",
+      "border-border-subtle",
+      "px-4",
+      "py-3"
+    )
+  })
+
+  it("renders the fallback branch with the documented card media shell", () => {
+    render(
+      <ContentCard>
+        <ContentCard.Media className="fallback-media" fallback={<span>Empty</span>} />
+      </ContentCard>
+    )
+
+    const media = document.querySelector(".fallback-media")
+    expect(media).toHaveClass("relative", "w-full", "bg-glass")
+    expect(media).toHaveStyle({ aspectRatio: "16/9" })
+    expect(screen.getByText("Empty")).toBeInTheDocument()
+    expect(screen.queryByRole("img")).not.toBeInTheDocument()
+  })
+
+  it("keeps compound display names and the context default observable", () => {
+    const Probe = () => {
+      const context = useContentCardContext()
+      return <span data-testid="context-default">{String(context.isHovered)}</span>
+    }
+
+    render(<Probe />)
+    expect(screen.getByTestId("context-default")).toHaveTextContent("false")
+    expect(ContentCard.displayName).toBe("ContentCard")
+    expect(ContentCard.Media.displayName).toBe("ContentCard.Media")
+    expect(ContentCard.Header.displayName).toBe("ContentCard.Header")
+    expect(ContentCard.Title.displayName).toBe("ContentCard.Title")
+    expect(ContentCard.Actions.displayName).toBe("ContentCard.Actions")
+    expect(ContentCard.Body.displayName).toBe("ContentCard.Body")
+    expect(ContentCard.Footer.displayName).toBe("ContentCard.Footer")
+    expect(ContentCard.Meta.displayName).toBe("ContentCard.Meta")
+  })
 })
 
 describe("useContentCardContext", () => {

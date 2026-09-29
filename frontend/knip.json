@@ -1,0 +1,30 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "treatConfigHintsAsErrors": true,
+  "entry": [
+    "scripts/**/*.{mjs,cjs}",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "public/**/*.js",
+    "wasm-sanitizer/tests/**/*.js",
+    "tests/**/*.{ts,tsx}"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx,css,mdx}",
+    "scripts/**/*.{mjs,cjs}",
+    "public/**/*.js",
+    "tests/**/*.{ts,tsx}"
+  ],
+  "ignoreDependencies": [
+    "@lhci/cli",
+    "^@stryker-mutator/\\*$",
+    "axe-core",
+    "cross-env",
+    "openapi-types"
+  ],
+  "ignore": ["src/api/generated/**", "src/tests/mocks/generated/**"],
+  "ignoreIssues": {
+    "src/theme/tokens.ts": ["exports"]
+  },
+  "ignoreBinaries": ["taskkill.exe", "mkfifo"]
+}

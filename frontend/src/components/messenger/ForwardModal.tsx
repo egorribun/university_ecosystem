@@ -91,7 +91,6 @@ export function ForwardModal({
             exit={prefersReducedMotion ? { opacity: 0 } : { scale: 0.95, opacity: 0, y: 20 }}
             transition={prefersReducedMotion ? { duration: 0 } : undefined}
             className="messenger-card-matte w-full max-w-[28rem] backdrop-blur-2xl"
-            onClick={(event) => event.stopPropagation()}
           >
             <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/(--opacity-subtle) bg-(--bg-surface)/(--opacity-medium)">
               <h3

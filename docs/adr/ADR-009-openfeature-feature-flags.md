@@ -54,18 +54,21 @@ projected configuration; the application exposes only effective diagnostics.
 
 ## Decision
 
-1. Use the Python OpenFeature SDK with
-   `openfeature-provider-flagd>=0.5.0,<0.5.1` and the RPC resolver. Version
-   0.5.0 is the newest provider compatible with the shared protobuf 6 line;
-   0.5.1 and later require protobuf 7 while Authzed and OpenTelemetry require
-   protobuf below 7. gRPC and its health stubs are held on the stable 1.81 line
-   for the same reason; 1.82.0 was yanked and 1.82.1 moves the generated health
-   stubs to protobuf 7.
+1. Use the Python OpenFeature SDK with the flagd provider and the RPC
+   resolver. `pyproject.toml` allows `openfeature-provider-flagd>=0.5.0,<0.5.3`
+   and `grpcio>=1.81.0,<1.85` (1.82.0 was yanked); the lockfile resolves the
+   provider to 0.5.0, the release compatible with the shared protobuf 6 line
+   that Authzed and OpenTelemetry require.
 2. Run the SHA-pinned `flagd:v0.16.1` image as a two-replica Kubernetes
    Deployment. Backend pods connect through the `flagd` Service using typed
    `FLAGD_HOST` and `FLAGD_PORT` settings.
 3. Keep the registered boolean flag set synchronized with
-   `k8s/flagd/flags.json`; a contract test rejects drift.
+   `k8s/flagd/flags.json`; a contract test rejects drift. Register a flag only
+   together with the call site that evaluates it. Since 2026-09-28 the set is
+   empty: `new-chat-ui`, `semantic-search`, `push-batching` and
+   `graphql-subscriptions` were retired because nothing evaluated them. The
+   OpenFeature/flagd plumbing and the diagnostics page (with an explicit empty
+   state) remain for future rollouts.
 4. Manage definitions only through reviewed GitOps changes. flagd watches the
    projected file and applies valid definitions without a backend deployment.
 5. Expose `GET /admin/feature-flags` as a read-only diagnostics endpoint. Each

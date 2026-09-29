@@ -8,6 +8,7 @@ import (
 	"hash"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,7 +43,7 @@ func TestNewHub_UsesConfiguredJetStreamAndRateSettings(t *testing.T) {
 		BroadcastBufferSize:      7,
 		MaxClients:               9,
 		BroadcastWorkers:         3,
-		InternalSecret:           "configured-secret",
+		InternalSecret:           strings.Repeat("cfg-", 16),
 		ClientMsgRateLimit:       2,
 		ClientMsgRateBurst:       4,
 		NatsStreamChat:           "chat-stream",
@@ -56,7 +57,7 @@ func TestNewHub_UsesConfiguredJetStreamAndRateSettings(t *testing.T) {
 	assert.Equal(t, 7, cap(h.Broadcast))
 	assert.Equal(t, 9, h.maxClients)
 	assert.Equal(t, 3, h.broadcastWorkers)
-	assert.Equal(t, "configured-secret", h.internalSecret)
+	assert.Equal(t, strings.Repeat("cfg-", 16), h.internalSecret)
 	assert.Equal(t, 2.0, h.clientMsgRateLimit)
 	assert.Equal(t, 4, h.clientMsgRateBurst)
 	assert.Equal(t, "chat-stream", h.streamChat)

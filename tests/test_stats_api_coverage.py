@@ -4,8 +4,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_current_user
-from app.core.container import get_read_stats_handler
 from app.main import app
+from tests.conftest import install_dishka_override
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def mock_stats_handler():
 @pytest.mark.asyncio
 async def test_stats_api_coverage(mock_user, mock_stats_handler):
     app.dependency_overrides[get_current_user] = lambda: mock_user
-    app.dependency_overrides[get_read_stats_handler] = lambda: mock_stats_handler
+    install_dishka_override(app, GetStatsHandler=mock_stats_handler)
     try:
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://testserver"

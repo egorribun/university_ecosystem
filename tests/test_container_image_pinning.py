@@ -58,7 +58,6 @@ def test_all_external_dockerfile_stages_are_digest_pinned() -> None:
     paths = [
         *ROOT.glob("Dockerfile*"),
         *(ROOT / ".containers").rglob("Dockerfile*"),
-        *(ROOT / "infra").rglob("Dockerfile*"),
         *(ROOT / "services").rglob("Dockerfile*"),
     ]
     for path in sorted(paths):
@@ -160,7 +159,7 @@ def test_helm_backup_images_are_digest_pinned() -> None:
         encoding="utf-8"
     )
     references = re.findall(
-        r'^\s*(?:postgresImage|minioClientImage):\s*["\']([^"\']+)',
+        r'^\s*(?:postgresImage|s3ClientImage):\s*["\']([^"\']+)',
         values,
         re.MULTILINE,
     )

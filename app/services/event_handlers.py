@@ -7,13 +7,15 @@ These handlers are registered with the EventBus during application startup.
 
 from __future__ import annotations
 
+from sqlalchemy import select
+
 import app.models as models
-from app.core.container import get_vector_service
 from app.core.database import async_session
 from app.core.events import (
     AttachmentCleanupRequested,
     ChatDeleted,
     DomainEvent,
+    DurableEventDeferred,
     EventCreated,
     EventRegistration,
     MessageSent,
@@ -22,11 +24,14 @@ from app.core.events import (
     NewsCreated,
     NotificationSent,
     NotificationsRequested,
+    ScheduleDeleted,
+    ScheduleUpdated,
     UserCreated,
     UserLoggedIn,
     event_bus,
 )
 from app.core.logging import get_logger
+from app.services.vector_service import VectorService
 
 logger = get_logger(__name__)
 
@@ -85,18 +90,28 @@ async def handle_mfa_email_delivery_requested(
     from uuid import UUID
 
     from app.auth.mfa.email_otp import (
+        MfaDeliveryError,
         SmtpMfaEmailSender,
         build_configured_email_delivery_service,
     )
 
-    async with async_session() as db:
-        service = build_configured_email_delivery_service()
-        await service.deliver(
-            db,
-            delivery_id=UUID(str(event.delivery_id)),
-            sender=SmtpMfaEmailSender(),
-        )
-        await db.commit()
+    try:
+        async with async_session() as db:
+            service = build_configured_email_delivery_service()
+            await service.deliver(
+                db,
+                delivery_id=UUID(str(event.delivery_id)),
+                sender=SmtpMfaEmailSender(),
+            )
+            await db.commit()
+    except DurableEventDeferred:
+        raise
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: sanitize SMTP/database failure before durable outbox retry
+        # Third-party exception text can include the recipient or SMTP banner.
+        # The outbox owns retry and DLQ; never persist that text in last_error.
+        raise MfaDeliveryError() from None
 
 
 async def handle_event_created(event: EventCreated) -> None:
@@ -141,7 +156,9 @@ async def handle_notification_sent(event: NotificationSent) -> None:
 async def generate_event_embedding(event: EventCreated) -> None:
     """Generate embedding for newly created event."""
     async with async_session() as db:
-        vector_service = get_vector_service(db)
+        # An event handler runs outside any request scope and opens its own
+        # session, so it constructs the service over that session directly.
+        vector_service = VectorService(db=db)
         # Fetch the event to get full content
         db_event = await db.get(models.Event, event.event_id_entity)
         if not db_event:
@@ -158,7 +175,7 @@ async def generate_event_embedding(event: EventCreated) -> None:
 async def generate_news_embedding(event: NewsCreated) -> None:
     """Generate embedding for newly created news."""
     async with async_session() as db:
-        vector_service = get_vector_service(db)
+        vector_service = VectorService(db=db)
         db_news = await db.get(models.News, event.news_id)
         if not db_news:
             return
@@ -289,6 +306,7 @@ async def handle_notifications_requested(event: NotificationsRequested) -> None:
             db,
             notification_ids=event.notification_ids,
             channel=event.channel,
+            payload_data=event.payload_data,
         )
         # Persist successful recipients and failed-attempt evidence before the
         # retry signal escapes to OutboxWorker. A replay then sends only pairs
@@ -305,8 +323,9 @@ async def handle_attachment_cleanup_requested(
 
     PERF-W10-05: Called by OutboxWorker with at-least-once delivery semantics.
     If the delete fails, the OutboxWorker retries until max_retries is reached,
-    at which point the event moves to the Dead Letter Queue.  Files in the DLQ
-    will be cleaned up by the periodic orphan-file GC job.
+    at which point the event moves to the Dead Letter Queue for explicit
+    operator remediation. There is no automatic orphan-file GC for these
+    objects; do not acknowledge an unverifiable deletion.
     """
     if not event.attachment_urls:
         return
@@ -314,12 +333,63 @@ async def handle_attachment_cleanup_requested(
     from app.services.chat.attachment_service import ChatAttachmentService
 
     service = ChatAttachmentService()
-    await service.cleanup_files(event.attachment_urls)
+    urls = list(dict.fromkeys(url for url in event.attachment_urls if url))
+    deleted = 0
+    skipped = 0
+    # Old forwarding copied Attachment rows but reused their object URL.
+    # Query *after* the delete transaction commits: any remaining row owns
+    # the blob, including one in another chat. A later deletion of that last
+    # row schedules its own cleanup event. Bound query parameters and storage
+    # work for historical bulk events, including at-least-once replays.
+    for offset in range(0, len(urls), 128):
+        candidate_urls = urls[offset : offset + 128]
+        async with async_session() as db:
+            result = await db.execute(
+                select(models.Attachment.url)
+                .where(models.Attachment.url.in_(candidate_urls))
+                .distinct()
+            )
+            referenced = set(result.scalars().all())
+        unreferenced = [url for url in candidate_urls if url not in referenced]
+        skipped += len(candidate_urls) - len(unreferenced)
+        if unreferenced:
+            await service.cleanup_files(unreferenced, durable=True)
+            deleted += len(unreferenced)
     logger.info(
-        "attachment_cleanup_requested: deleted %d file(s) for chat=%s",
-        len(event.attachment_urls),
+        "attachment_cleanup_requested: deleted %d file(s), retained %d referenced file(s) for chat=%s",
+        deleted,
+        skipped,
         event.chat_id,
     )
+
+
+async def handle_schedule_changed(event: ScheduleUpdated | ScheduleDeleted) -> None:
+    """Notify affected groups about a changed or cancelled lesson (outbox-delivered)."""
+    from app.services.notifications.schedule_changes import (
+        notify_about_schedule_change,
+    )
+
+    if isinstance(event, ScheduleDeleted):
+        previous, current = event.previous_state, None
+    else:
+        previous, current = event.previous_state, event.current_state
+    if not event.schedule_id or not previous:
+        # Legacy rows predate the before/after snapshot; there is nothing to diff.
+        logger.info("Skipping schedule notification without a change snapshot")
+        return
+    async with async_session() as db:
+        await notify_about_schedule_change(
+            db, schedule_id=event.schedule_id, previous=previous, current=current
+        )
+        await db.commit()
+
+
+async def acknowledge_audit_only_event(event: DomainEvent) -> None:
+    """Acknowledge persisted audit events that have no delivery side effect.
+
+    These event types are intentionally subscribed explicitly: an unregistered
+    durable event must still fail closed instead of being silently marked done.
+    """
 
 
 def configure_event_handlers() -> None:
@@ -347,6 +417,17 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("event.registration", handle_event_registration)  # type: ignore[arg-type]
     event_bus.subscribe("notification.sent", handle_notification_sent)  # type: ignore[arg-type]
     event_bus.subscribe("chat.message_sent", handle_message_sent)  # type: ignore[arg-type]
+    # Outbox-delivered lesson changes notify the affected groups (schedule.changed).
+    event_bus.subscribe("SCHEDULE_UPDATED", handle_schedule_changed)  # type: ignore[arg-type]
+    event_bus.subscribe("SCHEDULE_DELETED", handle_schedule_changed)  # type: ignore[arg-type]
+    for event_type in (
+        "SCHEDULE_CREATED",
+        "GRADE_ASSIGNED",
+        "GRADE_MODIFIED",
+        "NOTIFICATION_DEAD_LETTER_RETRY",
+        "NOTIFICATION_DEAD_LETTER_PURGE",
+    ):
+        event_bus.subscribe(event_type, acknowledge_audit_only_event)
     # RED-04: OutboxWorker delivers ChatDeleted events with at-least-once guarantees.
     event_bus.subscribe("chat.deleted", handle_chat_deleted)  # type: ignore[arg-type]
     # PERF-W10-05: OutboxWorker delivers file cleanup with at-least-once guarantees.

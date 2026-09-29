@@ -11,6 +11,8 @@ import pytest
 from fastapi import HTTPException
 from httpx import Response
 
+from tests.conftest import call_injected
+
 
 def _user(*, spotify: bool = True):
     user = MagicMock()
@@ -256,7 +258,13 @@ async def test_spotify_callback_rejects_missing_secret_invalid_state_and_missing
     db = AsyncMock()
     with patch.object(spotify, "settings", _settings(spotify_oauth_state_secret="")):
         with pytest.raises(HTTPException) as exc:
-            await spotify.spotify_callback(request, code="code", state="state", db=db)
+            await call_injected(
+                spotify.spotify_callback,
+                request,
+                code="code",
+                state="state",
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 503
 
     with (
@@ -264,7 +272,13 @@ async def test_spotify_callback_rejects_missing_secret_invalid_state_and_missing
         patch.object(spotify.jwt, "decode", side_effect=spotify.jwt.PyJWTError("bad")),
     ):
         with pytest.raises(HTTPException) as exc:
-            await spotify.spotify_callback(request, code="code", state="bad", db=db)
+            await call_injected(
+                spotify.spotify_callback,
+                request,
+                code="code",
+                state="bad",
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 400
 
     db.get.return_value = None
@@ -274,7 +288,13 @@ async def test_spotify_callback_rejects_missing_secret_invalid_state_and_missing
         patch.object(spotify, "ensure_exists"),
     ):
         with pytest.raises(ValueError, match="Unreachable") as exc:
-            await spotify.spotify_callback(request, code="code", state="state", db=db)
+            await call_injected(
+                spotify.spotify_callback,
+                request,
+                code="code",
+                state="state",
+                provides={"AsyncDatabaseSession": db},
+            )
 
 
 @pytest.mark.asyncio
@@ -299,7 +319,13 @@ async def test_spotify_callback_handles_exchange_and_profile_circuit_branches() 
         patch.object(spotify, "_spotify_circuit_breaker", _breaker()),
     ):
         with pytest.raises(HTTPException) as exc:
-            await spotify.spotify_callback(request, code="code", state="state", db=db)
+            await call_injected(
+                spotify.spotify_callback,
+                request,
+                code="code",
+                state="state",
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 400
 
     open_error = CircuitBreakerOpenError(
@@ -311,7 +337,13 @@ async def test_spotify_callback_handles_exchange_and_profile_circuit_branches() 
         patch.object(spotify, "_spotify_circuit_breaker", _breaker(open_error)),
     ):
         with pytest.raises(HTTPException) as exc:
-            await spotify.spotify_callback(request, code="code", state="state", db=db)
+            await call_injected(
+                spotify.spotify_callback,
+                request,
+                code="code",
+                state="state",
+                provides={"AsyncDatabaseSession": db},
+            )
         assert exc.value.status_code == 503
 
     post = MagicMock(status_code=200)
@@ -334,8 +366,12 @@ async def test_spotify_callback_handles_exchange_and_profile_circuit_branches() 
         ),
         patch.object(spotify, "_save_tokens", new=AsyncMock()),
     ):
-        response = await spotify.spotify_callback(
-            request, code="code", state="state", db=db
+        response = await call_injected(
+            spotify.spotify_callback,
+            request,
+            code="code",
+            state="state",
+            provides={"AsyncDatabaseSession": db},
         )
     assert response.status_code == 302
 
@@ -368,8 +404,12 @@ async def test_spotify_callback_profile_circuit_open_redirects_anyway() -> None:
         ),
         patch.object(spotify, "_save_tokens", new=AsyncMock()),
     ):
-        response = await spotify.spotify_callback(
-            request, code="code", state="state", db=db
+        response = await call_injected(
+            spotify.spotify_callback,
+            request,
+            code="code",
+            state="state",
+            provides={"AsyncDatabaseSession": db},
         )
     assert response.status_code == 302
 
@@ -387,7 +427,12 @@ async def test_now_playing_fallback_and_circuit_open_response_shapes() -> None:
     with patch.object(
         spotify, "_ensure_access_token", new=AsyncMock(return_value=None)
     ):
-        response = await spotify.now_playing(request, db=db, user=empty_user)
+        response = await call_injected(
+            spotify.now_playing,
+            request,
+            user=empty_user,
+            provides={"AsyncDatabaseSession": db},
+        )
     assert response.status_code == 204
 
     track_user = _user()
@@ -397,7 +442,12 @@ async def test_now_playing_fallback_and_circuit_open_response_shapes() -> None:
     with patch.object(
         spotify, "_ensure_access_token", new=AsyncMock(return_value=None)
     ):
-        result = await spotify.now_playing(request, db=db, user=track_user)
+        result = await call_injected(
+            spotify.now_playing,
+            request,
+            user=track_user,
+            provides={"AsyncDatabaseSession": db},
+        )
     assert result.track_id == "cached-track"
 
     circuit_user = _user()
@@ -415,7 +465,12 @@ async def test_now_playing_fallback_and_circuit_open_response_shapes() -> None:
             ),
         ),
     ):
-        response = await spotify.now_playing(request, db=db, user=circuit_user)
+        response = await call_injected(
+            spotify.now_playing,
+            request,
+            user=circuit_user,
+            provides={"AsyncDatabaseSession": db},
+        )
     assert response.status_code == 204
 
 
@@ -453,7 +508,12 @@ async def test_now_playing_retries_after_unauthorized_and_succeeds() -> None:
             SimpleNamespace(get=AsyncMock(side_effect=[first, second])),
         ),
     ):
-        result = await spotify.now_playing(request, db=db, user=user)
+        result = await call_injected(
+            spotify.now_playing,
+            request,
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
     assert result.track_id == "id"
     assert result.artists == ["artist"]
 
@@ -480,7 +540,12 @@ async def test_now_playing_retry_error_fallback_and_circuit_paths() -> None:
         ),
     ):
         with pytest.raises(HTTPException, match="retry"):
-            await spotify.now_playing(_request(), db=db, user=user)
+            await call_injected(
+                spotify.now_playing,
+                _request(),
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
 
     fallback_user = _user()
     with (
@@ -495,7 +560,12 @@ async def test_now_playing_retry_error_fallback_and_circuit_paths() -> None:
             SimpleNamespace(get=AsyncMock(return_value=Response(401))),
         ),
     ):
-        response = await spotify.now_playing(_request(), db=db, user=fallback_user)
+        response = await call_injected(
+            spotify.now_playing,
+            _request(),
+            user=fallback_user,
+            provides={"AsyncDatabaseSession": db},
+        )
     assert response.status_code == 204
 
     circuit_user = _user()
@@ -516,7 +586,12 @@ async def test_now_playing_retry_error_fallback_and_circuit_paths() -> None:
         ),
         patch.object(spotify, "_spotify_circuit_breaker", breaker),
     ):
-        response = await spotify.now_playing(_request(), db=db, user=circuit_user)
+        response = await call_injected(
+            spotify.now_playing,
+            _request(),
+            user=circuit_user,
+            provides={"AsyncDatabaseSession": db},
+        )
     assert response.status_code == 204
 
 
@@ -539,7 +614,12 @@ async def test_now_playing_second_unauthorized_disconnects() -> None:
         ),
     ):
         with pytest.raises(HTTPException) as exc:
-            await spotify.now_playing(_request(), db=db, user=user)
+            await call_injected(
+                spotify.now_playing,
+                _request(),
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
     assert exc.value.status_code == 401
 
 
@@ -569,7 +649,12 @@ async def test_now_playing_late_unauthorized_branch_after_status_rechecks() -> N
         patch.object(spotify, "_spotify_circuit_breaker", _breaker()),
     ):
         with pytest.raises(HTTPException) as exc:
-            await spotify.now_playing(_request(), db=db, user=user)
+            await call_injected(
+                spotify.now_playing,
+                _request(),
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
     assert exc.value.status_code == 401
 
 
@@ -589,7 +674,12 @@ async def test_now_playing_204_invalid_rate_header_and_non_200() -> None:
             SimpleNamespace(get=AsyncMock(return_value=Response(204))),
         ),
     ):
-        response = await spotify.now_playing(_request(), db=db, user=user)
+        response = await call_injected(
+            spotify.now_playing,
+            _request(),
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
     assert response.status_code == 204
 
     with (
@@ -607,7 +697,12 @@ async def test_now_playing_204_invalid_rate_header_and_non_200() -> None:
         ),
     ):
         with pytest.raises(HTTPException) as exc:
-            await spotify.now_playing(_request(), db=db, user=user)
+            await call_injected(
+                spotify.now_playing,
+                _request(),
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
     assert exc.value.status_code == 429
     assert exc.value.headers["Retry-After"] == "5"
 
@@ -621,7 +716,12 @@ async def test_now_playing_204_invalid_rate_header_and_non_200() -> None:
             SimpleNamespace(get=AsyncMock(return_value=Response(500))),
         ),
     ):
-        response = await spotify.now_playing(_request(), db=db, user=user)
+        response = await call_injected(
+            spotify.now_playing,
+            _request(),
+            user=user,
+            provides={"AsyncDatabaseSession": db},
+        )
     assert response.status_code == 204
 
 
@@ -636,7 +736,12 @@ async def test_list_playlists_reauth_and_api_error_paths() -> None:
         spotify, "_ensure_access_token", new=AsyncMock(return_value=None)
     ):
         with pytest.raises(HTTPException) as exc:
-            await spotify.list_playlists(request, db=db, user=user)
+            await call_injected(
+                spotify.list_playlists,
+                request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
     assert exc.value.status_code == 401
 
     with (
@@ -650,5 +755,10 @@ async def test_list_playlists_reauth_and_api_error_paths() -> None:
         ),
     ):
         with pytest.raises(HTTPException) as exc:
-            await spotify.list_playlists(request, db=db, user=user)
+            await call_injected(
+                spotify.list_playlists,
+                request,
+                user=user,
+                provides={"AsyncDatabaseSession": db},
+            )
     assert exc.value.status_code == 500

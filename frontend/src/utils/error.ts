@@ -1,7 +1,7 @@
 import { isAxiosError } from "axios"
 import { ApiResponseValidationError } from "@/api/validation"
 
-export interface ApiErrorDetail {
+interface ApiErrorDetail {
   code: string
   message: string
   field?: string

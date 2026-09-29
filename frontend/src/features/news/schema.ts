@@ -68,5 +68,3 @@ export const newsSearchSchema = v.object({
   cat: v.optional(v.string()),
   sort: v.optional(v.picklist(["newest", "popular"])),
 })
-
-export type NewsSearch = v.InferOutput<typeof newsSearchSchema>

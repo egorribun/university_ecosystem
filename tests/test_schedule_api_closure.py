@@ -32,6 +32,11 @@ def _install_import_stubs() -> None:
     deps = ModuleType("app.api.deps")
     deps.get_current_user = lambda: None
     deps.get_current_user_optional = lambda: None
+    # The schedule routes use Dishka's canonical request-session adapters.
+    # Keep import-isolation stubs aligned with the production module so this
+    # closure suite remains collection-order independent.
+    deps.get_current_user_from_dishka = lambda: None
+    deps.get_current_user_optional_from_dishka = lambda: None
     sys.modules.setdefault("app.api.deps", deps)
 
     bus = ModuleType("app.cqrs.bus")

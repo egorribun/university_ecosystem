@@ -581,3 +581,56 @@ async def test_update_user_attributes_via_eager_fetch_creates_missing_profile(
     assert len(profiles) == 1
     assert profiles[0].full_name == "Brand New"
     assert profiles[0].about == "Hello"
+
+
+@pytest.mark.asyncio
+async def test_list_users_keeps_profiles_without_a_status(user_repo, db_session):
+    """A profile status is optional free text; only anonymised accounts hide.
+
+    ``status != 'deleted'`` evaluates to NULL for a profile that never set a
+    status, which silently dropped most real users from search and the admin
+    user list.
+    """
+    from app.models.users import UserPreferences, UserProfile
+    from app.schemas import schemas
+
+    def make(email: str, status: str | None) -> models.User:
+        return models.User(
+            email=email,
+            hashed_password="hashed_password",
+            is_active=True,
+            role=UserRole.STUDENT,
+            profile=UserProfile(full_name=f"Status {email}", status=status),
+            preferences=UserPreferences(),
+        )
+
+    no_status = make("no-status@example.com", None)
+    free_text = make("free-text@example.com", "Учусь и работаю")
+    deleted = make("deleted@example.com", "deleted")
+    # A freshly registered account whose profile row is not created yet.
+    no_profile = models.User(
+        email="no-profile@example.com",
+        hashed_password="hashed_password",
+        is_active=True,
+        role=UserRole.STUDENT,
+        preferences=UserPreferences(),
+    )
+    db_session.add_all([no_status, free_text, deleted, no_profile])
+    await db_session.commit()
+
+    listed = {
+        user.id: user
+        for user in await user_repo.list_users(schemas.UserSearchFilter(limit=200))
+    }
+
+    assert no_status.id in listed
+    assert free_text.id in listed
+    assert deleted.id not in listed
+    assert no_profile.id in listed
+    assert listed[no_profile.id].profile is None
+    # The joined profile is eagerly loaded into each returned DTO.
+    assert listed[free_text.id].full_name == "Status free-text@example.com"
+    assert listed[free_text.id].profile is not None
+    assert listed[free_text.id].profile.status == "Учусь и работаю"
+    assert listed[no_status.id].profile is not None
+    assert listed[no_status.id].profile.status is None

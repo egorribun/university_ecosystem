@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
@@ -73,9 +73,14 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         ),
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        index=True,
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", index=True
+    )
     speaker: Mapped[str | None] = mapped_column(String(512))  # LOW-W19: bounded String
     image_url: Mapped[str | None] = mapped_column(
         String(2048)
@@ -133,7 +138,10 @@ class EventAttendance(Base, EventEmitterMixin, UUID7PrimaryKeyMixin, UserFK):
         nullable=False,
     )
     registered_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        index=True,
     )
     qr_secret: Mapped[str] = mapped_column(String(255))  # LOW-W19: bounded String
     qr_hmac: Mapped[str] = mapped_column(String(255))  # LOW-W19: bounded String

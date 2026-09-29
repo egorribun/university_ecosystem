@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { withExpectedConsole } from "@/tests/strictConsole"
 
 const idbSet = vi.fn((..._args: unknown[]) => Promise.resolve())
 const idbGet = vi.fn((..._args: unknown[]) => Promise.resolve(undefined))
@@ -150,8 +151,8 @@ describe("queryClient quota closure paths", () => {
     })
     const { createIDBPersister } = await import("@/app/queryClient")
 
-    await createIDBPersister("infinite-quota").persistClient(
-      makeClient("x".repeat(21 * 1024 * 1024))
+    await withExpectedConsole("warn", "Cache too large", () =>
+      createIDBPersister("infinite-quota").persistClient(makeClient("x".repeat(21 * 1024 * 1024)))
     )
 
     expect(idbSet).not.toHaveBeenCalled()

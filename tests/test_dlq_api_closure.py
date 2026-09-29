@@ -6,15 +6,17 @@ import pytest
 from fastapi import HTTPException
 
 from app.api import dlq
+from tests.conftest import call_injected
 
 
 async def test_trigger_dlq_replay_rejects_unknown_target():
     with pytest.raises(HTTPException) as exc_info:
-        await dlq.trigger_dlq_replay(
+        await call_injected(
+            dlq.trigger_dlq_replay,
             request=dlq.DLQReplayRequest(target="unknown"),
-            db=AsyncMock(),
             locale="en",
             _=MagicMock(),
+            provides={"AsyncDatabaseSession": AsyncMock()},
         )
 
     assert exc_info.value.status_code == 400
@@ -26,11 +28,12 @@ async def test_trigger_dlq_replay_can_run_in_memory_target_only():
     db = AsyncMock()
 
     with patch.object(dlq, "in_memory_dlq", in_memory):
-        response = await dlq.trigger_dlq_replay(
+        response = await call_injected(
+            dlq.trigger_dlq_replay,
             request=dlq.DLQReplayRequest(target="in_memory", batch_size=4, force=True),
-            db=db,
             locale="en",
             _=MagicMock(),
+            provides={"AsyncDatabaseSession": db},
         )
 
     assert response.success is False
@@ -51,11 +54,12 @@ async def test_trigger_dlq_replay_can_run_database_target_only():
         patch.object(dlq, "DeadLetterQueue", return_value=db_dlq),
         patch.object(dlq, "get_circuit_breaker", return_value=circuit_breaker),
     ):
-        response = await dlq.trigger_dlq_replay(
+        response = await call_injected(
+            dlq.trigger_dlq_replay,
             request=dlq.DLQReplayRequest(target="db", batch_size=5),
-            db=db,
             locale="en",
             _=MagicMock(),
+            provides={"AsyncDatabaseSession": db},
         )
 
     assert response.success is True
@@ -71,11 +75,12 @@ async def test_retry_dlq_job_rejects_missing_job():
     db.execute.return_value = result
 
     with pytest.raises(HTTPException) as exc_info:
-        await dlq.retry_dlq_job(
+        await call_injected(
+            dlq.retry_dlq_job,
             job_id=42,
-            db=db,
             locale="en",
             _=MagicMock(),
+            provides={"AsyncDatabaseSession": db},
         )
 
     assert exc_info.value.status_code == 404

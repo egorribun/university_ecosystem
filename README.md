@@ -10,10 +10,10 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![Python Coverage Gate](https://img.shields.io/badge/Python_Coverage_Gate-100%25-brightgreen.svg?logo=pytest&logoColor=white)](TESTING.md)
-[![Go Coverage Gate](https://img.shields.io/badge/Go_Coverage_Gate-100%25-brightgreen.svg?logo=go&logoColor=white)](TESTING.md)
-[![Rust Coverage Gate](https://img.shields.io/badge/Rust_Coverage_Gate-100%25-brightgreen.svg?logo=rust&logoColor=white)](TESTING.md)
-[![Frontend Coverage Gate](https://img.shields.io/badge/Frontend_Coverage_Gate-100%25-brightgreen.svg?logo=vitest&logoColor=white)](TESTING.md)
+[![Python coverage policy target](https://img.shields.io/badge/Python_Coverage_Policy_Target-100%25-brightgreen.svg?logo=pytest&logoColor=white)](quality/quality-contract.json)
+[![Go coverage policy target](https://img.shields.io/badge/Go_Coverage_Policy_Target-100%25-brightgreen.svg?logo=go&logoColor=white)](quality/quality-contract.json)
+[![Rust coverage policy target](https://img.shields.io/badge/Rust_Coverage_Policy_Target-100%25-brightgreen.svg?logo=rust&logoColor=white)](quality/quality-contract.json)
+[![Frontend coverage policy target](https://img.shields.io/badge/Frontend_Coverage_Policy_Target-100%25-brightgreen.svg?logo=vitest&logoColor=white)](quality/quality-contract.json)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
 [![Vite 8 / Rolldown](https://img.shields.io/badge/Vite-8_%2F_Rolldown-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8.svg?logo=go&logoColor=white)](https://go.dev/)
@@ -21,6 +21,8 @@
 [![Security: Pre-commit](https://img.shields.io/badge/Security-Ruff_%7C_Semgrep_%7C_Trivy-orange.svg)](SECURITY.md)
 
 ---
+
+> Coverage badges show policy targets from [`quality/quality-contract.json`](quality/quality-contract.json), not a live certification result. Current evidence is published in the [quality dashboard](docs/testing/dashboard.md); only a fresh exact-SHA CI/release artifact can certify a build.
 
 **University Ecosystem** is a high-performance, polyglot microservices platform engineered to centralize and revolutionize student interactions. From real-time scheduling and interactive campus navigation to enterprise-grade security and automated workflows, we provide the digital foundation for the next generation of academic excellence.
 
@@ -36,12 +38,14 @@
 - 📅 **Dynamic Academic Engine** – Real-time scheduling powered by a **Rust (PyO3)** native extension using Rayon parallel threads for instant timetable conflict resolution.
 - 💬 **High-Concurrency Real-Time Hub** – High-throughput WebSockets via **Go + NATS**, featuring JWKS hot-reloading, 60 KB frame caps, and max-client pre-checks.
 - 🔒 **Relationship-Based Auth (ReBAC)** – Granular, Zanzibar-inspired permission management powered by **SpiceDB** alongside **OpenFeature** + **flagd** feature flags.
-- 🖼️ **Media Intelligence & Workflows** – Asynchronous background processing, image optimization, and malware scanning via **Go file-processor**, **Temporal.io**, **MinIO**, and **ClamAV**.
+- 🖼️ **Media Intelligence & Workflows** – Asynchronous background processing and image optimization via **Go file-processor**, **Temporal.io**, and S3-compatible **SeaweedFS** storage; the backend can enforce malware scanning through a configured `clamd` service.
 - ⚡ **XFetch L1/L2 Probabilistic Caching** – Rate-limiting circuit breakers and probabilistic cache refresh preventing cache stampedes across Redis/Valkey (`volatile-lru`).
 - 🗺️ **Vectorized Search & Navigation** – Context-aware semantic search and campus routing leveraging **pgvector** and OpenAI/custom embedding providers.
 - 📊 **Full-Spectrum Observability** – End-to-end distributed tracing (**OTEL + Tempo**), metrics (**Prometheus**), profiling (**Pyroscope**), and centralized logs (**Grafana Loki + Fluent Bit**).
 
 ## ⚡ Performance & Benchmarks
+
+> The figures below are historical reference values and engineering targets, not current release evidence. Any release claim must attach a dated benchmark artifact with the exact tested SHA and CI run; see the [performance baseline](docs/testing/performance-regression-baseline.md) and [benchmark workflow](.github/workflows/benchmark.yml).
 
 Our polyglot architecture maximizes throughput while maintaining low resource usage:
 
@@ -64,9 +68,10 @@ university_ecosystem/
 │   ├── file-processor/# 📁 Media Engine (Go/Temporal) - Secure Uploads & Processing
 │   └── caddy/         # 🔒 Edge Reverse Proxy & TLS Termination
 ├── native/            # 🦀 Rust Extensions (PyO3/Rayon) - High-Performance Hot Path
-├── k8s/               # ☸️ Kubernetes Helm Charts, Kyverno Policies & Chaos Mesh
+├── charts/            # ⎈ Helm Charts (canonical application deployment, ADR-034)
+├── k8s/               # ☸️ Kubernetes Manifests, Kyverno Policies & Chaos Mesh
 ├── alembic/           # 🗄️ Database Migrations (SQLAlchemy 2.0 Async)
-└── docs/              # 📖 Architecture Specs & ADRs (ADR-001 — ADR-032)
+└── docs/              # 📖 Architecture Specs & ADRs (see docs/adr/)
 ```
 
 ## 🧠 Architectural Philosophy
@@ -96,9 +101,9 @@ graph TD
 
     subgraph "Data, Governance & Workflows"
         Postgres[("🐘 PostgreSQL 17 + pgvector")]
-        Valkey[("⚡ Valkey / Redis 7 (volatile-lru)")]
+        Valkey[("⚡ Valkey 8.1 cache (volatile-lru)")]
         Revocations[("🛡️ Revocation Valkey (AOF / noeviction)")]
-        MinIO[("📦 MinIO (S3 Storage)")]
+        MinIO[("📦 SeaweedFS (S3 Storage)")]
         Temporal["⏳ Temporal.io (Workflows)"]
         SpiceDB["🔐 SpiceDB (ReBAC)"]
         Flagd["🚩 OpenFeature / flagd"]
@@ -159,11 +164,10 @@ sequenceDiagram
     Gateway->>Backend: Forward Auth Request
     Backend->>Argon2: Verify Password Hash (Argon2id) / TOTP or Email OTP
     Argon2-->>Backend: Authentication Success
-    Backend->>SpiceDB: Read User Permissions & Relationships
-    SpiceDB-->>Backend: Grant Granted Scopes
-    Backend->>Redis: Store Session & Issue Auth Ticket
+    Backend->>Redis: Store Session
     Backend-->>Gateway: HTTP 200 + Secure HTTP-Only Cookie + JWT
     Gateway-->>Client: Authenticated Response
+    Note over Backend,SpiceDB: Later protected requests check ReBAC permissions in SpiceDB
 ```
 
 ### 📡 High-Concurrency Real-Time Chat Sequence
@@ -173,32 +177,33 @@ sequenceDiagram
     autonumber
     actor ClientA as 📱 Client A
     actor ClientB as 📱 Client B
-    participant Gateway as 🚀 Go Gateway
+    participant Caddy as 🔒 Caddy Edge
     participant WSHub as 📡 Go WS-Hub
     participant NATS as 📨 NATS Broker
-    participant Redis as ⚡ Redis (Ticket Cache)
+    participant Redis as ⚡ Valkey (Ticket Cache)
 
-    ClientA->>Gateway: GET /ws (Upgrade Request + Auth Ticket)
-    Gateway->>Redis: Validate Auth Ticket & Max Clients (<Pre-check)
-    Redis-->>Gateway: Ticket Valid
-    Gateway->>WSHub: Upgrade Connection to WebSocket
+    ClientA->>Caddy: GET /ws/chat?ticket=<one-time ticket> (Upgrade Request)
+    Caddy->>WSHub: Proxy Upgrade to /ws
+    WSHub->>WSHub: Origin, Rate Limit & Max Clients Pre-check
+    WSHub->>Redis: GETDEL Single-Use Ticket
+    Redis-->>WSHub: Ticket Valid (user, JTI)
     ClientA->>WSHub: Send Chat Message Frame (<60 KB Guard)
-    WSHub->>NATS: Publish to NATS Subject (chat.room.{id})
+    WSHub->>NATS: Publish to NATS Subject (chat.{room})
     NATS-->>WSHub: Deliver Frame to Subscribed Hub Nodes
     WSHub-->>ClientB: Broadcast Message Frame to Target Connection
 ```
 
 ## 🛠️ Technological Stack
 
-| Layer | Technologies | Primary Role | Coverage Gate |
+| Layer | Technologies | Primary Role | Policy target / current evidence |
 | :--- | :--- | :--- | :---: |
-| **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, accessibility (WCAG 2.2 AA), PWA | **100%** |
-| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Core business logic, REST & GraphQL APIs | **100%** |
-| **Microservices** | Go 1.26, NATS, gRPC, Temporal Go SDK | High-concurrency WebSockets & media orchestration | **100%** |
-| **Native Performance**| Rust, PyO3, Rayon, Maturin | Microsecond-speed schedule conflict solver & HMAC | **100%** |
-| **Auth & Security** | Argon2id, SpiceDB, TOTP/email OTP, recovery codes, Kyverno, CSRF nonces | Zero-trust ReBAC, step-up MFA & policy enforcement | Verified |
-| **Data & Cache** | PostgreSQL 17, pgvector, cache Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Relational/vector data, probabilistic L1/L2 caching, and isolated durable auth revocation | Verified |
-| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Complete 360° tracing, metrics, profiling & logging | Verified |
+| **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, accessibility (WCAG 2.2 AA), PWA | Policy target: 100%; fresh-SHA evidence required |
+| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Core business logic, REST & GraphQL APIs | Policy target: 100%; fresh-SHA evidence required |
+| **Microservices** | Go 1.26, NATS, gRPC, Temporal Go SDK | High-concurrency WebSockets & media orchestration | Policy target: 100%; fresh-SHA evidence required |
+| **Native Performance**| Rust, PyO3, Rayon, Maturin | Microsecond-speed schedule conflict solver & HMAC | Policy target: 100%; fresh-SHA evidence required |
+| **Auth & Security** | Argon2id, SpiceDB, TOTP/email OTP, recovery codes, Kyverno, CSRF nonces | Zero-trust ReBAC, step-up MFA & policy enforcement | Implemented; fresh-SHA evidence required |
+| **Data & Cache** | PostgreSQL 17, pgvector, cache Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Relational/vector data, probabilistic L1/L2 caching, and isolated durable auth revocation | Implemented; fresh-SHA evidence required |
+| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Complete 360° tracing, metrics, profiling & logging | Implemented; fresh-SHA evidence required |
 
 ## 🚀 Rapid Onboarding
 
@@ -229,7 +234,7 @@ for every runtime and Prometheus target:
 
 - **Multi-factor Auth**: **TOTP**, email OTP and one-time recovery codes alongside **Argon2id** password hashing.
 - **Strict Input Validation**: Client-side **Valibot** schemas and gRPC path traversal guards (RZ-27-04).
-- **Malware & SSRF Protection**: In-memory **ClamAV** scanning and strict URL validation blocking internal IP ranges.
+- **Malware & SSRF Protection**: Configurable `clamd` malware scanning for uploads (enabled and required according to environment configuration) plus strict URL validation blocking internal IP ranges. Verify scanner health before relying on upload acceptance.
 - **Zero-Trust Network Policies**: Kubernetes **Kyverno** admission policies and pod security profiles (`RuntimeDefault`).
 - **Sanitized Logging**: Automated PII redaction (`_redact_pii`) stripping emails and phone numbers from logs.
 
@@ -238,7 +243,7 @@ for every runtime and Prometheus target:
 ### **Python (Core API)**
 ```bash
 uv sync            # Sync Python 3.14 dependencies
-uv run pytest      # Run full pytest suite (2800+ tests)
+uv run pytest      # Run the full pytest suite
 uv run ruff check app/      # Run Ruff linter
 uv run ruff format app/     # Format Python codebase
 ```
@@ -246,11 +251,18 @@ uv run ruff format app/     # Format Python codebase
 ### **React (Frontend)**
 ```bash
 cd frontend
-npm install        # Hydrate frontend dependencies
+npm ci              # Reproduce the dependency graph from package-lock.json
 npm run dev        # Start Vite 8 dev server
+npm run lint:knip  # Fail-closed unused files, exports, and dependencies check
 npx tsc --noEmit   # Typecheck TypeScript
 npm run test       # Run Vitest test suite
 ```
+
+On Windows, use `npm run lhci` for the full Lighthouse CI collect-and-assert
+gate. `npm run lhci:windows` is a measurement-only fallback and does not enforce
+LHCI assertions. Dependency installation skips Unix-specific LHCI symlink setup
+on Windows; both Windows runners resolve Chromium from Playwright and do not
+require symbolic-link privileges.
 
 ### **Go (Microservices)**
 ```bash
@@ -272,5 +284,5 @@ The platform includes a production-ready observability stack:
 <div align="center">
   <br />
   <h3>Built with ❤️ by University Ecosystem Engineers</h3>
-  © 2026 University Ecosystem Platform • All Rights Reserved.
+  © 2026 University Ecosystem Platform • Released under the <a href="LICENSE">MIT License</a>.
 </div>

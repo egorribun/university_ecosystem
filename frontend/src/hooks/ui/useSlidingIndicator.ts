@@ -12,8 +12,8 @@ export interface IndicatorRect {
 // active item (relative to its container) so an absolutely-positioned
 // indicator can slide between items via CSS `transition: transform`.
 //
-// Usage: place an indicator div with `position: absolute` inside the
-// container. Apply `transform: translate(left, top) + width/height` from
+// Usage: place an indicator div with `position: absolute; left: 0; top: 0`
+// inside the container. Apply `transform: translate(left, top) + width/height` from
 // the rect, plus a CSS transition. Mark each tab/item with `data-tab-key={key}`.
 //
 // Re-measures on:
@@ -42,9 +42,12 @@ export function useSlidingIndicator(
       }
       const containerBox = container.getBoundingClientRect()
       const targetBox = target.getBoundingClientRect()
+      // An absolute indicator with `left-0 top-0` starts at the padding edge,
+      // inside the container border, so measure from there rather than from
+      // the border box.
       setRect({
-        left: targetBox.left - containerBox.left,
-        top: targetBox.top - containerBox.top,
+        left: targetBox.left - containerBox.left - container.clientLeft,
+        top: targetBox.top - containerBox.top - container.clientTop,
         width: targetBox.width,
         height: targetBox.height,
       })

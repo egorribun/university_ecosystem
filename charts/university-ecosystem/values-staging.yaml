@@ -7,6 +7,9 @@ fullnameOverride: university-ecosystem
 
 global:
   environment: staging
+  # The release script replaces REQUIRED_API_HOST with the exact public API
+  # origin, making issuer binding environment-specific and non-ambiguous.
+  jwtIssuer: https://REQUIRED_API_HOST
   # First-party repositories are set explicitly by deploy-helm.sh. Keeping the
   # global registry empty preserves the reviewed upstream dependency identity.
   imageRegistry: ""
@@ -70,7 +73,14 @@ backend:
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: 80
   config:
+    storageBackend: s3
+    storageS3Bucket: uploads
+    storageS3EndpointURL: https://REQUIRED_MINIO_ENDPOINT
+    # Public image URLs go through the credentialed backend proxy; the S3
+    # bucket itself remains private and is never exposed by the Ingress.
+    storageS3BaseURL: /api/v1/img
     minioSecure: true
+    eventFileScannerEnabled: true
     elasticsearchURL: https://REQUIRED_ELASTICSEARCH_HOST
     flagdHost: REQUIRED_FLAGD_HOST
 
@@ -79,12 +89,24 @@ frontend:
     repository: ghcr.io/REQUIRED_REPOSITORY/frontend
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
 
 gateway:
   image:
     repository: ghcr.io/REQUIRED_REPOSITORY/gateway
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
   config:
     grpcUseTLS: true
     otelEndpoint: REQUIRED_OTLP_ENDPOINT
@@ -120,6 +142,11 @@ fileProcessor:
     minioSecure: true
     temporalHost: REQUIRED_TEMPORAL_HOST
     temporalTLSDisabled: false
+    # The deployment renders the in-cluster backend JWKS URL when this is
+    # empty; the public API origin remains the issuer, not the key transport.
+    jwksURL: ""
+    jwksRefreshInterval: 300
+    jwtActiveKID: primary
     otlpEndpoint: REQUIRED_OTLP_ENDPOINT
     otlpInsecure: false
 
@@ -152,6 +179,9 @@ ingress:
         - path: /
           pathType: Prefix
           service: gateway
+        - path: /.well-known
+          pathType: Prefix
+          service: backend
   tls:
     - secretName: university-ecosystem-tls # pragma: allowlist secret
       hosts:

@@ -8,7 +8,8 @@ import {
   CircleCheckBig as CompleteIcon,
   SlidersHorizontal as ControlsIcon,
 } from "lucide-react"
-import { Badge, Select } from "@/components/ui"
+import { Badge } from "@/components/ui/Badge"
+import { Select } from "@/components/ui/Select"
 import FadeSection from "@/components/motion/FadeSection"
 import { FlipCountdown } from "@/components/schedule/FlipCountdown"
 import { cn } from "@/utils/cn"

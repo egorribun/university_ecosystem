@@ -12,37 +12,42 @@ handoffs are intentionally not part of the canonical index.
 - [API documentation](api/README.md)
 - [API examples](API_EXAMPLES.md)
 - [Test and quality guide](../TESTING.md)
+- [MVP requirements (Russian)](superpowers/plans/University_Ecosystem_MVP.md)
 
 ## Architecture and contracts
 
 - [Architecture decision records](adr/README.md)
 - [API versioning policy](api_versioning.md)
 - [Redis key contract](../contracts/redis-keys.md)
-- [API changelog](CHANGELOG.md)
 - [Localization guidelines](LOCALIZATION.md)
 
 ## Operations
 
 - [Deployment guide (Russian)](DEPLOY.md)
 - [Deployment guide (English)](DEPLOY.en.md)
+- [Helm chart](../charts/university-ecosystem/README.md)
 - [Kubernetes notes](../k8s/README.md)
+- [S3 storage migration runbook](runbooks/s3-seaweedfs-cutover.md)
 - [Dependency cooldown emergency procedure](DEPENDENCY_COOLDOWN_EMERGENCY.md)
+- [Legacy MinIO volume migration to SeaweedFS](runbooks/s3-seaweedfs-cutover.md)
 - [Manual MFA verification checklist](manual-mfa-checklist.md)
 
 ## Quality evidence
 
+- [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md) — the single consolidated
+  plan, progress and continuation guide.
+- [Approved MVP plan (snapshot)](superpowers/plans/MVP_APPROVED_PLAN.md) — phases,
+  acceptance tables and owner decisions of 2026-09-28.
+- [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
+  operational status; earlier handoff and continuation plans live under
+  `superpowers/plans/archive/` as history.
 - [Quality dashboard](testing/dashboard.md)
+- [CI check catalog runbook](testing/ci-check-catalog-runbook.md)
+- [i18n gate](testing/i18n-gate.md)
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [Canonical audit index](audits/INDEX.md)
 - [Machine-enforced quality contract](../quality/quality-contract.json)
-
-## Agent tooling
-
-- [MCP recipes and server catalog](mcp/MCP_RECIPES.md)
-- [Browser E2E MCP workflow](mcp/BROWSER_E2E_MCP.md)
-- [Database and cache MCP workflow](mcp/DB_CACHE_MCP.md)
-- [Memory and Context7 MCP workflow](mcp/MEMORY_CONTEXT7_MCP.md)
 
 Historical audit reports remain under `audits/archive/`. They are retained as
 an explicit audit trail and are not current implementation guidance.

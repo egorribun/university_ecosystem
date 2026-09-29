@@ -41,10 +41,3 @@ misconfigurations:
     statement: >-
       SPIRE node and workload attestation requires the documented node-agent
       security context.
-  - id: AVD-DS-0002
-    paths:
-      - infra/oss-fuzz/Dockerfile
-    statement: >-
-      OSS-Fuzz controls this disposable builder image and requires its
-      base-builder execution model; the image is never deployed or used as a
-      runtime container.

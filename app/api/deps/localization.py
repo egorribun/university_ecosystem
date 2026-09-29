@@ -4,14 +4,16 @@ from fastapi import Depends, Request
 
 # MED-W19: get_locale now depends on get_current_user_optional so public
 # endpoints (no auth required) can still resolve a locale via Accept-Language.
-from app.api.deps.auth import get_current_user_optional
+from app.api.deps.auth import get_current_user_optional_from_dishka
 from app.core.localization import resolve_locale
 from app.models import User
 
 
 def get_locale(
     request: Request,
-    current_user: Annotated[User | None, Depends(get_current_user_optional)],
+    current_user: Annotated[
+        User | None, Depends(get_current_user_optional_from_dishka)
+    ],
 ) -> str:
     """
     Resolve locale from request headers or user preference.

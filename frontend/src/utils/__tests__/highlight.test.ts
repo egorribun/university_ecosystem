@@ -19,6 +19,11 @@ describe("renderHighlight", () => {
     expect(renderHighlight(raw)).toBe("<mark>hello</mark> and <mark>world</mark>")
   })
 
+  it("only converts the exact sentinels, not look-alike NUL-delimited words", () => {
+    const lookAlike = "\x00MARK_CLO5E\x00"
+    expect(renderHighlight(`${MARK_OPEN}term${lookAlike}`)).toBe(`<mark>term${lookAlike}`)
+  })
+
   it("returns plain text unchanged when no sentinels are present", () => {
     expect(renderHighlight("plain text")).toBe("plain text")
   })

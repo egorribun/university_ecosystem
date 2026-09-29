@@ -71,3 +71,16 @@ def test_push_and_pull_request_workflows_cancel_stale_runs() -> None:
     assert not missing, (
         "push/PR workflows without stale-run cancellation: " + ", ".join(missing)
     )
+
+
+def test_duplicate_pr_workflows_are_reserved_for_the_authoritative_ci_gate() -> None:
+    """Standalone diagnostics must not duplicate required PR allocations."""
+
+    for filename in ("go-lint.yml", "generate-openapi.yml"):
+        workflow = _load_workflow(WORKFLOWS / filename)
+        triggers = _triggers(workflow)
+        assert isinstance(triggers, dict), filename
+        assert "pull_request" not in triggers, filename
+        push = triggers.get("push")
+        assert isinstance(push, dict), filename
+        assert push.get("branches") == ["main"], filename

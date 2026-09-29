@@ -24,6 +24,7 @@ from app.auth.mfa import email_otp as email_otp_module
 from app.auth.mfa import totp
 from app.auth.mfa.email_otp import EmailOtpService, MfaDeliveryError, MfaOtpRejected
 from app.core import observability
+from app.core.events import DurableEventDeferred
 from app.core.ratelimit import RateLimitExceeded, RateLimitInfo
 from app.models import ChallengeState
 from app.services import cwv, cwv_retention, notification_queue
@@ -49,13 +50,20 @@ def _email_service() -> EmailOtpService:
     )
 
 
-def _delivery_fixture(*, revision: int = 3) -> tuple[SimpleNamespace, SimpleNamespace]:
+def _delivery_fixture(
+    *,
+    revision: int = 3,
+    lease_expires_at: datetime | None = NOW + timedelta(minutes=2),
+) -> tuple[SimpleNamespace, SimpleNamespace]:
     delivery_id = uuid.UUID("aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa")
     challenge_id = uuid.UUID("bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb")
+    # ``deliver`` re-validates the lease after the row locks; mirror the
+    # two-minute lease that the claim writes in production.
     delivery = SimpleNamespace(
         id=delivery_id,
         challenge_id=challenge_id,
         lease_token="lease-token",
+        lease_expires_at=lease_expires_at,
         revision=revision,
         locale="en",
         message_id="<mfa-contract@example.edu>",
@@ -199,6 +207,83 @@ async def test_delivery_completion_with_single_rowcount_succeeds() -> None:
 
     sender.send.assert_awaited_once()
     db.flush.assert_awaited_once()
+
+
+def _lease_margin() -> timedelta:
+    from app.core.config import settings
+
+    # A non-SMTP sender falls back to the configured total SMTP deadline.
+    return timedelta(seconds=settings.smtp_mfa_total_timeout_seconds + 5)
+
+
+async def _deliver_with_lease(
+    lease_expires_at: datetime | None, *, sender: object
+) -> None:
+    service = _email_service()
+    delivery, challenge = _delivery_fixture(lease_expires_at=lease_expires_at)
+    db = MagicMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            SimpleNamespace(one_or_none=Mock(return_value=delivery.id)),
+            SimpleNamespace(scalar_one_or_none=Mock(return_value=challenge)),
+            SimpleNamespace(rowcount=1),
+        ]
+    )
+    db.get = AsyncMock(return_value=delivery)
+    db.commit = AsyncMock()
+    db.flush = AsyncMock()
+    service._decrypt_delivery = MagicMock(  # type: ignore[method-assign]
+        return_value={
+            "email": "student@example.edu",
+            "otp": "123456",
+            "display_name": "Student",
+        }
+    )
+    with patch.object(
+        email_otp_module.secrets, "token_urlsafe", return_value="lease-token"
+    ):
+        await service.deliver(db, delivery_id=delivery.id, sender=sender, now=NOW)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "lease_expires_at",
+    [None, NOW + _lease_margin()],
+    ids=["missing-lease", "lease-ends-at-send-deadline"],
+)
+async def test_delivery_defers_without_sending_when_lease_cannot_cover_smtp(
+    lease_expires_at: datetime | None,
+) -> None:
+    sender = AsyncMock()
+
+    with pytest.raises(DurableEventDeferred):
+        await _deliver_with_lease(lease_expires_at, sender=sender)
+
+    sender.send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delivery_sends_when_lease_outlives_the_smtp_deadline() -> None:
+    sender = AsyncMock()
+
+    await _deliver_with_lease(
+        NOW + _lease_margin() + timedelta(microseconds=1), sender=sender
+    )
+
+    sender.send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delivery_uses_the_smtp_senders_own_deadline() -> None:
+    """A configured SMTP sender deadline replaces the global fallback."""
+    sender = email_otp_module.SmtpMfaEmailSender(total_timeout_seconds=10)
+    send = AsyncMock()
+
+    with patch.object(sender, "send", send):
+        # 16 s covers 10 s + 5 s margin, far below the 60 s + 5 s fallback.
+        await _deliver_with_lease(NOW + timedelta(seconds=16), sender=sender)
+
+    send.assert_awaited_once()
 
 
 def test_otel_shutdown_suppresses_unexpected_provider_errors() -> None:

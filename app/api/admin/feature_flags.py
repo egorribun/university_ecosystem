@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 import app.models as models
-from app.api.deps import get_current_admin_user
+from app.api.deps import get_current_admin_user_from_dishka
 from app.core.feature_flags import (
     FEATURE_FLAG_CONFIG_PATH,
     FeatureFlagSnapshot,
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/feature-flags", tags=["admin-feature-flags"])
 
 @router.get("", response_model=list[schemas.FeatureFlagOut])
 async def list_feature_flags(
-    _: models.User = Depends(get_current_admin_user),
+    _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> list[FeatureFlagSnapshot]:
     """List registered flags and their effective read-only evaluations."""
     return list_feature_flag_snapshots()
@@ -25,7 +25,7 @@ async def list_feature_flags(
 @router.patch("/{name}", include_in_schema=False)
 async def reject_feature_flag_update(
     name: str,
-    _: models.User = Depends(get_current_admin_user),
+    _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> None:
     """Reject legacy writes; flagd configuration is owned by GitOps."""
     del name

@@ -1,9 +1,10 @@
-import { Button } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
 import {
   MoreVertical as MoreVertIcon,
   Pencil as EditIcon,
   Trash2 as DeleteIcon,
 } from "lucide-react"
+import { useCallback, useEffect, useRef, type KeyboardEvent } from "react"
 import { useTranslation } from "react-i18next"
 
 interface EventAdminActionsProps {
@@ -12,6 +13,27 @@ interface EventAdminActionsProps {
   onEdit: () => void
   onDelete: () => void
   menuId: string
+  disabled?: boolean
+}
+
+export function focusElement(element: HTMLElement | null): void {
+  if (element === null) return
+  element.focus()
+}
+
+export function focusFirstMenuItem(menu: HTMLElement | null): void {
+  if (menu === null) return
+  const item = menu.querySelector<HTMLButtonElement>("[role='menuitem']:not(:disabled)")
+  focusElement(item)
+}
+
+export function focusMenuItemAt(items: readonly HTMLButtonElement[], index: number): void {
+  const item = items[index]
+  focusElement(item ?? null)
+}
+
+export function containsNode(element: Node | null, target: Node): boolean {
+  return element !== null && element.contains(target)
 }
 
 export function EventAdminActions({
@@ -20,38 +42,98 @@ export function EventAdminActions({
   onEdit,
   onDelete,
   menuId,
+  disabled = false,
 }: EventAdminActionsProps) {
   const { t } = useTranslation(["events", "common"])
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const triggerId = `${menuId}-button`
+  const menuOpen = Boolean(menuAnchor) && !disabled
+
+  const closeMenu = useCallback(() => {
+    setMenuAnchor(null)
+    focusElement(triggerRef.current)
+  }, [setMenuAnchor])
+
+  useEffect(() => {
+    if (!menuAnchor) return
+    if (disabled) {
+      setMenuAnchor(null)
+      return
+    }
+    focusFirstMenuItem(menuRef.current)
+  }, [disabled, menuAnchor, setMenuAnchor])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleOutsidePointer = (event: globalThis.MouseEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (containsNode(triggerRef.current, target) || containsNode(menuRef.current, target)) return
+      closeMenu()
+    }
+    document.addEventListener("mousedown", handleOutsidePointer)
+    return () => document.removeEventListener("mousedown", handleOutsidePointer)
+  }, [closeMenu, menuOpen])
+
+  const handleMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    event.stopPropagation()
+    if (event.key === "Escape") {
+      event.preventDefault()
+      closeMenu()
+      return
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
+    event.preventDefault()
+    // The handler is mounted on the same menu node that owns this ref, so a
+    // keyboard event cannot reach it before the ref is attached.
+    const items = Array.from(
+      menuRef.current!.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not(:disabled)")
+    )
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
+    const nextIndex = (currentIndex + 1) % items.length
+    focusMenuItemAt(items, nextIndex)
+  }
 
   return (
     <>
       <Button
+        ref={triggerRef}
+        id={triggerId}
         variant="glass"
         size="sm"
+        disabled={disabled}
         aria-label={t("events:card.aria.actions")}
-        aria-controls={menuAnchor ? menuId : undefined}
-        aria-haspopup="true"
-        aria-expanded={Boolean(menuAnchor)}
-        className="absolute top-3 right-3 z-decor min-h-0! p-2! rounded-full"
+        aria-controls={menuOpen ? menuId : undefined}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        className="absolute top-3 right-3 z-decor min-h-11 min-w-11 p-2! rounded-full"
         onClick={(e) => {
           e.stopPropagation()
-          setMenuAnchor(e.currentTarget as HTMLElement)
+          if (menuAnchor) closeMenu()
+          else setMenuAnchor(e.currentTarget as HTMLElement)
         }}
       >
         <MoreVertIcon size={20} />
       </Button>
-      {menuAnchor && (
+      {menuOpen && (
         <div
+          ref={menuRef}
+          id={menuId}
+          aria-labelledby={triggerId}
           className="absolute right-0 top-12 z-navbar min-w-(--min-w-dropdown) rounded-xl border border-(--glass-border) bg-(--bg-surface) shadow-surface-strong"
           onClick={(e) => e.stopPropagation()}
-          role="presentation"
+          onKeyDown={handleMenuKeyDown}
+          role="menu"
+          tabIndex={-1}
         >
           <div className="py-1">
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text-primary transition-colors hover:bg-(--glass-bg)/(--opacity-heavy)"
+              role="menuitem"
+              className="flex min-h-11 w-full items-center gap-2 px-4 py-2 text-sm text-text-primary transition-colors hover:bg-(--glass-bg)/(--opacity-heavy)"
               onClick={() => {
-                setMenuAnchor(null)
+                closeMenu()
                 onEdit()
               }}
             >
@@ -60,9 +142,10 @@ export function EventAdminActions({
             </button>
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text-primary transition-colors hover:bg-(--glass-bg)/(--opacity-heavy)"
+              role="menuitem"
+              className="flex min-h-11 w-full items-center gap-2 px-4 py-2 text-sm text-text-primary transition-colors hover:bg-(--glass-bg)/(--opacity-heavy)"
               onClick={() => {
-                setMenuAnchor(null)
+                closeMenu()
                 onDelete()
               }}
             >

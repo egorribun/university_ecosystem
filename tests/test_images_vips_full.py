@@ -99,6 +99,17 @@ class TestOptimizeImageVipsWithPyvipsMocked:
             Q=60, effort=4, strip=True
         )
 
+    def test_pixel_budget_validation_forwards_original_bytes(self):
+        """Pixel-budget validation must inspect the caller's original payload."""
+        import app.utils.images_vips as iv
+
+        dimensions = MagicMock(width=800, height=600)
+        self.mock_pyvips.Image.new_from_buffer.return_value = dimensions
+
+        iv.optimize_image_vips(b"raw", max_pixels=500_000)
+
+        self.mock_pyvips.Image.new_from_buffer.assert_called_once_with(b"raw", "")
+
     def test_autorot_is_called(self):
         """autorot() must be called to strip EXIF orientation."""
         import app.utils.images_vips as iv

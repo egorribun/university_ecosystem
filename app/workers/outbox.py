@@ -23,7 +23,7 @@ from sqlalchemy import func, select, update
 
 from app.core.config import settings
 from app.core.database import async_session
-from app.core.events import EventMetadata, event_bus
+from app.core.events import DurableEventDeferred, EventMetadata, event_bus
 from app.models.domain_events import StoredEvent
 
 logger = get_logger(__name__)
@@ -239,6 +239,7 @@ class OutboxWorker:
                     return 0
 
                 span.set_attribute("outbox.events_count", len(events))
+                deferred_count = 0
                 for se in events:
                     _t0 = time.perf_counter()
                     try:
@@ -251,6 +252,11 @@ class OutboxWorker:
                         OUTBOX_EVENTS_PROCESSED.labels(
                             event_type=se.event_type, status="success"
                         ).inc()
+                    except DurableEventDeferred:
+                        # A live external delivery lease is not a failed send.
+                        # Keep the row pending without burning the DLQ budget;
+                        # the normal poll will retry after the lease expires.
+                        deferred_count += 1
                     except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — catch-all for dispatch errors, increments retry counter (reviewed TD-27-04)
                         se.error_count += 1
                         last_error = (
@@ -284,7 +290,9 @@ class OutboxWorker:
                             ).inc()
 
                 await db.commit()
-                return len(events)
+                # Returning below the batch size also makes the worker wait
+                # instead of hot-spinning when a full batch is deferred.
+                return len(events) - deferred_count
 
     async def _move_to_dlq(
         self, db: AsyncSession, se: StoredEvent, last_error: str
@@ -379,8 +387,15 @@ class OutboxWorker:
             event = event_cls(**safe_payload)
 
             # 2. Restore metadata if present
+            # Manually-created StoredEvent rows may have no event_id metadata.
+            # Anchor their domain identity to the persisted row so every retry
+            # reaches idempotent handlers with the same event_id.
+            event.event_id = str(
+                (se.metadata_ or {}).get("event_id")
+                or safe_payload.get("event_id")
+                or se.id
+            )
             if se.metadata_:
-                event.event_id = se.metadata_.get("event_id", event.event_id)
                 event.metadata = EventMetadata(
                     correlation_id=se.metadata_.get("correlation_id"),
                     user_id=se.metadata_.get("user_id"),
@@ -397,8 +412,10 @@ class OutboxWorker:
                 if se.sequence_number is not None:
                     span.set_attribute("outbox.sequence_number", se.sequence_number)
                 span.set_attribute("outbox.aggregate_type", se.aggregate_type or "")
-                await event_bus.publish(event)
+                await event_bus.publish(event, durable=True)
 
+        except DurableEventDeferred:
+            raise
         except Exception as e:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises for caller retry logic (reviewed TD-27-04)
             logger.error("Failed to reconstruct event %s: %s", se.id, e)
             raise

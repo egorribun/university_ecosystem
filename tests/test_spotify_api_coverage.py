@@ -15,6 +15,7 @@ from app.api.spotify import (
     spotify_callback,
 )
 from app.models import SpotifyIntegration, User
+from tests.conftest import call_injected
 
 
 @pytest.fixture
@@ -111,8 +112,12 @@ async def _run_spotify_callback_success(mock_db, mock_request, mock_user):
             200, json={"id": "spotify_user", "display_name": "Spotify User"}
         )
 
-        response = await spotify_callback(
-            mock_request, code="code", state="state", db=mock_db
+        response = await call_injected(
+            spotify_callback,
+            mock_request,
+            code="code",
+            state="state",
+            provides={"AsyncDatabaseSession": mock_db},
         )
 
         assert response.status_code == 302
@@ -146,7 +151,12 @@ async def test_now_playing_success(mock_db, mock_request, mock_user):
             },
         )
 
-        result = await now_playing(mock_request, db=mock_db, user=mock_user)
+        result = await call_injected(
+            now_playing,
+            mock_request,
+            user=mock_user,
+            provides={"AsyncDatabaseSession": mock_db},
+        )
 
         assert result.is_playing is True
         assert result.track_name == "Track Name"
@@ -163,7 +173,12 @@ async def test_list_playlists(mock_db, mock_request, mock_user):
         mock_ensure.return_value = "valid_token"
         mock_get.return_value = Response(200, json={"items": []})
 
-        result = await list_playlists(mock_request, db=mock_db, user=mock_user)
+        result = await call_injected(
+            list_playlists,
+            mock_request,
+            user=mock_user,
+            provides={"AsyncDatabaseSession": mock_db},
+        )
         assert result == {"items": []}
 
 
@@ -193,13 +208,20 @@ async def test_now_playing_rate_limited(mock_db, mock_request, mock_user):
         mock_get.return_value = Response(429, headers={"Retry-After": "10"})
 
         with pytest.raises(HTTPException) as exc:
-            await now_playing(mock_request, db=mock_db, user=mock_user)
+            await call_injected(
+                now_playing,
+                mock_request,
+                user=mock_user,
+                provides={"AsyncDatabaseSession": mock_db},
+            )
         assert exc.value.status_code == 429
 
 
 @pytest.mark.asyncio
 async def test_disconnect_full(mock_db, mock_user):
-    result = await disconnect(mock_db, mock_user)
+    result = await call_injected(
+        disconnect, user=mock_user, provides={"AsyncDatabaseSession": mock_db}
+    )
     assert result == {"ok": True}
     assert mock_user.spotify.is_connected is False
     assert mock_user.spotify.access_token is None

@@ -37,9 +37,6 @@ export function getMobileSheetSafeAreaPadding(): string {
   return "env(safe-area-inset-bottom, 0px)"
 }
 
-/** Public alias retained for consumers that use the CSS contract directly. */
-export const MOBILE_SHEET_SAFE_AREA_PADDING = getMobileSheetSafeAreaPadding()
-
 /** Stable dependency contracts are named so they can be audited independently. */
 export function getSnapPointMemoDeps(): readonly unknown[] {
   return []

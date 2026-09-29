@@ -2,7 +2,8 @@ import { memo, type CSSProperties, type KeyboardEvent } from "react"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
-import { Button, Card } from "@/components/ui"
+import { Button } from "@/components/ui/Button"
+import { Card } from "@/components/ui/Card"
 import { cn } from "@/utils/cn"
 import { useDashboardNews, prefetchDashboardNews } from "@/hooks/useDashboardNews"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -91,5 +92,3 @@ export const NewsCard = memo(function NewsCard({
     </Card>
   )
 })
-
-export default NewsCard

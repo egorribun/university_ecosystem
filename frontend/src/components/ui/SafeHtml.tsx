@@ -20,9 +20,9 @@ export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
     try {
       return sanitize_rich_text(html)
     } catch {
-      // WASM module not yet initialized — fall through to fallback.
-      return null
+      // WASM module not yet initialized — fall through to the fallback below.
     }
+    return null
   }, [html])
 
   if (!sanitized) {

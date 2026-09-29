@@ -25,3 +25,26 @@ describe("isLowPowerDevice", () => {
     vi.unstubAllGlobals()
   })
 })
+
+describe("isLowPowerDevice thresholds", () => {
+  it("treats exactly 4 GB of memory or 4 CPU cores as constrained", () => {
+    expect(isLowPowerDevice({ deviceMemory: 4, hardwareConcurrency: 8 })).toBe(true)
+    expect(isLowPowerDevice({ deviceMemory: 8, hardwareConcurrency: 4 })).toBe(true)
+  })
+})
+
+describe("isLowPowerDevice with non-numeric hints", () => {
+  it("ignores null capability hints instead of treating them as zero", () => {
+    const nullHints = { deviceMemory: null, hardwareConcurrency: null } as unknown as Parameters<
+      typeof isLowPowerDevice
+    >[0]
+    expect(isLowPowerDevice(nullHints)).toBe(false)
+  })
+
+  it("ignores a null memory hint and still evaluates the CPU hint", () => {
+    const profile = { deviceMemory: null, hardwareConcurrency: 16 } as unknown as Parameters<
+      typeof isLowPowerDevice
+    >[0]
+    expect(isLowPowerDevice(profile)).toBe(false)
+  })
+})

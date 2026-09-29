@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import api, { SKIP_UNAUTHORIZED_HEADER } from "@/api/client"
@@ -7,7 +7,7 @@ import type { NowPlaying } from "@/types/spotify"
 export const nowPlayingQueryKey = ["spotify", "now-playing"] as const
 export const SPOTIFY_REAUTH_EVENT = "spotify:reauth-required"
 
-const isTestEnv = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
+const isTestEnv = import.meta.env.MODE === "test"
 
 const STORAGE_KEY = "spotify:now-playing:last"
 
@@ -87,18 +87,17 @@ const normalizeNowPlaying = (input: RawNowPlaying): NowPlaying | null => {
 }
 
 const readCachedNowPlaying = (): NowPlaying | null | undefined => {
-  if (typeof window === "undefined") return undefined
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return undefined
-    return normalizeNowPlaying(JSON.parse(raw) as RawNowPlaying)
+    if (raw) return normalizeNowPlaying(JSON.parse(raw) as RawNowPlaying)
   } catch {
-    return undefined
+    // No browser storage (server rendering) or a malformed entry.
   }
+  return undefined
 }
 
 const persistNowPlaying = (value: NowPlaying | null) => {
-  if (typeof window === "undefined") return
+  // Without browser storage (server rendering) there is nothing to persist.
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
   } catch {
@@ -117,13 +116,13 @@ const resolvePlaceholderData = (
 export const fetchNowPlaying = async () => {
   try {
     const res = await api.get<RawNowPlaying>("/spotify/now-playing", {
-      validateStatus: (status) => status === 204 || (status >= 200 && status < 300),
+      validateStatus: (status) => status >= 200 && status < 300,
       headers: { [SKIP_UNAUTHORIZED_HEADER]: "1" },
     })
 
     clearRateLimit()
 
-    if (res.status === 204) return null
+    // A 204 has an empty body, which normalizes to "nothing playing".
     return normalizeNowPlaying(res.data)
   } catch (error) {
     if (isAxiosError(error)) {
@@ -137,7 +136,8 @@ export const fetchNowPlaying = async () => {
       if (error.response?.status === 429) {
         const header = error.response.headers?.["retry-after"]
         const raw = Array.isArray(header) ? header[0] : header
-        const parsed = raw != null ? Number.parseFloat(String(raw)) : NaN
+        // A missing header parses as NaN and uses the fallback below.
+        const parsed = Number.parseFloat(String(raw))
         const waitMs =
           Number.isFinite(parsed) && parsed > 0 ? parsed * 1000 : RATE_LIMIT_FALLBACK_MS
         scheduleRateLimit(waitMs + RATE_LIMIT_BUFFER_MS)
@@ -169,16 +169,15 @@ const computeRefetchInterval = ({
 }: RefetchIntervalOptions): number | false => {
   if (!enabled || isTestEnvironment) return false
   if (visibilityState === "hidden") return false
-  const interval = computeInterval(data)
-  const rateLimitWait = rateLimitDelay()
-  if (rateLimitWait > 0) {
-    return Math.max(interval, rateLimitWait)
-  }
-  return interval
+  return Math.max(computeInterval(data), rateLimitDelay())
 }
 
+/** Retry a failed poll once, except when the server asked us to back off. */
+const shouldRetryNowPlaying = (failureCount: number, error: Error): boolean =>
+  !(isAxiosError(error) && error.response?.status === 429) && failureCount < 1
+
 export const useNowPlaying = (enabled: boolean) => {
-  const cached = useMemo(() => readCachedNowPlaying(), [])
+  const [cached] = useState(readCachedNowPlaying)
 
   const query = useQuery<NowPlaying | null, Error, NowPlaying | null, typeof nowPlayingQueryKey>({
     queryKey: nowPlayingQueryKey,
@@ -188,27 +187,26 @@ export const useNowPlaying = (enabled: boolean) => {
     placeholderData: (previous) => resolvePlaceholderData(previous, cached),
     staleTime: 60_000,
     gcTime: 5 * 60_000,
+    // Spotify requires the network; the application's offlineFirst default must not apply.
     networkMode: "online",
-    retry: (failureCount, error) => {
-      if (isAxiosError(error) && error.response?.status === 429) {
-        return false
-      }
-      return failureCount < 1
-    },
+    retry: shouldRetryNowPlaying,
     refetchOnWindowFocus: false,
+    // A hidden document already stops polling inside computeRefetchInterval.
     refetchInterval: ({ state }) => computeRefetchInterval({ enabled, data: state.data ?? null }),
-    refetchIntervalInBackground: false,
   })
 
-  const { data, isSuccess, refetch } = query
+  const { data, refetch } = query
 
+  // The placeholder makes the query successful from the first render; a
+  // failed poll keeps the last data, so persisting on every data change
+  // stores exactly what was last shown.
   useEffect(() => {
-    if (!isSuccess) return
     persistNowPlaying(data ?? null)
-  }, [data, isSuccess])
+  }, [data])
 
   useEffect(() => {
-    if (!enabled || typeof document === "undefined") return
+    // Effects never run during server rendering, so the document exists here.
+    if (!enabled) return
     const listener = () => {
       if (document.visibilityState === "visible") {
         void refetch()
@@ -229,4 +227,5 @@ export const __testing = {
   computeRefetchInterval,
   persistNowPlaying,
   resolvePlaceholderData,
+  shouldRetryNowPlaying,
 }

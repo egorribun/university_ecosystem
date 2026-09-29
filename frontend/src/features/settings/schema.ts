@@ -67,5 +67,3 @@ export const SETTINGS_TAB = {
   SESSIONS: 4,
   INTEGRATIONS: 5,
 } as const
-
-export type SettingsTabIndex = (typeof SETTINGS_TAB)[keyof typeof SETTINGS_TAB]
