@@ -362,8 +362,8 @@ test("resolves repository evidence when the root has a trailing separator", () =
   const root = `${path.join(os.tmpdir(), "stryker-evidence-repository")}${path.sep}`
 
   assert.equal(
-    resolveEvidencePath("frontend/.depcheckrc", root),
-    path.join(root, "frontend", ".depcheckrc")
+    resolveEvidencePath("frontend/knip.json", root),
+    path.join(root, "frontend", "knip.json")
   )
 })
 

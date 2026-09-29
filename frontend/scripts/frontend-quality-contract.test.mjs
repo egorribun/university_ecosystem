@@ -252,15 +252,11 @@ test("Knip analyzes frontend tests as export consumers", async () => {
     "Knip configuration hints must fail the quality gate instead of remaining advisory"
   )
 
-  for (const pattern of [
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
-    "src/**/*.spec.ts",
-    "src/**/*.spec.tsx",
-  ]) {
+  // Only patterns that match real files: Knip reports unmatched entries as
+  // configuration hints, which this gate treats as errors.
+  for (const pattern of ["src/**/*.test.ts", "src/**/*.test.tsx"]) {
     assert.ok(knipConfig.entry.includes(pattern), `Missing Knip test entry: ${pattern}`)
   }
-  assert.ok(knipConfig.entry.includes("src/setupTests.ts"))
 })
 
 test("dependency install scripts use a reviewed fail-closed allow-list", async () => {
@@ -268,7 +264,6 @@ test("dependency install scripts use a reviewed fail-closed allow-list", async (
   const npmConfig = await readFile(new URL(".npmrc", frontendRoot), "utf8")
 
   assert.deepEqual(packageJson.allowScripts, {
-    "@sentry/cli@2.58.6": true,
     "esbuild@0.28.1": true,
     "core-js": false,
     "fsevents@2.3.2": false,

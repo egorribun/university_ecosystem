@@ -253,9 +253,16 @@ uv run ruff format app/     # Format Python codebase
 cd frontend
 npm ci              # Reproduce the dependency graph from package-lock.json
 npm run dev        # Start Vite 8 dev server
+npm run lint:knip  # Fail-closed unused files, exports, and dependencies check
 npx tsc --noEmit   # Typecheck TypeScript
 npm run test       # Run Vitest test suite
 ```
+
+On Windows, use `npm run lhci` for the full Lighthouse CI collect-and-assert
+gate. `npm run lhci:windows` is a measurement-only fallback and does not enforce
+LHCI assertions. Dependency installation skips Unix-specific LHCI symlink setup
+on Windows; both Windows runners resolve Chromium from Playwright and do not
+require symbolic-link privileges.
 
 ### **Go (Microservices)**
 ```bash

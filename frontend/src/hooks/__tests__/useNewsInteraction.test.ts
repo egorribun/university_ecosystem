@@ -18,8 +18,7 @@
  * `serviceWorker`/`SyncManager`), so the IDB queue write succeeds silently.
  */
 import { act, renderHook, waitFor } from "@testing-library/react"
-import { notifyManager } from "@tanstack/query-core"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, notifyManager } from "@tanstack/react-query"
 import { IDBFactory } from "fake-indexeddb"
 import { http, HttpResponse } from "msw"
 import { createElement, type PropsWithChildren } from "react"
