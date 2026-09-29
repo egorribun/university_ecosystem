@@ -21,6 +21,8 @@ from fastapi import HTTPException
 
 from app.api.ws.serializers import serialize_message
 from app.core.config import settings
+from app.core.events import MessageSent
+from app.core.localization import translate
 from app.models.chat import Attachment
 from app.schemas.dtos.chat import AttachmentDTO, ChatParticipantDTO, MessageDTO
 from app.services.chat.attachment_service import (
@@ -283,6 +285,63 @@ class TestForwardMessages:
         assert responses[0].forwarded_from_name == "Alice"
 
     @pytest.mark.asyncio
+    async def test_forward_persists_copy_metadata_event_and_timestamp(self) -> None:
+        uow = _mock_uow()
+        user = _mock_user()
+        dest = _mock_chat()
+        source_chat_id = uuid.uuid4()
+        src_attachment = _attachment_dto("https://cdn.example.com/source.png")
+        src = _message_dto(content="c" * 60, attachments=[src_attachment])
+        uow.chats.get_by_id = AsyncMock(return_value=dest)
+        uow.chats.check_participant = AsyncMock(return_value=True)
+        uow.chats.message_exists_in_chat = AsyncMock(return_value=True)
+        uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
+        uow.chats.add = MagicMock()
+        uow.chats.update_timestamp_by_id = AsyncMock()
+        uow.chats.get_user_display_names = AsyncMock(return_value={})
+        uow.chats.get_last_messages = AsyncMock(
+            side_effect=_reload_side_effect({src.id: src})
+        )
+        attachment_service = MagicMock()
+        attachment_service.copy_for_forward = AsyncMock(
+            return_value={
+                "url": "https://cdn.example.com/copy.pdf",
+                "file_type": "document",
+                "filename": "copy.pdf",
+                "size": 4321,
+            }
+        )
+
+        await ChatMessageDispatcher(
+            uow, attachment_service, AsyncMock()
+        ).forward_messages(dest.id, user, source_chat_id, [src.id], locale="ru")
+
+        attachment_service.copy_for_forward.assert_awaited_once_with(
+            src_attachment, dest.id, locale="ru"
+        )
+        created = uow.chats.create_message.await_args.args[0]
+        stored = uow.chats.add.call_args.args[0]
+        assert stored.message is created
+        assert (stored.url, stored.file_type, stored.filename, stored.size) == (
+            "https://cdn.example.com/copy.pdf",
+            "document",
+            "copy.pdf",
+            4321,
+        )
+        (event,) = created._pending_domain_events
+        assert isinstance(event, MessageSent)
+        assert event.message_id == created.id
+        assert event.chat_id == dest.id
+        assert event.sender_id == user.id
+        assert event.content_preview == "c" * 50
+        uow.chats.update_timestamp_by_id.assert_awaited_once()
+        (timestamp_chat_id, bumped_at) = (
+            uow.chats.update_timestamp_by_id.await_args.args
+        )
+        assert timestamp_chat_id == dest.id
+        assert isinstance(bumped_at, datetime)
+
+    @pytest.mark.asyncio
     async def test_source_cleanup_does_not_delete_forwarded_blob(
         self, tmp_path: Path
     ) -> None:
@@ -526,9 +585,82 @@ class TestForwardMessages:
         uow.chats.create_message.assert_not_awaited()
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("failing_step", ["rollback", "cleanup"])
+    @pytest.mark.parametrize("locale", ["en", "ru"])
+    async def test_forward_aggregate_payload_error_is_localized(
+        self, locale: str
+    ) -> None:
+        uow = _mock_uow()
+        attachments = [_attachment_dto() for _ in range(3)]
+        for attachment in attachments:
+            attachment.size = settings.chat_attachment_max_size_bytes
+        src = _message_dto(attachments=attachments)
+        uow.chats.get_by_id = AsyncMock(return_value=_mock_chat())
+        uow.chats.check_participant = AsyncMock(return_value=True)
+        uow.chats.message_exists_in_chat = AsyncMock(return_value=True)
+        uow.chats.get_last_messages = AsyncMock(return_value={src.id: src})
+        uow.chats.get_user_display_names = AsyncMock(return_value={})
+
+        with pytest.raises(HTTPException) as error:
+            await _dispatcher(uow).forward_messages(
+                uuid.uuid4(), _mock_user(), uuid.uuid4(), [src.id], locale=locale
+            )
+
+        assert error.value.detail == translate(
+            "errors.files.total_size_exceeded", locale=locale
+        )
+        assert error.value.detail != "errors.files.total_size_exceeded"
+
+    @pytest.mark.asyncio
+    async def test_forward_accepts_payload_exactly_at_the_aggregate_limit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        uow = _mock_uow()
+        dest = _mock_chat()
+        attachments = [_attachment_dto() for _ in range(2)]
+        for attachment in attachments:
+            attachment.size = 100
+        src = _message_dto(attachments=attachments)
+        monkeypatch.setattr(settings, "chat_attachment_max_total_bytes", 200)
+        uow.chats.get_by_id = AsyncMock(return_value=dest)
+        uow.chats.check_participant = AsyncMock(return_value=True)
+        uow.chats.message_exists_in_chat = AsyncMock(return_value=True)
+        uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
+        uow.chats.add = MagicMock()
+        uow.chats.update_timestamp_by_id = AsyncMock()
+        uow.chats.get_user_display_names = AsyncMock(return_value={})
+        uow.chats.get_last_messages = AsyncMock(
+            side_effect=_reload_side_effect({src.id: src})
+        )
+        attachment_service = MagicMock()
+        attachment_service.copy_for_forward = AsyncMock(
+            return_value={
+                "url": "https://cdn.example.com/copy.png",
+                "file_type": "image",
+                "filename": "a.png",
+                "size": 100,
+            }
+        )
+
+        responses = await ChatMessageDispatcher(
+            uow, attachment_service, AsyncMock()
+        ).forward_messages(dest.id, _mock_user(), uuid.uuid4(), [src.id], locale="en")
+
+        assert len(responses) == 1
+        assert attachment_service.copy_for_forward.await_count == 2
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("failing_step", "logged_event"),
+        [
+            ("rollback", "chat_forward_rollback_failed"),
+            ("cleanup", "chat_forward_copy_cleanup_failed"),
+        ],
+    )
     async def test_forward_preserves_original_failure_during_best_effort_cleanup(
-        self, failing_step: str, caplog: pytest.LogCaptureFixture
+        self,
+        failing_step: str,
+        logged_event: str,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         uow = _mock_uow()
         user = _mock_user()
@@ -558,11 +690,15 @@ class TestForwardMessages:
                 "cleanup secret"
             )
 
-        with pytest.raises(RuntimeError, match="write failed"):
+        with (
+            patch("app.services.chat.command_service.logger") as log,
+            pytest.raises(RuntimeError, match="write failed"),
+        ):
             await ChatMessageDispatcher(
                 uow, attachment_service, AsyncMock()
             ).forward_messages(dest.id, user, source_chat_id, [src.id], locale="en")
 
+        log.warning.assert_called_once_with(logged_event)
         uow.rollback.assert_awaited_once()
         attachment_service.cleanup_files.assert_awaited_once_with(
             ["https://cdn.example.com/copied.png"]

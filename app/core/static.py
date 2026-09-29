@@ -26,11 +26,13 @@ def is_private_static_path(path: str) -> bool:
     """Return whether *path* addresses an attachment-only static prefix."""
 
     normalized = path.lstrip("/").replace("\\", "/")
-    while True:
-        previous = normalized
-        normalized = unquote(normalized)
-        if normalized == previous:
+    # Every decoding pass that changes the value removes at least two
+    # characters, so ``len(normalized)`` passes always reach the fixed point.
+    for _ in range(len(normalized)):
+        decoded = unquote(normalized)
+        if decoded == normalized:
             break
+        normalized = decoded
     # ``StaticFiles.lookup_path`` resolves dot-segments with
     # ``os.path.realpath`` before serving a file.  Normalize the same URL
     # shape here so an attachment prefix cannot be hidden behind a harmless

@@ -185,11 +185,15 @@ def test_schedule_deletion_consumes_only_schema_metadata(
 
 @pytest.mark.parametrize("include_schema", [False, True])
 @pytest.mark.parametrize("populated", [False, True])
-def test_dead_letter_retry_consumes_only_schema_metadata(
-    include_schema: bool, populated: bool
+@pytest.mark.parametrize(
+    "event_name", ["NotificationDeadLetterRetried", "NotificationDeadLetterPurged"]
+)
+def test_dead_letter_events_consume_only_schema_metadata(
+    event_name: str, include_schema: bool, populated: bool
 ) -> None:
-    from app.core.events import NotificationDeadLetterRetried
+    from app.core import events
 
+    event_class = getattr(events, event_name)
     payload: dict[str, Any] = {"unexpected": {"retained": [1, 2]}}
     if populated:
         payload["batch_count"] = "3"
@@ -197,7 +201,7 @@ def test_dead_letter_retry_consumes_only_schema_metadata(
     if include_schema:
         payload["_schema_version"] = 2
 
-    event = NotificationDeadLetterRetried.from_dict(payload)
+    event = event_class.from_dict(payload)
 
     assert payload == expected_remaining
     assert event.batch_count == (3 if populated else 0)

@@ -560,7 +560,7 @@ class ChatMessageDispatcher:
                 # W205 SW-A): central capture tracks the emitter on session.info, so the
                 # outbox lands regardless of later autoflush ordering. sender = the
                 # FORWARDER, chat = the DEST — a forward is a normal new message.
-                cast(EventEmitterMixin, message).record_event(
+                message.record_event(
                     MessageSent(
                         message_id=message.id,
                         chat_id=message.chat_id,

@@ -222,6 +222,28 @@ async def test_durable_cleanup_rejects_an_unmanaged_url_with_a_fixed_message() -
 
 
 @pytest.mark.asyncio
+async def test_durable_cleanup_uses_the_real_managed_url_check(tmp_path: Path) -> None:
+    backend = StaticFSStorage(tmp_path, base_url="https://cdn.example.test/static")
+    url = await backend.save_file("chat_uploads/file.pdf", b"data")
+    foreign = "https://other.example.test/static/chat_uploads/file.pdf"
+
+    with patch.object(
+        attachment_service.file_utils, "_get_storage_backend", return_value=backend
+    ):
+        await ChatAttachmentService().cleanup_files([url], durable=True)
+        assert not await backend.exists(url)
+
+        with (
+            patch.object(backend, "delete_file", new=AsyncMock()) as delete,
+            pytest.raises(AttachmentCleanupError) as error,
+        ):
+            await ChatAttachmentService().cleanup_files([foreign], durable=True)
+
+    assert str(error.value) == "Attachment cleanup failed"
+    delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_durable_cleanup_confirms_absence_after_an_ambiguous_delete_error() -> (
     None
 ):

@@ -74,9 +74,11 @@ class ChatAttachmentService:
         if durable:
             backend = file_utils._get_storage_backend()
 
+            # The batch below replaces any per-object failure with one fixed
+            # message, so the individual errors deliberately carry none.
             async def delete_verified(url: str) -> None:
                 if not _is_managed_url(backend, url):
-                    raise AttachmentCleanupError(_CLEANUP_FAILED)
+                    raise AttachmentCleanupError
                 try:
                     await backend.delete_file(url)
                 except Exception:
@@ -86,15 +88,15 @@ class ChatAttachmentService:
                     # the outer batch converts any probe failure to a safe NAK.
                     if not await backend.exists(url):
                         return
-                    raise AttachmentCleanupError(_CLEANUP_FAILED) from None
+                    raise AttachmentCleanupError from None
                 if await backend.exists(url):
-                    raise AttachmentCleanupError(_CLEANUP_FAILED)
+                    raise AttachmentCleanupError
 
             delete_one = delete_verified
         else:
             delete_one = delete_static_file
 
-        has_failures = False
+        failures: list[BaseException] = []
         # Each S3 delete/HEAD creates an async client. A legacy bulk history
         # clear can contain thousands of URLs, so bound both task allocation
         # and open connections without losing best-effort progress in a batch.
@@ -107,9 +109,12 @@ class ChatAttachmentService:
                 for outcome in outcomes:
                     if isinstance(outcome, asyncio.CancelledError):
                         raise outcome
-                if any(isinstance(outcome, BaseException) for outcome in outcomes):
-                    has_failures = True
-        if has_failures:
+                failures.extend(
+                    outcome
+                    for outcome in outcomes
+                    if isinstance(outcome, BaseException)
+                )
+        if failures:
             raise AttachmentCleanupError(_CLEANUP_FAILED) from None
 
     async def copy_for_forward(

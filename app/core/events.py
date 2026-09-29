@@ -364,7 +364,8 @@ class NotificationDeadLetterPurged(DomainEvent):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> NotificationDeadLetterPurged:
-        data.pop("_schema_version", 1)
+        with suppress(KeyError):
+            del data["_schema_version"]
         return cls(batch_count=int(data.get("batch_count", 0)))
 
 

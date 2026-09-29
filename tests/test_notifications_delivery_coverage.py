@@ -463,7 +463,12 @@ async def test_outbox_event_created_on_delivery(
     events = (await db_session.execute(select(StoredEvent))).scalars().all()
     assert len(events) == 1
     assert events[0].event_type == "notification.delivery_requested"
-    assert "notification_ids" in events[0].payload
+    notification = (await db_session.execute(select(Notification))).scalar_one()
+    assert events[0].payload == {
+        "_schema_version": 1,
+        "notification_ids": [str(notification.id)],
+        "channel": "push",
+    }
 
 
 @pytest.mark.asyncio

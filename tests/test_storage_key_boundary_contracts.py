@@ -197,6 +197,19 @@ async def test_failed_s3_deletes_log_a_stable_event() -> None:
 
 
 @pytest.mark.asyncio
+async def test_failed_static_deletes_log_a_stable_event(tmp_path: Path) -> None:
+    (tmp_path / "a.png").write_bytes(b"x")
+
+    with (
+        patch.object(storage, "logger") as logger,
+        patch.object(Path, "unlink", side_effect=PermissionError("denied")),
+    ):
+        await StaticFSStorage(base_dir=tmp_path).delete_file("/a.png")
+
+    logger.warning.assert_called_once_with("static_delete_failed")
+
+
+@pytest.mark.asyncio
 async def test_bucket_probe_is_bounded_by_the_read_timeout() -> None:
     client = MagicMock()
     client.head_bucket = AsyncMock()

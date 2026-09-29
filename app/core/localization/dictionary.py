@@ -367,6 +367,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Размер файла превышает допустимый предел",
         "en": "Uploaded file exceeds the allowed size",
     },
+    "errors.files.total_size_exceeded": {
+        "ru": "Суммарный размер вложений превышает допустимый предел",
+        "en": "Total size of attachments exceeds the allowed limit",
+    },
     "errors.files.too_many_attachments": {
         "ru": "Слишком много вложений в сообщении",
         "en": "Too many attachments in the message",
