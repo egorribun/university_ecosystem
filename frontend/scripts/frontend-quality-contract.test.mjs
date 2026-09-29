@@ -1,15 +1,23 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
+import { createRequire } from "node:module"
 import test from "node:test"
 
 import strykerConfig, { mutationRunnerReuse, mutationThresholds } from "../stryker.config.mjs"
 
 const frontendRoot = new URL("../", import.meta.url)
 const repositoryRoot = new URL("../../", import.meta.url)
+const require = createRequire(import.meta.url)
 
 async function readJson(url) {
   return JSON.parse(await readFile(url, "utf8"))
 }
+
+test("frontend is explicitly a private application package", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+
+  assert.equal(packageJson.private, true)
+})
 
 test("the production-only Vitest command uses the supported single-worker flag", async () => {
   const packageJson = await readJson(new URL("package.json", frontendRoot))
@@ -222,6 +230,37 @@ test("Lighthouse configuration keeps SEO route-aware and invokes the privacy pol
   assert.match(runner, /redirect: "error"/u)
   assert.match(policyConfig, /protectedRoutePrefixes/u)
   assert.match(policyConfig, /defaultLhciPaths/u)
+})
+
+test("LHCI binary setup skips Unix symlink operations on Windows only", async () => {
+  const { runSetupForPlatform } = require("./setup-lhci-binaries.cjs")
+  const invoked = []
+
+  await runSetupForPlatform("win32", async () => invoked.push("win32"))
+  assert.deepEqual(invoked, [])
+
+  await runSetupForPlatform("linux", async () => invoked.push("linux"))
+  assert.deepEqual(invoked, ["linux"])
+})
+
+test("Knip analyzes frontend tests as export consumers", async () => {
+  const knipConfig = await readJson(new URL("knip.json", frontendRoot))
+
+  assert.equal(
+    knipConfig.treatConfigHintsAsErrors,
+    true,
+    "Knip configuration hints must fail the quality gate instead of remaining advisory"
+  )
+
+  for (const pattern of [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx",
+  ]) {
+    assert.ok(knipConfig.entry.includes(pattern), `Missing Knip test entry: ${pattern}`)
+  }
+  assert.ok(knipConfig.entry.includes("src/setupTests.ts"))
 })
 
 test("dependency install scripts use a reviewed fail-closed allow-list", async () => {

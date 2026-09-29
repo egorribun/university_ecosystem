@@ -128,18 +128,32 @@ async function ensureWrapperExecutable() {
   }
 }
 
-async function main() {
-  await ensureWrapperExecutable()
-  await fs.mkdir(binDir, { recursive: true })
-  await Promise.all(localCandidates.map(ensureLocalSymlink))
-  await Promise.all(globalCandidates.map(ensureGlobalSymlink))
-  await ensureConfigSymlink(rootConfig, lhciUtilsDir)
-  await ensureConfigSymlink(workspaceConfig, lhciNamespaceDir)
+async function runSetupForPlatform(platform, setupUnixBinaries) {
+  if (platform === "win32") {
+    return
+  }
+
+  await setupUnixBinaries()
 }
 
-main().catch((error) => {
-  const message =
-    error && typeof error === "object" && "message" in error ? error.message : String(error)
-  console.error("Failed to set up Lighthouse Chromium wrapper binaries:", message)
-  process.exit(1)
-})
+async function main() {
+  await runSetupForPlatform(process.platform, async () => {
+    await ensureWrapperExecutable()
+    await fs.mkdir(binDir, { recursive: true })
+    await Promise.all(localCandidates.map(ensureLocalSymlink))
+    await Promise.all(globalCandidates.map(ensureGlobalSymlink))
+    await ensureConfigSymlink(rootConfig, lhciUtilsDir)
+    await ensureConfigSymlink(workspaceConfig, lhciNamespaceDir)
+  })
+}
+
+module.exports = { runSetupForPlatform }
+
+if (require.main === module) {
+  main().catch((error) => {
+    const message =
+      error && typeof error === "object" && "message" in error ? error.message : String(error)
+    console.error("Failed to set up Lighthouse Chromium wrapper binaries:", message)
+    process.exit(1)
+  })
+}
