@@ -176,7 +176,11 @@ def test_guess_mime_svg():
 # ===========================================================================
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.image_proxy import _cache_encode, get_transformed_image
+from app.services.image_proxy import (
+    _cache_decode,
+    _cache_encode,
+    get_transformed_image,
+)
 from app.services.storage import StorageBackend
 from app.utils.images import ImagePixelLimitError
 
@@ -184,7 +188,7 @@ from app.utils.images import ImagePixelLimitError
 @pytest.mark.anyio
 async def test_get_transformed_image_cache_hit():
     mock_redis = AsyncMock()
-    # Cache payload encoded via msgspec or base64 json
+    # Cache payload in the JSON + base64 format the service writes
     cached_payload = _cache_encode(b"cached-webp-bytes", "image/webp")
     mock_redis.get.return_value = cached_payload
 
@@ -255,7 +259,8 @@ async def test_get_transformed_image_path_traversal():
 
 
 # Additional missing unit tests added for 100% coverage
-import sys
+import base64
+import json
 
 
 @pytest.mark.anyio
@@ -566,27 +571,13 @@ async def test_get_transformed_image_original_resize_no_format():
             assert mime == "image/jpeg"
 
 
-def test_cache_serialization_fallback():
-    # If msgspec is missing, JSON fallback should be used.
-    # Let's import the fallback implementations directly by patching msgspec.
-    with patch.dict(sys.modules, {"msgspec": None}):
-        # Reloading the module or executing the fallback code block manually
-        # since it's already imported. We can just test the fallback encoders directly
-        # or mock msgspec to not be available and run a simple test.
-        # Let's re-run the module logic for json/base64 fallback:
-        import base64
-        import json
+def test_cache_payload_is_json_and_round_trips_binary_bytes():
+    raw = bytes(range(256))
 
-        def _fallback_cache_encode(data: bytes, mime: str) -> bytes:
-            return json.dumps(
-                {"d": base64.b64encode(data).decode(), "m": mime}
-            ).encode()
+    encoded = _cache_encode(raw, "image/png")
 
-        def _fallback_cache_decode(payload: bytes) -> tuple[bytes, str]:
-            obj = json.loads(payload)
-            return base64.b64decode(obj["d"]), str(obj["m"])
-
-        encoded = _fallback_cache_encode(b"test-data", "image/png")
-        decoded_data, decoded_mime = _fallback_cache_decode(encoded)
-        assert decoded_data == b"test-data"
-        assert decoded_mime == "image/png"
+    assert json.loads(encoded) == {
+        "d": base64.b64encode(raw).decode(),
+        "m": "image/png",
+    }
+    assert _cache_decode(encoded) == (raw, "image/png")

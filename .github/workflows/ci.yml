@@ -657,6 +657,11 @@ jobs:
           uv run python scripts/check_mypy_budget.py
           uv run python scripts/check_mypy_overrides_budget.py
 
+      # Declared runtime dependencies must match what app/ imports; every
+      # exception is justified in pyproject.toml [tool.deptry].
+      - name: Check runtime dependency hygiene
+        run: uv run deptry app
+
   go-tests:
     name: Go Tests (${{ matrix.service }})
     strategy:

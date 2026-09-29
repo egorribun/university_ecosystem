@@ -1,41 +1,16 @@
 import asyncio
+import base64
 import hashlib
+import json
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Literal
 from urllib.parse import unquote
 
-from app.core.logging import get_logger
-
-# msgspec is used for safe binary serialization of Redis cache payloads.
-# Unlike pickle, msgspec cannot execute arbitrary code on deserialization —
-# a compromised Redis cannot achieve RCE. (RZ-1: audit 2026-02-26)
-try:
-    import msgspec.msgpack as _msgpack
-
-    def _cache_encode(data: bytes, mime: str) -> bytes:
-        return bytes(_msgpack.encode({"d": data, "m": mime}))
-
-    def _cache_decode(payload: bytes) -> tuple[bytes, str]:
-        obj = _msgpack.decode(payload)
-        return bytes(obj["d"]), str(obj["m"])
-
-except ImportError:
-    # json + base64 as a safe fallback (no pickle in any code path)
-    import base64
-    import json
-
-    def _cache_encode(data: bytes, mime: str) -> bytes:
-        return json.dumps({"d": base64.b64encode(data).decode(), "m": mime}).encode()
-
-    def _cache_decode(payload: bytes) -> tuple[bytes, str]:
-        obj = json.loads(payload)
-        return base64.b64decode(obj["d"]), str(obj["m"])
-
-
 from PIL import Image
 
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.services.storage import S3Storage, StorageBackend
 from app.utils.images import (
     ImagePixelLimitError,
@@ -49,6 +24,19 @@ except ImportError:
     pass
 
 logger = get_logger(__name__)
+
+
+# Redis cache payloads are JSON with base64 image bytes. Unlike pickle, JSON
+# cannot execute code on deserialization, so a compromised Redis cannot
+# achieve RCE. (RZ-1: audit 2026-02-26)
+def _cache_encode(data: bytes, mime: str) -> bytes:
+    return json.dumps({"d": base64.b64encode(data).decode(), "m": mime}).encode()
+
+
+def _cache_decode(payload: bytes) -> tuple[bytes, str]:
+    obj = json.loads(payload)
+    return base64.b64decode(obj["d"]), str(obj["m"])
+
 
 # Bound retained transformed bytes to one day. User media is revalidated on
 # every cache hit, but expired entries should not linger in Redis for a week.
@@ -117,7 +105,7 @@ async def get_transformed_image(
                 except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
                     logger.warning("Redis stale image eviction failed: %s", exc)
                 raise ValueError(f"Could not load image: {path}")
-            # Safe deserialization via msgspec — no code execution risk.
+            # Safe JSON deserialization — no code execution risk.
             data, mime = _cache_decode(cached_payload)
             _validate_image_payload(data, max_pixels=_configured_image_max_pixels())
             return data, mime

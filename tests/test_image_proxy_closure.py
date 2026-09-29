@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import runpy
 import sys
-import types
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -279,26 +278,14 @@ def test_process_image_webp_uses_quality_and_method_contract():
     assert mime == "image/webp"
 
 
-def test_image_proxy_cache_and_avif_import_branches():
-    msgspec_package = types.ModuleType("msgspec")
-    msgpack_module = types.ModuleType("msgspec.msgpack")
-    msgpack_module.encode = lambda _payload: b"encoded"
-    msgpack_module.decode = lambda _payload: {"d": b"decoded", "m": "image/png"}
-    msgspec_package.__path__ = []
-    msgspec_package.msgpack = msgpack_module
+def test_image_proxy_imports_without_the_avif_plugin():
     module_path = Path(__file__).parents[1] / "app" / "services" / "image_proxy.py"
 
-    with patch.dict(
-        sys.modules,
-        {
-            "msgspec": msgspec_package,
-            "msgspec.msgpack": msgpack_module,
-            "pillow_avif": None,
-        },
-    ):
+    with patch.dict(sys.modules, {"pillow_avif": None}):
         namespace = runpy.run_path(
             str(module_path), run_name="image_proxy_branch_probe"
         )
 
-    assert namespace["_cache_encode"](b"data", "image/png") == b"encoded"
-    assert namespace["_cache_decode"](b"encoded") == (b"decoded", "image/png")
+    assert namespace["_cache_decode"](
+        namespace["_cache_encode"](b"data", "image/png")
+    ) == (b"data", "image/png")
