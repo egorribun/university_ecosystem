@@ -30,7 +30,7 @@ require (
 	go.temporal.io/sdk v1.49.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/image v0.46.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.83.2
 )
 
 require (
