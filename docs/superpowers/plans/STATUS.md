@@ -53,11 +53,16 @@
   password dictionary 591.17 KiB gzip. Три tracked Windows WASM/provenance outputs,
   изменённые сборкой, восстановлены к исходному чистому состоянию; canonical
   Linux parity этим прогоном не подтверждена.
-- Архивный контент проверен только предварительно: перенос не завершён. Новые
-  критерии W208–W211 добавлены в мастер-план; `AUDIT_WAVE210.md` и
-  `AUDIT_WAVE211.md` ещё нужно сверить с ТЗ и индексировать/классифицировать.
-  Известны 12 historical broken links в audit archive; credential triage остаётся
-  открытым, поэтому архивы и rescue bundle не удалять/распространять.
+- W208–W211 сверены с ТЗ и текущим кодом: live-группы, reply, forwarding,
+  персональный unread и group-notification context включены в Block 4; прежние
+  live-результаты не засчитываются для текущего SHA. «Seen by N» уже реализован,
+  но не входит в MVP gate; автоудаление группы ниже трёх участников и отдельные
+  roster frames тоже не добавлять. W210/W211 перенести как rationale и считать
+  историческими без текущей роли; live API/WS доказательства остаются открытыми.
+- В audit archive известны 12 исторических broken links. Автоматический secrets
+  scan дал 0 находок, но ручная проверка выявила потенциально операционные
+  исторические credentials с неизвестным статусом; архивы и rescue bundle не
+  удалять/распространять до решения по credential triage.
 - Независимые reviews не нашли actionable-дефектов в vector и текущих Go/backend
   изменениях. Проверены SET EX/SETEX, Redis transport exceptions, legacy и
   uninspectable clients, WS Hub locking/auth/cache invalidation и Gateway POST
