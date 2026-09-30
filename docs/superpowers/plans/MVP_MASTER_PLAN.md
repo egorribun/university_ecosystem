@@ -146,16 +146,20 @@ run/attempt либо локальную команду, конфигурацию
 канонический индекс/инструкцию; bundle не должен содержать `.env`, секреты или
 пользовательские runtime данные.
 
-**Текущий стоп по credential triage:** value-free inventory нашёл девять
+**Credential checkpoint:** value-free inventory нашёл девять
 Chromatic project-token-shaped упоминаний в `AUDIT_WAVE121.md`,
-`AUDIT_WAVE123.md` и `AUDIT_WAVE201.md`. Пользователь подтвердил доступ
-Project Owner/Admin к существующему проекту и сам выполнит reset токена и замену
-Actions secret `CHROMATIC_PROJECT_TOKEN`; подтверждение workflow ещё ожидается.
+`AUDIT_WAVE123.md` и `AUDIT_WAVE201.md`. Пользователь подтвердил reset токена;
+GitHub metadata подтверждает обновление repository secret
+`CHROMATIC_PROJECT_TOKEN` в `2026-09-30T10:08:36Z`. Секретное значение не читалось.
 Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь подтвердил как
 использовавшийся только в одноразовой CI-базе. Его статический fallback в smoke
-ослабляется отдельным security patch. До reset Chromatic token, замены secret и
-успешной workflow-проверки не удалять архивы и не создавать, копировать или
-распространять rescue bundle. Значения не выводить и не переносить.
+ослабляется отдельным security patch. Текущий Chromatic workflow намеренно выключен
+billing gates и `skip: true`; пользователь не может оплачивать сервис, поэтому не
+включать платную публикацию и не требовать workflow-запуска как проверки ротации.
+Продолжить credential triage и архивную миграцию, не выводя и не перенося значения
+в рабочую документацию. Rescue bundle допустим только как закрыто хранимый
+исторический артефакт после инвентаря/переноса и sample restore; держать вне repo,
+не синхронизировать и не публиковать.
 
 До удаления перенести и разрешить следующее:
 
