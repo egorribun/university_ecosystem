@@ -1,6 +1,19 @@
-function localURL(name, protocols) {
-  const value = process.env[name]
-  if (!value) {
+import { spawnSync } from "node:child_process"
+import { fileURLToPath } from "node:url"
+
+const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url))
+
+const verifierEnvironmentKeys = [
+  "PATH",
+  "HOME",
+  ...(process.platform === "win32"
+    ? ["SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA", "APPDATA"]
+    : ["TMPDIR", "TMP", "TEMP"]),
+]
+
+function getEndpoint(environment, name, hostname) {
+  const value = environment[name]
+  if (typeof value !== "string" || value.trim() === "") {
     throw new Error(`${name} must be set to the endpoint printed by scripts/live_stand.py`)
   }
 
@@ -8,11 +21,11 @@ function localURL(name, protocols) {
   try {
     parsed = new URL(value)
   } catch {
-    throw new Error(`${name} must be a valid loopback URL`)
+    throw new Error(`${name} must be a valid live-stand loopback URL`)
   }
   if (
-    !protocols.includes(parsed.protocol) ||
-    !["localhost", "127.0.0.1"].includes(parsed.hostname) ||
+    parsed.protocol !== "http:" ||
+    parsed.hostname !== hostname ||
     parsed.username !== "" ||
     parsed.password !== "" ||
     !parsed.port ||
@@ -22,12 +35,57 @@ function localURL(name, protocols) {
     parsed.search !== "" ||
     parsed.hash !== ""
   ) {
-    throw new Error(`${name} must use an allowed protocol and an explicit live-stand loopback port`)
+    throw new Error(`${name} must be a valid live-stand loopback URL`)
   }
-  return parsed.toString().replace(/\/$/, "")
+
+  return value
+}
+
+function processEnvironment(environment) {
+  return Object.fromEntries(
+    verifierEnvironmentKeys
+      .filter((name) => typeof environment[name] === "string")
+      .map((name) => [name, environment[name]])
+  )
+}
+
+export function createLiveStandSetup({
+  environment = process.env,
+  runtimeEnvironment = process.env,
+  runner = spawnSync,
+} = {}) {
+  return async function validateLiveStandEnvironment() {
+    const baseUrl = getEndpoint(environment, "LIVE_BASE_URL", "localhost")
+    const mailpitUrl = getEndpoint(environment, "LIVE_MAILPIT_URL", "127.0.0.1")
+    const result = runner(
+      "uv",
+      [
+        "run",
+        "--frozen",
+        "python",
+        "scripts/live_stand.py",
+        "verify-endpoints",
+        "--base-url",
+        baseUrl,
+        "--mailpit-url",
+        mailpitUrl,
+      ],
+      {
+        cwd: repositoryRoot,
+        env: processEnvironment(runtimeEnvironment),
+        shell: false,
+        stdio: "ignore",
+        timeout: 30_000,
+        windowsHide: true,
+      }
+    )
+
+    if (result.error || result.status !== 0) {
+      throw new Error("live stand endpoint ownership verification failed")
+    }
+  }
 }
 
 export default function validateLiveStandEnvironment() {
-  localURL("LIVE_BASE_URL", ["https:", "http:"])
-  localURL("LIVE_MAILPIT_URL", ["http:"])
+  return createLiveStandSetup()()
 }

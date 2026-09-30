@@ -406,6 +406,182 @@ def test_owner_marker_persists_and_authenticates_the_port_map(
         live_stand.load_stand_owner(worktree)
 
 
+def test_live_endpoint_verifier_accepts_only_the_signed_emitted_urls(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    marker = worktree / live_stand.STAND_FILE
+    marker_before = marker.read_bytes()
+    env_file = worktree / ".env"
+    env_file.write_text("LIVE_STAND_TEST_SENTINEL=unchanged\n", encoding="utf-8")
+    env_before = env_file.read_bytes()
+    vapid_file = worktree / live_stand.VAPID_FILE
+    original_read_text = Path.read_text
+
+    def guarded_read_text(path: Path, *args: Any, **kwargs: Any) -> str:
+        if path in {env_file, vapid_file}:
+            pytest.fail("endpoint verification must not read .env or VAPID")
+        return original_read_text(path, *args, **kwargs)
+
+    def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("endpoint verification must not inspect Compose or VAPID")
+
+    monkeypatch.setattr(live_stand, "_run", forbidden)
+    monkeypatch.setattr(live_stand, "load_vapid", forbidden)
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+    ports = dict(owner.published_ports)
+
+    live_stand.verify_live_endpoints(
+        f"http://localhost:{ports['CADDY_HTTP']}",
+        f"http://127.0.0.1:{ports['MAILPIT']}",
+    )
+
+    assert marker.read_bytes() == marker_before
+    assert env_file.read_bytes() == env_before
+
+
+@pytest.mark.parametrize("endpoint", ["base", "mailpit"])
+def test_live_endpoint_verifier_rejects_another_valid_range_port(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, endpoint: str
+) -> None:
+    _, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    ports = dict(owner.published_ports)
+    base_url = f"http://localhost:{ports['CADDY_HTTP']}"
+    mailpit_url = f"http://127.0.0.1:{ports['MAILPIT']}"
+    if endpoint == "base":
+        base_url = f"http://localhost:{ports['CADDY_HTTP'] + 1}"
+    else:
+        mailpit_url = f"http://127.0.0.1:{ports['MAILPIT'] + 1}"
+
+    with pytest.raises(
+        live_stand.StandError, match="endpoint ownership verification failed"
+    ):
+        live_stand.verify_live_endpoints(base_url, mailpit_url)
+
+
+@pytest.mark.parametrize(
+    ("base_host", "base_scheme", "mailpit_host", "mailpit_scheme"),
+    [
+        ("127.0.0.1", "http", "127.0.0.1", "http"),
+        ("localhost", "https", "127.0.0.1", "http"),
+        ("localhost", "http", "localhost", "http"),
+        ("localhost", "http", "127.0.0.1", "https"),
+    ],
+)
+def test_live_endpoint_verifier_rejects_wrong_host_or_scheme(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    base_host: str,
+    base_scheme: str,
+    mailpit_host: str,
+    mailpit_scheme: str,
+) -> None:
+    _, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    ports = dict(owner.published_ports)
+
+    with pytest.raises(
+        live_stand.StandError, match="endpoint ownership verification failed"
+    ):
+        live_stand.verify_live_endpoints(
+            f"{base_scheme}://{base_host}:{ports['CADDY_HTTP']}",
+            f"{mailpit_scheme}://{mailpit_host}:{ports['MAILPIT']}",
+        )
+
+
+@pytest.mark.parametrize("tampering", ["missing", "signature", "legacy"])
+def test_live_endpoint_verifier_fails_closed_on_missing_or_tampered_marker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tampering: str
+) -> None:
+    worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    marker_path = worktree / live_stand.STAND_FILE
+    ports = dict(owner.published_ports)
+    if tampering == "missing":
+        marker_path.unlink()
+    elif tampering == "legacy":
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        payload = {
+            "version": live_stand.LEGACY_OWNER_SCHEMA_VERSION,
+            "repository": marker["repository"],
+            "worktree": marker["worktree"],
+            "project_name": marker["project_name"],
+        }
+        legacy_marker = {
+            **payload,
+            "signature": live_stand._owner_signature(
+                payload, live_stand._owner_signing_key(create=False)
+            ),
+        }
+        marker_path.write_text(json.dumps(legacy_marker), encoding="utf-8")
+    else:
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        marker["published_ports"]["CADDY_HTTP"] += 1
+        marker_path.write_text(json.dumps(marker), encoding="utf-8")
+
+    with pytest.raises(
+        live_stand.StandError, match="endpoint ownership verification failed"
+    ):
+        live_stand.verify_live_endpoints(
+            f"http://localhost:{ports['CADDY_HTTP']}",
+            f"http://127.0.0.1:{ports['MAILPIT']}",
+        )
+
+
+def test_verify_endpoints_cli_emits_only_generic_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    ports = dict(owner.published_ports)
+
+    result = live_stand.main(
+        [
+            "verify-endpoints",
+            "--base-url",
+            f"http://localhost:{ports['CADDY_HTTP']}",
+            "--mailpit-url",
+            f"http://127.0.0.1:{ports['MAILPIT']}",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 0
+    assert captured.out == "live stand endpoints verified\n"
+    assert captured.err == ""
+    assert str(ports["CADDY_HTTP"]) not in captured.out
+    assert str(ports["MAILPIT"]) not in captured.out
+
+
+def test_verify_endpoints_cli_hides_marker_failure_details(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    (worktree / live_stand.STAND_FILE).unlink()
+    ports = dict(owner.published_ports)
+
+    result = live_stand.main(
+        [
+            "verify-endpoints",
+            "--base-url",
+            f"http://localhost:{ports['CADDY_HTTP']}",
+            "--mailpit-url",
+            f"http://127.0.0.1:{ports['MAILPIT']}",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 2
+    assert captured.out == ""
+    assert (
+        captured.err
+        == "live_stand: live stand endpoint ownership verification failed\n"
+    )
+    assert str(worktree) not in captured.err
+    assert str(ports["CADDY_HTTP"]) not in captured.err
+
+
 def test_legacy_owner_marker_resolves_the_original_port_map_read_only(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

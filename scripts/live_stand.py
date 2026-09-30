@@ -530,6 +530,23 @@ def load_stand_owner(worktree: Path) -> StandOwner:
     )
 
 
+def verify_live_endpoints(base_url: str, mailpit_url: str) -> None:
+    """Verify supplied URLs exactly match the signed live-stand port map."""
+    try:
+        owner = load_stand_owner(WORKTREE)
+        if owner.schema_version != OWNER_SCHEMA_VERSION:
+            raise StandError("ownership metadata does not sign a current port map")
+        published = dict(owner.published_ports)
+        expected_base_url = _stand_base_url(published)
+        expected_mailpit_url = f"http://127.0.0.1:{published['MAILPIT']}"
+        if base_url != expected_base_url or mailpit_url != expected_mailpit_url:
+            raise StandError("endpoint URLs do not match the signed port map")
+    except StandError:
+        # Do not disclose marker paths, ports, project names, or signature
+        # details through the Playwright launcher.
+        raise StandError("live stand endpoint ownership verification failed") from None
+
+
 def update_stand_owner_ports(
     worktree: Path,
     owner: StandOwner,
@@ -869,6 +886,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     up_parser = commands.add_parser("up")
     up_parser.add_argument("--ref", default="HEAD")
+    verify_parser = commands.add_parser(
+        "verify-endpoints", help="verify live URLs against the signed owner marker"
+    )
+    verify_parser.add_argument("--base-url", required=True)
+    verify_parser.add_argument("--mailpit-url", required=True)
     commands.add_parser("seed")
     commands.add_parser("status")
     commands.add_parser("stop")
@@ -878,6 +900,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "up":
             up(args.ref)
+        elif args.command == "verify-endpoints":
+            verify_live_endpoints(args.base_url, args.mailpit_url)
+            print("live stand endpoints verified")
         elif args.command == "seed":
             seed()
         elif args.command == "status":

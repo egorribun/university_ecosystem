@@ -320,24 +320,113 @@ test("live Playwright global setup requires the owned stand endpoints", () => {
   assert.notEqual(missingBaseUrl.status, 0)
   assert.match(missingBaseUrl.stderr, /LIVE_BASE_URL must be set/u)
 
-  const missingMailpitUrl = runLiveStandSetup({ LIVE_BASE_URL: "https://localhost:32494" })
+  const missingMailpitUrl = runLiveStandSetup({ LIVE_BASE_URL: "http://localhost:32494" })
   assert.notEqual(missingMailpitUrl.status, 0)
   assert.match(missingMailpitUrl.stderr, /LIVE_MAILPIT_URL must be set/u)
 })
 
-test("live Playwright global setup rejects non-loopback endpoints and accepts owned ports", () => {
-  const remoteBaseUrl = runLiveStandSetup({
-    LIVE_BASE_URL: "https://example.com:32494",
-    LIVE_MAILPIT_URL: "http://localhost:41072",
+test("live Playwright global setup verifies endpoints against the signed owner marker", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const calls = []
+  const runtimeEnvironment = {
+    PATH: process.env.PATH,
+    HOME: "C:/test/live-setup-home",
+    CHROMATIC_PROJECT_TOKEN: "must-not-reach-the-verifier",
+  }
+  const setup = createLiveStandSetup({
+    environment: {
+      LIVE_BASE_URL: "http://localhost:24123",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+      CHROMATIC_PROJECT_TOKEN: "never-an-argument",
+    },
+    runtimeEnvironment,
+    runner: (...args) => {
+      calls.push(args)
+      return { error: null, status: 0 }
+    },
   })
-  assert.notEqual(remoteBaseUrl.status, 0)
-  assert.match(remoteBaseUrl.stderr, /LIVE_BASE_URL must use an allowed protocol/u)
 
-  const ownedStand = runLiveStandSetup({
-    LIVE_BASE_URL: "https://localhost:32494",
-    LIVE_MAILPIT_URL: "http://127.0.0.1:41072",
+  await setup()
+
+  assert.equal(calls.length, 1)
+  const [command, args, options] = calls[0]
+  assert.equal(command, "uv")
+  assert.deepEqual(args, [
+    "run",
+    "--frozen",
+    "python",
+    "scripts/live_stand.py",
+    "verify-endpoints",
+    "--base-url",
+    "http://localhost:24123",
+    "--mailpit-url",
+    "http://127.0.0.1:24124",
+  ])
+  assert.equal(options.shell, false)
+  assert.equal(options.stdio, "ignore")
+  assert.equal(options.cwd, fileURLToPath(repositoryRoot))
+  assert.deepEqual(options.env, {
+    PATH: process.env.PATH,
+    HOME: "C:/test/live-setup-home",
   })
-  assert.equal(ownedStand.status, 0, ownedStand.stderr)
+  assert.doesNotMatch(JSON.stringify(args), /CHROMATIC_PROJECT_TOKEN|never-an-argument/u)
+})
+
+test("live Playwright setup reports only a generic verifier failure", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const setup = createLiveStandSetup({
+    environment: {
+      LIVE_BASE_URL: "http://localhost:24123",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+    },
+    runtimeEnvironment: { PATH: process.env.PATH },
+    runner: () => ({ error: null, status: 2 }),
+  })
+
+  await assert.rejects(setup(), {
+    message: "live stand endpoint ownership verification failed",
+  })
+})
+
+test("live Playwright setup rejects unsafe URL components before spawning the verifier", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const invalidEndpoints = [
+    {
+      LIVE_BASE_URL: "https://localhost:24123",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+    },
+    {
+      LIVE_BASE_URL: "http://example.com:24123",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+    },
+    {
+      LIVE_BASE_URL: "http://localhost:24123",
+      LIVE_MAILPIT_URL: "http://localhost:24124",
+    },
+    {
+      LIVE_BASE_URL: "http://localhost:24123",
+      LIVE_MAILPIT_URL: "https://127.0.0.1:24124",
+    },
+    {
+      LIVE_BASE_URL: "http://userinfo@localhost:24123",
+      LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+    },
+  ]
+
+  for (const environment of invalidEndpoints) {
+    let spawned = false
+    const setup = createLiveStandSetup({
+      environment,
+      runtimeEnvironment: { PATH: process.env.PATH },
+      runner: () => {
+        spawned = true
+        return { error: null, status: 0 }
+      },
+    })
+
+    await assert.rejects(setup(), /must be a valid live-stand loopback URL/u)
+    assert.equal(spawned, false)
+  }
 })
 
 test("dependency install scripts use a reviewed fail-closed allow-list", async () => {
