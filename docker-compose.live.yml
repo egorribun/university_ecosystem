@@ -28,6 +28,10 @@ services:
   ws-hub:
     ports: !override
       - "127.0.0.1:${LIVE_HOST_PORT_WS_HUB:?set by scripts/live_stand.py}:8081"
+    environment:
+      # Admit this stand's exact loopback origin without weakening WS origin checks.
+      ALLOWED_ORIGINS: >-
+        ${LIVE_BASE_URL:?set by scripts/live_stand.py},http://localhost,http://localhost:8081,http://localhost:3000,http://localhost:5173
 
   temporal:
     ports: !override

@@ -125,6 +125,13 @@ class StandOwner:
     schema_version: int
 
 
+def _stand_base_url(published_ports: Mapping[str, int]) -> str:
+    """Return the loopback URL served by the live stack's development Caddyfile."""
+    # The live Compose overlay uses infrastructure/Caddyfile, which disables
+    # automatic HTTPS and serves the app on port 80.
+    return f"http://localhost:{published_ports['CADDY_HTTP']}"
+
+
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
@@ -592,6 +599,7 @@ def stand_environment(
     env["COMPOSE_PROJECT_NAME"] = project_name
     env["LIVE_VAPID_PUBLIC_KEY"] = keys["public"]
     env["LIVE_VAPID_PRIVATE_KEY"] = keys["private"]
+    env["LIVE_BASE_URL"] = _stand_base_url(ports)
     for name, port in ports.items():
         if name == "MAILPIT":
             env["LIVE_MAILPIT_PORT"] = str(port)
@@ -609,6 +617,7 @@ def compose_control_environment(
     ports = dict(_validate_published_ports(published_ports, allow_privileged=True))
     env = os.environ.copy()
     env["COMPOSE_PROJECT_NAME"] = project_name
+    env["LIVE_BASE_URL"] = _stand_base_url(ports)
     # Compose interpolates these required live-overlay fields while loading
     # the project, even for `ps`, `stop`, or `down`. These commands never
     # recreate containers, so a fixed non-secret placeholder is sufficient.
@@ -764,7 +773,7 @@ def _up_locked(ref: str) -> None:
         env=env,
     )
     published = dict(owner.published_ports)
-    base_url = f"https://localhost:{published['CADDY_HTTPS']}"
+    base_url = _stand_base_url(published)
     mailpit_url = f"http://127.0.0.1:{published['MAILPIT']}"
     print(f"stand {owner.project_name} is up at {base_url} for {sha}")
     print(f"LIVE_BASE_URL={base_url}")
@@ -812,7 +821,7 @@ def status() -> None:
     env = compose_control_environment(owner.project_name, dict(owner.published_ports))
     _run(compose_command("ps", project_name=owner.project_name), cwd=WORKTREE, env=env)
     published = dict(owner.published_ports)
-    print(f"LIVE_BASE_URL=https://localhost:{published['CADDY_HTTPS']}")
+    print(f"LIVE_BASE_URL={_stand_base_url(published)}")
     print(f"LIVE_MAILPIT_URL=http://127.0.0.1:{published['MAILPIT']}")
 
 

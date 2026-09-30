@@ -199,6 +199,7 @@ def test_stand_environment_pins_the_project_and_keys() -> None:
     assert env["COMPOSE_PROJECT_NAME"] == project_name
     assert env["LIVE_VAPID_PUBLIC_KEY"] == "pub"
     assert env["LIVE_VAPID_PRIVATE_KEY"] == "priv"  # pragma: allowlist secret
+    assert env["LIVE_BASE_URL"] == f"http://localhost:{ports['CADDY_HTTP']}"
     assert env["LIVE_MAILPIT_PORT"] == str(ports["MAILPIT"])
     for name, port in ports.items():
         if name != "MAILPIT":
@@ -496,6 +497,7 @@ def test_compose_control_commands_never_read_or_pass_vapid_keys(
         live_stand.COMPOSE_INSPECTION_PLACEHOLDER
     )
     ports = dict(owner.published_ports)
+    assert environments[0]["LIVE_BASE_URL"] == f"http://localhost:{ports['CADDY_HTTP']}"
     assert environments[0]["LIVE_MAILPIT_PORT"] == str(ports["MAILPIT"])
     for name, port in ports.items():
         if name != "MAILPIT":
@@ -503,7 +505,9 @@ def test_compose_control_commands_never_read_or_pass_vapid_keys(
 
 
 def test_status_is_read_only_and_uses_the_owned_project(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
     marker = worktree / live_stand.STAND_FILE
@@ -520,6 +524,11 @@ def test_status_is_read_only_and_uses_the_owned_project(
     monkeypatch.setattr(live_stand, "_run", capture)
 
     live_stand.status()
+
+    output = capsys.readouterr().out
+    published = dict(owner.published_ports)
+    assert f"LIVE_BASE_URL=http://localhost:{published['CADDY_HTTP']}" in output
+    assert "LIVE_BASE_URL=https://localhost:" not in output
 
     assert commands == [
         live_stand.compose_command("ps", project_name=owner.project_name)
@@ -723,6 +732,11 @@ def test_live_overlay_replaces_every_publication_with_loopback_port_variables() 
         source.replace("!override", "").replace("!reset", "")
     )
     services = overlay["services"]
+
+    ws_origins = services["ws-hub"]["environment"]["ALLOWED_ORIGINS"]
+    assert ws_origins.startswith("${LIVE_BASE_URL:?")
+    assert "http://localhost" in ws_origins
+    assert "*" not in ws_origins
 
     expected = {
         name: service["ports"]
