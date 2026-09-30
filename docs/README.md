@@ -50,9 +50,8 @@ handoffs are intentionally not part of the canonical index.
 - [Canonical audit index and retention policy](audits/INDEX.md)
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 
-Legacy audit and plan archives have been inventoried. Their requirements are
-being reconciled against the master plan, ADRs, and workflow contracts; transfer
-and cleanup acceptance remains open. Keep the historical files until credential
-triage and transfer review are complete, then remove superseded copies without
-rewriting Git history. The audit index records the recovery policy; archive
-contents are not current implementation guidance.
+Legacy audit and plan archives have been reconciled against the master plan,
+ADRs, tests, and workflow contracts, then removed from the working tree without
+rewriting Git history. The audit index records the private rescue bundle,
+verification evidence, and recovery procedure; archive contents are not current
+implementation guidance.

@@ -51,7 +51,7 @@ git -C $rescue checkout d0aad7c296facd79b3d41b037bc4160f5b3132be -- docs/audits/
 ```
 
 After archive removal, both the default and `--include-archives` link checks pass
-for all 436 remaining Markdown files with no historical-link allowlist. Keep
+for all 429 remaining Markdown files with no historical-link allowlist. Keep
 `--include-archives` as a diagnostic mode for verifying restored snapshots; do
 not invent replacement links for files that are not present.
 
