@@ -146,6 +146,17 @@ run/attempt либо локальную команду, конфигурацию
 канонический индекс/инструкцию; bundle не должен содержать `.env`, секреты или
 пользовательские runtime данные.
 
+**Текущий стоп по credential triage:** value-free inventory нашёл девять
+Chromatic project-token-shaped упоминаний в `AUDIT_WAVE121.md`,
+`AUDIT_WAVE123.md` и `AUDIT_WAVE201.md`. Пользователь подтвердил доступ
+Project Owner/Admin к существующему проекту и сам выполнит reset токена и замену
+Actions secret `CHROMATIC_PROJECT_TOKEN`; подтверждение workflow ещё ожидается.
+Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь подтвердил как
+использовавшийся только в одноразовой CI-базе. Его статический fallback в smoke
+ослабляется отдельным security patch. До reset Chromatic token, замены secret и
+успешной workflow-проверки не удалять архивы и не создавать, копировать или
+распространять rescue bundle. Значения не выводить и не переносить.
+
 До удаления перенести и разрешить следующее:
 
 - **O1–O8, CI evidence/operability:** O1 фиксирует job durations и необходимые
@@ -274,7 +285,8 @@ teardown проверяет ownership; пользовательские тома
 
 - **Auth/MFA:** регистрация, login, TOTP, email OTP из Mailpit, recovery, reset и
   token reuse, safe redirect, cooldown/TTL/attempt limits, правильные 401/429,
-  sibling/session revocation.
+  sibling/session revocation. Отдельно подтвердить отсутствие WebAuthn/security
+  key flows в UI/API/SDK; это отрицательный критерий, новую поддержку не добавлять.
 - **Messenger:** два независимых browser contexts и реальный WS; DM/groups,
   ordering/deduplication, reconnect, reply/edit/delete/forward/reactions/
   attachments/unread. Для групп проверить min 3 / max 100 участников при создании;
@@ -287,7 +299,8 @@ teardown проверяет ownership; пользовательские тома
   Mutations идут через backend, arbitrary client event payload не становится
   trusted event.
 - **Profile/settings:** просмотр/редактирование профиля, avatar, validation и
-  rollback, persisted state после reload, все действующие разделы settings.
+  rollback, persisted state после reload, существующие достижения и все
+  действующие разделы settings; не добавлять новые модели или правила достижений.
 - **News/events/map:** сохранение scroll, back/forward, центрирование tabs,
   wheel/touch/pinch isolation и отсутствие page scroll jumps.
 - **Home/stories/activity:** пустые состояния, stories открываются по avatar,
@@ -316,7 +329,9 @@ smoke на PR, полный nightly и ручной запуск. Учесть G
 требование для schedule/workflow_dispatch; синхронно обновить CI catalog и
 contract tests. После трёх последовательных успешных PR smoke, проверки
 сопоставимости и бюджета ресурсов закрепить smoke как required check. Любой
-failure исправлять, не маскировать ретраями/skip.
+failure исправлять, не маскировать ретраями/skip. Существующий mocked-набор
+дополнительно прогнать в Firefox, WebKit и mobile-WebKit (эмуляция); он дополняет,
+но не заменяет live Chromium-проверки доставки, прав и Web Push.
 
 **Приёмка блока:** traceability matrix заполнена; browser сценарии проходят в
 указанной матрице; известные несценарные/manual checks обоснованы; PR/nightly/manual
