@@ -13,6 +13,7 @@ import sys
 import threading
 from collections.abc import Sequence
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -1145,7 +1146,10 @@ def test_up_rejects_dirty_worktree_before_stopping_existing_stand(
 
 
 def _prepare_owned_stand(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    daemon_fingerprint: str = "a" * 64,
 ) -> tuple[Path, live_stand.StandOwner, dict[str, str]]:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -1156,12 +1160,129 @@ def _prepare_owned_stand(
     monkeypatch.setattr(live_stand, "REPO_ROOT", repo_root)
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setattr(live_stand, "_git", lambda *args: ".git")
+    monkeypatch.setattr(
+        live_stand,
+        "docker_daemon_fingerprint",
+        lambda: daemon_fingerprint,
+        raising=False,
+    )
     owner = live_stand.create_stand_owner(worktree)
     keys = {"public": "pub", "private": "priv"}
     key_path = worktree / live_stand.VAPID_FILE
     key_path.parent.mkdir(parents=True, exist_ok=True)
     key_path.write_text(json.dumps(keys), encoding="utf-8")
     return worktree, owner, keys
+
+
+def _write_legacy_owner_marker(
+    worktree: Path, owner: live_stand.StandOwner, version: int
+) -> Path:
+    payload: dict[str, Any] = {
+        "version": version,
+        "repository": owner.repository,
+        "worktree": owner.worktree,
+        "project_name": owner.project_name,
+    }
+    if version >= 3:
+        payload["published_ports"] = dict(owner.published_ports)
+    marker = {
+        **payload,
+        "signature": live_stand._owner_signature(
+            payload, live_stand._owner_signing_key(create=False)
+        ),
+    }
+    marker_path = worktree / live_stand.STAND_FILE
+    marker_path.write_text(json.dumps(marker), encoding="utf-8")
+    return marker_path
+
+
+def test_docker_daemon_fingerprint_hashes_engine_id_without_printing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    engine_id = "fixture-engine-id"
+    calls: list[tuple[list[str], dict[str, Any]]] = []
+
+    def run(command: list[str], **kwargs: Any) -> SimpleNamespace:
+        calls.append((command, kwargs))
+        return SimpleNamespace(stdout=f"{engine_id}\n")
+
+    monkeypatch.setattr(live_stand.subprocess, "run", run)
+
+    fingerprint = live_stand.docker_daemon_fingerprint()
+
+    assert fingerprint == hashlib.sha256(engine_id.encode("utf-8")).hexdigest()
+    assert calls == [
+        (
+            ["docker", "info", "--format", "{{.ID}}"],
+            {"check": True, "capture_output": True, "text": True},
+        )
+    ]
+    assert engine_id not in capsys.readouterr().out
+
+
+def test_new_owner_marker_stores_only_the_daemon_fingerprint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    engine_id = "fixture-engine-id"
+    fingerprint = hashlib.sha256(engine_id.encode("utf-8")).hexdigest()
+    worktree, owner, _ = _prepare_owned_stand(
+        monkeypatch, tmp_path, daemon_fingerprint=fingerprint
+    )
+    marker_path = worktree / live_stand.STAND_FILE
+    marker_text = marker_path.read_text(encoding="utf-8")
+    marker = json.loads(marker_text)
+
+    assert owner.daemon_fingerprint == fingerprint
+    assert marker["version"] == live_stand.OWNER_SCHEMA_VERSION
+    assert marker["daemon_fingerprint"] == fingerprint
+    assert engine_id not in marker_text
+
+
+@pytest.mark.parametrize("version", [2, 3])
+def test_status_reads_legacy_owner_markers_without_migrating_them(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    version: int,
+) -> None:
+    worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    marker_path = _write_legacy_owner_marker(worktree, owner, version)
+    marker_before = marker_path.read_bytes()
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        live_stand, "_run", lambda command, **_: commands.append(list(command))
+    )
+
+    live_stand.status()
+
+    assert commands == [
+        live_stand.compose_command("ps", project_name=owner.project_name)
+    ]
+    assert marker_path.read_bytes() == marker_before
+
+
+@pytest.mark.parametrize("version", [2, 3])
+@pytest.mark.parametrize("operation", ["stop", "teardown"])
+def test_destructive_lifecycle_preserves_legacy_markers_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    version: int,
+    operation: str,
+) -> None:
+    worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    marker_path = _write_legacy_owner_marker(worktree, owner, version)
+    marker_before = marker_path.read_bytes()
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        live_stand, "_run", lambda command, **_: commands.append(list(command))
+    )
+
+    with pytest.raises(
+        live_stand.StandError, match="cannot verify Docker daemon ownership"
+    ):
+        getattr(live_stand, operation)()
+
+    assert commands == []
+    assert marker_path.read_bytes() == marker_before
 
 
 def test_owner_marker_persists_and_authenticates_the_port_map(
@@ -1175,6 +1296,9 @@ def test_owner_marker_persists_and_authenticates_the_port_map(
     monkeypatch.setattr(live_stand, "REPO_ROOT", repo_root)
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setattr(live_stand, "_git", lambda *_: ".git")
+    monkeypatch.setattr(
+        live_stand, "docker_daemon_fingerprint", lambda: "a" * 64, raising=False
+    )
     ports = _port_map()
 
     owner = live_stand.create_stand_owner(worktree, published_ports=ports)
@@ -1476,6 +1600,12 @@ def test_status_is_read_only_and_uses_the_owned_project(
     vapid = worktree / live_stand.VAPID_FILE
     marker_before = marker.read_bytes()
     vapid_before = vapid.read_bytes()
+    monkeypatch.setattr(
+        live_stand,
+        "docker_daemon_fingerprint",
+        lambda: pytest.fail("status must not query Docker daemon identity"),
+        raising=False,
+    )
     commands: list[list[str]] = []
     environments: list[dict[str, str]] = []
 
@@ -1521,6 +1651,60 @@ def test_stop_preserves_owned_volumes_and_worktree(
     assert worktree.exists()
     assert not any("--volumes" in command for command in commands)
     _assert_compose_port_environment(environments[0], owner.published_ports)
+
+
+@pytest.mark.parametrize("operation", ["stop", "teardown"])
+def test_destructive_lifecycle_refuses_a_different_docker_daemon(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, operation: str
+) -> None:
+    worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    owner_with_daemon = SimpleNamespace(
+        project_name=owner.project_name,
+        published_ports=owner.published_ports,
+        daemon_fingerprint="a" * 64,
+    )
+    monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
+    monkeypatch.setattr(
+        live_stand, "load_stand_owner", lambda _worktree: owner_with_daemon
+    )
+    monkeypatch.setattr(
+        live_stand, "docker_daemon_fingerprint", lambda: "b" * 64, raising=False
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        live_stand, "_run", lambda command, **_: commands.append(list(command))
+    )
+
+    with pytest.raises(live_stand.StandError, match="different Docker daemon"):
+        getattr(live_stand, operation)()
+
+    assert commands == []
+    assert worktree.exists()
+
+
+@pytest.mark.parametrize("operation", ["stop", "teardown"])
+def test_destructive_lifecycle_fails_closed_when_daemon_identity_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, operation: str
+) -> None:
+    worktree, _owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    marker = worktree / live_stand.STAND_FILE
+    marker_before = marker.read_bytes()
+    commands: list[list[str]] = []
+
+    def unavailable() -> str:
+        raise live_stand.StandError("cannot verify Docker daemon identity")
+
+    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", unavailable)
+    monkeypatch.setattr(
+        live_stand, "_run", lambda command, **_: commands.append(list(command))
+    )
+
+    with pytest.raises(live_stand.StandError, match="cannot verify Docker daemon"):
+        getattr(live_stand, operation)()
+
+    assert commands == []
+    assert marker.read_bytes() == marker_before
+    assert worktree.exists()
 
 
 def test_teardown_removes_only_the_owned_compose_project_and_preserves_env(
@@ -1674,6 +1858,43 @@ def test_up_validates_ref_before_stopping_existing_stand(
 
     assert commands == []
     assert (worktree / live_stand.STAND_FILE).read_bytes() == marker_before
+
+
+def test_up_refuses_to_stop_an_existing_stand_on_a_different_daemon(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktree, _owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    marker_path = worktree / live_stand.STAND_FILE
+    marker_before = marker_path.read_bytes()
+    commands: list[list[str]] = []
+    monkeypatch.setattr(live_stand, "resolve_stand_ref", lambda _ref: "resolved-sha")
+    monkeypatch.setattr(live_stand, "choose_published_ports", lambda: _port_map(50000))
+    monkeypatch.setattr(live_stand, "require_free_ports", lambda _ports: None)
+    monkeypatch.setattr(
+        live_stand,
+        "_git",
+        lambda *args: "" if "status" in args else "resolved-sha",
+    )
+    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", lambda: "b" * 64)
+
+    def capture_unexpected_compose(command: list[str], **_: Any) -> None:
+        commands.append(list(command))
+        raise live_stand.StandError("unexpected Compose command")
+
+    monkeypatch.setattr(live_stand, "_run", capture_unexpected_compose)
+    monkeypatch.setattr(
+        live_stand,
+        "ensure_worktree",
+        lambda _sha: pytest.fail(
+            "worktree must not change when daemon identity differs"
+        ),
+    )
+
+    with pytest.raises(live_stand.StandError, match="different Docker daemon"):
+        live_stand._up_locked("HEAD")
+
+    assert commands == []
+    assert marker_path.read_bytes() == marker_before
 
 
 def test_main_reports_stand_errors_with_exit_code_two(
