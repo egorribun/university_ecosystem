@@ -138,6 +138,50 @@ test("browser-context login keeps CSRF and session fingerprint bound to Chromium
   ])
 })
 
+test("login failure does not read or expose a response body that echoes the password", async () => {
+  const { loginBrowserContext } = await import(moduleUrl)
+  const echoMarker = "synthetic-body-echo-marker"
+  let loginBodyRead = false
+  const context = {
+    request: {
+      async get() {
+        return { status: () => 200 }
+      },
+      async post() {
+        return {
+          status: () => 401,
+          async text() {
+            loginBodyRead = true
+            return JSON.stringify({ detail: `Invalid credential: ${echoMarker}` })
+          },
+        }
+      },
+    },
+    async cookies() {
+      return [
+        { name: "csrf_token", value: "csrf" },
+        { name: "_csrf_anon_nonce", value: "nonce" },
+      ]
+    },
+  }
+
+  await assert.rejects(
+    () =>
+      loginBrowserContext({
+        context,
+        origin: "http://localhost",
+        email: "admin@example.test",
+        password: echoMarker,
+      }),
+    (error) => {
+      assert.equal(error.message, "Login failed: HTTP 401")
+      assert.doesNotMatch(error.message, new RegExp(echoMarker, "u"))
+      return true
+    }
+  )
+  assert.equal(loginBodyRead, false)
+})
+
 test("authenticated and admin smoke scripts use browser-context login exclusively", async () => {
   for (const script of ["authenticated-visual-audit.mjs", "admin-visual-smoke.mjs"]) {
     const source = await readFile(new URL(script, import.meta.url), "utf8")

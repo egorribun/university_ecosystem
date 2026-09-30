@@ -41,8 +41,7 @@ export function cookieHeader(cookies, names) {
 export async function fetchBoundCsrfCookies({ origin, fetchImpl = fetch }) {
   const response = await fetchImpl(`${origin}/api/v1/auth/csrf-cookie`)
   if (response.status !== 200) {
-    const body = typeof response.text === "function" ? await response.text() : ""
-    throw new Error(`csrf-cookie failed: HTTP ${response.status} — ${body.slice(0, 200)}`)
+    throw new Error(`csrf-cookie failed: HTTP ${response.status}`)
   }
   const cookies = mergeSetCookieHeaders(new Map(), getSetCookieHeaders(response))
   try {
@@ -79,8 +78,7 @@ function browserCookieMap(cookies) {
 export async function loginBrowserContext({ context, origin, email, password }) {
   const csrfResponse = await context.request.get(`${origin}/api/v1/auth/csrf-cookie`)
   if (csrfResponse.status() !== 200) {
-    const body = await csrfResponse.text()
-    throw new Error(`csrf-cookie failed: HTTP ${csrfResponse.status()} — ${body.slice(0, 200)}`)
+    throw new Error(`csrf-cookie failed: HTTP ${csrfResponse.status()}`)
   }
 
   let cookies = await context.cookies(origin)
@@ -96,8 +94,7 @@ export async function loginBrowserContext({ context, origin, email, password }) 
     data: { email, password },
   })
   if (loginResponse.status() !== 200) {
-    const body = await loginResponse.text()
-    throw new Error(`Login failed: HTTP ${loginResponse.status()} — ${body.slice(0, 200)}`)
+    throw new Error(`Login failed: HTTP ${loginResponse.status()}`)
   }
 
   // BrowserContext.request shares the browser's cookie jar and fingerprint.

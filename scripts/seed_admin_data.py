@@ -7,8 +7,11 @@ existing). Safe to re-run: each section catches unique-constraint violations.
 Usage:
     python scripts/seed_admin_data.py
 
+The script requires TEST_PASSWORD in its process environment. It has no built-in
+admin password; CI supplies a unique, masked value for each admin-smoke run.
+
 Creates:
-- 1 admin user: admin@university.dev with the dev seed password below
+- 1 admin user: admin@university.dev (password supplied via TEST_PASSWORD)
 - 6 additional users (mix of students + teachers across 3 groups) for AdminUsers
 - 12 audit log entries for AdminAudit (signed via SecureAuditService)
 - 4 dead-letter notification jobs for AdminNotifications
@@ -452,8 +455,8 @@ async def main() -> None:
             print("\n" + "=" * 60)
             print("Admin seed data committed successfully.")
             print("=" * 60)
-            print(f"\n  Admin login:    {ADMIN_EMAIL} / <dev seed password>")
-            print("  Student login:  test@university.dev / <dev seed password>")
+            print(f"\n  Admin account:  {ADMIN_EMAIL}")
+            print("  Student demo account: seeded")
             print(
                 f"  Other users:    {len(EXTRA_USERS)} created (mix of student/teacher)"
             )
