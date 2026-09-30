@@ -8,15 +8,17 @@
 
 | Область | Подтверждённый факт |
 | --- | --- |
-| Git / PR | Основной checkout чист, ветка `egorribun` на `10697b0d8a83b78a6f679ae9e357a1f0d256a031`, на 14 коммитов впереди `origin/egorribun`=`724da93d8a73c096df493859a7b9f972df8d1894`. `origin/main`=`78b9499079442191920835eed9de93b726cf36a1` — предок. PR [#1306](https://github.com/egorribun/university_ecosystem/pull/1306) открыт на старом head `724da93`; текущие коммиты ещё не отправлены. |
-| Старый CI | Последние доступные проверки PR относятся к `724da93`, не к текущей ветке. Run [#36693219605](https://github.com/egorribun/university_ecosystem/actions/runs/36693219605) содержит падения frontend `knip` и общего агрегатора; [Go Fuzz #36693218514](https://github.com/egorribun/university_ecosystem/actions/runs/36693218514), Security Policy Integrity и Semgrep также завершились ошибкой. Исправления knip и Go readiness есть в локальных коммитах. Python shard-2 был отменён/не дал достоверного итога. Четыре legacy required-context alias были пропущены из-за upstream failure/skip; `CI Success` завершился ошибкой. Нужен свежий PR run на интегрированном SHA. |
-| Проверки | На кодовом SHA `8af4c036` live Compose приёмка прошла 14/14 desktop/mobile; отчёт `artifacts/live-acceptance/mvp-block-8af4c036-20260930.json`. На `0df28b560847b186652a86f5355180c2f2ea669b` fast-preflight прошёл 9/9 за 69.184 с. Это исторические SHA-bound результаты, не доказательство текущего HEAD. |
-| Локальный harness | После предыдущего checkpoint owner-port правки целевые проверки прошли: `tests/test_live_stand.py` — 49; frontend quality contract — 23; `verify_harness.py` — 27/27. Этот набор предстоит повторить после интеграции ожидающих ревью исправлений. |
-| Admin smoke | В отдельном worktree есть коммиты `cb9298f` и `952db21` для случайного per-run пароля, безопасной передачи и удаления логирования тел входа. Независимое ревью выявило два дефекта live seed и очистку ссылки на пароль на failure path; исправления выполняются. Не интегрировать до тестов и повторного ревью. Платный Chromatic запуск запрещён: billing gates и `skip: true` сохраняются. |
-| Live E2E | Коммит `cfdfa2b9` в отдельном worktree проверяет доступ admin и запрет student/teacher к admin UI и неограниченному API-listing. Spec-review и независимый code/security review не выявили блокеров; API `403` подтверждён service contract и двумя backend-тестами. Implementation report: lint/typecheck и discovery 14 desktop/mobile tests прошли; reviewer не смог повторить ESLint/discovery из-за неполной frontend dependency install в worktree. Live run не запускался. |
+| Git / PR | Последний проверенный кодовый SHA — `d7218c01b`; на момент этого среза ветка была на 27 коммитов впереди `origin/egorribun`=`724da93d8a73c096df493859a7b9f972df8d1894`. `origin/main`=`78b9499079442191920835eed9de93b726cf36a1` — предок. PR [#1306](https://github.com/egorribun/university_ecosystem/pull/1306) всё ещё на старом head `724da93`; для интегрированного SHA GitHub CI ещё не запускался. |
+| Старый CI | Последние проверки PR относятся к `724da93`. Run [#36693219605](https://github.com/egorribun/university_ecosystem/actions/runs/36693219605) содержит падения Knip и `CI Success`; [Go Fuzz #36693218514](https://github.com/egorribun/university_ecosystem/actions/runs/36693218514) упал по readiness timeout в `TestDisconnectUser_MultipleSessionsForUser`, а не по найденному мутанту; локальный commit `398db9841` исправляет ожидание readiness и точный тест прошёл 10/10. Python shard-2 отменён, Semgrep на текущем SHA ещё не проверен. `Security Policy Integrity` старого run упал на `gh api --fail-with-body` из trusted `main`; флаг исправлен в PR, но внутренний release JSON считает контекст обязательным, тогда как активный ruleset требует 91 другой контекст и этот не содержит. Контрактное расхождение не разрешалось; нужен свежий CI и согласованная классификация. |
+| Проверки | На SHA `d7218c01baaef58f3d1f9762afc389dd00d9408a` fast-preflight прошёл 9/9; живой full Compose E2E — 18/18 desktop/mobile, 0 failed/skipped. SHA-bound отчёт: `artifacts/live-acceptance/mvp-block-d7218c01-20260930.json`. |
+| Локальные проверки | На `d7218c01b` прошли 60 Python launcher/seed тестов, 27 frontend security/admin Node tests, Ruff check/format, ESLint, Prettier, fast-preflight, pre-commit и commit hooks. Оба режима link checker проверили 429 Markdown-файлов без broken links; `tests/test_markdown_links.py` — 9 passed. Осталось прогнать корневой pre-commit на всём PR diff после финальной правки STATUS. |
+| Admin smoke | Коммиты `3061c38`, `3ed3367`, `ca353a9`, `db03ef5`, `a928bed`, `2fcc9e7`, `e96d675` интегрированы после независимого security-review без блокеров; bootstrap дополнен в `f5e8369`, manifest fingerprint — в `ae19006`, root-path routing — в `d7218c0`, последний routing commit независимо одобрен. Admin-пароль новый на прогон; npm получает lockfile bootstrap без тестового пароля, Playwright — минимальный env allowlist и пустые npm configs; stdout/stderr скрыты, выводятся только counts/status; traces/screenshots/video выключены. |
+| Live E2E | На `d7218c01` все 18 текущих live specs прошли на desktop/mobile; suite охватывает auth/roles, password reset и один messenger realtime workflow, это ещё не полная MVP-приёмка. В `artifacts/live-acceptance/mvp-block-d7218c01-20260930.json` сохранены SHA, команда, конфигурация, counts и данные среды без secrets. |
+| Live stand | `ue-live-97e64749be022c80` запущен на `d7218c01`, readiness всех сервисов и Prometheus targets прошёл; после E2E выполнен owned `stop`, контейнеров не осталось, 12 принадлежащих проекту volumes сохранены. Принадлежащий worktree и `.env` оставлены. В `.github/workflows` live PR/nightly/manual workflow пока нет. |
+| Live workflow budget | Full Compose имеет 34 memory limits суммарно `14176 MiB` (`13.84 GiB`); Core allowlist — `7008 MiB` (`6.84 GiB`), но сейчас не включает Mailpit, нужный password-reset E2E, а live wrapper жёстко запускает full Compose. Стандартный public `ubuntu-24.04` даёт 4 CPU, 16 GB RAM и 14 GB SSD ([GitHub runner specs](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)). Перед PR workflow нужны Core+Mailpit orchestration/readiness/limits и измерение RAM, disk и времени; full stack на стандартном runner имеет слишком малый запас. |
 | Документация / архивы | В отдельных коммитах удалены 112 архивных audit reports и 8 старых plan snapshots после переноса применимых требований и credentials triage. Rescue bundle и 120-строчный inventory находятся рядом с repo; `git bundle verify`, blob/size сверка всех путей и sample restore двух файлов прошли. SHA-256 bundle: `7cdaed352df12a0f735f86399dd2937be9c832e60d2f1f0ff66fbbb9bc823b11`; inventory: `20bb5457d104ed2590c33c4940c2f0334f2ba526fb1bff208111f5a99c4cc514`. Не распространять bundle: архивные отчёты содержали исторические credential-shaped строки. |
 | Credentials | Пользователь подтвердил reset Chromatic project token; GitHub Actions metadata `CHROMATIC_PROJECT_TOKEN` обновлена `2026-09-30T10:08:36Z`; значение не читалось. Seeded-admin пароль был только в одноразовой CI-базе. |
-| Ruleset | Разрешён только retired context `Rust Criterion Benchmarks (pyo3-sanitizer)` снят с ruleset `8335285`. Python unit/integration, coverage и frontend mutation required-context aliases имеют явные jobs/gates в `ci.yml`; старый run пропустил их вслед за upstream checks. Остальные required contexts и branch protection не менялись; bypass не выполнялся. |
+| Ruleset | По разрешению пользователя из ruleset `8335285` удалён только retired context `Rust Criterion Benchmarks (pyo3-sanitizer)`. Live GitHub ruleset `main` требует 91 context; `Security Policy Integrity` среди них нет, хотя он отмечен required в `quality/release-required-checks.json`. Python unit/integration, coverage и frontend mutation aliases имеют явные jobs/gates в `ci.yml`; старый run пропустил их вслед за upstream failures. Branch protection и остальные contexts не менялись; bypass не выполнялся. |
 | Audit / release | Исторический ledger классифицировал 63 ID: 55 закрыты source/test references, 6 заменены решениями, BE-02 и RUST-P3-03 остались открыты; MIG-PASS-01 проверяется отдельно. Требуется пересмотреть все ID на актуальном release SHA. `kind` CLI не найден в PATH; Gateway API/kind приёмка и шесть GHCR digest-проверок не выполнены. |
 
 ## Что подтверждено для архивов
@@ -31,15 +33,17 @@
 
 ## Следующие шаги
 
-1. Закрыть seed-password/failure-path findings, закончить независимые ревью двух
-   изолированных патчей и интегрировать только reviewed commits.
-2. Повторить target tests, contracts и один актуальный fast-preflight; запустить
-   изолированный live stand с новой seed-командой, сохранить данные и evidence.
-3. Обновить этот статус по фактическому SHA; выполнить docs/link checks и обычным
-   push обновить PR #1306. Разбирать новый CI по его конкретным результатам.
-4. Продолжать приёмку по [мастер-плану](MVP_MASTER_PLAN.md): живые продуктовые
-   сценарии, визуальный review, coverage/mutation, backup/restore, BE-02, kind с
-   Envoy Gateway, security review и опубликованные шесть digests.
+1. Завершить root pre-commit и `git diff --check` на всём PR diff с актуальным
+   STATUS; закоммитить срез и проверить чистое дерево.
+2. Обычным fast-forward push обновить PR #1306, получить свежий CI на текущем
+   SHA и разбирать конкретные результаты; не считать старые checks доказательством.
+3. После локальной full-stack приёмки добавить Core+Mailpit orchestration,
+   readiness и resource-limit contracts; затем создать advisory PR smoke и
+   nightly/manual live workflow с минимальными правами и без секретных artifacts.
+   Вводить обязательный PR gate только после трёх сопоставимых зелёных прогонов.
+4. Дальше продолжать [мастер-план](MVP_MASTER_PLAN.md): продуктовые и
+   визуальные сценарии, coverage/mutation, backup/restore, BE-02, kind с Envoy
+   Gateway, security review и опубликованные шесть digests.
 
 ## Критерии и ограничения
 
