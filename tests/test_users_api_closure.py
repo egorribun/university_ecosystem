@@ -340,6 +340,60 @@ async def test_create_and_list_users_roles() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_users_route_normalizes_legacy_search_before_service_query() -> None:
+    from app.services.user.profile_service import UserProfileService
+
+    repo = MagicMock()
+    repo.list_users = AsyncMock(return_value=[SimpleNamespace(id=uuid4())])
+    service = UserProfileService(MagicMock(users=repo), MagicMock(), AsyncMock())
+    filters = schemas.UserSearchFilter(search="  Teacher  ")
+    public = object()
+
+    with patch.object(api.schemas.UserPublicOut, "model_validate", return_value=public):
+        result = await call_injected(
+            api.get_users,
+            bg=MagicMock(),
+            request=_request(),
+            filters=filters,
+            current_user=_user(),
+            provides={
+                "UserProfileService": service,
+                "AsyncDatabaseSession": AsyncMock(),
+            },
+        )
+
+    assert result == [public]
+    assert filters.full_name == "Teacher"
+    assert filters.search is None
+    repo.list_users.assert_awaited_once_with(filters=filters)
+
+
+@pytest.mark.asyncio
+async def test_get_users_route_rejects_blank_search_for_non_admin() -> None:
+    from app.core.exceptions.domain import PermissionDenied
+    from app.services.user.profile_service import UserProfileService
+
+    repo = MagicMock()
+    repo.list_users = AsyncMock(return_value=[SimpleNamespace(id=uuid4())])
+    service = UserProfileService(MagicMock(users=repo), MagicMock(), AsyncMock())
+
+    with pytest.raises(PermissionDenied):
+        await call_injected(
+            api.get_users,
+            bg=MagicMock(),
+            request=_request(),
+            filters=schemas.UserSearchFilter(full_name="  "),
+            current_user=_user(),
+            provides={
+                "UserProfileService": service,
+                "AsyncDatabaseSession": AsyncMock(),
+            },
+        )
+
+    repo.list_users.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_audit_export_admin_range_and_admin_adapters() -> None:
     request = _request()
     admin = _user(role=UserRole.ADMIN)

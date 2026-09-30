@@ -25,14 +25,33 @@ function hasRoomJoin(value: unknown, room: string): boolean {
   return Object.values(value).some((item) => hasRoomJoin(item, room))
 }
 
-function hasNewMessage(value: unknown, content: string): boolean {
-  if (Array.isArray(value)) return value.some((item) => hasNewMessage(item, content))
-  if (!isRecord(value)) return false
-  const message = value.message
-  if (value.type === "new_message" && isRecord(message) && message.content === content) {
-    return true
+type ReceivedMessageFrame = {
+  chatId: unknown
+  message: {
+    id: unknown
+    chatId: unknown
+    senderId: unknown
+    content: unknown
   }
-  return Object.values(value).some((item) => hasNewMessage(item, content))
+}
+
+function findNewMessageFrames(value: unknown): ReceivedMessageFrame[] {
+  if (Array.isArray(value)) return value.flatMap(findNewMessageFrames)
+  if (!isRecord(value)) return []
+
+  const frames: ReceivedMessageFrame[] = []
+  if (value.type === "new_message" && isRecord(value.message)) {
+    frames.push({
+      chatId: value.chat_id,
+      message: {
+        id: value.message.id,
+        chatId: value.message.chat_id,
+        senderId: value.message.sender_id,
+        content: value.message.content,
+      },
+    })
+  }
+  return [...frames, ...Object.values(value).flatMap(findNewMessageFrames)]
 }
 
 // Playwright traces can retain login request bodies. The seeded role fixtures
@@ -74,53 +93,12 @@ test.describe("live messenger delivery", () => {
       expect(teacher.full_name).toBeTruthy()
       expect(teacher.id).not.toBe(student.id)
 
-      const chatsResponse = await page.request.get("/api/v1/chats?limit=20")
-      const chatsPayload = (await chatsResponse.json()) as {
-        items?: Array<{
-          id: string
-          chat_type?: string
-          participants?: Array<{ id?: string; full_name?: string | null }>
-        }>
-      }
-      expect(chatsResponse.ok()).toBe(true)
-      const existingDirectChat = (chatsPayload.items ?? []).find(
-        (chat) =>
-          chat.chat_type !== "group" &&
-          chat.participants?.some((participant) => participant.id === student.id) &&
-          chat.participants?.some((participant) => participant.id === teacher.id)
-      )
-
       await page.goto("/messenger")
       await page.getByRole("button", { name: "Новый чат", exact: true }).click()
       await page.getByRole("textbox", { name: "Поиск пользователей" }).fill(teacher.full_name!)
-      const searchOptions = page.getByRole("option")
-      const noUsersFound = page.getByRole("status").filter({ hasText: "Пользователи не найдены" })
-      await expect(searchOptions.first().or(noUsersFound)).toBeVisible()
-
-      if ((await searchOptions.count()) === 1) {
-        const teacherOption = searchOptions.filter({ hasText: teacher.full_name! })
-        await expect(teacherOption).toHaveCount(1)
-        await teacherOption.click()
-      } else {
-        // The backend omits users who already share a DM with the current
-        // account. Resolve its ID through a read-only API call, then select
-        // the rendered conversation row through the UI.
-        await expect(searchOptions).toHaveCount(0)
-        expect(existingDirectChat).toBeTruthy()
-        if (!existingDirectChat)
-          throw new Error("Expected the existing direct chat in the read-only list")
-        const dialog = page.getByRole("dialog")
-        await dialog.getByRole("button").first().click()
-        const existingConversation = page.locator(`#messenger-contact-${existingDirectChat.id}`)
-        await expect(existingConversation).toBeVisible()
-        const peerInChat = existingDirectChat.participants?.find(
-          (participant) => participant.id === teacher.id
-        )
-        if (peerInChat?.full_name) {
-          await expect(existingConversation).toContainText(teacher.full_name!)
-        }
-        await existingConversation.click()
-      }
+      const teacherOption = page.getByRole("option").filter({ hasText: teacher.full_name! })
+      await expect(teacherOption).toHaveCount(1)
+      await teacherOption.click()
       await expect(page).toHaveURL(/\/messenger\/[^/]+\/?$/)
 
       const chatId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1)
@@ -129,14 +107,14 @@ test.describe("live messenger delivery", () => {
 
       let receiverSocketCount = 0
       let receiverRoomJoinCount = 0
-      let deliveredViaWebSocket = false
+      const receiverMessages: ReceivedMessageFrame[] = []
       receiverPage.on("websocket", (socket) => {
         receiverSocketCount += 1
         socket.on("framesent", (payload) => {
           if (hasRoomJoin(parseFrame(payload), chatId)) receiverRoomJoinCount += 1
         })
         socket.on("framereceived", (payload) => {
-          if (hasNewMessage(parseFrame(payload), message)) deliveredViaWebSocket = true
+          receiverMessages.push(...findNewMessageFrames(parseFrame(payload)))
         })
       })
 
@@ -148,7 +126,7 @@ test.describe("live messenger delivery", () => {
       await expect.poll(() => receiverSocketCount).toBeGreaterThan(0)
       await expect.poll(() => receiverRoomJoinCount).toBeGreaterThan(0)
 
-      const messageResponse = page.waitForResponse((response) => {
+      const messageResponsePromise = page.waitForResponse((response) => {
         const request = response.request()
         return (
           request.method() === "POST" &&
@@ -157,10 +135,46 @@ test.describe("live messenger delivery", () => {
       })
       await page.locator("#chat-message-input").fill(message)
       await page.locator("#chat-send-btn").click()
-      expect((await messageResponse).ok()).toBe(true)
+      const messageResponse = await messageResponsePromise
+      expect(messageResponse.ok()).toBe(true)
+      const sentMessage = (await messageResponse.json()) as {
+        id: string
+        chat_id: string
+        sender_id: string
+        content: string
+      }
+      expect(sentMessage).toMatchObject({
+        chat_id: chatId,
+        sender_id: student.id,
+        content: message,
+      })
+      expect(sentMessage.id).toBeTruthy()
 
-      await expect.poll(() => deliveredViaWebSocket).toBe(true)
-      await expect(messageLog.getByText(message, { exact: true })).toBeVisible()
+      const expectedFrame: ReceivedMessageFrame = {
+        chatId,
+        message: {
+          id: sentMessage.id,
+          chatId,
+          senderId: student.id,
+          content: message,
+        },
+      }
+      await expect
+        .poll(() =>
+          receiverMessages.some(
+            (frame) =>
+              frame.chatId === expectedFrame.chatId &&
+              frame.message.id === expectedFrame.message.id &&
+              frame.message.chatId === expectedFrame.message.chatId &&
+              frame.message.senderId === expectedFrame.message.senderId &&
+              frame.message.content === expectedFrame.message.content
+          )
+        )
+        .toBe(true)
+      expect(receiverMessages).toContainEqual(expectedFrame)
+      const renderedMessage = messageLog.getByText(message, { exact: true })
+      await expect(renderedMessage).toHaveCount(1)
+      await expect(renderedMessage).toBeVisible()
     } finally {
       await receiverContext.close()
     }

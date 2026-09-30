@@ -136,15 +136,29 @@ async def test_message_and_user_lookup_helpers() -> None:
     assert await repo.get_users_by_ids([USER_ID, OTHER_ID]) == [user_a, user_b]
 
     assert await repo.get_user_display_names([]) == {}
-    users = [
-        SimpleNamespace(id=USER_ID, profile=SimpleNamespace(full_name="Alice")),
-        SimpleNamespace(id=OTHER_ID, profile=None),
-    ]
-    db.execute.return_value = _result(rows=users)
+    result = _result(rows=[(USER_ID, "Alice"), (OTHER_ID, None)])
+    db.execute.return_value = result
     assert await repo.get_user_display_names([USER_ID, OTHER_ID]) == {
         USER_ID: "Alice",
         OTHER_ID: None,
     }
+
+
+async def test_get_user_display_names_projects_identity_and_profile_columns() -> None:
+    repo, db = _repo()
+    db.execute.return_value = _result(rows=[(USER_ID, "Alice"), (OTHER_ID, None)])
+
+    assert await repo.get_user_display_names([USER_ID, OTHER_ID]) == {
+        USER_ID: "Alice",
+        OTHER_ID: None,
+    }
+
+    statement = db.execute.await_args.args[0]
+    sql = str(statement.compile())
+    assert "users.id" in sql
+    assert "user_profiles.full_name" in sql
+    assert "hashed_password" not in sql
+    assert "user_profiles.about" not in sql
 
 
 async def test_dm_creation_and_participant_mutations() -> None:

@@ -94,20 +94,20 @@ class UserProfileService:
     ) -> list[UserDTO]:
         filters = filters or schemas.UserSearchFilter()
 
-        if current_user and (
-            current_user.role != "admin"
-            and not filters.search
-            and not filters.full_name
-        ):
+        # `search` is the legacy public query parameter used by existing clients.
+        # Normalize it into the repository's sole supported name filter before
+        # authorization so an unsupported or whitespace-only filter can never
+        # turn a non-admin request into an unfiltered directory listing.
+        name_query = filters.full_name
+        if name_query is None or not name_query.strip():
+            name_query = filters.search
+        name_query = (name_query.strip() or None) if name_query else None
+
+        if current_user and current_user.role != "admin" and name_query is None:
             raise PermissionDenied()
 
-        name_query = filters.full_name
-        if name_query:
-            name_query = name_query.strip()
-            if not name_query:
-                name_query = None
-
         filters.full_name = name_query
+        filters.search = None
         return await self.repo.list_users(filters=filters)
 
     @auditable(SecurityEvent.ADMIN_USER_MODIFY, user_id_param="user_id")

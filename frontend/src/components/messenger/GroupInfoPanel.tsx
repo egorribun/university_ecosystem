@@ -108,7 +108,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
     queryKey: ["users", debouncedSearch],
     queryFn: async () => {
       const response = await client.get<User[]>(
-        `/users?limit=${USERS_PAGE_LIMIT}&search=${encodeURIComponent(debouncedSearch)}`
+        `/users?limit=${USERS_PAGE_LIMIT}&full_name=${encodeURIComponent(debouncedSearch)}`
       )
       // TanStack Query requires query functions to resolve a defined value;
       // treat a malformed/empty API payload as an empty result set instead of
