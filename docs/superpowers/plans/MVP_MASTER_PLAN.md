@@ -109,10 +109,23 @@ run/attempt либо локальную команду, конфигурацию
   проблемы по конкретным шагам. Исправить найденные дефекты и предупреждения,
   включая устаревшие Python API; не маскировать проблемы пропусками.
 - Повторно проверить Python и Go advisories после согласованного обновления locks.
-  Найденный секретоподобный текст в пользовательском audit ledger классифицировать
-  по установленной процедуре и безопасно заретушировать, если это исторический
-  пример, а не секрет. После `detect-secrets`/pre-commit повторно stage
-  `.secrets.baseline` согласно `AGENTS.md`.
+  Credential-shaped текст в `AUDIT_PLATFORM_FULL.md` не считать примером без
+  проверки происхождения. После подтверждения исторического значения безопасно
+  заретушировать его, не добавлять в baseline, а после `detect-secrets`/pre-commit
+  повторно stage `.secrets.baseline` согласно `AGENTS.md`.
+- **SEC-03 / audit signing key:** в Git history семи revisions `security.py`
+  обнаружен исторический `AUDIT_LOG_SECRET` HMAC signing-key default; его значение
+  удалено из текущего отчёта. Production validator отвергает этот ключ даже как
+  secondary key, поэтому обычная dual-key overlap-ротация для него невозможна.
+  Текущий runbook переоформляет `DataAccessLog`, но не умеет перестраивать
+  `StoredEvent` chains. Использование старого ключа в persistent deployments и
+  secret stores неизвестно. Для свежего MVP kind/demo допустим новый случайный
+  ключ без переноса старой БД; для любой сохраняемой БД сначала нужен protected,
+  consistent backup и read-only inventory. Если найдены старые подписи, до записи
+  проверить их в изолированном пути, сохранить evidence/trust limitations и
+  реализовать проверенную migration для обоих record types. Не возвращать старый
+  ключ в serving config и не считать остаточный риск закрытым без данных о его
+  использовании.
 - Согласовать Go/Rust toolchain в CI, performance/test containers и канонической
   WASM-сборке. Проверить PyJWT/Go fixes и scanner versions, не удаляя обязательные
   SAST/security gates ради зелёного статуса.
