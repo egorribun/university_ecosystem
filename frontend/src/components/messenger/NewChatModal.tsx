@@ -147,7 +147,7 @@ export function NewChatModal({
     queryKey: ["users", debouncedSearch],
     queryFn: async () => {
       const response = await client.get<User[]>(
-        `/users?limit=${USERS_PAGE_LIMIT}&search=${encodeURIComponent(debouncedSearch)}`
+        `/users?limit=${USERS_PAGE_LIMIT}&full_name=${encodeURIComponent(debouncedSearch)}`
       )
       return response.data
     },

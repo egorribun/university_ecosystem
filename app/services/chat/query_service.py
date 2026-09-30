@@ -32,6 +32,7 @@ from app.api.validation import ensure_exists, raise_forbidden, raise_not_found
 from app.api.ws.presence import build_presence_map
 from app.repositories.chat_repository import ChatRepository
 from app.schemas.chat import (
+    ChatParticipant,
     ChatResponse,
     ChatsListOut,
     MessageResponse,
@@ -108,6 +109,11 @@ class ChatQueryService:
             d["last_message_id"] for d in chat_data_map.values() if d["last_message_id"]
         ]
         last_messages_map = await self.repository.get_last_messages(last_message_ids)
+        participant_names = (
+            await self.repository.get_user_display_names(list(participant_ids))
+            if participant_ids
+            else {}
+        )
 
         pre_responses: list[ChatResponse] = []
         for chat_id, data in chat_data_map.items():
@@ -123,7 +129,16 @@ class ChatQueryService:
                     chat_type=chat.chat_type,
                     name=chat.name,
                     created_by=chat.created_by,
-                    participants=cast("list[ChatParticipant]", chat.participants),
+                    participants=[
+                        ChatParticipant(
+                            id=participant.id,
+                            email=participant.email or "",
+                            full_name=participant_names.get(participant.id),
+                            avatar_url=participant.avatar_url,
+                            is_active=participant.is_active,
+                        )
+                        for participant in chat.participants
+                    ],
                     last_message=cast("MessageResponse | None", last_message),
                     unread_count=data["unread_count"],
                     created_at=chat.created_at,

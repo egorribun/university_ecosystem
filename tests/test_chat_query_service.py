@@ -115,6 +115,7 @@ class TestGetChats:
         row = (chat, 2, msg_id)  # (chat, unread_count, last_message_id)
         repo = MagicMock()
         repo.get_chats_for_user = AsyncMock(return_value=([row], False, None))
+        repo.get_user_display_names = AsyncMock(return_value={})
 
         last_msg = MessageResponse(
             id=msg_id,
@@ -142,6 +143,35 @@ class TestGetChats:
         assert result.items[0].unread_count == 2
 
     @pytest.mark.asyncio
+    async def test_chat_list_resolves_profile_names_for_participants(self):
+        user = _mock_user()
+        peer_id = uuid.uuid4()
+        chat = _mock_chat(user.id, peer_id)
+        repo = MagicMock()
+        repo.get_chats_for_user = AsyncMock(
+            return_value=([(chat, 0, None)], False, None)
+        )
+        repo.get_last_messages = AsyncMock(return_value={})
+        repo.get_user_display_names = AsyncMock(
+            return_value={user.id: "Student Example", peer_id: "Peer Example"}
+        )
+
+        svc = ChatQueryService(AsyncMock(), repo)
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            result = await svc.get_chats(user, None, 20)
+
+        participants = {
+            participant.id: participant for participant in result.items[0].participants
+        }
+        assert participants[peer_id].full_name == "Peer Example"
+        repo.get_user_display_names.assert_awaited_once()
+        assert set(repo.get_user_display_names.await_args.args[0]) == {user.id, peer_id}
+
+    @pytest.mark.asyncio
     async def test_with_no_last_message(self):
         user = _mock_user()
         chat = _mock_chat(user.id)
@@ -150,6 +180,7 @@ class TestGetChats:
         repo = MagicMock()
         repo.get_chats_for_user = AsyncMock(return_value=([row], False, None))
         repo.get_last_messages = AsyncMock(return_value={})
+        repo.get_user_display_names = AsyncMock(return_value={})
 
         session = AsyncMock()
         svc = ChatQueryService(session, repo)

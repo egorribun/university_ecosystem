@@ -367,14 +367,14 @@ describe("NewChatModal", () => {
       expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
     })
 
-    it("URL-encodes the user search query before requesting the API", async () => {
+    it("uses and URL-encodes the backend-supported full_name filter", async () => {
       render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
       fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
         target: { value: "a&b=c" },
       })
 
       await waitFor(() =>
-        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=a%26b%3Dc")
+        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&full_name=a%26b%3Dc")
       )
       expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
     })
