@@ -323,7 +323,7 @@ describe("registerServiceWorker", () => {
       ready: Promise.resolve(),
     }
     const mockServiceWorkerContainer = {
-      controller: null,
+      controller: null as ServiceWorker | null,
       ready: Promise.resolve(mockRegistration),
       register: vi.fn().mockResolvedValue(mockRegistration),
       addEventListener: vi.fn().mockImplementation((event, listener) => {
@@ -336,6 +336,7 @@ describe("registerServiceWorker", () => {
     })
 
     await registerServiceWorker()
+    mockServiceWorkerContainer.controller = { postMessage: vi.fn() } as unknown as ServiceWorker
     swListeners["controllerchange"]()
 
     expect(window.location.reload).not.toHaveBeenCalled()
