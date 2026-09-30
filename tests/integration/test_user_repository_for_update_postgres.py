@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import text, update
 from sqlalchemy.exc import DBAPIError
 
 import app.core.database as database
+from app.models import UserProfile
 from app.repositories.user_repository import UserRepository
 
 pytestmark = pytest.mark.integration
@@ -31,6 +32,14 @@ async def test_get_with_for_update_locks_user_and_loads_optional_relations(
         assert locked_user.preferences is None
 
         async with database.async_session() as competing_session:
+            profile_update = await competing_session.execute(
+                update(UserProfile)
+                .where(UserProfile.user_id == user.id)
+                .values(full_name="Updated while account is locked")
+            )
+            assert profile_update.rowcount == 1
+            await competing_session.commit()
+
             await competing_session.execute(text("SET LOCAL lock_timeout = '250ms'"))
             with pytest.raises(DBAPIError) as blocked:
                 await UserRepository(competing_session).get(
