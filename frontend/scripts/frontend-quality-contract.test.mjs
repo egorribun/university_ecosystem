@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
+import { resolve } from "node:path"
 
 import strykerConfig, { mutationRunnerReuse, mutationThresholds } from "../stryker.config.mjs"
 
@@ -331,12 +332,16 @@ test("live Playwright global setup verifies endpoints against the signed owner m
   const runtimeEnvironment = {
     PATH: process.env.PATH,
     HOME: "C:/test/live-setup-home",
+    LIVE_PRIMARY_REPOSITORY_ROOT: "C:/caller-controlled-checkout",
+    TEST_PASSWORD: "do-not-forward-this-password", // pragma: allowlist secret
     CHROMATIC_PROJECT_TOKEN: "must-not-reach-the-verifier",
   }
+  const primaryRepositoryPath = resolve(fileURLToPath(repositoryRoot), "..", "primary-checkout")
   const setup = createLiveStandSetup({
     environment: {
       LIVE_BASE_URL: "http://localhost:24123",
       LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+      LIVE_PRIMARY_REPOSITORY_ROOT: primaryRepositoryPath,
       CHROMATIC_PROJECT_TOKEN: "never-an-argument",
     },
     runtimeEnvironment,
@@ -365,12 +370,48 @@ test("live Playwright global setup verifies endpoints against the signed owner m
   ])
   assert.equal(options.shell, false)
   assert.equal(options.stdio, "ignore")
-  assert.equal(options.cwd, fileURLToPath(repositoryRoot))
+  assert.equal(options.cwd, primaryRepositoryPath)
   assert.deepEqual(options.env, {
     PATH: process.env.PATH,
     HOME: "C:/test/live-setup-home",
   })
-  assert.doesNotMatch(JSON.stringify(args), /CHROMATIC_PROJECT_TOKEN|never-an-argument/u)
+  assert.doesNotMatch(
+    JSON.stringify(args),
+    /TEST_PASSWORD|do-not-forward-this-password|CHROMATIC_PROJECT_TOKEN|never-an-argument/u
+  )
+  assert.equal(Object.hasOwn(options.env, "LIVE_PRIMARY_REPOSITORY_ROOT"), false)
+  assert.equal(Object.hasOwn(options.env, "TEST_PASSWORD"), false)
+})
+
+test("live Playwright setup requires an absolute primary repository path before spawning", async () => {
+  const { createLiveStandSetup } = await import(liveSetupUrl)
+  const spawned = []
+  const common = {
+    LIVE_BASE_URL: "http://localhost:24123",
+    LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+  }
+
+  for (const repositoryRootValue of [
+    undefined,
+    "relative/checkout",
+    fileURLToPath(new URL("../../", import.meta.url)),
+  ]) {
+    const environment = { ...common }
+    if (repositoryRootValue !== undefined) {
+      environment.LIVE_PRIMARY_REPOSITORY_ROOT = repositoryRootValue
+    }
+    const setup = createLiveStandSetup({
+      environment,
+      runtimeEnvironment: { PATH: process.env.PATH },
+      runner: (...args) => {
+        spawned.push(args)
+        return { error: null, status: 0 }
+      },
+    })
+    await assert.rejects(setup(), /LIVE_PRIMARY_REPOSITORY_ROOT/u)
+  }
+
+  assert.deepEqual(spawned, [])
 })
 
 test("live Playwright setup reports only a generic verifier failure", async () => {
@@ -379,6 +420,11 @@ test("live Playwright setup reports only a generic verifier failure", async () =
     environment: {
       LIVE_BASE_URL: "http://localhost:24123",
       LIVE_MAILPIT_URL: "http://127.0.0.1:24124",
+      LIVE_PRIMARY_REPOSITORY_ROOT: resolve(
+        fileURLToPath(repositoryRoot),
+        "..",
+        "primary-checkout"
+      ),
     },
     runtimeEnvironment: { PATH: process.env.PATH },
     runner: () => ({ error: null, status: 2 }),

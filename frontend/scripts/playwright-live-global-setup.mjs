@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process"
+import { isAbsolute, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
-const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url))
+const liveWorktreeRoot = fileURLToPath(new URL("../../", import.meta.url))
 
 const verifierEnvironmentKeys = [
   "PATH",
@@ -49,6 +50,25 @@ function processEnvironment(environment) {
   )
 }
 
+function getPrimaryRepositoryRoot(environment) {
+  const value = environment.LIVE_PRIMARY_REPOSITORY_ROOT
+  if (typeof value !== "string" || !isAbsolute(value)) {
+    throw new Error("LIVE_PRIMARY_REPOSITORY_ROOT must be an absolute primary checkout path")
+  }
+
+  const primaryRoot = resolve(value)
+  const normalizedPrimaryRoot =
+    process.platform === "win32" ? primaryRoot.toLowerCase() : primaryRoot
+  const normalizedWorktreeRoot =
+    process.platform === "win32"
+      ? resolve(liveWorktreeRoot).toLowerCase()
+      : resolve(liveWorktreeRoot)
+  if (normalizedPrimaryRoot === normalizedWorktreeRoot) {
+    throw new Error("LIVE_PRIMARY_REPOSITORY_ROOT must point to the primary checkout")
+  }
+  return primaryRoot
+}
+
 export function createLiveStandSetup({
   environment = process.env,
   runtimeEnvironment = process.env,
@@ -57,6 +77,7 @@ export function createLiveStandSetup({
   return async function validateLiveStandEnvironment() {
     const baseUrl = getEndpoint(environment, "LIVE_BASE_URL", "localhost")
     const mailpitUrl = getEndpoint(environment, "LIVE_MAILPIT_URL", "127.0.0.1")
+    const primaryRepositoryRoot = getPrimaryRepositoryRoot(environment)
     const result = runner(
       "uv",
       [
@@ -72,7 +93,7 @@ export function createLiveStandSetup({
         mailpitUrl,
       ],
       {
-        cwd: repositoryRoot,
+        cwd: primaryRepositoryRoot,
         env: processEnvironment(runtimeEnvironment),
         shell: false,
         stdio: "ignore",

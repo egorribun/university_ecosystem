@@ -362,6 +362,7 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
         "NODE_OPTIONS",
         "NPM_CONFIG_REGISTRY",
     )
+    caller_repository_root = "C:/caller-controlled-primary-root"
     forwarded_secret_values = {
         name: f"caller-sentinel-{index}"
         for index, name in enumerate(forwarded_secret_names)
@@ -420,6 +421,7 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
 
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setenv("TEST_PASSWORD", ambient_password)
+    monkeypatch.setenv("LIVE_PRIMARY_REPOSITORY_ROOT", caller_repository_root)
     for name, value in forwarded_secret_values.items():
         monkeypatch.setenv(name, value)
     for name, value in inherited_npm_config_values.items():
@@ -509,15 +511,26 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
             pytest.fail("npm bootstrap must not receive the generated admin password")
         if any(
             key in dependency_environment
-            for key in ("LIVE_BASE_URL", "LIVE_MAILPIT_URL")
+            for key in (
+                "LIVE_BASE_URL",
+                "LIVE_MAILPIT_URL",
+                "LIVE_PRIMARY_REPOSITORY_ROOT",
+            )
         ):
-            pytest.fail("npm bootstrap must not receive live endpoints")
+            pytest.fail("npm bootstrap must not receive live endpoints or repo paths")
         expected_live = {
             "LIVE_BASE_URL": f"http://localhost:{port_map['CADDY_HTTP']}",
             "LIVE_MAILPIT_URL": f"http://127.0.0.1:{port_map['MAILPIT']}",
         }
         if any(e2e_env.get(key) != value for key, value in expected_live.items()):
             pytest.fail("Playwright endpoints must come from the owned port metadata")
+        expected_repository_root = str(live_stand.REPO_ROOT.resolve(strict=True))
+        if e2e_env.get("LIVE_PRIMARY_REPOSITORY_ROOT") != expected_repository_root:
+            pytest.fail(
+                "Playwright must receive the primary repository path from its launcher"
+            )
+        if caller_repository_root in e2e_env.values():
+            pytest.fail("caller-controlled repository paths must not reach Playwright")
         if any(
             key.startswith(("LIVE_VAPID_", "LIVE_HOST_PORT_", "COMPOSE_"))
             for key in e2e_env
@@ -605,6 +618,7 @@ def test_live_e2e_runtime_environment_only_copies_explicit_platform_allowlist() 
         "LIVE_VAPID_PRIVATE_KEY",
         "COMPOSE_PROJECT_NAME",
         "TEST_PASSWORD",
+        "LIVE_PRIMARY_REPOSITORY_ROOT",
     )
     private_values = {
         name: f"private-sentinel-{index}" for index, name in enumerate(private_names)
@@ -717,6 +731,7 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
         "LIVE_BASE_URL": "http://sensitive-endpoint.invalid",
         "LIVE_MAILPIT_URL": "http://sensitive-mail.invalid",
         "LIVE_E2E_OUTPUT_DIR": str(output_path),
+        "LIVE_PRIMARY_REPOSITORY_ROOT": "caller-controlled-root-sentinel",
         "CHROMATIC_PROJECT_TOKEN": "chromatic-secret-sentinel",  # pragma: allowlist secret
         "GH_TOKEN": "github-secret-sentinel",  # pragma: allowlist secret
         "ACTIONS_RUNTIME_TOKEN": "actions-secret-sentinel",  # pragma: allowlist secret
@@ -734,6 +749,7 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
     environment = {
         **runtime_environment,
         "LIVE_E2E_OUTPUT_DIR": str(output_path),
+        "LIVE_PRIMARY_REPOSITORY_ROOT": runtime_source["LIVE_PRIMARY_REPOSITORY_ROOT"],
         "NPM_CONFIG_USERCONFIG": str(user_config),
         "NPM_CONFIG_GLOBALCONFIG": str(global_config),
         "PLAYWRIGHT_BROWSERS_PATH": str(browser_cache),
@@ -840,6 +856,7 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
             "GH_TOKEN",
             "ACTIONS_RUNTIME_TOKEN",
             "UNRELATED_API_KEY",
+            "LIVE_PRIMARY_REPOSITORY_ROOT",
             "NODE_OPTIONS",
             "NPM_CONFIG_REGISTRY",
         ):

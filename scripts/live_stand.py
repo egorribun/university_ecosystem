@@ -120,6 +120,7 @@ LIVE_E2E_WINDOWS_ENVIRONMENT = (
     "LOCALAPPDATA",
 )
 LIVE_E2E_UNIX_ENVIRONMENT = ("HOME", "TMPDIR")
+LIVE_PRIMARY_REPOSITORY_ROOT_ENV = "LIVE_PRIMARY_REPOSITORY_ROOT"
 LIVE_E2E_REQUIRED_PACKAGES = (
     "@playwright/test",
     "playwright",
@@ -1229,10 +1230,17 @@ def _e2e_locked(admin_password: str) -> None:
             _ensure_live_e2e_dependencies(frontend, environment)
             playwright_environment = dict(environment)
             ports = dict(owner.published_ports)
+            try:
+                primary_repository_root = str(REPO_ROOT.resolve(strict=True))
+            except (OSError, RuntimeError) as error:
+                raise StandError(
+                    "cannot resolve the primary repository for live endpoint verification"
+                ) from error
             playwright_environment.update(
                 {
                     "LIVE_BASE_URL": _stand_base_url(ports),
                     "LIVE_MAILPIT_URL": f"http://127.0.0.1:{ports['MAILPIT']}",
+                    LIVE_PRIMARY_REPOSITORY_ROOT_ENV: primary_repository_root,
                     "TEST_PASSWORD": admin_password,
                 }
             )
@@ -1244,6 +1252,7 @@ def _e2e_locked(admin_password: str) -> None:
             playwright_environment.pop("TEST_PASSWORD", None)
             playwright_environment.pop("LIVE_BASE_URL", None)
             playwright_environment.pop("LIVE_MAILPIT_URL", None)
+            playwright_environment.pop(LIVE_PRIMARY_REPOSITORY_ROOT_ENV, None)
             environment.pop("LIVE_E2E_OUTPUT_DIR", None)
 
 
