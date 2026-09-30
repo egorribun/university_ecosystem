@@ -284,7 +284,7 @@ async def test_seed_target_accepts_only_the_explicit_admin_smoke_test_database(
     monkeypatch.setattr(
         seed_target,
         "_configured_database_url",
-        lambda: "postgresql+asyncpg://test:test@127.0.0.1:5432/test_admin_smoke",
+        lambda: "postgresql+asyncpg://test@127.0.0.1:5432/test_admin_smoke",
     )
 
     assert seed_target.require_owned_live_stand_target() == "ci-admin-smoke"
