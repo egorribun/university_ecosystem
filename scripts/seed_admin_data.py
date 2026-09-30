@@ -50,6 +50,7 @@ from app.auth.security import get_password_hash_sync  # noqa: E402
 from app.core.database import async_session, init_database  # noqa: E402
 from app.models.dead_letter import DeadLetterJob, JobStatus  # noqa: E402
 from app.models.enums import UserRole  # noqa: E402
+from app.models.logs import DataAccessLog  # noqa: E402
 from app.models.schedule import Group  # noqa: E402
 from app.models.users import EducationPath, User, UserProfile  # noqa: E402
 from app.services.audit_service import SecureAuditService  # noqa: E402
@@ -339,15 +340,28 @@ async def seed_audit_logs(db, admin: User, others: list[User]) -> None:
     for idx, (resource_type, action, ctx_msg) in enumerate(AUDIT_ACTIONS):
         actor = actors[idx % len(actors)]
         subject = actors[(idx + 1) % len(actors)] if "user." in action else None
+        resource_id = f"{resource_type}-{idx + 100}"
+        context = {"message": ctx_msg, "demo_seed": True}
+        existing = await db.scalar(
+            select(DataAccessLog.id).where(
+                DataAccessLog.resource_type == resource_type,
+                DataAccessLog.resource_id == resource_id,
+                DataAccessLog.action == action,
+                DataAccessLog.context["demo_seed"].as_boolean().is_(True),
+            )
+        )
+        if existing is not None:
+            continue
+
         try:
             await service.create_log(
                 db,
                 actor_user_id=actor.id,
                 subject_user_id=subject.id if subject else None,
                 resource_type=resource_type,
-                resource_id=f"{resource_type}-{idx + 100}",
+                resource_id=resource_id,
                 action=action,
-                context={"message": ctx_msg, "demo_seed": True},
+                context=context,
                 ip_address=f"10.0.0.{50 + idx}",
                 user_agent="Mozilla/5.0 (W150 admin polish seed)",
             )
