@@ -127,6 +127,8 @@ LIVE_E2E_REQUIRED_PACKAGES = (
     "playwright-core",
 )
 LIVE_E2E_MANIFEST_FINGERPRINT = ".live-e2e-package-manifest.sha256"
+LIVE_E2E_OUTPUT_OWNER_MARKER = ".ue-live-e2e-output-owner"
+LIVE_E2E_OUTPUT_OWNER_MARKER_CONTENT = "ue-live-playwright-output-v1\n"
 STAND_PATHS_TO_PROTECT = (
     Path(OVERLAY),
     Path(".env"),
@@ -895,6 +897,7 @@ def _live_e2e_environment(
     )
     env = _live_e2e_runtime_environment(runtime_source)
     config_root = Path(npm_config_directory)
+    _mark_live_e2e_output_directory(output_directory, config_root)
     npm_user_config = config_root / "npm-userconfig"
     npm_global_config = config_root / "npm-globalconfig"
     for config_path in (npm_user_config, npm_global_config):
@@ -905,12 +908,49 @@ def _live_e2e_environment(
     env.update(
         {
             "LIVE_E2E_OUTPUT_DIR": output_directory,
+            "PLAYWRIGHT_TEST_OUTPUT_DIR": output_directory,
             "NPM_CONFIG_USERCONFIG": str(npm_user_config),
             "NPM_CONFIG_GLOBALCONFIG": str(npm_global_config),
             "PLAYWRIGHT_BROWSERS_PATH": str(browser_cache),
         }
     )
     return env
+
+
+def _mark_live_e2e_output_directory(
+    output_directory: str, npm_config_directory: Path
+) -> Path:
+    """Mark the wrapper's private temporary output root before Playwright loads."""
+    raw_output = Path(output_directory)
+    try:
+        config_root = npm_config_directory.resolve(strict=True)
+        output_path = raw_output.resolve(strict=True)
+        temporary_root = Path(tempfile.gettempdir()).resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise StandError(
+            "live E2E output must be an existing owned temp directory"
+        ) from error
+
+    if (
+        raw_output.is_symlink()
+        or not raw_output.is_absolute()
+        or not output_path.is_dir()
+        or output_path.name != "playwright-output"
+        or output_path.parent != config_root
+        or config_root.parent != temporary_root
+        or not config_root.name.startswith("ue-live-playwright-")
+    ):
+        raise StandError("live E2E output must use its owned temporary directory")
+
+    marker_path = config_root / LIVE_E2E_OUTPUT_OWNER_MARKER
+    try:
+        with marker_path.open("x", encoding="utf-8") as marker_file:
+            marker_file.write(LIVE_E2E_OUTPUT_OWNER_MARKER_CONTENT)
+    except OSError as error:
+        raise StandError(
+            "could not mark the owned live E2E output directory"
+        ) from error
+    return marker_path
 
 
 def _live_e2e_runtime_environment(
@@ -1253,7 +1293,10 @@ def _e2e_locked(admin_password: str) -> None:
             playwright_environment.pop("LIVE_BASE_URL", None)
             playwright_environment.pop("LIVE_MAILPIT_URL", None)
             playwright_environment.pop(LIVE_PRIMARY_REPOSITORY_ROOT_ENV, None)
+            playwright_environment.pop("LIVE_E2E_OUTPUT_DIR", None)
+            playwright_environment.pop("PLAYWRIGHT_TEST_OUTPUT_DIR", None)
             environment.pop("LIVE_E2E_OUTPUT_DIR", None)
+            environment.pop("PLAYWRIGHT_TEST_OUTPUT_DIR", None)
 
 
 def e2e() -> None:

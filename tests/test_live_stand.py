@@ -339,6 +339,7 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
     runs: list[tuple[list[str], Path, dict[str, str]]] = []
     playwright_runs: list[tuple[Path, dict[str, str], str, bool, bool]] = []
     dependency_runs: list[tuple[Path, dict[str, str]]] = []
+    owner_marker_paths: list[Path] = []
     event_order: list[str] = []
     token_sizes: list[int] = []
     original_token_urlsafe = live_stand.secrets.token_urlsafe
@@ -398,6 +399,16 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
         event_order.append("playwright")
         output_directory = environment.get("LIVE_E2E_OUTPUT_DIR", "")
         output_path = Path(output_directory)
+        if environment.get("PLAYWRIGHT_TEST_OUTPUT_DIR") != output_directory:
+            pytest.fail("Playwright output aliases must share one owned directory")
+        owner_marker = output_path.parent / live_stand.LIVE_E2E_OUTPUT_OWNER_MARKER
+        if (
+            not owner_marker.is_file()
+            or owner_marker.read_text(encoding="utf-8")
+            != live_stand.LIVE_E2E_OUTPUT_OWNER_MARKER_CONTENT
+        ):
+            pytest.fail("Playwright output must have a temporary ownership marker")
+        owner_marker_paths.append(owner_marker)
         # Playwright clears its outputDir before execution; npm configs must survive.
         output_path.rmdir()
         output_path.mkdir()
@@ -464,6 +475,10 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
             pytest.fail("the E2E command must generate one password and run both seeds")
         if event_order != ["seed", "seed", "bootstrap", "playwright"]:
             pytest.fail("locked dependencies must be ready before Playwright starts")
+        if any(marker.exists() for marker in owner_marker_paths):
+            pytest.fail(
+                "the output ownership marker must be removed with its temp root"
+            )
 
         demo_command, _demo_cwd, demo_env = runs[0]
         admin_command, _admin_cwd, admin_env = runs[1]
@@ -546,6 +561,8 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
         if "PATH" not in e2e_env:
             pytest.fail("the Playwright child must receive PATH to launch npm and Node")
         output_dir = e2e_env.get("LIVE_E2E_OUTPUT_DIR")
+        if e2e_env.get("PLAYWRIGHT_TEST_OUTPUT_DIR") != output_dir:
+            pytest.fail("Playwright must receive both aliases for its owned output")
         if not output_dir_existed or not output_dir or Path(output_dir).exists():
             pytest.fail(
                 "Playwright output must use a temporary directory removed after exit"
@@ -590,6 +607,8 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
             _npm_configs_empty,
         ) in playwright_runs:
             environment.pop("TEST_PASSWORD", None)
+            environment.pop("LIVE_E2E_OUTPUT_DIR", None)
+            environment.pop("PLAYWRIGHT_TEST_OUTPUT_DIR", None)
 
 
 def test_live_e2e_runtime_environment_only_copies_explicit_platform_allowlist() -> None:
@@ -619,6 +638,8 @@ def test_live_e2e_runtime_environment_only_copies_explicit_platform_allowlist() 
         "COMPOSE_PROJECT_NAME",
         "TEST_PASSWORD",
         "LIVE_PRIMARY_REPOSITORY_ROOT",
+        "LIVE_E2E_OUTPUT_DIR",
+        "PLAYWRIGHT_TEST_OUTPUT_DIR",
     )
     private_values = {
         name: f"private-sentinel-{index}" for index, name in enumerate(private_names)
@@ -731,6 +752,7 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
         "LIVE_BASE_URL": "http://sensitive-endpoint.invalid",
         "LIVE_MAILPIT_URL": "http://sensitive-mail.invalid",
         "LIVE_E2E_OUTPUT_DIR": str(output_path),
+        "PLAYWRIGHT_TEST_OUTPUT_DIR": str(output_path),
         "LIVE_PRIMARY_REPOSITORY_ROOT": "caller-controlled-root-sentinel",
         "CHROMATIC_PROJECT_TOKEN": "chromatic-secret-sentinel",  # pragma: allowlist secret
         "GH_TOKEN": "github-secret-sentinel",  # pragma: allowlist secret
@@ -749,6 +771,7 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
     environment = {
         **runtime_environment,
         "LIVE_E2E_OUTPUT_DIR": str(output_path),
+        "PLAYWRIGHT_TEST_OUTPUT_DIR": str(output_path),
         "LIVE_PRIMARY_REPOSITORY_ROOT": runtime_source["LIVE_PRIMARY_REPOSITORY_ROOT"],
         "NPM_CONFIG_USERCONFIG": str(user_config),
         "NPM_CONFIG_GLOBALCONFIG": str(global_config),
@@ -851,6 +874,7 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
         assert "LIVE_BASE_URL" not in child_environment
         assert "LIVE_MAILPIT_URL" not in child_environment
         assert "LIVE_E2E_OUTPUT_DIR" not in child_environment
+        assert "PLAYWRIGHT_TEST_OUTPUT_DIR" not in child_environment
         for secret_name in (
             "CHROMATIC_PROJECT_TOKEN",
             "GH_TOKEN",

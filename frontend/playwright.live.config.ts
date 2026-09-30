@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test"
+import { resolveLiveE2EOutputDirectory } from "./scripts/live-e2e-output-dir.mjs"
 
 /**
  * Live acceptance lane: real backend, real database, seeded roles.
@@ -23,7 +24,7 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 15_000 },
   reporter: "list",
-  outputDir: process.env.LIVE_E2E_OUTPUT_DIR ?? "test-results",
+  outputDir: resolveLiveE2EOutputDirectory(),
   use: {
     baseURL: BASE_URL,
     ignoreHTTPSErrors: true,
