@@ -16,15 +16,16 @@ evidence, not current configuration or release certification.
 
 ## Legacy archive cleanup and recovery
 
-The legacy directories `archive/` and `../superpowers/plans/archive/` have been
-inventoried: 112 audit reports and 8 plan snapshots. Unique requirements have
-been reconciled against the master plan, ADRs, tests, and current workflow
-contracts; review and final cleanup acceptance remain open. The repository
-history remains the historical source. The external rescue bundle was verified
-at rescue SHA `d0aad7c296facd79b3d41b037bc4160f5b3132be`; `git bundle verify`
-confirmed its complete history, two restored sample files matched their
-inventory blobs, and the inventory matches all 120 archive paths, blob IDs, and
-sizes. It is stored next to the repository as
+The former directories `archive/` and `../superpowers/plans/archive/` contained
+112 audit reports and 8 plan snapshots. Applicable requirements were reconciled
+against the master plan, ADRs, tests, and current workflow contracts; the two
+directories were removed in separate commits after inventory, credential
+disposition, and recovery verification. The repository history remains the
+historical source. The external rescue bundle was verified at rescue SHA
+`d0aad7c296facd79b3d41b037bc4160f5b3132be`; `git bundle verify` confirmed its
+complete history, two restored sample files matched their inventory blobs, and
+the inventory matches all 120 archive paths, blob IDs, and sizes. It is stored
+next to the repository as
 `../university_ecosystem-rescue-2026-09-30-d0aad7c.bundle`; its SHA-256 is
 `7cdaed352df12a0f735f86399dd2937be9c832e60d2f1f0ff66fbbb9bc823b11`.
 The 120-file path/blob/size/disposition/transfer inventory is stored next to
@@ -49,11 +50,10 @@ git clone --no-checkout $bundle $rescue
 git -C $rescue checkout d0aad7c296facd79b3d41b037bc4160f5b3132be -- docs/audits/archive docs/superpowers/plans/archive
 ```
 
-At this point the archives have not been removed. The default link check passes
-for current documentation; `--include-archives` remains a diagnostic mode and
-reports historical broken targets in the legacy archive. After the transfer and
-archive cleanup, both modes must pass with no historical-link allowlist. Do not
-invent replacement links for files that are not present.
+After archive removal, both the default and `--include-archives` link checks pass
+for all 436 remaining Markdown files with no historical-link allowlist. Keep
+`--include-archives` as a diagnostic mode for verifying restored snapshots; do
+not invent replacement links for files that are not present.
 
 ## Current working references
 
@@ -86,11 +86,11 @@ certified release snapshot.
 
 ## Historical reports
 
-Current requirements and useful procedures from legacy reports are transferred
-to the master plan, ADRs, and executable contracts. The archives remain in the
-working tree until credential triage is resolved; afterward remove superseded
-copies without rewriting Git history. Keep the rescue bundle and its inventory
-outside the repository rather than maintaining duplicated narratives here.
+Current requirements and useful procedures from legacy reports have been
+transferred to the master plan, ADRs, and executable contracts. Superseded copies
+were removed from the working tree without rewriting Git history. Keep the rescue
+bundle and its inventory outside the repository rather than maintaining duplicated
+narratives here.
 
 ## Maintenance rules
 
