@@ -22,7 +22,7 @@ test("a wrong password keeps the user on the login page", async ({ page }) => {
   expect(me.status()).toBe(401)
 })
 
-test("the admin area is reachable for an admin and closed to a student", async ({ page }) => {
+test("admin can access the admin page and user listing", async ({ page }) => {
   await loginAs(page, "admin")
   await page.goto("/admin/users")
   await expect(page).toHaveURL(/\/admin\/users/)
@@ -30,10 +30,29 @@ test("the admin area is reachable for an admin and closed to a student", async (
     page.getByText(ROLES.teacher.email, { exact: true }).filter({ visible: true })
   ).toBeVisible()
 
-  await page.context().clearCookies()
-  await loginAs(page, "student")
-  await page.goto("/admin/users")
-  await expect(page).not.toHaveURL(/\/admin\/users/)
-  const users = await page.request.get("/api/v1/users")
-  expect(users.status()).toBe(403)
+  const adminUsers = await page.request.get("/api/v1/users")
+  expect(adminUsers.status(), "admin GET /api/v1/users should be allowed").toBe(200)
+  const adminUserRecords = (await adminUsers.json()) as { email: string }[]
+  expect(
+    adminUserRecords.some((user) => user.email === ROLES.teacher.email),
+    "admin user listing should include the seeded teacher"
+  ).toBe(true)
 })
+
+for (const role of ["student", "teacher"] as const) {
+  test(`${role} is denied access to admin pages and user listing`, async ({ page }) => {
+    await loginAs(page, role)
+
+    const identity = await page.request.get("/api/v1/users/me")
+    expect(identity.status(), `${role} /api/v1/users/me status`).toBe(200)
+    expect((await identity.json()).role, `${role} fixture role`).toBe(role)
+
+    await page.goto("/admin/users")
+    await expect(page, `${role} should be redirected from /admin/users to /dashboard`).toHaveURL(
+      /\/dashboard$/
+    )
+
+    const users = await page.request.get("/api/v1/users")
+    expect(users.status(), `${role} GET /api/v1/users status`).toBe(403)
+  })
+}
