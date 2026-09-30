@@ -811,12 +811,13 @@ The table below documents the live execution results of the project's quality ga
 - **MVP Impact**: Key rotation causes immediate user session drops across active clients.
 - **Remediation**: Maintain an atomic map of `kid -> *rsa.PublicKey` and support dual-key verification windows during key rollover.
 
-#### Finding SEC-03: Hardcoded Default `audit_log_secret` Passes Production Validator — CLOSED 2026-09-30
-- **Severity**: Historical P1; current-state verification closed this finding.
-- **Current citation**: `app/core/config/security.py:222-225, 352-365`; `tests/test_security_settings_closure.py::test_default_audit_secret_is_rejected_in_production`.
-- **Historical observation**: The original report described a 32-character hexadecimal value as the Python default and claimed it passed production validation. That exact value appeared only in this audit report, not in application source or Git history; it has been removed here because it resembled credential material.
-- **Current state**: `SecuritySettings.audit_log_secret` uses a named placeholder sentinel. Production validation rejects repository-known defaults and requires an explicitly configured random value. The regression test verifies that the sentinel is rejected.
-- **Disposition**: Closed for the current source snapshot based on the source check and regression test above. This status does not certify the remaining audit findings.
+#### Finding SEC-03: Hardcoded Default `audit_log_secret` — SOURCE VALIDATION CLOSED; HISTORICAL USE UNVERIFIED 2026-09-30
+- **Severity**: Historical P1; current source guard is verified, deployment verification remains open.
+- **Current citation**: `app/core/config/security.py:285-334, 352-365`; `tests/test_security_settings_closure.py::test_default_audit_secret_is_rejected_in_production`; `tests/test_security_settings_closure.py::test_retired_repository_audit_keys_are_rejected_in_production`.
+- **Historical observation**: The original report described a 32-character hexadecimal value as the Python default and claimed it passed production validation. A safe in-memory comparison confirmed that the same value appeared in seven historical revisions of `app/core/config/security.py`; the value is redacted from this report and is absent from current source.
+- **Current state**: `SecuritySettings.audit_log_secret` uses a named placeholder sentinel. Production validation rejects known or placeholder keys and values shorter than 32 characters; operators must provide a cryptographically random value. The standalone Kubernetes manifest declares a Vault-backed ExternalSecret consumed by the backend Deployment. Helm supports `applicationSecrets.existingSecret`, but the checked-in default is empty and no active release override is present in the repository. These manifests document intended wiring; they do not prove that a live secret was synced or deployed. The regression tests verify sentinel and retired-key rejection.
+- **Rotation behavior**: The ordered audit-key ring uses its first key for new HMACs and accepts configured keys for verification. The current runbook can re-sign `DataAccessLog` rows, but no helper re-signs or rebuilds existing `StoredEvent` chains. Removing the retired key could therefore make historical event chains unverifiable.
+- **Disposition**: The source-level validation finding is closed for the current snapshot. Whether an older deployment or secret store used the retired key has not been established. Before removing it anywhere, verify whether retained audit records depend on it and define a compatible re-signing or verification path for both record types. Do not treat historical exposure as fully resolved until deployment use and data compatibility are established. This status does not certify the remaining audit findings.
 
 #### Finding SEC-04: Go Microservices Emit Structured Logs Without PII Redaction
 - **Severity**: **P1 (High / Compliance & Privacy Leak - Violates ADR-012)**
