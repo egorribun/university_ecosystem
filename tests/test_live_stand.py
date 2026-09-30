@@ -91,6 +91,87 @@ def test_vapid_keys_are_created_once_per_worktree(tmp_path: Path) -> None:
     assert json.loads((tmp_path / ".secrets" / "live-vapid.json").read_text()) == first
 
 
+def test_stand_admin_password_is_persisted_and_bound_to_its_owner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repository = tmp_path / "repository"
+    worktree = tmp_path / "ue-live"
+    repository.mkdir()
+    worktree.mkdir()
+    owner = live_stand.StandOwner(
+        repository=str(repository.resolve()),
+        worktree=str(worktree.resolve()),
+        project_name="ue-live-0123456789abcdef",
+        published_ports=tuple(_port_map().items()),
+        schema_version=live_stand.OWNER_SCHEMA_VERSION,
+    )
+    generated_sizes: list[int] = []
+
+    def generate_password(size: int) -> str:
+        generated_sizes.append(size)
+        return "owner-scoped-test-password-long-enough-for-testing"
+
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setattr(live_stand.secrets, "token_urlsafe", generate_password)
+
+    first = live_stand.load_or_create_stand_admin_password(worktree, owner)
+    second = live_stand.load_or_create_stand_admin_password(worktree, owner)
+    saved = json.loads(
+        (worktree / ".secrets" / "live-admin-password.json").read_text(encoding="utf-8")
+    )
+
+    if first != second or generated_sizes != [32]:
+        pytest.fail("the same stand must reuse one persisted admin password")
+    if (
+        saved.get("project_name") != owner.project_name
+        or saved.get("password") != first
+    ):
+        pytest.fail("the persisted credential must be bound to this stand")
+    if os.name != "nt" and (
+        (worktree / ".secrets" / "live-admin-password.json").stat().st_mode & 0o077
+    ):
+        pytest.fail("the persisted credential must not be group/world accessible")
+    captured = capsys.readouterr()
+    if first in captured.out or first in captured.err:
+        pytest.fail("the stand admin credential must never be printed")
+
+
+def test_stand_admin_password_rejects_credential_from_another_owner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    worktree = tmp_path / "ue-live"
+    repository.mkdir()
+    worktree.mkdir()
+    original_owner = live_stand.StandOwner(
+        repository=str(repository.resolve()),
+        worktree=str(worktree.resolve()),
+        project_name="ue-live-0123456789abcdef",
+        published_ports=tuple(_port_map().items()),
+        schema_version=live_stand.OWNER_SCHEMA_VERSION,
+    )
+    replacement_owner = live_stand.StandOwner(
+        repository=original_owner.repository,
+        worktree=original_owner.worktree,
+        project_name="ue-live-fedcba9876543210",
+        published_ports=original_owner.published_ports,
+        schema_version=original_owner.schema_version,
+    )
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setattr(
+        live_stand.secrets,
+        "token_urlsafe",
+        lambda _size: "owner-scoped-test-password-long-enough-for-testing",
+    )
+
+    live_stand.load_or_create_stand_admin_password(worktree, original_owner)
+
+    with pytest.raises(live_stand.StandError, match="different live stand"):
+        live_stand.load_or_create_stand_admin_password(worktree, replacement_owner)
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows junction and symlink behavior")
 @pytest.mark.parametrize("operation", ["owner", "vapid"])
 def test_secrets_junction_is_rejected_before_any_write(
@@ -227,14 +308,18 @@ def test_compose_command_targets_only_the_stand_project() -> None:
     ]
 
 
-def test_seed_cli_passes_a_fresh_password_only_to_the_admin_seed(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     from contextlib import nullcontext
 
+    worktree = tmp_path / "ue-live"
+    worktree.mkdir()
     owner = live_stand.StandOwner(
         repository=str(ROOT),
-        worktree=str(live_stand.WORKTREE),
+        worktree=str(worktree),
         project_name="ue-live-0123456789abcdef",
         published_ports=tuple(_port_map().items()),
         schema_version=live_stand.OWNER_SCHEMA_VERSION,
@@ -251,9 +336,16 @@ def test_seed_cli_passes_a_fresh_password_only_to_the_admin_seed(
         return original_token_urlsafe(size)
 
     monkeypatch.setattr(live_stand.secrets, "token_urlsafe", generate_token)
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
     monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
     monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: owner)
+    daemon_checks: list[live_stand.StandOwner] = []
+    monkeypatch.setattr(
+        live_stand,
+        "_require_owned_docker_daemon",
+        lambda checked_owner: daemon_checks.append(checked_owner),
+    )
     monkeypatch.setattr(
         live_stand,
         "load_vapid",
@@ -278,12 +370,28 @@ def test_seed_cli_passes_a_fresh_password_only_to_the_admin_seed(
     assert live_stand.main(["seed"]) == 0
     assert live_stand.main(["seed"]) == 0
 
-    if len(runs) != 4 or token_sizes != [32, 32]:
-        pytest.fail("each seed invocation must create one per-run admin password")
+    if len(runs) != 4 or token_sizes != [32]:
+        pytest.fail("repeated seed invocations must reuse one owner-scoped password")
 
     admin_commands = [runs[1][0], runs[3][0]]
     admin_environments = [runs[1][1], runs[3][1]]
     demo_environments = [runs[0][1], runs[2][1]]
+    expected_seed_environment = {
+        "COMPOSE_PROJECT_NAME": owner.project_name,
+        "LIVE_STAND_OWNER_VERIFIED": "1",
+        "LIVE_STAND_SEED_PROJECT": owner.project_name,
+    }
+    for command, _environment in runs:
+        for name, value in expected_seed_environment.items():
+            if not any(
+                command[index] == "--env"
+                and index + 1 < len(command)
+                and command[index + 1] == f"{name}={value}"
+                for index in range(len(command))
+            ):
+                pytest.fail("live seed command omitted its verified owner target")
+    if daemon_checks != [owner, owner]:
+        pytest.fail("each seed run must verify the owned Docker daemon")
     if any("TEST_PASSWORD" in environment for environment in demo_environments):
         pytest.fail("demo-data seeding must not receive the admin password")
 
@@ -300,8 +408,8 @@ def test_seed_cli_passes_a_fresh_password_only_to_the_admin_seed(
         for password in generated_passwords
     ):
         pytest.fail("admin seeding must receive a strong generated password")
-    if generated_passwords[0] == generated_passwords[1]:
-        pytest.fail("separate seed invocations must use different passwords")
+    if generated_passwords[0] != generated_passwords[1]:
+        pytest.fail("separate seed invocations must reuse the persisted password")
     if any(password == inherited_password for password in generated_passwords):
         pytest.fail("admin seeding must replace inherited passwords with fresh values")
     if any(
@@ -321,7 +429,36 @@ def test_seed_cli_passes_a_fresh_password_only_to_the_admin_seed(
         pytest.fail("live-stand seed must not log the generated password")
 
 
-def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it(
+def test_seed_refuses_ownership_metadata_changed_after_it_was_loaded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = live_stand.StandOwner(
+        repository=str(ROOT),
+        worktree=str(live_stand.WORKTREE),
+        project_name="ue-live-0123456789abcdef",
+        published_ports=tuple(_port_map().items()),
+        schema_version=live_stand.OWNER_SCHEMA_VERSION,
+    )
+    changed_owner = live_stand.StandOwner(
+        repository=owner.repository,
+        worktree=owner.worktree,
+        project_name="ue-live-fedcba9876543210",
+        published_ports=owner.published_ports,
+        schema_version=owner.schema_version,
+    )
+    monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
+    monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: changed_owner)
+    monkeypatch.setattr(
+        live_stand,
+        "_require_owned_docker_daemon",
+        lambda _owner: pytest.fail("daemon check ran with stale ownership data"),
+    )
+
+    with pytest.raises(live_stand.StandError, match="metadata changed"):
+        live_stand._seed_locked("", owner=owner)
+
+
+def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
@@ -329,6 +466,7 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
     from contextlib import nullcontext
 
     worktree = tmp_path / "ue-live"
+    worktree.mkdir()
     port_map = _port_map()
     owner = live_stand.StandOwner(
         repository=str(ROOT),
@@ -442,6 +580,7 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
     monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
     monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
     monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: owner)
+    monkeypatch.setattr(live_stand, "_require_owned_docker_daemon", lambda _owner: None)
     monkeypatch.setattr(
         live_stand,
         "load_vapid",
@@ -466,15 +605,28 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
     try:
         if live_stand.main(["e2e"]) != 0:
             pytest.fail("the E2E orchestration command should complete successfully")
+        if live_stand.main(["e2e"]) != 0:
+            pytest.fail("a second E2E run against the preserved stand should succeed")
 
         if (
-            len(runs) != 2
-            or len(dependency_runs) != 1
-            or len(playwright_runs) != 1
+            len(runs) != 4
+            or len(dependency_runs) != 2
+            or len(playwright_runs) != 2
             or token_sizes != [32]
         ):
-            pytest.fail("the E2E command must generate one password and run both seeds")
-        if event_order != ["seed", "seed", "bootstrap", "playwright"]:
+            pytest.fail(
+                "two E2E runs must reuse one persisted password and each run both seeds"
+            )
+        if event_order != [
+            "seed",
+            "seed",
+            "bootstrap",
+            "playwright",
+            "seed",
+            "seed",
+            "bootstrap",
+            "playwright",
+        ]:
             pytest.fail("locked dependencies must be ready before Playwright starts")
         if any(marker.exists() for marker in owner_marker_paths):
             pytest.fail(
@@ -483,6 +635,7 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
 
         demo_command, _demo_cwd, demo_env = runs[0]
         admin_command, _admin_cwd, admin_env = runs[1]
+        second_admin_env = runs[3][2]
         dependency_frontend, dependency_environment = dependency_runs[0]
         (
             e2e_cwd,
@@ -494,12 +647,26 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
         generated_password = admin_env.get("TEST_PASSWORD")
         if not isinstance(generated_password, str):
             pytest.fail("the admin seed must receive its generated password via env")
+        if second_admin_env.get("TEST_PASSWORD") != generated_password:
+            pytest.fail("a rerun must reuse the persisted stand admin password")
+        password_file = worktree / ".secrets" / "live-admin-password.json"
+        try:
+            stored_password = json.loads(password_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            pytest.fail("the owner-scoped admin password must persist across runs")
+        if (
+            stored_password.get("project_name") != owner.project_name
+            or stored_password.get("password") != generated_password
+        ):
+            pytest.fail("the persisted admin password must belong to this stand")
         if "TEST_PASSWORD" in demo_env:
             pytest.fail("the demo seed must not receive the admin password")
         if e2e_env.get("TEST_PASSWORD") != generated_password:
             pytest.fail("the Playwright child must receive the same per-run password")
         if playwright_password != generated_password:
             pytest.fail("the orchestrator must retain only the password for this run")
+        if playwright_runs[1][2] != generated_password:
+            pytest.fail("a rerun's Playwright login must use the seeded password")
         if generated_password == ambient_password:
             pytest.fail("the E2E command must ignore an inherited password")
         if (

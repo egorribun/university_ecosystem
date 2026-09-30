@@ -1,11 +1,12 @@
 """
 Seed script — creates admin user + sample data for /admin pages.
 
-Run AFTER `scripts/seed_demo_data.py` (this script depends on the base group
-existing). Safe to re-run: each section catches unique-constraint violations.
+Run through the owner-checked live stand command after the demo seed, or from
+the narrowly scoped admin-smoke GitHub workflow target. Other direct execution
+without a verified seed target fails closed.
 
 Usage:
-    python scripts/seed_admin_data.py
+    python scripts/live_stand.py seed
 
 The script requires TEST_PASSWORD in its process environment. It has no built-in
 admin password; CI supplies a unique, masked value for each admin-smoke run.
@@ -29,34 +30,26 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import os
 
-# Match seed_demo_data.py pattern: replace docker hostname with localhost when
-# running from the host (.env DATABASE_URL has @postgres:).
-_loaded_from_dotenv = False
 if "DATABASE_URL" not in os.environ:
     try:
         from dotenv import load_dotenv
 
         load_dotenv()
-        _loaded_from_dotenv = True
     except ImportError:
         pass
 
-if _loaded_from_dotenv:
-    _db_url = os.environ.get("DATABASE_URL", "")
-    if "@postgres:" in _db_url:
-        os.environ["DATABASE_URL"] = _db_url.replace("@postgres:", "@localhost:")
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
-from sqlalchemy import select  # noqa: E402
-from sqlalchemy.exc import IntegrityError  # noqa: E402
-
-from app.auth.security import get_password_hash_sync  # noqa: E402
-from app.core.database import async_session, init_database  # noqa: E402
-from app.models.dead_letter import DeadLetterJob, JobStatus  # noqa: E402
-from app.models.enums import UserRole  # noqa: E402
-from app.models.logs import DataAccessLog  # noqa: E402
-from app.models.schedule import Group  # noqa: E402
-from app.models.users import EducationPath, User, UserProfile  # noqa: E402
-from app.services.audit_service import SecureAuditService  # noqa: E402
+from app.auth.security import get_password_hash_sync, verify_password_sync
+from app.core.database import async_session, init_database
+from app.models.dead_letter import DeadLetterJob, JobStatus
+from app.models.enums import UserRole
+from app.models.logs import DataAccessLog
+from app.models.schedule import Group
+from app.models.users import EducationPath, User, UserProfile
+from app.services.audit_service import SecureAuditService
+from scripts.seed_target import ADMIN_SMOKE_PROJECT, require_owned_live_stand_target
 
 # ---------------------------------------------------------------------------
 # Admin user credentials (no `!` per CLAUDE.md docker gotcha)
@@ -222,16 +215,42 @@ def _required_test_password() -> str:
     return password
 
 
-async def find_or_create_admin(db, *, admin_password: str) -> User:
-    """Create the admin user or refresh its password from the current seed run."""
+def _admin_profile(user_id) -> UserProfile:
+    return UserProfile(
+        user_id=user_id,
+        full_name="Платформенный администратор",
+        about="Учётная запись для управления системой ГУУ — тестовая для W150 polish-arc.",
+        telegram="@guu_admin",
+        status="Online — мониторинг системы",
+        avatar_url="https://picsum.photos/seed/avatar_admin/256/256",
+    )
+
+
+async def find_or_create_admin(
+    db,
+    *,
+    admin_password: str,
+    reconcile_stand_password: bool = False,
+) -> User:
+    """Create or repair the synthetic admin without changing unrelated accounts."""
     existing = await db.scalar(select(User).where(User.email == ADMIN_EMAIL))
     if existing:
-        existing.hashed_password = get_password_hash_sync(admin_password)
         if existing.role != UserRole.ADMIN:
-            existing.role = UserRole.ADMIN
-            print(f"  ↻ Promoted {ADMIN_EMAIL} → admin")
-        else:
-            print(f"  ⊙ Admin {ADMIN_EMAIL} already exists")
+            raise ValueError(
+                "refusing to elevate an existing account with a different role"
+            )
+        if reconcile_stand_password and not verify_password_sync(
+            admin_password, existing.hashed_password
+        ):
+            existing.hashed_password = get_password_hash_sync(admin_password)
+            db.add(existing)
+        profile_exists = await db.scalar(
+            select(UserProfile.user_id).where(UserProfile.user_id == existing.id)
+        )
+        if profile_exists is None:
+            db.add(_admin_profile(existing.id))
+        await db.flush()
+        print(f"  ⊙ Admin {ADMIN_EMAIL} already exists")
         return existing
 
     hashed = get_password_hash_sync(admin_password)
@@ -244,15 +263,7 @@ async def find_or_create_admin(db, *, admin_password: str) -> User:
     db.add(user)
     await db.flush()
 
-    profile = UserProfile(
-        user_id=user.id,
-        full_name="Платформенный администратор",
-        about="Учётная запись для управления системой ГУУ — тестовая для W150 polish-arc.",
-        telegram="@guu_admin",
-        status="Online — мониторинг системы",
-        avatar_url="https://picsum.photos/seed/avatar_admin/256/256",
-    )
-    db.add(profile)
+    db.add(_admin_profile(user.id))
     await db.flush()
     print(f"  ✓ Admin: {user.email} (id={user.id})")
     return user
@@ -294,6 +305,38 @@ async def seed_extra_users(db, groups: dict[str, Group]) -> list[User]:
     ) in EXTRA_USERS:
         existing = await db.scalar(select(User).where(User.email == email))
         if existing:
+            if existing.group_id is None and group_name and group_name in groups:
+                existing.group_id = groups[group_name].id
+
+            profile_exists = await db.scalar(
+                select(UserProfile.user_id).where(UserProfile.user_id == existing.id)
+            )
+            if profile_exists is None:
+                db.add(
+                    UserProfile(
+                        user_id=existing.id,
+                        full_name=full_name,
+                        telegram=telegram,
+                        avatar_url=f"https://picsum.photos/seed/avatar_{email.split('@')[0]}/256/256",
+                    )
+                )
+
+            if institute and course:
+                education_path_exists = await db.scalar(
+                    select(EducationPath.user_id).where(
+                        EducationPath.user_id == existing.id
+                    )
+                )
+                if education_path_exists is None:
+                    db.add(
+                        EducationPath(
+                            user_id=existing.id,
+                            institute=institute,
+                            course=course,
+                            education_level="Бакалавриат",
+                        )
+                    )
+
             print(f"  ⊙ User {email} already exists")
             created.append(existing)
             continue
@@ -428,6 +471,8 @@ async def seed_dead_letter_jobs(db) -> None:
 
 
 async def main() -> None:
+    seed_target = require_owned_live_stand_target()
+    reconcile_stand_password = seed_target != ADMIN_SMOKE_PROJECT
     admin_password = _required_test_password()
     print("Initialising database connection…")
     init_database()
@@ -436,7 +481,11 @@ async def main() -> None:
         try:
             print("\n[1/5] Admin user")
             try:
-                admin = await find_or_create_admin(db, admin_password=admin_password)
+                admin = await find_or_create_admin(
+                    db,
+                    admin_password=admin_password,
+                    reconcile_stand_password=reconcile_stand_password,
+                )
             finally:
                 del admin_password
 
@@ -466,14 +515,11 @@ async def main() -> None:
                 f"  Dead-letter:    {len(DEAD_LETTER_JOBS)} jobs (mix of pending/retrying/failed)"
             )
             print("\n  Open: http://localhost:5173/admin/audit (or your dev URL)")
-        except IntegrityError as exc:
+        except IntegrityError:
             await db.rollback()
-            msg = str(exc.orig).lower() if exc.orig else str(exc).lower()
-            if "unique" in msg or "duplicate" in msg:
-                print("\n⚠ Some data already exists — partial run committed.")
-            else:
-                print(f"\n✗ IntegrityError: {exc}")
-                raise
+            raise RuntimeError(
+                "admin seed transaction failed and was rolled back"
+            ) from None
 
 
 if __name__ == "__main__":

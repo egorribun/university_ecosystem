@@ -89,6 +89,7 @@ LEGACY_PUBLISHED_PORTS = {
 PORT_RANGE = (20000, 45000)
 PORT_BIND_HOST = "127.0.0.1"
 VAPID_FILE = Path(".secrets") / "live-vapid.json"
+ADMIN_PASSWORD_FILE = Path(".secrets") / "live-admin-password.json"
 STAND_FILE = Path(".secrets") / "live-stand.json"
 PROJECT_PREFIX = "ue-live-"
 PROJECT_PATTERN = re.compile(r"^ue-live-[0-9a-f]{16}$")
@@ -139,6 +140,7 @@ STAND_PATHS_TO_PROTECT = (
     Path(".secrets"),
     STAND_FILE,
     VAPID_FILE,
+    ADMIN_PASSWORD_FILE,
     Path(".secrets/jwt_rs256.pem"),
     Path(".secrets/jwt_rs256.pub.pem"),
     Path(".secrets/temporal_api_key"),
@@ -266,6 +268,82 @@ def load_vapid(worktree: Path) -> dict[str, str]:
     ):
         raise StandError(f"{path} does not hold a VAPID key pair")
     return {"public": keys["public"], "private": keys["private"]}
+
+
+def _read_stand_admin_password(worktree: Path, path: Path, owner: StandOwner) -> str:
+    _assert_worktree_paths_safe(worktree, (ADMIN_PASSWORD_FILE,))
+    if not path.is_file():
+        raise StandError(
+            "owner-scoped live stand admin credential is missing or unsafe"
+        )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise StandError(
+            "cannot read owner-scoped live stand admin credential"
+        ) from None
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"version", "project_name", "password"}
+        or payload.get("version") != 1
+        or payload.get("project_name") != owner.project_name
+        or not isinstance(payload.get("password"), str)
+        or len(payload["password"]) < 32
+        or len(payload["password"]) > 128
+    ):
+        raise StandError("admin credential belongs to a different live stand")
+    return payload["password"]
+
+
+def load_or_create_stand_admin_password(worktree: Path, owner: StandOwner) -> str:
+    """Reuse one protected synthetic admin password for this verified stand."""
+    _assert_worktree_paths_safe(worktree, (ADMIN_PASSWORD_FILE,))
+    try:
+        repository = Path(owner.repository).resolve(strict=True)
+        current_repository = REPO_ROOT.resolve(strict=True)
+        owned_worktree = Path(owner.worktree).resolve(strict=True)
+        current_worktree = _expected_worktree(worktree)
+    except (OSError, RuntimeError):
+        raise StandError("cannot verify live stand credential ownership") from None
+    if repository != current_repository or owned_worktree != current_worktree:
+        raise StandError("admin credential owner does not match the live stand")
+    _validate_project_name(owner.project_name)
+
+    path = worktree / ADMIN_PASSWORD_FILE
+    if path.exists():
+        return _read_stand_admin_password(worktree, path, owner)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _assert_worktree_paths_safe(worktree, (ADMIN_PASSWORD_FILE,))
+    payload = {
+        "version": 1,
+        "project_name": owner.project_name,
+        "password": _new_test_password(),
+    }
+    try:
+        descriptor = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+    except FileExistsError:
+        _assert_worktree_paths_safe(worktree, (ADMIN_PASSWORD_FILE,))
+        return _read_stand_admin_password(worktree, path, owner)
+    except OSError:
+        raise StandError(
+            "cannot create owner-scoped live stand admin credential"
+        ) from None
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as password_file:
+            json.dump(payload, password_file, sort_keys=True)
+            password_file.write("\n")
+        if os.name != "nt":
+            path.chmod(0o600)
+    except OSError:
+        raise StandError(
+            "cannot persist owner-scoped live stand admin credential"
+        ) from None
+    return payload["password"]
 
 
 def _git_common_directory() -> Path:
@@ -898,13 +976,17 @@ def up(ref: str) -> None:
 
 
 def _new_test_password() -> str:
-    """Create a policy-valid password whose value is unique to one run."""
+    """Create a policy-valid password for the owned synthetic admin account."""
     return secrets.token_urlsafe(32) + "!Aa0"
 
 
 def _seed_locked(admin_password: str, *, owner: StandOwner | None = None) -> None:
     _require_worktree()
-    owner = owner or load_stand_owner(WORKTREE)
+    current_owner = load_stand_owner(WORKTREE)
+    if owner is not None and owner != current_owner:
+        raise StandError("live stand ownership metadata changed before seeding")
+    owner = current_owner
+    _require_owned_docker_daemon(owner)
     env = stand_environment(
         load_vapid(WORKTREE), owner.project_name, dict(owner.published_ports)
     )
@@ -918,6 +1000,12 @@ def _seed_locked(admin_password: str, *, owner: StandOwner | None = None) -> Non
             "--no-deps",
             "-v",
             scripts_mount,
+            "--env",
+            f"COMPOSE_PROJECT_NAME={owner.project_name}",
+            "--env",
+            "LIVE_STAND_OWNER_VERIFIED=1",
+            "--env",
+            f"LIVE_STAND_SEED_PROJECT={owner.project_name}",
         ]
         if script == "scripts/seed_admin_data.py":
             run_env = {**env, "TEST_PASSWORD": admin_password}
@@ -938,10 +1026,12 @@ def _seed_locked(admin_password: str, *, owner: StandOwner | None = None) -> Non
 
 
 def seed() -> None:
-    admin_password = _new_test_password()
+    admin_password = ""
     try:
         with stand_lifecycle_lock():
-            _seed_locked(admin_password)
+            owner = load_stand_owner(WORKTREE)
+            admin_password = load_or_create_stand_admin_password(WORKTREE, owner)
+            _seed_locked(admin_password, owner=owner)
     finally:
         admin_password = ""
 
@@ -1361,10 +1451,12 @@ def _e2e_locked(admin_password: str) -> None:
 
 
 def e2e() -> None:
-    """Seed owned roles and run live browser acceptance with one transient password."""
-    admin_password = _new_test_password()
+    """Seed owned roles and use the same protected account across stand reruns."""
+    admin_password = ""
     try:
         with stand_lifecycle_lock():
+            owner = load_stand_owner(WORKTREE)
+            admin_password = load_or_create_stand_admin_password(WORKTREE, owner)
             _e2e_locked(admin_password)
     finally:
         admin_password = ""

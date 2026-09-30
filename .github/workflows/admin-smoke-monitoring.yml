@@ -51,6 +51,7 @@ jobs:
       SECRET_KEY: "dummy_secret_key_for_admin_smoke_monitoring_at_least_32_chars" # pragma: allowlist secret
       ENVIRONMENT: testing
       DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test_admin_smoke" # pragma: allowlist secret
+      UE_SEED_TARGET: admin-smoke
       OTEL_SDK_DISABLED: "true"
       ALGORITHM: "RS256"
       JWT_PRIVATE_KEY_PATH: ".secrets/jwt_rs256.pem"

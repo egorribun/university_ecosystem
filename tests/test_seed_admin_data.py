@@ -37,6 +37,12 @@ async def test_admin_seed_fails_closed_before_database_initialization_without_pa
 ) -> None:
     from scripts import seed_admin_data
 
+    monkeypatch.setattr(
+        seed_admin_data,
+        "require_owned_live_stand_target",
+        lambda: "ue-live-testproject",
+    )
+
     def database_must_not_start() -> None:
         pytest.fail(
             "admin seeding must reject a missing password before database initialization"
@@ -58,13 +64,25 @@ async def test_admin_seed_fails_closed_before_database_initialization_without_pa
         capsys.readouterr()
 
 
-async def test_admin_seed_uses_transient_password_without_logging_it(
+@pytest.mark.parametrize(
+    ("seed_target", "should_reconcile"),
+    (("ue-live-0123456789abcdef", True), ("ci-admin-smoke", False)),
+)
+async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    seed_target: str,
+    should_reconcile: bool,
 ) -> None:
     import secrets
 
     from scripts import seed_admin_data
+
+    monkeypatch.setattr(
+        seed_admin_data,
+        "require_owned_live_stand_target",
+        lambda: seed_target,
+    )
 
     runtime_password = secrets.token_urlsafe(32)
     monkeypatch.setenv("TEST_PASSWORD", runtime_password)
@@ -85,10 +103,12 @@ async def test_admin_seed_uses_transient_password_without_logging_it(
         async def rollback(self) -> None:
             return None
 
-    observed_passwords: list[str] = []
+    observed_passwords: list[tuple[str, bool]] = []
 
-    async def capture_admin_password(db, *, admin_password: str):
-        observed_passwords.append(admin_password)
+    async def capture_admin_password(
+        db, *, admin_password: str, reconcile_stand_password: bool
+    ):
+        observed_passwords.append((admin_password, reconcile_stand_password))
         return object()
 
     async def no_op_seed(db, *args):
@@ -108,17 +128,19 @@ async def test_admin_seed_uses_transient_password_without_logging_it(
         output = capsys.readouterr()
 
     if len(observed_passwords) != 1 or not secrets.compare_digest(
-        observed_passwords[0], runtime_password
+        observed_passwords[0][0], runtime_password
     ):
         pytest.fail(
             "admin seeder did not pass the transient password to the admin creator"
         )
+    if observed_passwords[0][1] is not should_reconcile:
+        pytest.fail("password reconciliation escaped its owned live stand scope")
 
     if runtime_password in output.out or runtime_password in output.err:
         pytest.fail("admin seeder wrote the transient password to captured output")
 
 
-async def test_reseeding_existing_admin_replaces_the_password_hash(
+async def test_reseeding_existing_admin_preserves_the_password_hash(
     db_session, user_factory, capsys: pytest.CaptureFixture[str]
 ) -> None:
     import secrets
@@ -134,20 +156,202 @@ async def test_reseeding_existing_admin_replaces_the_password_hash(
         role="admin",
         hashed_password=previous_hash,
     )
+    profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == existing.id)
+    )
+    assert profile is not None
+    await db_session.delete(profile)
+    await db_session.flush()
 
     result = await seed_admin_data.find_or_create_admin(
         db_session, admin_password=current_password
     )
     await db_session.commit()
     await db_session.refresh(existing)
+    output = capsys.readouterr()
 
     if result.id != existing.id:
-        pytest.fail("admin reseeding must update the existing seeded account")
-    if not verify_password_sync(current_password, existing.hashed_password):
-        pytest.fail("admin reseeding must apply the current per-run password")
-    if verify_password_sync(previous_password, existing.hashed_password):
-        pytest.fail("admin reseeding must invalidate the previous password")
+        pytest.fail("admin reseeding must leave the matching account in place")
+    if existing.hashed_password != previous_hash:
+        pytest.fail("admin reseeding must preserve an existing password hash")
+    if not verify_password_sync(previous_password, existing.hashed_password):
+        pytest.fail("admin reseeding must preserve the existing account password")
+    if verify_password_sync(current_password, existing.hashed_password):
+        pytest.fail(
+            "admin reseeding must not apply a new password to an existing account"
+        )
 
-    output = capsys.readouterr()
     if current_password in output.out or current_password in output.err:
         pytest.fail("admin reseeding must not log the current password")
+    restored_profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == existing.id)
+    )
+    assert restored_profile is not None
+    assert restored_profile.full_name == "Платформенный администратор"
+
+
+async def test_live_stand_seed_reconciles_its_persisted_admin_password(
+    db_session, user_factory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import secrets
+
+    from app.auth.security import verify_password_sync
+    from scripts import seed_admin_data
+
+    previous_password = secrets.token_urlsafe(32) + "!Aa0"
+    stand_password = secrets.token_urlsafe(32) + "!Bb1"
+    previous_hash = seed_admin_data.get_password_hash_sync(previous_password)
+    existing = await user_factory(
+        email=seed_admin_data.ADMIN_EMAIL,
+        role="admin",
+        hashed_password=previous_hash,
+    )
+
+    result = await seed_admin_data.find_or_create_admin(
+        db_session,
+        admin_password=stand_password,
+        reconcile_stand_password=True,
+    )
+    await db_session.commit()
+    await db_session.refresh(existing)
+    output = capsys.readouterr()
+
+    assert result.id == existing.id
+    assert existing.hashed_password != previous_hash
+    assert verify_password_sync(stand_password, existing.hashed_password)
+    assert not verify_password_sync(previous_password, existing.hashed_password)
+    assert stand_password not in output.out
+    assert stand_password not in output.err
+
+
+async def test_reseeding_existing_extra_user_repairs_missing_demo_relations(
+    db_session, user_factory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from scripts import seed_admin_data
+
+    email, _password, full_name, role, telegram, institute, course, group_name = (
+        seed_admin_data.EXTRA_USERS[0]
+    )
+    groups = await seed_admin_data.seed_extra_groups(db_session)
+    existing = await user_factory(
+        email=email,
+        role=role,
+        hashed_password="kept-hash",  # pragma: allowlist secret
+    )
+    profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == existing.id)
+    )
+    assert profile is not None
+    await db_session.delete(profile)
+    education_path = await db_session.scalar(
+        select(models.EducationPath).where(models.EducationPath.user_id == existing.id)
+    )
+    if education_path is not None:
+        await db_session.delete(education_path)
+    await db_session.flush()
+
+    users = await seed_admin_data.seed_extra_users(db_session, groups)
+    await db_session.flush()
+    restored_profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == existing.id)
+    )
+    education_path = await db_session.scalar(
+        select(models.EducationPath).where(models.EducationPath.user_id == existing.id)
+    )
+    output = capsys.readouterr()
+
+    assert any(user.id == existing.id for user in users)
+    assert existing.hashed_password == "kept-hash"  # pragma: allowlist secret
+    assert existing.role == role
+    assert existing.group_id == groups[group_name].id
+    assert restored_profile is not None
+    assert restored_profile.full_name == full_name
+    assert restored_profile.telegram == telegram
+    assert education_path is not None
+    assert education_path.institute == institute
+    assert education_path.course == course
+    assert email not in output.err
+
+
+async def test_reseeding_existing_extra_user_preserves_existing_custom_data(
+    db_session, user_factory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from scripts import seed_admin_data
+
+    email, _password, _full_name, role, _telegram, _institute, _course, _group_name = (
+        seed_admin_data.EXTRA_USERS[0]
+    )
+    groups = await seed_admin_data.seed_extra_groups(db_session)
+    existing = await user_factory(
+        email=email,
+        role=role,
+        hashed_password="kept-hash",  # pragma: allowlist secret
+    )
+    existing.group_id = groups["ЭК-401"].id
+
+    profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == existing.id)
+    )
+    assert profile is not None
+    profile.full_name = "Custom existing name"
+    profile.telegram = "@custom_handle"
+    profile.avatar_url = "https://example.test/custom-avatar.png"
+
+    education_path = await db_session.scalar(
+        select(models.EducationPath).where(models.EducationPath.user_id == existing.id)
+    )
+    if education_path is None:
+        education_path = models.EducationPath(
+            user_id=existing.id,
+            institute="Custom institute",
+            course="Custom course",
+            education_level="Магистратура",
+        )
+        db_session.add(education_path)
+    else:
+        education_path.institute = "Custom institute"
+        education_path.course = "Custom course"
+        education_path.education_level = "Магистратура"
+    await db_session.flush()
+
+    users = await seed_admin_data.seed_extra_users(db_session, groups)
+    await db_session.flush()
+    await db_session.refresh(existing)
+    await db_session.refresh(profile)
+    await db_session.refresh(education_path)
+    capsys.readouterr()
+
+    assert any(user.id == existing.id for user in users)
+    assert existing.hashed_password == "kept-hash"  # pragma: allowlist secret
+    assert existing.role == role
+    assert existing.group_id == groups["ЭК-401"].id
+    assert profile.full_name == "Custom existing name"
+    assert profile.telegram == "@custom_handle"
+    assert profile.avatar_url == "https://example.test/custom-avatar.png"
+    assert education_path.institute == "Custom institute"
+    assert education_path.course == "Custom course"
+    assert education_path.education_level == "Магистратура"
+
+
+async def test_reseeding_does_not_promote_an_existing_non_admin_account(
+    db_session, user_factory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import secrets
+
+    from scripts import seed_admin_data
+
+    existing = await user_factory(
+        email=seed_admin_data.ADMIN_EMAIL,
+        role="student",
+    )
+
+    try:
+        with pytest.raises(ValueError, match="role"):
+            await seed_admin_data.find_or_create_admin(
+                db_session, admin_password=secrets.token_urlsafe(32) + "!Aa0"
+            )
+    finally:
+        capsys.readouterr()
+
+    await db_session.refresh(existing)
+    assert str(existing.role.value) == "student"

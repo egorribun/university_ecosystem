@@ -2,10 +2,11 @@
 Seed script — creates demo data after a fresh Docker install.
 
 Usage:
-    python scripts/seed_demo_data.py
+    python scripts/live_stand.py seed
 
-Requires the Docker stack to be running (PostgreSQL reachable).
-Safe to re-run: each section skips silently on unique-constraint violations.
+Run through the owner-checked live stand command, or the narrowly scoped
+admin-smoke GitHub workflow target. Direct execution against any other database
+fails closed.
 """
 
 import asyncio
@@ -17,34 +18,26 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import os
 
-# When running from the host machine (outside Docker) the DATABASE_URL in .env
-# uses the Docker-internal hostname "postgres" which doesn't resolve on the host.
-# Replace it with "localhost" ONLY when we had to load .env (i.e. we're on the host).
-_loaded_from_dotenv = False
 if "DATABASE_URL" not in os.environ:
     try:
         from dotenv import load_dotenv
 
         load_dotenv()
-        _loaded_from_dotenv = True
     except ImportError:
         pass
 
-if _loaded_from_dotenv:
-    _db_url = os.environ.get("DATABASE_URL", "")
-    if "@postgres:" in _db_url:
-        os.environ["DATABASE_URL"] = _db_url.replace("@postgres:", "@localhost:")
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
-from sqlalchemy.exc import IntegrityError  # noqa: E402
-
-from app.auth.security import get_password_hash_sync  # noqa: E402
-from app.core.database import async_session, init_database  # noqa: E402
-from app.models.enums import UserRole  # noqa: E402
-from app.models.events import Event  # noqa: E402
-from app.models.news import News  # noqa: E402
-from app.models.schedule import Group, Schedule  # noqa: E402
-from app.models.stories import Story  # noqa: E402
-from app.models.users import EducationPath, User, UserProfile  # noqa: E402
+from app.auth.security import get_password_hash_sync
+from app.core.database import async_session, init_database
+from app.models.enums import UserRole
+from app.models.events import Event
+from app.models.news import News
+from app.models.schedule import Group, Schedule
+from app.models.stories import Story
+from app.models.users import EducationPath, User, UserProfile
+from scripts.seed_target import require_owned_live_stand_target
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -384,6 +377,194 @@ EVENTS_DATA = [
     },
 ]
 
+
+def _add_english_fields(
+    records: list[dict], translations: list[dict[str, str]]
+) -> None:
+    if len(records) != len(translations):
+        raise RuntimeError("English demo content must match the Russian records")
+    for record, translation in zip(records, translations, strict=True):
+        record.update({f"{field}_en": value for field, value in translation.items()})
+
+
+_add_english_fields(
+    NEWS_DATA,
+    [
+        {
+            "title": "GUU ranks among the country's top 20 universities",
+            "content": "The annual national ranking placed State University of Management 18th among Russia's leading universities. Progress in digital learning, research publications, and graduate employment helped raise the result.",
+        },
+        {
+            "title": "Applications open for the international AI conference",
+            "content": "The Department of Information Technology invites research submissions for the 16th International Conference on Intelligent Systems and Technologies. Abstracts are due May 15, 2026; participation is free for university students and postgraduate students.",
+        },
+        {
+            "title": "GUU students win the FinTech Challenge 2026 hackathon",
+            "content": "The Byte and Code team from the Institute of Information Technology won the national financial technology hackathon. Their machine-learning borrower scoring system was built in 48 hours, earning a cash prize and internship offers from three major banks.",
+        },
+        {
+            "title": "New robotics lab opens in Building A",
+            "content": "A new robotics and industrial automation lab has opened through the Priority 2030 program. It includes industrial robot arms, machine vision, and control-system workstations for eligible students.",
+        },
+        {
+            "title": "Open Day takes place on April 12",
+            "content": "Prospective students and their families are invited to meet faculty, tour the campus, and learn about university programs and admissions. Registration is available online.",
+        },
+        {
+            "title": "Sechenov scholarships for medical students",
+            "content": "Applications are open for scholarships supporting medical students with strong academic results and research interests. The award recognizes outstanding work in healthcare and biomedical studies.",
+        },
+        {
+            "title": "Healthy Campus spring sports festival",
+            "content": "The spring festival brings students together for team sports, fitness activities, and friendly competitions. Join the campus community for an active day outdoors.",
+        },
+        {
+            "title": "Partnership agreement signed with Yandex Education",
+            "content": "The university and Yandex Education will develop joint learning programs, practical projects, and career opportunities for students in technology and digital fields.",
+        },
+        {
+            "title": "Student startup competition: apply by May 5",
+            "content": "Student teams can submit startup ideas for expert review and partner support. Selected projects will receive mentoring and the chance to present at the final showcase.",
+        },
+        {
+            "title": "New AI Ethics course opens to all programs",
+            "content": "The interdisciplinary course explores responsible AI, bias, privacy, and the social impact of automated systems. Students from every program are welcome to enroll.",
+        },
+    ],
+)
+
+_add_english_fields(
+    STORIES_DATA,
+    [
+        {
+            "title": "🎓 Exam season: preparation tips",
+            "short_text": "Seven proven ways to prepare for exams, shared by senior students.",
+        },
+        {
+            "title": "📢 Open lecture: Web 3.0",
+            "short_text": "Tomorrow at 18:00 in room 301: a lecture on decentralized application architecture.",
+        },
+        {
+            "title": "🏆 We won!",
+            "short_text": "A GUU team took first place at the regional programming championship.",
+        },
+        {
+            "title": "☕ New café in Building B",
+            "short_text": "A student café has opened with breakfasts from 99 rubles. Open from 08:00.",
+        },
+        {
+            "title": "📚 Library updates its catalog",
+            "short_text": "More than 200 new books on programming, data science, and cybersecurity are now available.",
+        },
+        {
+            "title": "🎸 Student band rehearsal",
+            "short_text": "The student rock band Zero Pointer is looking for a drummer. Auditions are Friday at 17:00.",
+        },
+        {
+            "title": "🌱 Campus cleanup day",
+            "short_text": "Join the spring campus cleanup this Saturday. Meet at 10:00 by Building A.",
+        },
+        {
+            "title": "💼 Career fair",
+            "short_text": "April 15 is Career Day. More than 40 companies are looking for interns and graduates.",
+        },
+        {
+            "title": "🔬 GUU Science Day",
+            "short_text": "Explore student research projects and vote for your favorite to win partner prizes.",
+        },
+        {
+            "title": "🍕 Faculty pizza evening",
+            "short_text": "Friday at 19:00 in the IT Institute lobby: an informal gathering with classmates and faculty.",
+        },
+        {
+            "title": "📱 Mobile app update",
+            "short_text": "Version 2.5 adds push notifications for classes and a new group chat.",
+        },
+        {
+            "title": "🎨 Student exhibition",
+            "short_text": "A gallery in Building C is showing fourth-year student design projects.",
+        },
+        {
+            "title": "🏋️ Gym and martial arts",
+            "short_text": "Sign up for martial arts by April 20 at the second-floor sports building.",
+        },
+        {
+            "title": "🚀 Meetup: startups and IT careers",
+            "short_text": "Graduates will share how they went from first-year students to CTOs. Wednesday at 18:30.",
+        },
+        {
+            "title": "🌍 2026–27 exchange program",
+            "short_text": "Applications are open for academic exchange at universities in Germany and Finland.",
+        },
+    ],
+)
+
+_add_english_fields(
+    EVENTS_DATA,
+    [
+        {
+            "title": "Open lecture: The future of AI in education",
+            "description": "Professor Andrey Volkov of Moscow State University will discuss generative models in teaching, automated assessment, and personalized learning paths.",
+            "location": "Assembly Hall, Building A, GUU",
+            "event_type": "lecture",
+        },
+        {
+            "title": "Workshop: FastAPI from zero to production",
+            "description": "Build a REST API in this practical one-day workshop. Participants will create a complete microservice with authentication, tests, and a Docker build.",
+            "location": "Lab 204, Building B",
+            "event_type": "workshop",
+        },
+        {
+            "title": "Algorithmic programming olympiad",
+            "description": "An open team competition for groups of two or three. Solve ten Codeforces problems in five hours for a share of the 120,000-ruble prize fund.",
+            "location": "Computer Lab 315, Building G",
+            "event_type": "competition",
+        },
+        {
+            "title": "Spring concert of student arts groups",
+            "description": "The annual concert features the GUU choir, student theater, dance groups, and vocal ensembles. Admission is free with a student ID.",
+            "location": "Grand Assembly Hall",
+            "event_type": "cultural",
+        },
+        {
+            "title": "IT Career Fair",
+            "description": "More than 40 partner companies will present internships and jobs for students and graduates in IT fields.",
+            "location": "Grand Assembly Hall and Building A foyer",
+            "event_type": "workshop",
+        },
+        {
+            "title": "Digital University hackathon",
+            "description": "A 48-hour hackathon to build digital services for the university ecosystem, including scheduling, notifications, and academic analytics.",
+            "location": "GUU Tech Hub coworking space, Building C",
+            "event_type": "competition",
+        },
+        {
+            "title": "Masterclass: public speaking and pitching",
+            "description": "Rhetoric coach Elena Smirnova will lead practical exercises on startup pitch structure, voice, and presentation to investors.",
+            "location": "Room 118, Building A",
+            "event_type": "workshop",
+        },
+        {
+            "title": "GUU mini-football championship",
+            "description": "An interfaculty knockout tournament. Teams of eight may apply; matches take place on weekends throughout May.",
+            "location": "GUU Sports Complex, Field 1",
+            "event_type": "sports",
+        },
+        {
+            "title": "IT Institute thesis project defenses 2026",
+            "description": "Students from the Institute of Information Technology will present their final qualification projects. Visitors are welcome to attend and ask questions.",
+            "location": "Conference Hall, third floor, Building B",
+            "event_type": "lecture",
+        },
+        {
+            "title": "Class of 2026 graduation ceremony",
+            "description": "Celebrate the 2026 graduates with remarks from the rector, award presentations, and a reception.",
+            "location": "GUU Central Assembly Hall",
+            "event_type": "cultural",
+        },
+    ],
+)
+
 # (weekday, pair_number, subject, teacher, room, lesson_type, parity)
 SCHEDULE_DATA = [
     # ── Monday ───────────────────────────────────────────────────
@@ -515,7 +696,40 @@ _DAY_BASE = {
 # ---------------------------------------------------------------------------
 
 
+def _demo_user_profile(user_id) -> UserProfile:
+    return UserProfile(
+        user_id=user_id,
+        full_name="Тест Студентов",
+        about="Тестовый студент для демонстрации возможностей платформы ГУУ.",
+        telegram="@test_student_guu",
+        status="Учусь, программирую, пью кофе ☕",
+        avatar_url="https://picsum.photos/seed/avatar_test/256/256",
+    )
+
+
+def _demo_education_path(user_id) -> EducationPath:
+    return EducationPath(
+        user_id=user_id,
+        institute="Институт информационных технологий",
+        course="3",
+        education_level="Бакалавриат",
+        track="Программная инженерия",
+        program="Информационные системы и технологии",
+        record_book_number="ЗИ-301-042",
+    )
+
+
 async def seed_group(db) -> Group:
+    existing = await db.scalar(
+        select(Group).where(
+            Group.name == "ЗИ-301",
+            Group.course == 3,
+            Group.faculty == "Институт информационных технологий",
+        )
+    )
+    if existing is not None:
+        return existing
+
     group = Group(name="ЗИ-301", course=3, faculty="Институт информационных технологий")
     db.add(group)
     await db.flush()
@@ -524,6 +738,25 @@ async def seed_group(db) -> Group:
 
 
 async def seed_user(db, group: Group) -> User:
+    existing = await db.scalar(select(User).where(User.email == "test@university.dev"))
+    if existing is not None:
+        if existing.role != UserRole.STUDENT:
+            raise ValueError("refusing to change the role of an existing demo account")
+        if existing.group_id is None:
+            existing.group_id = group.id
+        profile_exists = await db.scalar(
+            select(UserProfile.user_id).where(UserProfile.user_id == existing.id)
+        )
+        if profile_exists is None:
+            db.add(_demo_user_profile(existing.id))
+        education_exists = await db.scalar(
+            select(EducationPath.user_id).where(EducationPath.user_id == existing.id)
+        )
+        if education_exists is None:
+            db.add(_demo_education_path(existing.id))
+        await db.flush()
+        return existing
+
     hashed = get_password_hash_sync("TestPass@2024x")
     user = User.create(
         email="test@university.dev",
@@ -535,23 +768,8 @@ async def seed_user(db, group: Group) -> User:
     db.add(user)
     await db.flush()
 
-    profile = UserProfile(
-        user_id=user.id,
-        full_name="Тест Студентов",
-        about="Тестовый студент для демонстрации возможностей платформы ГУУ.",
-        telegram="@test_student_guu",
-        status="Учусь, программирую, пью кофе ☕",
-        avatar_url="https://picsum.photos/seed/avatar_test/256/256",
-    )
-    edu = EducationPath(
-        user_id=user.id,
-        institute="Институт информационных технологий",
-        course="3",
-        education_level="Бакалавриат",
-        track="Программная инженерия",
-        program="Информационные системы и технологии",
-        record_book_number="ЗИ-301-042",
-    )
+    profile = _demo_user_profile(user.id)
+    edu = _demo_education_path(user.id)
     db.add(profile)
     db.add(edu)
     await db.flush()
@@ -561,9 +779,18 @@ async def seed_user(db, group: Group) -> User:
 
 async def seed_news(db, user: User) -> None:
     for item in NEWS_DATA:
+        existing = await db.scalar(select(News).where(News.title == item["title"]))
+        if existing is not None:
+            if not existing.title_en:
+                existing.title_en = item["title_en"]
+            if not existing.content_en:
+                existing.content_en = item["content_en"]
+            continue
         news = News(
             title=item["title"],
+            title_en=item["title_en"],
             content=item["content"],
+            content_en=item["content_en"],
             author_id=user.id,
             image_url=item["image_url"],
         )
@@ -576,9 +803,18 @@ async def seed_stories(db, user: User) -> None:
     now = datetime.now(UTC)
     far_future = now + timedelta(days=365)
     for item in STORIES_DATA:
+        existing = await db.scalar(select(Story).where(Story.title == item["title"]))
+        if existing is not None:
+            if not existing.title_en:
+                existing.title_en = item["title_en"]
+            if not existing.short_text_en:
+                existing.short_text_en = item["short_text_en"]
+            continue
         story = Story(
             title=item["title"],
+            title_en=item["title_en"],
             short_text=item["short_text"],
+            short_text_en=item["short_text_en"],
             cover_url=item["cover_url"],
             is_active=True,
             published_at=now,
@@ -592,11 +828,31 @@ async def seed_stories(db, user: User) -> None:
 
 async def seed_events(db, user: User) -> None:
     for item in EVENTS_DATA:
+        existing = await db.scalar(
+            select(Event).where(
+                Event.title == item["title"],
+                Event.starts_at == item["starts_at"],
+            )
+        )
+        if existing is not None:
+            for field in (
+                "title_en",
+                "description_en",
+                "location_en",
+                "event_type_en",
+            ):
+                if not getattr(existing, field):
+                    setattr(existing, field, item[field])
+            continue
         ev = Event(
             title=item["title"],
+            title_en=item["title_en"],
             description=item["description"],
+            description_en=item["description_en"],
             location=item["location"],
+            location_en=item["location_en"],
             event_type=item["event_type"],
+            event_type_en=item["event_type_en"],
             starts_at=item["starts_at"],
             ends_at=item["ends_at"],
             image_url=item["image_url"],
@@ -610,9 +866,26 @@ async def seed_events(db, user: User) -> None:
 
 async def seed_schedule(db, group: Group, user: User) -> None:
     rows = 0
+    existing_rows = await db.scalars(
+        select(Schedule).where(Schedule.group_id == group.id)
+    )
+    existing_keys = {
+        (
+            entry.weekday,
+            entry.start_time.replace(tzinfo=UTC)
+            if entry.start_time.tzinfo is None
+            else entry.start_time.astimezone(UTC),
+            entry.parity,
+            entry.subject,
+        )
+        for entry in existing_rows.all()
+    }
     for weekday, pair_num, subject, teacher, room, lesson_type, parity in SCHEDULE_DATA:
         base = _DAY_BASE[weekday]
         start, end = _pair(base, pair_num)
+        key = (weekday, start, parity, subject)
+        if key in existing_keys:
+            continue
         entry = Schedule(
             group_id=group.id,
             creator_id=user.id,
@@ -626,6 +899,7 @@ async def seed_schedule(db, group: Group, user: User) -> None:
             lesson_type=lesson_type,
         )
         db.add(entry)
+        existing_keys.add(key)
         rows += 1
     await db.flush()
     print(f"  ✓ Schedule: {rows} entries (odd + even weeks)")
@@ -637,6 +911,7 @@ async def seed_schedule(db, group: Group, user: User) -> None:
 
 
 async def main() -> None:
+    require_owned_live_stand_target()
     print("Initialising database connection…")
     init_database()
 
@@ -650,17 +925,11 @@ async def main() -> None:
             await seed_schedule(db, group, user)
             await db.commit()
             print("\nAll demo data committed successfully.")
-            print("Login: test@university.dev / TestPass@2024x")
-        except IntegrityError as exc:
+        except IntegrityError:
             await db.rollback()
-            # Check if it's a duplicate-key error (already seeded)
-            msg = str(exc.orig).lower() if exc.orig else str(exc).lower()
-            if "unique" in msg or "duplicate" in msg:
-                print("\n⚠ Data already exists — skipped (no changes made).")
-                print("  To reseed, truncate the tables first.")
-            else:
-                print(f"\n✗ IntegrityError: {exc}")
-                raise
+            raise RuntimeError(
+                "demo seed transaction failed and was rolled back"
+            ) from None
 
 
 if __name__ == "__main__":

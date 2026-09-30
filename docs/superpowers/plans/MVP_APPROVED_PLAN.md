@@ -212,7 +212,7 @@
   - backend получает **VAPID**-ключи, сгенерированные на старте в `.secrets/live-<runid>/` (py_vapid или web-push generator), не коммитятся.
 - `scripts/live_stand.py` с командами `up | seed | down`:
   - `up` — compose up, ожидание `/health/ready`;
-  - `seed` — через `scripts/seed_admin_data.py`: student, teacher, admin и демо-контент;
+  - `seed` — проверяет подписанную метку владельца и Docker daemon, затем запускает оба seed-скрипта только для PostgreSQL-сервиса этого Compose-проекта;
   - `down` — `down -v` **только** своего проекта; guard на префикс имени.
 - `frontend/playwright.live.config.ts` + `frontend/tests/e2e-live/`:
   - фикстуры ролей (реальный логин), helper Mailpit API для OTP и reset-писем;

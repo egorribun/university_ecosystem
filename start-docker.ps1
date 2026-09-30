@@ -1474,15 +1474,13 @@ Write-Host "  Prometheus:           $prometheusUrl" -ForegroundColor DarkYellow
 Write-Host "  Pyroscope:            $pyroscopeUrl" -ForegroundColor DarkYellow
 Write-Host "  Alloy:                $alloyUrl" -ForegroundColor DarkYellow
 Write-Host ""
-Write-Host "Seed data:" -ForegroundColor Cyan
-Write-Host "  1) Demo content (idempotent - student user + news + events + schedule + stories):"
-Write-Host "       $ComposeCommand cp scripts/seed_demo_data.py backend:/app/seed_demo_data.py"
-Write-Host "       $ComposeCommand exec -T -w /app backend python seed_demo_data.py"
-Write-Host "Optional live E2E stand (separate from this stack; includes demo/admin seeding):" -ForegroundColor Cyan
+Write-Host "Demo seeding and optional live E2E stand (separate from this stack):" -ForegroundColor Cyan
+Write-Host "  Use the owner-checked stand for synthetic demo data; direct seeding into this Compose database is disabled."
 Write-Host "  It creates a separate full Compose stack; stop this stack first to avoid resource contention."
 Write-Host "  Run only when no other full Compose stack is active."
-Write-Host "       1) python scripts/live_stand.py up --ref HEAD"
-Write-Host "       2) python scripts/live_stand.py e2e"
+Write-Host "       python scripts/live_stand.py up --ref HEAD"
+Write-Host "       python scripts/live_stand.py seed"
+Write-Host "       python scripts/live_stand.py e2e (optional)"
 Write-Host ""
 Write-Host "Commands:" -ForegroundColor Gray
 Write-Host "  Stop:      .\start-docker.ps1 -Down"
