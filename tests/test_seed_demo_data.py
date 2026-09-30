@@ -322,7 +322,7 @@ async def test_seed_target_rejects_non_admin_smoke_workflow_context(
     monkeypatch.setattr(
         seed_target,
         "_configured_database_url",
-        lambda: "postgresql+asyncpg://test:test@127.0.0.1:5432/test_admin_smoke",
+        lambda: "postgresql+asyncpg://test@127.0.0.1:5432/test_admin_smoke",
     )
 
     with pytest.raises(RuntimeError, match="seed"):
