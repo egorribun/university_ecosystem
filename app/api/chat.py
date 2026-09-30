@@ -69,7 +69,14 @@ router = APIRouter(prefix="/chats", tags=["chats"])
 @router.get(
     "",
     response_model=ChatsListOut,
-    dependencies=[Depends(sensitive_route_limit())],
+    dependencies=[
+        Depends(
+            sensitive_route_limit(
+                limit_value=settings.rate_limit_chat,
+                key_prefix="chat-read",
+            )
+        )
+    ],
 )
 @inject
 async def get_chats(
