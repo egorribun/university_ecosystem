@@ -1478,8 +1478,11 @@ Write-Host "Seed data:" -ForegroundColor Cyan
 Write-Host "  1) Demo content (idempotent - student user + news + events + schedule + stories):"
 Write-Host "       $ComposeCommand cp scripts/seed_demo_data.py backend:/app/seed_demo_data.py"
 Write-Host "       $ComposeCommand exec -T -w /app backend python seed_demo_data.py"
-Write-Host "  2) Admin demo + live browser smoke (owned stand; generates a fresh password per run):"
-Write-Host "       python scripts/live_stand.py e2e"
+Write-Host "Optional live E2E stand (separate from this stack; includes demo/admin seeding):" -ForegroundColor Cyan
+Write-Host "  It creates a separate full Compose stack; stop this stack first to avoid resource contention."
+Write-Host "  Run only when no other full Compose stack is active."
+Write-Host "       1) python scripts/live_stand.py up --ref HEAD"
+Write-Host "       2) python scripts/live_stand.py e2e"
 Write-Host ""
 Write-Host "Commands:" -ForegroundColor Gray
 Write-Host "  Stop:      .\start-docker.ps1 -Down"

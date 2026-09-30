@@ -894,9 +894,17 @@ def test_launcher_seed_commands_are_compose_project_safe() -> None:
         assert launcher.count(command) == 1, (
             f"Expected exactly one launcher command: {command}"
         )
-    assert 'Write-Host "       python scripts/live_stand.py e2e"' in launcher, (
-        "the admin demo path must use the transient-password live wrapper"
+    assert (
+        'Write-Host "Optional live E2E stand (separate from this stack; includes demo/admin seeding):"'
+        in launcher
     )
+    assert "stop this stack first to avoid resource contention" in launcher
+    assert "Run only when no other full Compose stack is active." in launcher
+    live_stand_up = 'Write-Host "       1) python scripts/live_stand.py up --ref HEAD"'
+    live_stand_e2e = 'Write-Host "       2) python scripts/live_stand.py e2e"'
+    assert launcher.count(live_stand_up) == 1
+    assert launcher.count(live_stand_e2e) == 1
+    assert launcher.index(live_stand_up) < launcher.index(live_stand_e2e)
     assert "seed_admin_data.py" not in launcher
     assert "Login:" not in launcher
 
