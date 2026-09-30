@@ -191,8 +191,8 @@ async def test_send_message_corrupt_idempotency_entry_falls_through(
     """A legacy / pending / corrupt cached value must NOT short-circuit the send.
 
     The except (ValueError, KeyError, TypeError) arm passes through to the
-    normal flow, which then pre-reserves the pending slot (SET NX) and finally
-    promotes it to the slim completed entry (SETEX).
+        normal flow, which then pre-reserves the pending slot (SET NX) and finally
+        promotes it to the slim completed entry (SET with expiry).
     """
     cache = _patch_cache(monkeypatch, get_value=cached)
     _patch_ws(monkeypatch)
@@ -232,16 +232,16 @@ async def test_send_message_corrupt_idempotency_entry_falls_through(
     assert result is not None
     uow.chats.create_message.assert_awaited_once()
     # Pending-slot pre-reservation (L234-239): SET NX with a 300 s TTL.
-    cache.set.assert_awaited_once()
-    set_args, set_kwargs = cache.set.await_args
+    assert cache.set.await_count == 2
+    set_args, set_kwargs = cache.set.await_args_list[0]
     assert set_args[0].startswith("idm:msg:")
     assert json.loads(set_args[1]) == {"status": "pending"}
     assert set_kwargs == {"nx": True, "ex": 300}
-    # Completed-slot promotion (L430-436): SETEX with the slim format.
-    cache.setex.assert_awaited_once()
-    key, ttl, slim = cache.setex.await_args.args
+    # Completed-slot promotion uses SET with an expiry and the slim format.
+    promotion_args, promotion_kwargs = cache.set.await_args_list[1]
+    key, slim = promotion_args
     assert key.startswith("idm:msg:")
-    assert ttl == 86400
+    assert promotion_kwargs == {"ex": 86400}
     assert json.loads(slim) == {
         "status": "completed",
         "message_id": str(result.id),
@@ -379,7 +379,7 @@ async def test_send_message_phase2_failure_cleans_files_and_slot(monkeypatch):
     )
     cache.delete.assert_awaited_once()
     # No completed-slot promotion after a Phase 2 failure.
-    cache.setex.assert_not_awaited()
+    assert cache.set.await_count == 1
 
 
 # ---------------------------------------------------------------------------

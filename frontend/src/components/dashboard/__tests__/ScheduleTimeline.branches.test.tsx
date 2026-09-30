@@ -581,7 +581,7 @@ describe("ScheduleTimeline — branches", () => {
       "min-w-40"
     )
     expect(leftTooltip).toHaveStyle({
-      bottom: "calc(100% + 0.5rem)",
+      bottom: "calc(100% + 8px)",
       left: "0px",
       right: "auto",
       transform: "none",
@@ -611,7 +611,7 @@ describe("ScheduleTimeline — branches", () => {
     fireEvent.mouseEnter(midBlock)
     const midTooltip = screen.getAllByText("Midday Seminar")[1]?.parentElement
     expect(midTooltip).toHaveStyle({ left: "50%", right: "auto", transform: "translateX(-50%)" })
-    expect(midTooltip).toHaveStyle({ bottom: "calc(100% + 0.5rem)" })
+    expect(midTooltip).toHaveStyle({ bottom: "calc(100% + 8px)" })
     expect(midTooltip?.getAttribute("style")).toContain("left: 50%")
     expect(midTooltip?.getAttribute("style")).toContain("right: auto")
     expect(midTooltip?.getAttribute("style")).toContain("transform: translateX(-50%)")
@@ -635,7 +635,7 @@ describe("ScheduleTimeline — branches", () => {
     fireEvent.mouseEnter(rightBlock)
     const rightTooltip = screen.getAllByText("Evening Lab")[1]?.parentElement
     expect(rightTooltip).toHaveStyle({
-      bottom: "calc(100% + 0.5rem)",
+      bottom: "calc(100% + 8px)",
       left: "auto",
       right: "0px",
       transform: "none",

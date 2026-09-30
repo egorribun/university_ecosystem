@@ -306,7 +306,11 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 // doRequestWithBreaker wraps doRequest with the circuit breaker.
 // Returns false when the circuit is open (fail-closed for auth).
 func (c *InternalAPIAuthClient) doRequestWithBreaker(ctx context.Context, userID, roomID string) bool {
-	allowed, _ := c.doRequestWithBreakerResult(ctx, userID, roomID)
+	allowed, err := c.doRequestWithBreakerResult(ctx, userID, roomID)
+	if err != nil {
+		// RoomAuthClient is bool-only, so backend and breaker failures must deny.
+		return false
+	}
 	return allowed
 }
 

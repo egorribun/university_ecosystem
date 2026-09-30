@@ -12,10 +12,14 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import hashlib
+import inspect
 import math
 import uuid
 from collections.abc import Sequence
-from typing import Any, cast
+from typing import Any, Literal, cast
+
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.core.logging import get_logger
 from app.core.vector_ring import (
@@ -25,6 +29,52 @@ from app.core.vector_ring import (
 from app.models.vector_shard import VectorChunk
 
 logger = get_logger(__name__)
+
+
+_SetExpiryMode = Literal[
+    "keyword", "positional", "legacy", "uninspectable", "unsupported_positional"
+]
+
+
+def _set_expiry_mode(method: Any) -> tuple[_SetExpiryMode, tuple[Any, ...]]:
+    """Describe how an inspectable Redis-like ``set`` accepts its expiry."""
+    try:
+        parameters = inspect.signature(method).parameters
+    except (TypeError, ValueError):
+        return "uninspectable", ()
+
+    expiry_parameter = parameters.get("ex")
+    if expiry_parameter is not None:
+        if expiry_parameter.kind is inspect.Parameter.VAR_POSITIONAL:
+            return "legacy", ()
+        if expiry_parameter.kind is inspect.Parameter.POSITIONAL_ONLY:
+            positional_parameters = [
+                parameter
+                for parameter in parameters.values()
+                if parameter.kind is inspect.Parameter.POSITIONAL_ONLY
+            ]
+            expiry_index = positional_parameters.index(expiry_parameter)
+            if expiry_index < 2:
+                return "unsupported_positional", ()
+
+            preceding_optional = positional_parameters[2:expiry_index]
+            if any(
+                parameter.default is inspect.Parameter.empty
+                for parameter in preceding_optional
+            ):
+                return "unsupported_positional", ()
+
+            return "positional", tuple(
+                parameter.default for parameter in preceding_optional
+            )
+        return "keyword", ()
+
+    if any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    ):
+        return "keyword", ()
+    return "legacy", ()
 
 
 @dataclasses.dataclass
@@ -282,16 +332,50 @@ class VectorShardingService:
                 import orjson
 
                 redis_key = f"vector_sharding:rebalance:{rebalance_id}"
-                if hasattr(self.redis_client, "setex"):
-                    res = self.redis_client.setex(redis_key, 3600, orjson.dumps(data))
+                set_method = getattr(self.redis_client, "set", None)
+                setex_method = getattr(self.redis_client, "setex", None)
+                set_expiry_mode, positional_defaults = (
+                    _set_expiry_mode(set_method)
+                    if callable(set_method)
+                    else ("legacy", ())
+                )
+                payload = orjson.dumps(data)
+                if callable(set_method) and set_expiry_mode == "keyword":
+                    res = set_method(redis_key, payload, ex=3600)
                     if asyncio.iscoroutine(res):
                         await res
-                elif hasattr(self.redis_client, "set"):
-                    res = self.redis_client.set(redis_key, orjson.dumps(data))
+                elif callable(set_method) and set_expiry_mode == "positional":
+                    res = set_method(redis_key, payload, *positional_defaults, 3600)
                     if asyncio.iscoroutine(res):
                         await res
-            except (ConnectionError, TimeoutError, OSError) as e:
-                # RZ-22-01: narrowed — Redis error
+                elif callable(setex_method):
+                    # Prefer legacy SETEX when SET cannot be safely given EX.
+                    res = setex_method(redis_key, 3600, payload)
+                    if asyncio.iscoroutine(res):
+                        await res
+                elif callable(set_method) and set_expiry_mode == "legacy":
+                    # Preserve the existing set-only fallback for older clients.
+                    res = set_method(redis_key, payload)
+                    if asyncio.iscoroutine(res):
+                        await res
+                elif callable(set_method) and set_expiry_mode == "uninspectable":
+                    # Preserve the established set-only fallback when this
+                    # callable cannot be inspected and has no SETEX fallback.
+                    res = set_method(redis_key, payload)
+                    if asyncio.iscoroutine(res):
+                        await res
+                elif callable(set_method):
+                    raise TypeError(
+                        "Redis set() exposes unsupported positional-only ex parameter"
+                    )
+            except (
+                ConnectionError,
+                TimeoutError,
+                OSError,
+                RedisConnectionError,
+                RedisTimeoutError,
+            ) as e:
+                # RZ-22-01: narrowed — Redis transport errors only; command errors propagate.
                 logger.warning("Failed to save rebalance progress to Redis: %s", e)
 
         return data

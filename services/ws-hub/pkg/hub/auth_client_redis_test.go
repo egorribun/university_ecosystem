@@ -114,6 +114,35 @@ func TestRefreshRoomAuthorizationBypassesStaleCaches(t *testing.T) {
 	assert.False(t, mr.Exists(key), "fresh authorization must not leave the stale L2 entry")
 }
 
+func TestRefreshRoomAuthorizationRejectsInvalidIdentifiers(t *testing.T) {
+	backendRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		backendRequests++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewInternalAPIAuthClient(server.URL, nil)
+	for _, testCase := range []struct {
+		name   string
+		userID string
+		roomID string
+	}{
+		{name: "invalid user id", userID: "not-a-uuid", roomID: rdRoom},
+		{name: "invalid room id", userID: rdUser, roomID: "not-a-uuid"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			allowed, err := client.RefreshRoomAuthorization(
+				context.Background(), testCase.userID, testCase.roomID,
+			)
+
+			assert.Error(t, err)
+			assert.False(t, allowed)
+		})
+	}
+	assert.Zero(t, backendRequests, "invalid identifiers must be rejected before contacting the backend")
+}
+
 func TestRefreshRoomAuthorizationDoesNotConfirmFailedRedisInvalidation(t *testing.T) {
 	mr, rc := newMiniredisClient(t)
 	require.NoError(t, mr.Set("auth:perms:"+rdUser+":"+rdRoom, "1"))

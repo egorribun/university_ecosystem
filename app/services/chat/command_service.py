@@ -431,7 +431,7 @@ class ChatMessageDispatcher:
         # re-fetch the full message from the DB (one PK lookup — negligible cost).
         #
         # RACE-BE-01: Overwrite the "pending" placeholder set before Phase 1 with
-        # the "completed" entry including message_id.  setex replaces regardless
+        # the "completed" entry including message_id.  SET replaces regardless
         # of current value — atomic promotion from pending → completed.
         if _idempotency_cache_key:
             import json as _json
@@ -440,10 +440,10 @@ class ChatMessageDispatcher:
 
             _cache = await get_cache_client()
             _slim = _json.dumps({"status": "completed", "message_id": str(msg_data.id)})
-            await _cache.setex(
+            await _cache.set(
                 _idempotency_cache_key,
-                86400,  # 24 h — covers any reasonable client retry window
                 _slim,
+                ex=86400,  # 24 h — covers any reasonable client retry window
             )
 
         return msg_data

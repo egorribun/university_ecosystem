@@ -158,6 +158,9 @@ run/attempt либо локальную команду, конфигурацию
   получить три сопоставимых полных зелёных прогона и сформировать отчёт по одним
   и тем же определениям популяции, SHA, run/attempt, p50/p95, overlap/resource cap
   и critical path. Не выдавать старые числа за новую baseline.
+  Подробные критерии и актуальные пробелы O2 находятся в ADR-039, а O3/O5/O7 —
+  в [runbook каталога CI](../../testing/ci-check-catalog-runbook.md); наличие
+  инструмента или unit-теста само по себе не закрывает end-to-end evidence.
 - **MIG-PASS-01:** сохранить точное read-only preflight
   `python -m app.cli migrate-passwords assert-none`. Exit 0 только если нет
   активных bcrypt credentials; DB/identity/connectivity ошибка — fail closed, без

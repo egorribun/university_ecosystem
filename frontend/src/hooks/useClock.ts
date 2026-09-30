@@ -1,19 +1,25 @@
 import { useState, useEffect } from "react"
 import { pad } from "@/utils/scheduleUtils"
 
-const getCurrentMinute = () => {
-  const d = new Date()
+const getCurrentMinute = (now = new Date()) => {
+  const d = new Date(now)
   d.setSeconds(0, 0)
   return d
 }
 
 export function useClock(locale: string) {
-  const [time, setTime] = useState(getCurrentMinute)
+  // Keep SSR and the browser's first render independent of their timezones.
+  // The live local clock is only available after hydration.
+  const [time, setTime] = useState(() => new Date(0))
+  const [isReady, setIsReady] = useState(false)
 
   useEffect(() => {
     const tick = () => setTime(getCurrentMinute())
-    let intervalId: number | null = null
     const now = new Date()
+    setTime(getCurrentMinute(now))
+    setIsReady(true)
+
+    let intervalId: number | null = null
     const msUntilNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds()
     const timeoutId = window.setTimeout(() => {
       tick()
@@ -27,12 +33,15 @@ export function useClock(locale: string) {
     }
   }, [])
 
-  const hh = pad(time.getHours())
-  const mm = pad(time.getMinutes())
-  const dateStr = time.toLocaleDateString(locale, {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  })
-  return { hh, mm, dateStr, time }
+  const hh = isReady ? pad(time.getHours()) : "--"
+  const mm = isReady ? pad(time.getMinutes()) : "--"
+  const dateStr = isReady
+    ? time.toLocaleDateString(locale, {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      })
+    : ""
+
+  return { hh, mm, dateStr, time, isReady }
 }

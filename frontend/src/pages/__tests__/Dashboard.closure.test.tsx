@@ -85,7 +85,13 @@ vi.mock("@/contexts/LanguageContext", () => ({
 }))
 
 vi.mock("@/hooks/useClock", () => ({
-  useClock: () => ({ hh: "10", mm: "30", dateStr: "Friday", time: "10:30" }),
+  useClock: () => ({
+    hh: "10",
+    mm: "30",
+    dateStr: "Friday",
+    time: new Date(2026, 7, 3, 10, 30),
+    isReady: true,
+  }),
 }))
 
 vi.mock("@/hooks/useMediaQuery", () => ({
@@ -123,9 +129,9 @@ vi.mock("@/hooks/useWeather", () => ({
 }))
 
 vi.mock("@/components/dashboard/DashboardHero", () => ({
-  DashboardHero: ({ time, storiesSlot }: { time: string; storiesSlot?: ReactNode }) => (
+  DashboardHero: ({ time, storiesSlot }: { time: Date; storiesSlot?: ReactNode }) => (
     <section data-testid="dashboard-hero">
-      <span data-testid="hero-time">{time}</span>
+      <span data-testid="hero-time">{time.toISOString()}</span>
       {storiesSlot ? <div data-testid="hero-stories">{storiesSlot}</div> : null}
     </section>
   ),

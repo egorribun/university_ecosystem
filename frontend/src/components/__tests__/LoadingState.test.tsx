@@ -36,9 +36,9 @@ describe("LoadingState", () => {
     expect(container.querySelector("header")).not.toBeNull()
     const skeleton = container.querySelector("header .h-8") as HTMLElement
     expect(skeleton).toHaveClass("max-w-(--w-label-lg)", "h-8", "sm:h-9", "rounded-xl")
-    expect(skeleton).toHaveStyle({
-      width: "clamp(44%, 53vw, 62%)",
-    })
+    const expectedStyle = document.createElement("div").style
+    expectedStyle.width = "clamp(44%, 53vw, 62%)"
+    expect(skeleton.style.width).toBe(expectedStyle.width)
   })
 
   test("uses a caller-provided label for both the hidden heading and status content", async () => {

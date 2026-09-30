@@ -108,7 +108,10 @@ async def test_confirm_email_change_skips_second_attach_for_same_db_user():
     service.auth_repo.get_valid_email_change_token = AsyncMock(return_value=record)
     service.user_repo.check_email_exists = AsyncMock(return_value=False)
     service.user_repo._get_orm = AsyncMock(return_value=user)
-    service.auth_repo.db.execute = AsyncMock()
+    execute_result = MagicMock()
+    execute_result.scalars.return_value = []
+    service.auth_repo.db.execute = AsyncMock(return_value=execute_result)
+    service.auth_repo.db.flush = AsyncMock()
     service.auth_repo.mark_email_change_token_used = AsyncMock()
     service.auth_repo.invalidate_other_email_change_tokens = AsyncMock()
     attach = AsyncMock(return_value=user)

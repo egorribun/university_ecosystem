@@ -236,6 +236,15 @@ func TestSetupHub_CleansUpOnJWKSAndSubscriptionFailures(t *testing.T) {
 	assert.EqualError(t, err, "subscription failed")
 }
 
+func TestDefaultSubscribeNATSFuncPropagatesHubConfigurationError(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := hub.NewHub(nil, logger, nil, &config.Config{EnableJetStream: false}, nil)
+	t.Cleanup(h.Stop)
+
+	err := subscribeNATSFunc(h, context.Background())
+	require.EqualError(t, err, "NATS connection is not configured")
+}
+
 func TestSetupHub_ConfiguresSPIFFEAuthClient(t *testing.T) {
 	resetBootstrapSeams(t)
 	// Exercise the production default wrapper with a disabled SPIFFE client

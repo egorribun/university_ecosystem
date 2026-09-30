@@ -889,20 +889,19 @@ describe("ResetPassword behaviour details", () => {
   })
 
   it("analyses strength in the resolved interface language", async () => {
-    const { resolvedLanguage, language } = i18n
+    const selectedLanguage = window.__UE_SELECTED_LANG__
     passwordAnalysis.reportLocale = true
     passwordAnalysis.suggestions = []
     mockBreachRange()
-    i18n.resolvedLanguage = "ru"
-    i18n.language = "en"
+    window.__UE_SELECTED_LANG__ = "ru"
     try {
       await renderWithToken()
       fireEvent.change(passwordInput(), { target: { value: "Password123!" } })
 
       expect(await screen.findByText("locale:ru")).toBeInTheDocument()
     } finally {
-      i18n.resolvedLanguage = resolvedLanguage
-      i18n.language = language
+      if (selectedLanguage === undefined) delete window.__UE_SELECTED_LANG__
+      else window.__UE_SELECTED_LANG__ = selectedLanguage
     }
   })
 })

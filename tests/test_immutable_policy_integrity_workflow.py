@@ -73,6 +73,14 @@ def test_policy_integrity_rechecks_when_pull_request_metadata_is_edited() -> Non
     }
 
 
+def test_policy_integrity_uses_supported_gh_api_options() -> None:
+    source = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    # `--fail-with-body` belongs to curl, not `gh api`; an unsupported flag
+    # prevents this trusted-base security gate from reaching its policy checks.
+    assert "gh api --fail-with-body" not in source
+
+
 def test_policy_integrity_protects_workflows_and_scanner_adapters() -> None:
     source = WORKFLOW_PATH.read_text(encoding="utf-8")
     for protected_path in (

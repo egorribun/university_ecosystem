@@ -295,7 +295,7 @@ def test_backend_contract_ignores_generated_mutmut_variant_bodies(tmp_path: Path
 
 def test_ws_hub_inbound_allowlist_has_no_server_receipt_commands():
     """ws-hub accepts transport commands only; REST owns read receipts."""
-    assert WS_HUB_CLIENT_MESSAGE_TYPES == frozenset({"join", "leave", "message"})
+    assert WS_HUB_CLIENT_MESSAGE_TYPES == frozenset({"join", "leave"})
     assert "read" not in WS_HUB_CLIENT_MESSAGE_TYPES
     assert "typing" not in WS_HUB_CLIENT_MESSAGE_TYPES
 

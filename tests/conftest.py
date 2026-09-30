@@ -261,7 +261,7 @@ if os.environ.get("USE_TESTCONTAINERS_POSTGRES") == "1":
     try:
         import atexit
 
-        from testcontainers.postgres import PostgresContainer
+        from testcontainers.community.postgres import PostgresContainer
 
         # Start a lightweight Postgres container with pgvector support per worker process
         _container = PostgresContainer(

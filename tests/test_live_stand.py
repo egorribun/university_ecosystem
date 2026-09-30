@@ -40,6 +40,7 @@ def _make_windows_junction(link: Path, target: Path) -> None:
         check=False,
     )
     if result.returncode != 0:
+        # QUALITY-123 @egorribun — temporary filesystem may not support junctions.
         pytest.skip("could not create a temporary Windows junction")
 
 
@@ -120,6 +121,7 @@ def test_dangling_vapid_symlink_is_rejected_before_key_generation(
     try:
         vapid_path.symlink_to(target)
     except OSError as error:
+        # QUALITY-123 @egorribun — Windows symlink privilege varies by runner.
         pytest.skip(f"symlink creation is unavailable: {error}")
 
     generated = False
@@ -148,6 +150,7 @@ def test_stand_path_preflight_rejects_dangling_env_symlink(
     try:
         env_file.symlink_to(target)
     except OSError as error:
+        # QUALITY-123 @egorribun — Windows symlink privilege varies by runner.
         pytest.skip(f"symlink creation is unavailable: {error}")
     monkeypatch.setattr(live_stand, "WORKTREE", tmp_path)
 

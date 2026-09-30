@@ -4,7 +4,10 @@ import { isAxiosError } from "axios"
 import type { TFunction } from "i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import api, { API_UNAUTHORIZED_EVENT, type ApiRequestConfig } from "@/api/client"
+import { EVENTS_PAGE_SIZE, prefetchEventsListQuery } from "@/api/hooks/events"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
+import { prefetchDashboardEvents } from "@/hooks/useDashboardEvents"
+import { prefetchDashboardStories } from "@/hooks/useDashboardStories"
 import type { PendingMfaResponse, MfaVerifyPayload } from "@/types/Mfa"
 import type { User } from "@/types/User"
 import {
@@ -101,28 +104,17 @@ export const useAuthApi = (
     async (profileUser: User) => {
       // Lighthouse builds use a synthetic authenticated user so every route
       // can be audited without a real login.  The dashboard is then loaded
-      // directly by each route, making this post-login warm-up redundant and
-      // expensive: its dynamic imports fan out into the dashboard/news/events
-      // graph on every audit navigation.  Keep the optimization explicitly
-      // scoped to the VITE_LHCI build flag; normal production and development
-      // login flows retain the eager dashboard warm-up.
+      // directly by each route, making this post-login warm-up redundant for
+      // audits. Skip it in LHCI, including its dynamic dashboard-news chunk
+      // load; normal production and development login flows retain the eager
+      // dashboard warm-up.
       if (import.meta.env.VITE_LHCI === "true") return
 
       try {
         const activeLanguage = i18n.resolvedLanguage ?? i18n.language ?? "ru"
         const language = activeLanguage === "en" ? "en" : "ru"
 
-        const [
-          { prefetchDashboardStories },
-          { prefetchDashboardNews },
-          { prefetchDashboardEvents },
-          { prefetchEventsListQuery, EVENTS_PAGE_SIZE },
-        ] = await Promise.all([
-          import("@/hooks/useDashboardStories"),
-          import("@/hooks/useDashboardNews"),
-          import("@/hooks/useDashboardEvents"),
-          import("@/api/hooks/events"),
-        ])
+        const { prefetchDashboardNews } = await import("@/hooks/useDashboardNews")
 
         void prefetchDashboardStories(queryClient)
         void prefetchDashboardNews(queryClient, language)

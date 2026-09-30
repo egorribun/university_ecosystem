@@ -136,7 +136,7 @@ export default function Dashboard() {
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
-  const { hh, mm, dateStr, time } = useClock(locale)
+  const { hh, mm, dateStr, time, isReady: clockReady } = useClock(locale)
 
   // Wave 47: Weather-aware ambient particles
   const weatherResult = useWeather()
@@ -216,6 +216,7 @@ export default function Dashboard() {
             hh={hh}
             mm={mm}
             dateStr={dateStr}
+            isClockReady={clockReady}
             isNarrow={isNarrow}
             prefersReducedMotion={prefersReducedMotion}
             storiesSlot={
@@ -260,10 +261,13 @@ export default function Dashboard() {
             >
               <div
                 className={`vt-dash-schedule ${scheduleLoaded ? "" : "min-h-[400px]"}`}
-                aria-busy={!scheduleLoaded}
+                aria-busy={!scheduleLoaded || !clockReady}
               >
                 <WidgetErrorBoundary widgetName="ScheduleCard" showFallback>
-                  <SkeletonMorph loaded={scheduleLoaded} skeleton={<ScheduleCardSkeleton />}>
+                  <SkeletonMorph
+                    loaded={scheduleLoaded && clockReady}
+                    skeleton={<ScheduleCardSkeleton />}
+                  >
                     <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />
                   </SkeletonMorph>
                 </WidgetErrorBoundary>

@@ -784,6 +784,37 @@ func TestHandleCacheInvalidation_MalformedAndBadHexDropped(t *testing.T) {
 	assert.Empty(t, auth.calls())
 }
 
+func TestRejectCacheInvalidationLogsUnexpectedTermFailure(t *testing.T) {
+	oldTerm := jetStreamTermFunc
+	t.Cleanup(func() { jetStreamTermFunc = oldTerm })
+	jetStreamTermFunc = func(*nats.Msg) error { return errors.New("term unavailable") }
+
+	var logs strings.Builder
+	h := newNatsTestHub(&mockAuthClient{allowed: true}, "", 10)
+	h.Logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	h.rejectCacheInvalidation(context.Background(), &nats.Msg{Subject: "cache.invalidate"})
+
+	assert.Contains(t, logs.String(), "Failed to terminate invalid cache invalidation")
+	assert.Contains(t, logs.String(), "term unavailable")
+}
+
+func TestEvictRoomMembershipWithoutRefresherFailsClosed(t *testing.T) {
+	const userID = "11111111-1111-1111-1111-111111111111"
+	const roomID = "22222222-2222-2222-2222-222222222222"
+	h := newNatsTestHub(&mockAuthClient{allowed: true}, "", 10)
+	serverConn, _ := newConnPair(t)
+	client := newClientOn(h, serverConn, "missing-refresher-client", userID)
+	client.JoinRoom(roomID)
+
+	err := h.evictRoomMembership(context.Background(), userID, roomID)
+
+	require.Error(t, err, "eviction must remain unconfirmed without an authoritative refresher")
+	assert.False(t, client.isInRoom(roomID), "unconfirmed eviction must still close current local access")
+	assert.True(t, h.isRoomRevocationPending(userID, roomID))
+	assert.False(t, h.AuthorizeRoomJoin(context.Background(), userID, roomID),
+		"a pending revoke must deny a stale positive result from the basic auth client")
+}
+
 // ---------------------------------------------------------------------------
 // Run loop + broadcastMessage fan-out
 // ---------------------------------------------------------------------------

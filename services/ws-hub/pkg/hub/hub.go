@@ -1146,15 +1146,20 @@ func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
 	}
 }
 
+type cacheInvalidationPayload struct {
+	Data struct {
+		EvictRoom bool   `json:"evict_room,omitempty"`
+		RoomID    string `json:"room_id"`
+		Timestamp uint64 `json:"timestamp"`
+		UserID    string `json:"user_id"`
+	} `json:"data"`
+	Signature string `json:"signature"`
+}
+
 func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
 	const natsCallbackTimeout = 30 * time.Second
 	return func(msg *nats.Msg) {
-		defer func() {
-			if r := recover(); r != nil {
-				h.Logger.ErrorContext(appCtx, "NATS cache.invalidate callback panic recovered",
-					"panic", r, "subject", msg.Subject)
-			}
-		}()
+		defer h.recoverCacheInvalidationPanic(appCtx, msg)
 
 		select {
 		case <-appCtx.Done():
@@ -1165,7 +1170,7 @@ func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
 		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
 		defer cancel()
 		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
-		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.CacheInvalidate",
+		msgCtx, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.CacheInvalidate",
 			trace.WithAttributes(
 				semconv.MessagingSystemKey.String("nats"),
 				semconv.MessagingOperationTypeKey.String("receive"),
@@ -1174,73 +1179,112 @@ func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
 		)
 		defer span.End()
 
-		var payload struct {
-			Data struct {
-				EvictRoom bool   `json:"evict_room,omitempty"`
-				RoomID    string `json:"room_id"`
-				Timestamp uint64 `json:"timestamp"`
-				UserID    string `json:"user_id"`
-			} `json:"data"`
-			Signature string `json:"signature"`
-		}
-		rejectPermanently := func() {
-			if err := safeTerm(msg); err != nil &&
-				!errors.Is(err, nats.ErrMsgNotBound) && !errors.Is(err, nats.ErrNotJSMessage) {
-				h.Logger.WarnContext(msgCtx, "Failed to terminate invalid cache invalidation", "err", err)
-			}
-		}
-
-		if err := hubJSONUnmarshalFunc(msg.Data, &payload); err != nil {
-			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS cache.invalidate message dropped",
-				"subject", msg.Subject, "size", len(msg.Data), "err", err)
-			rejectPermanently()
-			return
-		}
-		if !isValidUUID(payload.Data.UserID) ||
-			(payload.Data.EvictRoom && !isValidUUID(payload.Data.RoomID)) ||
-			(!payload.Data.EvictRoom && payload.Data.RoomID != "" && !isValidUUID(payload.Data.RoomID)) {
-			h.Logger.WarnContext(msgCtx, "ws-hub: invalid cache.invalidate identifiers dropped",
-				"subject", msg.Subject)
-			rejectPermanently()
-			return
-		}
-
-		dataBytes, err := hubJSONMarshalFunc(payload.Data)
-		if err != nil {
-			h.Logger.ErrorContext(msgCtx, "Failed to marshal validation data", "err", err)
-			rejectPermanently()
-			return
-		}
-
-		hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
-		if _, err := hmacWriteFunc(hFunc, dataBytes); err != nil {
-			h.Logger.ErrorContext(msgCtx, "Failed to write data to HMAC", "err", err)
-			rejectPermanently()
-			return
-		}
-		expectedSigBytes := hFunc.Sum(nil)
-
-		payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
-		if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
-			h.Logger.WarnContext(msgCtx, "Invalid internal NATS signature — dropping event",
-				"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID)
-			rejectPermanently()
-			return
-		}
-
-		if payload.Data.EvictRoom {
-			if err := h.evictRoomMembership(msgCtx, payload.Data.UserID, payload.Data.RoomID); err != nil {
-				h.Logger.ErrorContext(msgCtx, "Room membership revocation could not be confirmed; retrying",
-					"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID, "err", err)
-				span.RecordError(err)
-				safeNakWithDelay(msg, 5*time.Second)
-				return
-			}
-		} else if h.authClient != nil {
-			h.authClient.Invalidate(payload.Data.UserID, payload.Data.RoomID)
-		}
-		safeAck(msg)
+		h.processCacheInvalidationMessage(msgCtx, msg, span)
 	}
+}
+
+func (h *Hub) recoverCacheInvalidationPanic(ctx context.Context, msg *nats.Msg) {
+	if recovered := recover(); recovered != nil {
+		h.Logger.ErrorContext(ctx, "NATS cache.invalidate callback panic recovered",
+			"panic", recovered, "subject", msg.Subject)
+	}
+}
+
+func (h *Hub) processCacheInvalidationMessage(ctx context.Context, msg *nats.Msg, span trace.Span) {
+	payload, ok := h.decodeCacheInvalidationMessage(ctx, msg)
+	if !ok {
+		return
+	}
+	if !h.verifyCacheInvalidationSignature(ctx, msg, payload) {
+		return
+	}
+	if !h.applyCacheInvalidation(ctx, msg, span, payload) {
+		return
+	}
+	safeAck(msg)
+}
+
+func (h *Hub) decodeCacheInvalidationMessage(
+	ctx context.Context,
+	msg *nats.Msg,
+) (cacheInvalidationPayload, bool) {
+	var payload cacheInvalidationPayload
+	if err := hubJSONUnmarshalFunc(msg.Data, &payload); err != nil {
+		h.Logger.WarnContext(ctx, "ws-hub: malformed NATS cache.invalidate message dropped",
+			"subject", msg.Subject, "size", len(msg.Data), "err", err)
+		h.rejectCacheInvalidation(ctx, msg)
+		return payload, false
+	}
+	if !cacheInvalidationIdentifiersValid(payload) {
+		h.Logger.WarnContext(ctx, "ws-hub: invalid cache.invalidate identifiers dropped",
+			"subject", msg.Subject)
+		h.rejectCacheInvalidation(ctx, msg)
+		return payload, false
+	}
+	return payload, true
+}
+
+func cacheInvalidationIdentifiersValid(payload cacheInvalidationPayload) bool {
+	return isValidUUID(payload.Data.UserID) &&
+		(!payload.Data.EvictRoom || isValidUUID(payload.Data.RoomID)) &&
+		(payload.Data.EvictRoom || payload.Data.RoomID == "" || isValidUUID(payload.Data.RoomID))
+}
+
+func (h *Hub) verifyCacheInvalidationSignature(
+	ctx context.Context,
+	msg *nats.Msg,
+	payload cacheInvalidationPayload,
+) bool {
+	dataBytes, err := hubJSONMarshalFunc(payload.Data)
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "Failed to marshal validation data", "err", err)
+		h.rejectCacheInvalidation(ctx, msg)
+		return false
+	}
+
+	hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
+	if _, err := hmacWriteFunc(hFunc, dataBytes); err != nil {
+		h.Logger.ErrorContext(ctx, "Failed to write data to HMAC", "err", err)
+		h.rejectCacheInvalidation(ctx, msg)
+		return false
+	}
+	expectedSigBytes := hFunc.Sum(nil)
+
+	payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
+	if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
+		h.Logger.WarnContext(ctx, "Invalid internal NATS signature — dropping event",
+			"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID)
+		h.rejectCacheInvalidation(ctx, msg)
+		return false
+	}
+	return true
+}
+
+func (h *Hub) rejectCacheInvalidation(ctx context.Context, msg *nats.Msg) {
+	if err := safeTerm(msg); err != nil &&
+		!errors.Is(err, nats.ErrMsgNotBound) && !errors.Is(err, nats.ErrNotJSMessage) {
+		h.Logger.WarnContext(ctx, "Failed to terminate invalid cache invalidation", "err", err)
+	}
+}
+
+func (h *Hub) applyCacheInvalidation(
+	ctx context.Context,
+	msg *nats.Msg,
+	span trace.Span,
+	payload cacheInvalidationPayload,
+) bool {
+	if payload.Data.EvictRoom {
+		if err := h.evictRoomMembership(ctx, payload.Data.UserID, payload.Data.RoomID); err != nil {
+			h.Logger.ErrorContext(ctx, "Room membership revocation could not be confirmed; retrying",
+				"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID, "err", err)
+			span.RecordError(err)
+			safeNakWithDelay(msg, 5*time.Second)
+			return false
+		}
+	} else if h.authClient != nil {
+		h.authClient.Invalidate(payload.Data.UserID, payload.Data.RoomID)
+	}
+	return true
 }
 
 func (h *Hub) roomMembershipLock(userID, roomID string) *sync.Mutex {
@@ -1300,16 +1344,14 @@ func (h *Hub) revokeRoomMember(userID, roomID string) {
 	h.mu.RUnlock()
 
 	for _, client := range clients {
-		notice, err := json.Marshal(map[string]string{
-			"type":   "error",
-			"room":   roomID,
-			"code":   roomAccessRevokedCode,
-			"detail": roomAccessRevokedDetail,
-		})
-		if err != nil {
-			client.LeaveRoom(roomID)
-			continue
-		}
+		// The invalidation decoder validates roomID as a UUID; the other fields are
+		// constants, so this string-only notice has no JSON marshal failure case.
+		notice := []byte(
+			`{"code":"` + roomAccessRevokedCode +
+				`","detail":"` + roomAccessRevokedDetail +
+				`","room":"` + roomID +
+				`","type":"error"}`,
+		)
 		client.revokeRoom(roomID, notice)
 	}
 }

@@ -381,10 +381,6 @@ describe("login → prefetchDashboardData branches", () => {
     await act(async () => {
       await result.current.login("a@b.dev", "pw")
       await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
-      // Allow any already-scheduled dynamic-import continuations to settle;
-      // a LHCI guard must prevent those imports from being scheduled at all.
-      await Promise.resolve()
-      await Promise.resolve()
     })
 
     expect(mocks.prefetchDashboardStories).not.toHaveBeenCalled()
@@ -393,7 +389,7 @@ describe("login → prefetchDashboardData branches", () => {
     expect(mocks.prefetchEventsListQuery).not.toHaveBeenCalled()
   })
 
-  it("prefetches events list when the user has a group_id (lines 110-116)", async () => {
+  it("prefetches dashboard data after login and events when the user has a group_id", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({
       status: 200,
@@ -403,9 +399,16 @@ describe("login → prefetchDashboardData branches", () => {
     await act(async () => {
       await result.current.login("a@b.dev", "pw")
     })
-    // The dynamic imports for dashboard prefetch resolve async; just assert
-    // the login resolved cleanly (the group_id branch executes inside the
-    // fire-and-forget prefetch without throwing).
+
+    await waitFor(() => {
+      expect(mocks.prefetchDashboardStories).toHaveBeenCalledWith(expect.anything())
+      expect(mocks.prefetchDashboardNews).toHaveBeenCalledWith(expect.anything(), "en")
+      expect(mocks.prefetchDashboardEvents).toHaveBeenCalledWith(expect.anything())
+      expect(mocks.prefetchEventsListQuery).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ language: "en", is_active: true, limit: 20 })
+      )
+    })
     expect(w.setUser).toHaveBeenCalled()
   })
 
@@ -466,8 +469,7 @@ describe("login → prefetchDashboardData branches", () => {
 
   it("reports dashboard prefetch failures in development", async () => {
     // The prefetch is deliberately best-effort, but diagnostics remain
-    // visible to developers when a dynamically imported dashboard surface
-    // fails synchronously.
+    // visible to developers when a statically linked prefetch callback throws.
     vi.stubEnv("DEV", true)
     const failure = new Error("prefetch unavailable")
     mocks.prefetchDashboardStories.mockImplementationOnce(() => {
@@ -612,6 +614,13 @@ describe("submitMfaChallenge", () => {
     expect(w.setUser).toHaveBeenCalled()
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT }))
     dispatch.mockRestore()
+
+    await waitFor(() => {
+      expect(mocks.prefetchDashboardStories).toHaveBeenCalledWith(expect.anything())
+      expect(mocks.prefetchDashboardNews).toHaveBeenCalledWith(expect.anything(), "en")
+      expect(mocks.prefetchDashboardEvents).toHaveBeenCalledWith(expect.anything())
+    })
+    expect(mocks.prefetchEventsListQuery).not.toHaveBeenCalled()
   })
 
   it("sends an empty challenge token when the optional token is absent", async () => {
@@ -963,23 +972,5 @@ describe("useAuthApi — residual defensive branches", () => {
       )
     )
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
-  })
-
-  it("swallows a dashboard prefetch import failure", async () => {
-    vi.doMock("@/hooks/useDashboardStories", () => {
-      throw new Error("dashboard module unavailable")
-    })
-    try {
-      const w = makeWires()
-      mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
-      const { result } = renderApi(w)
-
-      await act(async () => {
-        await result.current.login("a@b.dev", "pw")
-      })
-      await waitFor(() => expect(w.setUser).toHaveBeenCalled())
-    } finally {
-      vi.doUnmock("@/hooks/useDashboardStories")
-    }
   })
 })

@@ -1193,9 +1193,8 @@ func (c *Client) WritePump() {
 					}
 				}
 				c.writeMu.Unlock()
-				if membershipLock != nil {
-					membershipLock.Unlock()
-				}
+				// A closed channel has no frame; the membership stripe is acquired only
+				// for an open-channel room frame above.
 				return
 			}
 			if !c.shouldDeliverRoomFrame(room, roomScoped) {

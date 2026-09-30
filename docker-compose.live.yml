@@ -35,6 +35,10 @@ services:
 
   backend:
     environment: &live-delivery
+      # Browser projects share one client IP; reserve enough room for the full
+      # live suite. The 5/minute application default remains in effect outside
+      # this owned acceptance-only overlay.
+      RATE_LIMIT_AUTH_LOGIN: "60/minute"
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
       SMTP_SECURITY: none

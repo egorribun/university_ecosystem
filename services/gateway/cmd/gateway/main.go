@@ -527,6 +527,19 @@ func validateConventionalClientCertificate(certificate tls.Certificate, expected
 	return nil
 }
 
+func isPublicPasswordRecoveryRoute(subPath, method string) bool {
+	if method != http.MethodPost {
+		return false
+	}
+
+	switch subPath {
+	case "/password/forgot", "/password/reset":
+		return true
+	default:
+		return false
+	}
+}
+
 //nolint:gocognit,cyclop
 func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, opts ...any) (*gin.Engine, error) {
 	ctx := context.Background()
@@ -770,7 +783,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 				fileFn(c)
 				return
 			}
-			if strings.HasPrefix(subPath, "/auth/") ||
+			if strings.HasPrefix(subPath, "/auth/") || isPublicPasswordRecoveryRoute(subPath, c.Request.Method) ||
 				(strings.HasPrefix(subPath, "/img/") &&
 					(c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead)) {
 				// Auth routes: optional JWT

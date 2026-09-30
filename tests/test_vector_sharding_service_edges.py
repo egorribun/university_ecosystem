@@ -4,6 +4,9 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import ResponseError as RedisResponseError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app.core.vector_ring import NodeConfig, VectorStorageEngine
 from app.models.vector_shard import VectorChunk
@@ -84,13 +87,169 @@ class _RedisSetex:
         return self.value
 
 
-class _RedisSet:
-    def __init__(self, value: object):
-        self.value = value
+class _RedisLegacySetAndSetex:
+    def __init__(self) -> None:
+        self.set_calls: list[tuple[str, bytes]] = []
+        self.setex_calls: list[tuple[str, int, bytes]] = []
+
+    def set(self, key: str, value: bytes) -> None:
+        self.set_calls.append((key, value))
+
+    def setex(self, key: str, ttl: int, value: bytes) -> None:
+        self.setex_calls.append((key, ttl, value))
+
+
+class _RedisSetOnly:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, bytes]] = []
+
+    def set(self, key: str, value: bytes) -> None:
+        self.calls.append((key, value))
+
+
+class _RedisAsyncSetOnly:
+    def __init__(self) -> None:
         self.calls: list[tuple[str, bytes]] = []
 
     async def set(self, key: str, value: bytes) -> None:
         self.calls.append((key, value))
+
+
+class _RedisVariadicExSetAndSetex:
+    def __init__(self) -> None:
+        self.set_calls: list[tuple[str, bytes, tuple[int, ...]]] = []
+        self.setex_calls: list[tuple[str, int, bytes]] = []
+
+    def set(self, key: str, value: bytes, *ex: int) -> None:
+        self.set_calls.append((key, value, ex))
+
+    def setex(self, key: str, ttl: int, value: bytes) -> None:
+        self.setex_calls.append((key, ttl, value))
+
+
+class _RedisVariadicExSetOnly:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, bytes, tuple[int, ...]]] = []
+
+    def set(self, key: str, value: bytes, *ex: int) -> None:
+        self.calls.append((key, value, ex))
+
+
+class _RedisKwargsSet:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, bytes, dict[str, int]]] = []
+
+    def set(self, key: str, value: bytes, **kwargs: int) -> None:
+        self.calls.append((key, value, kwargs))
+
+
+class _RedisPositionalOnlySet:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, bytes, int]] = []
+
+    def set(self, key: str, value: bytes, ex: int, /) -> None:
+        self.calls.append((key, value, ex))
+
+
+class _RedisAsyncPositionalOnlySet:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, bytes, int]] = []
+
+    async def set(self, key: str, value: bytes, ex: int, /) -> None:
+        self.calls.append((key, value, ex))
+
+
+class _RedisPositionalOnlySetWithOptionalArgument:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, bytes, str, int]] = []
+
+    def set(
+        self, key: str, value: bytes, mode: str = "default", ex: int = 0, /
+    ) -> None:
+        self.calls.append((key, value, mode, ex))
+
+
+class _RedisUninspectableSetCallable:
+    def __init__(self, calls: list[tuple[str, bytes, int | None]]) -> None:
+        self.calls = calls
+
+    @property
+    def __signature__(self) -> object:
+        raise ValueError("signature unavailable")
+
+    def __call__(self, key: str, value: bytes, *, ex: int | None = None) -> None:
+        self.calls.append((key, value, ex))
+
+
+class _RedisUninspectableSet:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, bytes, int | None]] = []
+        self.set = _RedisUninspectableSetCallable(self.calls)
+
+
+class _RedisUninspectableSetAndSetex:
+    def __init__(self) -> None:
+        self.set_calls: list[tuple[str, bytes, int | None]] = []
+        self.setex_calls: list[tuple[str, int, bytes]] = []
+        self.set = _RedisUninspectableSetCallable(self.set_calls)
+
+    def setex(self, key: str, ttl: int, value: bytes) -> None:
+        self.setex_calls.append((key, ttl, value))
+
+
+class _RedisAsyncUninspectableSetCallable:
+    def __init__(self, calls: list[tuple[str, bytes, int | None]]) -> None:
+        self.calls = calls
+
+    @property
+    def __signature__(self) -> object:
+        raise ValueError("signature unavailable")
+
+    async def __call__(self, key: str, value: bytes, *, ex: int | None = None) -> None:
+        self.calls.append((key, value, ex))
+
+
+class _RedisAsyncUninspectableSet:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, bytes, int | None]] = []
+        self.set = _RedisAsyncUninspectableSetCallable(self.calls)
+
+
+class _RedisUnsupportedPositionalSet:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def set(self, key: str, value: bytes, required: object, ex: int, /) -> None:
+        self.calls += 1
+
+
+class _RedisExpiryBeforeValueSet:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def set(self, key: str, ex: int, /) -> None:
+        self.calls += 1
+
+
+class _RedisSetFailureWithSetex:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.setex_calls = 0
+        self.error = error or RuntimeError("SET EX failed")
+
+    def set(self, _key: str, _value: bytes, ex: int) -> None:
+        raise self.error
+
+    def setex(self, _key: str, _ttl: int, _value: bytes) -> None:
+        self.setex_calls += 1
+
+
+class _RedisSet:
+    def __init__(self, value: object):
+        self.value = value
+        self.calls: list[tuple[str, bytes, int | None]] = []
+
+    async def set(self, key: str, value: bytes, ex: int | None = None) -> None:
+        self.calls.append((key, value, ex))
 
     async def get(self, _key: str) -> object:
         return self.value
@@ -103,10 +262,10 @@ class _RedisAsyncSetex(_RedisSetex):
 
 class _RedisSyncSet:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, bytes]] = []
+        self.calls: list[tuple[str, bytes, int | None]] = []
 
-    def set(self, key: str, value: bytes) -> None:
-        self.calls.append((key, value))
+    def set(self, key: str, value: bytes, ex: int | None = None) -> None:
+        self.calls.append((key, value, ex))
 
 
 class _NatsPublish:
@@ -133,6 +292,27 @@ class _NatsJetStream:
         self.stream = _JetStream()
 
     def js(self) -> _JetStream:
+        return self.stream
+
+
+class _NatsNoJetStream:
+    def js(self) -> None:
+        return None
+
+
+class _SyncJetStream:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, bytes]] = []
+
+    def publish(self, subject: str, payload: bytes) -> None:
+        self.events.append((subject, payload))
+
+
+class _NatsSyncJetStream:
+    def __init__(self) -> None:
+        self.stream = _SyncJetStream()
+
+    def js(self) -> _SyncJetStream:
         return self.stream
 
 
@@ -214,6 +394,23 @@ async def test_ingestion_empty_and_upsert_failure_paths() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ingestion_skips_unknown_vector_client_without_insert_or_upsert() -> None:
+    engine = VectorStorageEngine()
+    node = engine.register_node("node-unknown", "http://node-unknown:6333")
+    node._client = SimpleNamespace()
+    service = VectorShardingService(storage_engine=engine, embedding_dim=4)
+    db = _DbSession()
+
+    chunks = await service.ingest_document(
+        uuid.uuid4(), "document-unknown-client", "one two", db_session=db
+    )
+
+    assert len(chunks) == 1
+    assert db.added == chunks
+    assert db.flushed is True
+
+
+@pytest.mark.asyncio
 async def test_progress_supports_setex_set_bytes_dict_and_local_fallback() -> None:
     setex = _RedisSetex()
     service = VectorShardingService(redis_client=setex)
@@ -227,7 +424,7 @@ async def test_progress_supports_setex_set_bytes_dict_and_local_fallback() -> No
     set_client = _RedisSet(b'{"status":"REMOTE"}')
     service = VectorShardingService(redis_client=set_client)
     await service._update_progress("reb-2", 0, 0, "COMPLETED")
-    assert set_client.calls
+    assert set_client.calls[0][2] == 3600
     assert (await service.get_rebalance_progress("reb-2"))["status"] == "REMOTE"
 
     dict_client = _RedisSet({"status": "DICT"})
@@ -255,6 +452,256 @@ async def test_progress_supports_setex_set_bytes_dict_and_local_fallback() -> No
 
 
 @pytest.mark.asyncio
+async def test_progress_reads_local_store_without_redis_client() -> None:
+    service = VectorShardingService()
+
+    written = await service._update_progress("reb-local-only", 1, 2, "IN_PROGRESS")
+
+    assert await service.get_rebalance_progress("reb-local-only") == written
+
+
+@pytest.mark.asyncio
+async def test_progress_uses_legacy_setex_when_set_does_not_accept_expiry() -> None:
+    redis = _RedisLegacySetAndSetex()
+
+    await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-legacy", 1, 2, "IN_PROGRESS"
+    )
+
+    assert redis.set_calls == []
+    assert len(redis.setex_calls) == 1
+    key, ttl, payload = redis.setex_calls[0]
+    assert key == "vector_sharding:rebalance:reb-legacy"
+    assert ttl == 3600
+    assert b'"status":"IN_PROGRESS"' in payload
+
+
+@pytest.mark.asyncio
+async def test_progress_preserves_legacy_set_only_client() -> None:
+    redis = _RedisSetOnly()
+
+    await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-set-only", 1, 2, "IN_PROGRESS"
+    )
+
+    assert len(redis.calls) == 1
+    key, payload = redis.calls[0]
+    assert key == "vector_sharding:rebalance:reb-set-only"
+    assert b'"status":"IN_PROGRESS"' in payload
+
+
+@pytest.mark.asyncio
+async def test_progress_uses_setex_when_set_ex_is_variadic_positional() -> None:
+    redis = _RedisVariadicExSetAndSetex()
+
+    await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-variadic-setex", 1, 2, "IN_PROGRESS"
+    )
+
+    assert redis.set_calls == []
+    assert len(redis.setex_calls) == 1
+    key, ttl, payload = redis.setex_calls[0]
+    assert key == "vector_sharding:rebalance:reb-variadic-setex"
+    assert ttl == 3600
+    assert b'"status":"IN_PROGRESS"' in payload
+
+
+@pytest.mark.asyncio
+async def test_progress_uses_safe_set_only_call_for_variadic_ex() -> None:
+    redis = _RedisVariadicExSetOnly()
+
+    await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-variadic-set-only", 1, 2, "IN_PROGRESS"
+    )
+
+    assert len(redis.calls) == 1
+    key, payload, extra_positional = redis.calls[0]
+    assert key == "vector_sharding:rebalance:reb-variadic-set-only"
+    assert b'"status":"IN_PROGRESS"' in payload
+    assert extra_positional == ()
+
+
+@pytest.mark.asyncio
+async def test_progress_awaits_legacy_set_only_client() -> None:
+    redis = _RedisAsyncSetOnly()
+
+    await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-set-only-async", 1, 2, "IN_PROGRESS"
+    )
+
+    assert len(redis.calls) == 1
+    assert redis.calls[0][0] == "vector_sharding:rebalance:reb-set-only-async"
+
+
+@pytest.mark.asyncio
+async def test_progress_uses_set_ex_when_set_accepts_extra_keywords() -> None:
+    redis = _RedisKwargsSet()
+
+    await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-kwargs", 1, 2, "IN_PROGRESS"
+    )
+
+    assert len(redis.calls) == 1
+    key, payload, kwargs = redis.calls[0]
+    assert key == "vector_sharding:rebalance:reb-kwargs"
+    assert b'"status":"IN_PROGRESS"' in payload
+    assert kwargs == {"ex": 3600}
+
+
+@pytest.mark.asyncio
+async def test_progress_uses_positional_only_set_expiry() -> None:
+    redis = _RedisPositionalOnlySet()
+
+    await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-positional", 1, 2, "IN_PROGRESS"
+    )
+
+    assert len(redis.calls) == 1
+    key, payload, ttl = redis.calls[0]
+    assert key == "vector_sharding:rebalance:reb-positional"
+    assert b'"status":"IN_PROGRESS"' in payload
+    assert ttl == 3600
+
+
+@pytest.mark.asyncio
+async def test_progress_awaits_positional_only_set_expiry() -> None:
+    redis = _RedisAsyncPositionalOnlySet()
+
+    await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-positional-async", 1, 2, "IN_PROGRESS"
+    )
+
+    assert len(redis.calls) == 1
+    assert redis.calls[0][2] == 3600
+
+
+@pytest.mark.asyncio
+async def test_progress_preserves_defaults_before_positional_only_expiry() -> None:
+    redis = _RedisPositionalOnlySetWithOptionalArgument()
+
+    await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-positional-default", 1, 2, "IN_PROGRESS"
+    )
+
+    assert len(redis.calls) == 1
+    key, payload, mode, ttl = redis.calls[0]
+    assert key == "vector_sharding:rebalance:reb-positional-default"
+    assert b'"status":"IN_PROGRESS"' in payload
+    assert mode == "default"
+    assert ttl == 3600
+
+
+@pytest.mark.asyncio
+async def test_progress_preserves_uninspectable_set_only_two_argument_fallback() -> (
+    None
+):
+    redis = _RedisUninspectableSet()
+
+    await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-uninspectable", 1, 2, "IN_PROGRESS"
+    )
+
+    assert len(redis.calls) == 1
+    key, payload, ttl = redis.calls[0]
+    assert key == "vector_sharding:rebalance:reb-uninspectable"
+    assert b'"status":"IN_PROGRESS"' in payload
+    assert ttl is None
+
+
+@pytest.mark.asyncio
+async def test_progress_uses_setex_when_set_signature_is_unavailable() -> None:
+    redis = _RedisUninspectableSetAndSetex()
+
+    await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-uninspectable-setex", 1, 2, "IN_PROGRESS"
+    )
+
+    assert redis.set_calls == []
+    assert len(redis.setex_calls) == 1
+    key, ttl, payload = redis.setex_calls[0]
+    assert key == "vector_sharding:rebalance:reb-uninspectable-setex"
+    assert ttl == 3600
+    assert b'"status":"IN_PROGRESS"' in payload
+
+
+@pytest.mark.asyncio
+async def test_progress_awaits_uninspectable_set_only_two_argument_fallback() -> None:
+    redis = _RedisAsyncUninspectableSet()
+
+    await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-uninspectable-async", 1, 2, "IN_PROGRESS"
+    )
+
+    assert len(redis.calls) == 1
+    assert redis.calls[0][2] is None
+
+
+@pytest.mark.asyncio
+async def test_progress_rejects_unsupported_positional_expiry_signature() -> None:
+    redis = _RedisUnsupportedPositionalSet()
+
+    with pytest.raises(TypeError, match="unsupported positional-only ex"):
+        await VectorShardingService(redis_client=redis)._update_progress(
+            "reb-positional-invalid", 1, 2, "IN_PROGRESS"
+        )
+
+    assert redis.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_progress_rejects_positional_expiry_before_value() -> None:
+    redis = _RedisExpiryBeforeValueSet()
+
+    with pytest.raises(TypeError, match="unsupported positional-only ex"):
+        await VectorShardingService(redis_client=redis)._update_progress(
+            "reb-positional-order", 1, 2, "IN_PROGRESS"
+        )
+
+    assert redis.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_progress_does_not_fallback_after_supported_set_fails() -> None:
+    redis = _RedisSetFailureWithSetex()
+
+    with pytest.raises(RuntimeError, match="SET EX failed"):
+        await VectorShardingService(redis_client=redis)._update_progress(
+            "reb-set-failure", 1, 2, "IN_PROGRESS"
+        )
+
+    assert redis.setex_calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "redis_error", [RedisConnectionError("offline"), RedisTimeoutError("timeout")]
+)
+async def test_progress_treats_redis_transport_errors_as_non_fatal(
+    redis_error: Exception,
+) -> None:
+    redis = _RedisSetFailureWithSetex(redis_error)
+
+    data = await VectorShardingService(redis_client=redis)._update_progress(
+        "reb-redis-transport", 1, 2, "IN_PROGRESS"
+    )
+
+    assert data["status"] == "IN_PROGRESS"
+    assert redis.setex_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_progress_does_not_swallow_redis_command_errors() -> None:
+    redis = _RedisSetFailureWithSetex(RedisResponseError("WRONGTYPE"))
+
+    with pytest.raises(RedisResponseError, match="WRONGTYPE"):
+        await VectorShardingService(redis_client=redis)._update_progress(
+            "reb-redis-command", 1, 2, "IN_PROGRESS"
+        )
+
+    assert redis.setex_calls == 0
+
+
+@pytest.mark.asyncio
 async def test_progress_and_publish_network_errors_are_non_fatal() -> None:
     service = VectorShardingService(
         redis_client=_RedisSetex(error=ConnectionError("redis down")),
@@ -268,6 +715,25 @@ async def test_progress_and_publish_network_errors_are_non_fatal() -> None:
     await service.publish_jetstream_event("vector.test", {"ok": True})
     assert service.nats_client.stream.events
     await VectorShardingService().publish_jetstream_event("vector.test", {})
+
+
+@pytest.mark.asyncio
+async def test_publish_skips_when_jetstream_is_unavailable() -> None:
+    await VectorShardingService(nats_client=_NatsNoJetStream()).publish_jetstream_event(
+        "vector.test", {"ok": True}
+    )
+
+
+@pytest.mark.asyncio
+async def test_publish_supports_synchronous_jetstream_client() -> None:
+    nats = _NatsSyncJetStream()
+
+    await VectorShardingService(nats_client=nats).publish_jetstream_event(
+        "vector.test", {"ok": True}
+    )
+
+    assert len(nats.stream.events) == 1
+    assert nats.stream.events[0][0] == "vector.test"
 
 
 @pytest.mark.asyncio
@@ -372,3 +838,31 @@ async def test_rebalance_without_database_and_migration_errors_completes() -> No
         [], db_session=insert_db, rebalance_id="reb-insert"
     )
     assert len(insert_client.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_rebalance_skips_unknown_vector_client_methods() -> None:
+    engine = VectorStorageEngine()
+    node = engine.register_node("node-unknown", "http://node-unknown:6333")
+    node._client = SimpleNamespace()
+    service = VectorShardingService(storage_engine=engine)
+    db = _DbSession(
+        [
+            VectorChunk(
+                tenant_id=uuid.uuid4(),
+                document_id="doc-unknown-client",
+                content="content",
+                embedding=[0.1, 0.2],
+                payload=None,
+                chunk_index=0,
+                is_active=True,
+            )
+        ]
+    )
+
+    result = await service.rebalance_node_ring(
+        [], db_session=db, rebalance_id="reb-unknown-client"
+    )
+
+    assert result["migrated_keys"] == 1
+    assert result["status"] == "COMPLETED"

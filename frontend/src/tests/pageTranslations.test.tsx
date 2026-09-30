@@ -35,6 +35,7 @@ vi.mock("@/hooks/useClock", () => ({
     mm: "30",
     dateStr: "Monday, September 15",
     time: new Date(2025, 8, 15, 9, 30),
+    isReady: true,
   }),
 }))
 

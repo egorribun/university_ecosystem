@@ -259,6 +259,30 @@ func TestHandleIncomingMessage_JoinLeaveDispatch(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestHandleLeaveNoOpForEmptyRoomOrMissingHub(t *testing.T) {
+	h := setupTestHub()
+	serverConn, _ := newConnPair(t)
+	client := newClientOn(h, serverConn, "leave-guard-client", "leave-guard-user")
+	client.JoinRoom("room-a")
+
+	client.handleLeave(Message{Type: "leave", Room: ""})
+	assert.True(t, client.isInRoom("room-a"), "an empty room must not remove another membership")
+
+	(&Client{}).handleLeave(Message{Type: "leave", Room: "room-a"})
+}
+
+func TestRevokeRoomEmptyRoomIsNoOp(t *testing.T) {
+	h := setupTestHub()
+	serverConn, _ := newConnPair(t)
+	client := newClientOn(h, serverConn, "revoke-guard-client", "revoke-guard-user")
+	client.JoinRoom("room-a")
+
+	client.revokeRoom("", []byte(`{"type":"error"}`))
+
+	assert.True(t, client.isInRoom("room-a"), "an empty room must preserve existing membership")
+	assert.Empty(t, client.Send, "an empty room must not enqueue a revocation notice")
+}
+
 func TestMergeTopLevelJoinReplayIntoPayload(t *testing.T) {
 	msg := &Message{Type: "join", Payload: []byte(`{"last_msg_id":"payload-id"}`)}
 

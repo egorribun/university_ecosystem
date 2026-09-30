@@ -770,9 +770,11 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
   it("uses the secure websocket scheme on HTTPS pages", async () => {
     const originalWindow = window
     const secureLocation = new Proxy(originalWindow.location, {
-      get(target, property, receiver) {
+      get(target, property) {
         if (property === "protocol") return "https:"
-        return Reflect.get(target, property, receiver)
+        // Location accessors are Web IDL brand-checked; keep the real object
+        // as their receiver instead of forwarding the Proxy.
+        return Reflect.get(target, property, target)
       },
     })
     vi.stubGlobal(

@@ -8206,6 +8206,32 @@ def test_nightly_chaos_database_is_explicitly_test_owned() -> None:
     assert str(chaos["env"]["DATABASE_URL"]).endswith("/test_ecosystem")
 
 
+def test_asan_pytest_disables_schemathesis_autoload_without_disabling_lsan() -> None:
+    script = (REPOSITORY_ROOT / "scripts" / "run_asan_tests.sh").read_text(
+        encoding="utf-8"
+    )
+    invocation_start = script.index("  uv run pytest \\")
+    invocation = script[invocation_start:].split("\n\n# echo", maxsplit=1)[0]
+    environment = script[:invocation_start]
+
+    assert "-p no:schemathesis" in invocation
+    assert (
+        'ASAN_OPTIONS="${ASAN_LOG_OPT}detect_leaks=1:detect_odr_violation=0:abort_on_error=1"'
+        in environment
+    )
+    assert (
+        'LSAN_OPTIONS="suppressions=${REPO_ROOT}/tests/lsan_suppressions.txt"'
+        in environment
+    )
+    for smoke_test in (
+        "tests/test_smoke_rust_audit.py",
+        "tests/test_smoke_rust_partitions.py",
+        "tests/test_property_based.py",
+        "tests/test_smoke_pyo3_ext.py",
+    ):
+        assert smoke_test in invocation
+
+
 def test_persistent_pytest_reset_jobs_use_explicit_narrow_opt_in() -> None:
     marker = "UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"
     reusable = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
