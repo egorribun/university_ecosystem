@@ -889,15 +889,16 @@ def test_launcher_seed_commands_are_compose_project_safe() -> None:
         'scripts/seed_demo_data.py backend:/app/seed_demo_data.py"',
         'Write-Host "       $ComposeCommand exec -T -w /app '
         'backend python seed_demo_data.py"',
-        'Write-Host "       $ComposeCommand cp '
-        'scripts/seed_admin_data.py backend:/app/seed_admin_data.py"',
-        'Write-Host "       $ComposeCommand exec -T -w /app '
-        'backend python seed_admin_data.py"',
     )
     for command in expected_commands:
         assert launcher.count(command) == 1, (
             f"Expected exactly one launcher command: {command}"
         )
+    assert 'Write-Host "       python scripts/live_stand.py e2e"' in launcher, (
+        "the admin demo path must use the transient-password live wrapper"
+    )
+    assert "seed_admin_data.py" not in launcher
+    assert "Login:" not in launcher
 
 
 def test_sandbox_runner_uses_a_worktree_scoped_compose_project() -> None:

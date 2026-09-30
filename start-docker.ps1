@@ -1478,11 +1478,8 @@ Write-Host "Seed data:" -ForegroundColor Cyan
 Write-Host "  1) Demo content (idempotent - student user + news + events + schedule + stories):"
 Write-Host "       $ComposeCommand cp scripts/seed_demo_data.py backend:/app/seed_demo_data.py"
 Write-Host "       $ComposeCommand exec -T -w /app backend python seed_demo_data.py"
-Write-Host "       Login: test@university.dev / TestPass@2024x"
-Write-Host "  2) Admin content (idempotent - admin user + 6 users + 12 audit logs + 4 dead-letter jobs):"
-Write-Host "       $ComposeCommand cp scripts/seed_admin_data.py backend:/app/seed_admin_data.py"
-Write-Host "       $ComposeCommand exec -T -w /app backend python seed_admin_data.py"
-Write-Host "       Login: admin@university.dev / Admin@2024test"
+Write-Host "  2) Admin demo + live browser smoke (owned stand; generates a fresh password per run):"
+Write-Host "       python scripts/live_stand.py e2e"
 Write-Host ""
 Write-Host "Commands:" -ForegroundColor Gray
 Write-Host "  Stop:      .\start-docker.ps1 -Down"
