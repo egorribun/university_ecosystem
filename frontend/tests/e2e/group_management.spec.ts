@@ -19,6 +19,7 @@ const groupDetailMatch = (url: URL) => apiPathMatches(url, `/api/chats/${GROUP_C
 const groupMessagesMatch = (url: URL) => apiPathMatches(url, `/api/chats/${GROUP_CHAT_ID}/messages`)
 const groupParticipantsMatch = (url: URL) =>
   apiPathMatches(url, `/api/chats/${GROUP_CHAT_ID}/participants`)
+const groupReadMatch = (url: URL) => apiPathMatches(url, `/api/chats/${GROUP_CHAT_ID}/read`)
 const memberTwoParticipantMatch = (url: URL) =>
   apiPathMatches(url, `/api/chats/${GROUP_CHAT_ID}/participants/${MEMBER_TWO_ID}`)
 
@@ -69,13 +70,26 @@ const MEMBER_THREE = makeUser({
 })
 
 const SEARCH_RESULTS = [MEMBER_ONE, MEMBER_TWO, MEMBER_THREE]
+const asChatParticipant = ({
+  id,
+  email,
+  full_name,
+  avatar_url,
+  is_active,
+}: ReturnType<typeof makeUser>) => ({
+  id,
+  email,
+  full_name,
+  avatar_url,
+  is_active,
+})
 
 const CREATED_GROUP = {
   id: GROUP_CHAT_ID,
   chat_type: "group",
   name: "Супер Группа",
   created_by: CURRENT_USER_ID,
-  participants: [CURRENT_USER, MEMBER_ONE, MEMBER_TWO],
+  participants: [CURRENT_USER, MEMBER_ONE, MEMBER_TWO].map(asChatParticipant),
   unread_count: 0,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
@@ -157,11 +171,13 @@ test.describe("Group Chat Management", () => {
       })
     })
 
-    // User search — any query string on /api/users with a "search" param.
-    // Playwright glob "**/api/users*" matches any URL starting with /api/users.
+    // User search uses the backend's supported `full_name` filter.
+    const userSearchQueries: string[] = []
     await page.route(USERS_MATCH, async (route) => {
-      const url = route.request().url()
-      if (url.includes("search=")) {
+      const params = new URL(route.request().url()).searchParams
+      const fullName = params.get("full_name")?.trim()
+      if (fullName) {
+        userSearchQueries.push(fullName)
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -177,14 +193,10 @@ test.describe("Group Chat Management", () => {
     // DELETE /api/chats/{id} → group deletion
     await page.route(groupDetailMatch, async (route) => {
       if (route.request().method() === "PATCH") {
-        const payload = ((await route.request().postDataJSON()) ?? {}) as { name?: string }
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({
-            ...CREATED_GROUP,
-            name: payload.name ?? CREATED_GROUP.name,
-          }),
+          body: JSON.stringify({ status: "ok" }),
         })
       } else if (route.request().method() === "DELETE") {
         await route.fulfill({
@@ -209,12 +221,24 @@ test.describe("Group Chat Management", () => {
       })
     })
 
+    await page.route(groupReadMatch, async (route) => {
+      if (route.request().method() === "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ status: "ok" }),
+        })
+      } else {
+        await route.fallback()
+      }
+    })
+
     // Add participant
     await page.route(groupParticipantsMatch, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ success: true }),
+        body: JSON.stringify({ status: "ok" }),
       })
     })
 
@@ -223,7 +247,7 @@ test.describe("Group Chat Management", () => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ success: true }),
+        body: JSON.stringify({ status: "ok" }),
       })
     })
 
@@ -248,6 +272,7 @@ test.describe("Group Chat Management", () => {
     //    Each option has role="option"; select by visible text.
     await page.getByRole("option", { name: "Member One" }).click()
     await page.getByRole("option", { name: "Member Two" }).click()
+    expect(userSearchQueries).toContain("Member")
 
     // 10. Create the group. Button text = t("messenger:createGroup") = "Создать группу".
     await page.getByRole("button", { name: "Создать группу" }).click()
@@ -301,6 +326,7 @@ test.describe("Group Chat Management", () => {
 
     // Wait for search result and click.
     await page.getByRole("button", { name: "Member Three" }).click()
+    expect(userSearchQueries).toContain("Three")
 
     // 17. Kick Member Two.
     //     Button has aria-label = t("messenger:removeMember", { name: "Member Two" }) = "Удалить Member Two".
