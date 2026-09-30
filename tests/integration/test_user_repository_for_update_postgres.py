@@ -15,6 +15,8 @@ pytestmark = pytest.mark.integration
 
 def _require_postgres() -> None:
     if database.engine.dialect.name != "postgresql":
+        # SQLite shards cannot validate PostgreSQL FOR UPDATE behavior.
+        # QUALITY-2509 @egorribun: required PostgreSQL lane runs this contract.
         pytest.skip("user row-lock regression requires PostgreSQL")
 
 
