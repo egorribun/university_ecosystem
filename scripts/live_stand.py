@@ -10,6 +10,7 @@ Usage::
 
     python scripts/live_stand.py up [--ref HEAD]   # create/refresh the worktree and start
     python scripts/live_stand.py seed               # load demo users and content
+    python scripts/live_stand.py e2e                # reseed and run live Playwright safely
     python scripts/live_stand.py status             # read-only status
     python scripts/live_stand.py stop               # stop containers; preserve data
     python scripts/live_stand.py teardown           # remove only this run's Compose data
@@ -41,6 +42,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -95,6 +97,18 @@ OWNER_SCHEMA_VERSION = 3
 LEGACY_OWNER_SCHEMA_VERSION = 2
 COMPOSE_INSPECTION_PLACEHOLDER = "live-stand-inspection-placeholder"
 SEED_SCRIPTS = ("scripts/seed_demo_data.py", "scripts/seed_admin_data.py")
+LIVE_E2E_COMMAND = ("npm", "run", "test:e2e:live")
+LIVE_E2E_WINDOWS_COMMAND = (
+    "cmd.exe",
+    "/d",
+    "/s",
+    "/c",
+    "npm run test:e2e:live",
+)
+LIVE_E2E_DIAGNOSTIC_LIMIT = 12_000
+_LIVE_TOKEN_QUERY = re.compile(
+    r"(?i)([?&](?:token|reset_token|access_token|refresh_token)=)[^&#\s\"'<>),]+"
+)
 STAND_PATHS_TO_PROTECT = (
     Path(OVERLAY),
     Path(".env"),
@@ -802,9 +816,14 @@ def up(ref: str) -> None:
         _up_locked(ref)
 
 
-def _seed_locked() -> None:
+def _new_test_password() -> str:
+    """Create a policy-valid password whose value is unique to one run."""
+    return secrets.token_urlsafe(32) + "!Aa0"
+
+
+def _seed_locked(admin_password: str, *, owner: StandOwner | None = None) -> None:
     _require_worktree()
-    owner = load_stand_owner(WORKTREE)
+    owner = owner or load_stand_owner(WORKTREE)
     env = stand_environment(
         load_vapid(WORKTREE), owner.project_name, dict(owner.published_ports)
     )
@@ -820,22 +839,147 @@ def _seed_locked() -> None:
             scripts_mount,
         ]
         if script == "scripts/seed_admin_data.py":
-            run_env = {**env, "TEST_PASSWORD": secrets.token_urlsafe(32) + "!Aa0"}
+            run_env = {**env, "TEST_PASSWORD": admin_password}
             run_options.extend(("-e", "TEST_PASSWORD"))
         run_options.extend(("backend", "python", script))
-        _run(
-            compose_command(
-                *run_options,
-                project_name=owner.project_name,
-            ),
-            cwd=WORKTREE,
-            env=run_env,
-        )
+        try:
+            _run(
+                compose_command(
+                    *run_options,
+                    project_name=owner.project_name,
+                ),
+                cwd=WORKTREE,
+                env=run_env,
+            )
+        finally:
+            if script == "scripts/seed_admin_data.py":
+                run_env.pop("TEST_PASSWORD", None)
 
 
 def seed() -> None:
-    with stand_lifecycle_lock():
-        _seed_locked()
+    admin_password = _new_test_password()
+    try:
+        with stand_lifecycle_lock():
+            _seed_locked(admin_password)
+    finally:
+        admin_password = ""
+
+
+def _live_e2e_environment(
+    owner: StandOwner, *, admin_password: str, output_directory: str
+) -> dict[str, str]:
+    """Build the minimum child environment from this owned stand's metadata."""
+    env = os.environ.copy()
+    for name in tuple(env):
+        if name.startswith(("LIVE_", "COMPOSE_")) or name == "TEST_PASSWORD":
+            env.pop(name, None)
+
+    ports = dict(owner.published_ports)
+    env.update(
+        {
+            "LIVE_BASE_URL": _stand_base_url(ports),
+            "LIVE_MAILPIT_URL": f"http://127.0.0.1:{ports['MAILPIT']}",
+            "LIVE_E2E_OUTPUT_DIR": output_directory,
+            "TEST_PASSWORD": admin_password,
+        }
+    )
+    return env
+
+
+def _redact_live_e2e_output(output: str, *, admin_password: str) -> str:
+    """Remove transient credentials and reset tokens from child diagnostics."""
+    return _LIVE_TOKEN_QUERY.sub(
+        r"\1[REDACTED]", output.replace(admin_password, "[REDACTED]")
+    )
+
+
+def _live_e2e_command(*, platform: str | None = None) -> tuple[str, ...]:
+    """Return a fixed launcher that works for npm's Windows command shim."""
+    if (platform or os.name) == "nt":
+        return LIVE_E2E_WINDOWS_COMMAND
+    return LIVE_E2E_COMMAND
+
+
+def _emit_live_e2e_diagnostics(
+    output: str, *, admin_password: str, stream: TextIO
+) -> None:
+    safe_output = _redact_live_e2e_output(output, admin_password=admin_password)
+    if len(safe_output) > LIVE_E2E_DIAGNOSTIC_LIMIT:
+        safe_output = (
+            "[earlier live E2E diagnostics omitted]\n"
+            + safe_output[-LIVE_E2E_DIAGNOSTIC_LIMIT:]
+        )
+    if safe_output:
+        print(
+            safe_output,
+            end="" if safe_output.endswith("\n") else "\n",
+            file=stream,
+            flush=True,
+        )
+
+
+def _run_live_playwright(
+    *, cwd: Path, environment: dict[str, str], admin_password: str
+) -> None:
+    """Run Playwright with captured and redacted output, never streaming secrets."""
+    command = _live_e2e_command()
+    print("+", " ".join(command), flush=True)
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed platform-specific argv
+            command,
+            cwd=cwd,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError as error:
+        raise StandError("could not launch the live Playwright command") from error
+
+    _emit_live_e2e_diagnostics(
+        completed.stdout or "", admin_password=admin_password, stream=sys.stdout
+    )
+    _emit_live_e2e_diagnostics(
+        completed.stderr or "", admin_password=admin_password, stream=sys.stderr
+    )
+    outcome = "passed" if completed.returncode == 0 else "failed"
+    print(f"live E2E outcome={outcome} exit_code={completed.returncode}", flush=True)
+    if completed.returncode != 0:
+        raise StandError(
+            f"live Playwright E2E failed with exit code {completed.returncode}"
+        )
+
+
+def _e2e_locked(admin_password: str) -> None:
+    _require_worktree()
+    owner = load_stand_owner(WORKTREE)
+    _seed_locked(admin_password, owner=owner)
+
+    with tempfile.TemporaryDirectory(prefix="ue-live-playwright-") as output_directory:
+        environment = _live_e2e_environment(
+            owner, admin_password=admin_password, output_directory=output_directory
+        )
+        try:
+            _run_live_playwright(
+                cwd=WORKTREE / "frontend",
+                environment=environment,
+                admin_password=admin_password,
+            )
+        finally:
+            environment.pop("TEST_PASSWORD", None)
+            environment.pop("LIVE_E2E_OUTPUT_DIR", None)
+
+
+def e2e() -> None:
+    """Seed owned roles and run live browser acceptance with one transient password."""
+    admin_password = _new_test_password()
+    try:
+        with stand_lifecycle_lock():
+            _e2e_locked(admin_password)
+    finally:
+        admin_password = ""
 
 
 def status() -> None:
@@ -898,6 +1042,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     verify_parser.add_argument("--base-url", required=True)
     verify_parser.add_argument("--mailpit-url", required=True)
     commands.add_parser("seed")
+    commands.add_parser("e2e")
     commands.add_parser("status")
     commands.add_parser("stop")
     commands.add_parser("down")
@@ -911,6 +1056,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("live stand endpoints verified")
         elif args.command == "seed":
             seed()
+        elif args.command == "e2e":
+            e2e()
         elif args.command == "status":
             status()
         elif args.command in {"stop", "down"}:

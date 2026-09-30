@@ -3,10 +3,10 @@ import { defineConfig, devices } from "@playwright/test"
 /**
  * Live acceptance lane: real backend, real database, seeded roles.
  *
- * Runs against the owned stand from `scripts/live_stand.py up` (and `seed`)
- * instead of mocked API routes. Nothing here starts a server; the stand must
- * already be up. Specs live in tests/e2e-live and share seeded data, so the
- * lane runs serially.
+ * Runs against the owned stand using `scripts/live_stand.py e2e`, which seeds
+ * roles and passes one transient admin password into this child process.
+ * Nothing here starts a server. Specs share seeded data, so the lane runs
+ * serially.
  */
 // Static analyzers also load Playwright config files. Keep endpoint validation
 // in global setup so it runs before tests, without making config import depend
@@ -22,15 +22,17 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   timeout: 60_000,
   expect: { timeout: 15_000 },
-  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
+  reporter: "list",
+  outputDir: process.env.LIVE_E2E_OUTPUT_DIR ?? "test-results",
   use: {
     baseURL: BASE_URL,
     ignoreHTTPSErrors: true,
     locale: "ru-RU",
     actionTimeout: 15_000,
     navigationTimeout: 45_000,
-    trace: "retain-on-failure",
-    screenshot: "only-on-failure",
+    trace: "off",
+    screenshot: "off",
+    video: "off",
   },
   projects: [
     {

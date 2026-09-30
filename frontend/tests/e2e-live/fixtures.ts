@@ -1,4 +1,5 @@
 import { expect, test as base, type Page } from "@playwright/test"
+import { requireLiveAdminPassword } from "../../scripts/live-e2e-credentials.mjs"
 
 /**
  * Accounts created by scripts/seed_demo_data.py and scripts/seed_admin_data.py
@@ -15,7 +16,7 @@ export const ROLES = {
   },
   admin: {
     email: "admin@university.dev",
-    password: "Admin@2024test", // pragma: allowlist secret -- disposable stand seed account
+    password: requireLiveAdminPassword(),
   },
 } as const
 

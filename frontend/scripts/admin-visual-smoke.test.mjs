@@ -349,6 +349,33 @@ test("admin smoke clears the password before either login failure path", async (
   }
 })
 
+test("admin smoke clears the password before JWKS failure logging and exit", async () => {
+  const source = await readFile(new URL("admin-visual-smoke.mjs", import.meta.url), "utf8")
+  const jwksCall = source.indexOf("jwks = await checkJwksEndpoint()")
+  const catchStart = source.indexOf("} catch (err) {", jwksCall)
+  const catchEnd = source.indexOf("\n\n  let browser", catchStart)
+  assert.ok(
+    jwksCall >= 0 && catchStart > jwksCall && catchEnd > catchStart,
+    "the JWKS pre-check failure handler must remain identifiable"
+  )
+
+  const failureHandler = source.slice(catchStart, catchEnd)
+  const statements = failureHandler
+    .slice(failureHandler.indexOf("{") + 1)
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  assert.equal(
+    statements[0],
+    'credentials.password = ""',
+    "the credential must be cleared before JWKS errors are logged"
+  )
+  assert.ok(
+    failureHandler.indexOf('credentials.password = ""') < failureHandler.indexOf("console.error"),
+    "the password must be cleared before logging or process exit"
+  )
+})
+
 test("admin smoke workflow masks a per-run password before exposing it only to seed and smoke env", async () => {
   const workflow = (
     await readFile(

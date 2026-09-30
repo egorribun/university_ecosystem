@@ -10,6 +10,7 @@ import socket
 import subprocess
 import sys
 import threading
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -316,6 +317,224 @@ def test_seed_cli_passes_a_fresh_password_only_to_the_admin_seed(
         if password is not None
     ):
         pytest.fail("live-stand seed must not log the generated password")
+
+
+def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    from contextlib import nullcontext
+
+    worktree = tmp_path / "ue-live"
+    port_map = _port_map()
+    owner = live_stand.StandOwner(
+        repository=str(ROOT),
+        worktree=str(worktree),
+        project_name="ue-live-0123456789abcdef",
+        published_ports=tuple(port_map.items()),
+        schema_version=live_stand.OWNER_SCHEMA_VERSION,
+    )
+    runs: list[tuple[list[str], Path, dict[str, str]]] = []
+    playwright_runs: list[tuple[Path, dict[str, str], str, bool]] = []
+    token_sizes: list[int] = []
+    original_token_urlsafe = live_stand.secrets.token_urlsafe
+    ambient_password = original_token_urlsafe(32)
+    base_environment = {
+        "COMPOSE_PROJECT_NAME": owner.project_name,
+        "LIVE_VAPID_PUBLIC_KEY": "public-marker",
+        "LIVE_VAPID_PRIVATE_KEY": "private-marker",  # pragma: allowlist secret
+        "LIVE_HOST_PORT_CADDY_HTTP": str(port_map["CADDY_HTTP"]),
+        "LIVE_MAILPIT_PORT": str(port_map["MAILPIT"]),
+        "TEST_PASSWORD": ambient_password,  # pragma: allowlist secret
+    }
+
+    def generate_token(size: int) -> str:
+        token_sizes.append(size)
+        return original_token_urlsafe(size)
+
+    def capture_run(
+        command: list[str], *, cwd: Path, env: dict[str, str] | None
+    ) -> None:
+        print("+", " ".join(command))
+        runs.append((list(command), cwd, dict(env or {})))
+
+    def capture_playwright(
+        *, cwd: Path, environment: dict[str, str], admin_password: str
+    ) -> None:
+        print("+", " ".join(live_stand.LIVE_E2E_COMMAND))
+        output_directory = environment.get("LIVE_E2E_OUTPUT_DIR", "")
+        playwright_runs.append(
+            (
+                cwd,
+                dict(environment),
+                admin_password,
+                bool(output_directory and Path(output_directory).is_dir()),
+            )
+        )
+
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setenv("TEST_PASSWORD", ambient_password)
+    monkeypatch.setattr(live_stand.secrets, "token_urlsafe", generate_token)
+    monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
+    monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
+    monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: owner)
+    monkeypatch.setattr(
+        live_stand,
+        "load_vapid",
+        lambda _path: {"public": "public-key", "private": "private-key"},
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "stand_environment",
+        lambda _keys, _project, _ports: dict(base_environment),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "compose_command",
+        lambda *args, project_name: list(args),
+    )
+    monkeypatch.setattr(live_stand, "_run", capture_run)
+    monkeypatch.setattr(live_stand, "_run_live_playwright", capture_playwright)
+
+    try:
+        if live_stand.main(["e2e"]) != 0:
+            pytest.fail("the E2E orchestration command should complete successfully")
+
+        if len(runs) != 2 or len(playwright_runs) != 1 or token_sizes != [32]:
+            pytest.fail("the E2E command must generate one password and run both seeds")
+
+        demo_command, _demo_cwd, demo_env = runs[0]
+        admin_command, _admin_cwd, admin_env = runs[1]
+        e2e_cwd, e2e_env, playwright_password, output_dir_existed = playwright_runs[0]
+        generated_password = admin_env.get("TEST_PASSWORD")
+        if not isinstance(generated_password, str):
+            pytest.fail("the admin seed must receive its generated password via env")
+        if "TEST_PASSWORD" in demo_env:
+            pytest.fail("the demo seed must not receive the admin password")
+        if e2e_env.get("TEST_PASSWORD") != generated_password:
+            pytest.fail("the Playwright child must receive the same per-run password")
+        if playwright_password != generated_password:
+            pytest.fail("the orchestrator must retain only the password for this run")
+        if generated_password == ambient_password:
+            pytest.fail("the E2E command must ignore an inherited password")
+        if (
+            "scripts/seed_demo_data.py" not in demo_command
+            or "scripts/seed_admin_data.py" not in admin_command
+        ):
+            pytest.fail("the E2E command must run demo and admin seed scripts")
+        if (
+            "-e" not in admin_command
+            or "TEST_PASSWORD" not in admin_command
+            or any(generated_password in part for part in admin_command)
+        ):
+            pytest.fail(
+                "Compose argv must contain only the variable name, never its value"
+            )
+        if live_stand.LIVE_E2E_COMMAND != ("npm", "run", "test:e2e:live"):
+            pytest.fail(
+                "the E2E command must invoke the repository live Playwright script"
+            )
+        if e2e_cwd != worktree / "frontend":
+            pytest.fail("Playwright must run from the owned worktree frontend")
+        expected_live = {
+            "LIVE_BASE_URL": f"http://localhost:{port_map['CADDY_HTTP']}",
+            "LIVE_MAILPIT_URL": f"http://127.0.0.1:{port_map['MAILPIT']}",
+        }
+        if any(e2e_env.get(key) != value for key, value in expected_live.items()):
+            pytest.fail("Playwright endpoints must come from the owned port metadata")
+        if any(
+            key.startswith(("LIVE_VAPID_", "LIVE_HOST_PORT_", "COMPOSE_"))
+            for key in e2e_env
+        ):
+            pytest.fail("Playwright must not inherit Compose or VAPID credentials")
+        output_dir = e2e_env.get("LIVE_E2E_OUTPUT_DIR")
+        if not output_dir_existed or not output_dir or Path(output_dir).exists():
+            pytest.fail(
+                "Playwright output must use a temporary directory removed after exit"
+            )
+        if generated_password in repr([command for command, _, _ in runs]):
+            pytest.fail("the generated password must never appear in subprocess argv")
+        captured = capsys.readouterr()
+        if generated_password in captured.out or generated_password in captured.err:
+            pytest.fail("the E2E command must not print the generated password")
+        if os.environ.get("TEST_PASSWORD") != ambient_password:
+            pytest.fail("the E2E command must not mutate the caller's environment")
+    finally:
+        for _command, _cwd, environment in runs:
+            environment.pop("TEST_PASSWORD", None)
+        for _cwd, environment, _password, _output_dir_existed in playwright_runs:
+            environment.pop("TEST_PASSWORD", None)
+
+
+def test_live_playwright_diagnostics_redact_admin_password_and_reset_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    password = live_stand.secrets.token_urlsafe(32) + "!Aa0"
+    reset_token = live_stand.secrets.token_urlsafe(32)
+    stdout = (
+        f"admin credential: {password}\n"
+        f"navigation failed: http://localhost/reset-password?token={reset_token}\n"
+    )
+    stderr = f"failed reset URL https://localhost/reset-password?token={reset_token}\n"
+    captured_calls: list[dict[str, object]] = []
+
+    def fake_subprocess_run(
+        command: Sequence[str], **kwargs: object
+    ) -> subprocess.CompletedProcess:
+        captured_calls.append({"command": command, **kwargs})
+        return subprocess.CompletedProcess(command, 1, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(live_stand.subprocess, "run", fake_subprocess_run)
+
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(
+            cwd=tmp_path,
+            environment={"TEST_PASSWORD": password},
+            admin_password=password,
+        )
+
+    printed = capsys.readouterr()
+    if password in printed.out or password in printed.err:
+        pytest.fail("Playwright diagnostics must redact the admin password")
+    if reset_token in printed.out or reset_token in printed.err:
+        pytest.fail("Playwright diagnostics must redact reset URL tokens")
+    if "token=[REDACTED]" not in printed.out + printed.err:
+        pytest.fail("Playwright diagnostics should retain only a redacted token marker")
+    if len(captured_calls) != 1:
+        pytest.fail("the live runner should launch Playwright once")
+
+    call = captured_calls[0]
+    command = call["command"]
+    if not isinstance(command, (list, tuple)) or any(
+        password in part for part in command
+    ):
+        pytest.fail("the admin password must not appear in Playwright argv")
+    if tuple(command) != live_stand._live_e2e_command():
+        pytest.fail("the runner must use the platform-specific fixed npm launcher")
+    if call.get("capture_output") is not True or call.get("text") is not True:
+        pytest.fail("Playwright output must be captured before diagnostics are emitted")
+
+
+def test_live_e2e_command_handles_windows_npm_shim_without_secret_interpolation() -> (
+    None
+):
+    if live_stand._live_e2e_command(platform="posix") != (
+        "npm",
+        "run",
+        "test:e2e:live",
+    ):
+        pytest.fail("Unix must launch npm directly")
+    if live_stand._live_e2e_command(platform="nt") != (
+        "cmd.exe",
+        "/d",
+        "/s",
+        "/c",
+        "npm run test:e2e:live",
+    ):
+        pytest.fail("Windows must use the static cmd.exe launcher for npm.cmd")
 
 
 def test_busy_published_port_blocks_the_stand() -> None:

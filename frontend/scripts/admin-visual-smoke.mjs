@@ -655,6 +655,7 @@ async function main() {
       )
     )
   } catch (err) {
+    credentials.password = ""
     console.error(`X JWKS PRE-CHECK FAILED: ${err.message}`)
     process.exit(4)
   }
