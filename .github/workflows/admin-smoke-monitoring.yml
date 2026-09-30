@@ -236,14 +236,25 @@ jobs:
             exit 1
           fi
 
-      - name: Seed demo data + admin user
-        # Public registration cannot assign the admin role, so seed the test
-        # account through the backend-only seed script after its base demo data.
-        # Both scripts are idempotent.
+      - name: Generate masked admin smoke password
+        id: admin_smoke_password
+        shell: bash
+        run: |
+          password="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          printf '::add-mask::%s\n' "$password"
+          printf 'password=%s\n' "$password" >> "$GITHUB_OUTPUT"
+
+      - name: Seed demo data
+        # Base demo content does not need the ephemeral admin password.
         run: |
           uv run python scripts/seed_demo_data.py
-          uv run python scripts/seed_admin_data.py
-          echo "OK: demo + admin user seeded"
+          echo "OK: demo data seeded"
+
+      - name: Seed demo admin user
+        # Reuse the run-scoped password for the real browser login.
+        env:
+          TEST_PASSWORD: ${{ steps.admin_smoke_password.outputs.password }}
+        run: uv run python scripts/seed_admin_data.py
 
       - name: Start frontend Node SSR
         # Start the production Node SSR server on :3000.
@@ -320,7 +331,7 @@ jobs:
         env:
           ORIGIN: http://localhost
           TEST_EMAIL: admin@university.dev
-          TEST_PASSWORD: Admin@2024test # pragma: allowlist secret
+          TEST_PASSWORD: ${{ steps.admin_smoke_password.outputs.password }}
         run: node ./scripts/admin-visual-smoke.mjs
         continue-on-error: true
 

@@ -60,7 +60,6 @@ from app.services.audit_service import SecureAuditService  # noqa: E402
 # ---------------------------------------------------------------------------
 
 ADMIN_EMAIL = "admin@university.dev"
-ADMIN_PASSWORD = "Admin@2024test"  # noqa: S105 # pragma: allowlist secret — dev-only test credential
 
 # ---------------------------------------------------------------------------
 # Additional users for AdminUsers page (mix of roles + groups)
@@ -212,7 +211,15 @@ DEAD_LETTER_JOBS = [
 # ---------------------------------------------------------------------------
 
 
-async def find_or_create_admin(db) -> User:
+def _required_test_password() -> str:
+    """Return the transient admin smoke password or fail before DB access."""
+    password = os.environ.get("TEST_PASSWORD")
+    if not password or not password.strip():
+        raise RuntimeError("TEST_PASSWORD must be set to a non-empty password")
+    return password
+
+
+async def find_or_create_admin(db, *, admin_password: str) -> User:
     """Create or fetch the admin user."""
     existing = await db.scalar(select(User).where(User.email == ADMIN_EMAIL))
     if existing:
@@ -223,7 +230,7 @@ async def find_or_create_admin(db) -> User:
             print(f"  ⊙ Admin {ADMIN_EMAIL} already exists")
         return existing
 
-    hashed = get_password_hash_sync(ADMIN_PASSWORD)
+    hashed = get_password_hash_sync(admin_password)
     user = User.create(
         email=ADMIN_EMAIL,
         hashed_password=hashed,
@@ -417,13 +424,17 @@ async def seed_dead_letter_jobs(db) -> None:
 
 
 async def main() -> None:
+    admin_password = _required_test_password()
     print("Initialising database connection…")
     init_database()
 
     async with async_session() as db:
         try:
             print("\n[1/5] Admin user")
-            admin = await find_or_create_admin(db)
+            try:
+                admin = await find_or_create_admin(db, admin_password=admin_password)
+            finally:
+                del admin_password
 
             print("\n[2/5] Extra groups")
             groups = await seed_extra_groups(db)

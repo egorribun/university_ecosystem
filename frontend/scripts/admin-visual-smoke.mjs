@@ -31,7 +31,18 @@ const PROJECT_ROOT = path.resolve(__dirname, "..")
 
 const ORIGIN = process.env.ORIGIN ?? "http://localhost"
 const TEST_EMAIL = process.env.TEST_EMAIL ?? "admin@university.dev"
-const TEST_PASSWORD = process.env.TEST_PASSWORD ?? "Admin@2024test"
+
+export function getAdminSmokeCredentials(environment = process.env) {
+  //  pragma: allowlist nextline secret
+  const candidate = environment.TEST_PASSWORD
+  if (typeof candidate !== "string" || candidate.trim().length === 0) {
+    throw new Error("TEST_PASSWORD must be set to a non-empty password")
+  }
+  return {
+    email: environment.TEST_EMAIL ?? "admin@university.dev",
+    password: candidate,
+  }
+}
 const OUT_DIR = path.resolve(PROJECT_ROOT, process.env.OUT_DIR ?? ".screenshots/admin-visual-smoke")
 
 const ADMIN_ROUTES = [
@@ -237,13 +248,13 @@ async function checkJwksEndpoint() {
   return { rsaKeyCount: rsaKeys.length, totalKeyCount: jwks.keys.length }
 }
 
-async function performLogin(context) {
+async function performLogin(context, credentials) {
   console.log("-> API login: POST /api/v1/auth/login/json")
   const { cookies, cookieJar } = await loginBrowserContext({
     context,
     origin: ORIGIN,
-    email: TEST_EMAIL,
-    password: TEST_PASSWORD,
+    email: credentials.email,
+    password: credentials.password,
   })
   const accessTokenValue = cookieJar.get("access_token_v2")
 
@@ -613,6 +624,8 @@ async function publishCurrentRunPath(runDirectory) {
 }
 
 async function main() {
+  const credentials = getAdminSmokeCredentials()
+  delete process.env.TEST_PASSWORD
   const expectedCaptureCount = ADMIN_ROUTES.length * LOCALES.length * THEMES.length
   const runDir = await createAdminSmokeRunDirectory(OUT_DIR)
   const metaDir = path.join(runDir, "metadata")
@@ -664,7 +677,7 @@ async function main() {
 
   let loginResult
   try {
-    loginResult = await performLogin(context)
+    loginResult = await performLogin(context, credentials)
   } catch (err) {
     if (err instanceof RS256Error) {
       console.error(`X RS256 ASSERTION FAILED: ${err.message}`)
@@ -677,6 +690,7 @@ async function main() {
     await browser.close()
     process.exit(1)
   }
+  credentials.password = ""
 
   await writeFile(
     path.join(metaDir, "login.json"),

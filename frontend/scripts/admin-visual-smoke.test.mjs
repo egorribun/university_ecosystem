@@ -291,3 +291,114 @@ test("live smoke sets each supported locale before dashboard bootstrap and admin
     /for \(const locale of LOCALES\)[\s\S]*?setSmokeLocale\(page, locale[\s\S]*?bootstrapAdminSession\(page, locale\)[\s\S]*?for \(const route of ADMIN_ROUTES\)[\s\S]*?smokeAdminRoute\(page, route, locale, theme/u
   )
 })
+
+test("admin smoke rejects missing or blank TEST_PASSWORD and uses the supplied runtime value", async () => {
+  const { getAdminSmokeCredentials } = await import("./admin-visual-smoke.mjs")
+  assert.ok(
+    typeof getAdminSmokeCredentials === "function",
+    "admin smoke must expose its credential validation boundary for contract tests"
+  )
+
+  assert.throws(() => getAdminSmokeCredentials({}), /TEST_PASSWORD/)
+  assert.throws(() => getAdminSmokeCredentials({ TEST_PASSWORD: " \t " }), /TEST_PASSWORD/)
+
+  const crypto = await import("node:crypto")
+  const runtimePassword = crypto.randomBytes(32).toString("base64url")
+  const credentials = getAdminSmokeCredentials({
+    TEST_PASSWORD: runtimePassword,
+  })
+  assert.ok(
+    credentials.password === runtimePassword,
+    "admin smoke must use only the supplied transient password"
+  )
+})
+
+test("admin smoke workflow masks a per-run password before exposing it only to seed and smoke env", async () => {
+  const workflow = (
+    await readFile(
+      new URL("../../.github/workflows/admin-smoke-monitoring.yml", import.meta.url),
+      "utf8"
+    )
+  ).replace(/\r\n/gu, "\n")
+  const blockForId = (id) => {
+    const marker = "        id: " + id + "\n"
+    const markerIndex = workflow.indexOf(marker)
+    if (markerIndex < 0) return ""
+    const start = workflow.lastIndexOf("\n      - name:", markerIndex) + 1
+    const next = workflow.indexOf("\n      - name:", markerIndex + marker.length)
+    return workflow.slice(start, next < 0 ? undefined : next)
+  }
+  const blockForName = (name) => {
+    const marker = "      - name: " + name + "\n"
+    const start = workflow.indexOf(marker)
+    if (start < 0) return ""
+    const next = workflow.indexOf("\n      - name:", start + marker.length)
+    return workflow.slice(start, next < 0 ? undefined : next)
+  }
+
+  const generationStep = blockForId("admin_smoke_password")
+  assert.ok(generationStep, "workflow must generate an ephemeral smoke password")
+  assert.ok(
+    /secrets\.token_urlsafe\(32\)/.test(generationStep),
+    "workflow must use cryptographic per-run randomness"
+  )
+  const maskIndex = generationStep.indexOf("::add-mask::")
+  const outputIndex = generationStep.indexOf("GITHUB_OUTPUT")
+  assert.ok(
+    maskIndex >= 0 && outputIndex > maskIndex,
+    "workflow must mask the value before writing the step output"
+  )
+  const passwordOutputLines = generationStep
+    .split(/\r?\n/)
+    .filter((line) => line.includes("$password"))
+  assert.ok(
+    passwordOutputLines.length === 2 &&
+      passwordOutputLines[0].includes("::add-mask::") &&
+      passwordOutputLines[1].includes("GITHUB_OUTPUT"),
+    "generated value may only go to the mask command and transient step output"
+  )
+
+  const stepOutput = "$" + "{{ steps.admin_smoke_password.outputs.password }}"
+  const demoSeedStep = blockForName("Seed demo data")
+  const seedStep = blockForName("Seed demo admin user")
+  const smokeStep = blockForName("Run admin smoke script")
+  const artifactStep = blockForName("Upload smoke reports")
+  assert.ok(
+    seedStep.includes("TEST_PASSWORD: " + stepOutput),
+    "the admin seeder must receive the masked password as an environment value"
+  )
+  assert.ok(
+    demoSeedStep && !demoSeedStep.includes("TEST_PASSWORD"),
+    "base demo seeding must not receive the admin password"
+  )
+  assert.ok(
+    smokeStep.includes("TEST_PASSWORD: " + stepOutput),
+    "the browser smoke must receive the same password as an environment value"
+  )
+  assert.ok(
+    workflow.split(stepOutput).length - 1 === 2,
+    "only the seed and smoke steps may receive the generated value"
+  )
+  const passwordEnvLines = workflow
+    .split(/\r?\n/u)
+    .filter((line) => /^\s*TEST_PASSWORD:/u.test(line))
+  assert.ok(
+    passwordEnvLines.length === 2 &&
+      passwordEnvLines.every((line) =>
+        /^\s*TEST_PASSWORD:\s*\$\{\{\s*steps\.admin_smoke_password\.outputs\.password\s*\}\}/u.test(
+          line
+        )
+      ),
+    "workflow must not store a password literal"
+  )
+  assert.ok(
+    !/\s--(?:test-)?password(?:[=\s]|$)/i.test(workflow),
+    "password must never be passed through command-line arguments"
+  )
+  assert.ok(
+    artifactStep &&
+      !artifactStep.includes("TEST_PASSWORD") &&
+      !artifactStep.includes("admin_smoke_password"),
+    "the generated value must not enter uploaded reports"
+  )
+})
