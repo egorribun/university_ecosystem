@@ -264,7 +264,7 @@ test("dependency install scripts use a reviewed fail-closed allow-list", async (
   const npmConfig = await readFile(new URL(".npmrc", frontendRoot), "utf8")
 
   assert.deepEqual(packageJson.allowScripts, {
-    "esbuild@0.28.1": true,
+    "esbuild@0.28.2": true,
     "core-js": false,
     "fsevents@2.3.2": false,
     "fsevents@2.3.3": false,
