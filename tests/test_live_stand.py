@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import importlib.util
 import json
 import os
@@ -337,6 +338,8 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
     )
     runs: list[tuple[list[str], Path, dict[str, str]]] = []
     playwright_runs: list[tuple[Path, dict[str, str], str, bool, bool]] = []
+    dependency_runs: list[tuple[Path, dict[str, str]]] = []
+    event_order: list[str] = []
     token_sizes: list[int] = []
     original_token_urlsafe = live_stand.secrets.token_urlsafe
     ambient_password = original_token_urlsafe(32)
@@ -381,9 +384,17 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
     ) -> None:
         print("+", " ".join(command))
         runs.append((list(command), cwd, dict(env or {})))
+        event_order.append("seed")
+
+    def capture_dependency_bootstrap(
+        frontend: Path, environment: dict[str, str]
+    ) -> None:
+        dependency_runs.append((frontend, dict(environment)))
+        event_order.append("bootstrap")
 
     def capture_playwright(*, cwd: Path, environment: dict[str, str]) -> None:
         print("+", " ".join(live_stand.LIVE_E2E_COMMAND))
+        event_order.append("playwright")
         output_directory = environment.get("LIVE_E2E_OUTPUT_DIR", "")
         output_path = Path(output_directory)
         # Playwright clears its outputDir before execution; npm configs must survive.
@@ -433,17 +444,28 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
         lambda *args, project_name: list(args),
     )
     monkeypatch.setattr(live_stand, "_run", capture_run)
+    monkeypatch.setattr(
+        live_stand, "_ensure_live_e2e_dependencies", capture_dependency_bootstrap
+    )
     monkeypatch.setattr(live_stand, "_run_live_playwright", capture_playwright)
 
     try:
         if live_stand.main(["e2e"]) != 0:
             pytest.fail("the E2E orchestration command should complete successfully")
 
-        if len(runs) != 2 or len(playwright_runs) != 1 or token_sizes != [32]:
+        if (
+            len(runs) != 2
+            or len(dependency_runs) != 1
+            or len(playwright_runs) != 1
+            or token_sizes != [32]
+        ):
             pytest.fail("the E2E command must generate one password and run both seeds")
+        if event_order != ["seed", "seed", "bootstrap", "playwright"]:
+            pytest.fail("locked dependencies must be ready before Playwright starts")
 
         demo_command, _demo_cwd, demo_env = runs[0]
         admin_command, _admin_cwd, admin_env = runs[1]
+        dependency_frontend, dependency_environment = dependency_runs[0]
         (
             e2e_cwd,
             e2e_env,
@@ -481,6 +503,15 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
             )
         if e2e_cwd != worktree / "frontend":
             pytest.fail("Playwright must run from the owned worktree frontend")
+        if dependency_frontend != worktree / "frontend":
+            pytest.fail("dependency bootstrap must use the owned worktree frontend")
+        if "TEST_PASSWORD" in dependency_environment:
+            pytest.fail("npm bootstrap must not receive the generated admin password")
+        if any(
+            key in dependency_environment
+            for key in ("LIVE_BASE_URL", "LIVE_MAILPIT_URL")
+        ):
+            pytest.fail("npm bootstrap must not receive live endpoints")
         expected_live = {
             "LIVE_BASE_URL": f"http://localhost:{port_map['CADDY_HTTP']}",
             "LIVE_MAILPIT_URL": f"http://127.0.0.1:{port_map['MAILPIT']}",
@@ -612,6 +643,208 @@ def test_live_e2e_runtime_environment_only_copies_explicit_platform_allowlist() 
             pytest.fail(
                 "caller secrets and unrelated environment values must be excluded"
             )
+
+
+def test_live_e2e_npm_ci_uses_static_platform_commands() -> None:
+    assert live_stand._live_e2e_npm_ci_command(platform="nt") == (
+        "cmd.exe",
+        "/d",
+        "/s",
+        "/c",
+        "npm ci",
+    )
+    assert live_stand._live_e2e_npm_ci_command(platform="posix") == ("npm", "ci")
+
+
+def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_and_checks_cached_chromium(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    assert live_stand.LIVE_E2E_REQUIRED_PACKAGES == (
+        "@playwright/test",
+        "playwright",
+        "playwright-core",
+    )
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    lock_path = frontend / "package-lock.json"
+    lock_data = {
+        "lockfileVersion": 3,
+        "packages": {
+            "node_modules/@playwright/test": {"version": "1.63.0"},
+            "node_modules/playwright": {"version": "1.63.0"},
+            "node_modules/playwright-core": {"version": "1.63.0"},
+        },
+    }
+    lock_path.write_text(json.dumps(lock_data), encoding="utf-8")
+    output_path = tmp_path / "playwright-output"
+    output_path.mkdir()
+    config_root = tmp_path / "npm-config"
+    config_root.mkdir()
+    user_config = config_root / "npm-userconfig"
+    global_config = config_root / "npm-globalconfig"
+    user_config.write_bytes(b"")
+    global_config.write_bytes(b"")
+    runtime_source = {
+        "PATH": "runtime-path-marker",
+        "HOME": str(tmp_path / "profile"),
+        "LOCALAPPDATA": str(tmp_path / "profile"),
+        "SYSTEMROOT": "runtime-systemroot-marker",
+        "TEMP": str(tmp_path),
+        "TMP": str(tmp_path),
+        "USERPROFILE": str(tmp_path / "profile"),
+        "TMPDIR": str(tmp_path),
+        "CI": "true",
+        "GITHUB_ACTIONS": "true",
+        "TEST_PASSWORD": "admin-password-sentinel",  # pragma: allowlist secret
+        "LIVE_BASE_URL": "http://sensitive-endpoint.invalid",
+        "LIVE_MAILPIT_URL": "http://sensitive-mail.invalid",
+        "LIVE_E2E_OUTPUT_DIR": str(output_path),
+        "CHROMATIC_PROJECT_TOKEN": "chromatic-secret-sentinel",  # pragma: allowlist secret
+        "GH_TOKEN": "github-secret-sentinel",  # pragma: allowlist secret
+        "ACTIONS_RUNTIME_TOKEN": "actions-secret-sentinel",  # pragma: allowlist secret
+        "UNRELATED_API_KEY": "api-key-sentinel",  # pragma: allowlist secret
+        "NODE_OPTIONS": "--require=untrusted.js",
+        "NPM_CONFIG_REGISTRY": "https://private-registry.invalid",
+        "NPM_CONFIG_USERCONFIG": "caller-userconfig-sentinel",
+        "NPM_CONFIG_GLOBALCONFIG": "caller-globalconfig-sentinel",
+    }
+    runtime_environment = live_stand._live_e2e_runtime_environment(runtime_source)
+    browser_cache = live_stand._playwright_browser_cache_path(runtime_environment)
+    chromium_executable = browser_cache / "chromium-1243" / "chrome" / "chrome"
+    chromium_executable.parent.mkdir(parents=True)
+    chromium_executable.write_bytes(b"cached chromium marker")
+    environment = {
+        **runtime_environment,
+        "LIVE_E2E_OUTPUT_DIR": str(output_path),
+        "NPM_CONFIG_USERCONFIG": str(user_config),
+        "NPM_CONFIG_GLOBALCONFIG": str(global_config),
+        "PLAYWRIGHT_BROWSERS_PATH": str(browser_cache),
+        "TEST_PASSWORD": runtime_source["TEST_PASSWORD"],
+        "LIVE_BASE_URL": runtime_source["LIVE_BASE_URL"],
+        "LIVE_MAILPIT_URL": runtime_source["LIVE_MAILPIT_URL"],
+        "CHROMATIC_PROJECT_TOKEN": runtime_source["CHROMATIC_PROJECT_TOKEN"],
+        "GH_TOKEN": runtime_source["GH_TOKEN"],
+        "ACTIONS_RUNTIME_TOKEN": runtime_source["ACTIONS_RUNTIME_TOKEN"],
+        "UNRELATED_API_KEY": runtime_source["UNRELATED_API_KEY"],
+        "NODE_OPTIONS": runtime_source["NODE_OPTIONS"],
+        "NPM_CONFIG_REGISTRY": runtime_source["NPM_CONFIG_REGISTRY"],
+    }
+    calls: list[tuple[tuple[str, ...], Path, dict[str, str]]] = []
+    install_output = "bootstrap-output-secret-sentinel"
+
+    def fake_run(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        check: bool,
+        capture_output: bool,
+        text: bool,
+        encoding: str,
+        errors: str,
+    ) -> subprocess.CompletedProcess[str]:
+        assert check is False and capture_output and text and encoding == "utf-8"
+        assert errors == "replace"
+        calls.append((command, cwd, dict(env)))
+        assert user_config.is_file() and user_config.read_bytes() == b""
+        assert global_config.is_file() and global_config.read_bytes() == b""
+        if command in {
+            live_stand.LIVE_E2E_NPM_CI_COMMAND,
+            live_stand.LIVE_E2E_WINDOWS_NPM_CI_COMMAND,
+        }:
+            installed_packages = frontend / "node_modules"
+            for package_name in live_stand.LIVE_E2E_REQUIRED_PACKAGES:
+                package = installed_packages / package_name
+                package.mkdir(parents=True, exist_ok=True)
+                package_version = lock_data["packages"][f"node_modules/{package_name}"][
+                    "version"
+                ]
+                (package / "package.json").write_text(
+                    json.dumps({"version": package_version}), encoding="utf-8"
+                )
+            return subprocess.CompletedProcess(
+                command, 0, install_output, "installer-stderr-secret-sentinel"
+            )
+        if command == live_stand.LIVE_E2E_CHROMIUM_PROBE_COMMAND:
+            return subprocess.CompletedProcess(
+                command, 0, str(chromium_executable), "probe-stderr-sentinel"
+            )
+        pytest.fail("dependency bootstrap used an unexpected command")
+
+    monkeypatch.setattr(live_stand.subprocess, "run", fake_run)
+
+    live_stand._ensure_live_e2e_dependencies(frontend, environment)
+    live_stand._ensure_live_e2e_dependencies(frontend, environment)
+
+    lock_data["packages"]["node_modules/@playwright/test"]["version"] = "1.64.0"
+    lock_data["packages"]["node_modules/playwright"]["version"] = "1.64.0"
+    lock_data["packages"]["node_modules/playwright-core"]["version"] = "1.64.0"
+    lock_path.write_text(json.dumps(lock_data), encoding="utf-8")
+    live_stand._ensure_live_e2e_dependencies(frontend, environment)
+
+    npm_calls = [
+        call
+        for call in calls
+        if call[0]
+        in {
+            live_stand.LIVE_E2E_NPM_CI_COMMAND,
+            live_stand.LIVE_E2E_WINDOWS_NPM_CI_COMMAND,
+        }
+    ]
+    probe_calls = [
+        call for call in calls if call[0] == live_stand.LIVE_E2E_CHROMIUM_PROBE_COMMAND
+    ]
+    assert len(npm_calls) == 2
+    assert len(probe_calls) == 3
+    for command, cwd, child_environment in calls:
+        assert cwd == frontend
+        assert command not in (live_stand.LIVE_E2E_COMMAND,)
+        assert child_environment["PATH"] == runtime_source["PATH"]
+        assert child_environment["PLAYWRIGHT_BROWSERS_PATH"] == str(browser_cache)
+        assert child_environment["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"] == "1"
+        assert child_environment["NPM_CONFIG_USERCONFIG"] == str(user_config)
+        assert child_environment["NPM_CONFIG_GLOBALCONFIG"] == str(global_config)
+        assert "TEST_PASSWORD" not in child_environment
+        assert "LIVE_BASE_URL" not in child_environment
+        assert "LIVE_MAILPIT_URL" not in child_environment
+        assert "LIVE_E2E_OUTPUT_DIR" not in child_environment
+        for secret_name in (
+            "CHROMATIC_PROJECT_TOKEN",
+            "GH_TOKEN",
+            "ACTIONS_RUNTIME_TOKEN",
+            "UNRELATED_API_KEY",
+            "NODE_OPTIONS",
+            "NPM_CONFIG_REGISTRY",
+        ):
+            assert secret_name not in child_environment
+            assert runtime_source[secret_name] not in child_environment.values()
+    expected_runtime = live_stand._live_e2e_runtime_environment(runtime_source)
+    for _command, _cwd, child_environment in calls:
+        assert {
+            key: child_environment[key] for key in expected_runtime
+        } == expected_runtime
+        assert set(child_environment) == {
+            *expected_runtime,
+            "NPM_CONFIG_USERCONFIG",
+            "NPM_CONFIG_GLOBALCONFIG",
+            "PLAYWRIGHT_BROWSERS_PATH",
+            "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD",
+        }
+    assert (frontend / "node_modules" / live_stand.LIVE_E2E_LOCK_FINGERPRINT).read_text(
+        encoding="utf-8"
+    ).strip() == hashlib.sha256(lock_path.read_bytes()).hexdigest()
+    captured = capsys.readouterr()
+    for private_value in (
+        install_output,
+        "installer-stderr-secret-sentinel",
+        "probe-stderr-sentinel",
+        str(chromium_executable),
+        runtime_source["TEST_PASSWORD"],
+    ):
+        assert private_value not in captured.out
+        assert private_value not in captured.err
 
 
 def test_live_playwright_never_emits_child_credentials_or_call_logs(

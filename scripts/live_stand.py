@@ -104,6 +104,13 @@ LIVE_E2E_WINDOWS_COMMAND = (
     "/c",
     "npm run test:e2e:live",
 )
+LIVE_E2E_NPM_CI_COMMAND = ("npm", "ci")
+LIVE_E2E_WINDOWS_NPM_CI_COMMAND = ("cmd.exe", "/d", "/s", "/c", "npm ci")
+LIVE_E2E_CHROMIUM_PROBE_COMMAND = (
+    "node",
+    "-e",
+    "process.stdout.write(require('playwright').chromium.executablePath())",
+)
 LIVE_E2E_CI_ENVIRONMENT = ("CI", "GITHUB_ACTIONS")
 LIVE_E2E_WINDOWS_ENVIRONMENT = (
     "SYSTEMROOT",
@@ -113,6 +120,12 @@ LIVE_E2E_WINDOWS_ENVIRONMENT = (
     "LOCALAPPDATA",
 )
 LIVE_E2E_UNIX_ENVIRONMENT = ("HOME", "TMPDIR")
+LIVE_E2E_REQUIRED_PACKAGES = (
+    "@playwright/test",
+    "playwright",
+    "playwright-core",
+)
+LIVE_E2E_LOCK_FINGERPRINT = ".live-e2e-package-lock.sha256"
 STAND_PATHS_TO_PROTECT = (
     Path(OVERLAY),
     Path(".env"),
@@ -870,30 +883,30 @@ def seed() -> None:
 
 
 def _live_e2e_environment(
-    owner: StandOwner,
     *,
-    admin_password: str,
     output_directory: str,
     npm_config_directory: str,
+    source_environment: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
-    """Build the minimum child environment from this owned stand's metadata."""
-    env = _live_e2e_runtime_environment(os.environ)
+    """Build the minimal Playwright environment and its isolated npm configs."""
+    runtime_source = (
+        source_environment if source_environment is not None else os.environ
+    )
+    env = _live_e2e_runtime_environment(runtime_source)
     config_root = Path(npm_config_directory)
     npm_user_config = config_root / "npm-userconfig"
     npm_global_config = config_root / "npm-globalconfig"
     for config_path in (npm_user_config, npm_global_config):
         with config_path.open("x", encoding="utf-8"):
             pass
+    browser_cache = _playwright_browser_cache_path(env)
 
-    ports = dict(owner.published_ports)
     env.update(
         {
-            "LIVE_BASE_URL": _stand_base_url(ports),
-            "LIVE_MAILPIT_URL": f"http://127.0.0.1:{ports['MAILPIT']}",
             "LIVE_E2E_OUTPUT_DIR": output_directory,
-            "TEST_PASSWORD": admin_password,
             "NPM_CONFIG_USERCONFIG": str(npm_user_config),
             "NPM_CONFIG_GLOBALCONFIG": str(npm_global_config),
+            "PLAYWRIGHT_BROWSERS_PATH": str(browser_cache),
         }
     )
     return env
@@ -931,11 +944,199 @@ def _live_e2e_runtime_environment(
     return environment
 
 
+def _playwright_browser_cache_path(
+    environment: Mapping[str, str], *, platform: str | None = None
+) -> Path:
+    """Use Playwright's per-user cache while passing its location explicitly."""
+    windows = (platform or os.name) == "nt"
+    profile_root = environment.get("LOCALAPPDATA" if windows else "HOME")
+    if not profile_root:
+        required_name = "LOCALAPPDATA" if windows else "HOME"
+        raise StandError(
+            f"{required_name} is required for the Playwright browser cache"
+        )
+    return (
+        Path(profile_root) / "ms-playwright"
+        if windows
+        else Path(profile_root) / ".cache" / "ms-playwright"
+    )
+
+
 def _live_e2e_command(*, platform: str | None = None) -> tuple[str, ...]:
     """Return a fixed launcher that works for npm's Windows command shim."""
     if (platform or os.name) == "nt":
         return LIVE_E2E_WINDOWS_COMMAND
     return LIVE_E2E_COMMAND
+
+
+def _live_e2e_npm_ci_command(*, platform: str | None = None) -> tuple[str, ...]:
+    """Return a fixed npm-ci launcher without interpolated arguments."""
+    if (platform or os.name) == "nt":
+        return LIVE_E2E_WINDOWS_NPM_CI_COMMAND
+    return LIVE_E2E_NPM_CI_COMMAND
+
+
+def _live_e2e_installer_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    """Keep secrets, endpoints, test output paths, and user npm config out of npm."""
+    installer_environment = _live_e2e_runtime_environment(environment)
+    for name in (
+        "NPM_CONFIG_USERCONFIG",
+        "NPM_CONFIG_GLOBALCONFIG",
+        "PLAYWRIGHT_BROWSERS_PATH",
+    ):
+        value = environment.get(name)
+        if not value:
+            raise StandError(f"{name} is required for the live E2E dependency check")
+        installer_environment[name] = value
+    installer_environment["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"] = "1"
+    return installer_environment
+
+
+def _locked_live_e2e_package_versions(
+    frontend: Path,
+) -> tuple[Path, str, dict[str, str]]:
+    """Read the lockfile hash and exact Playwright package versions."""
+    lock_path = frontend / "package-lock.json"
+    try:
+        lock_bytes = lock_path.read_bytes()
+        lock_data = json.loads(lock_bytes)
+    except (OSError, json.JSONDecodeError) as error:
+        raise StandError(
+            "live E2E requires a readable frontend package lock"
+        ) from error
+    packages = lock_data.get("packages") if isinstance(lock_data, dict) else None
+    if not isinstance(packages, dict):
+        raise StandError("live E2E package lock does not contain a package inventory")
+
+    versions: dict[str, str] = {}
+    for package_name in LIVE_E2E_REQUIRED_PACKAGES:
+        package = packages.get(f"node_modules/{package_name}")
+        version = package.get("version") if isinstance(package, dict) else None
+        if not isinstance(version, str) or not version:
+            raise StandError(
+                "live E2E package lock omits a required Playwright package"
+            )
+        versions[package_name] = version
+    return lock_path, hashlib.sha256(lock_bytes).hexdigest(), versions
+
+
+def _installed_live_e2e_packages_match(
+    frontend: Path, locked_versions: Mapping[str, str]
+) -> bool:
+    """Check that required Playwright packages match the current lockfile."""
+    node_modules = frontend / "node_modules"
+    for package_name, locked_version in locked_versions.items():
+        package_json = node_modules / package_name / "package.json"
+        try:
+            package_data = json.loads(package_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+        if (
+            not isinstance(package_data, dict)
+            or package_data.get("version") != locked_version
+        ):
+            return False
+    return True
+
+
+def _run_live_e2e_npm_ci(frontend: Path, environment: Mapping[str, str]) -> None:
+    """Install the checked-in lockfile with a minimal environment and hidden output."""
+    command = _live_e2e_npm_ci_command()
+    installer_environment = _live_e2e_installer_environment(environment)
+    print("+ npm ci", flush=True)
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed platform-specific argv
+            command,
+            cwd=frontend,
+            env=installer_environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError as error:
+        raise StandError(
+            "could not launch the locked live E2E dependency install"
+        ) from error
+
+    return_code = completed.returncode
+    completed.stdout = ""
+    completed.stderr = ""
+    del completed
+    if return_code != 0:
+        raise StandError("locked live E2E dependency installation failed")
+
+
+def _probe_live_e2e_chromium(frontend: Path, environment: Mapping[str, str]) -> None:
+    """Verify the shared Chromium executable is present without launching it."""
+    installer_environment = _live_e2e_installer_environment(environment)
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed local package probe
+            LIVE_E2E_CHROMIUM_PROBE_COMMAND,
+            cwd=frontend,
+            env=installer_environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError as error:
+        raise StandError("could not inspect the cached live E2E browser") from error
+
+    return_code = completed.returncode
+    executable_path = (completed.stdout or "").strip()
+    completed.stdout = ""
+    completed.stderr = ""
+    del completed
+    browser_cache = Path(environment["PLAYWRIGHT_BROWSERS_PATH"])
+    try:
+        cache_root = browser_cache.resolve(strict=True)
+        executable = Path(executable_path).resolve(strict=True)
+        executable_is_cached = executable.is_relative_to(cache_root)
+        executable_is_file = executable.is_file()
+    except (OSError, RuntimeError, ValueError):
+        executable_is_cached = False
+        executable_is_file = False
+    if (
+        return_code != 0
+        or not executable_path
+        or not executable_is_cached
+        or not executable_is_file
+    ):
+        raise StandError("the shared Playwright Chromium executable is unavailable")
+    print("live E2E browser=ready name=chromium", flush=True)
+
+
+def _ensure_live_e2e_dependencies(
+    frontend: Path, environment: Mapping[str, str]
+) -> None:
+    """Install locked Playwright packages when stale, then verify shared Chromium."""
+    _lock_path, lock_fingerprint, locked_versions = _locked_live_e2e_package_versions(
+        frontend
+    )
+    node_modules = frontend / "node_modules"
+    fingerprint_path = node_modules / LIVE_E2E_LOCK_FINGERPRINT
+    try:
+        installed_fingerprint = fingerprint_path.read_text(encoding="ascii").strip()
+    except OSError:
+        installed_fingerprint = ""
+    dependencies_are_ready = (
+        installed_fingerprint == lock_fingerprint
+        and _installed_live_e2e_packages_match(frontend, locked_versions)
+    )
+    if not dependencies_are_ready:
+        _run_live_e2e_npm_ci(frontend, environment)
+        if not _installed_live_e2e_packages_match(frontend, locked_versions):
+            raise StandError("locked Playwright packages are missing after npm ci")
+        node_modules.mkdir(parents=True, exist_ok=True)
+        temporary_fingerprint = fingerprint_path.with_name(
+            f"{fingerprint_path.name}.tmp"
+        )
+        temporary_fingerprint.write_text(lock_fingerprint, encoding="ascii")
+        temporary_fingerprint.replace(fingerprint_path)
+    _probe_live_e2e_chromium(frontend, environment)
 
 
 _PLAYWRIGHT_COUNT_LINE = re.compile(
@@ -1003,18 +1204,30 @@ def _e2e_locked(admin_password: str) -> None:
         output_path = temporary_path / "playwright-output"
         output_path.mkdir()
         environment = _live_e2e_environment(
-            owner,
-            admin_password=admin_password,
             output_directory=str(output_path),
             npm_config_directory=temporary_root,
         )
+        frontend = WORKTREE / "frontend"
+        playwright_environment: dict[str, str] = {}
         try:
+            _ensure_live_e2e_dependencies(frontend, environment)
+            playwright_environment = dict(environment)
+            ports = dict(owner.published_ports)
+            playwright_environment.update(
+                {
+                    "LIVE_BASE_URL": _stand_base_url(ports),
+                    "LIVE_MAILPIT_URL": f"http://127.0.0.1:{ports['MAILPIT']}",
+                    "TEST_PASSWORD": admin_password,
+                }
+            )
             _run_live_playwright(
-                cwd=WORKTREE / "frontend",
-                environment=environment,
+                cwd=frontend,
+                environment=playwright_environment,
             )
         finally:
-            environment.pop("TEST_PASSWORD", None)
+            playwright_environment.pop("TEST_PASSWORD", None)
+            playwright_environment.pop("LIVE_BASE_URL", None)
+            playwright_environment.pop("LIVE_MAILPIT_URL", None)
             environment.pop("LIVE_E2E_OUTPUT_DIR", None)
 
 
