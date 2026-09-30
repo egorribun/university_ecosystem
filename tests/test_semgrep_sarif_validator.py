@@ -110,6 +110,43 @@ def test_cdc_publication_has_no_semgrep_suppression_exception(
         validator.validate_report(report, policy_path, scanner_status=0)
 
 
+def test_psycopg_database_identifier_suppression_matches_reviewed_policy(
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    source_policy = json.loads(
+        (root / "security/semgrep-suppression-policy.json").read_text(encoding="utf-8")
+    )
+    rule_id = (
+        "python.sqlalchemy.security.sqlalchemy-execute-raw-query."
+        "sqlalchemy-execute-raw-query"
+    )
+    policy = {
+        "version": source_policy["version"],
+        "entries": [
+            entry
+            for entry in source_policy["entries"]
+            if entry["path"] == "scripts/backup_db.py" and entry["rule_id"] == rule_id
+        ],
+    }
+    assert len(policy["entries"]) == 1
+    report_path, policy_path = _write_inputs(
+        tmp_path,
+        _report(
+            _result(
+                rule_id=rule_id,
+                path="scripts/backup_db.py",
+                start_line=612,
+                end_line=614,
+                suppressed=True,
+            )
+        ),
+        policy,
+    )
+
+    validator.validate_report(report_path, policy_path, scanner_status=1)
+
+
 def test_unapproved_result_is_rejected(tmp_path: Path) -> None:
     report, policy = _write_inputs(
         tmp_path, _report(_result(path="scripts/other.py", suppressed=False))

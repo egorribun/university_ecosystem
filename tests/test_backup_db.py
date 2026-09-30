@@ -184,6 +184,43 @@ def test_restore_target_must_be_new_and_isolated_from_source() -> None:
         backup_db.validate_restore_target("restore_university", "restore_university")
 
 
+@pytest.mark.parametrize(
+    "target_database",
+    [
+        "restore_target;DROP_DATABASE_university",
+        'restore_target";DROP_DATABASE_university',
+    ],
+)
+def test_restore_rejects_injected_database_identifiers_before_side_effects(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    target_database: str,
+) -> None:
+    archive = _archive(tmp_path)
+    manifest = _manifest(archive)
+    command_calls: list[list[str]] = []
+
+    def reject_connection(*_: Any, **__: Any) -> None:
+        pytest.fail("unsafe restore target reached the database connection")
+
+    def capture_command(command: list[str], **_: Any) -> Any:
+        command_calls.append(command)
+        return type("Completed", (), {"returncode": 0})()
+
+    monkeypatch.setattr(backup_db.psycopg, "connect", reject_connection)
+
+    with pytest.raises(backup_db.BackupArtifactError, match="restore_"):
+        backup_db.restore_archive(
+            archive,
+            manifest,
+            "postgresql://admin@localhost/postgres",
+            target_database,
+            command_runner=capture_command,
+        )
+
+    assert command_calls == []
+
+
 def test_postgres_tool_credentials_are_environment_only(tmp_path: Path) -> None:
     archive = tmp_path / "dump"
     calls: list[dict[str, Any]] = []
