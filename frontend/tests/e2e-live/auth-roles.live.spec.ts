@@ -34,6 +34,6 @@ test("the admin area is reachable for an admin and closed to a student", async (
   await loginAs(page, "student")
   await page.goto("/admin/users")
   await expect(page).not.toHaveURL(/\/admin\/users/)
-  const users = await page.request.get("/api/v1/admin/users")
+  const users = await page.request.get("/api/v1/users")
   expect(users.status()).toBe(403)
 })
