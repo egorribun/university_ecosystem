@@ -9,15 +9,15 @@
 
 | Область | Подтверждённый факт |
 | --- | --- |
-| Git и PR | Ветка `egorribun`; последний опубликованный HEAD `99fb8076fc9f4f4962f74029f0534b7884f7c7f5`. `origin/main` и merge-base: `78b9499079442191920835eed9de93b726cf36a1`. PR #1306 открыт, но пока заблокирован проверками старого SHA и stale context ruleset. Локальный рабочий набор готов к commit/push. |
-| CI | Старые Actions относятся к опубликованному `99fb807`, а не к локальному diff; нужны новые checks после push. Security Policy Integrity не входит в обязательные ruleset contexts. Ruleset 8335285 требует отсутствующий `Rust Criterion Benchmarks (pyo3-sanitizer)`, удалённый по ADR-044; корректное снятие этого stale context требует отдельного изменения GitHub ruleset администратором и пока не разрешено. Не создавать фиктивную замену и не bypass. |
+| Git и PR | Ветка `egorribun`, локальный проверенный кодовый SHA `66a62d1333407571e563faf5a5268fae89e09e37`; шесть функциональных коммитов продолжают PR #1306. На момент среза опубликованная вершина PR была `6b93913adfa893d89033f7598dab37bd87b82e30`; перед merge сверить актуальные checks и ancestry с GitHub. `origin/main`/merge-base: `78b9499079442191920835eed9de93b726cf36a1`. |
+| CI | На старом SHA `6b93913` integration job упал из-за устаревшего `testcontainers.redis` при `-W error`; импорт исправлен и целевой Docker-тест проходит. Security Policy Integrity не входит в обязательные contexts и использовал workflow base SHA. Ruleset 8335285 всё ещё требует снятый по ADR-044 `Rust Criterion Benchmarks (pyo3-sanitizer)`; его администраторское изменение отдельно не разрешено. Не создавать фиктивный check и не обходить правила. |
 | Среда | GitHub CLI аутентифицирован; scope `packages` не показан, поэтому прямую публикацию в GHCR нельзя считать подтверждённой. На машине около 31.8 GiB RAM; Docker Desktop доступен. В checkout нет пользовательского `.env`; kind не установлен. |
-| Live-стенд | Отдельный принадлежащий live-stand проект `ue-live-97e64749be022c80` существует; backend readiness ранее отвечал HTTP 200. Текущий read-only `status` подтвердил, что сервисы запущены, а backend/frontend/Postgres/Redis/NATS/Mailpit/S3 и health-probe контейнеры healthy. У gateway, ws-hub и Caddy нет Docker health статуса. Этот стенд ещё не обновлён на локальный diff; сохранить volumes и `.env`, lifecycle вести только через `scripts/live_stand.py`. |
-| Рабочий diff | Текущая интеграционная пачка покрывает backend, frontend, Go, CI и тесты. `git diff --check` прошёл. Все изменения остаются локальными до завершения review и проверок. |
+| Live-стенд | `ue-live-1dc5f2e4c0503c50` запущен на SHA `6b93913`; сервисы и readiness были healthy. Первый полный live lane дал 5 passed / 7 failed: три role logins и desktop reset упёрлись в общий лимит 5/min; два admin assertions — в responsive duplicate locator; mobile reset был перезагружен первой передачей контроля service worker. Все три причины исправлены локально, live повтор ещё не выполнен. Seed повторно не запускать до отдельной проверки; volumes сохранять, lifecycle вести только через `scripts/live_stand.py`. |
+| Рабочее дерево | Шесть обычных коммитов собраны на `egorribun`; `git diff --check` и targeted hooks прошли. Не force-push; перед отправкой сверить чистое состояние. |
 | Архивы и rescue | 120 tracked-файлов / 3,981,581 байт. Rescue bundle проверен для SHA `d0aad7c296facd79b3d41b037bc4160f5b3132be`; bundle и manifest содержат исторические credential-shaped строки. Значения не выводить и bundle не распространять. Классификация ждёт подтверждения статуса credentials; архивы пока не удалять. |
 | Audit ledger | В `AUDIT_PLATFORM_FULL.md` остаются 63 ID для пересмотра на итоговом SHA. BE-02 и RUST-P3-03 требуют доказательной проверки по согласованным критериям; повторно реализовывать уже существующий base64/WASM export не нужно. |
 
-## Проверки текущей интеграционной пачки
+## Ранее подтверждённые широкие проверки
 
 - `tests/test_quality_workflow_contract.py`: 187 passed.
 - Auth-service branch-closure fixture failure is corrected without changing
@@ -60,6 +60,22 @@
   перенесены, а O2/O3/O5/O7 остатки описаны без ложного статуса завершения.
 - Эти результаты относятся к локальному dirty workspace; они не заменяют CI или
   release evidence, привязанные к итоговому SHA.
+
+## Текущие исправления и evidence
+
+- На кодовом SHA `66a62d1` `scripts/fast_preflight.py --max-workers 3` прошёл
+  9/9; changed-files pre-commit, `git diff --check` и harness прошли. Повторный
+  all-files pre-commit не завершился на repo-wide Semgrep и не засчитывается.
+- Login form/JSON теперь используют отдельный `rate_limit_auth_login`; полный
+  rate-limit + middleware набор прошёл 51/51. Admin audit seed повторно создаёт
+  0 новых записей: regression test 1/1. Redis Testcontainers integration test
+  прошёл 1/1 с `DeprecationWarning` как ошибкой.
+- PWA register-SW и forgot-password unit/component набор прошёл 31/31; frontend
+  typecheck, ESLint и Prettier прошли. Live Playwright config собрал 12 сценариев;
+  live retest на новом image/SHA ещё не выполнен.
+- Локальные результаты не заменяют SHA-bound CI, полную live-приёмку или release
+  evidence. В частности, RU/EN seed, owner gate и полный demo content matrix
+  остаются открытыми.
 
 ## Известные незакрытые приёмки
 
