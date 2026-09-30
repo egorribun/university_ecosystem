@@ -152,14 +152,14 @@ Chromatic project-token-shaped упоминаний в `AUDIT_WAVE121.md`,
 GitHub metadata подтверждает обновление repository secret
 `CHROMATIC_PROJECT_TOKEN` в `2026-09-30T10:08:36Z`. Секретное значение не читалось.
 Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь подтвердил как
-использовавшийся только в одноразовой CI-базе. Его статический fallback в smoke
-ослабляется отдельным security patch. Текущий Chromatic workflow намеренно выключен
-billing gates и `skip: true`; пользователь не может оплачивать сервис, поэтому не
-включать платную публикацию и не требовать workflow-запуска как проверки ротации.
-Продолжить credential triage и архивную миграцию, не выводя и не перенося значения
-в рабочую документацию. Rescue bundle допустим только как закрыто хранимый
-исторический артефакт после инвентаря/переноса и sample restore; держать вне repo,
-не синхронизировать и не публиковать.
+использовавшийся только в одноразовой CI-базе. Admin smoke должен использовать
+отдельный случайный пароль на каждый прогон, передавать его только нужным шагам и
+не включать значение в логи или artifacts. Текущий Chromatic workflow намеренно
+выключен billing gates и `skip: true`; пользователь не может оплачивать сервис,
+поэтому не включать платную публикацию и не требовать workflow-запуска как проверки
+ротации. Не выводить credential-shaped содержимое архивов или переносить его в
+рабочую документацию. Rescue bundle — закрыто хранимый исторический артефакт;
+держать вне repo, не синхронизировать и не публиковать.
 
 До удаления перенести и разрешить следующее:
 
@@ -291,13 +291,30 @@ teardown проверяет ownership; пользовательские тома
   token reuse, safe redirect, cooldown/TTL/attempt limits, правильные 401/429,
   sibling/session revocation. Отдельно подтвердить отсутствие WebAuthn/security
   key flows в UI/API/SDK; это отрицательный критерий, новую поддержку не добавлять.
+  Для email OTP принять только SHA-bound Linux integration evidence реального
+  Postgres + Mailpit сценария
+  `tests/integration/test_mfa_mailpit_outbox.py::test_email_mfa_handler_outbox_smtp_retry_and_resend`:
+  SMTP failure оставляет outbox-событие retryable и не создаёт письмо; retry
+  доставляет письмо ровно один раз; resend доставляет новый код и делает прежний
+  challenge недействительным. В логах и artifacts не должно быть значений кодов,
+  challenge tokens или адресов получателей. Slow/trickling SMTP peer должен быть
+  остановлен в пределах заданного deadline раньше срока outbox lease; cancellation
+  закрывает транспорт и не оставляет позднюю отправку. Свежий Linux evidence должен
+  включать `tests/test_mfa_smtp_deadline_contract.py` и
+  `tests/test_mfa_smtp_cancellation_contract.py`.
 - **Messenger:** два независимых browser contexts и реальный WS; DM/groups,
   ordering/deduplication, reconnect, reply/edit/delete/forward/reactions/
   attachments/unread. Для групп проверить min 3 / max 100 участников при создании;
   разрешения add/rename для участника и remove только владельцем или самим собой;
   403 для постороннего до раскрытия типа чата; отказ групповых операций для DM;
-  после изменения membership старый WS/cache не сохраняет доступ. Прочтение
-  сообщений участником A не сбрасывает unread участника B. Group notification
+  после изменения membership старый WS/cache не сохраняет доступ. Для пересланных
+  и разделяемых вложений удалить blob только после удаления последней ссылки;
+  сохранённая ссылка другого сообщения должна удерживать объект, а ошибка
+  проверки ссылок или неоднозначное удаление должны оставлять cleanup безопасным
+  для повторной доставки. Подтвердить в Postgres integration и storage regression
+  tests (`tests/integration/test_chat_attachment_legacy_refs_postgres.py`,
+  `tests/test_attachment_cleanup_reference_guard.py`). Прочтение сообщений
+  участником A не сбрасывает unread участника B. Group notification
   содержит имя группы и автора. Quoted author получает ровно один `chat.reply`,
   без дополнительного общего `chat.message`. Проверить права на attachment.
   Mutations идут через backend, arbitrary client event payload не становится

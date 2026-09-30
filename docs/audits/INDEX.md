@@ -17,23 +17,27 @@ evidence, not current configuration or release certification.
 ## Legacy archive cleanup and recovery
 
 The legacy directories `archive/` and `../superpowers/plans/archive/` have been
-inventoried, and identified requirements are being reconciled with the master
-plan, ADRs, and current workflow contracts. Transfer and cleanup acceptance is
-still open; do not treat this inventory as proof that every historical obligation
-has been transferred. The repository history remains the historical source. An
-external rescue bundle was verified at rescue
-SHA `d0aad7c296facd79b3d41b037bc4160f5b3132be` before cleanup. It is stored next
-to the repository as `../university_ecosystem-rescue-2026-09-30-d0aad7c.bundle`;
-its SHA-256 is
+inventoried: 112 audit reports and 8 plan snapshots. Unique requirements have
+been reconciled against the master plan, ADRs, tests, and current workflow
+contracts; review and final cleanup acceptance remain open. The repository
+history remains the historical source. The external rescue bundle was verified
+at rescue SHA `d0aad7c296facd79b3d41b037bc4160f5b3132be`; `git bundle verify`
+confirmed its complete history, two restored sample files matched their
+inventory blobs, and the inventory matches all 120 archive paths, blob IDs, and
+sizes. It is stored next to the repository as
+`../university_ecosystem-rescue-2026-09-30-d0aad7c.bundle`; its SHA-256 is
 `7cdaed352df12a0f735f86399dd2937be9c832e60d2f1f0ff66fbbb9bc823b11`.
 The 120-file path/blob/size/disposition/transfer inventory is stored next to
 the repository as `../university_ecosystem-archive-inventory-d0aad7c.csv`;
 after adding a newly found credential reference its SHA-256 is
 `20bb5457d104ed2590c33c4940c2f0334f2ba526fb1bff208111f5a99c4cc514`. The
-inventory excludes secret values. Several archived audit reports contain
-credential-shaped strings; their validity, expiry, rotation, or revocation is
-not confirmed. Do not redistribute the rescue bundle or remove the archives
-until this triage is complete.
+inventory excludes secret values. Archived reports contain credential-shaped
+strings. The user confirmed that the Chromatic project token was reset and the
+Actions secret updated; secret metadata was checked without reading its value.
+The user also confirmed that the seeded-admin password was used only in an
+ephemeral CI database. Keep the rescue bundle private and do not redistribute it.
+Remove archive files only after final review of the transferred requirements,
+credential disposition, inventory, and links.
 To recover files without rewriting history, resolve the sibling bundle and
 clone it to a temporary directory, for example:
 
