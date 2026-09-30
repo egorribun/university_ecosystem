@@ -1,7 +1,10 @@
 import { devices } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures"
 
-const LIVE_BASE_URL = process.env.LIVE_BASE_URL ?? "http://localhost"
+const LIVE_BASE_URL = process.env.LIVE_BASE_URL
+if (!LIVE_BASE_URL) {
+  throw new Error("LIVE_BASE_URL must be set to the endpoint printed by scripts/live_stand.py")
+}
 
 type JsonRecord = Record<string, unknown>
 

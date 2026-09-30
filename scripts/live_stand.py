@@ -35,8 +35,9 @@ import socket
 import stat
 import subprocess
 import sys
+import tempfile
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,13 +51,48 @@ WORKTREE = REPO_ROOT.parent / WORKTREE_NAME
 OVERLAY = "docker-compose.live.yml"
 COMPOSE_FILES = ("docker-compose.full.yml", OVERLAY)
 MAILPIT_PORT = 18025
-PUBLISHED_PORTS = (80, 443, MAILPIT_PORT)
-PORT_BIND_HOSTS = {80: "", 443: "", MAILPIT_PORT: "127.0.0.1"}
+LIVE_PORT_SPECS = (
+    ("BACKEND", "backend", 8000),
+    ("FRONTEND", "frontend", 3000),
+    ("POSTGRES", "postgres", 5432),
+    ("GATEWAY", "gateway", 8080),
+    ("WS_HUB", "ws-hub", 8081),
+    ("TEMPORAL_GRPC", "temporal", 7233),
+    ("TEMPORAL_WEB", "temporal", 7243),
+    ("IMGPROXY", "imgproxy", 8080),
+    ("GRAFANA", "grafana", 3000),
+    ("PROMETHEUS", "prometheus", 9090),
+    ("ALLOY", "alloy", 12345),
+    ("PYROSCOPE", "pyroscope", 4040),
+    ("CADDY_HTTP", "caddy", 80),
+    ("CADDY_HTTPS", "caddy", 443),
+    ("MAILPIT", "mailpit", 8025),
+)
+LEGACY_PUBLISHED_PORTS = {
+    "BACKEND": 8000,
+    "FRONTEND": 8081,
+    "POSTGRES": 15433,
+    "GATEWAY": 8080,
+    "WS_HUB": 8083,
+    "TEMPORAL_GRPC": 7233,
+    "TEMPORAL_WEB": 7243,
+    "IMGPROXY": 8082,
+    "GRAFANA": 3000,
+    "PROMETHEUS": 9090,
+    "ALLOY": 12345,
+    "PYROSCOPE": 4040,
+    "CADDY_HTTP": 80,
+    "CADDY_HTTPS": 443,
+    "MAILPIT": MAILPIT_PORT,
+}
+PORT_RANGE = (20000, 45000)
+PORT_BIND_HOST = "127.0.0.1"
 VAPID_FILE = Path(".secrets") / "live-vapid.json"
 STAND_FILE = Path(".secrets") / "live-stand.json"
 PROJECT_PREFIX = "ue-live-"
 PROJECT_PATTERN = re.compile(r"^ue-live-[0-9a-f]{16}$")
-OWNER_SCHEMA_VERSION = 2
+OWNER_SCHEMA_VERSION = 3
+LEGACY_OWNER_SCHEMA_VERSION = 2
 COMPOSE_INSPECTION_PLACEHOLDER = "live-stand-inspection-placeholder"
 SEED_SCRIPTS = ("scripts/seed_demo_data.py", "scripts/seed_admin_data.py")
 STAND_PATHS_TO_PROTECT = (
@@ -85,6 +121,8 @@ class StandOwner:
     repository: str
     worktree: str
     project_name: str
+    published_ports: tuple[tuple[str, int], ...]
+    schema_version: int
 
 
 def _b64url(data: bytes) -> str:
@@ -259,6 +297,43 @@ def _owner_signature(payload: dict[str, object], key: bytes) -> str:
     return hmac.new(key, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
+def _validate_published_ports(
+    ports: Mapping[str, object], *, allow_privileged: bool = False
+) -> tuple[tuple[str, int], ...]:
+    expected = tuple(name for name, _service, _target in LIVE_PORT_SPECS)
+    if set(ports) != set(expected):
+        raise StandError("live port map does not match the published service inventory")
+    result: list[tuple[str, int]] = []
+    for name in expected:
+        port = ports[name]
+        minimum = 1 if allow_privileged else 1024
+        if type(port) is not int or not minimum <= port <= 65535:
+            raise StandError(
+                f"invalid host port for {name}: expected an unprivileged TCP port"
+            )
+        result.append((name, port))
+    if len({port for _name, port in result}) != len(result):
+        raise StandError("live port map contains duplicate host ports")
+    return tuple(result)
+
+
+def choose_published_ports() -> dict[str, int]:
+    """Choose a distinct currently free loopback port for every published service."""
+    low, high = PORT_RANGE
+    chosen: dict[str, int] = {}
+    for name, _service, _container_port in LIVE_PORT_SPECS:
+        for _attempt in range(1000):
+            port = low + secrets.randbelow(high - low + 1)
+            if port in chosen.values():
+                continue
+            if port_is_free(port, host=PORT_BIND_HOST):
+                chosen[name] = port
+                break
+        else:
+            raise StandError(f"could not allocate a free loopback port for {name}")
+    return chosen
+
+
 @contextmanager
 def stand_lifecycle_lock() -> Iterator[None]:
     """Serialize lifecycle and data operations for this stand worktree."""
@@ -327,7 +402,9 @@ def _expected_worktree(worktree: Path) -> Path:
     return candidate
 
 
-def create_stand_owner(worktree: Path) -> StandOwner:
+def create_stand_owner(
+    worktree: Path, *, published_ports: Mapping[str, int] | None = None
+) -> StandOwner:
     """Create a unique ownership marker for a newly prepared worktree."""
     expected_worktree = _expected_worktree(worktree)
     if not expected_worktree.is_dir():
@@ -348,6 +425,10 @@ def create_stand_owner(worktree: Path) -> StandOwner:
         repository=repository,
         worktree=str(expected_worktree),
         project_name=f"{PROJECT_PREFIX}{secrets.token_hex(8)}",
+        published_ports=_validate_published_ports(
+            published_ports if published_ports is not None else choose_published_ports()
+        ),
+        schema_version=OWNER_SCHEMA_VERSION,
     )
     _validate_project_name(owner.project_name)
     payload = {
@@ -355,6 +436,7 @@ def create_stand_owner(worktree: Path) -> StandOwner:
         "repository": owner.repository,
         "worktree": owner.worktree,
         "project_name": owner.project_name,
+        "published_ports": dict(owner.published_ports),
     }
     marker_data = {
         **payload,
@@ -383,19 +465,30 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         data = json.loads(marker.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise StandError(f"cannot read ownership metadata: {marker}") from error
+    if not isinstance(data, dict):
+        raise StandError(f"invalid ownership metadata: {marker}")
+    schema_version = data.get("version")
+    legacy_keys = {"version", "repository", "worktree", "project_name", "signature"}
+    current_keys = legacy_keys | {"published_ports"}
     if (
-        not isinstance(data, dict)
-        or set(data)
-        != {"version", "repository", "worktree", "project_name", "signature"}
-        or not isinstance(data.get("version"), int)
-        or isinstance(data.get("version"), bool)
-        or data.get("version") != OWNER_SCHEMA_VERSION
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or (schema_version == LEGACY_OWNER_SCHEMA_VERSION and set(data) != legacy_keys)
+        or (schema_version == OWNER_SCHEMA_VERSION and set(data) != current_keys)
+        or schema_version not in {LEGACY_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}
         or not all(
             isinstance(data.get(key), str)
             for key in ("repository", "worktree", "project_name")
         )
     ):
         raise StandError(f"invalid ownership metadata: {marker}")
+    if schema_version == OWNER_SCHEMA_VERSION:
+        raw_ports = data["published_ports"]
+        if not isinstance(raw_ports, dict):
+            raise StandError(f"invalid port map in ownership metadata: {marker}")
+        port_map = dict(_validate_published_ports(raw_ports))
+    else:
+        port_map = LEGACY_PUBLISHED_PORTS.copy()
     try:
         marker_repository = Path(data["repository"]).resolve(strict=False)
         expected_repository = REPO_ROOT.resolve(strict=True)
@@ -414,6 +507,8 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         "worktree": data["worktree"],
         "project_name": project_name,
     }
+    if schema_version == OWNER_SCHEMA_VERSION:
+        payload["published_ports"] = port_map
     signature = data["signature"]
     if not isinstance(signature, str) or not hmac.compare_digest(
         signature, _owner_signature(payload, _owner_signing_key(create=False))
@@ -423,22 +518,95 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         repository=str(marker_repository),
         worktree=str(marker_worktree),
         project_name=project_name,
+        published_ports=tuple(port_map.items()),
+        schema_version=schema_version,
     )
 
 
-def stand_environment(keys: dict[str, str], project_name: str) -> dict[str, str]:
+def update_stand_owner_ports(
+    worktree: Path,
+    owner: StandOwner,
+    published_ports: Mapping[str, int],
+) -> StandOwner:
+    """Atomically sign a new port map into this already-owned stand marker."""
+    current = load_stand_owner(worktree)
+    if current != owner:
+        raise StandError("ownership metadata changed before port map update")
+    ports = _validate_published_ports(published_ports)
+    updated = StandOwner(
+        repository=current.repository,
+        worktree=current.worktree,
+        project_name=current.project_name,
+        published_ports=ports,
+        schema_version=OWNER_SCHEMA_VERSION,
+    )
+    payload: dict[str, object] = {
+        "version": OWNER_SCHEMA_VERSION,
+        "repository": updated.repository,
+        "worktree": updated.worktree,
+        "project_name": updated.project_name,
+        "published_ports": dict(updated.published_ports),
+    }
+    marker_data = {
+        **payload,
+        "signature": _owner_signature(payload, _owner_signing_key(create=False)),
+    }
+    marker = worktree / STAND_FILE
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=marker.parent,
+            prefix=".live-stand-",
+            suffix=".tmp",
+            delete=False,
+        ) as marker_file:
+            temporary_path = Path(marker_file.name)
+            marker_file.write(json.dumps(marker_data, indent=2) + "\n")
+            marker_file.flush()
+            os.fsync(marker_file.fileno())
+        _assert_worktree_paths_safe(
+            worktree, (STAND_FILE, temporary_path.relative_to(worktree))
+        )
+        if os.name != "nt":
+            temporary_path.chmod(0o600)
+        os.replace(temporary_path, marker)
+        temporary_path = None
+    except OSError as error:
+        raise StandError("cannot atomically update the live stand port map") from error
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+    return updated
+
+
+def stand_environment(
+    keys: dict[str, str],
+    project_name: str,
+    published_ports: Mapping[str, int] = LEGACY_PUBLISHED_PORTS,
+) -> dict[str, str]:
     _validate_project_name(project_name)
+    ports = dict(_validate_published_ports(published_ports, allow_privileged=True))
     env = os.environ.copy()
     env["COMPOSE_PROJECT_NAME"] = project_name
     env["LIVE_VAPID_PUBLIC_KEY"] = keys["public"]
     env["LIVE_VAPID_PRIVATE_KEY"] = keys["private"]
-    env["LIVE_MAILPIT_PORT"] = str(MAILPIT_PORT)
+    for name, port in ports.items():
+        if name == "MAILPIT":
+            env["LIVE_MAILPIT_PORT"] = str(port)
+        else:
+            env[f"LIVE_HOST_PORT_{name}"] = str(port)
     return env
 
 
-def compose_control_environment(project_name: str) -> dict[str, str]:
+def compose_control_environment(
+    project_name: str,
+    published_ports: Mapping[str, int] = LEGACY_PUBLISHED_PORTS,
+) -> dict[str, str]:
     """Build a secret-free environment for read/stop/remove Compose commands."""
     _validate_project_name(project_name)
+    ports = dict(_validate_published_ports(published_ports, allow_privileged=True))
     env = os.environ.copy()
     env["COMPOSE_PROJECT_NAME"] = project_name
     # Compose interpolates these required live-overlay fields while loading
@@ -446,7 +614,11 @@ def compose_control_environment(project_name: str) -> dict[str, str]:
     # recreate containers, so a fixed non-secret placeholder is sufficient.
     env["LIVE_VAPID_PUBLIC_KEY"] = COMPOSE_INSPECTION_PLACEHOLDER
     env["LIVE_VAPID_PRIVATE_KEY"] = COMPOSE_INSPECTION_PLACEHOLDER
-    env["LIVE_MAILPIT_PORT"] = str(MAILPIT_PORT)
+    for name, port in ports.items():
+        if name == "MAILPIT":
+            env["LIVE_MAILPIT_PORT"] = str(port)
+        else:
+            env[f"LIVE_HOST_PORT_{name}"] = str(port)
     return env
 
 
@@ -458,7 +630,7 @@ def compose_command(*args: str, project_name: str) -> list[str]:
     return [*command, *args]
 
 
-def port_is_free(port: int, host: str = "127.0.0.1") -> bool:
+def port_is_free(port: int, host: str = PORT_BIND_HOST) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         try:
             probe.bind((host, port))
@@ -467,16 +639,16 @@ def port_is_free(port: int, host: str = "127.0.0.1") -> bool:
         return True
 
 
-def require_free_ports(ports: Sequence[int] = PUBLISHED_PORTS) -> None:
-    busy = [
-        port
-        for port in ports
-        if not port_is_free(port, host=PORT_BIND_HOSTS.get(port, "127.0.0.1"))
-    ]
+def require_free_ports(ports: Mapping[str, int] | Sequence[int]) -> None:
+    values = (
+        tuple(dict(_validate_published_ports(ports, allow_privileged=True)).values())
+        if isinstance(ports, Mapping)
+        else tuple(ports)
+    )
+    busy = [port for port in values if not port_is_free(port, host=PORT_BIND_HOST)]
     if busy:
         raise StandError(
-            f"ports {busy} are in use; stop the local stack "
-            "(.\\start-docker.ps1 -Down) before starting the stand"
+            f"loopback ports {busy} are in use; refusing to stop or build the stand"
         )
 
 
@@ -537,32 +709,44 @@ def _require_worktree() -> None:
 def _up_locked(ref: str) -> None:
     _assert_stand_paths_safe(WORKTREE)
     resolved_sha = resolve_stand_ref(ref)
+    published_ports = choose_published_ports()
+    require_free_ports(published_ports)
+    existing_owner: StandOwner | None = None
     if WORKTREE.exists():
         if not (WORKTREE / OVERLAY).is_file():
             raise StandError(
                 f"path exists but is not an owned live stand worktree: {WORKTREE}"
             )
-        owner = load_stand_owner(WORKTREE)
+        existing_owner = load_stand_owner(WORKTREE)
         _assert_worktree_clean(WORKTREE)
-        # Stop the stand's own containers (volumes stay) so its ports are free
-        # for the port check and the launcher's restart.
-        env = stand_environment(load_vapid(WORKTREE), owner.project_name)
+        # Preflight a fresh map before stopping the previous run. The old map
+        # may be in use by our own project, so this check cannot mistake it for
+        # a conflict with another local service.
+        env = stand_environment(
+            load_vapid(WORKTREE),
+            existing_owner.project_name,
+            dict(existing_owner.published_ports),
+        )
         _run(
-            compose_command("stop", project_name=owner.project_name),
+            compose_command("stop", project_name=existing_owner.project_name),
             cwd=WORKTREE,
             env=env,
         )
-        require_free_ports()
-    else:
-        require_free_ports()
     sha = ensure_worktree(resolved_sha)
     _assert_stand_paths_safe(WORKTREE)
     if not (WORKTREE / STAND_FILE).is_file():
-        owner = create_stand_owner(WORKTREE)
+        owner = create_stand_owner(WORKTREE, published_ports=published_ports)
         load_or_create_vapid(WORKTREE)
     else:
-        owner = load_stand_owner(WORKTREE)
-    env = stand_environment(load_vapid(WORKTREE), owner.project_name)
+        if existing_owner is None:
+            raise StandError("stand ownership metadata appeared during startup")
+        owner = update_stand_owner_ports(WORKTREE, existing_owner, published_ports)
+    # Catch ports claimed while the old project stopped or the worktree moved.
+    # On failure the old stand data remains intact and no new build is started.
+    require_free_ports(dict(owner.published_ports))
+    env = stand_environment(
+        load_vapid(WORKTREE), owner.project_name, dict(owner.published_ports)
+    )
     powershell = shutil.which("pwsh") or shutil.which("powershell")
     if powershell is None:
         raise StandError("PowerShell is required to run start-docker.ps1")
@@ -579,8 +763,12 @@ def _up_locked(ref: str) -> None:
         cwd=WORKTREE,
         env=env,
     )
-    print(f"stand {owner.project_name} is up at https://localhost for {sha}")
-    print(f"Mailpit API/UI: http://127.0.0.1:{MAILPIT_PORT}")
+    published = dict(owner.published_ports)
+    base_url = f"https://localhost:{published['CADDY_HTTPS']}"
+    mailpit_url = f"http://127.0.0.1:{published['MAILPIT']}"
+    print(f"stand {owner.project_name} is up at {base_url} for {sha}")
+    print(f"LIVE_BASE_URL={base_url}")
+    print(f"LIVE_MAILPIT_URL={mailpit_url}")
 
 
 def up(ref: str) -> None:
@@ -591,7 +779,9 @@ def up(ref: str) -> None:
 def _seed_locked() -> None:
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
-    env = stand_environment(load_vapid(WORKTREE), owner.project_name)
+    env = stand_environment(
+        load_vapid(WORKTREE), owner.project_name, dict(owner.published_ports)
+    )
     scripts_mount = f"{WORKTREE / 'scripts'}:/app/scripts:ro"
     for script in SEED_SCRIPTS:
         _run(
@@ -619,15 +809,18 @@ def seed() -> None:
 def status() -> None:
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
-    env = compose_control_environment(owner.project_name)
+    env = compose_control_environment(owner.project_name, dict(owner.published_ports))
     _run(compose_command("ps", project_name=owner.project_name), cwd=WORKTREE, env=env)
+    published = dict(owner.published_ports)
+    print(f"LIVE_BASE_URL=https://localhost:{published['CADDY_HTTPS']}")
+    print(f"LIVE_MAILPIT_URL=http://127.0.0.1:{published['MAILPIT']}")
 
 
 def _stop_locked() -> None:
     """Stop only this owned stand's containers, preserving all data."""
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
-    env = compose_control_environment(owner.project_name)
+    env = compose_control_environment(owner.project_name, dict(owner.published_ports))
     _run(
         compose_command("stop", project_name=owner.project_name), cwd=WORKTREE, env=env
     )
@@ -642,7 +835,7 @@ def _teardown_locked() -> None:
     """Remove only the owned Compose project and volumes; keep local files."""
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
-    env = compose_control_environment(owner.project_name)
+    env = compose_control_environment(owner.project_name, dict(owner.published_ports))
     _run(
         compose_command(
             "down", "--volumes", "--remove-orphans", project_name=owner.project_name

@@ -21,7 +21,26 @@ export const ROLES = {
 
 export type Role = keyof typeof ROLES
 
-const MAILPIT_URL = process.env.LIVE_MAILPIT_URL ?? "http://127.0.0.1:18025"
+const configuredMailpitURL = process.env.LIVE_MAILPIT_URL
+if (!configuredMailpitURL) {
+  throw new Error("LIVE_MAILPIT_URL must be set to the endpoint printed by scripts/live_stand.py")
+}
+const mailpitURL = new URL(configuredMailpitURL)
+if (
+  mailpitURL.protocol !== "http:" ||
+  !["localhost", "127.0.0.1"].includes(mailpitURL.hostname) ||
+  mailpitURL.username !== "" ||
+  mailpitURL.password !== "" ||
+  !mailpitURL.port ||
+  Number(mailpitURL.port) < 20_000 ||
+  Number(mailpitURL.port) > 45_000 ||
+  mailpitURL.pathname !== "/" ||
+  mailpitURL.search !== "" ||
+  mailpitURL.hash !== ""
+) {
+  throw new Error("LIVE_MAILPIT_URL must use HTTP and an explicit live-stand loopback port")
+}
+const MAILPIT_URL = mailpitURL.toString().replace(/\/$/, "")
 
 /** Submits the login form without asserting where it lands. */
 export async function submitLogin(page: Page, email: string, password: string): Promise<void> {

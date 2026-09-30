@@ -195,6 +195,18 @@ def _rendered(tmp_path: Path, project: str | None, *files: str) -> dict[str, Any
     for path in _root_compose_files():
         for name in _REQUIRED_VARIABLE.findall(path.read_text(encoding="utf-8")):
             env[name] = "placeholder-value"
+    live_port_names = sorted(
+        {
+            name
+            for path in _root_compose_files()
+            for name in re.findall(
+                r"\$\{(LIVE_HOST_PORT_[A-Z_]+|LIVE_MAILPIT_PORT):\?",
+                path.read_text(encoding="utf-8"),
+            )
+        }
+    )
+    for index, name in enumerate(live_port_names):
+        env[name] = str(24000 + index)
     command = [docker, "compose"]
     if project is not None:
         command += ["-p", project]

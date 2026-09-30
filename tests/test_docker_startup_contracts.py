@@ -451,22 +451,40 @@ def test_start_script_removes_obsolete_containers_and_waits_for_the_full_stack()
     assert minio is not None
     assert 'type = "docker"' in minio.group(1)
     assert 'service = "minio"' in minio.group(1)
-    for name, url in {
-        "grafana": "http://localhost:3000/api/health",
-        "prometheus": "http://localhost:9090/-/healthy",
-        "frontend": "http://localhost:8081/login",
-        "site": "http://localhost/login",
+    for name, endpoint in {
+        "grafana": ("GRAFANA", 3000, "/api/health"),
+        "prometheus": ("PROMETHEUS", 9090, "/-/healthy"),
+        "frontend": ("FRONTEND", 8081, "/login"),
+        "site": ("CADDY_HTTP", 80, "/login"),
     }.items():
+        live_name, default_port, path = endpoint
         entry = re.search(rf"{name}\s+= @\{{([^\n]+)", services_block)
         assert entry is not None, name
         assert 'type = "http"' in entry.group(1), name
-        assert url in entry.group(1), name
+        assert (
+            f"url = (Get-LocalServiceUrl -Name {live_name} "
+            f'-DefaultPort {default_port} -Path "{path}")'
+        ) in entry.group(1), name
 
     assert "timeout = 20" in re.search(
         r"frontend\s+= @\{([^\n]+)", services_block
     ).group(1)
     assert "Test-ServiceHttp -Url" in script
     assert "-Timeout $requestTimeout" in script
+
+
+def test_launcher_resolves_readiness_and_prometheus_ports_from_live_map() -> None:
+    script = _read("start-docker.ps1")
+    assert "function Get-LocalServiceUrl" in script
+    assert '$environmentName = "LIVE_HOST_PORT_$Name"' in script
+    assert "$parsedPort -lt 1024 -or $parsedPort -gt 65535" in script
+    assert 'return "http://localhost:$($port)$Path"' in script
+    assert "Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090" in script
+    assert "Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080" in script
+    assert "Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081" in script
+    assert "Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083" in script
+    assert "Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80" in script
+    assert "http://localhost:8081/login" not in script
 
 
 def test_launcher_exposes_an_explicit_bounded_core_mode() -> None:
@@ -994,7 +1012,10 @@ def test_launcher_waits_for_pyroscope_readiness_not_just_process_state() -> None
 
     assert entry is not None
     assert 'type = "http"' in entry.group(1)
-    assert "http://localhost:4040/ready" in entry.group(1)
+    assert (
+        'Get-LocalServiceUrl -Name PYROSCOPE -DefaultPort 4040 -Path "/ready"'
+        in entry.group(1)
+    )
 
 
 def test_launcher_recreates_services_when_bind_mounted_configs_change() -> None:

@@ -787,6 +787,23 @@ function Test-ServiceHttp {
     catch { $false }
 }
 
+function Get-LocalServiceUrl {
+    param([string]$Name, [int]$DefaultPort, [string]$Path)
+
+    $environmentName = "LIVE_HOST_PORT_$Name"
+    $configuredPort = [Environment]::GetEnvironmentVariable($environmentName)
+    $port = $DefaultPort
+    if (-not [string]::IsNullOrWhiteSpace($configuredPort)) {
+        $parsedPort = 0
+        if (-not [int]::TryParse($configuredPort, [ref]$parsedPort) -or $parsedPort -lt 1024 -or $parsedPort -gt 65535) {
+            throw "Invalid loopback port in $environmentName."
+        }
+        $port = $parsedPort
+    }
+
+    return "http://localhost:$($port)$Path"
+}
+
 function Wait-PrometheusTargets {
     param([int]$Timeout = 75)
 
@@ -801,7 +818,7 @@ function Wait-PrometheusTargets {
     do {
         try {
             $response = Invoke-RestMethod `
-                -Uri "http://localhost:9090/api/v1/targets?state=active" `
+                -Uri (Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090 -Path "/api/v1/targets?state=active") `
                 -TimeoutSec 5
             $targets = @($response.data.activeTargets)
             $lastProblems = @()
@@ -1317,30 +1334,30 @@ $services = [ordered]@{
     flagd         = @{ type = "docker"; service = "flagd-healthprobe"; ready = $false }
     backend       = @{ type = "docker"; service = "backend"; ready = $false }
     elasticsearch = @{ type = "docker"; service = "elasticsearch"; ready = $false }
-    gateway       = @{ type = "http"; service = "gateway"; url = "http://localhost:8080/health"; ready = $false }
+    gateway       = @{ type = "http"; service = "gateway"; url = (Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path "/health"); ready = $false }
     # SeaweedFS storage publishes no host port; its container healthcheck
     # probes the internal S3 API.
     minio         = @{ type = "docker"; service = "minio"; ready = $false }
     temporal      = @{ type = "docker"; service = "temporal"; ready = $false }
-    grafana       = @{ type = "http"; service = "grafana"; url = "http://localhost:3000/api/health"; ready = $false }
+    grafana       = @{ type = "http"; service = "grafana"; url = (Get-LocalServiceUrl -Name GRAFANA -DefaultPort 3000 -Path "/api/health"); ready = $false }
     notifications = @{ type = "docker"; service = "notifications-worker"; ready = $false }
-    prometheus    = @{ type = "http"; service = "prometheus"; url = "http://localhost:9090/-/healthy"; ready = $false }
+    prometheus    = @{ type = "http"; service = "prometheus"; url = (Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090 -Path "/-/healthy"); ready = $false }
     # Probe a rendered route, not only the lightweight process health endpoint.
     # The first SSR render after an image update can take several seconds while
     # Node warms module caches, so give it a bounded one-time warmup window.
-    frontend      = @{ type = "http"; service = "frontend"; url = "http://localhost:8081/login"; timeout = 20; ready = $false }
+    frontend      = @{ type = "http"; service = "frontend"; url = (Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081 -Path "/login"); timeout = 20; ready = $false }
     imgproxy      = @{ type = "docker"; service = "imgproxy"; ready = $false }
     nats          = @{ type = "docker"; service = "nats"; ready = $false }
     outbox        = @{ type = "docker"; service = "outbox-worker"; ready = $false }
     spicedb       = @{ type = "docker"; service = "spicedb"; ready = $false }
-    wshub         = @{ type = "http"; service = "ws-hub"; url = "http://localhost:8083/health"; ready = $false }
-    caddy         = @{ type = "http"; service = "caddy"; url = "http://localhost/healthz"; ready = $false }
-    site          = @{ type = "http"; service = "caddy"; url = "http://localhost/login"; timeout = 20; ready = $false }
+    wshub         = @{ type = "http"; service = "ws-hub"; url = (Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083 -Path "/health"); ready = $false }
+    caddy         = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/healthz"); ready = $false }
+    site          = @{ type = "http"; service = "caddy"; url = (Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/login"); timeout = 20; ready = $false }
     fileprocessor = @{ type = "docker"; service = "file-processor"; ready = $false }
     loki          = @{ type = "docker"; service = "loki-healthprobe"; ready = $false }
     tempo         = @{ type = "docker"; service = "tempo-healthprobe"; ready = $false }
     alloy         = @{ type = "docker"; service = "alloy"; ready = $false }
-    pyroscope     = @{ type = "http"; service = "pyroscope"; url = "http://localhost:4040/ready"; ready = $false }
+    pyroscope     = @{ type = "http"; service = "pyroscope"; url = (Get-LocalServiceUrl -Name PYROSCOPE -DefaultPort 4040 -Path "/ready"); ready = $false }
 }
 
 if ($Core) {
@@ -1431,21 +1448,31 @@ if ($Core) {
     Write-Host "  Mode: CORE (search, Temporal, and observability containers are stopped; volumes are preserved)" -ForegroundColor Yellow
 }
 Write-Host ""
-Write-Host "  >> Site (use this):  http://localhost/" -ForegroundColor Green
+$siteUrl = Get-LocalServiceUrl -Name CADDY_HTTP -DefaultPort 80 -Path "/"
+$frontendUrl = Get-LocalServiceUrl -Name FRONTEND -DefaultPort 8081 -Path ""
+$gatewayUrl = Get-LocalServiceUrl -Name GATEWAY -DefaultPort 8080 -Path ""
+$backendUrl = Get-LocalServiceUrl -Name BACKEND -DefaultPort 8000 -Path ""
+$backendDocsUrl = Get-LocalServiceUrl -Name BACKEND -DefaultPort 8000 -Path "/docs"
+$wsHubUrl = Get-LocalServiceUrl -Name WS_HUB -DefaultPort 8083 -Path ""
+$grafanaUrl = Get-LocalServiceUrl -Name GRAFANA -DefaultPort 3000 -Path ""
+$prometheusUrl = Get-LocalServiceUrl -Name PROMETHEUS -DefaultPort 9090 -Path ""
+$pyroscopeUrl = Get-LocalServiceUrl -Name PYROSCOPE -DefaultPort 4040 -Path ""
+$alloyUrl = Get-LocalServiceUrl -Name ALLOY -DefaultPort 12345 -Path ""
+Write-Host "  >> Site (use this):  $siteUrl" -ForegroundColor Green
 Write-Host "     Caddy reverse proxy routes /api/* -> gateway:8080 -> backend:8000," -ForegroundColor DarkGray
 Write-Host "     /ws/* -> ws-hub:8081, /sw.js -> frontend:3000, default -> frontend:3000." -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "  Direct service ports (admin/debug only - browser API calls won't work)" -ForegroundColor Gray
-Write-Host "  Frontend (Node SSR):  http://localhost:8081  (no /api proxy - use http://localhost/)" -ForegroundColor DarkYellow
-Write-Host "  Gateway API:          http://localhost:8080" -ForegroundColor DarkYellow
-Write-Host "  Backend API:          http://localhost:8000  (127.0.0.1 only)" -ForegroundColor DarkYellow
-Write-Host "  API Docs:             http://localhost:8000/docs" -ForegroundColor DarkYellow
-Write-Host "  WS Hub:               http://localhost:8083" -ForegroundColor DarkYellow
+Write-Host "  Frontend (Node SSR):  $frontendUrl  (no /api proxy - use $siteUrl)" -ForegroundColor DarkYellow
+Write-Host "  Gateway API:          $gatewayUrl" -ForegroundColor DarkYellow
+Write-Host "  Backend API:          $backendUrl  (127.0.0.1 only)" -ForegroundColor DarkYellow
+Write-Host "  API Docs:             $backendDocsUrl" -ForegroundColor DarkYellow
+Write-Host "  WS Hub:               $wsHubUrl" -ForegroundColor DarkYellow
 Write-Host "  SeaweedFS S3 API:     minio:9000 (internal Compose network only)" -ForegroundColor DarkYellow
-Write-Host "  Grafana:              http://localhost:3000" -ForegroundColor DarkYellow
-Write-Host "  Prometheus:           http://localhost:9090" -ForegroundColor DarkYellow
-Write-Host "  Pyroscope:            http://localhost:4040" -ForegroundColor DarkYellow
-Write-Host "  Alloy:                http://localhost:12345" -ForegroundColor DarkYellow
+Write-Host "  Grafana:              $grafanaUrl" -ForegroundColor DarkYellow
+Write-Host "  Prometheus:           $prometheusUrl" -ForegroundColor DarkYellow
+Write-Host "  Pyroscope:            $pyroscopeUrl" -ForegroundColor DarkYellow
+Write-Host "  Alloy:                $alloyUrl" -ForegroundColor DarkYellow
 Write-Host ""
 Write-Host "Seed data:" -ForegroundColor Cyan
 Write-Host "  1) Demo content (idempotent - student user + news + events + schedule + stories):"

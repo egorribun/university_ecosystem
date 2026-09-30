@@ -31,6 +31,26 @@ def _unb64url(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
 
+def _port_map(start: int = 24000) -> dict[str, int]:
+    return {
+        name: start + index
+        for index, (name, _service, _container_port) in enumerate(
+            live_stand.LIVE_PORT_SPECS
+        )
+    }
+
+
+def _assert_compose_port_environment(
+    environment: dict[str, str], ports: dict[str, int] | tuple[tuple[str, int], ...]
+) -> None:
+    port_map = dict(ports)
+    for name, _service, _target in live_stand.LIVE_PORT_SPECS:
+        environment_name = (
+            "LIVE_MAILPIT_PORT" if name == "MAILPIT" else f"LIVE_HOST_PORT_{name}"
+        )
+        assert environment[environment_name] == str(port_map[name])
+
+
 def _make_windows_junction(link: Path, target: Path) -> None:
     # Fixed Windows builtin; paths are fresh pytest temporary-directory paths.
     result = subprocess.run(  # noqa: S603 -- fixed Windows builtin, temp paths only
@@ -171,14 +191,18 @@ def test_corrupt_vapid_file_is_rejected(tmp_path: Path) -> None:
 
 def test_stand_environment_pins_the_project_and_keys() -> None:
     project_name = "ue-live-0123456789abcdef"
+    ports = _port_map()
     env = live_stand.stand_environment(
-        {"public": "pub", "private": "priv"}, project_name
+        {"public": "pub", "private": "priv"}, project_name, ports
     )
 
     assert env["COMPOSE_PROJECT_NAME"] == project_name
     assert env["LIVE_VAPID_PUBLIC_KEY"] == "pub"
     assert env["LIVE_VAPID_PRIVATE_KEY"] == "priv"  # pragma: allowlist secret
-    assert env["LIVE_MAILPIT_PORT"] == "18025"
+    assert env["LIVE_MAILPIT_PORT"] == str(ports["MAILPIT"])
+    for name, port in ports.items():
+        if name != "MAILPIT":
+            assert env[f"LIVE_HOST_PORT_{name}"] == str(port)
 
 
 def test_compose_command_targets_only_the_stand_project() -> None:
@@ -218,14 +242,36 @@ def test_port_preflight_detects_a_bound_socket_without_listen() -> None:
         assert live_stand.port_is_free(bound_port) is False
 
 
-def test_port_preflight_includes_mailpit() -> None:
-    assert live_stand.MAILPIT_PORT in live_stand.PUBLISHED_PORTS
+def test_port_map_covers_every_full_stack_and_mailpit_publication() -> None:
+    expected = {
+        "BACKEND",
+        "FRONTEND",
+        "POSTGRES",
+        "GATEWAY",
+        "WS_HUB",
+        "TEMPORAL_GRPC",
+        "TEMPORAL_WEB",
+        "IMGPROXY",
+        "GRAFANA",
+        "PROMETHEUS",
+        "ALLOY",
+        "PYROSCOPE",
+        "CADDY_HTTP",
+        "CADDY_HTTPS",
+        "MAILPIT",
+    }
+
+    assert {
+        name for name, _service, _container_port in live_stand.LIVE_PORT_SPECS
+    } == expected
+    assert len(live_stand.LIVE_PORT_SPECS) == len(expected)
 
 
-def test_port_preflight_uses_wildcard_binds_for_caddy_and_loopback_for_mailpit(
+def test_port_preflight_checks_every_live_port_on_loopback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     probes: list[tuple[int, str]] = []
+    ports = _port_map()
 
     def fake_port_is_free(port: int, host: str = "127.0.0.1") -> bool:
         probes.append((port, host))
@@ -233,13 +279,31 @@ def test_port_preflight_uses_wildcard_binds_for_caddy_and_loopback_for_mailpit(
 
     monkeypatch.setattr(live_stand, "port_is_free", fake_port_is_free)
 
-    live_stand.require_free_ports()
+    live_stand.require_free_ports(ports)
 
-    assert probes == [
-        (80, ""),
-        (443, ""),
-        (live_stand.MAILPIT_PORT, "127.0.0.1"),
+    assert probes == [(port, "127.0.0.1") for port in ports.values()]
+
+
+def test_generated_port_map_is_distinct_and_within_unprivileged_range(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probes: list[int] = []
+
+    def fake_port_is_free(port: int, host: str = "127.0.0.1") -> bool:
+        assert host == "127.0.0.1"
+        probes.append(port)
+        return True
+
+    monkeypatch.setattr(live_stand, "port_is_free", fake_port_is_free)
+    monkeypatch.setattr(live_stand.secrets, "randbelow", lambda _limit: len(probes))
+
+    ports = live_stand.choose_published_ports()
+
+    assert list(ports) == [
+        name for name, _service, _target in live_stand.LIVE_PORT_SPECS
     ]
+    assert len(set(ports.values())) == len(live_stand.LIVE_PORT_SPECS)
+    assert all(20000 <= port <= 45000 for port in ports.values())
 
 
 def test_free_port_is_reported_free() -> None:
@@ -313,6 +377,61 @@ def _prepare_owned_stand(
     return worktree, owner, keys
 
 
+def test_owner_marker_persists_and_authenticates_the_port_map(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / ".git").mkdir()
+    worktree = tmp_path / "ue-live"
+    worktree.mkdir()
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repo_root)
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setattr(live_stand, "_git", lambda *_: ".git")
+    ports = _port_map()
+
+    owner = live_stand.create_stand_owner(worktree, published_ports=ports)
+    loaded = live_stand.load_stand_owner(worktree)
+    marker = json.loads((worktree / live_stand.STAND_FILE).read_text())
+
+    assert dict(owner.published_ports) == ports
+    assert dict(loaded.published_ports) == ports
+    assert marker["published_ports"] == ports
+    assert marker["version"] == live_stand.OWNER_SCHEMA_VERSION
+
+    marker["published_ports"]["CADDY_HTTPS"] += 100
+    (worktree / live_stand.STAND_FILE).write_text(json.dumps(marker))
+    with pytest.raises(live_stand.StandError, match="signature"):
+        live_stand.load_stand_owner(worktree)
+
+
+def test_legacy_owner_marker_resolves_the_original_port_map_read_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    marker_path = worktree / live_stand.STAND_FILE
+    marker = json.loads(marker_path.read_text())
+    payload = {
+        "version": 2,
+        "repository": marker["repository"],
+        "worktree": marker["worktree"],
+        "project_name": marker["project_name"],
+    }
+    marker = {
+        **payload,
+        "signature": live_stand._owner_signature(
+            payload, live_stand._owner_signing_key(create=False)
+        ),
+    }
+    marker_path.write_text(json.dumps(marker))
+
+    loaded = live_stand.load_stand_owner(worktree)
+
+    assert loaded.project_name == owner.project_name
+    assert loaded.schema_version == 2
+    assert dict(loaded.published_ports) == live_stand.LEGACY_PUBLISHED_PORTS
+
+
 def test_status_does_not_generate_missing_owner_or_vapid_files(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -376,6 +495,11 @@ def test_compose_control_commands_never_read_or_pass_vapid_keys(
     assert environments[0]["LIVE_VAPID_PRIVATE_KEY"] == (
         live_stand.COMPOSE_INSPECTION_PLACEHOLDER
     )
+    ports = dict(owner.published_ports)
+    assert environments[0]["LIVE_MAILPIT_PORT"] == str(ports["MAILPIT"])
+    for name, port in ports.items():
+        if name != "MAILPIT":
+            assert environments[0][f"LIVE_HOST_PORT_{name}"] == str(port)
 
 
 def test_status_is_read_only_and_uses_the_owned_project(
@@ -387,15 +511,20 @@ def test_status_is_read_only_and_uses_the_owned_project(
     marker_before = marker.read_bytes()
     vapid_before = vapid.read_bytes()
     commands: list[list[str]] = []
-    monkeypatch.setattr(
-        live_stand, "_run", lambda command, **_: commands.append(list(command))
-    )
+    environments: list[dict[str, str]] = []
+
+    def capture(command: list[str], *, cwd: Path, env: dict[str, str] | None) -> None:
+        commands.append(list(command))
+        environments.append(dict(env or {}))
+
+    monkeypatch.setattr(live_stand, "_run", capture)
 
     live_stand.status()
 
     assert commands == [
         live_stand.compose_command("ps", project_name=owner.project_name)
     ]
+    _assert_compose_port_environment(environments[0], owner.published_ports)
     assert marker.read_bytes() == marker_before
     assert vapid.read_bytes() == vapid_before
 
@@ -405,9 +534,13 @@ def test_stop_preserves_owned_volumes_and_worktree(
 ) -> None:
     worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
     commands: list[list[str]] = []
-    monkeypatch.setattr(
-        live_stand, "_run", lambda command, **_: commands.append(list(command))
-    )
+    environments: list[dict[str, str]] = []
+
+    def capture(command: list[str], *, cwd: Path, env: dict[str, str] | None) -> None:
+        commands.append(list(command))
+        environments.append(dict(env or {}))
+
+    monkeypatch.setattr(live_stand, "_run", capture)
 
     live_stand.stop()
 
@@ -416,6 +549,7 @@ def test_stop_preserves_owned_volumes_and_worktree(
     ]
     assert worktree.exists()
     assert not any("--volumes" in command for command in commands)
+    _assert_compose_port_environment(environments[0], owner.published_ports)
 
 
 def test_teardown_removes_only_the_owned_compose_project_and_preserves_env(
@@ -425,10 +559,14 @@ def test_teardown_removes_only_the_owned_compose_project_and_preserves_env(
     env_file = worktree / ".env"
     env_file.write_text("KEEP_ME=1\n", encoding="utf-8")
     commands: list[list[str]] = []
+    environments: list[dict[str, str]] = []
     git_calls: list[tuple[str, ...]] = []
-    monkeypatch.setattr(
-        live_stand, "_run", lambda command, **_: commands.append(list(command))
-    )
+
+    def capture(command: list[str], *, cwd: Path, env: dict[str, str] | None) -> None:
+        commands.append(list(command))
+        environments.append(dict(env or {}))
+
+    monkeypatch.setattr(live_stand, "_run", capture)
     monkeypatch.setattr(live_stand, "_git", lambda *args: git_calls.append(args) or "")
 
     live_stand.teardown()
@@ -441,6 +579,7 @@ def test_teardown_removes_only_the_owned_compose_project_and_preserves_env(
     assert git_calls == []
     assert worktree.exists()
     assert env_file.read_text(encoding="utf-8") == "KEEP_ME=1\n"
+    _assert_compose_port_environment(environments[0], owner.published_ports)
 
 
 def test_teardown_refuses_owner_metadata_from_another_worktree(
@@ -578,29 +717,56 @@ def test_main_reports_stand_errors_with_exit_code_two(
     assert "live_stand: no stand" in capsys.readouterr().err
 
 
-def test_live_overlay_adds_mailpit_and_keeps_the_base_host_ports() -> None:
+def test_live_overlay_replaces_every_publication_with_loopback_port_variables() -> None:
     source = (ROOT / "docker-compose.live.yml").read_text(encoding="utf-8")
-    overlay: dict[str, Any] = yaml.safe_load(source.replace("!reset", ""))
+    overlay: dict[str, Any] = yaml.safe_load(
+        source.replace("!override", "").replace("!reset", "")
+    )
     services = overlay["services"]
 
-    # The launcher's readiness probes use the base 127.0.0.1 ports, so the
-    # overlay publishes only Mailpit and never resets a base binding.
-    assert {name for name, service in services.items() if "ports" in service} == {
-        "mailpit"
+    expected = {
+        name: service["ports"]
+        for name, service in services.items()
+        if "ports" in service
     }
-    assert services["mailpit"]["ports"] == [
-        "127.0.0.1:${LIVE_MAILPIT_PORT:-18025}:8025"
-    ]
+    assert set(expected) == {
+        "backend",
+        "frontend",
+        "postgres",
+        "gateway",
+        "ws-hub",
+        "temporal",
+        "imgproxy",
+        "grafana",
+        "prometheus",
+        "alloy",
+        "pyroscope",
+        "caddy",
+        "mailpit",
+    }
+    assert source.count("ports: !override") == len(expected)
+    assert all(
+        port.startswith("127.0.0.1:${")
+        for service_ports in expected.values()
+        for port in service_ports
+    )
+    assert sum(map(len, expected.values())) == len(live_stand.LIVE_PORT_SPECS)
+    assert not any(
+        legacy_port in source
+        for legacy_port in ("80:80", "443:443", "127.0.0.1:8000:8000")
+    )
     for sender in ("backend", "outbox-worker", "notifications-worker"):
         environment = services[sender]["environment"]
         assert environment["SMTP_HOST"] == "mailpit"
         assert environment["VAPID_PRIVATE_KEY"].startswith("${LIVE_VAPID_PRIVATE_KEY:?")
-    assert "caddy" not in services
+    assert set(services["caddy"]) == {"ports"}
 
 
 def test_live_overlay_keeps_base_storage_on_a_project_scoped_volume() -> None:
     source = (ROOT / "docker-compose.live.yml").read_text(encoding="utf-8")
-    overlay: dict[str, Any] = yaml.safe_load(source.replace("!reset", ""))
+    overlay: dict[str, Any] = yaml.safe_load(
+        source.replace("!override", "").replace("!reset", "")
+    )
 
     # Base storage is project-scoped, so the live overlay needs no global-name
     # reset and cannot mount the developer's storage volume.
@@ -612,12 +778,22 @@ def test_live_overlay_keeps_base_storage_on_a_project_scoped_volume() -> None:
     assert "quay.io/minio" not in source
 
 
-def test_up_stops_the_owned_project_before_checking_ports(
+def test_up_preflights_every_port_before_stopping_or_building(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
     events: list[str] = []
     compose_calls: list[list[str]] = []
+    checked_port_maps: list[dict[str, int]] = []
+    new_ports = _port_map(50000)
+
+    def check_ports(ports: dict[str, int]) -> None:
+        checked_port_maps.append(dict(ports))
+        events.append("ports")
+
+    def run(command: list[str], **_: Any) -> None:
+        compose_calls.append(list(command))
+        events.append("compose-stop" if command[-1] == "stop" else "build")
 
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setattr(
@@ -625,30 +801,56 @@ def test_up_stops_the_owned_project_before_checking_ports(
         "_git",
         lambda *args: "" if "status" in args else "resolved-sha",
     )
+    monkeypatch.setattr(live_stand, "_run", run)
+    monkeypatch.setattr(live_stand, "require_free_ports", check_ports)
+    monkeypatch.setattr(live_stand, "choose_published_ports", lambda: new_ports)
     monkeypatch.setattr(
         live_stand,
-        "_run",
-        lambda command, **_: (
-            compose_calls.append(list(command)),
-            events.append("compose-stop" if command[-1] == "stop" else "build"),
-        ),
+        "ensure_worktree",
+        lambda ref: events.append(f"ensure:{ref}") or "sha",
     )
-    monkeypatch.setattr(
-        live_stand, "require_free_ports", lambda: events.append("ports")
-    )
-    monkeypatch.setattr(
-        live_stand, "ensure_worktree", lambda ref: events.append(ref) or "sha"
-    )
+    monkeypatch.setattr(live_stand, "stand_environment", lambda *_args: {})
     monkeypatch.setattr(live_stand.shutil, "which", lambda name: "pwsh")
 
     live_stand.up("HEAD")
 
     assert events == [
-        "compose-stop",
         "ports",
-        "resolved-sha",
+        "compose-stop",
+        "ensure:resolved-sha",
+        "ports",
         "build",
     ]
+    assert checked_port_maps == [new_ports, new_ports]
     assert compose_calls[0] == live_stand.compose_command(
         "stop", project_name=owner.project_name
     )
+    assert dict(live_stand.load_stand_owner(worktree).published_ports) == new_ports
+
+
+def test_up_port_conflict_preserves_the_running_stand_and_never_builds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    worktree, _owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    events: list[str] = []
+    ports = _port_map(50000)
+
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setattr(live_stand, "resolve_stand_ref", lambda _ref: "sha")
+    monkeypatch.setattr(live_stand, "choose_published_ports", lambda: ports)
+    monkeypatch.setattr(
+        live_stand,
+        "require_free_ports",
+        lambda _ports: (_ for _ in ()).throw(live_stand.StandError("busy ports")),
+    )
+    monkeypatch.setattr(
+        live_stand, "_run", lambda *_args, **_kwargs: events.append("docker")
+    )
+    monkeypatch.setattr(
+        live_stand, "ensure_worktree", lambda *_args: events.append("checkout")
+    )
+
+    with pytest.raises(live_stand.StandError, match="busy ports"):
+        live_stand._up_locked("HEAD")
+
+    assert events == []

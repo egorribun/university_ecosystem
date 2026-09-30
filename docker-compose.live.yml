@@ -8,11 +8,57 @@
 # live_stand.py pins a unique, ownership-checked Compose project for each run,
 # so volumes and networks never touch another stack. Generated keys and the
 # ownership marker stay in this worktree's ignored .secrets directory.
-# The stand keeps the base stack's host ports (Caddy on 80/443 is the origin
-# the stack is configured for, the rest bind 127.0.0.1 and serve the
-# launcher's readiness probes), so it cannot run alongside the local stack;
-# live_stand.py refuses to start while 80/443 are taken.
+# Every host publication is replaced by a distinct, signed per-run port from
+# live_stand.py. All ports bind to loopback so the acceptance stack can coexist
+# with the developer stack and is not exposed to the LAN. `!override` requires
+# Docker Compose 2.24.4+ and prevents the full-stack ports from being appended.
 services:
+  frontend:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_FRONTEND:?set by scripts/live_stand.py}:3000"
+
+  postgres:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_POSTGRES:?set by scripts/live_stand.py}:5432"
+
+  gateway:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_GATEWAY:?set by scripts/live_stand.py}:8080"
+
+  ws-hub:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_WS_HUB:?set by scripts/live_stand.py}:8081"
+
+  temporal:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_TEMPORAL_GRPC:?set by scripts/live_stand.py}:7233"
+      - "127.0.0.1:${LIVE_HOST_PORT_TEMPORAL_WEB:?set by scripts/live_stand.py}:7243"
+
+  imgproxy:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_IMGPROXY:?set by scripts/live_stand.py}:8080"
+
+  grafana:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_GRAFANA:?set by scripts/live_stand.py}:3000"
+
+  prometheus:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_PROMETHEUS:?set by scripts/live_stand.py}:9090"
+
+  alloy:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_ALLOY:?set by scripts/live_stand.py}:12345"
+
+  pyroscope:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_PYROSCOPE:?set by scripts/live_stand.py}:4040"
+
+  caddy:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_CADDY_HTTP:?set by scripts/live_stand.py}:80"
+      - "127.0.0.1:${LIVE_HOST_PORT_CADDY_HTTPS:?set by scripts/live_stand.py}:443"
+
   mailpit:
     image: ghcr.io/axllent/mailpit:v1.31.1@sha256:98b916bd3c8d61f7633a52d3ea2f58d00620cb01ca57ab59edde68c347a95365
     restart: unless-stopped
@@ -22,8 +68,8 @@ services:
     networks:
       - internal
       - public
-    ports:
-      - "127.0.0.1:${LIVE_MAILPIT_PORT:-18025}:8025"
+    ports: !override
+      - "127.0.0.1:${LIVE_MAILPIT_PORT:?set by scripts/live_stand.py}:8025"
     read_only: true
     # Mailpit keeps its message database in /tmp.
     tmpfs:
@@ -34,6 +80,8 @@ services:
       - no-new-privileges:true
 
   backend:
+    ports: !override
+      - "127.0.0.1:${LIVE_HOST_PORT_BACKEND:?set by scripts/live_stand.py}:8000"
     environment: &live-delivery
       # Browser projects share one client IP; reserve enough room for the full
       # live suite. The 5/minute application default remains in effect outside

@@ -8,7 +8,37 @@ import { defineConfig, devices } from "@playwright/test"
  * already be up. Specs live in tests/e2e-live and share seeded data, so the
  * lane runs serially.
  */
-const BASE_URL = process.env.LIVE_BASE_URL ?? "http://localhost"
+function localURL(name: string, protocols: string[]): string {
+  const value = process.env[name]
+  if (!value) {
+    throw new Error(`${name} must be set to the endpoint printed by scripts/live_stand.py`)
+  }
+
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new Error(`${name} must be a valid loopback URL`)
+  }
+  if (
+    !protocols.includes(parsed.protocol) ||
+    !["localhost", "127.0.0.1"].includes(parsed.hostname) ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    !parsed.port ||
+    Number(parsed.port) < 20_000 ||
+    Number(parsed.port) > 45_000 ||
+    parsed.pathname !== "/" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
+  ) {
+    throw new Error(`${name} must use an allowed protocol and an explicit live-stand loopback port`)
+  }
+  return parsed.toString().replace(/\/$/, "")
+}
+
+const BASE_URL = localURL("LIVE_BASE_URL", ["https:", "http:"])
+localURL("LIVE_MAILPIT_URL", ["http:"])
 
 export default defineConfig({
   testDir: "./tests/e2e-live",
@@ -21,6 +51,7 @@ export default defineConfig({
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: BASE_URL,
+    ignoreHTTPSErrors: true,
     locale: "ru-RU",
     actionTimeout: 15_000,
     navigationTimeout: 45_000,
