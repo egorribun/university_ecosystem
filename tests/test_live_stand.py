@@ -336,7 +336,7 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
         schema_version=live_stand.OWNER_SCHEMA_VERSION,
     )
     runs: list[tuple[list[str], Path, dict[str, str]]] = []
-    playwright_runs: list[tuple[Path, dict[str, str], str, bool]] = []
+    playwright_runs: list[tuple[Path, dict[str, str], str, bool, bool]] = []
     token_sizes: list[int] = []
     original_token_urlsafe = live_stand.secrets.token_urlsafe
     ambient_password = original_token_urlsafe(32)
@@ -347,6 +347,29 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
         "LIVE_HOST_PORT_CADDY_HTTP": str(port_map["CADDY_HTTP"]),
         "LIVE_MAILPIT_PORT": str(port_map["MAILPIT"]),
         "TEST_PASSWORD": ambient_password,  # pragma: allowlist secret
+    }
+    forwarded_secret_names = (
+        "CHROMATIC_PROJECT_TOKEN",
+        "GH_TOKEN",
+        "ACTIONS_RUNTIME_TOKEN",
+        "GITHUB_TOKEN",
+        "NPM_TOKEN",
+        "NODE_AUTH_TOKEN",
+        "UNRELATED_API_KEY",
+        "NODE_OPTIONS",
+        "NPM_CONFIG_REGISTRY",
+    )
+    forwarded_secret_values = {
+        name: f"caller-sentinel-{index}"
+        for index, name in enumerate(forwarded_secret_names)
+    }
+    inherited_npm_config_names = (
+        "NPM_CONFIG_USERCONFIG",
+        "NPM_CONFIG_GLOBALCONFIG",
+    )
+    inherited_npm_config_values = {
+        name: f"caller-config-sentinel-{index}"
+        for index, name in enumerate(inherited_npm_config_names)
     }
 
     def generate_token(size: int) -> str:
@@ -359,22 +382,37 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
         print("+", " ".join(command))
         runs.append((list(command), cwd, dict(env or {})))
 
-    def capture_playwright(
-        *, cwd: Path, environment: dict[str, str], admin_password: str
-    ) -> None:
+    def capture_playwright(*, cwd: Path, environment: dict[str, str]) -> None:
         print("+", " ".join(live_stand.LIVE_E2E_COMMAND))
         output_directory = environment.get("LIVE_E2E_OUTPUT_DIR", "")
+        output_path = Path(output_directory)
+        # Playwright clears its outputDir before execution; npm configs must survive.
+        output_path.rmdir()
+        output_path.mkdir()
+        admin_password = environment.get("TEST_PASSWORD", "")
+        config_paths = (
+            Path(environment.get("NPM_CONFIG_USERCONFIG", "")),
+            Path(environment.get("NPM_CONFIG_GLOBALCONFIG", "")),
+        )
+        configs_are_empty = all(
+            path.is_file() and path.read_bytes() == b"" for path in config_paths
+        )
         playwright_runs.append(
             (
                 cwd,
                 dict(environment),
                 admin_password,
                 bool(output_directory and Path(output_directory).is_dir()),
+                configs_are_empty,
             )
         )
 
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setenv("TEST_PASSWORD", ambient_password)
+    for name, value in forwarded_secret_values.items():
+        monkeypatch.setenv(name, value)
+    for name, value in inherited_npm_config_values.items():
+        monkeypatch.setenv(name, value)
     monkeypatch.setattr(live_stand.secrets, "token_urlsafe", generate_token)
     monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
     monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
@@ -406,7 +444,13 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
 
         demo_command, _demo_cwd, demo_env = runs[0]
         admin_command, _admin_cwd, admin_env = runs[1]
-        e2e_cwd, e2e_env, playwright_password, output_dir_existed = playwright_runs[0]
+        (
+            e2e_cwd,
+            e2e_env,
+            playwright_password,
+            output_dir_existed,
+            npm_configs_empty,
+        ) = playwright_runs[0]
         generated_password = admin_env.get("TEST_PASSWORD")
         if not isinstance(generated_password, str):
             pytest.fail("the admin seed must receive its generated password via env")
@@ -448,10 +492,41 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
             for key in e2e_env
         ):
             pytest.fail("Playwright must not inherit Compose or VAPID credentials")
+        if any(
+            name in e2e_env or value in e2e_env.values()
+            for name, value in forwarded_secret_values.items()
+        ):
+            pytest.fail(
+                "caller tokens, API keys, and arbitrary JS options must stay private"
+            )
+        if "PATH" not in e2e_env:
+            pytest.fail("the Playwright child must receive PATH to launch npm and Node")
         output_dir = e2e_env.get("LIVE_E2E_OUTPUT_DIR")
         if not output_dir_existed or not output_dir or Path(output_dir).exists():
             pytest.fail(
                 "Playwright output must use a temporary directory removed after exit"
+            )
+        expected_npm_configs = {
+            "NPM_CONFIG_USERCONFIG": Path(output_dir).parent / "npm-userconfig",
+            "NPM_CONFIG_GLOBALCONFIG": Path(output_dir).parent / "npm-globalconfig",
+        }
+        for name, path in expected_npm_configs.items():
+            configured_path = e2e_env.get(name)
+            if configured_path != str(path) or path.exists():
+                pytest.fail(
+                    "npm configs must survive output cleanup and then be removed"
+                )
+            if configured_path in inherited_npm_config_values.values():
+                pytest.fail(
+                    "caller npm config paths must not reach the Playwright child"
+                )
+        if not npm_configs_empty:
+            pytest.fail("the temporary npm user and global configs must be empty files")
+        if {name for name in e2e_env if name.startswith("NPM_CONFIG_")} != set(
+            expected_npm_configs
+        ):
+            pytest.fail(
+                "only the wrapper's empty npm config paths may reach Playwright"
             )
         if generated_password in repr([command for command, _, _ in runs]):
             pytest.fail("the generated password must never appear in subprocess argv")
@@ -463,22 +538,105 @@ def test_e2e_cli_hands_one_password_to_seed_and_playwright_without_persisting_it
     finally:
         for _command, _cwd, environment in runs:
             environment.pop("TEST_PASSWORD", None)
-        for _cwd, environment, _password, _output_dir_existed in playwright_runs:
+        for (
+            _cwd,
+            environment,
+            _password,
+            _output_dir_existed,
+            _npm_configs_empty,
+        ) in playwright_runs:
             environment.pop("TEST_PASSWORD", None)
 
 
-def test_live_playwright_diagnostics_redact_admin_password_and_reset_tokens(
+def test_live_e2e_runtime_environment_only_copies_explicit_platform_allowlist() -> None:
+    source = {
+        name: f"allowed-runtime-{name.lower()}"
+        for name in (
+            "PATH",
+            *live_stand.LIVE_E2E_WINDOWS_ENVIRONMENT,
+            *live_stand.LIVE_E2E_UNIX_ENVIRONMENT,
+            *live_stand.LIVE_E2E_CI_ENVIRONMENT,
+        )
+    }
+    private_names = (
+        "CHROMATIC_PROJECT_TOKEN",
+        "GH_TOKEN",
+        "ACTIONS_RUNTIME_TOKEN",
+        "GITHUB_TOKEN",
+        "NPM_TOKEN",
+        "NODE_AUTH_TOKEN",
+        "UNRELATED_API_KEY",
+        "DATABASE_URL",
+        "NODE_OPTIONS",
+        "NPM_CONFIG_REGISTRY",
+        "NPM_CONFIG_USERCONFIG",
+        "NPM_CONFIG_GLOBALCONFIG",
+        "LIVE_VAPID_PRIVATE_KEY",
+        "COMPOSE_PROJECT_NAME",
+        "TEST_PASSWORD",
+    )
+    private_values = {
+        name: f"private-sentinel-{index}" for index, name in enumerate(private_names)
+    }
+    source.update(private_values)
+
+    for platform, runtime_names in (
+        (
+            "nt",
+            (
+                "PATH",
+                *live_stand.LIVE_E2E_WINDOWS_ENVIRONMENT,
+                *live_stand.LIVE_E2E_CI_ENVIRONMENT,
+            ),
+        ),
+        (
+            "posix",
+            (
+                "PATH",
+                *live_stand.LIVE_E2E_UNIX_ENVIRONMENT,
+                *live_stand.LIVE_E2E_CI_ENVIRONMENT,
+            ),
+        ),
+    ):
+        expected = {name: source[name] for name in runtime_names}
+        child_environment = live_stand._live_e2e_runtime_environment(
+            source, platform=platform
+        )
+        if child_environment != expected:
+            pytest.fail(
+                "the child environment must match the explicit platform allowlist"
+            )
+        if any(
+            value in child_environment.values() for value in private_values.values()
+        ):
+            pytest.fail(
+                "caller secrets and unrelated environment values must be excluded"
+            )
+
+
+def test_live_playwright_never_emits_child_credentials_or_call_logs(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
     password = live_stand.secrets.token_urlsafe(32) + "!Aa0"
     reset_token = live_stand.secrets.token_urlsafe(32)
+    registration_password = "Live-Registration-Pw9!"  # pragma: allowlist secret
+    student_password = "student-fixture-sentinel"  # pragma: allowlist secret
+    teacher_password = "teacher-fixture-sentinel"  # pragma: allowlist secret
     stdout = (
-        f"admin credential: {password}\n"
+        "1 failed (3.2s)\n"
+        "2 passed (9.1s)\n"
+        "Call log:\n"
+        f'  - locator.fill("{registration_password}")\n'
+        f'  - locator.fill("{student_password}")\n'
         f"navigation failed: http://localhost/reset-password?token={reset_token}\n"
     )
-    stderr = f"failed reset URL https://localhost/reset-password?token={reset_token}\n"
+    stderr = (
+        f'  - locator.fill("{teacher_password}")\n'
+        f'  - locator.fill("{password}")\n'
+        f"failed reset URL https://localhost/reset-password?token={reset_token}\n"
+    )
     captured_calls: list[dict[str, object]] = []
 
     def fake_subprocess_run(
@@ -493,16 +651,29 @@ def test_live_playwright_diagnostics_redact_admin_password_and_reset_tokens(
         live_stand._run_live_playwright(
             cwd=tmp_path,
             environment={"TEST_PASSWORD": password},
-            admin_password=password,
         )
 
     printed = capsys.readouterr()
-    if password in printed.out or password in printed.err:
-        pytest.fail("Playwright diagnostics must redact the admin password")
-    if reset_token in printed.out or reset_token in printed.err:
-        pytest.fail("Playwright diagnostics must redact reset URL tokens")
-    if "token=[REDACTED]" not in printed.out + printed.err:
-        pytest.fail("Playwright diagnostics should retain only a redacted token marker")
+    for sensitive_value in (
+        password,
+        reset_token,
+        registration_password,
+        student_password,
+        teacher_password,
+    ):
+        if sensitive_value in printed.out or sensitive_value in printed.err:
+            pytest.fail(
+                "live Playwright output must not expose submitted credentials or tokens"
+            )
+    if (
+        "Call log:" in printed.out + printed.err
+        or "locator.fill" in printed.out + printed.err
+    ):
+        pytest.fail("raw browser call logs must not be forwarded")
+    if "live E2E counts passed=2 failed=1" not in printed.out:
+        pytest.fail("the wrapper may expose aggregate counts without test diagnostics")
+    if "live E2E outcome=failed exit_code=1" not in printed.out:
+        pytest.fail("the wrapper must retain a safe exit summary")
     if len(captured_calls) != 1:
         pytest.fail("the live runner should launch Playwright once")
 

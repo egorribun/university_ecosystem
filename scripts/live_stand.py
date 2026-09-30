@@ -42,7 +42,6 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -105,10 +104,15 @@ LIVE_E2E_WINDOWS_COMMAND = (
     "/c",
     "npm run test:e2e:live",
 )
-LIVE_E2E_DIAGNOSTIC_LIMIT = 12_000
-_LIVE_TOKEN_QUERY = re.compile(
-    r"(?i)([?&](?:token|reset_token|access_token|refresh_token)=)[^&#\s\"'<>),]+"
+LIVE_E2E_CI_ENVIRONMENT = ("CI", "GITHUB_ACTIONS")
+LIVE_E2E_WINDOWS_ENVIRONMENT = (
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "LOCALAPPDATA",
 )
+LIVE_E2E_UNIX_ENVIRONMENT = ("HOME", "TMPDIR")
 STAND_PATHS_TO_PROTECT = (
     Path(OVERLAY),
     Path(".env"),
@@ -866,13 +870,20 @@ def seed() -> None:
 
 
 def _live_e2e_environment(
-    owner: StandOwner, *, admin_password: str, output_directory: str
+    owner: StandOwner,
+    *,
+    admin_password: str,
+    output_directory: str,
+    npm_config_directory: str,
 ) -> dict[str, str]:
     """Build the minimum child environment from this owned stand's metadata."""
-    env = os.environ.copy()
-    for name in tuple(env):
-        if name.startswith(("LIVE_", "COMPOSE_")) or name == "TEST_PASSWORD":
-            env.pop(name, None)
+    env = _live_e2e_runtime_environment(os.environ)
+    config_root = Path(npm_config_directory)
+    npm_user_config = config_root / "npm-userconfig"
+    npm_global_config = config_root / "npm-globalconfig"
+    for config_path in (npm_user_config, npm_global_config):
+        with config_path.open("x", encoding="utf-8"):
+            pass
 
     ports = dict(owner.published_ports)
     env.update(
@@ -881,16 +892,43 @@ def _live_e2e_environment(
             "LIVE_MAILPIT_URL": f"http://127.0.0.1:{ports['MAILPIT']}",
             "LIVE_E2E_OUTPUT_DIR": output_directory,
             "TEST_PASSWORD": admin_password,
+            "NPM_CONFIG_USERCONFIG": str(npm_user_config),
+            "NPM_CONFIG_GLOBALCONFIG": str(npm_global_config),
         }
     )
     return env
 
 
-def _redact_live_e2e_output(output: str, *, admin_password: str) -> str:
-    """Remove transient credentials and reset tokens from child diagnostics."""
-    return _LIVE_TOKEN_QUERY.sub(
-        r"\1[REDACTED]", output.replace(admin_password, "[REDACTED]")
+def _live_e2e_runtime_environment(
+    source: Mapping[str, str], *, platform: str | None = None
+) -> dict[str, str]:
+    """Copy only process/runtime metadata needed by npm and Playwright."""
+    selected_platform = platform or os.name
+    windows = selected_platform == "nt"
+    allowed_names = (
+        "PATH",
+        *(LIVE_E2E_WINDOWS_ENVIRONMENT if windows else LIVE_E2E_UNIX_ENVIRONMENT),
+        *LIVE_E2E_CI_ENVIRONMENT,
     )
+
+    def lookup(name: str) -> str | None:
+        if name in source:
+            return source[name]
+        if windows:
+            folded_name = name.casefold()
+            for source_name, value in source.items():
+                if source_name.casefold() == folded_name:
+                    return value
+        return None
+
+    environment: dict[str, str] = {}
+    for name in allowed_names:
+        value = lookup(name)
+        if value is not None:
+            environment[name] = value
+    if not environment.get("PATH"):
+        raise StandError("PATH is required to launch live Playwright")
+    return environment
 
 
 def _live_e2e_command(*, platform: str | None = None) -> tuple[str, ...]:
@@ -900,28 +938,25 @@ def _live_e2e_command(*, platform: str | None = None) -> tuple[str, ...]:
     return LIVE_E2E_COMMAND
 
 
-def _emit_live_e2e_diagnostics(
-    output: str, *, admin_password: str, stream: TextIO
-) -> None:
-    safe_output = _redact_live_e2e_output(output, admin_password=admin_password)
-    if len(safe_output) > LIVE_E2E_DIAGNOSTIC_LIMIT:
-        safe_output = (
-            "[earlier live E2E diagnostics omitted]\n"
-            + safe_output[-LIVE_E2E_DIAGNOSTIC_LIMIT:]
-        )
-    if safe_output:
-        print(
-            safe_output,
-            end="" if safe_output.endswith("\n") else "\n",
-            file=stream,
-            flush=True,
-        )
+_PLAYWRIGHT_COUNT_LINE = re.compile(
+    r"\s*(?P<count>\d+)\s+(?P<kind>passed|failed|skipped)(?:\s+\([^()\r\n]*\))?\s*",
+    re.IGNORECASE,
+)
 
 
-def _run_live_playwright(
-    *, cwd: Path, environment: dict[str, str], admin_password: str
-) -> None:
-    """Run Playwright with captured and redacted output, never streaming secrets."""
+def _live_playwright_counts(output: str) -> dict[str, int]:
+    """Extract only numeric aggregate counts from exact Playwright summary lines."""
+    counts: dict[str, int] = {}
+    for line in output.splitlines():
+        match = _PLAYWRIGHT_COUNT_LINE.fullmatch(line)
+        if match is not None:
+            kind = match.group("kind").lower()
+            counts[kind] = counts.get(kind, 0) + int(match.group("count"))
+    return counts
+
+
+def _run_live_playwright(*, cwd: Path, environment: dict[str, str]) -> None:
+    """Run Playwright privately and expose only numeric summary and exit status."""
     command = _live_e2e_command()
     print("+", " ".join(command), flush=True)
     try:
@@ -938,18 +973,24 @@ def _run_live_playwright(
     except OSError as error:
         raise StandError("could not launch the live Playwright command") from error
 
-    _emit_live_e2e_diagnostics(
-        completed.stdout or "", admin_password=admin_password, stream=sys.stdout
+    return_code = completed.returncode
+    counts = _live_playwright_counts(
+        "\n".join((completed.stdout or "", completed.stderr or ""))
     )
-    _emit_live_e2e_diagnostics(
-        completed.stderr or "", admin_password=admin_password, stream=sys.stderr
-    )
-    outcome = "passed" if completed.returncode == 0 else "failed"
-    print(f"live E2E outcome={outcome} exit_code={completed.returncode}", flush=True)
-    if completed.returncode != 0:
-        raise StandError(
-            f"live Playwright E2E failed with exit code {completed.returncode}"
+    completed.stdout = ""
+    completed.stderr = ""
+    del completed
+    if counts:
+        count_summary = " ".join(
+            f"{name}={counts[name]}"
+            for name in ("passed", "failed", "skipped")
+            if name in counts
         )
+        print(f"live E2E counts {count_summary}", flush=True)
+    outcome = "passed" if return_code == 0 else "failed"
+    print(f"live E2E outcome={outcome} exit_code={return_code}", flush=True)
+    if return_code != 0:
+        raise StandError(f"live Playwright E2E failed with exit code {return_code}")
 
 
 def _e2e_locked(admin_password: str) -> None:
@@ -957,15 +998,20 @@ def _e2e_locked(admin_password: str) -> None:
     owner = load_stand_owner(WORKTREE)
     _seed_locked(admin_password, owner=owner)
 
-    with tempfile.TemporaryDirectory(prefix="ue-live-playwright-") as output_directory:
+    with tempfile.TemporaryDirectory(prefix="ue-live-playwright-") as temporary_root:
+        temporary_path = Path(temporary_root)
+        output_path = temporary_path / "playwright-output"
+        output_path.mkdir()
         environment = _live_e2e_environment(
-            owner, admin_password=admin_password, output_directory=output_directory
+            owner,
+            admin_password=admin_password,
+            output_directory=str(output_path),
+            npm_config_directory=temporary_root,
         )
         try:
             _run_live_playwright(
                 cwd=WORKTREE / "frontend",
                 environment=environment,
-                admin_password=admin_password,
             )
         finally:
             environment.pop("TEST_PASSWORD", None)
