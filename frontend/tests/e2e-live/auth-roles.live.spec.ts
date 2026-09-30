@@ -26,7 +26,9 @@ test("the admin area is reachable for an admin and closed to a student", async (
   await loginAs(page, "admin")
   await page.goto("/admin/users")
   await expect(page).toHaveURL(/\/admin\/users/)
-  await expect(page.getByText(ROLES.teacher.email)).toBeVisible()
+  await expect(
+    page.getByText(ROLES.teacher.email, { exact: true }).filter({ visible: true })
+  ).toBeVisible()
 
   await page.context().clearCookies()
   await loginAs(page, "student")
