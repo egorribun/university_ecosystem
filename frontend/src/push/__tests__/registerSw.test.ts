@@ -298,6 +298,7 @@ describe("registerServiceWorker", () => {
       ready: Promise.resolve(),
     }
     const mockServiceWorkerContainer = {
+      controller: { postMessage: vi.fn() },
       ready: Promise.resolve(mockRegistration),
       register: vi.fn().mockResolvedValue(mockRegistration),
       addEventListener: vi.fn().mockImplementation((event, listener) => {
@@ -312,6 +313,31 @@ describe("registerServiceWorker", () => {
     await registerServiceWorker()
 
     swListeners["controllerchange"]()
+    expect(window.location.reload).not.toHaveBeenCalled()
+  })
+
+  it("does not reload the current page when the service worker claims it for the first time", async () => {
+    const swListeners: Record<string, any> = {}
+    const mockRegistration: any = {
+      active: { postMessage: vi.fn() },
+      ready: Promise.resolve(),
+    }
+    const mockServiceWorkerContainer = {
+      controller: null,
+      ready: Promise.resolve(mockRegistration),
+      register: vi.fn().mockResolvedValue(mockRegistration),
+      addEventListener: vi.fn().mockImplementation((event, listener) => {
+        swListeners[event] = listener
+      }),
+    }
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    await registerServiceWorker()
+    swListeners["controllerchange"]()
+
     expect(window.location.reload).not.toHaveBeenCalled()
   })
 

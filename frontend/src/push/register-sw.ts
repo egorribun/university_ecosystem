@@ -43,6 +43,7 @@ const requestQueueProcessing = (registration: ServiceWorkerRegistration) => {
 
 export async function registerServiceWorker(path = "/sw.js") {
   if (!("serviceWorker" in navigator)) return null
+  const hadController = Boolean(navigator.serviceWorker.controller)
 
   try {
     const scriptUrl = createTrustedScriptURL(path)
@@ -106,9 +107,12 @@ export async function registerServiceWorker(path = "/sw.js") {
       })
     }
 
+    // A first install only begins controlling this already-current document;
+    // reloading here can discard a form the user started while precaching ran.
+    // Reload only when an existing controller is replaced by an update.
     let reloaded = false
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (reloaded) return
+      if (reloaded || !hadController) return
       // Prevent infinite reload loop in E2E tests where SW is unregistered on every load
       if (window.name === "__mock_api_initialized__") return
       reloaded = true
