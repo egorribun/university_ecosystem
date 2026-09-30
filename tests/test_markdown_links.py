@@ -178,7 +178,9 @@ def test_authored_markdown_relative_links_resolve() -> None:
     if tracked is None or "docs/README.md" not in names:
         # QUALITY-123 @egorribun — mutmut's isolated copy and the test image
         # omit docs/ and the Git metadata; the full-suite checkout runs this.
-        pytest.skip("authored documentation tree is unavailable in this checkout")
+        pytest.skip(  # QUALITY-123 @egorribun — isolated mutant copies omit docs and Git metadata
+            "authored documentation tree is unavailable in this checkout"
+        )
 
     missing = find_missing(ROOT, documents, include_archives=True, tracked=tracked)
 

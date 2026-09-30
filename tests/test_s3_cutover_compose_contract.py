@@ -163,7 +163,9 @@ def test_prometheus_has_no_minio_metrics_job() -> None:
 def _docker_compose() -> str:
     docker = shutil.which("docker")
     if docker is None:
-        pytest.skip("Docker CLI is not installed")
+        pytest.skip(  # QUALITY-123 @egorribun — Docker capability varies by runner
+            "Docker CLI is not installed"
+        )
     probe = subprocess.run(  # noqa: S603 - fixed local CLI
         [docker, "compose", "version"],
         capture_output=True,
@@ -171,7 +173,9 @@ def _docker_compose() -> str:
         check=False,
     )
     if probe.returncode != 0:
-        pytest.skip("Docker Compose plugin is not available")
+        pytest.skip(  # QUALITY-123 @egorribun — Compose plugin capability varies by runner
+            "Docker Compose plugin is not available"
+        )
     return docker
 
 
