@@ -13,6 +13,7 @@ import secrets
 import subprocess
 import sys
 import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ if str(_REPOSITORY_ROOT) not in sys.path:
 from sqlalchemy import delete, select, text  # noqa: E402
 from sqlalchemy.engine import URL, make_url  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncConnection,
     AsyncEngine,
     async_sessionmaker,
     create_async_engine,
@@ -109,6 +111,50 @@ def _assert_cli_result(
         )
 
 
+async def _drop_reader_role_if_present(connection: AsyncConnection) -> None:
+    """Drop only the reader role created by this run if it survived rollback."""
+
+    result = await connection.execute(
+        text("SELECT 1 FROM pg_roles WHERE rolname = :role"),
+        {"role": _READER_ROLE},
+    )
+    if result.scalar_one_or_none() is None:
+        return
+    await connection.execute(text("DROP OWNED BY migration_password_preflight_reader"))
+    await connection.execute(text("DROP ROLE migration_password_preflight_reader"))
+
+
+async def _finalize_gate(
+    cleanup: Callable[[], Awaitable[None]],
+    dispose: Callable[[], Awaitable[None]],
+    primary_error: BaseException | None,
+) -> None:
+    """Attempt cleanup and disposal without masking the gate's primary error."""
+
+    secondary_error: BaseException | None = None
+    for operation_name, operation in (("cleanup", cleanup), ("disposal", dispose)):
+        try:
+            await operation()
+        except BaseException as error:
+            if secondary_error is None:
+                secondary_error = error
+            else:
+                secondary_error.add_note(
+                    f"engine {operation_name} also failed ({type(error).__name__})"
+                )
+
+    if secondary_error is None:
+        return
+    if primary_error is not None:
+        primary_error.add_note(
+            f"gate cleanup or disposal also failed ({type(secondary_error).__name__})"
+        )
+        for note in getattr(secondary_error, "__notes__", ()):
+            primary_error.add_note(note)
+        return
+    raise secondary_error
+
+
 def _run_cli(
     image_id: str, database_url: str, secret_key: str
 ) -> subprocess.CompletedProcess[str]:
@@ -145,9 +191,10 @@ async def _run_gate(admin_url: URL, image_id: str) -> None:
         host="127.0.0.1",
         port=5433,
     ).render_as_string(hide_password=True)
-    reader_created = False
+    reader_creation_attempted = False
     seeded_user_id: Any | None = None
     secret_key = secrets.token_hex(32)
+    primary_error: BaseException | None = None
 
     try:
         async with engine.begin() as connection:
@@ -157,7 +204,9 @@ async def _run_gate(admin_url: URL, image_id: str) -> None:
                     "LOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT"
                 )
             )
-            reader_created = True
+            # If a later statement aborts this transaction, cleanup checks
+            # pg_roles before trying to drop a role that no longer exists.
+            reader_creation_attempted = True
             await connection.execute(
                 text(
                     "GRANT CONNECT ON DATABASE test_migration TO migration_password_preflight_reader"
@@ -234,23 +283,22 @@ async def _run_gate(admin_url: URL, image_id: str) -> None:
             exit_code=0,
             stdout=_EMPTY_MESSAGE,
         )
+    except BaseException as error:
+        primary_error = error
+        raise
     finally:
-        try:
-            if seeded_user_id is not None or reader_created:
+
+        async def cleanup() -> None:
+            if seeded_user_id is not None or reader_creation_attempted:
                 async with engine.begin() as connection:
                     if seeded_user_id is not None:
                         await connection.execute(
                             delete(User).where(User.id == seeded_user_id)
                         )
-                    if reader_created:
-                        await connection.execute(
-                            text("DROP OWNED BY migration_password_preflight_reader")
-                        )
-                        await connection.execute(
-                            text("DROP ROLE migration_password_preflight_reader")
-                        )
-        finally:
-            await engine.dispose()
+                    if reader_creation_attempted:
+                        await _drop_reader_role_if_present(connection)
+
+        await _finalize_gate(cleanup, engine.dispose, primary_error)
 
 
 def main() -> int:
