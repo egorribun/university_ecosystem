@@ -720,11 +720,11 @@ func TestRoomRevocationSerializesInFlightPrivateWriteWithAuthorizationRefresh(t 
 		t.Fatal("write pump did not enter the blocked private write")
 	}
 	// The session is blocked inside WriteMessage. A failed TryLock proves that
-	// WritePump still owns the exact user/room stripe needed by revocation.
+	// WritePump still owns the exact user/room lock needed by revocation.
 	membershipLock := h.roomMembershipLock(user, room)
 	if membershipLock.TryLock() {
 		membershipLock.Unlock()
-		t.Fatal("write pump released the membership stripe during a private socket write")
+		t.Fatal("write pump released the membership lock during a private socket write")
 	}
 
 	evictionStarted := make(chan struct{})

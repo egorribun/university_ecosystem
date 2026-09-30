@@ -1168,12 +1168,12 @@ func (c *Client) WritePump() {
 		case msg, ok := <-c.Send:
 			var room string
 			var roomScoped bool
-			var membershipLock *sync.Mutex
+			var membershipLock *roomMembershipLock
 			if ok {
 				room, roomScoped = queuedFrameRoom(msg)
 				if roomScoped && c.Hub != nil {
-					// Match the lock order used by room revocation: membership stripe,
-					// then writeMu. Holding the stripe through the socket write makes
+					// Match the lock order used by room revocation: membership lock,
+					// then writeMu. Holding the key lock through the socket write makes
 					// that write linearize before the authoritative refresh, or makes
 					// it observe the revoked local membership and drop the frame.
 					membershipLock = c.Hub.roomMembershipLock(c.UserID, room)
@@ -1193,7 +1193,7 @@ func (c *Client) WritePump() {
 					}
 				}
 				c.writeMu.Unlock()
-				// A closed channel has no frame; the membership stripe is acquired only
+				// A closed channel has no frame; the membership lock is acquired only
 				// for an open-channel room frame above.
 				return
 			}

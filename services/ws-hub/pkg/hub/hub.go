@@ -56,6 +56,70 @@ type roomMembershipKey struct {
 	roomID string
 }
 
+type roomMembershipLockEntry struct {
+	mu         sync.Mutex
+	references int
+}
+
+type roomMembershipLockRegistry struct {
+	mu      sync.Mutex
+	entries map[roomMembershipKey]*roomMembershipLockEntry
+}
+
+type roomMembershipLock struct {
+	registry *roomMembershipLockRegistry
+	key      roomMembershipKey
+	entry    *roomMembershipLockEntry
+}
+
+func (r *roomMembershipLockRegistry) acquire(key roomMembershipKey) *roomMembershipLock {
+	r.mu.Lock()
+	if r.entries == nil {
+		r.entries = make(map[roomMembershipKey]*roomMembershipLockEntry)
+	}
+	entry := r.entries[key]
+	if entry == nil {
+		entry = &roomMembershipLockEntry{}
+		r.entries[key] = entry
+	}
+	entry.references++
+	r.mu.Unlock()
+
+	return &roomMembershipLock{registry: r, key: key, entry: entry}
+}
+
+func (l *roomMembershipLock) Lock() {
+	l.entry.mu.Lock()
+}
+
+// TryLock consumes the lock reference when the underlying lock is busy. A
+// failed TryLock must not be followed by Lock or Unlock on this handle.
+func (l *roomMembershipLock) TryLock() bool {
+	if !l.entry.mu.TryLock() {
+		l.release()
+		return false
+	}
+	return true
+}
+
+func (l *roomMembershipLock) Unlock() {
+	l.entry.mu.Unlock()
+	l.release()
+}
+
+func (l *roomMembershipLock) release() {
+	l.registry.mu.Lock()
+	defer l.registry.mu.Unlock()
+
+	if l.registry.entries[l.key] != l.entry {
+		return
+	}
+	l.entry.references--
+	if l.entry.references == 0 {
+		delete(l.registry.entries, l.key)
+	}
+}
+
 func (m *Message) replaySequence() uint64 {
 	if m == nil || m.MessageReplayMetadata == nil {
 		return 0
@@ -102,9 +166,9 @@ type Hub struct {
 	maxClients int
 	// broadcastWorkers is the size of the broadcast goroutine pool (PERF-W14-02).
 	broadcastWorkers int
-	// roomMembershipLocks serialize room authorization with revocation while
-	// keeping the lock table bounded for attacker-controlled join room strings.
-	roomMembershipLocks [256]sync.Mutex
+	// roomMembershipLocks serialize room authorization with revocation. Entries
+	// exist only while a caller is holding or waiting for the matching key.
+	roomMembershipLocks roomMembershipLockRegistry
 	// pendingRoomRevocations keep joins denied after an authorization refresh
 	// fails. The signed JetStream event remains unacked until the refresh works.
 	pendingRoomRevocationsMu sync.RWMutex
@@ -1287,22 +1351,8 @@ func (h *Hub) applyCacheInvalidation(
 	return true
 }
 
-func (h *Hub) roomMembershipLock(userID, roomID string) *sync.Mutex {
-	const (
-		fnvOffset = uint64(14695981039346656037)
-		fnvPrime  = uint64(1099511628211)
-	)
-	hash := fnvOffset
-	for i := 0; i < len(userID); i++ {
-		hash ^= uint64(userID[i])
-		hash *= fnvPrime
-	}
-	hash *= fnvPrime // separate the user and room components with a zero byte
-	for i := 0; i < len(roomID); i++ {
-		hash ^= uint64(roomID[i])
-		hash *= fnvPrime
-	}
-	return &h.roomMembershipLocks[hash%uint64(len(h.roomMembershipLocks))]
+func (h *Hub) roomMembershipLock(userID, roomID string) *roomMembershipLock {
+	return h.roomMembershipLocks.acquire(roomMembershipKey{userID: userID, roomID: roomID})
 }
 
 func (h *Hub) evictRoomMembership(ctx context.Context, userID, roomID string) error {

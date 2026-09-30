@@ -281,7 +281,7 @@ func TestClientWritePump_RoomWriteErrorReleasesMembershipLock(t *testing.T) {
 	}
 
 	lock := h.roomMembershipLock(userID, roomID)
-	require.True(t, lock.TryLock(), "write failure must release the room membership stripe")
+	require.True(t, lock.TryLock(), "write failure must release the room membership lock")
 	lock.Unlock()
 	require.Len(t, session.writes, 1)
 	assert.Equal(t, websocket.TextMessage, session.writes[0].messageType)
