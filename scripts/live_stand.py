@@ -92,8 +92,10 @@ VAPID_FILE = Path(".secrets") / "live-vapid.json"
 STAND_FILE = Path(".secrets") / "live-stand.json"
 PROJECT_PREFIX = "ue-live-"
 PROJECT_PATTERN = re.compile(r"^ue-live-[0-9a-f]{16}$")
-OWNER_SCHEMA_VERSION = 3
+OWNER_SCHEMA_VERSION = 4
+PREVIOUS_OWNER_SCHEMA_VERSION = 3
 LEGACY_OWNER_SCHEMA_VERSION = 2
+DAEMON_FINGERPRINT_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 COMPOSE_INSPECTION_PLACEHOLDER = "live-stand-inspection-placeholder"
 SEED_SCRIPTS = ("scripts/seed_demo_data.py", "scripts/seed_admin_data.py")
 LIVE_E2E_COMMAND = ("npm", "run", "test:e2e:live")
@@ -157,6 +159,7 @@ class StandOwner:
     project_name: str
     published_ports: tuple[tuple[str, int], ...]
     schema_version: int
+    daemon_fingerprint: str | None = None
 
 
 def _stand_base_url(published_ports: Mapping[str, int]) -> str:
@@ -338,6 +341,33 @@ def _owner_signature(payload: dict[str, object], key: bytes) -> str:
     return hmac.new(key, canonical.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
+def docker_daemon_fingerprint() -> str:
+    """Return a stable, non-secret fingerprint for the selected Docker daemon."""
+    try:
+        result = subprocess.run(
+            ["docker", "info", "--format", "{{.ID}}"],  # noqa: S607
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise StandError("cannot verify Docker daemon identity") from error
+    daemon_id = result.stdout.strip()
+    if not daemon_id:
+        raise StandError("cannot verify Docker daemon identity")
+    return hashlib.sha256(daemon_id.encode("utf-8")).hexdigest()
+
+
+def _require_owned_docker_daemon(owner: StandOwner) -> None:
+    if owner.daemon_fingerprint is None:
+        raise StandError(
+            "cannot verify Docker daemon ownership for this stand; refusing lifecycle command"
+        )
+    current_fingerprint = docker_daemon_fingerprint()
+    if not hmac.compare_digest(current_fingerprint, owner.daemon_fingerprint):
+        raise StandError("different Docker daemon detected; refusing lifecycle command")
+
+
 def _validate_published_ports(
     ports: Mapping[str, object], *, allow_privileged: bool = False
 ) -> tuple[tuple[str, int], ...]:
@@ -451,6 +481,7 @@ def create_stand_owner(
     if not expected_worktree.is_dir():
         raise StandError(f"stand worktree does not exist: {worktree}")
     _assert_worktree_paths_safe(worktree, (Path(".secrets"), STAND_FILE))
+    daemon_fingerprint = docker_daemon_fingerprint()
     secrets_dir = worktree / ".secrets"
     secrets_dir.mkdir(parents=True, exist_ok=True)
     marker = worktree / STAND_FILE
@@ -470,6 +501,7 @@ def create_stand_owner(
             published_ports if published_ports is not None else choose_published_ports()
         ),
         schema_version=OWNER_SCHEMA_VERSION,
+        daemon_fingerprint=daemon_fingerprint,
     )
     _validate_project_name(owner.project_name)
     payload = {
@@ -478,6 +510,7 @@ def create_stand_owner(
         "worktree": owner.worktree,
         "project_name": owner.project_name,
         "published_ports": dict(owner.published_ports),
+        "daemon_fingerprint": daemon_fingerprint,
     }
     marker_data = {
         **payload,
@@ -510,26 +543,46 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         raise StandError(f"invalid ownership metadata: {marker}")
     schema_version = data.get("version")
     legacy_keys = {"version", "repository", "worktree", "project_name", "signature"}
-    current_keys = legacy_keys | {"published_ports"}
+    previous_keys = legacy_keys | {"published_ports"}
+    current_keys = previous_keys | {"daemon_fingerprint"}
     if (
         not isinstance(schema_version, int)
         or isinstance(schema_version, bool)
         or (schema_version == LEGACY_OWNER_SCHEMA_VERSION and set(data) != legacy_keys)
+        or (
+            schema_version == PREVIOUS_OWNER_SCHEMA_VERSION
+            and set(data) != previous_keys
+        )
         or (schema_version == OWNER_SCHEMA_VERSION and set(data) != current_keys)
-        or schema_version not in {LEGACY_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}
+        or schema_version
+        not in {
+            LEGACY_OWNER_SCHEMA_VERSION,
+            PREVIOUS_OWNER_SCHEMA_VERSION,
+            OWNER_SCHEMA_VERSION,
+        }
         or not all(
             isinstance(data.get(key), str)
             for key in ("repository", "worktree", "project_name")
         )
     ):
         raise StandError(f"invalid ownership metadata: {marker}")
-    if schema_version == OWNER_SCHEMA_VERSION:
+    if schema_version in {PREVIOUS_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}:
         raw_ports = data["published_ports"]
         if not isinstance(raw_ports, dict):
             raise StandError(f"invalid port map in ownership metadata: {marker}")
         port_map = dict(_validate_published_ports(raw_ports))
     else:
         port_map = LEGACY_PUBLISHED_PORTS.copy()
+    daemon_fingerprint: str | None = None
+    if schema_version == OWNER_SCHEMA_VERSION:
+        raw_fingerprint = data["daemon_fingerprint"]
+        if not isinstance(
+            raw_fingerprint, str
+        ) or not DAEMON_FINGERPRINT_PATTERN.fullmatch(raw_fingerprint):
+            raise StandError(
+                f"invalid Docker daemon fingerprint in ownership metadata: {marker}"
+            )
+        daemon_fingerprint = raw_fingerprint
     try:
         marker_repository = Path(data["repository"]).resolve(strict=False)
         expected_repository = REPO_ROOT.resolve(strict=True)
@@ -548,8 +601,10 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         "worktree": data["worktree"],
         "project_name": project_name,
     }
-    if schema_version == OWNER_SCHEMA_VERSION:
+    if schema_version in {PREVIOUS_OWNER_SCHEMA_VERSION, OWNER_SCHEMA_VERSION}:
         payload["published_ports"] = port_map
+    if schema_version == OWNER_SCHEMA_VERSION:
+        payload["daemon_fingerprint"] = daemon_fingerprint
     signature = data["signature"]
     if not isinstance(signature, str) or not hmac.compare_digest(
         signature, _owner_signature(payload, _owner_signing_key(create=False))
@@ -561,6 +616,7 @@ def load_stand_owner(worktree: Path) -> StandOwner:
         project_name=project_name,
         published_ports=tuple(port_map.items()),
         schema_version=schema_version,
+        daemon_fingerprint=daemon_fingerprint,
     )
 
 
@@ -568,7 +624,7 @@ def verify_live_endpoints(base_url: str, mailpit_url: str) -> None:
     """Verify supplied URLs exactly match the signed live-stand port map."""
     try:
         owner = load_stand_owner(WORKTREE)
-        if owner.schema_version != OWNER_SCHEMA_VERSION:
+        if owner.schema_version == LEGACY_OWNER_SCHEMA_VERSION:
             raise StandError("ownership metadata does not sign a current port map")
         published = dict(owner.published_ports)
         expected_base_url = _stand_base_url(published)
@@ -597,13 +653,17 @@ def update_stand_owner_ports(
         project_name=current.project_name,
         published_ports=ports,
         schema_version=OWNER_SCHEMA_VERSION,
+        daemon_fingerprint=current.daemon_fingerprint,
     )
+    if updated.daemon_fingerprint is None:
+        raise StandError("cannot verify Docker daemon ownership before port map update")
     payload: dict[str, object] = {
         "version": OWNER_SCHEMA_VERSION,
         "repository": updated.repository,
         "worktree": updated.worktree,
         "project_name": updated.project_name,
         "published_ports": dict(updated.published_ports),
+        "daemon_fingerprint": updated.daemon_fingerprint,
     }
     marker_data = {
         **payload,
@@ -779,6 +839,7 @@ def _up_locked(ref: str) -> None:
             )
         existing_owner = load_stand_owner(WORKTREE)
         _assert_worktree_clean(WORKTREE)
+        _require_owned_docker_daemon(existing_owner)
         # Preflight a fresh map before stopping the previous run. The old map
         # may be in use by our own project, so this check cannot mistake it for
         # a conflict with another local service.
@@ -1323,6 +1384,7 @@ def _stop_locked() -> None:
     """Stop only this owned stand's containers, preserving all data."""
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
+    _require_owned_docker_daemon(owner)
     env = compose_control_environment(owner.project_name, dict(owner.published_ports))
     _run(
         compose_command("stop", project_name=owner.project_name), cwd=WORKTREE, env=env
@@ -1338,6 +1400,7 @@ def _teardown_locked() -> None:
     """Remove only the owned Compose project and volumes; keep local files."""
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
+    _require_owned_docker_daemon(owner)
     env = compose_control_environment(owner.project_name, dict(owner.published_ports))
     _run(
         compose_command(
