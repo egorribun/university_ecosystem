@@ -608,8 +608,7 @@ def _ensure_new_database(
             if exists:
                 raise BackupArtifactError("Restore target database already exists")
             # psycopg Identifier safely quotes the validated target identifier.
-            # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
-            connection.execute(
+            connection.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
                 sql.SQL("CREATE DATABASE {}").format(sql.Identifier(target_database))
             )
     except BackupArtifactError:

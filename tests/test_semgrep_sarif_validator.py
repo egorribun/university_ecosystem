@@ -136,8 +136,8 @@ def test_psycopg_database_identifier_suppression_matches_reviewed_policy(
             _result(
                 rule_id=rule_id,
                 path="scripts/backup_db.py",
-                start_line=612,
-                end_line=614,
+                start_line=611,
+                end_line=613,
                 suppressed=True,
             )
         ),
