@@ -309,6 +309,13 @@ async def verify_mfa_challenge(
         if active_session is None:
             await db.rollback()
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "MFA verification failed")
+        pending_revocations = []
+        if challenge.flow == "email_mfa_enablement":
+            pending_revocations = await mfa.revoke_sibling_sessions_for_factor_change(
+                db,
+                user_id=user.id,
+                current_session_id=active_session.id,
+            )
         result = await login_service.complete_step_up(
             user=user,
             session=active_session,
@@ -316,6 +323,7 @@ async def verify_mfa_challenge(
             method=payload.method,
         )
         await db.commit()
+        await mfa.publish_mfa_session_revocations(pending_revocations)
         await login_service.publish_completed_step_up(
             user=user,
             session=active_session,

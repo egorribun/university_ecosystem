@@ -5,8 +5,9 @@
 #
 #   .\start-docker.ps1 -Build -ExtraCompose docker-compose.live.yml
 #
-# The worktree's directory name becomes the Compose project, so volumes,
-# networks and generated secrets never touch the developer's own stack.
+# live_stand.py pins a unique, ownership-checked Compose project for each run,
+# so volumes and networks never touch another stack. Generated keys and the
+# ownership marker stay in this worktree's ignored .secrets directory.
 # The stand keeps the base stack's host ports (Caddy on 80/443 is the origin
 # the stack is configured for, the rest bind 127.0.0.1 and serve the
 # launcher's readiness probes), so it cannot run alongside the local stack;

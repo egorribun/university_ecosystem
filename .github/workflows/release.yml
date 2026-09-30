@@ -19,14 +19,6 @@ on:
         description: "Exact canonical image producer run attempt"
         required: true
         type: string
-      cwv-certification-run-id:
-        description: "Successful staging field-CWV certification workflow run ID"
-        required: true
-        type: string
-      cwv-certification-run-attempt:
-        description: "Exact staging field-CWV certification run attempt"
-        required: true
-        type: string
 
 permissions: read-all
 
@@ -136,82 +128,6 @@ jobs:
             --build-run-attempt "$BUILD_RUN_ATTEMPT" \
             --quality-run-id "$QUALITY_RUN_ID" \
             --github-output "$GITHUB_OUTPUT"
-
-      - name: Verify exact staging field certification
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_SHA: ${{ inputs.release-sha }}
-          CWV_RUN_ID: ${{ inputs.cwv-certification-run-id }}
-          CWV_RUN_ATTEMPT: ${{ inputs.cwv-certification-run-attempt }}
-        run: |
-          set -euo pipefail
-          [[ "$CWV_RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          [[ "$CWV_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
-          mkdir -p artifacts/cwv/provenance
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CWV_RUN_ID" \
-            > artifacts/cwv/provenance/cwv-run.json
-          jq --exit-status \
-            --arg repository "$GITHUB_REPOSITORY" \
-            --arg sha "$RELEASE_SHA" \
-            --argjson attempt "$CWV_RUN_ATTEMPT" \
-            '.repository.full_name == $repository and .head_sha == $sha and
-             .run_attempt == $attempt and .conclusion == "success" and
-             .event == "workflow_dispatch" and .head_branch == "main" and
-             .path == ".github/workflows/cwv-field-certification.yml"' \
-            artifacts/cwv/provenance/cwv-run.json >/dev/null
-          gh api --paginate --slurp \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "repos/$GITHUB_REPOSITORY/actions/runs/$CWV_RUN_ID/artifacts?per_page=100" \
-            > artifacts/cwv/provenance/artifact-pages.json
-          python scripts/quality/validate_release_artifact_evidence.py \
-            --pages artifacts/cwv/provenance/artifact-pages.json \
-            --expected-name "cwv-field-certificate-$RELEASE_SHA-attempt-$CWV_RUN_ATTEMPT"
-
-      - name: Download exact staging field certification
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: cwv-field-certificate-${{ inputs.release-sha }}-attempt-${{ inputs.cwv-certification-run-attempt }}
-          run-id: ${{ inputs.cwv-certification-run-id }}
-          github-token: ${{ github.token }}
-          path: artifacts/cwv
-
-      - name: Require field-certified canonical image manifest
-        env:
-          RELEASE_SHA: ${{ inputs.release-sha }}
-          FRONTEND_IMAGE_DIGEST: ${{ steps.manifest.outputs.frontend-digest }}
-          IMAGE_MANIFEST_SHA256: ${{ steps.manifest.outputs.manifest-sha256 }}
-          BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
-          BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
-        run: |
-          set -euo pipefail
-          (cd artifacts/cwv/certificate && sha256sum --check field-verdict.json.sha256)
-          (cd artifacts/cwv/deployment && sha256sum --check staging-deployment.json.sha256)
-          jq --exit-status \
-            --arg sha "$RELEASE_SHA" \
-            --arg digest "$FRONTEND_IMAGE_DIGEST" \
-            --arg manifest_sha256 "$IMAGE_MANIFEST_SHA256" \
-            --argjson build_run_id "$BUILD_RUN_ID" \
-            --argjson build_run_attempt "$BUILD_RUN_ATTEMPT" \
-            '.schema_version == 2 and .valid == true and
-             .environment == "staging" and .release_sha == $sha and
-             .frontend_image_digest == $digest and
-             .image_manifest_sha256 == $manifest_sha256 and
-             .image_build_run_id == $build_run_id and
-             .image_build_run_attempt == $build_run_attempt' \
-            artifacts/cwv/certificate/field-verdict.json >/dev/null
-          jq --exit-status \
-            --arg sha "$RELEASE_SHA" \
-            --arg digest "$FRONTEND_IMAGE_DIGEST" \
-            --arg manifest_sha256 "$IMAGE_MANIFEST_SHA256" \
-            --argjson build_run_id "$BUILD_RUN_ID" \
-            --argjson build_run_attempt "$BUILD_RUN_ATTEMPT" \
-            '.schema_version == 2 and .environment == "staging" and
-             .release_sha == $sha and .frontend_image_digest == $digest and
-             .image_manifest_sha256 == $manifest_sha256 and
-             .image_build_run_id == $build_run_id and
-             .image_build_run_attempt == $build_run_attempt' \
-            artifacts/cwv/deployment/staging-deployment.json >/dev/null
 
   publish:
     name: Publish Release

@@ -77,7 +77,7 @@ if exists {
 - **Path**: Frontend clients connect to `/ws/chat`; Caddy rewrites the request path to `/ws`.
 - **Ticket Validation**: WebSocket connections require a one-time ticket (`ott:ws:<ticket>`) issued by the backend and validated against Redis using `REDIS_PASSWORD`.
 - **Allowed Origins**: `ALLOWED_ORIGINS` must include `http://localhost` (port 80 Caddy) in development and local compose configurations.
-- **Message Types**: All incoming payload types must be validated against the whitelist map `allowedMessageTypes`.
+- **Message Types**: Client-to-hub frames are limited to `join` and `leave` and must be validated against `allowedMessageTypes`. Chat mutations are backend-owned REST/outbox operations; never relay an arbitrary client payload into the trusted `chat.*` event stream.
 
 ---
 

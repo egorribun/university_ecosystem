@@ -1337,6 +1337,35 @@ def test_external_workflow_images_use_the_audited_digests() -> None:
         assert not re.search(rf"{re.escape(tag)}(?!@sha256:)", combined)
 
 
+def test_precommit_semgrep_image_matches_the_immutable_ci_image() -> None:
+    config = yaml.safe_load(PRE_COMMIT_CONFIG.read_text(encoding="utf-8"))
+    hooks = [
+        hook
+        for repo in config["repos"]
+        for hook in repo.get("hooks", [])
+        if hook.get("id") == "semgrep-docker"
+    ]
+    assert len(hooks) == 1
+    hook = hooks[0]
+
+    ci_image = _workflow(WORKFLOWS / "reusable-security-audit.yml")["jobs"]["semgrep"][
+        "container"
+    ]["image"]
+    assert ci_image == EXPECTED_EXTERNAL_IMAGES["semgrep/semgrep:1.113.0"]
+
+    entry_tokens = shlex.split(hook.get("entry", ""))
+    local_images = [
+        token for token in entry_tokens if token.startswith("semgrep/semgrep:")
+    ]
+    assert local_images == [ci_image]
+    assert hook["args"] == ["--config", "auto", "--error", "--oss-only"]
+    assert hook["exclude"] == (
+        r"(^|/)tests/|^alembic/|^native/rust_ext/fuzz/|_test\.go$|"
+        r"^frontend/coverage-[^/]+/"
+    )
+    assert hook["require_serial"] is True
+
+
 def test_go_and_compose_s3_cells_use_the_audited_seaweedfs_image() -> None:
     image = (
         "ghcr.io/chrislusf/seaweedfs:4.47@sha256:"

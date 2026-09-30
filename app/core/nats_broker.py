@@ -116,6 +116,8 @@ class NatsTaskBroker:
         self._notifications_events_subject = "notifications.*"
         self._outbox_events_stream_name = "OUTBOX_EVENTS"
         self._outbox_events_subject = "outbox.*"
+        self._cache_invalidations_stream_name = "CACHE_INVALIDATIONS"
+        self._cache_invalidations_subject = "cache.invalidate"
 
     @property
     def is_connected(self) -> bool:
@@ -155,7 +157,7 @@ class NatsTaskBroker:
             )
             self._js = self._nc.jetstream()
 
-            # Provision 5 file-backed streams with 7-day retention policy (604,800s)
+            # Provision file-backed streams with 7-day retention policy (604,800s)
             streams = [
                 StreamConfig(
                     name=self._stream_name,
@@ -192,6 +194,13 @@ class NatsTaskBroker:
                     retention=RetentionPolicy.LIMITS,
                     max_age=_SEVEN_DAYS_SECONDS,
                 ),
+                StreamConfig(
+                    name=self._cache_invalidations_stream_name,
+                    subjects=[self._cache_invalidations_subject],
+                    storage=StorageType.FILE,
+                    retention=RetentionPolicy.LIMITS,
+                    max_age=_SEVEN_DAYS_SECONDS,
+                ),
             ]
 
             for stream_cfg in streams:
@@ -211,7 +220,7 @@ class NatsTaskBroker:
                     )
 
             _logger.info(
-                "Connected to NATS JetStream (5 file-backed streams provisioned)"
+                "Connected to NATS JetStream (6 file-backed streams provisioned)"
             )
         except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises (reviewed TD-27-04)
             _logger.error("Failed to connect to NATS: %s", exc)

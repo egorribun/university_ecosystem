@@ -133,7 +133,7 @@ func (s *mockNatsServer) handlePub(c net.Conn, reader *bufio.Reader, fields []st
 	return true
 }
 
-func TestSubscribeToNATS_SuccessAndStop(t *testing.T) {
+func TestSubscribeToNATS_CoreModeFailsWithoutDurableRevocationStream(t *testing.T) {
 	server := newMockNatsServer(t)
 	nc, err := nats.Connect(server.Addr())
 	require.NoError(t, err)
@@ -141,20 +141,24 @@ func TestSubscribeToNATS_SuccessAndStop(t *testing.T) {
 
 	h := setupTestHub()
 	h.Nats = nc
-	// Core NATS remains an explicit operator-selected mode; replay-capable
-	// JetStream startup no longer downgrades silently when prerequisites fail.
+	// Core NATS remains available for live chat delivery, but room revocation
+	// events require JetStream retention so an offline replica cannot miss them.
 	h.enableJetStream = false
+	// Exercise the production durable-subscription path rather than the default
+	// unit-test seam, and verify that a Core-only server fails closed.
+	h.subscribeCacheInvalidations = nil
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	assert.NotPanics(t, func() {
-		require.NoError(t, h.SubscribeToNATS(ctx))
+		require.Error(t, h.SubscribeToNATS(ctx))
 	})
 
 	assert.NotEmpty(t, h.subs)
 
-	// Test Stop() draining subscriptions successfully
+	// Partial Core subscriptions are still drained after the required durable
+	// invalidation subscription fails closed.
 	assert.NotPanics(t, func() {
 		h.Stop()
 	})
@@ -168,11 +172,12 @@ func TestStop_DrainErrorLogging(t *testing.T) {
 
 	h := setupTestHub()
 	h.Nats = nc
+	h.subscribeCacheInvalidations = nil // this case requires the real durable subscription to fail without a stream
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	require.NoError(t, h.SubscribeToNATS(ctx))
+	require.Error(t, h.SubscribeToNATS(ctx))
 
 	// Close NATS connection before Stop to cause Drain to return error
 	nc.Close()
@@ -243,4 +248,47 @@ func TestClient_HandleMessage_NatsPublish(t *testing.T) {
 	assert.NotPanics(t, func() {
 		c.handleMessage(msg, data)
 	})
+}
+
+func TestClient_ReadPumpRejectsClientMessageRelay(t *testing.T) {
+	server := newMockNatsServer(t)
+	nc, err := nats.Connect(server.Addr())
+	require.NoError(t, err)
+	t.Cleanup(nc.Close)
+
+	h := setupTestHub()
+	h.Nats = nc
+	h.sessionRevocationCheck = func(context.Context, string) error { return nil }
+
+	sub, err := nc.SubscribeSync("chat.room-1")
+	require.NoError(t, err)
+	require.NoError(t, nc.Flush())
+
+	srv, cli := newConnPair(t)
+	c := newClientOn(h, srv, "c-client-relay", "u-client-relay")
+	c.Rooms["room-1"] = true
+
+	processed := make(chan bool, 1)
+	go func() { processed <- c.processNextMessage(c.ctx) }()
+	require.NoError(t, cli.WriteJSON(map[string]any{
+		"type": "message",
+		"room": "room-1",
+		"payload": map[string]any{
+			"type":    "new_message",
+			"chat_id": "room-1",
+			"message": map[string]any{
+				"sender_id": "victim-user",
+				"text":      "forged sender payload",
+			},
+		},
+	}))
+	select {
+	case keepReading := <-processed:
+		require.True(t, keepReading)
+	case <-time.After(time.Second):
+		t.Fatal("client frame processing did not finish")
+	}
+
+	_, err = sub.NextMsg(100 * time.Millisecond)
+	assert.ErrorIs(t, err, nats.ErrTimeout, "untrusted client frames must not publish server chat events")
 }

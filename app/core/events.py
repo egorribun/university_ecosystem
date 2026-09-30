@@ -580,6 +580,34 @@ class MessageSent(DomainEvent):
 
 @register_domain_event
 @dataclass
+class ChatParticipantRemoved(DomainEvent):
+    """Fired when a user is removed from a group chat.
+
+    The event is stored in the same transaction as the membership deletion so
+    the ws-hub room eviction can be retried independently after the commit.
+    """
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    chat_id: UUID | None = None
+    user_id: UUID | None = None
+
+    EVENT_TYPE: ClassVar[str] = "chat.participant_removed"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ChatParticipantRemoved:
+        """Deserialize only the event's declared fields."""
+        data.pop("_schema_version", 1)
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
 class ChatDeleted(DomainEvent):
     """Fired when a chat is permanently deleted.
 
@@ -1097,6 +1125,7 @@ event_bus = EventBus()
 
 __all__ = [
     "ChatDeleted",
+    "ChatParticipantRemoved",
     "DomainEvent",
     "EventBus",
     "EventCreated",

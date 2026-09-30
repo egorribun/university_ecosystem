@@ -113,6 +113,21 @@ class TestDomainEventFromDict:
         event = ChatDeleted.from_dict(data)
         assert event.chat_id is not None
 
+    def test_chat_participant_removed_from_dict(self):
+        from app.core.events import ChatParticipantRemoved
+
+        chat_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+        event = ChatParticipantRemoved.from_dict(
+            {
+                "chat_id": str(chat_id),
+                "user_id": str(user_id),
+                "unexpected": "ignored",
+            }
+        )
+        assert event.chat_id == str(chat_id)
+        assert event.user_id == str(user_id)
+
 
 # ===========================================================================
 # CSRF — signing and verification
@@ -428,7 +443,9 @@ class TestEventRegistry:
         assert cls is MessageSent
 
     def test_register_domain_event_adds_both_keys(self):
-        from app.core.events import _EVENT_REGISTRY, ChatDeleted
+        from app.core.events import _EVENT_REGISTRY, ChatDeleted, ChatParticipantRemoved
 
         assert "ChatDeleted" in _EVENT_REGISTRY
         assert ChatDeleted.EVENT_TYPE in _EVENT_REGISTRY
+        assert "ChatParticipantRemoved" in _EVENT_REGISTRY
+        assert ChatParticipantRemoved.EVENT_TYPE in _EVENT_REGISTRY

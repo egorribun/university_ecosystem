@@ -189,7 +189,10 @@ func TestHubNATSHandlers_RecoverPanicsAndContainHMACFailures(t *testing.T) {
 
 	hubJSONUnmarshalFunc = json.Unmarshal
 	hubJSONMarshalFunc = func(any) ([]byte, error) { return nil, errors.New("synthetic marshal failure") }
-	cachePayload := signedInvalidationPayload(t, secret, invalidationData{RoomID: "room", UserID: "user"})
+	cachePayload := signedInvalidationPayload(t, secret, invalidationData{
+		RoomID: "22222222-2222-2222-2222-222222222222",
+		UserID: "11111111-1111-1111-1111-111111111111",
+	})
 	controlPayload := signedControlPayload(t, secret, testControlData{Action: "refresh", UserID: "user"})
 	h.handleCacheInvalidation(ctx)(&nats.Msg{Subject: "cache.invalidate", Data: cachePayload})
 	h.handleControlMessage(ctx)(&nats.Msg{Subject: "ws_hub.control", Data: controlPayload})
@@ -264,7 +267,7 @@ func TestSubscribeToNATS_CoreSubscriptionFailuresAndRotationCallback(t *testing.
 	require.NoError(t, err)
 	t.Cleanup(nc.Close)
 
-	for _, subject := range []string{"notifications.*", "cache.invalidate", "ws_hub.control"} {
+	for _, subject := range []string{"notifications.*", "ws_hub.control"} {
 		t.Run(subject, func(t *testing.T) {
 			oldSubscribe := coreNATSSubscribeFunc
 			t.Cleanup(func() { coreNATSSubscribeFunc = oldSubscribe })

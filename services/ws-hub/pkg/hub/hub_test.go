@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,6 +45,9 @@ func setupTestHub() *Hub {
 	// this fixture replaces the production durable Redis checker.
 	h := trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 	h.sessionRevocationCheck = func(context.Context, string) error { return nil }
+	h.subscribeCacheInvalidations = func(nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error) {
+		return nil, nil
+	}
 	return h
 }
 

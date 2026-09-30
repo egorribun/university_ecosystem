@@ -168,8 +168,6 @@ W203 read receipts → W204 live bridge → W205 new_message + edit/delete → W
 
 **W211+ candidates:** **G4** group UI (create-group modal, member-management panel, group name/avatar rendering, the "Seen by N" group marker consuming `read_receipts`, name-fallback in `MessengerContext`/`useMessengerController`); then Track **A** (attachment perfection), **S** (pgvector message search), **F** (forwarding). Housekeeping: fix the no-op "Verify OpenAPI Types" gate's stale diff path. Prod ws-hub + NATS deploy (closes `live-in-DEV-only` across W203-W210) remains user-deferred.
 
-Memory references (`.claude` profile): `memory/wave210_backlog.md`, `memory/wave211_opening_prompt.md`.
-
 ## Later disposition (2026-09-16)
 
 This report remains historical evidence for the recorded Wave 210 snapshot. The

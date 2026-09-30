@@ -257,7 +257,11 @@ def test_configure_event_handlers_registers_global_subscriptions():
         event_handlers.configure_event_handlers()
 
     subscribe_all.assert_called_once_with(event_handlers.log_all_events)
-    assert subscribe.call_count == 22
+    assert subscribe.call_count == 23
+    subscribe.assert_any_call(
+        "chat.participant_removed",
+        event_handlers.handle_chat_participant_removed,
+    )
     subscribe.assert_any_call(
         "SCHEDULE_UPDATED", event_handlers.handle_schedule_changed
     )
@@ -302,3 +306,43 @@ async def test_audit_only_producers_have_explicit_durable_acknowledgement(
                 metadata_={},
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_outbox_retries_participant_eviction_publish_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.events import ChatParticipantRemoved, EventBus
+    from app.models.domain_events import StoredEvent
+    from app.workers import outbox as outbox_module
+
+    bus = EventBus()
+    monkeypatch.setattr(event_handlers, "event_bus", bus)
+    monkeypatch.setattr(outbox_module, "event_bus", bus)
+    event_handlers.configure_event_handlers()
+    worker = outbox_module.OutboxWorker()
+    chat_id = uuid4()
+    user_id = uuid4()
+    stored_event = StoredEvent(
+        id=uuid4(),
+        event_type=ChatParticipantRemoved.EVENT_TYPE,
+        aggregate_type="Chat",
+        aggregate_id=str(chat_id),
+        payload={"chat_id": str(chat_id), "user_id": str(user_id)},
+        metadata_={},
+    )
+    mock_publish = AsyncMock(side_effect=ConnectionError("NATS unavailable"))
+    monkeypatch.setattr(
+        "app.services.ws_hub_client.invalidate_ws_hub_cache", mock_publish
+    )
+
+    with pytest.raises(RuntimeError, match="Durable event handler failed"):
+        await worker._dispatch_event(stored_event)
+
+    mock_publish.assert_awaited_once_with(
+        str(user_id),
+        str(chat_id),
+        evict_room=True,
+        event_id=str(stored_event.id),
+        raise_on_failure=True,
+    )

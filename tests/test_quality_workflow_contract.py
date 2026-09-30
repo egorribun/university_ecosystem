@@ -7702,9 +7702,11 @@ def test_canonical_producer_matrix_uses_repository_root_docker_build_context() -
     )
     build_args = str(build["with"]["build-args"])
     assert "VITE_APP_RELEASE={0}" in build_args
-    assert "VITE_ENABLE_WEB_VITALS=true" in build_args
-    assert "VITE_CWV_TRUSTED_RUM=true" in build_args
+    assert "VITE_ENABLE_WEB_VITALS=false" in build_args
+    assert "VITE_CWV_TRUSTED_RUM=false" in build_args
     assert "VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv" in build_args
+    assert "VITE_ENABLE_WEB_VITALS=true" not in build_args
+    assert "VITE_CWV_TRUSTED_RUM=true" not in build_args
     labels = str(build["with"]["labels"]).splitlines()
     assert labels == [
         "org.opencontainers.image.source=https://github.com/${{ github.repository }}",

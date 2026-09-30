@@ -75,8 +75,10 @@ Compose path. No runnable Compose file references a MinIO image.
   MinIO source tag (AGPL-3.0), used only for the migration.
 - Direct `docker compose ... up` bypasses the guard; the launcher and wrappers
   are the supported entry points, as before.
-- The live stand's storage volume becomes `ue-live_seaweedfs_data`; the
-  earlier `ue-live_live-seaweedfs-data` holds only disposable stand data.
+- The live stand inherits the full stack's project-scoped `seaweedfs_data`
+  volume. Its unique run-owned project is `ue-live-<16 hex>`, so its volume is
+  `<run-project>_seaweedfs_data`; the former fixed `ue-live` project name is
+  not the current owner identity.
 - Storage has no metrics in Prometheus. SeaweedFS metrics are an open
   follow-up: `weed mini` with `-metricsPort`/`-s3.metricsPort` stopped
   serving S3 on 9000 in a first attempt and needs a separate check.

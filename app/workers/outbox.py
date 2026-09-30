@@ -19,11 +19,16 @@ if TYPE_CHECKING:
 import asyncpg
 from opentelemetry import trace
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 
 from app.core.config import settings
 from app.core.database import async_session
-from app.core.events import DurableEventDeferred, EventMetadata, event_bus
+from app.core.events import (
+    ChatParticipantRemoved,
+    DurableEventDeferred,
+    EventMetadata,
+    event_bus,
+)
 from app.models.domain_events import StoredEvent
 
 logger = get_logger(__name__)
@@ -111,6 +116,7 @@ class OutboxWorker:
         self.heartbeat_interval = heartbeat_interval
         self._is_running = False
         self._wakeup_event = asyncio.Event()
+        self._prefer_membership_retry_next = False
 
     async def run_forever(self) -> None:
         self._is_running = True
@@ -211,20 +217,108 @@ class OutboxWorker:
                 # sequence_number / created_at), so events for the same aggregate
                 # are never processed out of order by parallel workers.
                 # Falls back to the simple created_at ordering for SQLite (CI).
+                membership_retry = and_(
+                    StoredEvent.processed_at.is_(None),
+                    StoredEvent.event_type == ChatParticipantRemoved.EVENT_TYPE,
+                    StoredEvent.error_count > 0,
+                )
+                normal_pending = and_(
+                    StoredEvent.processed_at.is_(None),
+                    StoredEvent.error_count < self.max_retries,
+                    or_(
+                        StoredEvent.event_type != ChatParticipantRemoved.EVENT_TYPE,
+                        StoredEvent.error_count == 0,
+                    ),
+                )
+
+                retry_first = False
+                if self.batch_size <= 1:
+                    retry_first = (
+                        self.batch_size == 1 and self._prefer_membership_retry_next
+                    )
+                    sort_priority = case(
+                        (
+                            membership_retry,
+                            0 if retry_first else 1,
+                        ),
+                        else_=1 if retry_first else 0,
+                    )
+                else:
+                    # Select one retry candidate ahead of ordinary work, then
+                    # let the remaining batch slots retain the normal causal
+                    # ordering. The scalar subquery locks its candidate with
+                    # SKIP LOCKED so another worker can claim a different row.
+                    retry_candidate_id = (
+                        select(StoredEvent.id)
+                        .where(membership_retry)
+                        .order_by(
+                            StoredEvent.error_count,
+                            StoredEvent.created_at,
+                            StoredEvent.id,
+                        )
+                        .limit(1)
+                        .with_for_update(skip_locked=True)
+                        .scalar_subquery()
+                    )
+                    sort_priority = case(
+                        (
+                            and_(
+                                membership_retry,
+                                StoredEvent.id == retry_candidate_id,
+                            ),
+                            0,
+                        ),
+                        (normal_pending, 1),
+                        else_=2,
+                    )
+
+                membership_retry_pending = (
+                    select(StoredEvent.id).where(membership_retry).limit(1).exists()
+                )
                 stmt = (
-                    select(StoredEvent)
-                    .where(StoredEvent.processed_at.is_(None))
-                    .where(StoredEvent.error_count < self.max_retries)
+                    select(
+                        StoredEvent,
+                        membership_retry_pending.label("membership_retry_pending"),
+                    )
+                    if self.batch_size == 1
+                    else select(StoredEvent)
+                )
+                stmt = (
+                    stmt.where(or_(membership_retry, normal_pending))
                     .order_by(
+                        sort_priority,
                         StoredEvent.aggregate_id_uuid,
                         StoredEvent.sequence_number,
                         StoredEvent.created_at,
+                        StoredEvent.id,
                     )
                     .limit(self.batch_size)
                     .with_for_update(skip_locked=True)
                 )
                 result = await db.execute(stmt)
-                events = result.scalars().all()
+                if self.batch_size == 1:
+                    selected_rows = result.all()
+                    events = [row[0] for row in selected_rows]
+                    retry_was_pending = bool(selected_rows and selected_rows[0][1])
+                else:
+                    events = result.scalars().all()
+
+                if self.batch_size == 1 and events:
+                    selected_membership = (
+                        events[0].event_type == ChatParticipantRemoved.EVENT_TYPE
+                    )
+                    selected_retry = selected_membership and events[0].error_count > 0
+                    if selected_retry:
+                        self._prefer_membership_retry_next = False
+                    elif selected_membership:
+                        # Let one fresh event run before retrying a just-failed
+                        # membership event. If an older retry was already
+                        # waiting when this fresh membership event was chosen,
+                        # give that retry the next singleton slot instead of
+                        # letting fresh revocations starve it indefinitely.
+                        self._prefer_membership_retry_next = retry_was_pending
+                    else:
+                        self._prefer_membership_retry_next = True
 
                 # MOD-04: Update pending gauge once per batch cycle (cheap COUNT).
                 pending_count_result = await db.execute(
@@ -264,10 +358,16 @@ class OutboxWorker:
                         )
                         # Store first 500 chars of error for audit trail
                         se.last_error = last_error[:500]
+                        retry_until_published = (
+                            se.event_type == ChatParticipantRemoved.EVENT_TYPE
+                        )
                         # MOD-08: Move to DLQ after max_retries instead of
-                        # silently abandoning the event.
-                        if isinstance(exc, PermanentOutboxError) or (
-                            se.error_count >= self.max_retries
+                        # silently abandoning the event. Membership revocation
+                        # is security-critical: keep it pending until its durable
+                        # JetStream publish is confirmed, even beyond this limit.
+                        if not retry_until_published and (
+                            isinstance(exc, PermanentOutboxError)
+                            or se.error_count >= self.max_retries
                         ):
                             await self._move_to_dlq(db, se, last_error)
                             # MOD-04: DLQ counter (also tracked in _move_to_dlq log)
@@ -285,6 +385,11 @@ class OutboxWorker:
                                     "error_count": se.error_count,
                                 },
                             )
+                            if retry_until_published:
+                                # Make run_forever wait for its normal polling
+                                # interval after a failed revoke attempt, even
+                                # when the batch was full, rather than hot-loop.
+                                deferred_count += 1
                             OUTBOX_EVENTS_PROCESSED.labels(
                                 event_type=se.event_type, status="failed"
                             ).inc()

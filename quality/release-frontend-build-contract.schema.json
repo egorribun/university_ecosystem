@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "University Ecosystem canonical MVP frontend build contract",
+  "description": "The release image records its release SHA and the disabled MVP field-CWV flags. The endpoint may remain configured, but collection stays off.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "VITE_APP_RELEASE",
+    "VITE_ENABLE_WEB_VITALS",
+    "VITE_CWV_TRUSTED_RUM",
+    "VITE_WEB_VITALS_ENDPOINT"
+  ],
+  "properties": {
+    "VITE_APP_RELEASE": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "VITE_ENABLE_WEB_VITALS": {
+      "const": "false"
+    },
+    "VITE_CWV_TRUSTED_RUM": {
+      "const": "false"
+    },
+    "VITE_WEB_VITALS_ENDPOINT": {
+      "const": "/api/v1/cwv"
+    }
+  }
+}

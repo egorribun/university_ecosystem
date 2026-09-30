@@ -26,7 +26,11 @@ if TYPE_CHECKING:
 import app.models as models
 from app.api.validation import raise_validation_error
 from app.auth.constants import MFA_METHOD_EMAIL_OTP
-from app.auth.mfa.lifecycle import refresh_user_mfa_preferences
+from app.auth.mfa.lifecycle import (
+    collect_mfa_session_revocations,
+    publish_mfa_session_revocations,
+    refresh_user_mfa_preferences,
+)
 from app.auth.security import (
     get_password_hash,
     validate_password_hibp,
@@ -537,7 +541,13 @@ class AuthService:
         )
 
         async with self.uow:
+            pending_revocations = await collect_mfa_session_revocations(
+                self.auth_repo.db,
+                user_id=db_user.id,
+                current_session_id=None,
+            )
             await self.uow.commit()
+        await publish_mfa_session_revocations(pending_revocations)
         await ensure_mfa_relationships_loaded(self.auth_repo.db, db_user)
         await attach_pending_email(self.auth_repo.db, db_user)
 

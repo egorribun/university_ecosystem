@@ -7,6 +7,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "quality" / "aggregate_release_image_evidence.py"
@@ -27,6 +28,12 @@ QUALITY_RUN_ATTEMPT = 1
 REPOSITORY = "egorribun/university_ecosystem"
 QUALITY_CONTRACT = ROOT / "quality" / "quality-contract.json"
 CHECK_POLICY = ROOT / "quality" / "release-required-checks.json"
+EXPECTED_FRONTEND_BUILD_CONTRACT = {
+    "VITE_APP_RELEASE": SHA,
+    "VITE_ENABLE_WEB_VITALS": "false",
+    "VITE_CWV_TRUSTED_RUM": "false",
+    "VITE_WEB_VITALS_ENDPOINT": "/api/v1/cwv",
+}
 
 
 def _load_script() -> ModuleType:
@@ -216,6 +223,7 @@ def test_aggregator_requires_exact_unique_six_image_digest_inventory(
     )
     assert len({item["digest"] for item in manifest["images"]}) == 6
     assert manifest["schema_version"] == 2
+    assert manifest["frontend_build_contract"] == EXPECTED_FRONTEND_BUILD_CONTRACT
     assert manifest["builder"] == {
         "workflow_path": ".github/workflows/build-release-images.yml",
         "workflow_ref": "egorribun/university_ecosystem/.github/workflows/build-release-images.yml@refs/heads/main",
@@ -265,6 +273,7 @@ def test_consumer_verifier_emits_only_exact_canonical_digests(tmp_path: Path) ->
     certification = tmp_path / "certification.json"
     certification.write_text('{"commit_sha":"' + SHA + '"}\n', encoding="utf-8")
     manifest = _aggregate(aggregator, evidence_dir, certification)
+    assert manifest["frontend_build_contract"] == EXPECTED_FRONTEND_BUILD_CONTRACT
 
     outputs = verifier.verify_manifest(
         manifest,
@@ -283,6 +292,21 @@ def test_consumer_verifier_emits_only_exact_canonical_digests(tmp_path: Path) ->
         "gateway-digest",
         "file-processor-digest",
     }
+    for field in ("VITE_ENABLE_WEB_VITALS", "VITE_CWV_TRUSTED_RUM"):
+        tampered_contract = {
+            **manifest["frontend_build_contract"],
+            field: "true",
+        }
+        with pytest.raises(ValueError, match="frontend build contract"):
+            verifier.verify_manifest(
+                {**manifest, "frontend_build_contract": tampered_contract},
+                expected_repository="egorribun/university_ecosystem",
+                expected_sha=SHA,
+                expected_build_run_id=BUILD_RUN_ID,
+                expected_build_run_attempt=BUILD_RUN_ATTEMPT,
+                expected_quality_run_id=QUALITY_RUN_ID,
+            )
+
     tampered = dict(manifest)
     tampered["builder"] = {**manifest["builder"], "run_attempt": 3}
     with pytest.raises(ValueError, match="builder provenance"):
@@ -294,3 +318,15 @@ def test_consumer_verifier_emits_only_exact_canonical_digests(tmp_path: Path) ->
             expected_build_run_attempt=BUILD_RUN_ATTEMPT,
             expected_quality_run_id=QUALITY_RUN_ID,
         )
+
+
+def test_frontend_build_contract_schema_fails_closed_on_field_collection() -> None:
+    schema_path = ROOT / "quality" / "release-frontend-build-contract.schema.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+
+    assert list(validator.iter_errors(EXPECTED_FRONTEND_BUILD_CONTRACT)) == []
+    for field in ("VITE_ENABLE_WEB_VITALS", "VITE_CWV_TRUSTED_RUM"):
+        enabled_contract = {**EXPECTED_FRONTEND_BUILD_CONTRACT, field: "true"}
+        assert list(validator.iter_errors(enabled_contract))

@@ -135,11 +135,10 @@ All contributions must strictly comply with `quality/quality-contract.json`:
 
 ---
 
-## 5. Bypass Policy
+## 5. Merge Policy
 
-GitHub admin bypass on the main-branch ruleset is intentionally left enabled for this single-maintainer repository. The accepted admin bypass risk is that a false-positive gate or third-party outage can be bypassed to avoid a deadlock.
-- Use `scripts/merge-as-admin.ps1 -PrNumber <n> [-SquashTitle <title>]` for such a merge: it temporarily disables the repository ruleset and the classic branch protection on `main`, squash-merges the PR, and immediately re-enables both guards (the `egorribun` branch is never deleted).
-- Any bypass merge **must** record an explicit bypass reason in the PR description or merge commit message.
+- Use the ordinary pull-request flow and required checks for changes to `main`.
+- Admin bypass, force-push, and changes to branch protection are outside the approved MVP release workflow. Do not invoke `scripts/merge-as-admin.ps1` to work around a failed or unavailable check; diagnose the gate or wait for the external service to recover.
 
 ---
 
@@ -196,4 +195,4 @@ The developer harness defines 5 specialized subagents configured in `.agents/sub
 
 ## 9. Audit Trail & Documentation Index
 
-The canonical audit index, including the current reference set and the archive (`docs/audits/archive/`), is [`docs/audits/INDEX.md`](docs/audits/INDEX.md). The canonical documentation index is [`docs/README.md`](docs/README.md).
+The current documentation and audit-retention policy are indexed in [`docs/README.md`](docs/README.md) and [`docs/audits/INDEX.md`](docs/audits/INDEX.md). Legacy archives are being reconciled against the active MVP plan; transfer applicable requirements before removing archived files from the working tree. Preserve Git history and the verified rescue bundle; do not add session logs or superseded snapshots to the current indexes.

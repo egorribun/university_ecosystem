@@ -51,6 +51,11 @@ type Message struct {
 	*MessageReplayMetadata
 }
 
+type roomMembershipKey struct {
+	userID string
+	roomID string
+}
+
 func (m *Message) replaySequence() uint64 {
 	if m == nil || m.MessageReplayMetadata == nil {
 		return 0
@@ -97,6 +102,16 @@ type Hub struct {
 	maxClients int
 	// broadcastWorkers is the size of the broadcast goroutine pool (PERF-W14-02).
 	broadcastWorkers int
+	// roomMembershipLocks serialize room authorization with revocation while
+	// keeping the lock table bounded for attacker-controlled join room strings.
+	roomMembershipLocks [256]sync.Mutex
+	// pendingRoomRevocations keep joins denied after an authorization refresh
+	// fails. The signed JetStream event remains unacked until the refresh works.
+	pendingRoomRevocationsMu sync.RWMutex
+	pendingRoomRevocations   map[roomMembershipKey]struct{}
+	// subscribeCacheInvalidations is a package-test seam; production leaves it
+	// nil so revocations always use the durable JetStream stream below.
+	subscribeCacheInvalidations func(nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error)
 	// internalSecret is the shared secret for local HMAC validation.
 	internalSecret string
 	// msgLimiters is a per-client token-bucket map that limits NATS publish rate.
@@ -766,6 +781,15 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 }
 
 func (h *Hub) deliverBroadcastRecipient(ctx context.Context, msg *Message, data []byte, recipient recipient) {
+	if msg != nil && msg.Room != "" {
+		lock := h.roomMembershipLock(recipient.client.UserID, msg.Room)
+		lock.Lock()
+		defer lock.Unlock()
+		if !h.isRoomMember(msg.Room, recipient.client) {
+			return
+		}
+	}
+
 	enqueueResult := recipient.client.enqueueRoomBroadcast(msg, data)
 	if enqueueResult == roomEnqueueDelivered {
 		MessagesDeliveredTotal.Inc()
@@ -786,6 +810,13 @@ func (h *Hub) deliverBroadcastRecipient(ctx context.Context, msg *Message, data 
 		h.Logger.WarnContext(ctx, "Client buffer full or closed, evicting", "id", recipient.client.ID)
 	}
 	h.scheduleClientEviction(recipient.client)
+}
+
+func (h *Hub) isRoomMember(room string, client *Client) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	_, ok := h.Rooms[room][client]
+	return ok
 }
 
 func (h *Hub) scheduleClientEviction(client *Client) {
@@ -825,16 +856,16 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	var err error
 	h.chatReplayAvailable.Store(false)
 	h.chatStreamIncarnation = ""
+	if h.js == nil {
+		h.js, err = jetStreamContextFunc(h.Nats)
+		if err != nil {
+			return fmt.Errorf("initialize JetStream for durable cache invalidations: %w", err)
+		}
+	}
 
 	if h.enableJetStream {
 		if h.internalSecret == "" {
 			return fmt.Errorf("secure chat replay requires a non-empty signing secret")
-		}
-		if h.js == nil {
-			h.js, err = jetStreamContextFunc(h.Nats)
-			if err != nil {
-				return fmt.Errorf("initialize JetStream context: %w", err)
-			}
 		}
 		streamInfo, infoErr := h.js.StreamInfo(h.streamChat)
 		if infoErr != nil {
@@ -877,12 +908,24 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	}
 	h.subs = append(h.subs, chatSub, notifSub)
 
-	invSub, err := coreNATSSubscribeFunc(h.Nats, "cache.invalidate", h.handleCacheInvalidation(appCtx))
+	// Membership revocations are published through the backend transactional
+	// outbox and must reach every replica after downtime. Keep this subscription
+	// durable even when Core NATS is selected for chat delivery.
+	invHandler := h.handleCacheInvalidation(appCtx)
+	invOpts := []nats.SubOpt{nats.DeliverAll(), nats.AckExplicit(), nats.ManualAck()}
+	var invSub *nats.Subscription
+	if h.subscribeCacheInvalidations != nil {
+		invSub, err = h.subscribeCacheInvalidations(invHandler, invOpts...)
+	} else {
+		invSub, err = h.js.Subscribe("cache.invalidate", invHandler, invOpts...)
+	}
 	if err != nil {
-		h.Logger.ErrorContext(appCtx, "NATS cache invalidation subscription failed", "err", err)
+		h.Logger.ErrorContext(appCtx, "JetStream cache invalidation subscription failed", "err", err)
 		return err
 	}
-	h.subs = append(h.subs, invSub)
+	if invSub != nil {
+		h.subs = append(h.subs, invSub)
+	}
 
 	ctrlSub, err := coreNATSSubscribeFunc(h.Nats, "ws_hub.control", h.handleControlMessage(appCtx))
 	if err != nil {
@@ -1133,28 +1176,46 @@ func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
 
 		var payload struct {
 			Data struct {
+				EvictRoom bool   `json:"evict_room,omitempty"`
 				RoomID    string `json:"room_id"`
 				Timestamp uint64 `json:"timestamp"`
 				UserID    string `json:"user_id"`
 			} `json:"data"`
 			Signature string `json:"signature"`
 		}
+		rejectPermanently := func() {
+			if err := safeTerm(msg); err != nil &&
+				!errors.Is(err, nats.ErrMsgNotBound) && !errors.Is(err, nats.ErrNotJSMessage) {
+				h.Logger.WarnContext(msgCtx, "Failed to terminate invalid cache invalidation", "err", err)
+			}
+		}
 
 		if err := hubJSONUnmarshalFunc(msg.Data, &payload); err != nil {
 			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS cache.invalidate message dropped",
 				"subject", msg.Subject, "size", len(msg.Data), "err", err)
+			rejectPermanently()
+			return
+		}
+		if !isValidUUID(payload.Data.UserID) ||
+			(payload.Data.EvictRoom && !isValidUUID(payload.Data.RoomID)) ||
+			(!payload.Data.EvictRoom && payload.Data.RoomID != "" && !isValidUUID(payload.Data.RoomID)) {
+			h.Logger.WarnContext(msgCtx, "ws-hub: invalid cache.invalidate identifiers dropped",
+				"subject", msg.Subject)
+			rejectPermanently()
 			return
 		}
 
 		dataBytes, err := hubJSONMarshalFunc(payload.Data)
 		if err != nil {
 			h.Logger.ErrorContext(msgCtx, "Failed to marshal validation data", "err", err)
+			rejectPermanently()
 			return
 		}
 
 		hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
 		if _, err := hmacWriteFunc(hFunc, dataBytes); err != nil {
 			h.Logger.ErrorContext(msgCtx, "Failed to write data to HMAC", "err", err)
+			rejectPermanently()
 			return
 		}
 		expectedSigBytes := hFunc.Sum(nil)
@@ -1163,13 +1224,116 @@ func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
 		if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
 			h.Logger.WarnContext(msgCtx, "Invalid internal NATS signature — dropping event",
 				"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID)
+			rejectPermanently()
 			return
 		}
 
-		if h.authClient != nil {
+		if payload.Data.EvictRoom {
+			if err := h.evictRoomMembership(msgCtx, payload.Data.UserID, payload.Data.RoomID); err != nil {
+				h.Logger.ErrorContext(msgCtx, "Room membership revocation could not be confirmed; retrying",
+					"room_id", payload.Data.RoomID, "user_id", payload.Data.UserID, "err", err)
+				span.RecordError(err)
+				safeNakWithDelay(msg, 5*time.Second)
+				return
+			}
+		} else if h.authClient != nil {
 			h.authClient.Invalidate(payload.Data.UserID, payload.Data.RoomID)
 		}
+		safeAck(msg)
 	}
+}
+
+func (h *Hub) roomMembershipLock(userID, roomID string) *sync.Mutex {
+	const (
+		fnvOffset = uint64(14695981039346656037)
+		fnvPrime  = uint64(1099511628211)
+	)
+	hash := fnvOffset
+	for i := 0; i < len(userID); i++ {
+		hash ^= uint64(userID[i])
+		hash *= fnvPrime
+	}
+	hash *= fnvPrime // separate the user and room components with a zero byte
+	for i := 0; i < len(roomID); i++ {
+		hash ^= uint64(roomID[i])
+		hash *= fnvPrime
+	}
+	return &h.roomMembershipLocks[hash%uint64(len(h.roomMembershipLocks))]
+}
+
+func (h *Hub) evictRoomMembership(ctx context.Context, userID, roomID string) error {
+	lock := h.roomMembershipLock(userID, roomID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	refresher, ok := h.authClient.(RoomAuthorizationRefresher)
+	if !ok {
+		h.markRoomRevocationPending(userID, roomID)
+		h.revokeRoomMember(userID, roomID)
+		return errors.New("room auth client cannot confirm uncached membership state")
+	}
+	allowed, err := refresher.RefreshRoomAuthorization(ctx, userID, roomID)
+	if err != nil {
+		h.markRoomRevocationPending(userID, roomID)
+		h.revokeRoomMember(userID, roomID)
+		return fmt.Errorf("refresh room authorization: %w", err)
+	}
+	h.clearRoomRevocationPending(userID, roomID)
+	if allowed {
+		// JetStream can redeliver an older removal after a later re-add. A fresh
+		// authorization check prevents that replay from evicting a valid member.
+		return nil
+	}
+
+	h.revokeRoomMember(userID, roomID)
+	return nil
+}
+
+func (h *Hub) revokeRoomMember(userID, roomID string) {
+	h.mu.RLock()
+	clients := make([]*Client, 0, len(h.Rooms[roomID]))
+	for client := range h.Rooms[roomID] {
+		if client.UserID == userID {
+			clients = append(clients, client)
+		}
+	}
+	h.mu.RUnlock()
+
+	for _, client := range clients {
+		notice, err := json.Marshal(map[string]string{
+			"type":   "error",
+			"room":   roomID,
+			"code":   roomAccessRevokedCode,
+			"detail": roomAccessRevokedDetail,
+		})
+		if err != nil {
+			client.LeaveRoom(roomID)
+			continue
+		}
+		client.revokeRoom(roomID, notice)
+	}
+}
+
+func (h *Hub) markRoomRevocationPending(userID, roomID string) {
+	h.pendingRoomRevocationsMu.Lock()
+	defer h.pendingRoomRevocationsMu.Unlock()
+	if h.pendingRoomRevocations == nil {
+		h.pendingRoomRevocations = make(map[roomMembershipKey]struct{})
+	}
+	h.pendingRoomRevocations[roomMembershipKey{userID: userID, roomID: roomID}] = struct{}{}
+}
+
+func (h *Hub) clearRoomRevocationPending(userID, roomID string) {
+	h.pendingRoomRevocationsMu.Lock()
+	defer h.pendingRoomRevocationsMu.Unlock()
+	delete(h.pendingRoomRevocations, roomMembershipKey{userID: userID, roomID: roomID})
+}
+
+func (h *Hub) isRoomRevocationPending(userID, roomID string) bool {
+	h.pendingRoomRevocationsMu.RLock()
+	defer h.pendingRoomRevocationsMu.RUnlock()
+	_, pending := h.pendingRoomRevocations[roomMembershipKey{userID: userID, roomID: roomID}]
+	return pending
 }
 
 type controlPayload struct {
@@ -1431,6 +1595,27 @@ func (h *Hub) HasJWKSCache() bool {
 
 // AuthorizeRoomJoin verifies that userID is a participant of the given room.
 func (h *Hub) AuthorizeRoomJoin(ctx context.Context, userID, room string) bool {
+	lock := h.roomMembershipLock(userID, room)
+	lock.Lock()
+	defer lock.Unlock()
+	return h.authorizeRoomJoinLocked(ctx, userID, room)
+}
+
+// authorizeRoomJoinLocked expects the caller to hold the matching membership
+// stripe so a pending revoke cannot race an authoritative re-check and rejoin.
+func (h *Hub) authorizeRoomJoinLocked(ctx context.Context, userID, room string) bool {
+	if h.isRoomRevocationPending(userID, room) {
+		refresher, ok := h.authClient.(RoomAuthorizationRefresher)
+		if !ok {
+			return false
+		}
+		allowed, err := refresher.RefreshRoomAuthorization(ctx, userID, room)
+		if err != nil {
+			return false
+		}
+		h.clearRoomRevocationPending(userID, room)
+		return allowed
+	}
 	if h.authClient == nil {
 		h.Logger.WarnContext(ctx, "AuthorizeRoomJoin: no auth client configured, denying",
 			"user", userID, "room", room)

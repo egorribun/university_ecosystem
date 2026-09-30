@@ -14,6 +14,7 @@ from app.core.database import async_session
 from app.core.events import (
     AttachmentCleanupRequested,
     ChatDeleted,
+    ChatParticipantRemoved,
     DomainEvent,
     DurableEventDeferred,
     EventCreated,
@@ -286,6 +287,27 @@ async def handle_chat_deleted(event: ChatDeleted) -> None:
     )
 
 
+async def handle_chat_participant_removed(event: ChatParticipantRemoved) -> None:
+    """Durably evict a removed participant from the ws-hub chat room."""
+    if event.chat_id is None or event.user_id is None:
+        raise ValueError("chat participant removal event is missing its identifiers")
+
+    from app.services.ws_hub_client import invalidate_ws_hub_cache
+
+    await invalidate_ws_hub_cache(
+        str(event.user_id),
+        str(event.chat_id),
+        evict_room=True,
+        event_id=event.event_id,
+        raise_on_failure=True,
+    )
+    logger.debug(
+        "ws-hub room membership revoked via outbox: chat=%s participant=%s",
+        event.chat_id,
+        event.user_id,
+    )
+
+
 async def handle_notifications_requested(event: NotificationsRequested) -> None:
     """Redeliver requested notifications through the transactional outbox."""
     if not event.notification_ids:
@@ -430,6 +452,10 @@ def configure_event_handlers() -> None:
         event_bus.subscribe(event_type, acknowledge_audit_only_event)
     # RED-04: OutboxWorker delivers ChatDeleted events with at-least-once guarantees.
     event_bus.subscribe("chat.deleted", handle_chat_deleted)  # type: ignore[arg-type]
+    event_bus.subscribe(
+        "chat.participant_removed",
+        handle_chat_participant_removed,  # type: ignore[arg-type]
+    )
     # PERF-W10-05: OutboxWorker delivers file cleanup with at-least-once guarantees.
     event_bus.subscribe(
         "chat.attachment_cleanup_requested",

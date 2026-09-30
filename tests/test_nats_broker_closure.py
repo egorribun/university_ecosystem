@@ -30,7 +30,7 @@ def _payload(name: str, *, args: list | None = None) -> dict:
     }
 
 
-async def test_connect_registers_both_streams_and_lifecycle_callbacks() -> None:
+async def test_connect_registers_streams_and_lifecycle_callbacks() -> None:
     broker = NatsTaskBroker()
     mock_nc = AsyncMock()
     mock_js = AsyncMock()
@@ -44,7 +44,7 @@ async def test_connect_registers_both_streams_and_lifecycle_callbacks() -> None:
         await kwargs["reconnected_cb"]()
         await kwargs["disconnected_cb"]()
 
-    assert mock_js.add_stream.await_count == 5
+    assert mock_js.add_stream.await_count == 6
     configs = [c.kwargs["config"] for c in mock_js.add_stream.await_args_list]
     assert configs[0].name == "TASK_QUEUE"
     assert configs[0].subjects == ["tasks.>"]
@@ -56,6 +56,8 @@ async def test_connect_registers_both_streams_and_lifecycle_callbacks() -> None:
     assert configs[3].subjects == ["notifications.*"]
     assert configs[4].name == "OUTBOX_EVENTS"
     assert configs[4].subjects == ["outbox.*"]
+    assert configs[5].name == "CACHE_INVALIDATIONS"
+    assert configs[5].subjects == ["cache.invalidate"]
 
 
 @pytest.mark.asyncio

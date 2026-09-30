@@ -3,8 +3,6 @@ import type { Meta, StoryObj, Decorator } from "@storybook/react-vite"
 import { LazyMotion, domAnimation } from "framer-motion"
 import BackToTop from "./BackToTop"
 
-// Wave 200 SW1 — BackToTop story (campaign close: the last storyable component).
-//
 // BackToTop has TWO browser-signal gates, handled differently:
 //   1. Scroll gate (BackToTop.tsx:18-23) — a `scroll` listener sets
 //      `show = window.scrollY > 420`. VALUE-readable: the ScrollGate harness
@@ -18,8 +16,8 @@ import BackToTop from "./BackToTop"
 //      Chromatic-flaky. A static `<footer role="contentinfo">` is placed well
 //      below the fold ONLY so the observer's attach branch runs (it null-guards
 //      at line 28 otherwise); it reports not-intersecting → the FAB stays at its
-//      default bottom:24. Footer-aware repositioning is a deliberate non-goal
-//      (AUDIT_WAVE200 §Honesty).
+//      default bottom:24. Footer-aware repositioning is outside this story's
+//      scope; the runtime component still handles the observer separately.
 //
 // Variants: Default (scrolled, light) / DarkMode / BelowThreshold (hidden).
 

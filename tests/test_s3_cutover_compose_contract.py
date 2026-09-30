@@ -163,7 +163,9 @@ def test_prometheus_has_no_minio_metrics_job() -> None:
 def _docker_compose() -> str:
     docker = shutil.which("docker")
     if docker is None:
-        pytest.skip("Docker CLI is not installed")
+        pytest.skip(  # QUALITY-123 @egorribun — Docker capability varies by runner
+            "Docker CLI is not installed"
+        )
     probe = subprocess.run(  # noqa: S603 - fixed local CLI
         [docker, "compose", "version"],
         capture_output=True,
@@ -171,7 +173,9 @@ def _docker_compose() -> str:
         check=False,
     )
     if probe.returncode != 0:
-        pytest.skip("Docker Compose plugin is not available")
+        pytest.skip(  # QUALITY-123 @egorribun — Compose plugin capability varies by runner
+            "Docker Compose plugin is not available"
+        )
     return docker
 
 
@@ -235,13 +239,15 @@ def test_rendered_stacks_mount_the_named_seaweedfs_volume(
 
 def test_live_stand_storage_volume_is_project_scoped(tmp_path: Path) -> None:
     # Each Compose project owns its storage volume without a global name.
-    plain = _rendered(tmp_path, "ue-live", "docker-compose.full.yml")
+    project_name = "ue-live-0123456789abcdef"
+    plain = _rendered(tmp_path, project_name, "docker-compose.full.yml")
     live = _rendered(
-        tmp_path, "ue-live", "docker-compose.full.yml", "docker-compose.live.yml"
+        tmp_path, project_name, "docker-compose.full.yml", "docker-compose.live.yml"
     )
 
-    assert plain["volumes"]["seaweedfs_data"]["name"] == "ue-live_seaweedfs_data"
-    assert live["volumes"]["seaweedfs_data"]["name"] == "ue-live_seaweedfs_data"
+    expected_volume = f"{project_name}_seaweedfs_data"
+    assert plain["volumes"]["seaweedfs_data"]["name"] == expected_volume
+    assert live["volumes"]["seaweedfs_data"]["name"] == expected_volume
     assert live["services"]["minio"]["image"] == plain["services"]["minio"]["image"]
 
 

@@ -5,6 +5,7 @@ import pytest
 from app.core.events import (
     AttachmentCleanupRequested,
     ChatDeleted,
+    ChatParticipantRemoved,
     EventCreated,
     EventRegistration,
     MessageSent,
@@ -22,6 +23,7 @@ from app.services.event_handlers import (
     generate_news_embedding,
     handle_attachment_cleanup_requested,
     handle_chat_deleted,
+    handle_chat_participant_removed,
     handle_event_created,
     handle_event_registration,
     handle_message_sent,
@@ -166,6 +168,40 @@ async def test_handle_chat_deleted(monkeypatch):
 
     await handle_chat_deleted(ChatDeleted(chat_id="chat1", participant_id="p1"))
     mock_invalidate.assert_called_once_with("p1", "chat1")
+
+
+@pytest.mark.asyncio
+async def test_handle_chat_participant_removed_requests_signed_room_eviction(
+    monkeypatch,
+):
+    mock_invalidate = AsyncMock()
+    monkeypatch.setattr(
+        "app.services.ws_hub_client.invalidate_ws_hub_cache", mock_invalidate
+    )
+    event = ChatParticipantRemoved(chat_id="chat1", user_id="user1")
+
+    await handle_chat_participant_removed(event)
+
+    mock_invalidate.assert_awaited_once_with(
+        "user1",
+        "chat1",
+        evict_room=True,
+        event_id=event.event_id,
+        raise_on_failure=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_chat_participant_removed_propagates_publish_failure(monkeypatch):
+    mock_invalidate = AsyncMock(side_effect=ConnectionError("NATS unavailable"))
+    monkeypatch.setattr(
+        "app.services.ws_hub_client.invalidate_ws_hub_cache", mock_invalidate
+    )
+
+    with pytest.raises(ConnectionError, match="NATS unavailable"):
+        await handle_chat_participant_removed(
+            ChatParticipantRemoved(chat_id="chat1", user_id="user1")
+        )
 
 
 @pytest.mark.asyncio

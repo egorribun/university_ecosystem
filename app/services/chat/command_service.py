@@ -978,12 +978,59 @@ class ChatMaintenanceService:
             raise_forbidden(locale, "errors.chat.remove_forbidden")
 
         affected = await self.repository.remove_participant(chat_id, target_user_id)
+        removal_event_id: uuid.UUID | None = None
+        if affected:
+            from app.core.events import (
+                ChatParticipantRemoved as _ChatParticipantRemoved,
+            )
+            from app.models.domain_events import StoredEvent as _StoredEvent
+            from app.utils.uuid_v7 import generate_uuid7 as _generate_uuid7
+
+            removal_event_id = _generate_uuid7()
+            self.repository.add(
+                _StoredEvent(
+                    id=removal_event_id,
+                    event_type=_ChatParticipantRemoved.EVENT_TYPE,
+                    aggregate_type="Chat",
+                    aggregate_id=str(chat_id),
+                    payload={
+                        "chat_id": str(chat_id),
+                        "user_id": str(target_user_id),
+                    },
+                )
+            )
         async with self.uow:
             await self.uow.commit()
 
         if affected:
-            await invalidate_chat_participants_cache(chat_id)
-            await invalidate_presence_audience_cache(target_user_id, *participant_ids)
+            cache_results = await asyncio.gather(
+                invalidate_chat_participants_cache(chat_id),
+                invalidate_presence_audience_cache(target_user_id, *participant_ids),
+                return_exceptions=True,
+            )
+
+            # The transactionally stored event remains the durable retry path.
+            # Publish the same event identity now for low-latency room eviction;
+            # JetStream deduplicates the outbox retry, and the hub also treats a
+            # repeated eviction as idempotent after refreshing membership.
+            from app.services.ws_hub_client import invalidate_ws_hub_cache
+
+            await asyncio.gather(
+                invalidate_ws_hub_cache(
+                    str(target_user_id),
+                    str(chat_id),
+                    evict_room=True,
+                    event_id=str(removal_event_id),
+                ),
+                return_exceptions=True,
+            )
+            # A cache failure must not prevent the independent room-revocation
+            # fast path. Preserve the existing error contract after all
+            # post-commit effects have had a chance to run; the stored event
+            # remains available for durable WS-hub retry.
+            for cache_result in cache_results:
+                if isinstance(cache_result, BaseException):
+                    raise cache_result
 
     async def rename_chat(
         self, chat_id: uuid.UUID, user: User, name: str, locale: str

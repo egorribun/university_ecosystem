@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -272,6 +273,9 @@ func (c *Client) processNextMessage(ctx context.Context) bool {
 		}
 		return false
 	}
+	if c.rejectOversizedMessage(data) {
+		return true
+	}
 
 	var msg Message
 	if err := json.Unmarshal(data, &msg); err != nil {
@@ -362,8 +366,6 @@ func (c *Client) handleIncomingMessage(ctx context.Context, msg Message, data []
 		c.handleJoin(ctx, msg)
 	case "leave":
 		c.handleLeave(msg)
-	case "message":
-		c.handleMessage(msg, data)
 	default:
 		// RZ-27-05: Log unknown message types for protocol drift detection.
 		UnknownMsgTypeTotal.Inc()
@@ -409,10 +411,17 @@ func mergeTopLevelJoinReplay(msg *Message, data []byte) {
 }
 
 func (c *Client) handleJoin(ctx context.Context, msg Message) {
-	if msg.Room == "" {
+	if msg.Room == "" || c.Hub == nil {
 		return
 	}
-	if !c.Hub.AuthorizeRoomJoin(ctx, c.UserID, msg.Room) {
+	// Serialize the authorization decision with membership revocation. Without
+	// this gate, a join authorized just before a removal could add the socket
+	// after the invalidation handler had already removed it from the room.
+	membershipLock := c.Hub.roomMembershipLock(c.UserID, msg.Room)
+	membershipLock.Lock()
+	defer membershipLock.Unlock()
+
+	if !c.Hub.authorizeRoomJoinLocked(ctx, c.UserID, msg.Room) {
 		AuthFailuresTotal.WithLabelValues("room_join_denied").Inc() // RZ-23-06: wire existing metric
 		c.Hub.Logger.WarnContext(ctx, "Unauthorized room join rejected",
 			"user", c.UserID,
@@ -797,6 +806,9 @@ func (c *Client) deliverValidOfflineMessage(
 
 func (c *Client) sendReplayWithRetry(ctx context.Context, data []byte) bool {
 	for attempt := 0; attempt < offlineReplaySendTries; attempt++ {
+		if ctx.Err() != nil {
+			return false
+		}
 		if safeSend(c.Send, data) {
 			return true
 		}
@@ -812,6 +824,42 @@ func (c *Client) sendReplayWithRetry(ctx context.Context, data []byte) bool {
 		}
 	}
 	return false
+}
+
+const (
+	roomAccessRevokedCode   = "room_access_revoked"
+	roomAccessRevokedDetail = "Access to this chat was revoked"
+)
+
+func isRoomAccessRevokedNotice(data []byte, room string) bool {
+	expected, err := json.Marshal(map[string]string{
+		"type":   "error",
+		"room":   room,
+		"code":   roomAccessRevokedCode,
+		"detail": roomAccessRevokedDetail,
+	})
+	return err == nil && bytes.Equal(data, expected)
+}
+
+func queuedFrameRoom(data []byte) (string, bool) {
+	var frame struct {
+		Type string `json:"type"`
+		Room string `json:"room"`
+	}
+	if err := json.Unmarshal(data, &frame); err != nil || frame.Room == "" {
+		return "", false
+	}
+	if frame.Type == "error" && isRoomAccessRevokedNotice(data, frame.Room) {
+		return "", false
+	}
+	return frame.Room, true
+}
+
+func (c *Client) shouldDeliverRoomFrame(room string, scoped bool) bool {
+	if !scoped {
+		return true
+	}
+	return c.isInRoom(room)
 }
 
 func (c *Client) nakOfflineReplay(ctx context.Context, msg *nats.Msg) {
@@ -987,44 +1035,51 @@ func (c *Client) failReplayConnection() {
 }
 
 func (c *Client) handleLeave(msg Message) {
+	if msg.Room == "" || c.Hub == nil {
+		return
+	}
+	lock := c.Hub.roomMembershipLock(c.UserID, msg.Room)
+	lock.Lock()
+	defer lock.Unlock()
 	c.LeaveRoom(msg.Room)
 }
 
-// allowedMessageTypes is the client-to-hub command catalog. Read receipts are
-// deliberately absent: POST /api/v1/chats/{chat_id}/read is the canonical
-// receipt path, while ws-hub only transports room joins, leaves and messages.
+// allowedMessageTypes is the client-to-hub command catalog. Chat mutations,
+// read receipts, and typing are backend-owned; clients may only join or leave
+// rooms. This prevents an untrusted payload from impersonating a server event.
 var allowedMessageTypes = map[string]bool{
-	"join":    true,
-	"leave":   true,
-	"message": true,
+	"join":  true,
+	"leave": true,
 }
 
 func isAllowedMessageType(t string) bool {
 	return allowedMessageTypes[t]
 }
 
+func (c *Client) rejectOversizedMessage(data []byte) bool {
+	const maxIncomingBytes = 60 * 1024 // match maxBroadcastBytes in hub.go
+	if len(data) <= maxIncomingBytes {
+		return false
+	}
+	c.Hub.Logger.WarnContext(c.ctx, "Incoming message exceeds size limit, notifying client",
+		"client_id", c.ID, "size_bytes", len(data), "limit_bytes", maxIncomingBytes)
+	IncomingDropsTotal.Inc()
+	if notice, err := json.Marshal(map[string]string{
+		"type":   "error",
+		"code":   "message_too_large",
+		"detail": "message exceeds 60 KB limit",
+	}); err == nil {
+		select {
+		case c.Send <- notice:
+		default: // Send buffer full — client already overwhelmed.
+		}
+	}
+	return true
+}
+
 //nolint:cyclop
 func (c *Client) handleMessage(msg Message, data []byte) {
-	// RZ-27-02: Reject oversized messages at ingress, matching the broadcast
-	// limit (RZ-23-05). Without this, messages between 60 KB and 64 KB are
-	// published to NATS but silently dropped at broadcast fan-out.
-	const maxIncomingBytes = 60 * 1024 // match maxBroadcastBytes in hub.go
-	if len(data) > maxIncomingBytes {
-		c.Hub.Logger.WarnContext(c.ctx, "Incoming message exceeds size limit, notifying client",
-			"client_id", c.ID, "size_bytes", len(data), "limit_bytes", maxIncomingBytes)
-		IncomingDropsTotal.Inc()
-		// RZ-31-02: Notify client so it can display a user-visible error.
-		// Follows the same pattern as rate-limit notification below (lines 166-171).
-		if notice, err := json.Marshal(map[string]string{
-			"type":   "error",
-			"code":   "message_too_large",
-			"detail": "message exceeds 60 KB limit",
-		}); err == nil {
-			select {
-			case c.Send <- notice:
-			default: // Send buffer full — client already overwhelmed.
-			}
-		}
+	if c.rejectOversizedMessage(data) {
 		return
 	}
 
@@ -1111,6 +1166,20 @@ func (c *Client) WritePump() {
 	for {
 		select {
 		case msg, ok := <-c.Send:
+			var room string
+			var roomScoped bool
+			var membershipLock *sync.Mutex
+			if ok {
+				room, roomScoped = queuedFrameRoom(msg)
+				if roomScoped && c.Hub != nil {
+					// Match the lock order used by room revocation: membership stripe,
+					// then writeMu. Holding the stripe through the socket write makes
+					// that write linearize before the authoritative refresh, or makes
+					// it observe the revoked local membership and drop the frame.
+					membershipLock = c.Hub.roomMembershipLock(c.UserID, room)
+					membershipLock.Lock()
+				}
+			}
 			c.writeMu.Lock()
 			if c.Conn != nil {
 				if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil && c.Hub != nil && c.Hub.Logger != nil {
@@ -1124,16 +1193,32 @@ func (c *Client) WritePump() {
 					}
 				}
 				c.writeMu.Unlock()
+				if membershipLock != nil {
+					membershipLock.Unlock()
+				}
 				return
+			}
+			if !c.shouldDeliverRoomFrame(room, roomScoped) {
+				c.writeMu.Unlock()
+				if membershipLock != nil {
+					membershipLock.Unlock()
+				}
+				continue
 			}
 
 			if c.Conn != nil {
 				if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 					c.writeMu.Unlock()
+					if membershipLock != nil {
+						membershipLock.Unlock()
+					}
 					return
 				}
 			}
 			c.writeMu.Unlock()
+			if membershipLock != nil {
+				membershipLock.Unlock()
+			}
 
 		case <-c.ctx.Done():
 			// RZ-26-08: context cancelled (ReadPump exited) — stop immediately
@@ -1181,6 +1266,27 @@ func (c *Client) LeaveRoom(room string) {
 	if room == "" {
 		return
 	}
+	// Serialize membership removal with WritePump's final room authorization
+	// check. A frame already queued before revocation is then either written
+	// before the membership change or discarded after it, never after it.
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	c.leaveRoomLocked(room)
+}
+
+func (c *Client) revokeRoom(room string, notice []byte) {
+	if room == "" {
+		return
+	}
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if len(notice) > 0 {
+		_ = safeSend(c.Send, notice)
+	}
+	c.leaveRoomLocked(room)
+}
+
+func (c *Client) leaveRoomLocked(room string) {
 	c.cancelRoomReplay(room)
 
 	c.Hub.mu.Lock()

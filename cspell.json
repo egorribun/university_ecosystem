@@ -28,6 +28,7 @@
     "cgo",
     "clippy",
     "rustfmt",
+    "SPIFFE",
     "fastapi",
     "uvicorn",
     "alembic",

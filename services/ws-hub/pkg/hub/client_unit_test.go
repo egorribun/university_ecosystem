@@ -354,11 +354,11 @@ func TestReadPump_DisallowedTypeOverSocket(t *testing.T) {
 	// Application-level ping, read receipts, and typing are not ws-hub commands:
 	// ping uses the WebSocket control frame, while read/typing are REST-owned
 	// backend broadcasts. All three must be rejected at the parse boundary.
-	for _, messageType := range []string{"ping", "read", "typing"} {
+	for _, messageType := range []string{"ping", "read", "typing", "message"} {
 		require.NoError(t, cli.WriteJSON(map[string]string{"type": messageType}))
 	}
 	require.Eventually(t, func() bool {
-		return testutil.ToFloat64(UnknownMsgTypeTotal) >= before+3
+		return testutil.ToFloat64(UnknownMsgTypeTotal) >= before+4
 	}, 2*time.Second, 10*time.Millisecond)
 	require.NoError(t, cli.Close())
 }

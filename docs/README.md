@@ -29,25 +29,29 @@ handoffs are intentionally not part of the canonical index.
 - [Kubernetes notes](../k8s/README.md)
 - [S3 storage migration runbook](runbooks/s3-seaweedfs-cutover.md)
 - [Dependency cooldown emergency procedure](DEPENDENCY_COOLDOWN_EMERGENCY.md)
-- [Legacy MinIO volume migration to SeaweedFS](runbooks/s3-seaweedfs-cutover.md)
 - [Manual MFA verification checklist](manual-mfa-checklist.md)
 
 ## Quality evidence
 
-- [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md) — the single consolidated
-  plan, progress and continuation guide.
-- [Approved MVP plan (snapshot)](superpowers/plans/MVP_APPROVED_PLAN.md) — phases,
-  acceptance tables and owner decisions of 2026-09-28.
+- [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md) — decisions, phased
+  work and acceptance criteria; [active status](superpowers/plans/STATUS.md)
+  is the current progress and continuation guide.
+- [Approved MVP plan (historical snapshot)](superpowers/plans/MVP_APPROVED_PLAN.md) —
+  superseded by the master plan and current session decisions; do not use its
+  historical status or execution instructions.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
-  operational status; earlier handoff and continuation plans live under
-  `superpowers/plans/archive/` as history.
+  operational status. Historical handoffs are not continuation instructions.
 - [Quality dashboard](testing/dashboard.md)
 - [CI check catalog runbook](testing/ci-check-catalog-runbook.md)
 - [i18n gate](testing/i18n-gate.md)
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
-- [Canonical audit index](audits/INDEX.md)
+- [Canonical audit index and retention policy](audits/INDEX.md)
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 
-Historical audit reports remain under `audits/archive/`. They are retained as
-an explicit audit trail and are not current implementation guidance.
+Legacy audit and plan archives have been inventoried. Their requirements are
+being reconciled against the master plan, ADRs, and workflow contracts; transfer
+and cleanup acceptance remains open. Keep the historical files until credential
+triage and transfer review are complete, then remove superseded copies without
+rewriting Git history. The audit index records the recovery policy; archive
+contents are not current implementation guidance.

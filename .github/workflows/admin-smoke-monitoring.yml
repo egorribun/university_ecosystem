@@ -1,89 +1,30 @@
-# Admin React #418 monitoring (admin-visual-smoke.mjs).
+# Admin visual smoke monitoring (`frontend/scripts/admin-visual-smoke.mjs`).
 #
-# ## Why this exists
+# This workflow performs a real browser-context login with the seeded admin
+# account, then runs the app through Caddy, Node SSR, and the backend. It
+# verifies five admin routes in English and Russian, each in light and dark
+# themes. A capture is valid only when the `/dashboard` bootstrap succeeds,
+# the authenticated client route, document language, main landmark, admin
+# theme and localized heading match, and a screenshot is written. Hydration
+# errors fail the run. Artifacts contain sanitized sidecars and screenshots
+# from this invocation only.
 #
-# W169 SW2+SW5 captured 30 admin pages × 0 React #418 firings on byte-equivalent
-# bundle — characterized W168 SW2 finding (`/admin/audit light` text-content
-# residual) as **non-reproducible / transient timing race** per W141 #4 honest
-# framing. Per W170 §Honesty + plan-time discussion: "non-reproducible ≠ proven
-# absent". The operational counterpart is **periodic CI monitoring** that fires
-# automatically if React #418 ever re-emerges in scheduled smoke runs.
+# Manual runs use `workflow_dispatch`; scheduled runs use Monday 03:00 UTC.
+# GitHub requires this workflow file to be present on the repository's default
+# branch for schedule and manual activation. A copy that exists only on a
+# feature branch is not an active scheduled workflow.
 #
-# This workflow runs `frontend/scripts/admin-visual-smoke.mjs`
-# on a Linux runner against the full authed Caddy→Node SSR chain on a weekly
-# cadence. If any of the 10 captures (5 admin routes × 2 themes) shows a
-# Minified React error #418 (W167 SW1 regex catches #418-#427 hydration boundary
-# class), the workflow FAILS and uploads sidecar JSONs as artifacts for triage.
+# The job starts PostgreSQL, Redis, and NATS services, runs migrations and
+# seeds a dedicated admin account, then starts the backend, Node SSR, and
+# Caddy. `/api/v1/*` and `/.well-known/*` route to the backend; other requests
+# route to Node SSR. The admin account is seeded server-side because public
+# registration cannot assign the admin role.
 #
-# Pre-considered scope per W170 hand-off priority #3 (Q0 D deferred from W170).
-# Closes W169 §Honesty residual "admin React #418 non-reproducible ≠ proven
-# absent" **operationally** (not absolute closure — monitoring infrastructure
-# ships; future scheduled cron firings provide empirical evidence over time).
-#
-# ## Triggers
-#
-# 1. `workflow_dispatch` — manual run via Actions UI / `gh workflow run`. Used
-#    for first-pass validation post-merge + on-demand triage after suspected
-#    regression.
-#
-# 2. `schedule: cron("0 3 * * 1")` — Mondays 03:00 UTC = ~06:00 Moscow weekly.
-#    Rationale: weekly balances early detection vs CI cost (~20-25 min/run ×
-#    4 weeks/month = ~80-100 min/month). Off-peak timing reduces shared runner
-#    contention. Could be revisited as monthly (cost concern) or daily (if
-#    React #418 risk perceived higher).
-#
-#    **CRITICAL**: scheduled cron triggers require the workflow file to exist
-#    on the default branch (main) per GitHub Actions limitation. Workflow on
-#    feature branch (egorribun) is INERT — neither cron NOR workflow_dispatch
-#    will fire until: (a) PR #1114 merges to main (automatic activation
-#    Recommended), OR (b) user-authorized cherry-pick to main per W139 SW1
-#    precedent (commit 4db94fb5a cherry-picked visual-audit.yml). See
-#    AUDIT_WAVE171.md §Honesty caveat #11 + Wave 172+ hand-off Path A/B.
-#
-# ## Architecture
-#
-# Mirrors visual-audit.yml infrastructure (W139 SW1 + W140 SW4 iter cycles)
-# but invokes wave165 (admin smoke) instead of wave138 (visual a11y audit):
-#
-#   - backend: `uv run uvicorn` on :8000 (mirrors reusable-e2e-tests.yml)
-#   - frontend Node SSR: `npm run start` on :3000 (W131 SW1 server-prod.mjs)
-#   - Caddy ingress: `docker run caddy --network host` on :80
-#     routes /api/v1/* + /.well-known/* → :8000, default → :3000
-#   - postgres + redis + nats: GitHub Actions `services:`
-#
-# ## Key differences from visual-audit.yml (4 items)
-#
-# 1. **Trigger**: workflow_dispatch + `schedule: cron("0 3 * * 1")` (visual-audit
-#    is workflow_dispatch only — on-demand debug, not periodic monitoring).
-#
-# 2. **User seeding**: NEW `uv run python scripts/seed_demo_data.py` +
-#    `uv run python scripts/seed_admin_data.py` (visual-audit uses CSRF dance for
-#    test@university.dev via /api/v1/auth/register). The admin user has a `role`
-#    attribute that can't be set via the public register endpoint; must be seeded
-#    via the backend Python script. Both scripts are idempotent.
-#
-# 3. **Script invocation**: `admin-visual-smoke.mjs` (visual-audit
-#    invokes authenticated-visual-audit.mjs). Different scripts:
-#      - wave138: 8 SSR routes, axe a11y, test user
-#      - wave165: 5 admin routes × 2 themes, React #418 detection, admin user
-#
-# 4. **Artifact path + retention**: `.screenshots/admin-visual-smoke` +
-#    30-day retention (visual-audit: 14 days). Longer retention enables
-#    quarterly trend analysis if needed. `include-hidden-files: true` defensive
-#    per W160 SW1 (z) — `.screenshots/` is hidden dir; actions/upload-artifact@v7
-#    strips hidden contents by default.
-#
-# ## Exit code semantics (wave165 line 562-575)
-#
-#   0 = clean (all 10 captures HTTP 200 + 0 hydration errors)
-#   1 = HTTP-failed (non-200 OR redirected to /login on ≥1 capture)
-#   2 = hydration-detected (≥1 capture had Minified React error #418 OR similar)
-#   3 = JWT-not-RS256 (backend RS256 setup broken)
-#   4 = JWKS-empty (JWKS endpoint not serving keys)
-#
-# `continue-on-error: true` on the script step → artifacts always upload.
-# Final "Re-assert smoke result" step propagates non-zero exit to workflow
-# status so scheduled cron failures show up red in Actions UI immediately.
+# Exit codes: 0 means all 20 captures pass with no hydration errors; 1 means a
+# bootstrap, route, locale, or screenshot check failed; 2 means a hydration
+# error was found; 3 means the login token is not RS256; 4 means the JWKS
+# endpoint has no usable RSA key. The summary step independently checks capture
+# completeness and page/screenshot readiness before the workflow concludes.
 name: Admin Smoke Monitoring (Linux Periodic)
 
 on:
@@ -106,17 +47,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      # Backend env — MIRRORS visual-audit.yml:80-104 EXACTLY (W139 SW2 + W140
-      # SW4 iter6 lessons preserved verbatim).
+      # Backend env mirrors the local visual-audit stack configuration.
       SECRET_KEY: "dummy_secret_key_for_admin_smoke_monitoring_at_least_32_chars" # pragma: allowlist secret
       ENVIRONMENT: testing
       DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test_admin_smoke" # pragma: allowlist secret
       OTEL_SDK_DISABLED: "true"
       ALGORITHM: "RS256"
       JWT_PRIVATE_KEY_PATH: ".secrets/jwt_rs256.pem"
-      # W139 SW3 iter2: explicit NATS_URL pointing at the localhost NATS service.
+      # Explicit NATS_URL for the localhost NATS service.
       NATS_URL: "nats://127.0.0.1:4222"
-      # W140 SW4 iter6: explicit Redis URLs. Login flow uses redis_session via
+      # Explicit Redis URLs. Login flow uses redis_session via
       # rate_limit_storage_uri (defaults to "memory://" if unset → invalid URL
       # scheme → HTTP 500 on login). Must set explicitly.
       CACHE_REDIS_URL: "redis://127.0.0.1:6379/0"
@@ -182,8 +122,8 @@ jobs:
         run: uv sync --frozen
 
       - name: Install wasm-pack
-        # W141 polish-v2: rustwasm canonical curl installer (taiki-e/install-action
-        # hardcodes drager URL → 404 since 2026-05-11).
+        # Use the rustwasm installer; the alternate installer can resolve to a
+        # retired download URL.
         uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
         with:
           tool: wasm-pack@0.13.1
@@ -201,8 +141,8 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Build WASM modules
-        # W139 (z) #5 + W140 SW4 iter3: binaryen download flake → 3-attempt retry
-        # with 10s backoff. Each build idempotent (binaryen cache reused).
+        # Retry transient binaryen download failures three times with a 10s
+        # backoff; each build is idempotent and can reuse the binaryen cache.
         working-directory: frontend
         run: |
           for attempt in 1 2 3; do
@@ -218,7 +158,7 @@ jobs:
           exit 1
 
       - name: Generate RS256 keypair
-        # Mirrors start-docker.ps1 New-JwtRs256Key (W137 SW1) + visual-audit.yml.
+        # Generate the same kind of test-only RS256 key used by visual-audit.yml.
         run: |
           mkdir -p .secrets
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out .secrets/jwt_rs256.pem
@@ -229,10 +169,8 @@ jobs:
         run: uv run alembic upgrade head
 
       - name: Build frontend (E2E reduced-chrome mode, NOT VITE_LHCI bypass)
-        # Wave 171 SW1 — same VITE_E2E_MODE=1 build as visual-audit.yml (W141 SW1
-        # reduced MainLayout pattern). For admin smoke this matters less than for
-        # axe a11y (wave165 doesn't run axe), but consistency with visual-audit
-        # build avoids dist-mode divergence + keeps tree-shake invariants stable.
+        # Use the same VITE_E2E_MODE=1 build as visual-audit.yml to keep the
+        # built app mode and tree-shake checks consistent between browser lanes.
         #
         # Tree-shake invariants verified post-build:
         # 1. VITE_LHCI bypass STAYS tree-shaken (zero `lhci-mock-user` in dist
@@ -258,11 +196,8 @@ jobs:
           echo "OK: VITE_E2E_MODE=1 took effect (data-e2e-stub markers present in dist)"
 
       - name: Install Playwright real Chrome
-        # Wave 165 explicitly uses `channel: "chrome"` (real Chrome) NOT bundled
-        # Chromium (wave165.mjs:486-490). On Linux runners both are available;
-        # we install both for fallback. Note: visual-audit.yml uses bundled
-        # chromium only (wave138 needs that path for axe-core compat); admin
-        # smoke (wave165) uses real Chrome for visual fidelity.
+        # The smoke prefers real Chrome and keeps bundled Chromium installed as
+        # a fallback; the separate visual-audit lane uses bundled Chromium.
         working-directory: frontend
         run: bash ../scripts/ci/install-playwright-with-deps.sh chromium chrome
 
@@ -273,7 +208,7 @@ jobs:
           echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
 
       - name: Wait for backend health
-        # W140 SW4 iter3 fix: /health/ready (NOT /health which 404s).
+        # Probe the backend readiness endpoint.
         # 180s timeout (90 × 2s) — backend startup includes lifespan with NATS
         # connect + potential service discovery delays.
         run: |
@@ -293,9 +228,8 @@ jobs:
           exit 1
 
       - name: Verify JWKS endpoint
-        # JWKS endpoint MUST serve at least 1 RS256 key. wave165 (lines 165-184)
-        # checks /.well-known/jwks.json (the canonical RFC 8615 path); exit 4
-        # if 0 keys returned.
+        # The canonical JWKS endpoint must serve at least one usable RS256 key.
+        # The smoke exits with code 4 when the key set is empty or unusable.
         run: |
           if ! curl -sf http://127.0.0.1:8000/.well-known/jwks.json | python -c "import sys, json; d = json.load(sys.stdin); keys = d.get('keys', []); assert len(keys) > 0, 'JWKS empty'; print(f'OK: JWKS has {len(keys)} key(s)')"; then
             echo "::error::JWKS endpoint not serving keys (RS256 backend setup broken)"
@@ -303,29 +237,16 @@ jobs:
           fi
 
       - name: Seed demo data + admin user
-        # Wave 171 SW1 — CRITICAL DIFFERENCE from visual-audit.yml (which uses
-        # CSRF dance for test@university.dev via /api/v1/auth/register).
-        #
-        # Admin user has a `role` attribute (UserRole.ADMIN) that CANNOT be set
-        # via the public /api/v1/auth/register endpoint (default role is
-        # "student" per backend). Must be seeded via backend Python script
-        # `scripts/seed_admin_data.py` which uses get_password_hash_sync +
-        # async_session directly.
-        #
-        # seed_admin_data.py depends on base groups from seed_demo_data.py (line
-        # 4 of seed_admin_data.py docstring + line 254 `select(Group)` lookup).
-        # Both scripts are idempotent (catch IntegrityError on unique-constraint
-        # violations).
-        #
-        # Credentials: admin@university.dev / Admin@2024test (seed_admin_data.py:61-62).
-        # These match the wave165 script defaults (wave165.mjs:124-125).
+        # Public registration cannot assign the admin role, so seed the test
+        # account through the backend-only seed script after its base demo data.
+        # Both scripts are idempotent.
         run: |
           uv run python scripts/seed_demo_data.py
           uv run python scripts/seed_admin_data.py
           echo "OK: demo + admin user seeded"
 
       - name: Start frontend Node SSR
-        # W131 SW1 server-prod.mjs on :3000.
+        # Start the production Node SSR server on :3000.
         working-directory: frontend
         env:
           NODE_ENV: production
@@ -386,9 +307,9 @@ jobs:
           exit 1
 
       - name: Run admin smoke script
-        # admin-visual-smoke.mjs hardcodes 5 admin routes ×
-        # 2 themes = 10 captures. No ROUTES env override (admin scope is FIXED
-        # by definition — wave165:131-137 ADMIN_ROUTES const).
+        # admin-visual-smoke.mjs hardcodes 5 admin routes × 2 locales ×
+        # 2 themes = 20 captures. Each invocation writes to a fresh run-owned
+        # directory and exposes only that directory to this workflow attempt.
         #
         # `continue-on-error: true` → artifact upload always runs (script exit
         # codes 1-4 indicate violations; we want the sidecar JSONs).
@@ -404,77 +325,106 @@ jobs:
         continue-on-error: true
 
       - name: Backend log diagnostic dump
-        # W140 SW4 iter5 pattern: tail last 300 lines of /tmp/backend.log
-        # unconditionally for triage on smoke failure.
+        # Always include a bounded backend log tail for smoke failure triage.
         if: always()
         run: |
           echo "---backend-log-tail---"
           tail -300 /tmp/backend.log 2>&1 || echo "(no /tmp/backend.log file)"
 
       - name: Print summary table
-        # Reads .screenshots/admin-visual-smoke/*.json sidecar files +
-        # emits markdown to $GITHUB_STEP_SUMMARY. Sidecar shape per
-        # wave165.mjs:408-420: path, theme, httpStatus, finalUrl,
-        # redirectedToLogin, consoleErrorCount, hydrationErrorCount,
-        # networkRequestCount, screenshotPath, sampleErrors, navError.
+        # Reads only this attempt's run directory and emits sanitized capture
+        # status to $GITHUB_STEP_SUMMARY; old PNGs and sidecars are not included.
         if: always()
+        id: summary
         working-directory: frontend
+        env:
+          ADMIN_SMOKE_DIR: ${{ steps.smoke.outputs.artifact_dir }}
         run: |
           # shellcheck disable=SC2016
           node -e '
             const fs = require("node:fs");
             const path = require("node:path");
-            const dir = ".screenshots/admin-visual-smoke";
-            if (!fs.existsSync(dir)) {
+            const workspaceRelativeDir = process.env.ADMIN_SMOKE_DIR;
+            const publishFailure = (failed) => {
+              if (process.env.GITHUB_OUTPUT) {
+                fs.appendFileSync(process.env.GITHUB_OUTPUT, `failed=${failed}\n`);
+              }
+            };
+            if (!workspaceRelativeDir) {
               console.log("No sidecar JSONs to summarize (script may have failed before producing reports)");
+              publishFailure(true);
+              process.exit(0);
+            }
+            const dir = path.resolve("..", workspaceRelativeDir);
+            if (!fs.existsSync(dir)) {
+              console.log("Current admin smoke run directory is missing");
+              publishFailure(true);
               process.exit(0);
             }
             const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
             if (files.length === 0) {
-              console.log("No JSON sidecars found");
+              console.log("No capture JSON sidecars found in the current run");
+              publishFailure(true);
               process.exit(0);
             }
             const summary = process.env.GITHUB_STEP_SUMMARY;
             const lines = [];
             lines.push("## Admin Smoke Monitoring Results (Linux Periodic)");
             lines.push("");
-            lines.push("Routes captured: 5 admin routes × 2 themes = 10 expected.");
-            lines.push("React #418 detection via W167 SW1 regex /Minified React error #\\d+/ + hydration substring matches.");
+            lines.push("Routes captured: 5 admin routes × 2 locales × 2 themes = 20 expected.");
+            lines.push("React hydration detection matches minified React error IDs and hydration-related messages.");
             lines.push("");
-            lines.push("| Path | Theme | HTTP | Auth | Hydr err | Console err | Net req |");
-            lines.push("|---|---|---|---|---|---|---|");
+            lines.push("| Path | Locale | Theme | Bootstrap /dashboard HTTP | Auth | Page | Screenshot | Hydr err | Console err | Net req |");
+            lines.push("|---|---|---|---:|---|---|---|---:|---:|---:|");
             let totalHydration = 0;
-            let totalFailed = 0;
+            let captureFailed = 0;
+            const locales = new Set();
             for (const f of files.sort()) {
               try {
                 const r = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
                 const p = r.path ?? "?";
+                const locale = r.locale ?? "?";
+                if (locale === "en" || locale === "ru") locales.add(locale);
                 const theme = r.theme ?? "?";
-                const http = r.httpStatus ?? "-";
-                const authed = r.redirectedToLogin ? "REDIRECT" : "AUTHED";
+                const http = r.bootstrapHttpStatus ?? "-";
+                const adminRoleConfirmed = r.adminRoleConfirmed === true;
+                const authed = r.redirectedToLogin ? "REDIRECT" : adminRoleConfirmed ? "ADMIN" : "UNVERIFIED";
+                const pageReady = r.pageReadiness?.ready === true;
+                const hasScreenshot = Boolean(r.screenshotPath);
                 const hyd = r.hydrationErrorCount ?? 0;
                 const cons = r.consoleErrorCount ?? 0;
                 const net = r.networkRequestCount ?? 0;
                 if (hyd > 0) totalHydration += hyd;
-                if (http !== 200 || r.redirectedToLogin) totalFailed++;
-                lines.push(`| ${p} | ${theme} | ${http} | ${authed} | ${hyd} | ${cons} | ${net} |`);
-              } catch (e) {
-                lines.push(`| (${f}) | - | - | - | - | parse-error | - |`);
+                if (r.bootstrapPath !== "/dashboard" || http !== 200 || !adminRoleConfirmed || r.redirectedToLogin || !pageReady || !hasScreenshot) captureFailed++;
+                lines.push(`| ${p} | ${locale} | ${theme} | ${http} | ${authed} | ${pageReady ? "READY" : "FAIL"} | ${hasScreenshot ? "yes" : "no"} | ${hyd} | ${cons} | ${net} |`);
+              } catch {
+                captureFailed++;
+                lines.push(`| (${f}) | - | - | - | - | FAIL | no | - | - | - |`);
               }
             }
+            const incomplete = files.length !== 20 || locales.size !== 2;
+            const monitoringFailed = captureFailed > 0 || incomplete || totalHydration > 0;
             lines.push("");
             if (totalHydration > 0) {
-              lines.push(`⚠ **${totalHydration} hydration error(s) detected across ${files.length} capture(s)** — React #418 re-emergence suspected. Review artifacts + run Wave 172+ triage.`);
-            } else if (totalFailed > 0) {
-              lines.push(`⚠ **${totalFailed} capture(s) returned non-200 OR redirected to /login** — auth/SSR setup may be broken.`);
+              lines.push(`⚠ **${totalHydration} hydration error(s) detected across ${files.length} capture(s)** — review the current-run screenshots and sanitized sidecars.`);
+            }
+            if (captureFailed > 0) {
+              lines.push(`⚠ **${captureFailed} capture(s) failed** — require a verified admin login, HTTP 200 from /dashboard, authenticated routing, a ready page, and a written screenshot.`);
+            }
+            if (incomplete) {
+              lines.push(`⚠ **Incomplete run: ${files.length}/20 captures and ${locales.size}/2 locales found.**`);
+            }
+            if (!monitoringFailed) {
+              lines.push(`✅ **All ${files.length} captures clean** (bootstrap HTTP 200 + authenticated + ready page + screenshot + 0 hydration errors).`);
             } else {
-              lines.push(`✅ **All ${files.length} captures clean** (HTTP 200 + AUTHED + 0 hydration errors). W169 §Honesty residual non-reproducibility re-confirmed.`);
+              lines.push("❌ **Admin smoke monitoring failed; inspect the current run artifact.**");
             }
             const out = lines.join("\n");
             console.log(out);
             if (summary) {
               fs.appendFileSync(summary, out + "\n");
             }
+            publishFailure(monitoringFailed);
           '
 
       - name: Terminate background processes
@@ -487,26 +437,21 @@ jobs:
       - name: Upload smoke reports
         # 30-day retention (vs visual-audit's 14) — enables quarterly trend
         # analysis if React #418 re-emerges sporadically.
-        # include-hidden-files: true is DEFENSIVE per W160 SW1 (z) lesson —
-        # `.screenshots/` starts with "." (hidden dir per actions/upload-artifact@v7
-        # behavior). Current visual-audit.yml doesn't set the flag and works,
-        # but defensive cost is zero (1 line).
+        # `.screenshots/` is hidden, so include-hidden-files keeps the report
+        # and screenshots available in the uploaded artifact.
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: admin-smoke-reports
-          path: frontend/.screenshots/admin-visual-smoke
+          path: ${{ steps.smoke.outputs.artifact_dir }}
           retention-days: 30
           if-no-files-found: warn
           include-hidden-files: true
 
       - name: Re-assert smoke result
-        # Propagates non-zero exit from wave165 script to workflow status.
-        # `continue-on-error: true` on the script step keeps artifacts uploading
-        # on failure, but we need the workflow to FAIL (red in Actions UI) if
-        # any captures hit React #418 / HTTP failures so scheduled cron alerts
-        # are visible. Last step so artifact + summary already ran.
-        if: always() && steps.smoke.outcome == 'failure'
+        # Propagate script or summary failures after the summary and artifact
+        # upload steps have run, so scheduled runs are visible as failed.
+        if: always() && (steps.smoke.outcome == 'failure' || steps.summary.outputs.failed == 'true')
         run: |
-          echo "::error::Admin smoke detected violations (wave165 exit code != 0). Review the Step Summary table above + the uploaded artifact for sidecar JSONs. If hydration errors > 0 on any capture, W169 §Honesty residual has re-emerged — file W172+ triage wave."
+          echo "::error::Admin smoke detected a bootstrap, route, locale, screenshot, or hydration violation. Review the step summary and current-run artifact."
           exit 1

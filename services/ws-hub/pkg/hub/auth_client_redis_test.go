@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -89,4 +90,44 @@ func TestInvalidate_WildcardDeletesAllUserRedisL2(t *testing.T) {
 
 	assert.False(t, mr.Exists(k1))
 	assert.False(t, mr.Exists(k2))
+}
+
+func TestRefreshRoomAuthorizationBypassesStaleCaches(t *testing.T) {
+	mr, rc := newMiniredisClient(t)
+	key := "auth:perms:" + rdUser + ":" + rdRoom
+	require.NoError(t, mr.Set(key, "1"))
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	c := NewInternalAPIAuthClient(server.URL, rc)
+	c.cache.Add(rdUser+":"+rdRoom, cacheEntry{allowed: true, expiresAt: time.Now().Add(time.Minute)})
+
+	allowed, err := c.RefreshRoomAuthorization(context.Background(), rdUser, rdRoom)
+
+	require.NoError(t, err)
+	assert.False(t, allowed, "refresh must use the current backend authorization")
+	assert.Equal(t, 1, requests, "refresh must bypass both cached allow entries")
+	assert.False(t, mr.Exists(key), "fresh authorization must not leave the stale L2 entry")
+}
+
+func TestRefreshRoomAuthorizationDoesNotConfirmFailedRedisInvalidation(t *testing.T) {
+	mr, rc := newMiniredisClient(t)
+	require.NoError(t, mr.Set("auth:perms:"+rdUser+":"+rdRoom, "1"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("backend must not be queried until stale Redis permission is deleted")
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	c := NewInternalAPIAuthClient(server.URL, rc)
+	mr.Close()
+
+	allowed, err := c.RefreshRoomAuthorization(context.Background(), rdUser, rdRoom)
+
+	assert.Error(t, err, "failed L2 invalidation must leave the revocation unconfirmed")
+	assert.False(t, allowed)
 }

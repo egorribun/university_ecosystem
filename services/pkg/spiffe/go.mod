@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	github.com/spiffe/go-spiffe/v2 v2.8.2
 	github.com/stretchr/testify v1.12.1
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.83.2
 )
 
 require (

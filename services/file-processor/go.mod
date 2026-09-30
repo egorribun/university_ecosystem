@@ -20,7 +20,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/nats v0.44.0
 	github.com/university-ecosystem/core/gen/go v0.0.0-00010101000000-000000000000
 	github.com/university-ecosystem/services/pkg/logging v0.0.0
-	github.com/university-ecosystem/services/pkg/spiffe v0.0.0
+	github.com/university-ecosystem/services/pkg/spiffe v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.71.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0
 	go.opentelemetry.io/otel v1.46.0
@@ -30,7 +30,7 @@ require (
 	go.temporal.io/sdk v1.49.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/image v0.46.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.83.2
 )
 
 require (
@@ -68,7 +68,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.6 // indirect
-	github.com/sirupsen/logrus v1.9.4 // indirect
+	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.8.2 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
@@ -93,7 +93,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	// github.com/google/uuid promoted to direct — used in main.go (FP-P2-02)
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
 	github.com/klauspost/compress v1.20.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect

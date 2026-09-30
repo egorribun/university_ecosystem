@@ -1000,6 +1000,69 @@ async def test_step_up_challenge_requires_active_session_at_completion() -> None
 
 
 @pytest.mark.asyncio
+async def test_email_mfa_enablement_revokes_sibling_sessions_after_commit() -> None:
+    challenge = _email_challenge(flow="email_mfa_enablement")
+    user = SimpleNamespace(id=challenge.user_id)
+    active_session = SimpleNamespace(id=uuid.uuid4())
+    request = _api_request(active_session=active_session)
+    email_service = MagicMock()
+    email_service.verify_opaque = AsyncMock(return_value=challenge)
+    login_service = MagicMock()
+    login_service.get_email_otp_service.return_value = email_service
+    expected = MagicMock()
+    login_service.complete_step_up = AsyncMock(return_value=expected)
+    order: list[str] = []
+    login_service.publish_completed_step_up = AsyncMock(
+        side_effect=lambda **_: order.append("current-session")
+    )
+    db = AsyncMock()
+    db.get.return_value = user
+    db.commit.side_effect = lambda: order.append("commit")
+    pending = [
+        MfaSessionRevocation(
+            jti="sibling-jti", expires_at=datetime.now(UTC) + timedelta(minutes=1)
+        )
+    ]
+
+    with (
+        patch.object(login_api, "get_current_user_optional", AsyncMock()),
+        patch.object(login_api, "extract_request_fingerprint", return_value="f" * 64),
+        patch("app.core.ratelimit.resolve_client_ip", return_value="203.0.113.5"),
+        patch.object(
+            login_api.mfa,
+            "revoke_sibling_sessions_for_factor_change",
+            AsyncMock(return_value=pending),
+        ) as collect_revocations,
+        patch.object(
+            login_api.mfa,
+            "publish_mfa_session_revocations",
+            AsyncMock(side_effect=lambda _: order.append("sibling-revocations")),
+        ) as publish_revocations,
+    ):
+        result = await login_api.verify_mfa_challenge.__dishka_orig_func__(
+            MfaVerifyIn(
+                method=MFA_METHOD_EMAIL_OTP,
+                challenge_token="a" * 32,
+                code="123456",
+            ),
+            MagicMock(),
+            request,
+            MagicMock(),
+            login_service,
+            db,
+        )
+
+    assert result is expected
+    collect_revocations.assert_awaited_once_with(
+        db,
+        user_id=user.id,
+        current_session_id=active_session.id,
+    )
+    publish_revocations.assert_awaited_once_with(pending)
+    assert order == ["commit", "sibling-revocations", "current-session"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("error", "expected_status"),
     [

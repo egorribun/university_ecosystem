@@ -175,3 +175,4 @@ async def test_remove_participant_skips_invalidation_when_no_row_removed():
 
     invalidate_chat.assert_not_awaited()
     invalidate_presence.assert_not_awaited()
+    uow.chats.add.assert_not_called()

@@ -61,8 +61,8 @@ def verify_manifest(
     }
     expected_frontend = {
         "VITE_APP_RELEASE": expected_sha,
-        "VITE_ENABLE_WEB_VITALS": "true",
-        "VITE_CWV_TRUSTED_RUM": "true",
+        "VITE_ENABLE_WEB_VITALS": "false",
+        "VITE_CWV_TRUSTED_RUM": "false",
         "VITE_WEB_VITALS_ENDPOINT": "/api/v1/cwv",
     }
     if manifest.get("schema_version") != 2:

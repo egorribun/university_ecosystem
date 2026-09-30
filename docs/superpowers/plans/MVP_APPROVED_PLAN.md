@@ -1,11 +1,19 @@
 <!-- markdownlint-disable-next-line MD041 -->
-> **Снимок утверждённого плана от 2026-09-28** (оригинал: `C:\Users\egorribun\.claude\plans\cached-cuddling-ladybug.md`, вне репозитория). Здесь он лежит, чтобы любой агент и любая машина видели цели и порядок фаз. Актуальное состояние, принятые позже решения и порядок продолжения — в [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md); при расхождении о состоянии верить ему и `git log`, о целях и порядке фаз — этому плану.
+> **Исторический снимок плана от 2026-09-28 — SUPERSEDED.** Это не действующая
+> инструкция и не источник разрешений: факты, статусы, порядок работ, действия с
+> Git/PR и инфраструктурные решения ниже относятся к снимку на указанную дату.
+> Для текущих целей, решений и порядка работы используйте
+> [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), для оперативного состояния —
+> [STATUS.md](STATUS.md), а для обязательных инвариантов — корневой
+> [AGENTS.md](../../../AGENTS.md). Актуальные критерии остаются применимы только
+> там, где они подтверждены ТЗ, мастер-планом или действующим quality contract;
+> уникальные требования из снимка должны быть перенесены до его удаления.
 
-# University Ecosystem — план доведения до эталонного MVP (с 2026-09-28)
+# [SUPERSEDED] University Ecosystem — исторический план MVP (2026-09-28)
 
 ## Context
 
-Этот план заменяет `rustling-dazzling-stearns.md` и операционные разделы handoff. Факты ниже проверены вживую 2026-09-28, а не взяты из handoff.
+Этот исторический approved snapshot фиксирует состояние на 2026-09-28. Текущий мастер-план и оперативный статус ведутся в `MVP_MASTER_PLAN.md` и `STATUS.md`; факты ниже относятся к указанному снимку.
 
 **Git и PR**
 - `HEAD == origin/egorribun == PR #1266 head == 035e2d2d1`; ветка на 884 коммита впереди `main` (`481dba81e`).
@@ -55,7 +63,7 @@
 
 **Внешний аудит:** 59 closed / 2 declined / 2 open. Открыты BE-02 (deployed-catalog preflight) и RUST-P3-03 (final-SHA evidence). P0 и P1 закрыты.
 
-## Решения пользователя (2026-09-28)
+## Исторические решения пользователя (снимок 2026-09-28; superseded)
 
 1. **Мутации: 100% viable по всему коду, но индустриально.** Работают 3 агента на непересекающихся файлах. Для обратной связи — локальный incremental Stryker; canonical остаётся fresh. Эквивалентные мутанты убираются упрощением кода. Evidence — только канонический CI. Продуктовая приёмка идёт параллельно.
 2. **Процесс облегчается.**
@@ -63,17 +71,17 @@
    - Независимое ревью нужно только для production-кода security/auth/data.
    - Handoff сжимается до короткого статуса (≤150 строк), история уходит в архив.
    - RED→GREEN, fail-closed гейты и запрет timeout-инфляции/exclusions/waivers сохраняются.
-3. **Малый security-PR в `main`** только с бампами lock-файлов под 16 алертов. Merge — с явного подтверждения.
+3. Исторический security-PR в `main` предполагал отдельное подтверждение перед merge. Это требование заменено текущей авторизацией полного обычного release cycle из мастер-плана.
 4. **Бампы #1292–#1295** вносятся в `egorribun` обычными коммитами по одной группе после первого зелёного CI. mutmut 3.7→3.8 откладывается до закрытия backend-мутаций.
 
 Дополнительно (2026-09-28, после утверждения):
 
-5. #1296 мержится несмотря на унаследованные от `main` красные проверки; admin bypass выполняет мейнтейнер с причиной в merge-коммите.
+5. Историческое решение допускало admin bypass для #1296 при унаследованных от `main` красных проверках. Оно superseded: действующий план запрещает bypass и требует обычного PR/merge с обязательными проверками.
 6. Старые worktree и stash удалены после классификации; бэкап и `keep/`-патчи — в `artifacts/wip/2026-09-28/`.
 7. Четыре feature flag без потребителей удаляются, flagd и read-only диагностика остаются с пустым состоянием.
 8. `AUDIT_PLATFORM_FULL.md` удаляется в фазе 11 после переноса ledger в финальный аудит (сейчас открыты BE-02 и RUST-P3-03).
 
-В силе остаются прежние решения:
+На дату снимка действовали следующие решения; применять их сейчас можно только если они повторены в актуальном мастер-плане:
 - CDC вне MVP (ADR-037);
 - реального staging нет, вместо него Docker + kind;
 - Mailpit и локальный VAPID вместо реальных провайдеров;
@@ -122,23 +130,23 @@
   - Go-модули сервисов: grpc→1.83.2, OTel→1.46.0 (`go mod tidy`, `go mod verify`).
 - Сверить, что ограничения `pyproject.toml` на `main` допускают эти версии. Иначе — минимальная правка границы.
 - Push ветки → PR в `main`. CI `main`-овской версии workflows должен быть зелёным; падения классифицировать.
-- **Merge — только после явного «да» пользователя, без bypass.** После merge проверить `gh api .../dependabot/alerts?state=open` — ожидается 0 для этих пакетов.
+- Исторически для этой security-ветки ожидалось отдельное подтверждение merge. Текущее разрешение на обычный полный release cycle и запрет bypass определены мастер-планом; после merge проверять alerts по его действующим требованиям.
 - Совместимость с #1266: те же версии, конфликт в lock-файлах при финальном merge решается тривиально.
 
 ## Фаза 2 — Сброс процесса и гигиена (день 1–2)
 
 1. **Статус вместо handoff.** Новый `docs/superpowers/plans/STATUS.md` (≤150 строк): identity, CI, очереди мутаций, фазы этого плана с чекбоксами, открытые решения.
-   - Весь `2026-09-22-mvp-safe-pause-handoff.md` и `2026-08-31-mvp-quality-closure-continuation.md` переместить в `docs/superpowers/plans/archive/` с пометкой «historical».
-   - Перед перемещением — reference scan (`rg` по ссылкам), обновить `docs/README.md`.
+   - Отдельные handoff-документы были историческими источниками. Их миграция и дальнейшая очистка теперь определяются только текущим мастер-планом.
+   - Перед любым удалением — проверить ссылки и перенести уникальные требования в действующие документы.
    - Далее STATUS обновляется одной короткой дельтой за сессию.
 2. Память обновить:
    - новый memory-файл с решениями 2026-09-28;
-   - заменить указатели `safe-pause-*` на STATUS;
+   - убрать из текущих документов ссылки на исторические handoff-файлы и держать оперативный указатель на STATUS;
    - удалить устаревшие записи про «§0.000000».
 3. Инвентаризация worktree и stash (read-only отчёт в STATUS):
    - что уникально в `../ue-e2e`, `ue-mm`, `ue-mm2`, `ue-mut-A/B/C`, `.codex/worktrees/*`, 4 stash;
    - предложение пользователю, что удалить. Удаление — с разрешения: сначала `cmd /c rmdir` junction, потом `git worktree remove`.
-4. Пользовательский `AUDIT_PLATFORM_FULL.md`: он ссылочный ledger, но untracked. Предложить закоммитить как есть (`docs(audits): track platform audit ledger`), решение — за пользователем.
+4. Ledger `AUDIT_PLATFORM_FULL.md` в этом снимке отмечен как незатреканный. Фактическое текущее состояние и условия его удаления см. в `STATUS.md` и мастер-плане.
 5. Мёртвые флаги `new-chat-ui`, `semantic-search`, `graphql-subscriptions`: подтвердить отсутствие потребителей, затем удалить из `app/core/feature_flags.py`, `k8s/flagd/flags.json` и `tests/test_feature_flags.py` (`refactor(quality)`). Если потребитель найдётся — оставить и задокументировать.
 
 ## Фаза 3 — Индустриальное закрытие мутаций до 100% viable (≈2–3 недели, параллельно фазам 4–9)
@@ -190,7 +198,7 @@
 3. #1294 pip **без mutmut**: `uv lock --upgrade-package …`, полный backend.
 4. #1293 npm (33): полный frontend-гейт — typecheck, lint, unit, build, e2e, bundle budget. Сверка WASM byte-parity и provenance. Особое внимание React 19.3 (hydration warnings) и Vite 8.3 (Rolldown warnings).
 
-Отдельно, после фазы 3 backend: mutmut 3.8 и повторный полный mutmut. Dependabot PR не закрывать без разрешения; после merge они станут superseded.
+Отдельно, после фазы 3 backend: mutmut 3.8 и повторный полный mutmut. Dependabot PR считать superseded и закрывать только после доказательства, что их изменения вошли в выпущенный релиз, как указано в мастер-плане.
 
 ## Фаза 5 — Живой лейн приёмки (C0) (≈3–4 дня, lead, параллельно фазе 3)
 
@@ -289,15 +297,15 @@
    SeaweedFS cutover строго по `docs/runbooks/s3-seaweedfs-cutover.md`: `s3_cutover_preflight.py inventory` → freeze → copy → `verify` → smoke (Put/Head/Get/Delete, presigned, private 403). Старый MinIO-том сохраняется; удаление — только с разрешения.
 5. Новый `scripts/restore_db.py` (парный к `backup_db.py`) + `docs/runbooks/backup-restore.md`. Restore проверяется на live-стенде.
 
-## Фаза 9 — Локальный kind prod-like (≈3 дня)
+## Фаза 9 — Локальный kind prod-like (снимок, superseded)
 
 - `deploy/kind/cluster.yaml` (single-node, 80/443 mappings, `ingress-ready`) и `scripts/local_k8s_prod_like.ps1` с командами `up | deploy | smoke | chaos | rollback | down`.
   - Инструменты kind/helm/kubectl/mkcert — пин-версии с checksum (постоянное разрешение).
   - Локальный registry, pod-ы ссылаются по digest (Kyverno policy 9).
-- В кластере: ingress-nginx, cert-manager + mkcert CA (Issuer/Certificate), Kyverno + policies, ExternalSecrets с kubernetes/fake provider (тест refresh 1m), metrics-server + HPA, PG/Redis×2/NATS/SeaweedFS, observability.
+- В историческом снимке указывался ingress-nginx. Это решение superseded; для MVP используется Envoy Gateway + Gateway API согласно мастер-плану. Сохраняются применимые критерии TLS, cert-manager + локальная CA, Kyverno, ExternalSecrets refresh, metrics-server/HPA, PG/Redis/NATS/SeaweedFS и observability.
 - `charts/university-ecosystem/values-kind.yaml` без плейсхолдеров. Contract-тест: `helm template` + kubeconform для kind values в CI.
 - Проверки:
-  - `helm upgrade --install`, BE-02 preflight, smoke-журнеи live-лейна по ingress TLS;
+  - `helm upgrade --install`, BE-02 preflight, smoke-сценарии live-лейна по TLS через Gateway API;
   - chaos: delete pod, restart NATS/Redis (манифесты `k8s/chaos/`);
   - `helm rollback` с доказательством сохранности данных;
   - teardown.
@@ -307,7 +315,7 @@
 
 - Локально `docker buildx` шести образов (backend, frontend, ws-hub, gateway, file-processor, caddy): Trivy (0 high/critical), Syft SBOM, digests. Во frontend-образе — WASM byte-parity.
 - Именно эти digests деплоятся в kind (фаза 9): один immutable build.
-- Канонический `build-release-images.yml` (main-only) — после merge и с разрешения (фаза 12).
+- Канонический `build-release-images.yml` (main-only) — после обычного merge release candidate; отдельное разрешение на запуск устарело и не требуется в пределах текущей пользовательской авторизации.
 
 ## Фаза 11 — Финальный аудит и документация (≈1 день)
 
@@ -320,14 +328,13 @@
 - `docs/audits/INDEX.md`, `AGENTS.md` §9 (активные аудиты), `docs/README.md`. STATUS → архив. markdownlint и link-check.
 - Worktrees и stash — очистка по согласованному списку из фазы 2.
 
-## Фаза 12 — Merge и post-merge (каждый шаг — с явного разрешения)
+## Фаза 12 — Исторический merge/post-merge порядок (superseded)
 
-Порядок:
-1. Merge #1266 → `main` без bypass.
-2. Проверка resulting-main SHA и его CI.
-3. `build-release-images.yml`.
-4. Свежий dependency graph (0 open alerts).
-5. Закрытие Dependabot PR как superseded.
+Снимок требовал отдельного подтверждения для каждого merge и post-merge шага.
+Это ожидание разрешения больше не действует: текущая пользовательская
+авторизация на полный release cycle закреплена в мастер-плане. Указание на #1266
+ниже — только завершённая историческая задача; не повторять её. Текущий порядок
+merge, проверки итогового `main` SHA и выпуска образов см. в мастер-плане.
 
 ---
 
@@ -353,7 +360,7 @@
 | Auth fork | `app/core/security*` (`_auth_executor`), auth reset service, `tests/` auth reset suites |
 | Live-лейн | новые `docker-compose.live.yml`, `scripts/live_stand.py`, `frontend/playwright.live.config.ts`, `frontend/tests/e2e-live/`, `.github/workflows/live-e2e.yml`; переиспользовать `scripts/seed_admin_data.py`, `frontend/tests/e2e/utils/*`, `start-docker.ps1` |
 | Инфра | `docker-compose*.yml`, `tests/test_docker_startup_contracts.py`, `scripts/be02_catalog_preflight.py`, `scripts/s3_cutover_preflight.py`, `scripts/backup_db.py` (+ новый restore), новые `deploy/kind/`, `scripts/local_k8s_prod_like.ps1`, `charts/university-ecosystem/values-kind.yaml` |
-| Процесс | новый `docs/superpowers/plans/STATUS.md`, `docs/superpowers/plans/archive/`, `docs/README.md`, `docs/audits/INDEX.md`, memory |
+| Процесс | `docs/superpowers/plans/STATUS.md`, `docs/README.md`, `docs/audits/INDEX.md` |
 
 ## Verification
 
@@ -366,4 +373,4 @@
 
 ## Прогресс (2026-09-29)
 
-Ф0, Ф1, Ф2, Ф4 закрыты; Ф3 волна 1, Ф5, Ф6c, Ф8 в работе. Актуальное состояние, WIP агентов и порядок продолжения — `docs/superpowers/plans/2026-09-29-handoff.md` и `STATUS.md` в репозитории. Добавлено требование мейнтейнера: абсолютная чистота кода и документации.
+Это устаревший progress snapshot. Текущее состояние, открытая работа и порядок продолжения находятся только в `STATUS.md` и мастер-плане.

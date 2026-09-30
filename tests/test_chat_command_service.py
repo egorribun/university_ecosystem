@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -714,6 +714,10 @@ def _patch_member_caches():
         patch(
             f"{_CACHE_MOD}.invalidate_presence_audience_cache", new_callable=AsyncMock
         ),
+        patch(
+            "app.services.ws_hub_client.invalidate_ws_hub_cache",
+            new_callable=AsyncMock,
+        ),
     )
 
 
@@ -730,8 +734,8 @@ class TestGroupMemberManagement:
         uow.chats.add_participant = AsyncMock(return_value=True)
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-        p1, p2 = _patch_member_caches()
-        with p1, p2:
+        p1, p2, p3 = _patch_member_caches()
+        with p1, p2, p3:
             await svc.add_participant(chat.id, owner, uuid.uuid4(), "en")
 
         uow.chats.add_participant.assert_awaited_once()
@@ -774,12 +778,153 @@ class TestGroupMemberManagement:
         uow.chats.remove_participant = AsyncMock(return_value=1)
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-        p1, p2 = _patch_member_caches()
-        with p1, p2:
+        p1, p2, p3 = _patch_member_caches()
+        with p1, p2, p3:
             await svc.remove_participant(chat.id, member, member.id, "en")
 
         uow.chats.remove_participant.assert_awaited_once()
         uow.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_remove_participant_stages_outbox_and_best_effort_eviction_after_commit(
+        self,
+    ):
+        from app.models.domain_events import StoredEvent
+
+        owner = _mock_user()
+        member = _mock_user()
+        chat = _mock_chat(owner.id, member.id, chat_type="group", created_by=owner.id)
+        uow = _mock_uow()
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.remove_participant = AsyncMock(return_value=1)
+        operations = []
+        uow.chats.add.side_effect = lambda item: operations.append(("add", item))
+        uow.commit.side_effect = lambda: operations.append(("commit", None))
+        invalidate_chat = AsyncMock(
+            side_effect=lambda chat_id: operations.append(("chat-cache", chat_id))
+        )
+        invalidate_presence = AsyncMock(
+            side_effect=lambda *user_ids: operations.append(
+                ("presence-cache", user_ids)
+            )
+        )
+
+        def record_immediate_eviction(*args, **kwargs):
+            operations.append(("ws-hub", args, kwargs))
+            raise ConnectionError("ws-hub unavailable")
+
+        invalidate_ws = AsyncMock(side_effect=record_immediate_eviction)
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        with (
+            patch(
+                "app.services.chat.command_service.invalidate_chat_participants_cache",
+                new=invalidate_chat,
+            ),
+            patch(
+                "app.services.chat.command_service.invalidate_presence_audience_cache",
+                new=invalidate_presence,
+            ),
+            patch(
+                "app.services.ws_hub_client.invalidate_ws_hub_cache",
+                new=invalidate_ws,
+            ),
+        ):
+            await svc.remove_participant(chat.id, owner, member.id, "en")
+
+        assert [operation[0] for operation in operations] == [
+            "add",
+            "commit",
+            "chat-cache",
+            "presence-cache",
+            "ws-hub",
+        ]
+        stored_event = operations[0][1]
+        assert isinstance(stored_event, StoredEvent)
+        assert stored_event.event_type == "chat.participant_removed"
+        assert stored_event.aggregate_type == "Chat"
+        assert stored_event.aggregate_id == str(chat.id)
+        assert stored_event.payload == {
+            "chat_id": str(chat.id),
+            "user_id": str(member.id),
+        }
+        assert operations[-1][1:] == (
+            (str(member.id), str(chat.id)),
+            {"evict_room": True, "event_id": str(stored_event.id)},
+        )
+
+        # The outbox retries the same eviction with the same JetStream message ID.
+        # That makes a fast-path publish followed by durable delivery safe to repeat.
+        from app.core.events import ChatParticipantRemoved
+        from app.services.event_handlers import handle_chat_participant_removed
+
+        invalidate_ws.side_effect = None
+        with patch(
+            "app.services.ws_hub_client.invalidate_ws_hub_cache", new=invalidate_ws
+        ):
+            await handle_chat_participant_removed(
+                ChatParticipantRemoved(
+                    chat_id=chat.id,
+                    user_id=member.id,
+                    event_id=str(stored_event.id),
+                )
+            )
+
+        assert invalidate_ws.await_args_list == [
+            call(
+                str(member.id),
+                str(chat.id),
+                evict_room=True,
+                event_id=str(stored_event.id),
+            ),
+            call(
+                str(member.id),
+                str(chat.id),
+                evict_room=True,
+                event_id=str(stored_event.id),
+                raise_on_failure=True,
+            ),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_remove_participant_attempts_eviction_when_cache_invalidation_fails(
+        self,
+    ):
+        owner = _mock_user()
+        member = _mock_user()
+        chat = _mock_chat(owner.id, member.id, chat_type="group", created_by=owner.id)
+        uow = _mock_uow()
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.remove_participant = AsyncMock(return_value=1)
+        invalidate_chat = AsyncMock(side_effect=ConnectionError("cache unavailable"))
+        invalidate_presence = AsyncMock()
+        invalidate_ws = AsyncMock()
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        with (
+            patch(
+                "app.services.chat.command_service.invalidate_chat_participants_cache",
+                new=invalidate_chat,
+            ),
+            patch(
+                "app.services.chat.command_service.invalidate_presence_audience_cache",
+                new=invalidate_presence,
+            ),
+            patch(
+                "app.services.ws_hub_client.invalidate_ws_hub_cache",
+                new=invalidate_ws,
+            ),
+            pytest.raises(ConnectionError, match="cache unavailable"),
+        ):
+            await svc.remove_participant(chat.id, owner, member.id, "en")
+
+        invalidate_presence.assert_awaited_once()
+        invalidate_ws.assert_awaited_once_with(
+            str(member.id),
+            str(chat.id),
+            evict_room=True,
+            event_id=str(uow.chats.add.call_args.args[0].id),
+        )
 
     @pytest.mark.asyncio
     async def test_remove_other_by_non_owner_forbidden(self):
@@ -808,8 +953,8 @@ class TestGroupMemberManagement:
         uow.chats.remove_participant = AsyncMock(return_value=1)
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-        p1, p2 = _patch_member_caches()
-        with p1, p2:
+        p1, p2, p3 = _patch_member_caches()
+        with p1, p2, p3:
             await svc.remove_participant(chat.id, owner, member_id, "en")
 
         uow.chats.remove_participant.assert_awaited_once()

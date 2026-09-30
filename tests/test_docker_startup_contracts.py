@@ -834,7 +834,8 @@ def test_compose_files_do_not_claim_global_project_or_container_names() -> None:
         # the SeaweedFS volume (`<project>_seaweedfs_data`) and the legacy
         # MinIO volume guard resolve the same names from any checkout or
         # detached worktree. COMPOSE_PROJECT_NAME and `-p` still override it
-        # (the live stand runs as `ue-live`); overlays must not name a project.
+        # (the live stand uses a unique owner-marked project); overlays must
+        # not name a project.
         expected_name = (
             "university_ecosystem"
             if relative_path in {"docker-compose.yml", "docker-compose.full.yml"}

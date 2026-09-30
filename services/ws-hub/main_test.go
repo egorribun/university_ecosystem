@@ -216,6 +216,10 @@ func TestRunServer_Error(t *testing.T) {
 }
 
 func TestSetupHubAndHandlers_ReadinessHealthy(t *testing.T) {
+	oldSubscribe := subscribeNATSFunc
+	subscribeNATSFunc = func(*hub.Hub, context.Context) error { return nil }
+	t.Cleanup(func() { subscribeNATSFunc = oldSubscribe })
+
 	lc := net.ListenConfig{}
 	l, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)

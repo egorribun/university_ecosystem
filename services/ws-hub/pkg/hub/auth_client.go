@@ -36,6 +36,14 @@ type RoomAuthClient interface {
 	Invalidate(userID, roomID string)
 }
 
+// RoomAuthorizationRefresher performs a cache-bypassing authorization check
+// after confirming that stale shared cache entries were removed. It is used
+// for durable membership-revocation events, where an unknown result must be
+// retried instead of being treated as a denial or permission.
+type RoomAuthorizationRefresher interface {
+	RefreshRoomAuthorization(ctx context.Context, userID, roomID string) (bool, error)
+}
+
 // authCacheTTL is the single source of truth for both L1 (in-process LRU)
 // and L2 (Redis) cache lifetimes.  WSH-P3-02 (audit Wave 10): previously L1
 // was 1 min and L2 was 5 min, so a miss on L1 would repopulate from Redis
@@ -298,6 +306,14 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 // doRequestWithBreaker wraps doRequest with the circuit breaker.
 // Returns false when the circuit is open (fail-closed for auth).
 func (c *InternalAPIAuthClient) doRequestWithBreaker(ctx context.Context, userID, roomID string) bool {
+	allowed, _ := c.doRequestWithBreakerResult(ctx, userID, roomID)
+	return allowed
+}
+
+func (c *InternalAPIAuthClient) doRequestWithBreakerResult(
+	ctx context.Context,
+	userID, roomID string,
+) (bool, error) {
 	result, err := c.cb.Execute(func() (interface{}, error) {
 		// WSH-P1-02: propagate reqErr so that network errors and HTTP 5xx trip
 		// the breaker, while healthy 4xx responses (backend up, access denied)
@@ -310,11 +326,32 @@ func (c *InternalAPIAuthClient) doRequestWithBreaker(ctx context.Context, userID
 		return allowed, nil
 	})
 	if err != nil {
-		// gobreaker.ErrOpenState or gobreaker.ErrTooManyRequests (half-open limit)
-		// → fail-closed: deny room join when backend is unreachable.
-		return false
+		return false, err
 	}
-	return result.(bool)
+	return result.(bool), nil
+}
+
+// RefreshRoomAuthorization removes the local and Redis permission entries,
+// then asks the backend directly. Unlike CanJoinRoom, this never trusts L1/L2
+// data. Redis deletion errors and backend failures are returned so a durable
+// revocation event can be retried rather than incorrectly acknowledged.
+func (c *InternalAPIAuthClient) RefreshRoomAuthorization(
+	ctx context.Context,
+	userID, roomID string,
+) (bool, error) {
+	if !isValidUUID(userID) || !isValidUUID(roomID) {
+		return false, fmt.Errorf("invalid user or room id for authorization refresh")
+	}
+
+	key := userID + ":" + roomID
+	c.cache.Remove(key)
+	if c.redis != nil {
+		if err := c.redis.Del(ctx, "auth:perms:"+key).Err(); err != nil {
+			return false, fmt.Errorf("delete stale Redis room authorization: %w", err)
+		}
+	}
+
+	return c.doRequestWithBreakerResult(ctx, userID, roomID)
 }
 
 // CanJoinRoom checks local cache, uses single-flight to prevent thundering herd,
