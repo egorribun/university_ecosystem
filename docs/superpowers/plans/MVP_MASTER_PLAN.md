@@ -193,6 +193,13 @@ run/attempt либо локальную команду, конфигурацию
   проверить MIG-PASS-01, BE-02 и RUST-P3-03. Удалить `AUDIT_PLATFORM_FULL.md`
   только после переноса ledger и проверки всех IDs; текущие статусы не наследовать
   из старых снимков.
+- **Требования Messenger из W208–W211:** перенести критерии живой приёмки
+  уведомлений о reply (цитируемый автор получает один `chat.reply`, без общего
+  `chat.message`); прав доступа к группе и инвалидации cache/WS; unread по каждому
+  участнику (прочтение A не сбрасывает unread B); уведомлений с названием группы
+  и автором сообщения. Сверить включённые в Git, но не внесённые в индекс
+  `AUDIT_WAVE210.md` и `AUDIT_WAVE211.md`, включая отложенный маркер «Seen by N»
+  и общий live smoke, с ТЗ перед решением об их хранении.
 - Пересмотреть `MVP_APPROVED_PLAN.md` и другие документы вне archive: применимые
   решения перенести сюда, в ADR или runbooks; удалить документ, если после миграции
   у него нет самостоятельной долговечной роли.
@@ -263,8 +270,15 @@ teardown проверяет ownership; пользовательские тома
   sibling/session revocation.
 - **Messenger:** два независимых browser contexts и реальный WS; DM/groups,
   ordering/deduplication, reconnect, reply/edit/delete/forward/reactions/
-  attachments/unread; права на group и attachment. Mutations идут через backend,
-  arbitrary client event payload не становится trusted event.
+  attachments/unread. Для групп проверить min 3 / max 100 участников при создании;
+  разрешения add/rename для участника и remove только владельцем или самим собой;
+  403 для постороннего до раскрытия типа чата; отказ групповых операций для DM;
+  после изменения membership старый WS/cache не сохраняет доступ. Прочтение
+  сообщений участником A не сбрасывает unread участника B. Group notification
+  содержит имя группы и автора. Quoted author получает ровно один `chat.reply`,
+  без дополнительного общего `chat.message`. Проверить права на attachment.
+  Mutations идут через backend, arbitrary client event payload не становится
+  trusted event.
 - **Profile/settings:** просмотр/редактирование профиля, avatar, validation и
   rollback, persisted state после reload, все действующие разделы settings.
 - **News/events/map:** сохранение scroll, back/forward, центрирование tabs,
@@ -274,8 +288,9 @@ teardown проверяет ownership; пользовательские тома
   Activity heatmap/trends/grades/comparison, без новых учебных целей/attendance.
 - **Notifications:** все пять текущих топиков (news, schedule changes, events,
   messages, system updates); in-app и реальный Chromium Web Push через локальный
-  VAPID, dedup/unread, quiet hours, opt-out; разрешение браузера запрашивается
-  после явного пользовательского действия.
+  VAPID, dedup/unread, group-and-sender context, single `chat.reply` instead of a
+  duplicate generic message notification, quiet hours, opt-out; разрешение
+  браузера запрашивается после явного пользовательского действия.
 - **Admin:** действующие admin pages работают; student/teacher получают отказ на
   UI/API, а не только скрытые ссылки.
 - **SSR/PWA/i18n:** нет hydration mismatch, сырых localization keys; корректные

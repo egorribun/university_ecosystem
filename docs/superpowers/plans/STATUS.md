@@ -9,12 +9,12 @@
 
 | Область | Подтверждённый факт |
 | --- | --- |
-| Git и PR | Ветка `egorribun`, локальный проверенный кодовый SHA `66a62d1333407571e563faf5a5268fae89e09e37`; шесть функциональных коммитов продолжают PR #1306. На момент среза опубликованная вершина PR была `6b93913adfa893d89033f7598dab37bd87b82e30`; перед merge сверить актуальные checks и ancestry с GitHub. `origin/main`/merge-base: `78b9499079442191920835eed9de93b726cf36a1`. |
-| CI | На старом SHA `6b93913` integration job упал из-за устаревшего `testcontainers.redis` при `-W error`; импорт исправлен и целевой Docker-тест проходит. Security Policy Integrity не входит в обязательные contexts и использовал workflow base SHA. Ruleset 8335285 всё ещё требует снятый по ADR-044 `Rust Criterion Benchmarks (pyo3-sanitizer)`; его администраторское изменение отдельно не разрешено. Не создавать фиктивный check и не обходить правила. |
-| Среда | GitHub CLI аутентифицирован; scope `packages` не показан, поэтому прямую публикацию в GHCR нельзя считать подтверждённой. На машине около 31.8 GiB RAM; Docker Desktop доступен. В checkout нет пользовательского `.env`; kind не установлен. |
-| Live-стенд | `ue-live-1dc5f2e4c0503c50` запущен на SHA `6b93913`; сервисы и readiness были healthy. Первый полный live lane дал 5 passed / 7 failed: три role logins и desktop reset упёрлись в общий лимит 5/min; два admin assertions — в responsive duplicate locator; mobile reset был перезагружен первой передачей контроля service worker. Все три причины исправлены локально, live повтор ещё не выполнен. Seed повторно не запускать до отдельной проверки; volumes сохранять, lifecycle вести только через `scripts/live_stand.py`. |
-| Рабочее дерево | Шесть обычных коммитов собраны на `egorribun`; `git diff --check` и targeted hooks прошли. Не force-push; перед отправкой сверить чистое состояние. |
-| Архивы и rescue | 120 tracked-файлов / 3,981,581 байт. Rescue bundle проверен для SHA `d0aad7c296facd79b3d41b037bc4160f5b3132be`; bundle и manifest содержат исторические credential-shaped строки. Значения не выводить и bundle не распространять. Классификация ждёт подтверждения статуса credentials; архивы пока не удалять. |
+| Git и PR | Последний push в PR #1306: `d0cb778fedbe77f9e8b275ef2bd274411af2dea1`; локальный HEAD `57a095d5c` содержит после него admin API E2E correction `a1d62e975`, PostgreSQL row-lock fix `3f84a6cfc` и scope regression `57a095d5c`. Эти три коммита ещё не запушены. `origin/main`/merge-base: `78b9499079442191920835eed9de93b726cf36a1`; ancestry и diff сверить перед merge. |
+| CI | На опубликованном PR SHA `d0cb778` `gh pr checks` показал 133 pass, 2 in progress и один failure в необязательном `Security Policy Integrity` (ошибка флага из base workflow); монитор required checks не сообщил обязательных failures. Новые коммиты ещё не запускались в CI. Ruleset 8335285 всё ещё требует снятый по ADR-044 `Rust Criterion Benchmarks (pyo3-sanitizer)`; не создавать фиктивный check и не обходить правила. |
+| Среда | Проверены: uv 0.11.28 с Python 3.14.7, Node 24.21.0, Go 1.27.1, Rust 1.98.1; `uv lock --check` проходит. GitHub CLI аутентифицирован (`repo`, `workflow`), scope `packages` не показан. Docker 29.8.1 доступен с effective limits 23.5 GiB RAM / 16 CPU; host ранее измерялся около 31.8 GiB RAM. В checkout нет пользовательского `.env`; наличие kind перепроверить перед Block 9. |
+| Live-стенд | `ue-live-1dc5f2e4c0503c50` healthy на `3f84a6cfc`, backend readiness — HTTP 200. На этом SHA password-reset и исправленный admin API denial прошли desktop/mobile по 2/2 каждый. Предыдущий полный прогон на `d0cb` выявил reset HTTP 500 и неверный admin URL; оба дефекта имеют regression proof. Seed не запускался; volumes сохранены. |
+| Рабочее дерево | Коммиты `a1d62e975`, `3f84a6cfc` и `57a095d5c` прошли применимые hooks; PostgreSQL row-lock regression со scope check прошёл 1/1, auth/repository/reset набор — 25/25; harness — 27/27; fast preflight — 9/9 на HEAD `57a095d5c` при незакоммиченных docs (отчёт `artifacts/fast-preflight/fast-preflight.json`). Только master-plan и STATUS остаются незакоммиченными; link checker проверил 547 файлов без broken local links. Перед push сверить diff и чистое состояние. |
+| Архивы и rescue | 120 tracked-файлов / 3,981,581 байт. Pinned detect-secrets и Gitleaks дали 0 находок в архивных файлах, однако ручная классификация нашла исторические ссылки на project token (W121/W123/W201) и тестовый пароль seeded-admin (W171:118); актуальная валидность/отзыв неизвестны. Не выводить значения, не проверять их запросами и не распространять bundle. Удаление архивов приостановлено до разрешения вопроса credentials и переноса требований. |
 | Audit ledger | В `AUDIT_PLATFORM_FULL.md` остаются 63 ID для пересмотра на итоговом SHA. BE-02 и RUST-P3-03 требуют доказательной проверки по согласованным критериям; повторно реализовывать уже существующий base64/WASM export не нужно. |
 
 ## Ранее подтверждённые широкие проверки
@@ -53,11 +53,15 @@
   password dictionary 591.17 KiB gzip. Три tracked Windows WASM/provenance outputs,
   изменённые сборкой, восстановлены к исходному чистому состоянию; canonical
   Linux parity этим прогоном не подтверждена.
+- Архивный контент проверен только предварительно: перенос не завершён. Новые
+  критерии W208–W211 добавлены в мастер-план; `AUDIT_WAVE210.md` и
+  `AUDIT_WAVE211.md` ещё нужно сверить с ТЗ и индексировать/классифицировать.
+  Известны 12 historical broken links в audit archive; credential triage остаётся
+  открытым, поэтому архивы и rescue bundle не удалять/распространять.
 - Независимые reviews не нашли actionable-дефектов в vector и текущих Go/backend
   изменениях. Проверены SET EX/SETEX, Redis transport exceptions, legacy и
   uninspectable clients, WS Hub locking/auth/cache invalidation и Gateway POST
-  recovery routes. Content-level сверка архива завершена: уникальные требования
-  перенесены, а O2/O3/O5/O7 остатки описаны без ложного статуса завершения.
+  recovery routes. O2/O3/O5/O7 остатки описаны без ложного статуса завершения.
 - Эти результаты относятся к локальному dirty workspace; они не заменяют CI или
   release evidence, привязанные к итоговому SHA.
 
@@ -73,6 +77,11 @@
 - PWA register-SW и forgot-password unit/component набор прошёл 31/31; frontend
   typecheck, ESLint и Prettier прошли. Live Playwright config собрал 12 сценариев;
   live retest на новом image/SHA ещё не выполнен.
+- PostgreSQL integration regression воспроизвёл ошибку bare `FOR UPDATE` на
+  nullable joined relationship (RED), затем подтвердил `FOR UPDATE OF users`,
+  успешное обновление профиля из конкурирующей сессии и сериализацию блокировки
+  пользователя (GREEN 1/1). Auth/repository/reset unit набор прошёл 25/25;
+  password-reset и admin live specs прошли по 2/2 на desktop/mobile.
 - Локальные результаты не заменяют SHA-bound CI, полную live-приёмку или release
   evidence. В частности, RU/EN seed, owner gate и полный demo content matrix
   остаются открытыми.
