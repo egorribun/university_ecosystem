@@ -354,6 +354,7 @@ test("live Playwright global setup verifies endpoints against the signed owner m
   assert.deepEqual(args, [
     "run",
     "--frozen",
+    "--no-sync",
     "python",
     "scripts/live_stand.py",
     "verify-endpoints",

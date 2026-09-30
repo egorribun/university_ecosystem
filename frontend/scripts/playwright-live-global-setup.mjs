@@ -62,6 +62,7 @@ export function createLiveStandSetup({
       [
         "run",
         "--frozen",
+        "--no-sync",
         "python",
         "scripts/live_stand.py",
         "verify-endpoints",
