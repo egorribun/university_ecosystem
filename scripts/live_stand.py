@@ -57,6 +57,7 @@ STAND_FILE = Path(".secrets") / "live-stand.json"
 PROJECT_PREFIX = "ue-live-"
 PROJECT_PATTERN = re.compile(r"^ue-live-[0-9a-f]{16}$")
 OWNER_SCHEMA_VERSION = 2
+COMPOSE_INSPECTION_PLACEHOLDER = "live-stand-inspection-placeholder"
 SEED_SCRIPTS = ("scripts/seed_demo_data.py", "scripts/seed_admin_data.py")
 STAND_PATHS_TO_PROTECT = (
     Path(OVERLAY),
@@ -435,6 +436,20 @@ def stand_environment(keys: dict[str, str], project_name: str) -> dict[str, str]
     return env
 
 
+def compose_control_environment(project_name: str) -> dict[str, str]:
+    """Build a secret-free environment for read/stop/remove Compose commands."""
+    _validate_project_name(project_name)
+    env = os.environ.copy()
+    env["COMPOSE_PROJECT_NAME"] = project_name
+    # Compose interpolates these required live-overlay fields while loading
+    # the project, even for `ps`, `stop`, or `down`. These commands never
+    # recreate containers, so a fixed non-secret placeholder is sufficient.
+    env["LIVE_VAPID_PUBLIC_KEY"] = COMPOSE_INSPECTION_PLACEHOLDER
+    env["LIVE_VAPID_PRIVATE_KEY"] = COMPOSE_INSPECTION_PLACEHOLDER
+    env["LIVE_MAILPIT_PORT"] = str(MAILPIT_PORT)
+    return env
+
+
 def compose_command(*args: str, project_name: str) -> list[str]:
     _validate_project_name(project_name)
     command = ["docker", "compose", "-p", project_name, "--env-file", ".env.docker"]
@@ -604,7 +619,7 @@ def seed() -> None:
 def status() -> None:
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
-    env = stand_environment(load_vapid(WORKTREE), owner.project_name)
+    env = compose_control_environment(owner.project_name)
     _run(compose_command("ps", project_name=owner.project_name), cwd=WORKTREE, env=env)
 
 
@@ -612,7 +627,7 @@ def _stop_locked() -> None:
     """Stop only this owned stand's containers, preserving all data."""
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
-    env = stand_environment(load_vapid(WORKTREE), owner.project_name)
+    env = compose_control_environment(owner.project_name)
     _run(
         compose_command("stop", project_name=owner.project_name), cwd=WORKTREE, env=env
     )
@@ -627,7 +642,7 @@ def _teardown_locked() -> None:
     """Remove only the owned Compose project and volumes; keep local files."""
     _require_worktree()
     owner = load_stand_owner(WORKTREE)
-    env = stand_environment(load_vapid(WORKTREE), owner.project_name)
+    env = compose_control_environment(owner.project_name)
     _run(
         compose_command(
             "down", "--volumes", "--remove-orphans", project_name=owner.project_name

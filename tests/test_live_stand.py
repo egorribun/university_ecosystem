@@ -333,21 +333,49 @@ def test_status_does_not_generate_missing_owner_or_vapid_files(
     assert commands == []
 
 
-def test_status_does_not_generate_missing_vapid_keys_for_owned_stand(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("operation", ["status", "stop", "teardown"])
+def test_compose_control_commands_never_read_or_pass_vapid_keys(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, operation: str
 ) -> None:
-    worktree, _, _ = _prepare_owned_stand(monkeypatch, tmp_path)
-    (worktree / live_stand.VAPID_FILE).unlink()
+    worktree, owner, _ = _prepare_owned_stand(monkeypatch, tmp_path)
+    vapid_path = worktree / live_stand.VAPID_FILE
+    vapid_path.unlink()
     commands: list[list[str]] = []
-    monkeypatch.setattr(
-        live_stand, "_run", lambda command, **_: commands.append(list(command))
+    environments: list[dict[str, str] | None] = []
+
+    def reject_vapid_read(_: Path) -> dict[str, str]:
+        pytest.fail("status must not read the VAPID key file")
+
+    def capture_compose_environment(
+        command: list[str], *, cwd: Path, env: dict[str, str] | None = None
+    ) -> None:
+        del cwd
+        commands.append(command)
+        environments.append(env)
+
+    monkeypatch.setenv("LIVE_VAPID_PUBLIC_KEY", "ambient-public")
+    monkeypatch.setenv("LIVE_VAPID_PRIVATE_KEY", "ambient-private")
+    monkeypatch.setattr(live_stand, "load_vapid", reject_vapid_read)
+    monkeypatch.setattr(live_stand, "_run", capture_compose_environment)
+
+    getattr(live_stand, operation)()
+
+    compose_args = {
+        "status": ("ps",),
+        "stop": ("stop",),
+        "teardown": ("down", "--volumes", "--remove-orphans"),
+    }[operation]
+    assert commands == [
+        live_stand.compose_command(*compose_args, project_name=owner.project_name)
+    ]
+    assert not vapid_path.exists()
+    assert environments[0] is not None
+    assert environments[0]["LIVE_VAPID_PUBLIC_KEY"] == (
+        live_stand.COMPOSE_INSPECTION_PLACEHOLDER
     )
-
-    with pytest.raises(live_stand.StandError, match="missing or unsafe VAPID key file"):
-        live_stand.status()
-
-    assert not (worktree / live_stand.VAPID_FILE).exists()
-    assert commands == []
+    assert environments[0]["LIVE_VAPID_PRIVATE_KEY"] == (
+        live_stand.COMPOSE_INSPECTION_PLACEHOLDER
+    )
 
 
 def test_status_is_read_only_and_uses_the_owned_project(
