@@ -1,6 +1,6 @@
 # MVP — оперативный статус
 
-Срез на 2026-09-30 10:13 UTC. [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md)
+Срез на 2026-09-30 10:15 UTC. [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md)
 содержит цели, решения и критерии; [University_Ecosystem_MVP.md](University_Ecosystem_MVP.md)
 определяет продуктовые требования. Goal поставлен на паузу по просьбе пользователя
 для перезапуска приложения; MVP и релиз ещё не приняты.
@@ -9,7 +9,7 @@
 
 | Область | Подтверждённый факт |
 | --- | --- |
-| Git / PR | Перед pause checkpoint root HEAD `1671973e79dc433587a345f1120452e4b658489d`; ветка `egorribun` содержит пять кодовых и один status/docs commit впереди `origin/egorribun`=`724da93d8a73c096df493859a7b9f972df8d1894`. `origin/main`=`78b9499079442191920835eed9de93b726cf36a1` — предок ветки. PR [#1306](https://github.com/egorribun/university_ecosystem/pull/1306) ещё указывает на `724da93`; security patches пока не cherry-picked/pushed. |
+| Git / PR | Проверенный docs checkpoint `98c9145c2` содержит root HEAD `1671973e7` и зафиксирован до этой pause-status записи; в том snapshot ветка `egorribun` была ahead на семь коммитов (пять code, два docs/status) относительно `origin/egorribun`=`724da93d8a73c096df493859a7b9f972df8d1894`. `origin/main`=`78b9499079442191920835eed9de93b726cf36a1` — предок. PR [#1306](https://github.com/egorribun/university_ecosystem/pull/1306) всё ещё на `724da93`; обновления не push-ились. |
 | Worktrees | Read-only инвентарь Git показывает 15 локальных worktrees; четыре привязаны к текущим Codex artifacts. Неизвестные/старые worktrees не изменялись; аудит владельца и необходимости завершить после текущих агентов. |
 | CI | Старый Matrix run [#36693219605](https://github.com/egorribun/university_ecosystem/actions/runs/36693219605) относится к `724da93`; по последней проверке 10:10Z Python unit shard-2 всё ещё in progress, хотя прошёл штатный 45-минутный job timeout; terminal результата нет. Frontend static gates упали на `knip` из-за eager-чтения LIVE URL, исправленного в локальном `a24a85098`; отдельный [Go Fuzz run #36693218514](https://github.com/egorribun/university_ecosystem/actions/runs/36693218514) упал в `TestDisconnectUser_MultipleSessionsForUser` при ожидании готовности hub, исправление уже есть в `398db9841`. Все относятся к старому SHA; свежего SHA-bound CI пока нет. |
 | Локальные проверки | На `8af4c036`: frozen fast-preflight 9/9; JSON `artifacts/fast-preflight/mvp-block-8af4c036-20260930.json` (SHA-256 `E87CEED51EB064197D6BE103AB1FE1AF5A9E95E0C6FB1A69805A2E977054FF4A`). Ранее на той же кодовой базе прошли chat/security и live-stand contracts; эти локальные результаты не заменяют required PR checks или release evidence. После интеграции текущих security patches preflight требуется повторить. |
@@ -50,8 +50,9 @@
 
 ## Checkpoint перед паузой
 
-- Основной checkout: ветка `egorribun`, базовый HEAD `1671973e7`; plan/status checkpoint
-  обновлён и готов к локальному commit перед паузой.
+- Основной checkout: ветка `egorribun`; plan/status checkpoint сохранён локальным
+  commit `98c9145c2`, не push-ен. Pause-status запись находится в следующем local-only
+  commit.
 - Owner-port patch `85bce3c3` reviewed без blocker, но не cherry-picked. В worktree
   `live-owner-port-guard` осталась незакоммиченная правка `--no-sync` и тест; отдельно
   проверить/зафиксировать перед интеграцией.
