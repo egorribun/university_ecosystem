@@ -17,10 +17,9 @@ evidence, not current configuration or release certification.
 ## Legacy archive cleanup and recovery
 
 The former directories `archive/` and `../superpowers/plans/archive/` contained
-112 audit reports and 8 plan snapshots. Applicable requirements were reconciled
-against the master plan, ADRs, tests, and current workflow contracts; the two
-directories were removed in separate commits after inventory, credential
-disposition, and recovery verification. The repository history remains the
+112 audit reports and 8 plan snapshots; both are already absent from the current
+working tree. Applicable requirements were reconciled against the master plan,
+ADRs, tests, and current workflow contracts. The repository history remains the
 historical source. The external rescue bundle was verified at rescue SHA
 `d0aad7c296facd79b3d41b037bc4160f5b3132be`; `git bundle verify` confirmed its
 complete history, two restored sample files matched their inventory blobs, and
@@ -35,12 +34,18 @@ after adding a newly found credential reference its SHA-256 is
 inventory excludes secret values. Archived reports contain credential-shaped
 strings. The user confirmed that the Chromatic project token was reset and the
 Actions secret updated; secret metadata was checked without reading its value.
-The user also confirmed that the seeded-admin password was used only in an
-ephemeral CI database. Keep the rescue bundle private and do not redistribute it.
-Remove archive files only after final review of the transferred requirements,
-credential disposition, inventory, and links.
-To recover files without rewriting history, resolve the sibling bundle and
-clone it to a temporary directory, for example:
+The user also confirmed that the seeded-admin password and the historical HMAC
+signing-key default were used only in ephemeral CI/demo environments, not in
+persistent databases or deployments; no persistent-secret rotation is indicated.
+The `DataAccessLog` writer/verifier format mismatch remains relevant to any future
+migration of retained signed records, which requires a protected backup and
+read-only inventory first. Keep the bundle private and quarantined because it
+contains full Git history and credential-shaped strings. Do not copy, distribute,
+or restore it for routine work; do not restore removed archive paths or create
+another bundle.
+No recovery is currently needed. The following commands document an isolated
+restore procedure only for a concrete, authorized recovery task. Do not run them
+as part of routine archive maintenance:
 
 ```powershell
 $bundle = Join-Path (Split-Path -Parent (Get-Location).Path) 'university_ecosystem-rescue-2026-09-30-d0aad7c.bundle'

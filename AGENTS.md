@@ -195,4 +195,4 @@ The developer harness defines 5 specialized subagents configured in `.agents/sub
 
 ## 9. Audit Trail & Documentation Index
 
-The current documentation and audit-retention policy are indexed in [`docs/README.md`](docs/README.md) and [`docs/audits/INDEX.md`](docs/audits/INDEX.md). Legacy archives are being reconciled against the active MVP plan; transfer applicable requirements before removing archived files from the working tree. Preserve Git history and the verified rescue bundle; do not add session logs or superseded snapshots to the current indexes.
+The current documentation and audit-retention policy are indexed in [`docs/README.md`](docs/README.md) and [`docs/audits/INDEX.md`](docs/audits/INDEX.md). Legacy archives have been reconciled against the active MVP plan and removed from the working tree after transferring applicable requirements. Preserve Git history; keep the verified rescue bundle private and isolated because it contains credential-shaped history. Do not add session logs or superseded snapshots to the current indexes.
