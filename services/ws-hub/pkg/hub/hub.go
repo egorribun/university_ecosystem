@@ -1693,8 +1693,9 @@ func (h *Hub) AuthorizeRoomJoin(ctx context.Context, userID, room string) bool {
 	return h.authorizeRoomJoinLocked(ctx, userID, room)
 }
 
-// authorizeRoomJoinLocked expects the caller to hold the matching membership
-// stripe so a pending revoke cannot race an authoritative re-check and rejoin.
+// authorizeRoomJoinLocked expects the caller to hold the matching keyed
+// membership lock so a pending revoke cannot race an authoritative re-check
+// and rejoin.
 func (h *Hub) authorizeRoomJoinLocked(ctx context.Context, userID, room string) bool {
 	if h.isRoomRevocationPending(userID, room) {
 		refresher, ok := h.authClient.(RoomAuthorizationRefresher)
