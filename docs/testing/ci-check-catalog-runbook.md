@@ -36,6 +36,27 @@ process owner, and wall deadline remain unchanged. A quiet snapshot alone
 does not diagnose a stall; resource-aware inactivity policy is outside this
 rollout.
 
+## MIG-PASS-01 CI image preflight
+
+The existing required `DB Migration Gate (Postgres)` context also verifies the
+password preflight after its migration round-trip. CI builds `backend.Dockerfile`
+from the checked-out source, records Docker's full image config SHA-256 ID, and
+runs `python -m app.cli migrate-passwords assert-none` inside that image by ID.
+The job uses only its pinned, disposable PostgreSQL service. That service uses
+passwordless trust authentication inside the isolated CI runner; the helper
+refuses a non-local endpoint, a password-bearing URL, or a database other than
+the disposable migration database. It creates a dedicated non-superuser,
+`NOBYPASSRLS` reader with `SELECT` on `users`, checks the clean result, inserts a
+random synthetic active row with a non-verifiable bcrypt prefix sentinel and
+requires the expected nonzero result, verifies the row is unchanged, removes it,
+then requires a clean result again. The sentinel is only used to exercise the
+CLI's prefix predicate and is never passed to authentication code.
+
+This catalog entry proves the CI image and CLI wiring plus fail-closed behavior
+against disposable PostgreSQL. It does not use protected credentials or a
+deployed database and therefore does not satisfy the separate secret-backed
+deployment evidence still required by MIG-PASS-01.
+
 ## Metadata contract
 
 Each workflow records its source path, display name, owner, and exact trigger

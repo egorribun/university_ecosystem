@@ -604,6 +604,65 @@ def test_python_coverage_scope_and_migration_gate_are_explicit() -> None:
     assert "--cov=alembic/versions" not in pytest_runs
 
 
+def test_migrate_passwords_image_gate_is_local_immutable_and_catalogued() -> None:
+    workflow = _workflow(CI)
+    job = workflow["jobs"]["db-migration-gate"]
+    postgres = job["services"]["postgres"]
+    postgres_env = postgres["env"]
+    assert _DIGEST.search(postgres["image"])
+    assert postgres_env["POSTGRES_HOST_AUTH_METHOD"] == "trust"
+    assert postgres_env["POSTGRES_DB"] == "test_migration"
+    assert "POSTGRES_PASSWORD" not in postgres_env
+    assert job["timeout-minutes"] == 20
+
+    build = _step(job, "Build backend image for password preflight")
+    build_script = build["run"]
+    assert "docker buildx build" in build_script
+    assert "--file backend.Dockerfile" in build_script
+    assert "--platform linux/amd64" in build_script
+    assert "--load" in build_script
+    assert "local/migrate-passwords-ci:${GITHUB_SHA}" in build_script
+    assert "docker image inspect --format '{{.Id}}'" in build_script
+    assert "^sha256:[0-9a-f]{64}$" in build_script
+    assert "MIGPASS_BACKEND_IMAGE_ID" in build_script
+    assert "backend_image_config_digest=" in build_script
+
+    verify = _step(job, "Verify password preflight in immutable backend image")
+    assert verify["env"]["DATABASE_URL"] == (
+        "postgresql+asyncpg://test@127.0.0.1:5433/test_migration"
+    )
+    assert (
+        verify["run"] == "uv run python scripts/quality/migrate_passwords_image_gate.py"
+    )
+    assert "${{ secrets." not in str(job)
+
+    helper = (ROOT / "scripts/quality/migrate_passwords_image_gate.py").read_text(
+        encoding="utf-8"
+    )
+    for required in (
+        "--network",
+        "host",
+        "/opt/venv/bin/python",
+        "migrate-passwords",
+        "assert-none",
+        "NOBYPASSRLS",
+        "Legacy bcrypt accounts remain: 1",
+        "No active legacy bcrypt accounts found.",
+    ):
+        assert required in helper
+
+    catalog = json.loads((ROOT / "quality/ci-check-catalog.json").read_text())
+    ci_catalog = next(
+        item
+        for item in catalog["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
+    )
+    migration_check = ci_catalog["jobs"]["db-migration-gate"]
+    assert migration_check["profile"] == "required-pr-main"
+    assert migration_check["check_name_template"] == "DB Migration Gate (Postgres)"
+    assert migration_check["expected_timeout_minutes"] == 20
+
+
 def test_migration_rollback_uses_the_canonical_uv_version() -> None:
     job = _workflow(CI)["jobs"]["db-migration-integrity"]
     setup_uv = next(

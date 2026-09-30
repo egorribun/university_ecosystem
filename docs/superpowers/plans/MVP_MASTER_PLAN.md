@@ -166,7 +166,10 @@ run/attempt либо локальную команду, конфигурацию
   активных bcrypt credentials; DB/identity/connectivity ошибка — fail closed, без
   skip/pass. Запускать в точном digest-pinned image с secret-backed DB identity.
   Зафиксировать CI/deployed catalog coverage и evidence; не подменять доступ к БД
-  локальной проверкой.
+  локальной проверкой. Текущий CI `DB Migration Gate (Postgres)` покрывает запуск
+  команды внутри image по SHA-256 ID на disposable PostgreSQL и ожидаемые clean /
+  fail-closed состояния. Это не закрывает требование secret-backed DB identity и
+  deployed evidence; acceptance остаётся открытым до такого отдельного proof.
 - **Chromatic:** оставить применимую инструкцию для
   `CHROMATIC_PROJECT_TOKEN`, `CHROMATIC_ENABLED=true`, collect-only/report-only
   режима, шести обоснованно исключённых нестабильных stories, проверки dashboard и

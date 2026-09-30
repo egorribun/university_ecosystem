@@ -2530,7 +2530,8 @@ jobs:
         image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
+          # Passwordless auth is limited to this disposable job service.
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: test_migration
         options: >-
           --health-cmd "pg_isready -U test"
@@ -2557,7 +2558,7 @@ jobs:
 
       - name: Run supported migration round-trip and verify boundary
         env:
-          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5433/test_migration
+          DATABASE_URL: postgresql+asyncpg://test@localhost:5433/test_migration
           ENVIRONMENT: test
           SECRET_KEY: test-secret-key-for-ci-migration-gate-only  # pragma: allowlist secret
           SAFE_DOWNGRADE_TARGET: ${{ steps.migration-policy.outputs.safe_target }}
@@ -2575,6 +2576,30 @@ jobs:
           uv run alembic upgrade head
 
           echo "=== Migration round-trip complete ==="
+
+      - name: Build backend image for password preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_tag="local/migrate-passwords-ci:${GITHUB_SHA}"
+          docker buildx build \
+            --platform linux/amd64 \
+            --file backend.Dockerfile \
+            --tag "$image_tag" \
+            --load \
+            .
+          image_id="$(docker image inspect --format '{{.Id}}' "$image_tag")"
+          if [[ ! "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "backend image did not produce a full immutable image ID" >&2
+            exit 1
+          fi
+          printf 'MIGPASS_BACKEND_IMAGE_ID=%s\n' "$image_id" >> "$GITHUB_ENV"
+          printf 'backend_image_config_digest=%s\n' "$image_id" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify password preflight in immutable backend image
+        env:
+          DATABASE_URL: postgresql+asyncpg://test@127.0.0.1:5433/test_migration
+        run: uv run python scripts/quality/migrate_passwords_image_gate.py
 
   # MOD-W15-01 / Wave 18.1: Contract tests as a required CI gate.
   # Runs lightweight Python consumer contract tests (no Go/FFI needed).
