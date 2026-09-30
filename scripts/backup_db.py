@@ -675,6 +675,15 @@ def s3_settings_from_environment() -> S3Settings:
         raise BackupArtifactError(
             "BACKUP_S3_ENDPOINT_URL must be an HTTP(S) endpoint without credentials"
         )
+    if (
+        parsed.scheme == "http"
+        and os.environ.get("BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV", "").casefold()
+        != "true"
+    ):
+        raise BackupArtifactError(
+            "HTTPS is required; HTTP is allowed only for isolated local/dev endpoints "
+            "when BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV=true"
+        )
     if prefix:
         _validate_object_key(prefix)
     return S3Settings(

@@ -362,3 +362,41 @@ def test_backup_requires_a_stable_alembic_revision_during_dump() -> None:
 
     with pytest.raises(backup_db.BackupArtifactError, match="changed during dump"):
         backup_db.verify_source_metadata_unchanged(before, after)
+
+
+@pytest.mark.parametrize("endpoint", ["http://localhost:8333", "http://seaweedfs:8333"])
+def test_s3_http_endpoint_is_rejected_by_default(
+    endpoint: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BACKUP_S3_ENDPOINT_URL", endpoint)
+    monkeypatch.setenv("BACKUP_S3_BUCKET", "synthetic-backups")
+    monkeypatch.delenv("BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV", raising=False)
+
+    with pytest.raises(backup_db.BackupArtifactError, match="HTTPS is required"):
+        backup_db.s3_settings_from_environment()
+
+
+def test_s3_http_endpoint_requires_local_dev_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    endpoint = "http://seaweedfs:8333"
+    monkeypatch.setenv("BACKUP_S3_ENDPOINT_URL", endpoint)
+    monkeypatch.setenv("BACKUP_S3_BUCKET", "synthetic-backups")
+    monkeypatch.setenv("BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV", "true")
+
+    settings = backup_db.s3_settings_from_environment()
+
+    assert settings.endpoint_url == endpoint
+
+
+def test_https_s3_endpoint_needs_no_transport_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    endpoint = "https://s3.example.invalid"
+    monkeypatch.setenv("BACKUP_S3_ENDPOINT_URL", endpoint)
+    monkeypatch.setenv("BACKUP_S3_BUCKET", "synthetic-backups")
+    monkeypatch.delenv("BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV", raising=False)
+
+    settings = backup_db.s3_settings_from_environment()
+
+    assert settings.endpoint_url == endpoint

@@ -15,6 +15,9 @@ password, or access key in command arguments or logs.
 
 - DATABASE_URL: PostgreSQL source connection URL for backup.
 - BACKUP_S3_ENDPOINT_URL and BACKUP_S3_BUCKET: required S3 endpoint and bucket.
+- S3 endpoints must use HTTPS. For an isolated local/development endpoint only,
+  set `BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV=true` to opt in to plain HTTP; never
+  use this opt-in for public or untrusted networks.
 - BACKUP_S3_PREFIX: optional key prefix, default database.
 - S3 credentials: the standard aioboto3/AWS credential provider chain.
 - BACKUP_RESTORE_ADMIN_DATABASE_URL: separate administrative PostgreSQL URL
