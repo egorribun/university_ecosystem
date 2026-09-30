@@ -60,7 +60,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
 
         stmt = select(User).where(User.id == id).options(*USER_AUTH_WITH_MFA_OPTIONS)
         if with_for_update:
-            stmt = stmt.with_for_update()
+            # Joined 1:1 relationships are nullable outer joins; lock only the
+            # account row so PostgreSQL does not try to lock their nullable sides.
+            stmt = stmt.with_for_update(of=User)
 
         result = await self.db.execute(stmt)
         obj = result.scalars().first()
