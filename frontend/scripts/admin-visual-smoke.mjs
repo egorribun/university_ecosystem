@@ -679,6 +679,7 @@ async function main() {
   try {
     loginResult = await performLogin(context, credentials)
   } catch (err) {
+    credentials.password = ""
     if (err instanceof RS256Error) {
       console.error(`X RS256 ASSERTION FAILED: ${err.message}`)
       await context.close()

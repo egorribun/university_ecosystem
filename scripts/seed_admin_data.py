@@ -223,9 +223,10 @@ def _required_test_password() -> str:
 
 
 async def find_or_create_admin(db, *, admin_password: str) -> User:
-    """Create or fetch the admin user."""
+    """Create the admin user or refresh its password from the current seed run."""
     existing = await db.scalar(select(User).where(User.email == ADMIN_EMAIL))
     if existing:
+        existing.hashed_password = get_password_hash_sync(admin_password)
         if existing.role != UserRole.ADMIN:
             existing.role = UserRole.ADMIN
             print(f"  ↻ Promoted {ADMIN_EMAIL} → admin")

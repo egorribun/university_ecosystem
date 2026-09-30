@@ -808,22 +808,28 @@ def _seed_locked() -> None:
     env = stand_environment(
         load_vapid(WORKTREE), owner.project_name, dict(owner.published_ports)
     )
+    env.pop("TEST_PASSWORD", None)
     scripts_mount = f"{WORKTREE / 'scripts'}:/app/scripts:ro"
     for script in SEED_SCRIPTS:
+        run_env = env
+        run_options = [
+            "run",
+            "--rm",
+            "--no-deps",
+            "-v",
+            scripts_mount,
+        ]
+        if script == "scripts/seed_admin_data.py":
+            run_env = {**env, "TEST_PASSWORD": secrets.token_urlsafe(32) + "!Aa0"}
+            run_options.extend(("-e", "TEST_PASSWORD"))
+        run_options.extend(("backend", "python", script))
         _run(
             compose_command(
-                "run",
-                "--rm",
-                "--no-deps",
-                "-v",
-                scripts_mount,
-                "backend",
-                "python",
-                script,
+                *run_options,
                 project_name=owner.project_name,
             ),
             cwd=WORKTREE,
-            env=env,
+            env=run_env,
         )
 
 

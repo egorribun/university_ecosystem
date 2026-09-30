@@ -116,3 +116,38 @@ async def test_admin_seed_uses_transient_password_without_logging_it(
 
     if runtime_password in output.out or runtime_password in output.err:
         pytest.fail("admin seeder wrote the transient password to captured output")
+
+
+async def test_reseeding_existing_admin_replaces_the_password_hash(
+    db_session, user_factory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import secrets
+
+    from app.auth.security import verify_password_sync
+    from scripts import seed_admin_data
+
+    previous_password = secrets.token_urlsafe(32) + "!Aa0"
+    current_password = secrets.token_urlsafe(32) + "!Aa0"
+    previous_hash = seed_admin_data.get_password_hash_sync(previous_password)
+    existing = await user_factory(
+        email=seed_admin_data.ADMIN_EMAIL,
+        role="admin",
+        hashed_password=previous_hash,
+    )
+
+    result = await seed_admin_data.find_or_create_admin(
+        db_session, admin_password=current_password
+    )
+    await db_session.commit()
+    await db_session.refresh(existing)
+
+    if result.id != existing.id:
+        pytest.fail("admin reseeding must update the existing seeded account")
+    if not verify_password_sync(current_password, existing.hashed_password):
+        pytest.fail("admin reseeding must apply the current per-run password")
+    if verify_password_sync(previous_password, existing.hashed_password):
+        pytest.fail("admin reseeding must invalidate the previous password")
+
+    output = capsys.readouterr()
+    if current_password in output.out or current_password in output.err:
+        pytest.fail("admin reseeding must not log the current password")

@@ -313,6 +313,42 @@ test("admin smoke rejects missing or blank TEST_PASSWORD and uses the supplied r
   )
 })
 
+test("admin smoke clears the password before either login failure path", async () => {
+  const source = await readFile(new URL("admin-visual-smoke.mjs", import.meta.url), "utf8")
+  const loginCall = source.indexOf("loginResult = await performLogin(context, credentials)")
+  const catchStart = source.indexOf("} catch (err) {", loginCall)
+  const catchEnd = source.indexOf('\n  }\n  credentials.password = ""', catchStart)
+  assert.ok(
+    loginCall >= 0 && catchStart > loginCall && catchEnd > catchStart,
+    "the admin login failure handler must remain identifiable"
+  )
+
+  const failureHandler = source.slice(catchStart, catchEnd)
+  const statements = failureHandler
+    .slice(failureHandler.indexOf("{") + 1)
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  assert.equal(
+    statements[0],
+    'credentials.password = ""',
+    "the credential must be cleared before handling login errors"
+  )
+
+  const clearIndex = failureHandler.indexOf('credentials.password = ""')
+  for (const failureMarker of [
+    "X RS256 ASSERTION FAILED",
+    "X LOGIN FAILED",
+    "process.exit(3)",
+    "process.exit(1)",
+  ]) {
+    assert.ok(
+      failureHandler.indexOf(failureMarker) > clearIndex,
+      "the password must be cleared before login failure logging and exit"
+    )
+  }
+})
+
 test("admin smoke workflow masks a per-run password before exposing it only to seed and smoke env", async () => {
   const workflow = (
     await readFile(
@@ -341,6 +377,11 @@ test("admin smoke workflow masks a per-run password before exposing it only to s
   assert.ok(
     /secrets\.token_urlsafe\(32\)/.test(generationStep),
     "workflow must use cryptographic per-run randomness"
+  )
+  assert.match(
+    generationStep,
+    /token_urlsafe\(32\)\s*\+\s*["']!Aa0["']/u,
+    "workflow passwords must include each class required by the password policy"
   )
   const maskIndex = generationStep.indexOf("::add-mask::")
   const outputIndex = generationStep.indexOf("GITHUB_OUTPUT")

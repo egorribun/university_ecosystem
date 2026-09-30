@@ -224,6 +224,100 @@ def test_compose_command_targets_only_the_stand_project() -> None:
     ]
 
 
+def test_seed_cli_passes_a_fresh_password_only_to_the_admin_seed(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from contextlib import nullcontext
+
+    owner = live_stand.StandOwner(
+        repository=str(ROOT),
+        worktree=str(live_stand.WORKTREE),
+        project_name="ue-live-0123456789abcdef",
+        published_ports=tuple(_port_map().items()),
+        schema_version=live_stand.OWNER_SCHEMA_VERSION,
+    )
+    runs: list[tuple[list[str], dict[str, str]]] = []
+    token_sizes: list[int] = []
+    original_token_urlsafe = live_stand.secrets.token_urlsafe
+    inherited_password = original_token_urlsafe(32)
+    base_environment = {"COMPOSE_PROJECT_NAME": owner.project_name}
+    base_environment["TEST_PASSWORD"] = inherited_password  # pragma: allowlist secret
+
+    def generate_token(size: int) -> str:
+        token_sizes.append(size)
+        return original_token_urlsafe(size)
+
+    monkeypatch.setattr(live_stand.secrets, "token_urlsafe", generate_token)
+    monkeypatch.setattr(live_stand, "stand_lifecycle_lock", nullcontext)
+    monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
+    monkeypatch.setattr(live_stand, "load_stand_owner", lambda _path: owner)
+    monkeypatch.setattr(
+        live_stand,
+        "load_vapid",
+        lambda _path: {"public": "public-key", "private": "private-key"},
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "stand_environment",
+        lambda _keys, _project, _ports: dict(base_environment),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "compose_command",
+        lambda *args, project_name: list(args),
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_run",
+        lambda command, *, cwd, env: runs.append((list(command), dict(env))),
+    )
+
+    assert live_stand.main(["seed"]) == 0
+    assert live_stand.main(["seed"]) == 0
+
+    if len(runs) != 4 or token_sizes != [32, 32]:
+        pytest.fail("each seed invocation must create one per-run admin password")
+
+    admin_commands = [runs[1][0], runs[3][0]]
+    admin_environments = [runs[1][1], runs[3][1]]
+    demo_environments = [runs[0][1], runs[2][1]]
+    if any("TEST_PASSWORD" in environment for environment in demo_environments):
+        pytest.fail("demo-data seeding must not receive the admin password")
+
+    generated_passwords = [
+        environment.get("TEST_PASSWORD") for environment in admin_environments
+    ]
+    if not all(
+        isinstance(password, str)
+        and len(password) >= 44
+        and any(character.isupper() for character in password)
+        and any(character.islower() for character in password)
+        and any(character.isdigit() for character in password)
+        and any(not character.isalnum() for character in password)
+        for password in generated_passwords
+    ):
+        pytest.fail("admin seeding must receive a strong generated password")
+    if generated_passwords[0] == generated_passwords[1]:
+        pytest.fail("separate seed invocations must use different passwords")
+    if any(password == inherited_password for password in generated_passwords):
+        pytest.fail("admin seeding must replace inherited passwords with fresh values")
+    if any(
+        "-e" not in command
+        or "TEST_PASSWORD" not in command
+        or command.index("TEST_PASSWORD") > command.index("backend")
+        for command in admin_commands
+    ):
+        pytest.fail("Compose must explicitly pass TEST_PASSWORD to the backend")
+
+    captured = capsys.readouterr()
+    if any(
+        password in captured.out or password in captured.err
+        for password in generated_passwords
+        if password is not None
+    ):
+        pytest.fail("live-stand seed must not log the generated password")
+
+
 def test_busy_published_port_blocks_the_stand() -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 0))

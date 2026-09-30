@@ -240,7 +240,7 @@ jobs:
         id: admin_smoke_password
         shell: bash
         run: |
-          password="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          password="$(python -c 'import secrets; print(secrets.token_urlsafe(32) + "!Aa0")')"
           printf '::add-mask::%s\n' "$password"
           printf 'password=%s\n' "$password" >> "$GITHUB_OUTPUT"
 
