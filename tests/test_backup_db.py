@@ -376,10 +376,21 @@ def test_s3_http_endpoint_is_rejected_by_default(
         backup_db.s3_settings_from_environment()
 
 
-def test_s3_http_endpoint_requires_local_dev_opt_in(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "http://127.0.0.1:8333",
+        "http://[::1]:8333",
+        "http://10.0.0.7:8333",
+        "http://[fd00::7]:8333",
+        "http://localhost:8333",
+        "http://minio:9000",
+        "http://seaweedfs:9000",
+    ],
+)
+def test_s3_http_local_endpoint_requires_opt_in(
+    endpoint: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    endpoint = "http://seaweedfs:8333"
     monkeypatch.setenv("BACKUP_S3_ENDPOINT_URL", endpoint)
     monkeypatch.setenv("BACKUP_S3_BUCKET", "synthetic-backups")
     monkeypatch.setenv("BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV", "true")
@@ -387,6 +398,28 @@ def test_s3_http_endpoint_requires_local_dev_opt_in(
     settings = backup_db.s3_settings_from_environment()
 
     assert settings.endpoint_url == endpoint
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "http://8.8.8.8:9000",
+        "http://[2606:4700:4700::1111]:9000",
+        "http://169.254.169.254:80",
+        "http://s3.example.invalid:9000",
+    ],
+)
+def test_s3_http_opt_in_rejects_public_hosts(
+    endpoint: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BACKUP_S3_ENDPOINT_URL", endpoint)
+    monkeypatch.setenv("BACKUP_S3_BUCKET", "synthetic-backups")
+    monkeypatch.setenv("BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV", "true")
+
+    with pytest.raises(
+        backup_db.BackupArtifactError, match="approved local Docker hosts"
+    ):
+        backup_db.s3_settings_from_environment()
 
 
 def test_https_s3_endpoint_needs_no_transport_opt_in(

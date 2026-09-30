@@ -11,11 +11,10 @@ import argparse
 import asyncio
 import hashlib
 import inspect
+import ipaddress
 import json
 import os
 import re
-
-# Only fixed pg_dump/pg_restore argument lists are executed, with no shell.
 import subprocess  # nosec B404
 import sys
 import tempfile
@@ -40,6 +39,16 @@ ARTIFACT_SUFFIX = ".dump"
 MANIFEST_SUFFIX = ".manifest.json"
 _RESTORE_DATABASE_RE = re.compile(r"^restore_[a-z0-9_]{1,54}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_LOCAL_DEV_S3_HOSTS = frozenset({"localhost", "minio", "seaweedfs"})
+_LOCAL_DEV_S3_NETWORKS = tuple(
+    ipaddress.ip_network(network)
+    for network in (
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "fc00::/7",
+    )
+)
 _PG_URL_OPTIONS = {
     "application_name": "PGAPPNAME",
     "channel_binding": "PGCHANNELBINDING",
@@ -491,6 +500,7 @@ def _run_pg_tool(
     *,
     command_runner: Callable[..., Any] = subprocess.run,
 ) -> None:
+    # Callers supply only fixed pg_dump/pg_restore argv lists; shell stays disabled.
     try:
         result = command_runner(
             command,
@@ -653,6 +663,21 @@ class S3Settings:
     region: str
 
 
+def _is_local_dev_s3_host(host: str) -> bool:
+    normalized_host = host.casefold().rstrip(".")
+    if normalized_host in _LOCAL_DEV_S3_HOSTS:
+        return True
+    try:
+        address = ipaddress.ip_address(normalized_host)
+    except ValueError:
+        return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    return address.is_loopback or any(
+        address in network for network in _LOCAL_DEV_S3_NETWORKS
+    )
+
+
 def s3_settings_from_environment() -> S3Settings:
     endpoint_url = os.environ.get("BACKUP_S3_ENDPOINT_URL", "").strip()
     bucket = os.environ.get("BACKUP_S3_BUCKET", "").strip()
@@ -683,6 +708,12 @@ def s3_settings_from_environment() -> S3Settings:
         raise BackupArtifactError(
             "HTTPS is required; HTTP is allowed only for isolated local/dev endpoints "
             "when BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV=true"
+        )
+    if parsed.scheme == "http" and (
+        parsed.hostname is None or not _is_local_dev_s3_host(parsed.hostname)
+    ):
+        raise BackupArtifactError(
+            "HTTP is restricted to loopback/private IPs and approved local Docker hosts"
         )
     if prefix:
         _validate_object_key(prefix)
