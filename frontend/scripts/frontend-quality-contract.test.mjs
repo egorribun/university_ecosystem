@@ -1,16 +1,41 @@
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import { createRequire } from "node:module"
 import test from "node:test"
+import { fileURLToPath } from "node:url"
 
 import strykerConfig, { mutationRunnerReuse, mutationThresholds } from "../stryker.config.mjs"
 
 const frontendRoot = new URL("../", import.meta.url)
 const repositoryRoot = new URL("../../", import.meta.url)
+const liveSetupUrl = new URL("./playwright-live-global-setup.mjs", import.meta.url).href
 const require = createRequire(import.meta.url)
 
 async function readJson(url) {
   return JSON.parse(await readFile(url, "utf8"))
+}
+
+function runLiveStandSetup(environmentOverrides = {}) {
+  const environment = { ...process.env }
+  delete environment.LIVE_BASE_URL
+  delete environment.LIVE_MAILPIT_URL
+  Object.assign(environment, environmentOverrides)
+
+  return spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `const { default: setup } = await import(${JSON.stringify(liveSetupUrl)}); await setup()`,
+    ],
+    {
+      cwd: fileURLToPath(frontendRoot),
+      encoding: "utf8",
+      env: environment,
+      timeout: 30_000,
+    }
+  )
 }
 
 test("frontend is explicitly a private application package", async () => {
@@ -257,6 +282,62 @@ test("Knip analyzes frontend tests as export consumers", async () => {
   for (const pattern of ["src/**/*.test.ts", "src/**/*.test.tsx"]) {
     assert.ok(knipConfig.entry.includes(pattern), `Missing Knip test entry: ${pattern}`)
   }
+})
+
+test("live Playwright config can be imported without a running stand", () => {
+  const configUrl = new URL("../playwright.live.config.ts", import.meta.url).href
+  const setupPath = "./scripts/playwright-live-global-setup.mjs"
+  const environment = { ...process.env }
+  delete environment.LIVE_BASE_URL
+  delete environment.LIVE_MAILPIT_URL
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `const { default: config } = await import(${JSON.stringify(configUrl)}); ` +
+        `if (config.globalSetup !== ${JSON.stringify(setupPath)}) { ` +
+        "throw new Error('Live stand validation must run in Playwright global setup') }",
+    ],
+    {
+      cwd: fileURLToPath(frontendRoot),
+      encoding: "utf8",
+      env: environment,
+      timeout: 30_000,
+    }
+  )
+
+  assert.equal(
+    result.status,
+    0,
+    `Config import unexpectedly required the live stand:\n${result.stderr}`
+  )
+})
+
+test("live Playwright global setup requires the owned stand endpoints", () => {
+  const missingBaseUrl = runLiveStandSetup()
+  assert.notEqual(missingBaseUrl.status, 0)
+  assert.match(missingBaseUrl.stderr, /LIVE_BASE_URL must be set/u)
+
+  const missingMailpitUrl = runLiveStandSetup({ LIVE_BASE_URL: "https://localhost:32494" })
+  assert.notEqual(missingMailpitUrl.status, 0)
+  assert.match(missingMailpitUrl.stderr, /LIVE_MAILPIT_URL must be set/u)
+})
+
+test("live Playwright global setup rejects non-loopback endpoints and accepts owned ports", () => {
+  const remoteBaseUrl = runLiveStandSetup({
+    LIVE_BASE_URL: "https://example.com:32494",
+    LIVE_MAILPIT_URL: "http://localhost:41072",
+  })
+  assert.notEqual(remoteBaseUrl.status, 0)
+  assert.match(remoteBaseUrl.stderr, /LIVE_BASE_URL must use an allowed protocol/u)
+
+  const ownedStand = runLiveStandSetup({
+    LIVE_BASE_URL: "https://localhost:32494",
+    LIVE_MAILPIT_URL: "http://127.0.0.1:41072",
+  })
+  assert.equal(ownedStand.status, 0, ownedStand.stderr)
 })
 
 test("dependency install scripts use a reviewed fail-closed allow-list", async () => {

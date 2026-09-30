@@ -8,39 +8,13 @@ import { defineConfig, devices } from "@playwright/test"
  * already be up. Specs live in tests/e2e-live and share seeded data, so the
  * lane runs serially.
  */
-function localURL(name: string, protocols: string[]): string {
-  const value = process.env[name]
-  if (!value) {
-    throw new Error(`${name} must be set to the endpoint printed by scripts/live_stand.py`)
-  }
-
-  let parsed: URL
-  try {
-    parsed = new URL(value)
-  } catch {
-    throw new Error(`${name} must be a valid loopback URL`)
-  }
-  if (
-    !protocols.includes(parsed.protocol) ||
-    !["localhost", "127.0.0.1"].includes(parsed.hostname) ||
-    parsed.username !== "" ||
-    parsed.password !== "" ||
-    !parsed.port ||
-    Number(parsed.port) < 20_000 ||
-    Number(parsed.port) > 45_000 ||
-    parsed.pathname !== "/" ||
-    parsed.search !== "" ||
-    parsed.hash !== ""
-  ) {
-    throw new Error(`${name} must use an allowed protocol and an explicit live-stand loopback port`)
-  }
-  return parsed.toString().replace(/\/$/, "")
-}
-
-const BASE_URL = localURL("LIVE_BASE_URL", ["https:", "http:"])
-localURL("LIVE_MAILPIT_URL", ["http:"])
+// Static analyzers also load Playwright config files. Keep endpoint validation
+// in global setup so it runs before tests, without making config import depend
+// on a live stand.
+const BASE_URL = process.env.LIVE_BASE_URL
 
 export default defineConfig({
+  globalSetup: "./scripts/playwright-live-global-setup.mjs",
   testDir: "./tests/e2e-live",
   testMatch: /.*\.live\.spec\.ts$/,
   fullyParallel: false,
