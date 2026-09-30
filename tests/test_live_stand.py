@@ -668,10 +668,26 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
     )
     frontend = tmp_path / "frontend"
     frontend.mkdir()
+    package_json_path = frontend / "package.json"
+    package_json = {
+        "name": "university-ecosystem-frontend",
+        "version": "1.0.0",
+        "devDependencies": {
+            "@playwright/test": "1.63.0",
+            "playwright": "1.63.0",
+        },
+    }
+    package_json_path.write_text(json.dumps(package_json), encoding="utf-8")
     lock_path = frontend / "package-lock.json"
     lock_data = {
         "lockfileVersion": 3,
         "packages": {
+            "": {
+                "devDependencies": {
+                    "@playwright/test": "1.63.0",
+                    "playwright": "1.63.0",
+                }
+            },
             "node_modules/@playwright/test": {"version": "1.63.0"},
             "node_modules/playwright": {"version": "1.63.0"},
             "node_modules/playwright-core": {"version": "1.63.0"},
@@ -778,10 +794,19 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
     live_stand._ensure_live_e2e_dependencies(frontend, environment)
     live_stand._ensure_live_e2e_dependencies(frontend, environment)
 
+    package_json["scripts"] = {"test:e2e:live": "playwright test"}
+    package_json_path.write_text(json.dumps(package_json), encoding="utf-8")
+    live_stand._ensure_live_e2e_dependencies(frontend, environment)
+
     lock_data["packages"]["node_modules/@playwright/test"]["version"] = "1.64.0"
     lock_data["packages"]["node_modules/playwright"]["version"] = "1.64.0"
     lock_data["packages"]["node_modules/playwright-core"]["version"] = "1.64.0"
+    lock_data["packages"][""]["devDependencies"]["@playwright/test"] = "1.64.0"
+    lock_data["packages"][""]["devDependencies"]["playwright"] = "1.64.0"
     lock_path.write_text(json.dumps(lock_data), encoding="utf-8")
+    package_json["devDependencies"]["@playwright/test"] = "1.64.0"
+    package_json["devDependencies"]["playwright"] = "1.64.0"
+    package_json_path.write_text(json.dumps(package_json), encoding="utf-8")
     live_stand._ensure_live_e2e_dependencies(frontend, environment)
 
     npm_calls = [
@@ -796,8 +821,8 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
     probe_calls = [
         call for call in calls if call[0] == live_stand.LIVE_E2E_CHROMIUM_PROBE_COMMAND
     ]
-    assert len(npm_calls) == 2
-    assert len(probe_calls) == 3
+    assert len(npm_calls) == 3
+    assert len(probe_calls) == 4
     for command, cwd, child_environment in calls:
         assert cwd == frontend
         assert command not in (live_stand.LIVE_E2E_COMMAND,)
@@ -832,9 +857,12 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
             "PLAYWRIGHT_BROWSERS_PATH",
             "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD",
         }
-    assert (frontend / "node_modules" / live_stand.LIVE_E2E_LOCK_FINGERPRINT).read_text(
-        encoding="utf-8"
-    ).strip() == hashlib.sha256(lock_path.read_bytes()).hexdigest()
+    stored_fingerprint = (
+        (frontend / "node_modules" / live_stand.LIVE_E2E_MANIFEST_FINGERPRINT)
+        .read_text(encoding="utf-8")
+        .strip()
+    )
+    assert stored_fingerprint != hashlib.sha256(lock_path.read_bytes()).hexdigest()
     captured = capsys.readouterr()
     for private_value in (
         install_output,

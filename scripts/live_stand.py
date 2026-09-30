@@ -125,7 +125,7 @@ LIVE_E2E_REQUIRED_PACKAGES = (
     "playwright",
     "playwright-core",
 )
-LIVE_E2E_LOCK_FINGERPRINT = ".live-e2e-package-lock.sha256"
+LIVE_E2E_MANIFEST_FINGERPRINT = ".live-e2e-package-manifest.sha256"
 STAND_PATHS_TO_PROTECT = (
     Path(OVERLAY),
     Path(".env"),
@@ -992,18 +992,23 @@ def _live_e2e_installer_environment(environment: Mapping[str, str]) -> dict[str,
     return installer_environment
 
 
-def _locked_live_e2e_package_versions(
+def _live_e2e_package_manifest_fingerprint(
     frontend: Path,
-) -> tuple[Path, str, dict[str, str]]:
-    """Read the lockfile hash and exact Playwright package versions."""
+) -> tuple[str, dict[str, str]]:
+    """Hash both npm manifests and read exact locked Playwright versions."""
+    package_path = frontend / "package.json"
     lock_path = frontend / "package-lock.json"
     try:
+        package_bytes = package_path.read_bytes()
         lock_bytes = lock_path.read_bytes()
+        package_data = json.loads(package_bytes)
         lock_data = json.loads(lock_bytes)
     except (OSError, json.JSONDecodeError) as error:
         raise StandError(
-            "live E2E requires a readable frontend package lock"
+            "live E2E requires readable frontend package manifests"
         ) from error
+    if not isinstance(package_data, dict):
+        raise StandError("frontend package.json must contain a JSON object")
     packages = lock_data.get("packages") if isinstance(lock_data, dict) else None
     if not isinstance(packages, dict):
         raise StandError("live E2E package lock does not contain a package inventory")
@@ -1017,7 +1022,18 @@ def _locked_live_e2e_package_versions(
                 "live E2E package lock omits a required Playwright package"
             )
         versions[package_name] = version
-    return lock_path, hashlib.sha256(lock_bytes).hexdigest(), versions
+
+    fingerprint = hashlib.sha256()
+    for manifest_name, manifest_bytes in (
+        (package_path.name, package_bytes),
+        (lock_path.name, lock_bytes),
+    ):
+        name_bytes = manifest_name.encode("utf-8")
+        fingerprint.update(len(name_bytes).to_bytes(2, "big"))
+        fingerprint.update(name_bytes)
+        fingerprint.update(len(manifest_bytes).to_bytes(8, "big"))
+        fingerprint.update(manifest_bytes)
+    return fingerprint.hexdigest(), versions
 
 
 def _installed_live_e2e_packages_match(
@@ -1113,17 +1129,17 @@ def _ensure_live_e2e_dependencies(
     frontend: Path, environment: Mapping[str, str]
 ) -> None:
     """Install locked Playwright packages when stale, then verify shared Chromium."""
-    _lock_path, lock_fingerprint, locked_versions = _locked_live_e2e_package_versions(
+    manifest_fingerprint, locked_versions = _live_e2e_package_manifest_fingerprint(
         frontend
     )
     node_modules = frontend / "node_modules"
-    fingerprint_path = node_modules / LIVE_E2E_LOCK_FINGERPRINT
+    fingerprint_path = node_modules / LIVE_E2E_MANIFEST_FINGERPRINT
     try:
         installed_fingerprint = fingerprint_path.read_text(encoding="ascii").strip()
     except OSError:
         installed_fingerprint = ""
     dependencies_are_ready = (
-        installed_fingerprint == lock_fingerprint
+        installed_fingerprint == manifest_fingerprint
         and _installed_live_e2e_packages_match(frontend, locked_versions)
     )
     if not dependencies_are_ready:
@@ -1134,7 +1150,7 @@ def _ensure_live_e2e_dependencies(
         temporary_fingerprint = fingerprint_path.with_name(
             f"{fingerprint_path.name}.tmp"
         )
-        temporary_fingerprint.write_text(lock_fingerprint, encoding="ascii")
+        temporary_fingerprint.write_text(manifest_fingerprint, encoding="ascii")
         temporary_fingerprint.replace(fingerprint_path)
     _probe_live_e2e_chromium(frontend, environment)
 
