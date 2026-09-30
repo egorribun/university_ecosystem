@@ -273,6 +273,43 @@ async def test_reseeding_existing_extra_user_repairs_missing_demo_relations(
     assert email not in output.err
 
 
+async def test_reseeding_extra_user_rejects_role_collision_before_mutating_account(
+    db_session, user_factory
+) -> None:
+    from scripts import seed_admin_data
+
+    email, _password, _name, _expected_role, _telegram, _institute, _course, _group = (
+        seed_admin_data.EXTRA_USERS[0]
+    )
+    groups = await seed_admin_data.seed_extra_groups(db_session)
+    existing = await user_factory(
+        email=email,
+        role=models.UserRole.TEACHER,
+        group_id=None,
+        hashed_password="preserved-hash",  # pragma: allowlist secret
+        full_name="Existing account name",
+    )
+    original_hash = existing.hashed_password
+
+    with pytest.raises(ValueError, match="role"):
+        await seed_admin_data.seed_extra_users(db_session, groups)
+
+    await db_session.refresh(existing)
+    profile = await db_session.scalar(
+        select(models.UserProfile).where(models.UserProfile.user_id == existing.id)
+    )
+    education_path = await db_session.scalar(
+        select(models.EducationPath).where(models.EducationPath.user_id == existing.id)
+    )
+
+    assert existing.role == models.UserRole.TEACHER
+    assert existing.group_id is None
+    assert existing.hashed_password == original_hash
+    assert profile is not None
+    assert profile.full_name == "Existing account name"
+    assert education_path is None
+
+
 async def test_reseeding_existing_extra_user_preserves_existing_custom_data(
     db_session, user_factory, capsys: pytest.CaptureFixture[str]
 ) -> None:

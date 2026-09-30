@@ -305,6 +305,10 @@ async def seed_extra_users(db, groups: dict[str, Group]) -> list[User]:
     ) in EXTRA_USERS:
         existing = await db.scalar(select(User).where(User.email == email))
         if existing:
+            if existing.role != role:
+                raise ValueError(
+                    "refusing to modify a demo account with a different role"
+                )
             if existing.group_id is None and group_name and group_name in groups:
                 existing.group_id = groups[group_name].id
 
