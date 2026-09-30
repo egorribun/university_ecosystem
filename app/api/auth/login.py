@@ -85,7 +85,9 @@ async def _load_optional_active_session(
     "/login",
     response_model=TokenWithProfile | PendingMfaResponse,
     response_model_exclude_none=True,
-    dependencies=[Depends(sensitive_route_limit())],
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_auth_login))
+    ],
 )
 @inject
 async def login(
@@ -123,7 +125,9 @@ async def login(
     "/login/json",
     response_model=TokenWithProfile | PendingMfaResponse,
     response_model_exclude_none=True,
-    dependencies=[Depends(sensitive_route_limit())],
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_auth_login))
+    ],
 )
 @inject
 async def login_json(
