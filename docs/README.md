@@ -27,6 +27,7 @@ handoffs are intentionally not part of the canonical index.
 - [Deployment guide (English)](DEPLOY.en.md)
 - [Helm chart](../charts/university-ecosystem/README.md)
 - [Kubernetes notes](../k8s/README.md)
+- [Database backup and restore runbook](runbooks/database-backup-restore.md)
 - [S3 storage migration runbook](runbooks/s3-seaweedfs-cutover.md)
 - [Dependency cooldown emergency procedure](DEPENDENCY_COOLDOWN_EMERGENCY.md)
 - [Manual MFA verification checklist](manual-mfa-checklist.md)
