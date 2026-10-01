@@ -34,6 +34,23 @@ sys.modules["live_stand"] = live_stand
 _SPEC.loader.exec_module(live_stand)
 
 
+@pytest.fixture(scope="session")
+def git_executable() -> str:
+    executable = shutil.which("git")
+    if executable is None:
+        pytest.fail("git is required for in-place source-guard tests", pytrace=False)
+    return executable
+
+
+def _initialize_git_repository(git_executable: str, repository: Path) -> None:
+    subprocess.run(  # noqa: S603 - validated Git executable and fixed argv
+        [git_executable, "init", "--quiet"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+
+
 def _unb64url(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
@@ -2417,7 +2434,9 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
     monkeypatch.setattr(
         live_stand,
         "_bind_stand_owner_compose_resources",
-        lambda _root, owner, **_kwargs: owner,
+        lambda root, owner, **_kwargs: live_stand.update_stand_owner_ports(
+            root, owner, dict(owner.published_ports)
+        ),
     )
     monkeypatch.setattr(
         live_stand,
@@ -2479,6 +2498,8 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
     assert "/app/.secrets:ro" not in state_override
     assert "live-vapid.json" not in state_override
     assert "live-admin-password.json" not in state_override
+    assert "synthetic-public" not in state_override
+    assert "synthetic-private" not in state_override
     bind_sources = set(
         re.findall(r'^\s+source: "([^"]+)"$', state_override, re.MULTILINE)
     )
@@ -2497,22 +2518,34 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
     assert str(state_root) in commands[0][0]
     assert commands[-1][1] == state_root
     if os.name == "nt":
-        acl = _windows_acl_summary(state_root)
         current_user_sid = live_stand._windows_user_sid()
-        assert acl["OwnerSid"] == current_user_sid
-        rules = acl["Rules"]
-        assert isinstance(rules, list)
-        allow_rules = [rule for rule in rules if rule["Type"] == "Allow"]
-        assert {rule["Sid"] for rule in allow_rules} == {
-            current_user_sid,
-            "S-1-5-18",
-        }
-        assert all("FullControl" in rule["Rights"] for rule in allow_rules)
-        assert all(
-            "ContainerInherit" in rule["Inheritance"]
-            and "ObjectInherit" in rule["Inheritance"]
-            for rule in allow_rules
-        )
+        for protected_path in (
+            state_root,
+            state_root / ".secrets",
+            state_root / ".secrets" / "live-stand-owner.key",
+            state_root / live_stand.STAND_FILE,
+            state_root / live_stand.IN_PLACE_OVERLAY,
+        ):
+            acl = _windows_acl_summary(protected_path)
+            assert acl["OwnerSid"] == current_user_sid
+            rules = acl["Rules"]
+            assert isinstance(rules, list)
+            allow_rules = [rule for rule in rules if rule["Type"] == "Allow"]
+            assert {rule["Sid"] for rule in allow_rules} == {
+                current_user_sid,
+                "S-1-5-18",
+            }
+            assert all("FullControl" in rule["Rights"] for rule in allow_rules)
+        for protected_directory in (state_root, state_root / ".secrets"):
+            acl = _windows_acl_summary(protected_directory)
+            rules = acl["Rules"]
+            assert isinstance(rules, list)
+            allow_rules = [rule for rule in rules if rule["Type"] == "Allow"]
+            assert all(
+                "ContainerInherit" in rule["Inheritance"]
+                and "ObjectInherit" in rule["Inheritance"]
+                for rule in allow_rules
+            )
     else:
         assert stat.S_IMODE(state_parent.stat().st_mode) == 0o700
         assert stat.S_IMODE(state_root.stat().st_mode) == 0o700
@@ -2530,6 +2563,50 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
             stat.S_IMODE((state_root / live_stand.IN_PLACE_OVERLAY).stat().st_mode)
             == 0o600
         )
+
+
+def test_in_place_compose_override_does_not_store_secret_contents(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    temporal_root = repository / "services" / "temporal"
+    temporal_root.mkdir(parents=True)
+    (temporal_root / "config.yaml").write_text("global: {}\n", encoding="utf-8")
+    (temporal_root / "entrypoint.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    state_root = tmp_path / "temp" / "ue-live-acceptance" / "run-sentinel-case"
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", state_root)
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", True)
+    live_stand._ensure_private_state_directory(state_root, protect_new_windows=True)
+    secrets_root = state_root / ".secrets"
+    live_stand._ensure_private_state_directory(secrets_root, protect_new_windows=True)
+    sentinels = (
+        "sentinel-private-env-content",
+        "sentinel-worker-env-content",
+        "sentinel-jwt-private-key-content",
+        "sentinel-jwt-public-key-content",
+        "sentinel-temporal-token-content",
+    )
+    for path, sentinel in zip(
+        (
+            state_root / ".env.docker",
+            state_root / ".env.docker.workers",
+            secrets_root / "jwt_rs256.pem",
+            secrets_root / "jwt_rs256.pub.pem",
+            secrets_root / "temporal_api_key",
+        ),
+        sentinels,
+        strict=True,
+    ):
+        path.write_text(sentinel, encoding="utf-8")
+
+    override = live_stand._write_in_place_compose_override(state_root)
+
+    content = override.read_text(encoding="utf-8")
+    assert all(sentinel not in content for sentinel in sentinels)
+    assert state_root.as_posix() in content
+    assert "jwt_rs256.pem" in content
+    assert "temporal_api_key" in content
 
 
 def test_in_place_status_stop_and_teardown_preserve_runroot_and_source(
@@ -2895,21 +2972,93 @@ def test_in_place_source_current_rejects_ignored_app_source(
     )
     assert set(live_stand.IN_PLACE_BUILD_SOURCE_PATHS).issubset(ignored_source_query)
     assert any("node_modules" in item for item in ignored_source_query)
-    assert any(".venv" in item for item in ignored_source_query)
+    assert "app" in ignored_source_query
+    assert ":(exclude,glob)frontend/coverage/**" in ignored_source_query
 
 
-def test_in_place_dockerignore_artifact_rules_match_source_guard() -> None:
+def test_in_place_source_guard_exclusions_match_dockerignore_rules() -> None:
     dockerignore = live_stand.REPO_ROOT / ".dockerignore"
     rules = set(dockerignore.read_text(encoding="utf-8").splitlines())
 
     assert set(live_stand.IN_PLACE_DOCKERIGNORE_ARTIFACT_RULES).issubset(rules)
-    assert all(
-        any(
-            rule.rstrip("/") in pathspec
-            for pathspec in live_stand.IN_PLACE_DOCKERIGNORE_EXCLUSIONS
-        )
-        for rule in live_stand.IN_PLACE_DOCKERIGNORE_ARTIFACT_RULES
+    for pattern in live_stand.IN_PLACE_DOCKERIGNORE_EXCLUSIONS:
+        dockerignore_rule = pattern[:-2] if pattern.endswith("/**") else pattern
+        assert dockerignore_rule in rules, pattern
+
+
+@pytest.mark.parametrize(
+    "relative_source",
+    [
+        "app/coverage/untracked_module.py",
+        "app/test-results/untracked_module.py",
+        "app/playwright-report/untracked_module.py",
+        "app/.vitest/untracked_module.py",
+        "app/.venv/untracked_module.py",
+        "app/.pytest_cache/untracked_module.py",
+    ],
+)
+def test_in_place_source_guard_rejects_ignored_nested_source_not_dockerignored(
+    git_executable: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    relative_source: str,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / ".gitignore").write_text(
+        "coverage/\ntest-results/\nplaywright-report/\n.vitest/\n"
+        ".venv/\n.pytest_cache/\n__pycache__/\n",
+        encoding="utf-8",
     )
+    (repository / ".dockerignore").write_text(
+        "frontend/coverage/\n"
+        "frontend/test-results/\n"
+        "frontend/playwright-report/\n"
+        "frontend/.vitest/\n"
+        "frontend/reports/\n"
+        "**/__pycache__/\n",
+        encoding="utf-8",
+    )
+    _initialize_git_repository(git_executable, repository)
+    ignored_source = repository / relative_source
+    ignored_source.parent.mkdir(parents=True)
+    ignored_source.write_text("SOURCE_SENTINEL = True\n", encoding="utf-8")
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+
+    with pytest.raises(live_stand.StandError, match="ignored untracked files"):
+        live_stand._assert_no_ignored_in_place_build_sources()
+
+
+def test_in_place_source_guard_allows_exact_ignored_frontend_artifact(
+    git_executable: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / ".gitignore").write_text("frontend/reports/\n", encoding="utf-8")
+    (repository / ".dockerignore").write_text("frontend/reports/\n", encoding="utf-8")
+    _initialize_git_repository(git_executable, repository)
+    reports = repository / "frontend" / "reports"
+    reports.mkdir(parents=True)
+    (reports / "generated-summary.html").write_text("local report\n", encoding="utf-8")
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+
+    live_stand._assert_no_ignored_in_place_build_sources()
+
+
+def test_in_place_source_guard_allows_nested_python_bytecode_cache(
+    git_executable: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+    (repository / ".dockerignore").write_text("**/__pycache__/\n", encoding="utf-8")
+    _initialize_git_repository(git_executable, repository)
+    bytecode_cache = repository / "app" / "__pycache__"
+    bytecode_cache.mkdir(parents=True)
+    (bytecode_cache / "generated.pyc").write_bytes(b"synthetic bytecode")
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+
+    live_stand._assert_no_ignored_in_place_build_sources()
 
 
 def test_in_place_up_refuses_owned_runroot_from_another_source_sha(

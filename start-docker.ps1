@@ -118,14 +118,34 @@ function Assert-LiveStandPrivatePath {
 
 function Set-LiveStandPrivateFileMode {
     param([Parameter(Mandatory=$true)][string]$Path)
-    if (-not $LiveStateMode -or
-        [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
-            [System.Runtime.InteropServices.OSPlatform]::Windows
-        )) { return }
+    if (-not $LiveStateMode) { return }
     $absolutePath = [System.IO.Path]::GetFullPath($Path)
     $rootPrefix = $StateRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
-    if (-not $absolutePath.StartsWith($rootPrefix, [StringComparison]::Ordinal)) {
+    $pathComparison = [StringComparison]::Ordinal
+    $runningOnWindows = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows
+    )
+    if ($runningOnWindows) { $pathComparison = [StringComparison]::OrdinalIgnoreCase }
+    if (-not $absolutePath.StartsWith($rootPrefix, $pathComparison)) {
         throw "Generated live stand file escapes the owned state root."
+    }
+    if ($runningOnWindows) {
+        $item = Get-Item -LiteralPath $absolutePath -Force
+        if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+            throw "Generated live stand file refuses reparse points."
+        }
+        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+        $userSid = $identity.User.Value
+        $icacls = Get-Command "icacls.exe" -ErrorAction Stop
+        $null = & $icacls.Source $absolutePath "/reset" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "Cannot reset generated live stand file permissions."
+        }
+        $null = & $icacls.Source $absolutePath "/setowner" "*$userSid" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "Cannot set generated live stand file owner."
+        }
+        return
     }
     $ownerReadWrite = [System.IO.UnixFileMode]::UserRead -bor
         [System.IO.UnixFileMode]::UserWrite
@@ -155,7 +175,10 @@ function Set-LiveStandRuntimeSecretFileMode {
     }
     if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
         [System.Runtime.InteropServices.OSPlatform]::Windows
-    )) { return }
+    )) {
+        Set-LiveStandPrivateFileMode -Path $absolutePath
+        return
+    }
 
     $runtimeReadableMode = [System.IO.UnixFileMode]::UserRead -bor
         [System.IO.UnixFileMode]::UserWrite -bor
@@ -395,9 +418,14 @@ $CoreExcludedHealthServices = [string[]]@(
     "alloy",
     "pyroscope"
 )
-$EnvFile = if ($LiveStateMode) { Join-Path $StateRoot ".env.docker" } else { ".env.docker" }
-$WorkerEnvFile = if ($LiveStateMode) { Join-Path $StateRoot ".env.docker.workers" } else { ".env.docker.workers" }
-$EnvCompose = if ($LiveStateMode) { Join-Path $StateRoot ".env" } else { ".env" }
+$EnvFile = ".env.docker"
+$WorkerEnvFile = ".env.docker.workers"
+$EnvCompose = ".env"
+if ($LiveStateMode) {
+    $EnvFile = Join-Path $StateRoot ".env.docker"
+    $WorkerEnvFile = Join-Path $StateRoot ".env.docker.workers"
+    $EnvCompose = Join-Path $StateRoot ".env"
+}
 $OpenSslFallbackImage = "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
 
 # -- Helpers ------------------------------------------------------------------

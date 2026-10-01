@@ -69,26 +69,18 @@ IN_PLACE_BUILD_SOURCE_PATHS = (
 )
 IN_PLACE_DOCKERIGNORE_EXCLUSIONS = (
     "**/node_modules/**",
-    "**/.venv/**",
-    "**/venv/**",
-    "**/ENV/**",
-    "**/env/**",
     "**/__pycache__/**",
-    "**/.pytest_cache/**",
-    "**/.ruff_cache/**",
     "**/.mypy_cache/**",
     "**/.cache/**",
-    "**/.vite/**",
-    "**/.vitest/**",
-    "**/.npm/**",
-    "frontend/.vitest/**",
     "**/target/**",
-    "**/dist/**",
-    "**/coverage/**",
-    "**/test-results/**",
-    "**/playwright-report/**",
+    "frontend/dist/**",
+    "frontend/coverage/**",
+    "frontend/test-results/**",
+    "frontend/playwright-report/**",
+    "frontend/.vitest/**",
     "**/.secrets/**",
     "**/artifacts/**",
+    "**/.root-*/**",
     "frontend/reports/**",
     "frontend/bundle-report.json",
     "frontend/rust-crypto/pkg/.gitignore",
@@ -97,6 +89,10 @@ IN_PLACE_DOCKERIGNORE_EXCLUSIONS = (
     "frontend/wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm.d.ts",
 )
 IN_PLACE_DOCKERIGNORE_ARTIFACT_RULES = (
+    "frontend/dist/",
+    "frontend/coverage/",
+    "frontend/test-results/",
+    "frontend/playwright-report/",
     "frontend/.vitest/",
     "frontend/reports/",
     "frontend/bundle-report.json",
@@ -396,6 +392,53 @@ def _restrict_new_windows_state_directory(path: Path) -> None:
         ) from None
 
 
+def _restrict_in_place_windows_state_file(path: Path) -> None:
+    """Give a generated in-place state file the protected parent ACL and owner."""
+    if not IN_PLACE_MODE or os.name != "nt":
+        return
+    state_root = Path(os.path.abspath(WORKTREE))
+    candidate = Path(os.path.abspath(path))
+    try:
+        relative_path = candidate.relative_to(state_root)
+    except ValueError as error:
+        raise StandError(
+            "generated live stand file escapes the owned state root"
+        ) from error
+    _assert_worktree_paths_safe(state_root, (relative_path,))
+    try:
+        metadata = candidate.lstat()
+    except OSError as error:
+        raise StandError(
+            "cannot verify generated live stand file permissions"
+        ) from error
+    if not stat.S_ISREG(metadata.st_mode):
+        raise StandError("generated live stand path is not a regular file")
+
+    icacls = shutil.which("icacls.exe") or shutil.which("icacls")
+    if icacls is None:
+        raise StandError("cannot enforce private Windows permissions for live state")
+    user_sid = _windows_user_sid()
+    try:
+        subprocess.run(  # noqa: S603 - fixed ACL tool, path is confined to owned state
+            [icacls, str(candidate), "/reset"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        subprocess.run(  # noqa: S603 - validated current-user SID and confined path
+            [icacls, str(candidate), "/setowner", f"*{user_sid}"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise StandError(
+            "cannot enforce private Windows permissions for live state"
+        ) from None
+
+
 def _ensure_private_state_directory(
     path: Path,
     *,
@@ -475,15 +518,15 @@ def _write_in_place_compose_override(state_root: Path) -> Path:
             "          create_host_path: false\n"
         )
 
-    secrets_root = resolved_root / ".secrets"
+    runtime_bind_directory = resolved_root / ".secrets"
     private_key_mount = readonly_bind(
-        secrets_root / "jwt_rs256.pem", "/app/.secrets/jwt_rs256.pem"
+        runtime_bind_directory / "jwt_rs256.pem", "/app/.secrets/jwt_rs256.pem"
     )
     public_key_mount = readonly_bind(
-        secrets_root / "jwt_rs256.pub.pem", "/app/.secrets/jwt_rs256.pub.pem"
+        runtime_bind_directory / "jwt_rs256.pub.pem", "/app/.secrets/jwt_rs256.pub.pem"
     )
     temporal_token_mount = readonly_bind(
-        secrets_root / "temporal_api_key", "/app/.secrets/temporal_api_key"
+        runtime_bind_directory / "temporal_api_key", "/app/.secrets/temporal_api_key"
     )
     temporal_config_mount = readonly_bind(
         repository / "services" / "temporal" / "config.yaml",
@@ -518,7 +561,9 @@ def _write_in_place_compose_override(state_root: Path) -> Path:
     override = state_root / IN_PLACE_OVERLAY
     _assert_worktree_paths_safe(state_root, (Path(IN_PLACE_OVERLAY),))
     override.write_text(content, encoding="utf-8")
-    if os.name != "nt":
+    if IN_PLACE_MODE and os.name == "nt":
+        _restrict_in_place_windows_state_file(override)
+    elif os.name != "nt":
         override.chmod(0o600)
     return override
 
@@ -548,13 +593,15 @@ def load_or_create_vapid(worktree: Path) -> dict[str, str]:
         return load_vapid(worktree)
     keys = generate_vapid_keys()
     if IN_PLACE_MODE:
-        _ensure_private_state_directory(path.parent)
+        _ensure_private_state_directory(path.parent, protect_new_windows=True)
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with path.open("x", encoding="utf-8") as key_file:
             key_file.write(json.dumps(keys))
-        if os.name != "nt":
+        if IN_PLACE_MODE and os.name == "nt":
+            _restrict_in_place_windows_state_file(path)
+        elif os.name != "nt":
             path.chmod(0o600)
     except FileExistsError:
         return load_vapid(worktree)
@@ -628,7 +675,7 @@ def load_or_create_stand_admin_password(worktree: Path, owner: StandOwner) -> st
         return _read_stand_admin_password(worktree, path, owner)
 
     if IN_PLACE_MODE:
-        _ensure_private_state_directory(path.parent)
+        _ensure_private_state_directory(path.parent, protect_new_windows=True)
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
     _assert_worktree_paths_safe(worktree, (ADMIN_PASSWORD_FILE,))
@@ -655,7 +702,9 @@ def load_or_create_stand_admin_password(worktree: Path, owner: StandOwner) -> st
         with os.fdopen(descriptor, "w", encoding="utf-8") as password_file:
             json.dump(payload, password_file, sort_keys=True)
             password_file.write("\n")
-        if os.name != "nt":
+        if IN_PLACE_MODE and os.name == "nt":
+            _restrict_in_place_windows_state_file(path)
+        elif os.name != "nt":
             path.chmod(0o600)
     except OSError:
         raise StandError(
@@ -727,7 +776,9 @@ def _owner_signing_key(*, create: bool) -> bytes:
         else:
             with os.fdopen(descriptor, "wb") as key_file:
                 key_file.write(key)
-            if os.name != "nt":
+            if IN_PLACE_MODE and os.name == "nt":
+                _restrict_in_place_windows_state_file(key_path)
+            elif os.name != "nt":
                 key_path.chmod(0o600)
     else:
         raise StandError("missing live stand owner key")
@@ -927,7 +978,7 @@ def create_stand_owner(
     if source_sha is not None:
         payload["source_sha"] = source_sha
     if IN_PLACE_MODE:
-        _ensure_private_state_directory(worktree / ".secrets")
+        _ensure_private_state_directory(worktree / ".secrets", protect_new_windows=True)
     else:
         (worktree / ".secrets").mkdir(parents=True, exist_ok=True)
     marker_data = {
@@ -937,7 +988,9 @@ def create_stand_owner(
     try:
         with marker.open("x", encoding="utf-8") as marker_file:
             marker_file.write(json.dumps(marker_data, indent=2) + "\n")
-        if os.name != "nt":
+        if IN_PLACE_MODE and os.name == "nt":
+            _restrict_in_place_windows_state_file(marker)
+        elif os.name != "nt":
             marker.chmod(0o600)
     except FileExistsError as error:
         raise StandError(f"ownership metadata already exists: {marker}") from error
@@ -1234,7 +1287,9 @@ def _write_stand_owner_update(worktree: Path, updated: StandOwner) -> StandOwner
         _assert_worktree_paths_safe(
             worktree, (STAND_FILE, temporary_path.relative_to(worktree))
         )
-        if os.name != "nt":
+        if IN_PLACE_MODE and os.name == "nt":
+            _restrict_in_place_windows_state_file(temporary_path)
+        elif os.name != "nt":
             temporary_path.chmod(0o600)
         os.replace(temporary_path, marker)
         temporary_path = None

@@ -461,6 +461,12 @@ def _validate_storage_public_base_url(value: Any, *, label: str) -> str:
     ):
         raise BackupArtifactError(f"{label} is invalid")
     normalized = value.rstrip("/")
+    if normalized.startswith("/"):
+        if "//" in value or any(
+            part in {".", ".."} for part in normalized.split("/") if part
+        ):
+            raise BackupArtifactError(f"{label} is invalid")
+        return normalized
     try:
         parsed = urlsplit(normalized)
         hostname = parsed.hostname

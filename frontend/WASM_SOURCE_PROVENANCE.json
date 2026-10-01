@@ -48,7 +48,7 @@
     },
     "rust-crypto/pkg/uni_wasm_crypto_bg.wasm": {
       "size": 46914,
-      "sha256": "276f05bd098645b39f9b5919776ae3e0f64d93bba9ea74cefc29d115311f83d0"
+      "sha256": "c7ed6bd918f48e167e0fe0d96265dc6b6aa27ce25aec4ead98cb42ce3800760f"
     },
     "wasm-sanitizer/pkg/package.json": {
       "size": 337,
@@ -63,8 +63,8 @@
       "sha256": "51c27462afd5807aa11124745e71f79edf173d58466bc15f1d673fe0d5d65acd"
     },
     "wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm": {
-      "size": 790296,
-      "sha256": "912841b1fe702d9bba86cede6dbf1e95cce9dd8bd3b4f9100bfe9e66c3b10b05"
+      "size": 790298,
+      "sha256": "e6e3acf8c6b4d18259ecc62ffb767343c683516ebfa01902f32fe9ded9d3fc66"
     }
   }
 }

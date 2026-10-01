@@ -6,11 +6,14 @@ import base64
 import csv
 import hashlib
 import hmac
+import importlib.util
 import json
 import os
 import shutil
 import stat
 import subprocess
+import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -189,6 +192,54 @@ def _run_prepare(
     )
 
 
+def _windows_acl_summary(path: Path) -> dict[str, object]:
+    powershell = shutil.which("pwsh") or shutil.which("powershell.exe")
+    assert powershell is not None
+    env = os.environ.copy()
+    env["LIVE_STAND_ACL_TARGET"] = str(path)
+    script = r"""
+$ErrorActionPreference = 'Stop'
+$acl = Get-Acl -LiteralPath $env:LIVE_STAND_ACL_TARGET
+$ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+$rules = @($acl.Access | ForEach-Object {
+    [pscustomobject]@{
+        Sid = $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+        Type = $_.AccessControlType.ToString()
+        Rights = $_.FileSystemRights.ToString()
+    }
+})
+[pscustomobject]@{ OwnerSid = $ownerSid; Rules = $rules } | ConvertTo-Json -Depth 5 -Compress
+"""
+    result = subprocess.run(  # noqa: S603 - fixed PowerShell executable and test temp path
+        [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0
+    return json.loads(result.stdout)
+
+
+def _assert_windows_private_acl(path: Path) -> None:
+    acl = _windows_acl_summary(path)
+    identity = subprocess.run(  # noqa: S603 - fixed Windows identity query
+        [shutil.which("whoami.exe") or "whoami", "/user", "/fo", "csv", "/nh"],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    user_sid = next(csv.reader(identity.stdout.splitlines()))[-1]
+    assert acl["OwnerSid"] == user_sid
+    rules = acl["Rules"]
+    assert isinstance(rules, list)
+    allow_rules = [rule for rule in rules if rule["Type"] == "Allow"]
+    assert {rule["Sid"] for rule in allow_rules} == {user_sid, "S-1-5-18"}
+    assert all("FullControl" in rule["Rights"] for rule in allow_rules)
+
+
 @pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
 def test_launcher_refuses_state_root_outside_owned_temp_parent_without_writes(
     tmp_path: Path,
@@ -280,6 +331,77 @@ def test_launcher_prepare_only_writes_live_configuration_under_owned_state_root(
             secrets_root / "live-stand.json",
         ):
             assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    else:
+        for path in (
+            state_root / ".env",
+            state_root / ".env.docker",
+            state_root / ".env.docker.workers",
+            secrets_root / "jwt_rs256.pem",
+            secrets_root / "jwt_rs256.pub.pem",
+            secrets_root / "temporal_api_key",
+        ):
+            _assert_windows_private_acl(path)
+
+
+@pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 (pwsh) is unavailable")
+def test_launcher_prepare_only_accepts_python_generated_in_place_owner(
+    tmp_path: Path,
+) -> None:
+    project, _ = _fixture_project(tmp_path)
+    state_root = (
+        tmp_path
+        / "temp"
+        / "ue-live-acceptance"
+        / f"run-prepare-only-{uuid.uuid4().hex}"
+    )
+    state_root.parent.mkdir(parents=True)
+    spec = importlib.util.spec_from_file_location(
+        "live_stand_prepare_only_proof", ROOT / "scripts" / "live_stand.py"
+    )
+    assert spec is not None and spec.loader is not None
+    live_stand = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = live_stand
+    spec.loader.exec_module(live_stand)
+    live_stand.REPO_ROOT = project
+    live_stand.WORKTREE = state_root
+    live_stand.IN_PLACE_MODE = True
+    live_stand.SOURCE_SHA = "a" * 40
+    live_stand.docker_daemon_fingerprint = lambda: "d" * 64
+    live_stand._ensure_private_state_directory(state_root, protect_new_windows=True)
+    owner = live_stand.create_stand_owner(
+        state_root,
+        published_ports=live_stand.choose_published_ports(),
+    )
+    vapid = live_stand.load_or_create_vapid(state_root)
+    live_stand._write_in_place_compose_override(state_root)
+    environment = live_stand.stand_environment(
+        vapid, owner.project_name, dict(owner.published_ports)
+    )
+    environment["TEMP"] = str(state_root.parents[1])
+    environment["TMP"] = str(state_root.parents[1])
+
+    result = _run_prepare(project, state_root, environment)
+
+    assert result.returncode == 0, f"PrepareOnly exited with status {result.returncode}"
+    assert (state_root / ".env").is_file()
+    assert (state_root / ".env.docker").is_file()
+    assert (state_root / ".env.docker.workers").is_file()
+    if os.name == "nt":
+        for path in (
+            state_root,
+            state_root / ".secrets",
+            state_root / ".secrets" / "live-stand-owner.key",
+            state_root / ".secrets" / "live-stand.json",
+            state_root / ".secrets" / "live-vapid.json",
+            state_root / "docker-compose.live-state.yml",
+            state_root / ".env",
+            state_root / ".env.docker",
+            state_root / ".env.docker.workers",
+            state_root / ".secrets" / "jwt_rs256.pem",
+            state_root / ".secrets" / "jwt_rs256.pub.pem",
+            state_root / ".secrets" / "temporal_api_key",
+        ):
+            _assert_windows_private_acl(path)
 
 
 @pytest.mark.skipif(

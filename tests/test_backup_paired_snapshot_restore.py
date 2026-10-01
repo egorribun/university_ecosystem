@@ -373,6 +373,33 @@ def test_storage_public_base_url_rejects_invalid_port_and_url_structure() -> Non
             backup_db._validate_storage_public_base_url(value, label="test URL")
 
 
+@pytest.mark.parametrize("value", ["/api/v1/img", "/storage/uploads/"])
+def test_storage_public_base_url_accepts_safe_root_relative_paths(value: str) -> None:
+    assert backup_db._validate_storage_public_base_url(
+        value, label="test URL"
+    ) == value.rstrip("/")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "api/v1/img",
+        "//storage.example.test/uploads",
+        "/",
+        "/api//v1/img",
+        "/api/../img",
+        "/api/%2e%2e/img",
+        "/api/v1/img?size=small",
+        "/api/v1/img#fragment",
+        "/api\\v1/img",
+        "/api/v1;img",
+    ],
+)
+def test_storage_public_base_url_rejects_unsafe_root_relative_paths(value: str) -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="is invalid"):
+        backup_db._validate_storage_public_base_url(value, label="test URL")
+
+
 def test_storage_public_base_url_allows_http_only_for_opted_in_local_storage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1746,16 +1773,29 @@ async def test_restore_paired_snapshot_rejects_non_manifest_key_before_clients(
 
 
 @pytest.mark.parametrize(
-    ("configured_bucket", "target_public_base_url", "message"),
+    (
+        "configured_bucket",
+        "configured_public_base_url",
+        "target_public_base_url",
+        "message",
+    ),
     [
         (
             "synthetic-uploads",
+            None,
             TARGET_PUBLIC_BASE_URL,
             "must match the configured target application bucket",
         ),
         (
             "synthetic-restore",
+            None,
             "https://wrong.example.test/uploads",
+            "must match the configured application storage URL",
+        ),
+        (
+            "synthetic-restore",
+            "/api/v1/img",
+            "https://s3.example.test/synthetic-restore",
             "must match the configured application storage URL",
         ),
     ],
@@ -1764,6 +1804,7 @@ async def test_restore_paired_snapshot_rejects_non_manifest_key_before_clients(
 async def test_restore_requires_target_storage_configuration_to_match_cli_target(
     monkeypatch: pytest.MonkeyPatch,
     configured_bucket: str,
+    configured_public_base_url: str | None,
     target_public_base_url: str,
     message: str,
 ) -> None:
@@ -1778,7 +1819,10 @@ async def test_restore_requires_target_storage_configuration_to_match_cli_target
             "restore_acceptance",
             "postgresql://synthetic@localhost/admin",
             _s3_settings("synthetic-backups"),
-            _s3_settings(configured_bucket),
+            _s3_settings(
+                configured_bucket,
+                public_base_url=configured_public_base_url,
+            ),
             "synthetic-restore",
             RESTORE_PREFIX,
             target_public_base_url=target_public_base_url,
@@ -3156,6 +3200,90 @@ async def test_paired_snapshot_commits_a_database_when_source_bucket_is_empty(
     assert manifest.objects == ()
     assert store.objects[("synthetic-backups", manifest.database.artifact_key)] == (
         b"synthetic database archive"
+    )
+
+
+@pytest.mark.asyncio
+async def test_root_relative_s3_base_round_trips_through_paired_snapshot_restore(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.storage import S3Storage
+
+    store = FakeS3()
+    source_key = "covers/42.png"
+    object_bytes = b"root-relative avatar"
+    source_identity = ("synthetic-uploads", source_key)
+    store.objects[source_identity] = object_bytes
+    store.etags[source_identity] = store._etag(object_bytes)
+
+    @asynccontextmanager
+    async def fake_client(_settings: backup_db.S3Settings):
+        yield store
+
+    monkeypatch.setattr(backup_db, "s3_client", fake_client)
+    monkeypatch.setattr(
+        backup_db,
+        "source_database_metadata",
+        lambda _url: ("synthetic_source", ("synthetic_revision",)),
+    )
+
+    def fake_dump(_url: str, archive_path: Path) -> None:
+        archive_path.write_bytes(b"synthetic database archive")
+
+    monkeypatch.setattr(backup_db, "dump_database", fake_dump)
+
+    manifest_key = await backup_db.backup_paired_snapshot_to_s3(
+        "postgresql://synthetic@localhost/source",
+        _s3_settings("synthetic-backups"),
+        _s3_settings("synthetic-uploads", public_base_url="/api/v1/img"),
+        confirm_source_quiesced=True,
+    )
+    manifest = backup_db.parse_paired_snapshot_manifest(
+        store.objects[("synthetic-backups", manifest_key)],
+        expected_manifest_key=manifest_key,
+    )
+    assert manifest.source_storage_public_base_url == "/api/v1/img"
+
+    source_url = f"/api/v1/img/{source_key}"
+    reference_database = FakeStorageReferenceDatabase(source_base_url="/api/v1/img")
+    reference_database.references[("user_profiles", "avatar_url")].append(source_url)
+    external_url = "https://external.example.test/avatar.png"
+    reference_database.references[("news", "image_url")].append(external_url)
+
+    def fake_restore(archive_path: Path, *_args: Any) -> None:
+        assert archive_path.read_bytes() == b"synthetic database archive"
+
+    monkeypatch.setattr(backup_db, "restore_archive", fake_restore)
+
+    result = await backup_db.restore_paired_snapshot_from_s3(
+        manifest_key,
+        "restore_acceptance",
+        "postgresql://synthetic@localhost/admin",
+        _s3_settings("synthetic-backups"),
+        _s3_settings("synthetic-restore", public_base_url="/api/v1/img"),
+        "synthetic-restore",
+        "avatars",
+        target_public_base_url="/api/v1/img",
+        database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(),
+        database_reference_connect=lambda _dsn: reference_database,
+    )
+
+    assert result.snapshot_id == manifest.snapshot_id
+    assert reference_database.committed is True
+    assert reference_database.references[("user_profiles", "avatar_url")] == [
+        "/api/v1/img/avatars/covers/42.png"
+    ]
+    assert reference_database.references[("news", "image_url")] == [external_url]
+    target_key = f"avatars/{source_key}"
+    assert store.objects[("synthetic-restore", target_key)] == object_bytes
+    app_storage = S3Storage(
+        bucket="synthetic-restore", base_url="/api/v1/img", client=store
+    )
+    assert (
+        await app_storage.read_file(
+            reference_database.references[("user_profiles", "avatar_url")][0]
+        )
+        == object_bytes
     )
 
 

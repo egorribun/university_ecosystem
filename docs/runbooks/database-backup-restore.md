@@ -37,9 +37,9 @@ added to subprocess arguments.
 
 With the environment already configured:
 
-~~~powershell
+```powershell
 uv run python scripts/backup_db.py backup
-~~~
+```
 
 The command creates a unique .dump object, reads it back to verify its size
 and SHA-256, then uploads and reads back the matching manifest. It prints the
@@ -64,9 +64,9 @@ operator inspection; use a new target name after resolving it.
 Replace the example object key with the exact manifest key printed by the
 backup command:
 
-~~~powershell
+```powershell
 uv run python scripts/backup_db.py restore --manifest-key database/university-20260930T123000Z-00000000000000000000000000000000.dump.manifest.json --target-database restore_university_20260930
-~~~
+```
 
 ## Create a coordinated database and object snapshot
 
@@ -74,9 +74,9 @@ The `snapshot` command creates schema-v3 paired snapshots. Before invoking it,
 pause all application writes to PostgreSQL and the configured application S3
 bucket, and keep them paused until the command reports success. Then run:
 
-~~~powershell
+```powershell
 uv run python scripts/backup_db.py snapshot --confirm-source-quiesced
-~~~
+```
 
 The required flag is an operator attestation; the script cannot pause or prove
 that external writers have stopped. It records the confirmation timestamp,
@@ -128,15 +128,39 @@ multipart uploads. Configure
 `BACKUP_RESTORE_ADMIN_DATABASE_URL` to a PostgreSQL administrative database,
 choose a nonexistent database named `restore_<name>`, and run:
 
-~~~powershell
+```powershell
 uv run python scripts/backup_db.py restore-snapshot --manifest-key database/snapshots/<snapshot-id>/database.manifest.json --target-database restore_university_demo --objects-target-bucket university-restore-20261001 --objects-target-prefix restore-20261001 --objects-target-public-base-url https://cdn.restore.example.edu/uploads
-~~~
+```
 
 Keep `BACKUP_RESTORE_ADMIN_DATABASE_URL` and storage credentials in the process
 environment or configured secret provider; never place connection URLs or
-credentials in command arguments. `--objects-target-public-base-url` is a
-public URL and must exactly match the effective target application storage
-base URL. The target bucket argument must exactly match `STORAGE_S3_BUCKET`.
+credentials in command arguments. `--objects-target-public-base-url` must
+exactly match the effective target application storage base URL. It may be an
+absolute HTTPS URL (or explicitly opted-in local HTTP endpoint) or a normalized
+origin-relative path such as `/api/v1/img`. For a root-relative base, use one
+leading slash and no authority, scheme, query, fragment, percent escape,
+backslash, semicolon, doubled slash, or dot segment; a trailing slash is
+normalized away. The target bucket argument must exactly match
+`STORAGE_S3_BUCKET`.
+
+A root-relative base is only a URL setting; it does not create or configure a
+public route. The source snapshot's configured route must have served the
+source bucket URLs, and the isolated target deployment must route the exact
+configured target base to the target bucket and restored keys before it is
+connected to the application. When using `/api/v1/img`, the restored object
+keys must continue to satisfy the application's existing public image-category
+and private-file authorization rules. Verify this routing in the deployment
+environment; this CLI validates the URL binding and S3 object bytes, not the
+HTTP route.
+
+The current `attachments.url` database constraint requires an absolute HTTP(S)
+URL. A root-relative target base cannot restore chat attachment references under
+that constraint; use an absolute target base for snapshots containing those
+references. The object inventory does not identify which objects are referenced
+by attachment rows, so it cannot prove this compatibility before database restore.
+A transactional reference-update failure leaves the source unchanged and the
+isolated target available for investigation. The deployed chat-restore acceptance
+must use an absolute base and verify authorized downloads from restored DB URLs.
 
 Before writes, restore validates the v3 manifest, downloads and verifies the
 database dump and every unique object copy, checks that the database target
