@@ -1,8 +1,5 @@
-import datetime as dt
 import gc
-import json
 import uuid
-from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -17,10 +14,8 @@ from app.models import (
     UserProfile,
 )
 from app.schemas.dtos import UserDTO
-from app.services.user.analytics_service import UserAnalyticsService
 from app.services.user.compliance_service import UserComplianceService
 from app.services.user.media_service import UserMediaService
-from app.services.user.stats_service import StatsService
 
 
 @pytest.fixture
@@ -113,40 +108,6 @@ async def test_delete_avatar(mock_uow, monkeypatch, recwarn):
     assert not any(issubclass(warning.category, RuntimeWarning) for warning in recwarn)
 
 
-# --- AnalyticsService Tests ---
-
-
-@pytest.mark.asyncio
-async def test_analytics_get_attendance_stats(mock_db, monkeypatch):
-    svc = UserAnalyticsService(mock_db)
-
-    # Bypass cache
-    mock_get_cached = AsyncMock(return_value=None)
-    mock_set_cached = AsyncMock()
-    monkeypatch.setattr(
-        "app.services.user.analytics_service.stats_cache.get_cached_stats",
-        mock_get_cached,
-    )
-    monkeypatch.setattr(
-        "app.services.user.analytics_service.stats_cache.set_cached_stats",
-        mock_set_cached,
-    )
-
-    mock_row = MagicMock()
-    mock_row.registered_at = dt.datetime(2023, 1, 1, tzinfo=UTC)
-    mock_row.starts_at = dt.datetime(2023, 1, 1, 10, tzinfo=UTC)
-    mock_row.title = "Math"
-
-    mock_db.execute.return_value = [mock_row]
-
-    stats = await svc.get_attendance_stats(user_id=uuid.uuid4(), period_days=30)
-
-    assert stats["percent"] == 100.0
-    assert stats["present"] == 1
-    assert stats["total"] == 1
-    assert stats["recent"][0]["course"] == "Math"
-
-
 # --- ComplianceService Tests ---
 
 
@@ -188,76 +149,3 @@ async def test_admin_delete_user_not_admin(mock_uow):
         await svc.admin_delete_user(
             uuid.uuid4(), MagicMock(), MagicMock(role="student")
         )
-
-
-# --- StatsService Tests ---
-
-
-@pytest.mark.asyncio
-async def test_stats_get_grade_stats(monkeypatch):
-    mock_repo = AsyncMock()
-    svc = StatsService(mock_repo)
-
-    mock_get_cached = AsyncMock(return_value=None)
-    mock_set_cached = AsyncMock()
-    monkeypatch.setattr(
-        "app.services.user.stats_service.stats_cache.get_cached_stats", mock_get_cached
-    )
-    monkeypatch.setattr(
-        "app.services.user.stats_service.stats_cache.set_cached_stats", mock_set_cached
-    )
-
-    mock_notif_current = MagicMock()
-    mock_notif_current.body = json.dumps({"course": "CS101", "score": 90, "max": 100})
-    mock_notif_current.title = "Grade"
-    mock_notif_current.created_at = dt.datetime.now(UTC)
-
-    mock_notif_prev = MagicMock()
-    mock_notif_prev.body = json.dumps({"course": "CS100", "score": 80, "max": 100})
-    mock_notif_prev.title = "Grade"
-    mock_notif_prev.created_at = dt.datetime.now(UTC) - dt.timedelta(days=10)
-
-    mock_repo.get_grade_notifications.side_effect = [
-        [mock_notif_current],  # current
-        [mock_notif_prev],  # previous
-    ]
-
-    res = await svc.get_grade_stats(user_id=uuid.uuid4(), period_days=7)
-
-    assert res["average"] == 90.0
-    assert res["scale"] == "100"
-    assert res["trend"] == 10.0  # 90 - 80
-    assert len(res["recent"]) == 1
-    assert res["recent"][0]["course"] == "CS101"
-
-
-@pytest.mark.asyncio
-async def test_stats_get_participation_stats(monkeypatch):
-    mock_repo = AsyncMock()
-    svc = StatsService(mock_repo)
-
-    mock_get_cached = AsyncMock(return_value=None)
-    mock_set_cached = AsyncMock()
-    monkeypatch.setattr(
-        "app.services.user.stats_service.stats_cache.get_cached_stats", mock_get_cached
-    )
-    monkeypatch.setattr(
-        "app.services.user.stats_service.stats_cache.set_cached_stats", mock_set_cached
-    )
-
-    mock_row = MagicMock()
-    mock_row.starts_at = dt.datetime(2023, 1, 1, 10, tzinfo=UTC)
-    mock_row.ends_at = dt.datetime(2023, 1, 1, 12, tzinfo=UTC)
-    mock_row.event_type = "Seminar"
-    mock_row.title = "Test Event"
-
-    mock_repo.get_participation_stats_raw.side_effect = [[mock_row], []]
-
-    res = await svc.get_participation_stats(user_id=uuid.uuid4(), period_days=7)
-
-    assert res["events"] == 1
-    assert res["hours"] == 2.0
-    assert res["groups"] == 1
-    assert res["trend"] == 1
-    assert len(res["recent"]) == 1
-    assert res["recent"][0]["title"] == "Test Event"

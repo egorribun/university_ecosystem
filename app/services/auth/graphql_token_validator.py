@@ -1,14 +1,16 @@
 """GraphQL token validator — REST-equivalent security for GraphQL requests.
 
 Addresses the auth parity gap (P1, audit 2026-02-26) between the GraphQL path
-and the REST ``get_current_user`` dependency (``app/api/deps.py``).
+and the REST ``get_current_user`` dependency (``app/api/deps/auth.py``).
 
-The REST path enforces five security layers:
+The REST path enforces these security layers (the MFA-epoch policy is shared
+through ``app.services.auth.session_policy``):
   1. Dedicated Redis JTI revocation pre-check (DB fallback on Redis error)
   2. DB session revocation check             (fail-closed on DB error)
   3. Session expiry validation               (fail-closed)
   4. Fingerprint validation                  (revokes session on mismatch)
   5. User existence / is_active check        (fail-closed)
+  6. MFA epoch: sessions older than the last MFA change are rejected
 
 The original GraphQL ``get_context`` only performed steps 1 and a partial step 2
 (no expiry check, no fingerprint validation). This service closes that gap so both
@@ -27,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.revocation import get_revocation_redis_client
 from app.core.logging import get_logger
 from app.models import ActiveSession, User
+from app.services.auth.session_policy import session_epoch_is_current
 
 logger = get_logger(__name__)
 
@@ -49,7 +52,8 @@ class GraphQLTokenValidator:
     async def validate(self, user_id_str: str, jti: str) -> User | None:
         """Validate token claims and return the authenticated User, or None.
 
-        Steps mirror ``deps.py:get_current_user`` exactly.
+        Mirrors ``app/api/deps/auth.py`` (``_resolve_current_user``); the shared
+        session policy lives in ``app.services.auth.session_policy``.
         """
         # Step 1 — dedicated Redis JTI revocation pre-check (O(1), DB fallback)
         if not await self._redis_jti_check(jti):
@@ -67,6 +71,11 @@ class GraphQLTokenValidator:
         # Step 4 — User existence + is_active (fail-closed)
         user = await self._load_user(user_id_str)
         if user is None or not user.is_active:
+            return None
+
+        # Step 4b — MFA epoch: sessions minted before the last MFA change are dead
+        # (same policy as REST via app.services.auth.session_policy).
+        if not session_epoch_is_current(active_session, user):
             return None
 
         # Step 5 — Fingerprint validation (revokes session on mismatch, fail-closed)

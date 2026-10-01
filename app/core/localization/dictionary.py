@@ -579,6 +579,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Пользователь не найден",
         "en": "User not found",
     },
+    "errors.grades.not_found": {
+        "ru": "Оценка не найдена",
+        "en": "Grade not found",
+    },
     "errors.sessions.not_found": {
         "ru": "Сессия не найдена",
         "en": "Session not found",

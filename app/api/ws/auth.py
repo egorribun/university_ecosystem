@@ -19,6 +19,7 @@ from app.models import User
 from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.dtos import UserDTO
+from app.services.auth.session_policy import session_is_usable
 
 logger = get_logger(__name__)
 
@@ -79,15 +80,7 @@ async def get_user_from_token(token: str) -> tuple[User | UserDTO | None, str | 
                 return None, None
 
             active_session = await session_repo.get_by_jti(session_jti)
-            if not active_session or active_session.user_id != user.id:
-                return None, None
-
-            expires_at = active_session.expires_at
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=UTC)
-            if expires_at <= datetime.now(UTC):
-                return None, None
-            if active_session.revoked_at is not None:
+            if active_session is None or not session_is_usable(active_session, user):
                 return None, None
 
             return cast("User | UserDTO", user), session_jti
@@ -227,15 +220,7 @@ async def _resolve_user_from_ids(
                 pass  # fallback to DB revoked_at check below
 
             active_session = await session_repo.get_by_jti(jti)
-            if not active_session or active_session.user_id != user.id:
-                return None, None
-
-            expires_at = active_session.expires_at
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=UTC)
-            if expires_at <= datetime.now(UTC):
-                return None, None
-            if active_session.revoked_at is not None:
+            if active_session is None or not session_is_usable(active_session, user):
                 return None, None
 
             return cast("User | None", user), jti

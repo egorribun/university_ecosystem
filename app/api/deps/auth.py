@@ -33,6 +33,7 @@ from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.services.auth.fingerprint_service import AuthFingerprintService
 from app.services.auth.redis_session import RedisSessionService
 from app.services.auth.security_service import AuthSecurityService
+from app.services.auth.session_policy import session_epoch_is_current
 from app.services.auth.token_service import AuthTokenService
 
 _logger = get_logger(__name__)
@@ -195,7 +196,7 @@ async def _resolve_current_user(
     if session is None:
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
     assert session is not None  # noqa: S101
-    if session.mfa_epoch != int(user.mfa_epoch):
+    if not session_epoch_is_current(session, user):
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
     security_service = AuthSecurityService(db, locale)

@@ -1006,6 +1006,76 @@ export type ForwardMessages = {
 }
 
 /**
+ * GradeCreate
+ */
+export type GradeCreate = {
+  /**
+   * Assessment Type
+   */
+  assessment_type?: string
+  /**
+   * Score
+   */
+  score: number
+  /**
+   * Student Id
+   */
+  student_id: string
+  /**
+   * Subject
+   */
+  subject: string
+}
+
+/**
+ * GradeOut
+ */
+export type GradeOut = {
+  /**
+   * Assessment Type
+   */
+  assessment_type: string
+  /**
+   * Assigned By
+   */
+  assigned_by?: string | null
+  /**
+   * Created At
+   */
+  created_at?: string | null
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Score
+   */
+  score: number
+  /**
+   * Student Id
+   */
+  student_id: string
+  /**
+   * Subject
+   */
+  subject: string
+}
+
+/**
+ * GradeUpdate
+ */
+export type GradeUpdate = {
+  /**
+   * Reason
+   */
+  reason?: string | null
+  /**
+   * Score
+   */
+  score: number
+}
+
+/**
  * GroupChatCreate
  *
  * Wave 209 G1 — create a named group chat.
@@ -5330,6 +5400,65 @@ export type UploadEventFileApiV1EventsEventIdUploadFilePostResponses = {
 
 export type UploadEventFileApiV1EventsEventIdUploadFilePostResponse =
   UploadEventFileApiV1EventsEventIdUploadFilePostResponses[keyof UploadEventFileApiV1EventsEventIdUploadFilePostResponses]
+
+export type AssignGradeApiV1GradesPostData = {
+  body: GradeCreate
+  path?: never
+  query?: never
+  url: "/api/v1/grades"
+}
+
+export type AssignGradeApiV1GradesPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AssignGradeApiV1GradesPostError =
+  AssignGradeApiV1GradesPostErrors[keyof AssignGradeApiV1GradesPostErrors]
+
+export type AssignGradeApiV1GradesPostResponses = {
+  /**
+   * Successful Response
+   */
+  201: GradeOut
+}
+
+export type AssignGradeApiV1GradesPostResponse =
+  AssignGradeApiV1GradesPostResponses[keyof AssignGradeApiV1GradesPostResponses]
+
+export type ModifyGradeApiV1GradesGradeIdPatchData = {
+  body: GradeUpdate
+  path: {
+    /**
+     * Grade Id
+     */
+    grade_id: string
+  }
+  query?: never
+  url: "/api/v1/grades/{grade_id}"
+}
+
+export type ModifyGradeApiV1GradesGradeIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ModifyGradeApiV1GradesGradeIdPatchError =
+  ModifyGradeApiV1GradesGradeIdPatchErrors[keyof ModifyGradeApiV1GradesGradeIdPatchErrors]
+
+export type ModifyGradeApiV1GradesGradeIdPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: GradeOut
+}
+
+export type ModifyGradeApiV1GradesGradeIdPatchResponse =
+  ModifyGradeApiV1GradesGradeIdPatchResponses[keyof ModifyGradeApiV1GradesGradeIdPatchResponses]
 
 export type GetGroupsApiV1GroupsGetData = {
   body?: never

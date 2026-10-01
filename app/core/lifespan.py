@@ -291,6 +291,16 @@ async def _startup_background_workers(app: FastAPI) -> None:
             app.state.background_tasks.add(
                 asyncio.create_task(nats_broker.run_worker(), name="nats_worker")
             )
+
+        # ADR-020: push SpiceDB relationship changes into the local permission
+        # cache so revocations apply immediately instead of after the grace TTL.
+        # Only request-serving processes hold that cache.
+        if settings.app_process_role == "api":
+            from app.core.spicedb_watch import start_permission_watch
+
+            app.state.background_tasks.add(
+                asyncio.create_task(start_permission_watch(), name="spicedb_watch")
+            )
     else:
         _logger.info(
             "Background workers (Outbox, NATS) disabled in testing environment"

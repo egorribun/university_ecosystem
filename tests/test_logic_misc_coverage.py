@@ -321,7 +321,7 @@ async def test_user_stats_repository_get_attendance_stats_raw():
 
 
 @pytest.mark.asyncio
-async def test_user_stats_repository_get_grade_notifications():
+async def test_user_stats_repository_get_grades():
     from app.repositories.user_stats_repository import UserStatsRepository
 
     mock_db = AsyncMock()
@@ -333,7 +333,7 @@ async def test_user_stats_repository_get_grade_notifications():
 
     repo = UserStatsRepository(mock_db)
     now = datetime.now(UTC)
-    rows = await repo.get_grade_notifications(
+    rows = await repo.get_grades(
         user_id=uuid.uuid4(),
         start_date=now - timedelta(days=30),
         end_date=now,

@@ -2265,6 +2265,30 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
+  http.post(`${baseURL}/api/v1/grades`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [await getAssignGradeApiV1GradesPost201Response(), { status: 201 }],
+      [await getAssignGradeApiV1GradesPost422Response(), { status: 422 }],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`post /api/v1/grades`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
   http.post(`${baseURL}/api/v1/news`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -3621,6 +3645,36 @@ export const handlers = [
 
     const [body, init] =
       resultArray[next(`patch /api/v1/events/:eventId`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
+  http.patch(`${baseURL}/api/v1/grades/:gradeId`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("patch")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getModifyGradeApiV1GradesGradeIdPatch200Response(),
+        { status: 200 },
+      ],
+      [
+        await getModifyGradeApiV1GradesGradeIdPatch422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`patch /api/v1/grades/:gradeId`) % resultArray.length];
     const responseJson =
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
@@ -8055,6 +8109,102 @@ export function getUploadEventFileApiV1EventsEventIdUploadFilePost200Response() 
 }
 
 export function getUploadEventFileApiV1EventsEventIdUploadFilePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getAssignGradeApiV1GradesPost201Response() {
+  return {
+    assessment_type: faker.lorem.words(),
+    assigned_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    id: faker.string.uuid(),
+    score: faker.number.int(),
+    student_id: faker.string.uuid(),
+    subject: faker.lorem.words(),
+  };
+}
+
+export function getAssignGradeApiV1GradesPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getModifyGradeApiV1GradesGradeIdPatch200Response() {
+  return {
+    assessment_type: faker.lorem.words(),
+    assigned_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    id: faker.string.uuid(),
+    score: faker.number.int(),
+    student_id: faker.string.uuid(),
+    subject: faker.lorem.words(),
+  };
+}
+
+export function getModifyGradeApiV1GradesGradeIdPatch422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;

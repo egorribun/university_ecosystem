@@ -783,6 +783,32 @@
       "ownership": "canonical_dishka"
     },
     {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[GradeService]",
+        "inject"
+      ],
+      "id": "app.api.grades:assign_grade:POST:",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
+      "dishka_dependencies": [
+        "app.api.deps.auth.get_current_user_from_dishka"
+      ],
+      "dishka_signals": [
+        "FromDishka[AsyncDatabaseSession]",
+        "FromDishka[GradeService]",
+        "inject"
+      ],
+      "id": "app.api.grades:modify_grade:PATCH:/{grade_id}",
+      "legacy_dependencies": [],
+      "ownership": "canonical_dishka"
+    },
+    {
       "dishka_dependencies": [],
       "dishka_signals": [],
       "id": "app.api.health:healthz:GET:/healthz",
@@ -1748,7 +1774,7 @@
   ],
   "schema_version": 1,
   "summary": {
-    "canonical_dishka": 136,
+    "canonical_dishka": 138,
     "public_no_db": 11,
     "worker_internal": 4
   }

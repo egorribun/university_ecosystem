@@ -6,6 +6,7 @@ from app.core.protocols import AsyncDatabaseSession, UserAnalyticsServiceProtoco
 from app.repositories.schedule_repository import GroupRepository
 from app.repositories.unit_of_work import UnitOfWork
 from app.services.event_service import EventService
+from app.services.grade_service import GradeService
 from app.services.group_service import GroupService
 from app.services.news_service import NewsService
 from app.services.notification_service import NotificationService
@@ -37,6 +38,10 @@ class ContentProvider(Provider):
             uow=uow,
             vector_service=vector,
         )
+
+    @provide(scope=Scope.REQUEST)
+    def grade_service(self, db: AsyncDatabaseSession) -> GradeService:
+        return GradeService(db=db)
 
     @provide(scope=Scope.REQUEST)
     def story_service(

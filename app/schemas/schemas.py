@@ -27,6 +27,11 @@ from app.schemas.events import (
     EventUpdate,
     PaginatedEvents,
 )
+from app.schemas.grades import (
+    GradeCreate,
+    GradeOut,
+    GradeUpdate,
+)
 from app.schemas.groups import (
     GroupCreate,
     GroupOut,
@@ -124,6 +129,9 @@ __all__ = [
     "EventUpdate",
     "FeatureFlagOut",
     "ForgotPasswordIn",
+    "GradeCreate",
+    "GradeOut",
+    "GradeUpdate",
     "GroupCreate",
     "GroupOut",
     "GroupUpdate",

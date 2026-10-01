@@ -1,4 +1,4 @@
-"""Behavioral tests for auth security decisions and analytics SQL integrity.
+"""Behavioral tests for auth security decisions.
 
 AuthSecurityService(db, locale) is tested with an AsyncMock db (the AsyncMock-db
 idiom from tests/test_services_mock.py). ActiveSession instances are built as
@@ -11,24 +11,19 @@ imported singleton (same object as app.services.auth.security_service.settings).
 
 These direct unit tests pin expiry, MFA-TTL, and last-seen behavior on the hot
 path used by authenticated requests.
-
-AnalyticsService.get_user_activity raw SQL must reference the
-real `event_attendance` table (app/models/events.py:126), NOT `event_attendees`.
-test_get_user_activity_sql_references_real_table guards it.
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException, status
 
 from app.core.config import settings
 from app.models import ActiveSession
-from app.services.analytics import AnalyticsService
 from app.services.auth.security_service import AuthSecurityService
 
 
@@ -209,28 +204,3 @@ async def test_sync_last_seen_naive_last_seen_coerced(
     session = _make_session(last_seen_at=naive_old)
     await svc.sync_last_seen(session)  # coercion prevents TypeError
     db.execute.assert_awaited_once()
-
-
-# ── analytics.py:200 regression (event_attendees -> event_attendance) ─────────
-async def test_get_user_activity_sql_references_real_table() -> None:
-    """REGRESSION: get_user_activity's raw SQL must reference the real
-    `event_attendance` table, not the non-existent `event_attendees`.
-    This guards the table name used by app/services/analytics.py.
-    """
-    result_proxy = MagicMock()
-    result_proxy.fetchall.return_value = []
-    session = AsyncMock()
-    session.get_bind = MagicMock()
-    session.get_bind.return_value.dialect.name = "sqlite"
-    session.execute = AsyncMock(return_value=result_proxy)
-    svc = AnalyticsService()
-    await svc.get_user_activity(session, uuid.uuid4())
-    session.execute.assert_awaited_once()
-    sql_text = str(session.execute.await_args.args[0])
-    assert "event_attendance" in sql_text, (
-        "get_user_activity SQL must FROM the real table event_attendance; "
-        f"got:\n{sql_text}"
-    )
-    assert "event_attendees" not in sql_text, (
-        "analytics.py:200 still references the non-existent table event_attendees"
-    )

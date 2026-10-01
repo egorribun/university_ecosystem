@@ -1758,6 +1758,117 @@
         "title": "ForwardMessages",
         "type": "object"
       },
+      "GradeCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "assessment_type": {
+            "default": "exam",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Assessment Type",
+            "type": "string"
+          },
+          "score": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "subject": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": ["student_id", "subject", "score"],
+        "title": "GradeCreate",
+        "type": "object"
+      },
+      "GradeOut": {
+        "properties": {
+          "assessment_type": {
+            "title": "Assessment Type",
+            "type": "string"
+          },
+          "assigned_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned By"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": ["id", "student_id", "subject", "score", "assessment_type"],
+        "title": "GradeOut",
+        "type": "object"
+      },
+      "GradeUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "score": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": ["score"],
+        "title": "GradeUpdate",
+        "type": "object"
+      },
       "GroupChatCreate": {
         "additionalProperties": false,
         "description": "Wave 209 G1 \u2014 create a named group chat.\n\nparticipant_ids are the *other* members (the creator is added automatically).\nmin_length=1 is necessary-not-sufficient: the service enforces the real\n3..100 total-size bound (creator + distinct members).",
@@ -9519,6 +9630,108 @@
         "tags": ["events"]
       }
     },
+    "/api/v1/grades": {
+      "post": {
+        "description": "Assign Grade",
+        "operationId": "assign_grade_api_v1_grades_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GradeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GradeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Assign Grade",
+        "tags": ["grades"]
+      }
+    },
+    "/api/v1/grades/{grade_id}": {
+      "patch": {
+        "description": "Modify Grade",
+        "operationId": "modify_grade_api_v1_grades__grade_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grade_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Grade Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GradeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GradeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Modify Grade",
+        "tags": ["grades"]
+      }
+    },
     "/api/v1/groups": {
       "get": {
         "description": "Get Groups",
@@ -13347,6 +13560,10 @@
     {
       "description": "Field performance API operations.",
       "name": "field-performance"
+    },
+    {
+      "description": "Grades API operations.",
+      "name": "grades"
     },
     {
       "description": "Groups API operations.",

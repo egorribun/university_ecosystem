@@ -1601,3 +1601,45 @@ async def test_shutdown_is_unaffected_when_no_cdc_worker_was_started() -> None:
         await _shutdown_subsystems(app)
 
     assert not hasattr(app.state, "cdc_outbox_worker")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("role", "expected"),
+    [("api", True), ("worker", False), ("outbox", False)],
+)
+async def test_startup_runs_spicedb_watch_only_in_api_processes(
+    role: str, expected: bool
+) -> None:
+    """ADR-020: the permission Watch stream belongs to request-serving processes."""
+    app = FastAPI()
+    app.state.dishka_container = AsyncMock()
+    nats = AsyncMock()
+    nats.is_connected = False
+
+    async def container_get(svc_type):
+        from app.core.nats_broker import NatsTaskBroker
+
+        return nats if svc_type == NatsTaskBroker else AsyncMock()
+
+    app.state.dishka_container.get.side_effect = container_get
+
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
+        patch("app.core.spicedb_watch.start_permission_watch", new=AsyncMock()),
+    ):
+        mock_settings.environment = "production"
+        mock_settings.app_process_role = role
+        mock_settings.partition_management_enabled = False
+        mock_settings.embedded_outbox_worker_enabled = False
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
+
+        await _startup_background_workers(app)
+
+        names = {task.get_name() for task in app.state.background_tasks}
+        assert ("spicedb_watch" in names) is expected
+
+        for task in app.state.background_tasks:
+            task.cancel()
+        await asyncio.gather(*app.state.background_tasks, return_exceptions=True)

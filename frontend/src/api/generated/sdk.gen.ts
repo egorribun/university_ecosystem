@@ -32,6 +32,9 @@ import type {
   AnnouncePlatformReleaseApiV1PushAdminReleasesPostData,
   AnnouncePlatformReleaseApiV1PushAdminReleasesPostErrors,
   AnnouncePlatformReleaseApiV1PushAdminReleasesPostResponses,
+  AssignGradeApiV1GradesPostData,
+  AssignGradeApiV1GradesPostErrors,
+  AssignGradeApiV1GradesPostResponses,
   AttendanceSummaryApiV1StatsAttendanceGetData,
   AttendanceSummaryApiV1StatsAttendanceGetErrors,
   AttendanceSummaryApiV1StatsAttendanceGetResponses,
@@ -263,6 +266,9 @@ import type {
   MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses,
   MeApiV1UsersMeGetData,
   MeApiV1UsersMeGetResponses,
+  ModifyGradeApiV1GradesGradeIdPatchData,
+  ModifyGradeApiV1GradesGradeIdPatchErrors,
+  ModifyGradeApiV1GradesGradeIdPatchResponses,
   MyEventsApiV1EventsMyGetData,
   MyEventsApiV1EventsMyGetErrors,
   MyEventsApiV1EventsMyGetResponses,
@@ -1996,6 +2002,60 @@ export const uploadEventFileApiV1EventsEventIdUploadFilePost = <
     ...options,
     headers: {
       "Content-Type": null,
+      ...options.headers,
+    },
+  })
+
+/**
+ * Assign Grade
+ *
+ * Assign Grade
+ */
+export const assignGradeApiV1GradesPost = <ThrowOnError extends boolean = false>(
+  options: Options<AssignGradeApiV1GradesPostData, ThrowOnError>
+): RequestResult<
+  AssignGradeApiV1GradesPostResponses,
+  AssignGradeApiV1GradesPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    AssignGradeApiV1GradesPostResponses,
+    AssignGradeApiV1GradesPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/grades",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Modify Grade
+ *
+ * Modify Grade
+ */
+export const modifyGradeApiV1GradesGradeIdPatch = <ThrowOnError extends boolean = false>(
+  options: Options<ModifyGradeApiV1GradesGradeIdPatchData, ThrowOnError>
+): RequestResult<
+  ModifyGradeApiV1GradesGradeIdPatchResponses,
+  ModifyGradeApiV1GradesGradeIdPatchErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    ModifyGradeApiV1GradesGradeIdPatchResponses,
+    ModifyGradeApiV1GradesGradeIdPatchErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/grades/{grade_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
       ...options.headers,
     },
   })
