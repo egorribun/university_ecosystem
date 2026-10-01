@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   spectral-lint:
-    name: Spectral — OpenAPI lint
+    name: Spectral - OpenAPI lint
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:

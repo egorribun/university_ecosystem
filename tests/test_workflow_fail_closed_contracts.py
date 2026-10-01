@@ -723,6 +723,34 @@ def test_spectral_upload_is_optional_but_enforcement_is_not() -> None:
     assert job["steps"].index(upload) < job["steps"].index(enforce)
 
 
+def test_required_check_names_are_ascii_and_match_workflows_and_catalog() -> None:
+    catalog = json.loads(
+        (ROOT / "quality/ci-check-catalog.json").read_text(encoding="utf-8")
+    )
+    catalog_by_path = {item["path"]: item for item in catalog["workflows"]}
+    expected_jobs = (
+        (".github/workflows/ci.yml", "rust-ffi-asan", "Rust FFI - ASan / LSan"),
+        (".github/workflows/ci.yml", "rust-ffi-tsan", "Rust FFI - TSan"),
+        (
+            ".github/workflows/contract-validation.yml",
+            "spectral-lint",
+            "Spectral - OpenAPI lint",
+        ),
+    )
+
+    for workflow_path, job_id, expected_name in expected_jobs:
+        workflow = _workflow(ROOT / workflow_path)
+        job = workflow["jobs"][job_id]
+        catalog_template = catalog_by_path[workflow_path]["jobs"][job_id][
+            "check_name_template"
+        ]
+
+        assert job["name"] == expected_name
+        assert catalog_template == expected_name
+        assert expected_name.isascii()
+        assert "\u2014" not in job["name"]
+
+
 def test_visual_audit_reasserts_after_best_effort_evidence() -> None:
     job = _workflow(WORKFLOWS / "visual-audit.yml")["jobs"]["visual-audit"]
     audit = _step(job, "Run visual audit script")

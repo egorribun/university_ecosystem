@@ -2828,7 +2828,7 @@ jobs:
     # Phase 3 QA — ADR-023: Run PyO3 FFI tests under AddressSanitizer + LeakSanitizer.
     # Memory errors that cross the Rust/Python boundary are invisible to Python's GC;
     # ASan instruments every allocation so these classes of bugs fail loudly at CI time.
-    name: "Rust FFI — ASan / LSan"
+    name: "Rust FFI - ASan / LSan"
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -2887,7 +2887,7 @@ jobs:
     # Phase V: Run PyO3 FFI tests under ThreadSanitizer.
     # Data races that cross the Rust/Python FFI boundary are extremely hard to debug;
     # TSan instruments every memory access and synchronization primitive to fail loudly.
-    name: "Rust FFI — TSan"
+    name: "Rust FFI - TSan"
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:

@@ -1,7 +1,7 @@
 {
   "$schema": "./ci-check-catalog.schema.json",
   "schema_version": 1,
-  "catalog_version": "1.1.0",
+  "catalog_version": "1.1.1",
   "repository": "egorribun/university_ecosystem",
   "default_runbook": "docs/testing/ci-check-catalog-runbook.md",
   "profiles": {
@@ -1557,7 +1557,7 @@
         },
         "rust-ffi-asan": {
           "profile": "required-pr-main",
-          "check_name_template": "Rust FFI — ASan / LSan",
+          "check_name_template": "Rust FFI - ASan / LSan",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "github.event_name == 'push' ||\ngithub.event_name == 'pull_request'\n",
@@ -1579,7 +1579,7 @@
         },
         "rust-ffi-tsan": {
           "profile": "required-pr-main",
-          "check_name_template": "Rust FFI — TSan",
+          "check_name_template": "Rust FFI - TSan",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
           "guard": "github.event_name == 'push' ||\ngithub.event_name == 'pull_request'\n",
@@ -2172,7 +2172,7 @@
       "jobs": {
         "spectral-lint": {
           "profile": "required-pr-main",
-          "check_name_template": "Spectral — OpenAPI lint",
+          "check_name_template": "Spectral - OpenAPI lint",
           "expected_timeout_minutes": 15,
           "expected_duration_seconds": 900,
           "guard": "workflow trigger",
