@@ -13,6 +13,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "university-ecosystem"
+HELM = shutil.which("helm")
 API_VERSIONS = (
     "gateway.networking.k8s.io/v1/Gateway",
     "gateway.networking.k8s.io/v1/HTTPRoute",
@@ -23,9 +24,7 @@ API_VERSIONS = (
 
 
 def _render_gateway_api_template(*overrides: str) -> subprocess.CompletedProcess[str]:
-    helm = shutil.which("helm")
-    if helm is None:
-        pytest.skip("Helm is not installed")
+    assert HELM is not None, "Helm-dependent tests must be marked at collection"
 
     with tempfile.TemporaryDirectory(prefix="gateway-api-security-contract-") as temp:
         test_chart = Path(temp)
@@ -41,7 +40,7 @@ def _render_gateway_api_template(*overrides: str) -> subprocess.CompletedProcess
             shutil.copy2(CHART / "templates" / filename, templates / filename)
 
         command = [
-            helm,
+            HELM,
             "template",
             "gateway-security-contract",
             str(test_chart),
@@ -70,6 +69,7 @@ def _render_gateway_api_template(*overrides: str) -> subprocess.CompletedProcess
         )
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_rendered_gateway_api_route_names_remain_unique_at_max_fullname_length() -> (
     None
 ):
@@ -143,6 +143,7 @@ def _selected_https_route(
     return route, rule
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_rendered_gateway_routes_preserve_edge_precedence_and_internal_grpc() -> None:
     result = _render_gateway_api_template()
     assert result.returncode == 0, result.stderr

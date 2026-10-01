@@ -5,20 +5,17 @@ import test from "node:test"
 
 const specUrl = new URL("./activity-summary.live.spec.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
-const approvedPlanUrl = new URL(
-  "../../../docs/superpowers/plans/MVP_APPROVED_PLAN.md",
-  import.meta.url
-)
+const masterPlanUrl = new URL("../../../docs/superpowers/plans/MVP_MASTER_PLAN.md", import.meta.url)
 const seedUrl = new URL("../../../scripts/seed_demo_data.py", import.meta.url)
 const featureUrl = new URL("../../src/features/activity/ActivityFeature.tsx", import.meta.url)
 const queryUrl = new URL("../../src/api/hooks/activity.ts", import.meta.url)
 const analyticsUrl = new URL("../../../app/services/user/analytics_service.py", import.meta.url)
 
 test("Activity live acceptance uses the seeded student and real read-only summaries", async () => {
-  const [spec, config, approvedPlan, seed, feature, query, analytics] = await Promise.all([
+  const [spec, config, masterPlan, seed, feature, query, analytics] = await Promise.all([
     readFile(specUrl, "utf8"),
     readFile(configUrl, "utf8"),
-    readFile(approvedPlanUrl, "utf8"),
+    readFile(masterPlanUrl, "utf8"),
     readFile(seedUrl, "utf8"),
     readFile(featureUrl, "utf8"),
     readFile(queryUrl, "utf8"),
@@ -54,8 +51,8 @@ test("Activity live acceptance uses the seeded student and real read-only summar
   assert.match(spec, /stats\/summary/u)
   assert.match(spec, /p=30d/u)
   assert.match(
-    approvedPlan,
-    /центрирование ползунков Events-табов и Activity-периодов \(геометрия bbox\)/u
+    masterPlan,
+    /индикатор периода\s+Activity совпадает с выбранной radio-кнопкой по геометрии bounding box \(x, y,\s*width и height с допуском 1 px\)/u
   )
   assert.match(spec, /async function expectPeriodIndicatorToMatchRadio\(/u)
   assert.match(spec, /indicator\.boundingBox\(\)/u)

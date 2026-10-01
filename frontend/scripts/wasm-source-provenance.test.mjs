@@ -140,25 +140,28 @@ test("validator fails closed when the provenance file is missing", async () => {
   })
 })
 
-test("tampered package bytes are rejected even when source is unchanged", async () => {
+test("drift in either generated WASM package is rejected with unchanged sources", async () => {
   await withFixture(async (root) => {
-    await writeSourceProvenance(root, {
-      sourceFiles: ["rust-crypto/Cargo.toml", "rust-crypto/Cargo.lock", "rust-crypto/src/lib.rs"],
-    })
-    await writeFile(
-      path.join(root, "rust-crypto", "pkg", "uni_wasm_crypto_bg.wasm"),
-      Buffer.from([0, 97, 115, 109, 1])
-    )
-    await assert.rejects(
-      () =>
-        validateSourceProvenance(root, {
-          sourceFiles: [
-            "rust-crypto/Cargo.toml",
-            "rust-crypto/Cargo.lock",
-            "rust-crypto/src/lib.rs",
-          ],
-        }),
-      /generated package drift/i
-    )
+    const sourceFiles = [
+      "rust-crypto/Cargo.toml",
+      "rust-crypto/Cargo.lock",
+      "rust-crypto/src/lib.rs",
+    ]
+    const generatedPackages = [
+      "rust-crypto/pkg/uni_wasm_crypto_bg.wasm",
+      "wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm",
+    ]
+    await writeSourceProvenance(root, { sourceFiles })
+
+    for (const relativePath of generatedPackages) {
+      const generatedPath = path.join(root, relativePath)
+      const originalBytes = await readFile(generatedPath)
+      await writeFile(generatedPath, Buffer.concat([originalBytes, Buffer.from([1])]))
+      await assert.rejects(
+        () => validateSourceProvenance(root, { sourceFiles }),
+        /generated package drift/i
+      )
+      await writeFile(generatedPath, originalBytes)
+    }
   })
 })

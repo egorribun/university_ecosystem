@@ -653,3 +653,139 @@ async def test_repository_message_lookup_sets_explicit_forced_rls_identity(
 
     assert found is not None
     assert hidden_from_non_member is None
+
+
+@pytest.mark.asyncio
+async def test_rls_revokes_group_message_history_and_metadata_after_member_removal(
+    pg_session: AsyncSession,
+    two_users_and_chat,
+):
+    """Removing a group participant hides existing messages and their metadata."""
+    user_a_id, former_member_id, chat_id = two_users_and_chat
+    message_id = str(uuid.uuid4())
+    attachment_id = str(uuid.uuid4())
+    reaction_id = str(uuid.uuid4())
+    content = "synthetic group history retained after revocation"
+    attachment_url = "https://example.test/rls-revocation-proof.png"
+    attachment_filename = "rls-revocation-proof.png"
+    reaction_emoji = "⭐"
+
+    # Reuse the shared-chat fixture but make this a group before adding history.
+    await pg_session.execute(
+        text(
+            "UPDATE chats SET chat_type = 'group', name = 'RLS revocation' WHERE id = :id"
+        ),
+        {"id": chat_id},
+    )
+
+    # Seed the message as a current participant, with attachment and reaction
+    # rows that ChatRepository.get_messages loads as message history metadata.
+    await pg_session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)"),
+        {"uid": user_a_id},
+    )
+    await pg_session.execute(
+        text(
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
+            "VALUES (:id, :chat_id, :sender, :content, NOW(), false)"
+        ),
+        {
+            "id": message_id,
+            "chat_id": chat_id,
+            "sender": user_a_id,
+            "content": content,
+        },
+    )
+    await pg_session.execute(
+        text(
+            "INSERT INTO attachments "
+            "(id, message_id, url, file_type, filename, size) "
+            "VALUES (:id, :message_id, :url, 'image', :filename, 1234)"
+        ),
+        {
+            "id": attachment_id,
+            "message_id": message_id,
+            "url": attachment_url,
+            "filename": attachment_filename,
+        },
+    )
+    await pg_session.execute(
+        text(
+            "INSERT INTO message_reactions (id, message_id, user_id, emoji) "
+            "VALUES (:id, :message_id, :user_id, :emoji)"
+        ),
+        {
+            "id": reaction_id,
+            "message_id": message_id,
+            "user_id": former_member_id,
+            "emoji": reaction_emoji,
+        },
+    )
+
+    repo = ChatRepository(pg_session)
+    former_member_before, has_more, next_cursor = await repo.get_messages(
+        uuid.UUID(chat_id), None, 10, user_id=uuid.UUID(former_member_id)
+    )
+    assert not has_more
+    assert next_cursor is None
+    assert len(former_member_before) == 1
+
+    # Revoke membership while the message and both metadata rows remain intact.
+    await pg_session.execute(
+        text(
+            "DELETE FROM chat_participants "
+            "WHERE chat_id = :chat_id AND user_id = :user_id"
+        ),
+        {"chat_id": chat_id, "user_id": former_member_id},
+    )
+
+    former_member_after, has_more, next_cursor = await repo.get_messages(
+        uuid.UUID(chat_id), None, 10, user_id=uuid.UUID(former_member_id)
+    )
+    assert former_member_after == []
+    assert not has_more
+    assert next_cursor is None
+    former_member_reactors = await repo.get_reactors(
+        uuid.UUID(message_id), reaction_emoji, user_id=uuid.UUID(former_member_id)
+    )
+    assert former_member_reactors == []
+
+    # The remaining member can still read the exact same stored history and
+    # its attachment/reaction metadata after the membership change.
+    remaining_member_history, has_more, next_cursor = await repo.get_messages(
+        uuid.UUID(chat_id), None, 10, user_id=uuid.UUID(user_a_id)
+    )
+    remaining_member_reactors = await repo.get_reactors(
+        uuid.UUID(message_id), reaction_emoji, user_id=uuid.UUID(user_a_id)
+    )
+    assert not has_more
+    assert next_cursor is None
+    assert [str(reactor.id) for reactor in remaining_member_reactors] == [
+        former_member_id
+    ]
+    for visible_history in (former_member_before, remaining_member_history):
+        assert len(visible_history) == 1
+        message = visible_history[0]
+        assert str(message.id) == message_id
+        assert message.content == content
+        assert [
+            (
+                str(attachment.id),
+                attachment.url,
+                attachment.file_type,
+                attachment.filename,
+                attachment.size,
+            )
+            for attachment in message.attachments
+        ] == [
+            (
+                attachment_id,
+                attachment_url,
+                "image",
+                attachment_filename,
+                1234,
+            )
+        ]
+        assert [
+            (str(reaction.user_id), reaction.emoji) for reaction in message.reactions
+        ] == [(former_member_id, reaction_emoji)]

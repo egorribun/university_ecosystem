@@ -1018,3 +1018,185 @@ def test_cli_reports_internal_failures_without_exception_details(
     output = capsys.readouterr()
     assert "diagnostic details are suppressed" in output.err
     assert marker not in output.out + output.err
+
+
+def test_restore_database_preflight_sanitizes_connector_failure() -> None:
+    def reject_connection(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("synthetic diagnostic detail")
+
+    with pytest.raises(
+        backup_db.BackupArtifactError,
+        match="Unable to verify that the restore database target is absent",
+    ) as error:
+        backup_db._require_absent_restore_database(
+            "postgresql://restore_admin@localhost/postgres",
+            "restore_sandbox",
+            connect=reject_connection,
+        )
+
+    assert "synthetic diagnostic detail" not in str(error.value)
+
+
+def _configured_storage_settings(**changes: Any) -> SimpleNamespace:
+    values: dict[str, Any] = {
+        "storage_backend": "s3",
+        "storage_s3_endpoint_url": "https://objects.example.test",
+        "storage_s3_bucket": "synthetic-uploads",
+        "storage_s3_region": "eu-test-1",
+        "storage_s3_access_key_id": "",
+        "storage_s3_secret_access_key": "",
+    }
+    values.update(changes)
+    return SimpleNamespace(**values)
+
+
+def test_application_s3_settings_reject_unpaired_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.core.config.storage.StorageSettings",
+        lambda: _configured_storage_settings(storage_s3_access_key_id="synthetic-id"),
+    )
+
+    with pytest.raises(backup_db.BackupArtifactError, match="configured together"):
+        backup_db.storage_s3_settings_from_environment()
+
+
+def test_application_s3_settings_default_optional_endpoint_and_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.core.config.storage.StorageSettings",
+        lambda: _configured_storage_settings(
+            storage_s3_endpoint_url=" ", storage_s3_region=" "
+        ),
+    )
+
+    settings = backup_db.storage_s3_settings_from_environment()
+
+    assert settings.endpoint_url is None
+    assert settings.region == "us-east-1"
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "allow_http", "message"),
+    [
+        ("ftp://objects.example.test", "true", "endpoint must"),
+        ("http://objects.example.test", "false", "restricted"),
+        ("http://objects.example.test", "true", "restricted"),
+    ],
+)
+def test_application_s3_settings_reject_unsafe_endpoints(
+    monkeypatch: pytest.MonkeyPatch,
+    endpoint: str,
+    allow_http: str,
+    message: str,
+) -> None:
+    monkeypatch.setattr(
+        "app.core.config.storage.StorageSettings",
+        lambda: _configured_storage_settings(storage_s3_endpoint_url=endpoint),
+    )
+    monkeypatch.setenv("BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV", allow_http)
+
+    with pytest.raises(backup_db.BackupArtifactError, match=message):
+        backup_db.storage_s3_settings_from_environment()
+
+
+def test_application_s3_settings_allow_explicit_local_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.core.config.storage.StorageSettings",
+        lambda: _configured_storage_settings(
+            storage_s3_endpoint_url="http://127.0.0.1:9000"
+        ),
+    )
+    monkeypatch.setenv("BACKUP_S3_ALLOW_HTTP_FOR_LOCAL_DEV", "true")
+
+    assert (
+        backup_db.storage_s3_settings_from_environment().endpoint_url
+        == "http://127.0.0.1:9000"
+    )
+
+
+@pytest.mark.asyncio
+async def test_s3_client_passes_optional_endpoint_and_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[dict[str, Any]] = []
+    client = object()
+
+    class ClientContext:
+        async def __aenter__(self) -> object:
+            return client
+
+        async def __aexit__(self, *_args: Any) -> None:
+            return None
+
+    class Session:
+        def client(self, service: str, **options: Any) -> ClientContext:
+            assert service == "s3"
+            captured.append(options)
+            return ClientContext()
+
+    monkeypatch.setattr(backup_db.aioboto3, "Session", Session)
+    generated_value = bytes(range(32)).hex()
+    settings = backup_db.S3Settings(
+        endpoint_url=None,
+        bucket="synthetic-uploads",
+        prefix="",
+        region="test-region",
+        access_key_id="credential-one",
+        secret_access_key=generated_value,
+    )
+
+    async with backup_db.s3_client(settings) as yielded:
+        assert yielded is client
+
+    assert captured == [
+        {
+            "region_name": "test-region",
+            "aws_access_key_id": "credential-one",
+            "aws_secret_access_key": generated_value,
+        }
+    ]
+
+
+@pytest.mark.parametrize("version_id", [None, "", "null"])
+def test_s3_response_version_id_treats_absent_markers_as_unversioned(
+    version_id: Any,
+) -> None:
+    assert backup_db._response_version_id({"VersionId": version_id}) is None
+
+
+@pytest.mark.parametrize("version_id", [1, "x" * 1025])
+def test_s3_response_version_id_rejects_invalid_values(version_id: Any) -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="invalid object version"):
+        backup_db._response_version_id({"VersionId": version_id})
+
+
+def test_s3_response_etag_requires_a_stable_validator() -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="validator"):
+        backup_db._response_etag({})
+
+
+@pytest.mark.asyncio
+async def test_pinned_s3_reads_require_a_validator_and_sanitize_failures() -> None:
+    with pytest.raises(
+        backup_db.BackupArtifactError, match="no immutable read validator"
+    ):
+        await backup_db._get_pinned_object(object(), "synthetic", "snapshot.dump")
+
+    class FailingClient:
+        async def get_object(self, **_kwargs: Any) -> dict[str, Any]:
+            raise OSError("synthetic transport detail")
+
+    with pytest.raises(
+        backup_db.BackupArtifactError,
+        match="Unable to retrieve a pinned snapshot object",
+    ) as error:
+        await backup_db._get_pinned_object(
+            FailingClient(), "synthetic", "snapshot.dump", etag='"stable"'
+        )
+
+    assert "synthetic transport detail" not in str(error.value)

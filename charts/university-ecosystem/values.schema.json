@@ -538,10 +538,37 @@
     },
     "gatewayApi": {
       "type": "object", "additionalProperties": false,
-      "required": ["enabled", "gatewayClassName", "requestBuffer", "networkPolicy"],
+      "required": ["enabled", "gatewayClassName", "clientIPDetection", "rateLimit", "requestBuffer", "networkPolicy"],
       "properties": {
         "enabled": {"type": "boolean"},
         "gatewayClassName": {"$ref": "#/definitions/secretResourceName"},
+        "clientIPDetection": {
+          "type": "object", "additionalProperties": false, "maxProperties": 1,
+          "description": "Explicit original-client-IP mode required by per-client rate-limit selectors; the empty default is deliberately not deployable.",
+          "properties": {
+            "directSourceIP": {"type": "object", "additionalProperties": false, "maxProperties": 0},
+            "xForwardedFor": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "numTrustedHops": {"type": "integer", "minimum": 0},
+                "trustedCIDRs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+              },
+              "oneOf": [
+                {"required": ["numTrustedHops"]},
+                {"required": ["trustedCIDRs"]}
+              ]
+            }
+          }
+        },
+        "rateLimit": {
+          "type": "object", "additionalProperties": false,
+          "required": ["requests", "unit"],
+          "properties": {
+            "requests": {"type": "integer", "enum": [50]},
+            "unit": {"type": "string", "enum": ["Second"]}
+          },
+          "description": "Fixed partial local per-source-IP limit retained from ingress; no burst parameter is exposed by the pinned Envoy Gateway policy API."
+        },
         "requestBuffer": {
           "type": "object", "additionalProperties": false,
           "required": ["limit"],

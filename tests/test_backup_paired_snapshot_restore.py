@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from contextlib import asynccontextmanager
@@ -11,10 +12,13 @@ import pytest
 
 from scripts import backup_db
 
+_PREFIX_NOT_SUPPLIED = object()
+
 
 class FakeBody:
     def __init__(self, content: bytes) -> None:
         self.content = content
+        self.closed = False
 
     async def read(self, size: int = -1) -> bytes:
         if size < 0:
@@ -24,7 +28,7 @@ class FakeBody:
         return content
 
     async def close(self) -> None:
-        return None
+        self.closed = True
 
 
 class FakeS3:
@@ -34,11 +38,13 @@ class FakeS3:
         self.version_ids: dict[tuple[str, str], str] = {}
         self.headers: dict[tuple[str, str], dict[str, Any]] = {}
         self.events: list[tuple[str, str, str]] = []
+        self.reject_put_keys: set[tuple[str, str]] = set()
         self.hidden_versions: dict[str, list[str]] = {}
         self.hidden_delete_markers: dict[str, list[str]] = {}
         self.pending_uploads: dict[str, list[str]] = {}
         self.multipart: dict[tuple[str, str, str], list[bytes]] = {}
         self.fail_inventory: set[str] = set()
+        self.inventory_requests: list[dict[str, Any]] = []
         self.reject_conditional_writes = False
         self.omit_pagination_marker = False
         self.duplicate_inventory_entry = False
@@ -48,15 +54,31 @@ class FakeS3:
         return f'"{hashlib.md5(content, usedforsecurity=False).hexdigest()}"'
 
     async def list_objects_v2(
-        self, *, Bucket: str, MaxKeys: int, **_: Any
+        self,
+        *,
+        Bucket: str,
+        MaxKeys: int,
+        Prefix: Any = _PREFIX_NOT_SUPPLIED,
+        **_: Any,
     ) -> dict[str, Any]:
+        prefix_supplied = Prefix is not _PREFIX_NOT_SUPPLIED
+        prefix = Prefix if prefix_supplied else ""
+        self.inventory_requests.append(
+            {
+                "operation": "list_objects_v2",
+                "Bucket": Bucket,
+                "MaxKeys": MaxKeys,
+                "Prefix": prefix,
+                "PrefixSupplied": prefix_supplied,
+            }
+        )
         del MaxKeys
         if "current" in self.fail_inventory:
             raise OSError("synthetic list failure")
         contents = [
             {"Key": key, "Size": len(content), "ETag": self.etags[(Bucket, key)]}
             for bucket, key in sorted(self.objects)
-            if bucket == Bucket
+            if bucket == Bucket and key.startswith(prefix)
             for content in [self.objects[(bucket, key)]]
         ]
         if self.duplicate_inventory_entry and contents:
@@ -68,15 +90,36 @@ class FakeS3:
         return page
 
     async def list_object_versions(
-        self, *, Bucket: str, MaxKeys: int
+        self,
+        *,
+        Bucket: str,
+        MaxKeys: int,
+        Prefix: Any = _PREFIX_NOT_SUPPLIED,
     ) -> dict[str, Any]:
+        prefix_supplied = Prefix is not _PREFIX_NOT_SUPPLIED
+        prefix = Prefix if prefix_supplied else ""
+        self.inventory_requests.append(
+            {
+                "operation": "list_object_versions",
+                "Bucket": Bucket,
+                "MaxKeys": MaxKeys,
+                "Prefix": prefix,
+                "PrefixSupplied": prefix_supplied,
+            }
+        )
         del MaxKeys
         if "versions" in self.fail_inventory:
             raise OSError("synthetic version inventory unavailable")
         self.events.append(("list", Bucket, "versions"))
-        versions = [{"Key": key} for key in self.hidden_versions.get(Bucket, [])]
+        versions = [
+            {"Key": key}
+            for key in self.hidden_versions.get(Bucket, [])
+            if key.startswith(prefix)
+        ]
         delete_markers = [
-            {"Key": key} for key in self.hidden_delete_markers.get(Bucket, [])
+            {"Key": key}
+            for key in self.hidden_delete_markers.get(Bucket, [])
+            if key.startswith(prefix)
         ]
         return {
             "Versions": versions,
@@ -85,13 +128,32 @@ class FakeS3:
         }
 
     async def list_multipart_uploads(
-        self, *, Bucket: str, MaxUploads: int
+        self,
+        *,
+        Bucket: str,
+        MaxUploads: int,
+        Prefix: Any = _PREFIX_NOT_SUPPLIED,
     ) -> dict[str, Any]:
+        prefix_supplied = Prefix is not _PREFIX_NOT_SUPPLIED
+        prefix = Prefix if prefix_supplied else ""
+        self.inventory_requests.append(
+            {
+                "operation": "list_multipart_uploads",
+                "Bucket": Bucket,
+                "MaxUploads": MaxUploads,
+                "Prefix": prefix,
+                "PrefixSupplied": prefix_supplied,
+            }
+        )
         del MaxUploads
         if "uploads" in self.fail_inventory:
             raise OSError("synthetic upload inventory unavailable")
         self.events.append(("list", Bucket, "uploads"))
-        uploads = [{"Key": key} for key in self.pending_uploads.get(Bucket, [])]
+        uploads = [
+            {"Key": key}
+            for key in self.pending_uploads.get(Bucket, [])
+            if key.startswith(prefix)
+        ]
         return {"Uploads": uploads, "IsTruncated": False}
 
     async def get_object(
@@ -128,9 +190,9 @@ class FakeS3:
     ) -> dict[str, str]:
         self.events.append(("put", Bucket, Key))
         assert IfNoneMatch == "*"
-        if self.reject_conditional_writes:
-            raise OSError("conditional writes unsupported")
         identity = (Bucket, Key)
+        if self.reject_conditional_writes or identity in self.reject_put_keys:
+            raise OSError("conditional writes unsupported")
         if identity in self.objects:
             raise OSError("precondition failed")
         self.objects[identity] = Body
@@ -316,6 +378,164 @@ def test_paired_snapshot_manifest_rejects_inconsistent_deduplicated_artifact() -
         )
 
 
+@pytest.mark.parametrize("value", [None, 1, "", "x" * 1025, "line\nfeed"])
+def test_snapshot_version_ids_return_none_or_reject_invalid_values(value: Any) -> None:
+    if value is None:
+        assert backup_db._manifest_version_id(value, label="test") is None
+        return
+
+    with pytest.raises(backup_db.BackupArtifactError, match="test is invalid"):
+        backup_db._manifest_version_id(value, label="test")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, 1, "", "x" * 257, "line\rfeed", "line\nfeed"],
+)
+def test_snapshot_etags_reject_invalid_values(value: Any) -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="test is invalid"):
+        backup_db._manifest_etag(value, label="test")
+
+
+@pytest.mark.parametrize("value", [1, "x" * 2049, "line\rfeed", "line\nfeed"])
+def test_snapshot_headers_reject_invalid_values(value: Any) -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="test is invalid"):
+        backup_db._manifest_header(value, label="test")
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        (None, "invalid"),
+        ("not-a-timestamp", "invalid"),
+        ("2026-10-01T01:00:00+01:00", "must be UTC"),
+    ],
+)
+def test_snapshot_timestamps_reject_invalid_values(value: Any, message: str) -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match=message):
+        backup_db._parse_utc_timestamp(value, label="test timestamp")
+
+
+def test_restore_object_prefix_rejects_non_string_values() -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="prefix is invalid"):
+        backup_db._validate_object_prefix(1)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("schema_version", True),
+        ("schema_version", 1),
+        ("snapshot_id", "not-a-snapshot-id"),
+        ("quiescence_confirmed_at", None),
+        ("quiescence_confirmed_at", "not-a-timestamp"),
+        ("quiescence_confirmed_at", "2026-10-01T01:00:00+01:00"),
+        ("source_object_bucket", "bad//bucket"),
+        ("objects", None),
+        ("objects", [None]),
+    ],
+)
+def test_paired_snapshot_manifest_rejects_invalid_top_level_values(
+    field: str, value: Any
+) -> None:
+    data = _paired_manifest_data()
+    data[field] = value
+
+    with pytest.raises(backup_db.BackupArtifactError):
+        backup_db.parse_paired_snapshot_manifest(
+            json.dumps(data).encode(),
+            expected_manifest_key=(
+                "database/snapshots/0123456789abcdef0123456789abcdef/database.manifest.json"
+            ),
+        )
+
+
+def test_paired_snapshot_manifest_rejects_bad_key_json_size_and_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    key = "database/snapshots/0123456789abcdef0123456789abcdef/database.manifest.json"
+    with pytest.raises(backup_db.BackupArtifactError, match="suffix"):
+        backup_db.parse_paired_snapshot_manifest(
+            b"{}", expected_manifest_key="snapshot.json"
+        )
+    with pytest.raises(backup_db.BackupArtifactError, match="valid JSON"):
+        backup_db.parse_paired_snapshot_manifest(b"\xff", expected_manifest_key=key)
+
+    original_maximum = backup_db.PAIRED_SNAPSHOT_MANIFEST_MAX_BYTES
+    monkeypatch.setattr(backup_db, "PAIRED_SNAPSHOT_MANIFEST_MAX_BYTES", 1)
+    with pytest.raises(backup_db.BackupArtifactError, match="too large"):
+        backup_db.parse_paired_snapshot_manifest(b"{}", expected_manifest_key=key)
+
+    monkeypatch.setattr(
+        backup_db,
+        "PAIRED_SNAPSHOT_MANIFEST_MAX_BYTES",
+        original_maximum,
+    )
+    data = _paired_manifest_data()
+    del data["database_archive_etag"]
+    with pytest.raises(backup_db.BackupArtifactError, match="fields"):
+        backup_db.parse_paired_snapshot_manifest(
+            json.dumps(data).encode(), expected_manifest_key=key
+        )
+
+
+def test_paired_snapshot_manifest_rejects_snapshot_root_mismatch() -> None:
+    data = _paired_manifest_data()
+    data["database"]["artifact_key"] = (
+        "database/snapshots/11111111111111111111111111111111/database.dump"
+    )
+    expected_key = backup_db.manifest_key(data["database"]["artifact_key"])
+
+    with pytest.raises(backup_db.BackupArtifactError, match="does not match its id"):
+        backup_db.parse_paired_snapshot_manifest(
+            json.dumps(data).encode(), expected_manifest_key=expected_key
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("source_key", "bad//key"),
+        ("source_version_id", "bad\nversion"),
+        ("size_bytes", True),
+        ("size_bytes", -1),
+        ("sha256", "not-a-checksum"),
+        ("archive_key", "database/snapshots/run/objects/wrong.blob"),
+        ("archive_version_id", "bad\nversion"),
+        ("archive_etag", "bad\netag"),
+        ("content_type", "bad\nheader"),
+    ],
+)
+def test_paired_snapshot_manifest_rejects_invalid_object_values(
+    field: str, value: Any
+) -> None:
+    data = _paired_manifest_data()
+    data["objects"][0][field] = value
+
+    with pytest.raises(backup_db.BackupArtifactError):
+        backup_db.parse_paired_snapshot_manifest(
+            json.dumps(data).encode(),
+            expected_manifest_key=(
+                "database/snapshots/0123456789abcdef0123456789abcdef/database.manifest.json"
+            ),
+        )
+
+
+def test_paired_snapshot_manifest_rejects_object_inventory_over_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(backup_db, "MAX_SNAPSHOT_OBJECTS", 0)
+    data = _paired_manifest_data()
+
+    with pytest.raises(backup_db.BackupArtifactError, match="inventory is invalid"):
+        backup_db.parse_paired_snapshot_manifest(
+            json.dumps(data).encode(),
+            expected_manifest_key=(
+                "database/snapshots/0123456789abcdef0123456789abcdef/database.manifest.json"
+            ),
+        )
+
+
 @pytest.mark.asyncio
 async def test_paired_snapshot_uploads_every_source_object_before_commit_manifest(
     monkeypatch: pytest.MonkeyPatch,
@@ -325,6 +545,7 @@ async def test_paired_snapshot_uploads_every_source_object_before_commit_manifes
     backup_bucket = "synthetic-backups"
     source_values = {
         "chat/file.bin": (b"synthetic chat object", None),
+        "chat/duplicate.bin": (b"synthetic chat object", None),
         "users/42/avatar.png": (b"synthetic avatar", "source-version-7"),
     }
     for key, (content, version_id) in source_values.items():
@@ -368,8 +589,14 @@ async def test_paired_snapshot_uploads_every_source_object_before_commit_manifes
         entry.source_key: entry.source_version_id for entry in manifest.objects
     } == {
         "chat/file.bin": None,
+        "chat/duplicate.bin": None,
         "users/42/avatar.png": "source-version-7",
     }
+    archive_by_source = {
+        entry.source_key: entry.archive_key for entry in manifest.objects
+    }
+    assert archive_by_source["chat/file.bin"] == archive_by_source["chat/duplicate.bin"]
+    assert len({entry.archive_key for entry in manifest.objects}) == 2
     for entry in manifest.objects:
         assert (
             store.objects[(backup_bucket, entry.archive_key)]
@@ -387,6 +614,55 @@ async def test_paired_snapshot_uploads_every_source_object_before_commit_manifes
         store.objects[(source_bucket, key)] == value[0]
         for key, value in source_values.items()
     )
+
+
+@pytest.mark.asyncio
+async def test_paired_snapshot_opens_backup_client_after_source_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+    entered_buckets: list[str] = []
+    exited_buckets: list[str] = []
+
+    class ClientContext:
+        def __init__(self, settings: backup_db.S3Settings) -> None:
+            self.settings = settings
+
+        async def __aenter__(self) -> FakeS3:
+            entered_buckets.append(self.settings.bucket)
+            return store
+
+        async def __aexit__(self, *_args: Any) -> bool:
+            exited_buckets.append(self.settings.bucket)
+            return False
+
+    monkeypatch.setattr(backup_db, "s3_client", ClientContext)
+    monkeypatch.setattr(
+        backup_db,
+        "source_database_metadata",
+        lambda _url: ("synthetic_source", ("synthetic_revision",)),
+    )
+    monkeypatch.setattr(
+        backup_db,
+        "dump_database",
+        lambda _url, path: path.write_bytes(b"synthetic database archive"),
+    )
+
+    manifest_key = await backup_db.backup_paired_snapshot_to_s3(
+        "postgresql://synthetic@localhost/source",
+        _s3_settings("synthetic-backups"),
+        _s3_settings("synthetic-uploads"),
+        confirm_source_quiesced=True,
+    )
+
+    manifest = backup_db.parse_paired_snapshot_manifest(
+        store.objects[("synthetic-backups", manifest_key)],
+        expected_manifest_key=manifest_key,
+    )
+    assert entered_buckets == ["synthetic-uploads", "synthetic-backups"]
+    assert exited_buckets == ["synthetic-backups", "synthetic-uploads"]
+    assert manifest.objects == ()
+    assert store.objects[("synthetic-backups", manifest.database.artifact_key)]
 
 
 @pytest.mark.asyncio
@@ -524,6 +800,115 @@ def test_snapshot_cli_requires_explicit_quiescence_confirmation() -> None:
         backup_db.build_parser().parse_args(["snapshot"])
 
 
+def test_snapshot_cli_uses_environment_and_reports_manifest_key(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    backup_settings = _s3_settings("synthetic-backups")
+    source_settings = _s3_settings("synthetic-uploads")
+    calls: list[tuple[Any, ...]] = []
+
+    async def fake_snapshot(*args: Any, **kwargs: Any) -> str:
+        calls.append((*args, kwargs))
+        return "database/snapshots/synthetic/database.manifest.json"
+
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql://synthetic@localhost/synthetic_source"
+    )
+    monkeypatch.setattr(
+        backup_db, "s3_settings_from_environment", lambda: backup_settings
+    )
+    monkeypatch.setattr(
+        backup_db, "storage_s3_settings_from_environment", lambda: source_settings
+    )
+    monkeypatch.setattr(backup_db, "backup_paired_snapshot_to_s3", fake_snapshot)
+
+    result = backup_db.main(["snapshot", "--confirm-source-quiesced"])
+
+    output = capsys.readouterr()
+    assert result == 0
+    assert calls == [
+        (
+            "postgresql://synthetic@localhost/synthetic_source",
+            backup_settings,
+            source_settings,
+            {"confirm_source_quiesced": True},
+        )
+    ]
+    assert "database/snapshots/synthetic/database.manifest.json" in output.out
+    assert output.err == ""
+
+
+def test_restore_snapshot_cli_requires_an_explicit_target_prefix() -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="Invalid command-line"):
+        backup_db.build_parser().parse_args(
+            [
+                "restore-snapshot",
+                "--manifest-key",
+                "database/snapshots/run/database.manifest.json",
+                "--target-database",
+                "restore_target",
+                "--objects-target-bucket",
+                "restore-objects",
+            ]
+        )
+
+
+def test_restore_snapshot_cli_reads_admin_url_from_environment_and_passes_prefix(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    secret = (
+        "synthetic-admin-secret"  # pragma: allowlist secret -- synthetic test fixture
+    )
+    backup_settings = _s3_settings("synthetic-backups")
+    storage_settings = _s3_settings("synthetic-source")
+    calls: list[tuple[Any, ...]] = []
+
+    async def fake_restore(*args: Any) -> None:
+        calls.append(args)
+
+    monkeypatch.setenv(
+        "BACKUP_RESTORE_ADMIN_DATABASE_URL",
+        f"postgresql://restore_admin:{secret}@localhost/postgres",
+    )
+    monkeypatch.setattr(
+        backup_db, "s3_settings_from_environment", lambda: backup_settings
+    )
+    monkeypatch.setattr(
+        backup_db, "storage_s3_settings_from_environment", lambda: storage_settings
+    )
+    monkeypatch.setattr(backup_db, "restore_paired_snapshot_from_s3", fake_restore)
+
+    result = backup_db.main(
+        [
+            "restore-snapshot",
+            "--manifest-key",
+            "database/snapshots/run/database.manifest.json",
+            "--target-database",
+            "restore_target",
+            "--objects-target-bucket",
+            "synthetic-restore",
+            "--objects-target-prefix",
+            "",
+        ]
+    )
+
+    output = capsys.readouterr()
+    assert result == 0
+    assert calls == [
+        (
+            "database/snapshots/run/database.manifest.json",
+            "restore_target",
+            f"postgresql://restore_admin:{secret}@localhost/postgres",
+            backup_settings,
+            storage_settings,
+            "synthetic-restore",
+            "",
+        )
+    ]
+    assert secret not in output.out
+    assert secret not in output.err
+
+
 def _seed_paired_backup(store: FakeS3) -> tuple[str, bytes, bytes, str]:
     data = _paired_manifest_data()
     database = data["database"]
@@ -544,6 +929,48 @@ def _seed_paired_backup(store: FakeS3) -> tuple[str, bytes, bytes, str]:
     store.objects[(backup_bucket, manifest_key)] = payload
     store.etags[(backup_bucket, manifest_key)] = store._etag(payload)
     return manifest_key, database_bytes, object_bytes, object_entry["source_key"]
+
+
+def _append_paired_archive_object(
+    store: FakeS3,
+    manifest_key: str,
+    *,
+    source_key: str,
+    content: bytes,
+) -> str:
+    backup_bucket = "synthetic-backups"
+    manifest_identity = (backup_bucket, manifest_key)
+    manifest_data = json.loads(store.objects[manifest_identity])
+    digest = hashlib.sha256(content).hexdigest()
+    archive_key = (
+        f"database/snapshots/{manifest_data['snapshot_id']}/objects/{digest}.blob"
+    )
+    archive_identity = (backup_bucket, archive_key)
+    store.objects[archive_identity] = content
+    store.etags[archive_identity] = store._etag(content)
+    manifest_data["objects"].append(
+        {
+            "source_key": source_key,
+            "source_version_id": None,
+            "archive_key": archive_key,
+            "archive_version_id": None,
+            "archive_etag": store.etags[archive_identity],
+            "size_bytes": len(content),
+            "sha256": digest,
+            "content_type": "image/jpeg",
+            "content_encoding": None,
+            "cache_control": None,
+            "content_disposition": None,
+        }
+    )
+    payload = json.dumps(manifest_data, sort_keys=True, separators=(",", ":"))
+    manifest_bytes = payload.encode() + b"\n"
+    store.objects[manifest_identity] = manifest_bytes
+    store.etags[manifest_identity] = store._etag(manifest_bytes)
+    return archive_key
+
+
+RESTORE_PREFIX = "restore-run"
 
 
 class FakeDatabaseConnection:
@@ -652,12 +1079,56 @@ def test_restore_database_creation_rejects_untrusted_identifier_before_io(
 
 
 @pytest.mark.asyncio
+async def test_restore_paired_snapshot_rejects_non_manifest_key_before_clients(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def forbidden_client(_settings: backup_db.S3Settings):
+        pytest.fail("non-manifest key reached object storage")
+
+    monkeypatch.setattr(backup_db, "s3_client", forbidden_client)
+
+    with pytest.raises(backup_db.BackupArtifactError, match="manifest object key"):
+        await backup_db.restore_paired_snapshot_from_s3(
+            "database/snapshots/synthetic/database.dump",
+            "restore_acceptance",
+            "postgresql://synthetic@localhost/admin",
+            _s3_settings("synthetic-backups"),
+            _s3_settings("synthetic-uploads"),
+            "synthetic-restore",
+            RESTORE_PREFIX,
+        )
+
+
+@pytest.mark.asyncio
 async def test_restore_paired_snapshot_preflights_then_restores_into_empty_targets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     store = FakeS3()
     manifest_key, database_bytes, object_bytes, source_key = _seed_paired_backup(store)
     events: list[str] = []
+    source_identity = ("synthetic-uploads", source_key)
+    store.objects[source_identity] = b"unchanged source object"
+    store.etags[source_identity] = store._etag(store.objects[source_identity])
+    unrelated_target_identity = ("synthetic-restore", "operator-data/keep.txt")
+    store.objects[unrelated_target_identity] = b"unrelated target data"
+    store.etags[unrelated_target_identity] = store._etag(
+        store.objects[unrelated_target_identity]
+    )
+    neighboring_prefix_identity = (
+        "synthetic-restore",
+        f"{RESTORE_PREFIX}ner/current.txt",
+    )
+    store.objects[neighboring_prefix_identity] = b"neighboring prefix data"
+    store.etags[neighboring_prefix_identity] = store._etag(
+        store.objects[neighboring_prefix_identity]
+    )
+    store.hidden_versions["synthetic-restore"] = [
+        f"{RESTORE_PREFIX}ner/previous-version.bin"
+    ]
+    store.hidden_delete_markers["synthetic-restore"] = [
+        f"{RESTORE_PREFIX}ner/previously-deleted.bin"
+    ]
+    store.pending_uploads["synthetic-restore"] = [f"{RESTORE_PREFIX}ner/unfinished.bin"]
 
     @asynccontextmanager
     async def fake_client(_settings: backup_db.S3Settings):
@@ -691,28 +1162,139 @@ async def test_restore_paired_snapshot_preflights_then_restores_into_empty_targe
         _s3_settings("synthetic-backups"),
         _s3_settings("synthetic-uploads"),
         "synthetic-restore",
+        RESTORE_PREFIX,
         database_connect=fake_connect,
     )
 
     assert result.snapshot_id == "0123456789abcdef0123456789abcdef"
     assert restore_calls
-    assert store.objects[("synthetic-restore", source_key)] == object_bytes
+    target_key = f"{RESTORE_PREFIX}/{source_key}"
+    assert store.objects[("synthetic-restore", target_key)] == object_bytes
     assert (
-        store.headers[("synthetic-restore", source_key)]["ContentType"] == "image/png"
+        store.headers[("synthetic-restore", target_key)]["ContentType"] == "image/png"
     )
+    assert store.objects[source_identity] == b"unchanged source object"
+    assert store.objects[unrelated_target_identity] == b"unrelated target data"
+    assert store.objects[neighboring_prefix_identity] == b"neighboring prefix data"
+    assert store.hidden_versions["synthetic-restore"] == [
+        f"{RESTORE_PREFIX}ner/previous-version.bin"
+    ]
+    assert store.hidden_delete_markers["synthetic-restore"] == [
+        f"{RESTORE_PREFIX}ner/previously-deleted.bin"
+    ]
+    assert store.pending_uploads["synthetic-restore"] == [
+        f"{RESTORE_PREFIX}ner/unfinished.bin"
+    ]
+    assert store.inventory_requests == [
+        {
+            "operation": "list_objects_v2",
+            "Bucket": "synthetic-restore",
+            "MaxKeys": 1,
+            "Prefix": f"{RESTORE_PREFIX}/",
+            "PrefixSupplied": True,
+        },
+        {
+            "operation": "list_object_versions",
+            "Bucket": "synthetic-restore",
+            "MaxKeys": 1,
+            "Prefix": f"{RESTORE_PREFIX}/",
+            "PrefixSupplied": True,
+        },
+        {
+            "operation": "list_multipart_uploads",
+            "Bucket": "synthetic-restore",
+            "MaxUploads": 1,
+            "Prefix": f"{RESTORE_PREFIX}/",
+            "PrefixSupplied": True,
+        },
+    ]
     assert events.index("database-preflight") < events.index("database-restored")
     assert events.index("database-restored") < next(
         index
         for index, event in enumerate(store.events)
-        if event == ("put", "synthetic-restore", source_key)
+        if event == ("put", "synthetic-restore", target_key)
     )
     assert not any(event[0] == "delete" for event in store.events)
     assert store.objects[("synthetic-backups", manifest_key)]
 
 
+@pytest.mark.asyncio
+async def test_restore_with_empty_prefix_targets_original_keys_at_bucket_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+    manifest_key, database_bytes, object_bytes, source_key = _seed_paired_backup(store)
+    events: list[str] = []
+
+    @asynccontextmanager
+    async def fake_client(_settings: backup_db.S3Settings):
+        yield store
+
+    monkeypatch.setattr(backup_db, "s3_client", fake_client)
+
+    def fake_restore(
+        archive_path: Path,
+        _manifest: backup_db.BackupManifest,
+        _admin_url: str,
+        _target_database: str,
+    ) -> None:
+        assert archive_path.read_bytes() == database_bytes
+        events.append("database-restored")
+
+    monkeypatch.setattr(backup_db, "restore_archive", fake_restore)
+
+    await backup_db.restore_paired_snapshot_from_s3(
+        manifest_key,
+        "restore_acceptance",
+        "postgresql://synthetic@localhost/admin",
+        _s3_settings("synthetic-backups"),
+        _s3_settings("synthetic-uploads"),
+        "synthetic-restore-root",
+        "",
+        database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(
+            events=events
+        ),
+    )
+
+    target_identity = ("synthetic-restore-root", source_key)
+    assert store.objects[target_identity] == object_bytes
+    assert ("synthetic-restore-root", f"/{source_key}") not in store.objects
+    assert store.inventory_requests == [
+        {
+            "operation": "list_objects_v2",
+            "Bucket": "synthetic-restore-root",
+            "MaxKeys": 1,
+            "Prefix": "",
+            "PrefixSupplied": False,
+        },
+        {
+            "operation": "list_object_versions",
+            "Bucket": "synthetic-restore-root",
+            "MaxKeys": 1,
+            "Prefix": "",
+            "PrefixSupplied": False,
+        },
+        {
+            "operation": "list_multipart_uploads",
+            "Bucket": "synthetic-restore-root",
+            "MaxUploads": 1,
+            "Prefix": "",
+            "PrefixSupplied": False,
+        },
+    ]
+    assert events == ["database-preflight", "database-restored"]
+
+
 @pytest.mark.parametrize(
     "preexisting",
-    ["current", "version", "delete-marker", "multipart", "inventory-unavailable"],
+    [
+        "current",
+        "version",
+        "delete-marker",
+        "multipart",
+        "inventory-unavailable",
+        "root-current",
+    ],
 )
 @pytest.mark.asyncio
 async def test_restore_rejects_nonempty_or_unverifiably_empty_bucket_before_writes(
@@ -723,24 +1305,35 @@ async def test_restore_rejects_nonempty_or_unverifiably_empty_bucket_before_writ
         store
     )
     target_bucket = "synthetic-restore"
-    if preexisting == "current":
-        identity = (target_bucket, "operator-owned.txt")
+    target_prefix = "" if preexisting == "root-current" else RESTORE_PREFIX
+    if preexisting in {"current", "root-current"}:
+        operator_key = (
+            f"{target_prefix}/operator-owned.txt"
+            if target_prefix
+            else "operator-owned.txt"
+        )
+        identity = (target_bucket, operator_key)
         store.objects[identity] = b"operator data"
         store.etags[identity] = store._etag(b"operator data")
     elif preexisting == "version":
-        store.hidden_versions[target_bucket] = ["previously-deleted.bin"]
+        store.hidden_versions[target_bucket] = [
+            f"{target_prefix}/previously-deleted.bin"
+        ]
     elif preexisting == "delete-marker":
-        store.hidden_delete_markers[target_bucket] = ["deleted-by-operator.bin"]
+        store.hidden_delete_markers[target_bucket] = [
+            f"{target_prefix}/deleted-by-operator.bin"
+        ]
     elif preexisting == "inventory-unavailable":
         store.fail_inventory.add("versions")
     else:
-        store.pending_uploads[target_bucket] = ["unfinished.bin"]
+        store.pending_uploads[target_bucket] = [f"{target_prefix}/unfinished.bin"]
 
     @asynccontextmanager
     async def fake_client(_settings: backup_db.S3Settings):
         yield store
 
     monkeypatch.setattr(backup_db, "s3_client", fake_client)
+    database_events: list[str] = []
     monkeypatch.setattr(
         backup_db,
         "restore_archive",
@@ -749,7 +1342,7 @@ async def test_restore_rejects_nonempty_or_unverifiably_empty_bucket_before_writ
         ),
     )
 
-    with pytest.raises(backup_db.BackupArtifactError, match="bucket"):
+    with pytest.raises(backup_db.BackupArtifactError, match=r"prefix|bucket"):
         await backup_db.restore_paired_snapshot_from_s3(
             manifest_key,
             "restore_acceptance",
@@ -757,23 +1350,49 @@ async def test_restore_rejects_nonempty_or_unverifiably_empty_bucket_before_writ
             _s3_settings("synthetic-backups"),
             _s3_settings("synthetic-uploads"),
             target_bucket,
-            database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(),
+            target_prefix,
+            database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(
+                events=database_events
+            ),
         )
 
+    assert database_events == ["database-preflight"]
+    expected_operations = [
+        "list_objects_v2",
+        "list_object_versions",
+        "list_multipart_uploads",
+    ]
+    if preexisting == "inventory-unavailable":
+        expected_operations.pop()
+    assert [request["operation"] for request in store.inventory_requests] == (
+        expected_operations
+    )
+    assert all(
+        request["Bucket"] == target_bucket
+        and request["Prefix"] == (f"{target_prefix}/" if target_prefix else "")
+        and request["PrefixSupplied"] is bool(target_prefix)
+        for request in store.inventory_requests
+    )
     assert not any(
         event[0] == "put" and event[1] == target_bucket for event in store.events
     )
     assert store.objects[("synthetic-backups", manifest_key)]
-    if preexisting == "current":
-        assert store.objects[(target_bucket, "operator-owned.txt")] == b"operator data"
+    if preexisting in {"current", "root-current"}:
+        operator_key = (
+            f"{target_prefix}/operator-owned.txt"
+            if target_prefix
+            else "operator-owned.txt"
+        )
+        assert store.objects[(target_bucket, operator_key)] == b"operator data"
     assert source_key not in {
         key for bucket, key in store.objects if bucket == target_bucket
     }
 
 
+@pytest.mark.parametrize("artifact", ["database", "object"])
 @pytest.mark.asyncio
 async def test_restore_preflights_all_checksums_before_database_or_object_writes(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, artifact: str
 ) -> None:
     store = FakeS3()
     manifest_key, _database_bytes, _object_bytes, _source_key = _seed_paired_backup(
@@ -783,8 +1402,13 @@ async def test_restore_preflights_all_checksums_before_database_or_object_writes
         store.objects[("synthetic-backups", manifest_key)],
         expected_manifest_key=manifest_key,
     )
-    object_key = manifest.objects[0].archive_key
-    store.objects[("synthetic-backups", object_key)] = b"Xynthetic object"
+    if artifact == "database":
+        artifact_key = manifest.database.artifact_key
+        original = _database_bytes
+    else:
+        artifact_key = manifest.objects[0].archive_key
+        original = _object_bytes
+    store.objects[("synthetic-backups", artifact_key)] = b"X" + original[1:]
     database_preflights: list[str] = []
 
     @asynccontextmanager
@@ -806,6 +1430,7 @@ async def test_restore_preflights_all_checksums_before_database_or_object_writes
             _s3_settings("synthetic-backups"),
             _s3_settings("synthetic-uploads"),
             "synthetic-restore",
+            RESTORE_PREFIX,
             database_connect=lambda *_args, **_kwargs: database_preflights.append(
                 "called"
             ),
@@ -838,10 +1463,11 @@ async def test_target_create_only_write_preserves_a_concurrent_foreign_object(
 
     def race_during_database_restore(*_args: Any, **_kwargs: Any) -> None:
         content = b"operator object created after empty-bucket preflight"
-        identity = (target_bucket, source_key)
+        target_key = f"{RESTORE_PREFIX}/{source_key}"
+        identity = (target_bucket, target_key)
         store.objects[identity] = content
         store.etags[identity] = store._etag(content)
-        store.events.append(("foreign-write", target_bucket, source_key))
+        store.events.append(("foreign-write", target_bucket, target_key))
 
     monkeypatch.setattr(backup_db, "restore_archive", race_during_database_restore)
 
@@ -853,13 +1479,85 @@ async def test_target_create_only_write_preserves_a_concurrent_foreign_object(
             _s3_settings("synthetic-backups"),
             _s3_settings("synthetic-uploads"),
             target_bucket,
+            RESTORE_PREFIX,
             database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(),
         )
 
-    assert store.objects[(target_bucket, source_key)] == (
+    target_key = f"{RESTORE_PREFIX}/{source_key}"
+    assert store.objects[(target_bucket, target_key)] == (
         b"operator object created after empty-bucket preflight"
     )
     assert not any(event[0] == "delete" for event in store.events)
+
+
+@pytest.mark.asyncio
+async def test_partial_restore_keeps_completed_target_objects_and_hides_write_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+    manifest_key, _database_bytes, first_object_bytes, first_source_key = (
+        _seed_paired_backup(store)
+    )
+    second_object_bytes = b"synthetic second object"
+    second_source_key = "users/43/avatar.png"
+    _append_paired_archive_object(
+        store,
+        manifest_key,
+        source_key=second_source_key,
+        content=second_object_bytes,
+    )
+    backup_objects_before = {
+        key: value
+        for (bucket, key), value in store.objects.items()
+        if bucket == "synthetic-backups"
+    }
+    target_bucket = "synthetic-restore"
+    first_target_key = f"{RESTORE_PREFIX}/{first_source_key}"
+    second_target_key = f"{RESTORE_PREFIX}/{second_source_key}"
+    store.reject_put_keys.add((target_bucket, second_target_key))
+    database_events: list[str] = []
+
+    @asynccontextmanager
+    async def fake_client(_settings: backup_db.S3Settings):
+        yield store
+
+    monkeypatch.setattr(backup_db, "s3_client", fake_client)
+
+    def fake_restore(*_args: Any, **_kwargs: Any) -> None:
+        database_events.append("database-restored")
+
+    monkeypatch.setattr(backup_db, "restore_archive", fake_restore)
+
+    with pytest.raises(backup_db.BackupArtifactError) as failure:
+        await backup_db.restore_paired_snapshot_from_s3(
+            manifest_key,
+            "restore_acceptance",
+            "postgresql://synthetic@localhost/admin",
+            _s3_settings("synthetic-backups"),
+            _s3_settings("synthetic-uploads"),
+            target_bucket,
+            RESTORE_PREFIX,
+            database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(
+                events=database_events
+            ),
+        )
+
+    assert str(failure.value) == (
+        "Snapshot restore is incomplete; inspect the isolated target database "
+        "and object bucket"
+    )
+    assert database_events == ["database-preflight", "database-restored"]
+    assert store.objects[(target_bucket, first_target_key)] == first_object_bytes
+    assert (target_bucket, second_target_key) not in store.objects
+    assert [event[2] for event in store.events if event[0] == "put"] == [
+        first_target_key,
+        second_target_key,
+    ]
+    assert not any(event[0] == "delete" for event in store.events)
+    assert all(
+        store.objects[("synthetic-backups", key)] == content
+        for key, content in backup_objects_before.items()
+    )
 
 
 @pytest.mark.asyncio
@@ -949,6 +1647,7 @@ async def test_restore_rejects_existing_database_before_target_bucket_writes(
             _s3_settings("synthetic-backups"),
             _s3_settings("synthetic-uploads"),
             "synthetic-restore",
+            RESTORE_PREFIX,
             database_connect=lambda *_args, **_kwargs: FakeDatabaseConnection(
                 exists=True
             ),
@@ -957,6 +1656,49 @@ async def test_restore_rejects_existing_database_before_target_bucket_writes(
     assert not any(
         event[0] == "put" and event[1] == "synthetic-restore" for event in store.events
     )
+
+
+@pytest.mark.asyncio
+async def test_restore_rejects_database_target_matching_v2_manifest_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+    manifest_key, _database_bytes, _object_bytes, _source_key = _seed_paired_backup(
+        store
+    )
+    identity = ("synthetic-backups", manifest_key)
+    data = json.loads(store.objects[identity])
+    data["database"]["source_database"] = "restore_acceptance"
+    payload = json.dumps(data, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    store.objects[identity] = payload
+    store.etags[identity] = store._etag(payload)
+
+    @asynccontextmanager
+    async def fake_client(_settings: backup_db.S3Settings):
+        yield store
+
+    monkeypatch.setattr(backup_db, "s3_client", fake_client)
+    monkeypatch.setattr(
+        backup_db,
+        "restore_archive",
+        lambda *_args, **_kwargs: pytest.fail("source database reached restore"),
+    )
+
+    with pytest.raises(backup_db.BackupArtifactError, match="different"):
+        await backup_db.restore_paired_snapshot_from_s3(
+            manifest_key,
+            "restore_acceptance",
+            "postgresql://synthetic@localhost/admin",
+            _s3_settings("synthetic-backups"),
+            _s3_settings("synthetic-uploads"),
+            "synthetic-restore",
+            RESTORE_PREFIX,
+            database_connect=lambda *_args, **_kwargs: pytest.fail(
+                "source database target reached PostgreSQL preflight"
+            ),
+        )
+
+    assert store.events == [("get", "synthetic-backups", manifest_key)]
 
 
 @pytest.mark.parametrize("target_bucket", ["synthetic-uploads", "synthetic-backups"])
@@ -983,6 +1725,7 @@ async def test_restore_rejects_source_or_backup_bucket_as_target_before_reads(
             _s3_settings("synthetic-backups"),
             _s3_settings("synthetic-uploads"),
             target_bucket,
+            RESTORE_PREFIX,
             database_connect=lambda *_args, **_kwargs: pytest.fail(
                 "bucket alias reached database preflight"
             ),
@@ -990,3 +1733,717 @@ async def test_restore_rejects_source_or_backup_bucket_as_target_before_reads(
 
     assert store.events == [("get", "synthetic-backups", manifest_key)]
     assert not any(event[0] == "put" for event in store.events)
+
+
+@pytest.mark.asyncio
+async def test_pinned_object_download_preflights_body_and_cleans_partial_files(
+    tmp_path: Path,
+) -> None:
+    class ResponseClient:
+        def __init__(self, response: dict[str, Any]) -> None:
+            self.response = response
+            self.calls = 0
+
+        async def get_object(self, **_kwargs: Any) -> dict[str, Any]:
+            self.calls += 1
+            return self.response
+
+    existing = tmp_path / "existing-object"
+    existing.write_bytes(b"preserve")
+    unused = ResponseClient({})
+    with pytest.raises(backup_db.BackupArtifactError, match="already exists"):
+        await backup_db._download_object_to_file(
+            unused,
+            "synthetic-backups",
+            "snapshot/object.blob",
+            existing,
+            expected_size=8,
+            etag='"stable"',
+        )
+    assert existing.read_bytes() == b"preserve"
+    assert unused.calls == 0
+
+    no_body = ResponseClient({})
+    with pytest.raises(backup_db.BackupArtifactError, match="no response body"):
+        await backup_db._download_object_to_file(
+            no_body,
+            "synthetic-backups",
+            "snapshot/object.blob",
+            tmp_path / "no-body",
+            expected_size=1,
+            etag='"stable"',
+        )
+
+    declared_body = FakeBody(b"data")
+    wrong_length = ResponseClient({"Body": declared_body, "ContentLength": 5})
+    with pytest.raises(backup_db.BackupArtifactError, match="length"):
+        await backup_db._download_object_to_file(
+            wrong_length,
+            "synthetic-backups",
+            "snapshot/object.blob",
+            tmp_path / "wrong-length",
+            expected_size=4,
+            etag='"stable"',
+        )
+    assert declared_body.closed
+
+    oversized_body = FakeBody(b"too long")
+    oversized = ResponseClient({"Body": oversized_body})
+    oversized_path = tmp_path / "oversized"
+    with pytest.raises(backup_db.BackupArtifactError, match="exceeded"):
+        await backup_db._download_object_to_file(
+            oversized,
+            "synthetic-backups",
+            "snapshot/object.blob",
+            oversized_path,
+            expected_size=2,
+            etag='"stable"',
+        )
+    assert not oversized_path.exists()
+    assert oversized_body.closed
+
+    truncated_body = FakeBody(b"short")
+    truncated = ResponseClient({"Body": truncated_body})
+    truncated_path = tmp_path / "truncated"
+    with pytest.raises(backup_db.BackupArtifactError, match="length"):
+        await backup_db._download_object_to_file(
+            truncated,
+            "synthetic-backups",
+            "snapshot/object.blob",
+            truncated_path,
+            expected_size=10,
+            etag='"stable"',
+        )
+    assert not truncated_path.exists()
+    assert truncated_body.closed
+
+    class ReadFailureBody(FakeBody):
+        def __init__(self) -> None:
+            super().__init__(b"partial")
+            self.reads = 0
+
+        async def read(self, _size: int = -1) -> bytes:
+            self.reads += 1
+            if self.reads == 1:
+                return b"par"
+            raise OSError("synthetic transport detail")
+
+    failing_body = ReadFailureBody()
+    failing_path = tmp_path / "failed-read"
+    with pytest.raises(backup_db.BackupArtifactError, match="Unable to download"):
+        await backup_db._download_object_to_file(
+            ResponseClient({"Body": failing_body}),
+            "synthetic-backups",
+            "snapshot/object.blob",
+            failing_path,
+            expected_size=6,
+            etag='"stable"',
+        )
+    assert not failing_path.exists()
+    assert failing_body.closed
+
+
+@pytest.mark.asyncio
+async def test_limited_manifest_body_closes_on_missing_or_invalid_payloads() -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="no response body"):
+        await backup_db._read_limited_body({}, maximum=3)
+
+    for content_length in (True, -1, 4):
+        body = FakeBody(b"x")
+        with pytest.raises(backup_db.BackupArtifactError, match="size is invalid"):
+            await backup_db._read_limited_body(
+                {"Body": body, "ContentLength": content_length}, maximum=3
+            )
+        assert body.closed
+
+    oversized_body = FakeBody(b"123")
+    with pytest.raises(backup_db.BackupArtifactError, match="too large"):
+        await backup_db._read_limited_body({"Body": oversized_body}, maximum=2)
+    assert oversized_body.closed
+
+    mismatched_body = FakeBody(b"12")
+    with pytest.raises(backup_db.BackupArtifactError, match="length is invalid"):
+        await backup_db._read_limited_body(
+            {"Body": mismatched_body, "ContentLength": 3}, maximum=3
+        )
+    assert mismatched_body.closed
+
+
+@pytest.mark.asyncio
+async def test_application_object_inventory_paginates_with_opaque_tokens() -> None:
+    pages = [
+        {
+            "Contents": [{"Key": "first", "Size": 1, "ETag": '"one"'}],
+            "KeyCount": 1,
+            "IsTruncated": True,
+            "NextContinuationToken": "cursor-2",
+        },
+        {"Contents": [], "KeyCount": 0, "IsTruncated": False},
+    ]
+
+    class PageClient:
+        def __init__(self) -> None:
+            self.requests: list[dict[str, Any]] = []
+
+        async def list_objects_v2(self, **request: Any) -> dict[str, Any]:
+            self.requests.append(request)
+            return pages[len(self.requests) - 1]
+
+    client = PageClient()
+
+    objects = await backup_db._list_current_objects(client, "synthetic-uploads")
+
+    assert objects == [{"Key": "first", "Size": 1, "ETag": '"one"'}]
+    assert client.requests[0] == {"Bucket": "synthetic-uploads", "MaxKeys": 1000}
+    assert client.requests[1]["ContinuationToken"] == "cursor-2"
+
+
+@pytest.mark.parametrize(
+    ("pages", "message"),
+    [
+        ([OSError("synthetic transport")], "Unable to inventory"),
+        (
+            [{"Contents": [], "KeyCount": True, "IsTruncated": False}],
+            "invalid object inventory",
+        ),
+        (
+            [{"Contents": [None], "KeyCount": 1, "IsTruncated": False}],
+            "invalid object inventory",
+        ),
+        (
+            [
+                {
+                    "Contents": [{"Key": "one", "Size": True, "ETag": '"one"'}],
+                    "KeyCount": 1,
+                    "IsTruncated": False,
+                }
+            ],
+            "invalid object size",
+        ),
+        (
+            [
+                {
+                    "Contents": [{"Key": "one", "Size": 1, "ETag": ""}],
+                    "KeyCount": 1,
+                    "IsTruncated": False,
+                }
+            ],
+            "stable ETag",
+        ),
+        (
+            [{"Contents": [], "KeyCount": 0, "IsTruncated": True}],
+            "pagination is invalid",
+        ),
+        (
+            [
+                {
+                    "Contents": [],
+                    "KeyCount": 0,
+                    "IsTruncated": True,
+                    "NextContinuationToken": "",
+                }
+            ],
+            "pagination is invalid",
+        ),
+        (
+            [
+                {
+                    "Contents": [],
+                    "KeyCount": 0,
+                    "IsTruncated": True,
+                    "NextContinuationToken": "cursor",
+                },
+                {
+                    "Contents": [],
+                    "KeyCount": 0,
+                    "IsTruncated": True,
+                    "NextContinuationToken": "cursor",
+                },
+            ],
+            "pagination is invalid",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_application_object_inventory_rejects_invalid_pages(
+    pages: list[Any], message: str
+) -> None:
+    class PageClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def list_objects_v2(self, **_request: Any) -> dict[str, Any]:
+            page = pages[self.calls]
+            self.calls += 1
+            if isinstance(page, Exception):
+                raise page
+            return page
+
+    with pytest.raises(backup_db.BackupArtifactError, match=message):
+        await backup_db._list_current_objects(PageClient(), "synthetic-uploads")
+
+
+@pytest.mark.asyncio
+async def test_application_object_inventory_enforces_maximum_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(backup_db, "MAX_SNAPSHOT_OBJECTS", 1)
+
+    class TooManyObjects:
+        async def list_objects_v2(self, **_request: Any) -> dict[str, Any]:
+            return {
+                "Contents": [
+                    {"Key": "one", "Size": 0, "ETag": '"one"'},
+                    {"Key": "two", "Size": 0, "ETag": '"two"'},
+                ],
+                "KeyCount": 2,
+                "IsTruncated": False,
+            }
+
+    with pytest.raises(backup_db.BackupArtifactError, match="too large"):
+        await backup_db._list_current_objects(TooManyObjects(), "synthetic-uploads")
+
+
+@pytest.mark.asyncio
+async def test_create_only_upload_rejects_missing_file_and_verification_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="source artifact"):
+        await backup_db._upload_file_create_only(
+            object(),
+            "synthetic-backups",
+            "snapshot/object.blob",
+            tmp_path / "missing-artifact",
+        )
+
+    artifact = tmp_path / "verified-artifact"
+    artifact.write_bytes(b"synthetic artifact")
+
+    async def false_readback(
+        *_args: Any, **_kwargs: Any
+    ) -> tuple[int, str, dict[str, Any]]:
+        return artifact.stat().st_size, "0" * 64, {}
+
+    monkeypatch.setattr(backup_db, "_download_object_to_file", false_readback)
+    with pytest.raises(backup_db.BackupArtifactError, match="read-back verification"):
+        await backup_db._verify_uploaded_file(
+            object(),
+            "synthetic-backups",
+            "snapshot/object.blob",
+            artifact,
+            receipt=backup_db.S3ObjectReceipt(version_id=None, etag='"stable"'),
+        )
+
+
+@pytest.mark.asyncio
+async def test_multipart_upload_failure_paths_abort_only_the_started_upload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(backup_db, "SNAPSHOT_PART_SIZE", 2)
+    artifact = tmp_path / "multipart-artifact"
+    artifact.write_bytes(b"synthetic multipart bytes")
+
+    class UploadClient:
+        def __init__(self, failure: str) -> None:
+            self.failure = failure
+            self.aborts = 0
+
+        async def create_multipart_upload(self, **_kwargs: Any) -> dict[str, str]:
+            if self.failure == "create":
+                raise OSError("synthetic setup failure")
+            if self.failure == "missing-id":
+                return {}
+            return {"UploadId": "upload-1"}
+
+        async def upload_part(self, **_kwargs: Any) -> dict[str, str]:
+            if self.failure == "cancel":
+                raise asyncio.CancelledError
+            if self.failure == "part":
+                raise OSError("synthetic part failure")
+            if self.failure == "bad-part-etag":
+                return {}
+            return {"ETag": '"part"'}
+
+        async def complete_multipart_upload(self, **_kwargs: Any) -> dict[str, str]:
+            if self.failure == "complete":
+                raise OSError("synthetic completion failure")
+            return {"ETag": '"complete"'}
+
+        async def abort_multipart_upload(self, **_kwargs: Any) -> None:
+            self.aborts += 1
+
+    failures: tuple[tuple[str, str | None, int], ...] = (
+        ("create", "stage immutable", 0),
+        ("missing-id", "upload identity", 0),
+        ("part", "not completed conditionally", 1),
+        ("bad-part-etag", "validator required", 1),
+        ("complete", "not completed conditionally", 1),
+        ("cancel", None, 2),
+    )
+    for failure, message, expected_aborts in failures:
+        client = UploadClient(failure)
+        if failure == "cancel":
+            with pytest.raises(asyncio.CancelledError):
+                await backup_db._upload_file_create_only(
+                    client,
+                    "synthetic-backups",
+                    "snapshot/object.blob",
+                    artifact,
+                )
+        else:
+            assert message is not None
+            with pytest.raises(backup_db.BackupArtifactError, match=message):
+                await backup_db._upload_file_create_only(
+                    client,
+                    "synthetic-backups",
+                    "snapshot/object.blob",
+                    artifact,
+                )
+        assert client.aborts == expected_aborts
+
+
+@pytest.mark.asyncio
+async def test_multipart_upload_rejects_artifacts_above_s3_part_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(backup_db, "SNAPSHOT_PART_SIZE", 1)
+    artifact = tmp_path / "too-many-parts"
+    artifact.write_bytes(b"x" * 10_001)
+
+    class CountingClient:
+        def __init__(self) -> None:
+            self.uploaded_parts = 0
+            self.aborts = 0
+
+        async def create_multipart_upload(self, **_kwargs: Any) -> dict[str, str]:
+            return {"UploadId": "upload-1"}
+
+        async def upload_part(self, **_kwargs: Any) -> dict[str, str]:
+            self.uploaded_parts += 1
+            return {"ETag": '"part"'}
+
+        async def complete_multipart_upload(self, **_kwargs: Any) -> dict[str, str]:
+            pytest.fail("an over-limit multipart upload must not complete")
+
+        async def abort_multipart_upload(self, **_kwargs: Any) -> None:
+            self.aborts += 1
+
+    client = CountingClient()
+    with pytest.raises(backup_db.BackupArtifactError, match="multipart limits"):
+        await backup_db._upload_file_create_only(
+            client,
+            "synthetic-backups",
+            "snapshot/object.blob",
+            artifact,
+        )
+
+    assert client.uploaded_parts == 10_000
+    assert client.aborts == 1
+
+
+@pytest.mark.asyncio
+async def test_paired_manifest_publish_requires_conditional_create_and_exact_readback() -> (
+    None
+):
+    class PutFailure:
+        async def put_object(self, **_kwargs: Any) -> None:
+            raise OSError("synthetic conditional write failure")
+
+    with pytest.raises(
+        backup_db.BackupArtifactError, match="not created conditionally"
+    ):
+        await backup_db._publish_paired_manifest(
+            PutFailure(), "synthetic-backups", "snapshot/manifest.json", b"{}"
+        )
+
+    class MismatchedReadback:
+        async def put_object(self, **_kwargs: Any) -> dict[str, str]:
+            return {"ETag": '"committed"'}
+
+        async def get_object(self, **_kwargs: Any) -> dict[str, Any]:
+            body = FakeBody(b"different")
+            return {"Body": body, "ContentLength": len(b"different")}
+
+    with pytest.raises(backup_db.BackupArtifactError, match="read-back failed"):
+        await backup_db._publish_paired_manifest(
+            MismatchedReadback(),
+            "synthetic-backups",
+            "snapshot/manifest.json",
+            b"{}",
+        )
+
+
+@pytest.mark.asyncio
+async def test_paired_manifest_download_requires_manifest_suffix() -> None:
+    with pytest.raises(backup_db.BackupArtifactError, match="manifest object key"):
+        await backup_db._download_paired_manifest(
+            object(), "synthetic-backups", "snapshot/database.dump"
+        )
+
+
+@pytest.mark.asyncio
+async def test_paired_snapshot_requires_distinct_object_buckets_before_database_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden_metadata(_url: str) -> tuple[str, tuple[str, ...]]:
+        pytest.fail("same-bucket validation must precede database access")
+
+    monkeypatch.setattr(backup_db, "source_database_metadata", forbidden_metadata)
+
+    with pytest.raises(backup_db.BackupArtifactError, match="buckets must differ"):
+        await backup_db.backup_paired_snapshot_to_s3(
+            "postgresql://synthetic@localhost/source",
+            _s3_settings("synthetic-bucket"),
+            _s3_settings("synthetic-bucket"),
+            confirm_source_quiesced=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_paired_snapshot_commits_a_database_when_source_bucket_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+
+    @asynccontextmanager
+    async def fake_client(_settings: backup_db.S3Settings):
+        yield store
+
+    monkeypatch.setattr(backup_db, "s3_client", fake_client)
+    monkeypatch.setattr(
+        backup_db,
+        "source_database_metadata",
+        lambda _url: ("synthetic_source", ("synthetic_revision",)),
+    )
+
+    def fake_dump(_url: str, archive_path: Path) -> None:
+        archive_path.write_bytes(b"synthetic database archive")
+
+    monkeypatch.setattr(backup_db, "dump_database", fake_dump)
+
+    manifest_key = await backup_db.backup_paired_snapshot_to_s3(
+        "postgresql://synthetic@localhost/source",
+        _s3_settings("synthetic-backups"),
+        _s3_settings("synthetic-uploads"),
+        confirm_source_quiesced=True,
+    )
+
+    manifest = backup_db.parse_paired_snapshot_manifest(
+        store.objects[("synthetic-backups", manifest_key)],
+        expected_manifest_key=manifest_key,
+    )
+    assert manifest.objects == ()
+    assert store.objects[("synthetic-backups", manifest.database.artifact_key)] == (
+        b"synthetic database archive"
+    )
+
+
+@pytest.mark.asyncio
+async def test_paired_snapshot_rejects_source_object_changed_after_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+    identity = ("synthetic-uploads", "users/42/avatar.png")
+    content = b"synthetic avatar"
+    store.objects[identity] = content
+    store.etags[identity] = store._etag(content)
+    original_get = store.get_object
+
+    async def changed_get(**kwargs: Any) -> dict[str, Any]:
+        response = await original_get(**kwargs)
+        return {**response, "ETag": '"changed-after-inventory"'}
+
+    monkeypatch.setattr(store, "get_object", changed_get)
+
+    @asynccontextmanager
+    async def fake_client(_settings: backup_db.S3Settings):
+        yield store
+
+    monkeypatch.setattr(backup_db, "s3_client", fake_client)
+    monkeypatch.setattr(
+        backup_db,
+        "source_database_metadata",
+        lambda _url: ("synthetic_source", ("synthetic_revision",)),
+    )
+
+    def fake_dump(_url: str, archive_path: Path) -> None:
+        archive_path.write_bytes(b"synthetic database archive")
+
+    monkeypatch.setattr(backup_db, "dump_database", fake_dump)
+
+    with pytest.raises(backup_db.BackupArtifactError, match="changed during"):
+        await backup_db.backup_paired_snapshot_to_s3(
+            "postgresql://synthetic@localhost/source",
+            _s3_settings("synthetic-backups"),
+            _s3_settings("synthetic-uploads"),
+            confirm_source_quiesced=True,
+        )
+
+    assert store.objects[identity] == content
+    assert not any(event[0] == "put" for event in store.events)
+
+
+@pytest.mark.asyncio
+async def test_paired_snapshot_rejects_same_digest_with_inconsistent_lengths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+    for key, content in (("one", b"a"), ("two", b"bb")):
+        identity = ("synthetic-uploads", key)
+        store.objects[identity] = content
+        store.etags[identity] = store._etag(content)
+
+    @asynccontextmanager
+    async def fake_client(_settings: backup_db.S3Settings):
+        yield store
+
+    monkeypatch.setattr(backup_db, "s3_client", fake_client)
+    monkeypatch.setattr(
+        backup_db,
+        "source_database_metadata",
+        lambda _url: ("synthetic_source", ("synthetic_revision",)),
+    )
+
+    def fake_dump(_url: str, archive_path: Path) -> None:
+        archive_path.write_bytes(b"synthetic database archive")
+
+    monkeypatch.setattr(backup_db, "dump_database", fake_dump)
+
+    async def colliding_download(
+        _client: Any,
+        _bucket: str,
+        _key: str,
+        destination: Path,
+        *,
+        expected_size: int,
+        etag: str | None = None,
+        **_kwargs: Any,
+    ) -> tuple[int, str, dict[str, Any]]:
+        destination.write_bytes(b"x" * expected_size)
+        return expected_size, "f" * 64, {"ETag": etag}
+
+    uploaded_sizes: list[int] = []
+
+    async def fake_upload(
+        _client: Any,
+        _bucket: str,
+        _key: str,
+        path: Path,
+        **_kwargs: Any,
+    ) -> backup_db.S3ObjectReceipt:
+        uploaded_sizes.append(path.stat().st_size)
+        return backup_db.S3ObjectReceipt(version_id=None, etag='"archive"')
+
+    async def fake_verify(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(backup_db, "_download_object_to_file", colliding_download)
+    monkeypatch.setattr(backup_db, "_upload_file_create_only", fake_upload)
+    monkeypatch.setattr(backup_db, "_verify_uploaded_file", fake_verify)
+
+    with pytest.raises(backup_db.BackupArtifactError, match="inconsistent lengths"):
+        await backup_db.backup_paired_snapshot_to_s3(
+            "postgresql://synthetic@localhost/source",
+            _s3_settings("synthetic-backups"),
+            _s3_settings("synthetic-uploads"),
+            confirm_source_quiesced=True,
+        )
+
+    assert uploaded_sizes == [1]
+
+
+@pytest.mark.asyncio
+async def test_restore_reuses_a_single_download_for_duplicate_archive_objects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+    manifest_key, _database_bytes, object_bytes, source_key = _seed_paired_backup(store)
+    archive_key = _append_paired_archive_object(
+        store,
+        manifest_key,
+        source_key="users/43/avatar.png",
+        content=object_bytes,
+    )
+
+    @asynccontextmanager
+    async def fake_client(_settings: backup_db.S3Settings):
+        yield store
+
+    monkeypatch.setattr(backup_db, "s3_client", fake_client)
+    monkeypatch.setattr(backup_db, "restore_archive", lambda *_args: None)
+    monkeypatch.setattr(
+        backup_db.psycopg,
+        "connect",
+        lambda *_args, **_kwargs: FakeDatabaseConnection(),
+    )
+
+    await backup_db.restore_paired_snapshot_from_s3(
+        manifest_key,
+        "restore_acceptance",
+        "postgresql://synthetic@localhost/admin",
+        _s3_settings("synthetic-backups"),
+        _s3_settings("synthetic-restore"),
+        "synthetic-restore",
+        RESTORE_PREFIX,
+    )
+
+    assert [
+        event
+        for event in store.events
+        if event == ("get", "synthetic-backups", archive_key)
+    ] == [("get", "synthetic-backups", archive_key)]
+    assert (
+        store.objects[("synthetic-restore", f"{RESTORE_PREFIX}/{source_key}")]
+        == object_bytes
+    )
+    assert (
+        store.objects[("synthetic-restore", f"{RESTORE_PREFIX}/users/43/avatar.png")]
+        == object_bytes
+    )
+
+
+@pytest.mark.asyncio
+async def test_restore_without_objects_creates_only_the_isolated_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeS3()
+    manifest_key, _database_bytes, _object_bytes, _source_key = _seed_paired_backup(
+        store
+    )
+    manifest_identity = ("synthetic-backups", manifest_key)
+    data = json.loads(store.objects[manifest_identity])
+    data["objects"] = []
+    payload = json.dumps(data, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    store.objects[manifest_identity] = payload
+    store.etags[manifest_identity] = store._etag(payload)
+    events: list[str] = []
+
+    @asynccontextmanager
+    async def fake_client(_settings: backup_db.S3Settings):
+        yield store
+
+    monkeypatch.setattr(backup_db, "s3_client", fake_client)
+    monkeypatch.setattr(
+        backup_db, "restore_archive", lambda *_args: events.append("restore")
+    )
+    monkeypatch.setattr(
+        backup_db.psycopg,
+        "connect",
+        lambda *_args, **_kwargs: FakeDatabaseConnection(events=events),
+    )
+
+    restored = await backup_db.restore_paired_snapshot_from_s3(
+        manifest_key,
+        "restore_acceptance",
+        "postgresql://synthetic@localhost/admin",
+        _s3_settings("synthetic-backups"),
+        _s3_settings("synthetic-restore"),
+        "synthetic-restore",
+        RESTORE_PREFIX,
+    )
+
+    assert restored.objects == ()
+    assert events == ["database-preflight", "restore"]
+    assert not any(
+        event[0] == "put" and event[1] == "synthetic-restore" for event in store.events
+    )

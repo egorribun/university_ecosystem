@@ -5,10 +5,12 @@ via the ``db_session`` + ``user_factory`` fixtures (mirrors
 ``test_chat_repository_groups.py``). Deliberately AVOIDS the PostgreSQL-only paths
 that the SQLite harness cannot run:
 
-* ``_set_rls_user`` / ``get_unread_count`` / ``get_messages(user_id=...)`` —
-  use ``SET LOCAL app.current_user_id`` (PG GUC; SQLite rejects it). The group
-  unread branch is already exercised at the repo level via ``get_chats_for_user``
-  (which has no RLS call) in ``test_chat_repository_groups.py``.
+* PostgreSQL message reads and deletes require an explicit RLS ``user_id``.
+  SQLite skips the PostgreSQL-only GUC write, so the same tests run on both
+  dialects while retaining the production identity requirement.
+* ``get_unread_count`` uses ``SET LOCAL app.current_user_id`` (PG GUC; SQLite
+  rejects it). The group unread branch is exercised via ``get_chats_for_user``
+  in ``test_chat_repository_groups.py``.
 * ``add_reaction`` — ``pg_insert(...).on_conflict_do_nothing`` is PG-only, so
   reactions are seeded here with a plain ``MessageReaction(...)`` insert to test
   ``remove_reaction`` / ``get_reactors``.
@@ -112,7 +114,7 @@ async def test_find_existing_dm_none_when_no_shared_chat(db_session, user_factor
 
 
 # --------------------------------------------------------------------------- #
-# get_last_message + get_messages (user_id=None skips the PG RLS GUC)          #
+# get_last_message + get_messages — explicit identity for PostgreSQL RLS        #
 # --------------------------------------------------------------------------- #
 
 
@@ -122,7 +124,7 @@ async def test_get_last_message_returns_most_recent(db_session, user_factory):
     await _add_message(repo, chat.id, u1.id, "first", offset_seconds=0)
     await _add_message(repo, chat.id, u1.id, "latest", offset_seconds=10)
 
-    last = await repo.get_last_message(chat.id)
+    last = await repo.get_last_message(chat.id, user_id=u1.id)
 
     assert last is not None
     assert last.content == "latest"
@@ -130,8 +132,8 @@ async def test_get_last_message_returns_most_recent(db_session, user_factory):
 
 @pytest.mark.asyncio
 async def test_get_last_message_none_for_empty_chat(db_session, user_factory):
-    repo, chat, *_ = await _make_dm(db_session, user_factory)
-    assert await repo.get_last_message(chat.id) is None
+    repo, chat, u1, _u2 = await _make_dm(db_session, user_factory)
+    assert await repo.get_last_message(chat.id, user_id=u1.id) is None
 
 
 @pytest.mark.asyncio
@@ -147,7 +149,7 @@ async def test_get_messages_paginates_descending(db_session, user_factory):
     # cursor-bearing call raises StatementError on the SQLite test harness. This
     # is a harness limitation, not a prod bug (prod runs on PG, which coerces the
     # string to UUID). Assert page-1 shape only.
-    page1, has_more, cursor = await repo.get_messages(chat.id, None, 2)
+    page1, has_more, cursor = await repo.get_messages(chat.id, None, 2, user_id=u1.id)
     assert has_more is True
     assert cursor is not None
     assert [m.content for m in page1] == ["m2", "m1"]
@@ -169,7 +171,7 @@ async def test_edit_message_author_succeeds(db_session, user_factory):
 
     assert affected == 1
     assert edited_at is not None
-    refreshed = await repo.get_message_by_id(msg.id)
+    refreshed = await repo.get_message_by_id(msg.id, user_id=u1.id)
     assert refreshed is not None
     assert refreshed.content == "edited"
 
@@ -191,7 +193,7 @@ async def test_edit_message_non_author_is_noop(db_session, user_factory):
 async def test_edit_message_rejects_message_from_different_chat(
     db_session, user_factory
 ):
-    repo, source_chat, author, _source_peer = await _make_dm(db_session, user_factory)
+    repo, source_chat, author, source_peer = await _make_dm(db_session, user_factory)
     destination_peer = await user_factory()
     other_chat = await repo.create_chat([author, destination_peer])
     msg = await _add_message(repo, source_chat.id, author.id, "source text")
@@ -204,7 +206,7 @@ async def test_edit_message_rejects_message_from_different_chat(
 
     assert affected == 0
     assert edited_at is None
-    refreshed = await repo.get_message_by_id(msg.id)
+    refreshed = await repo.get_message_by_id(msg.id, user_id=source_peer.id)
     assert refreshed is not None
     assert refreshed.content == "source text"
 
@@ -213,7 +215,7 @@ async def test_edit_message_rejects_message_from_different_chat(
 async def test_soft_delete_message_rejects_message_from_different_chat(
     db_session, user_factory
 ):
-    repo, source_chat, author, _source_peer = await _make_dm(db_session, user_factory)
+    repo, source_chat, author, source_peer = await _make_dm(db_session, user_factory)
     destination_peer = await user_factory()
     other_chat = await repo.create_chat([author, destination_peer])
     msg = await _add_message(repo, source_chat.id, author.id, "source text")
@@ -226,7 +228,7 @@ async def test_soft_delete_message_rejects_message_from_different_chat(
 
     assert affected == 0
     assert deleted_at is None
-    refreshed = await repo.get_message_by_id(msg.id)
+    refreshed = await repo.get_message_by_id(msg.id, user_id=source_peer.id)
     assert refreshed is not None
     assert refreshed.content == "source text"
 
@@ -243,7 +245,7 @@ async def test_soft_delete_message_clears_content(db_session, user_factory):
     assert affected == 1
     assert deleted_at is not None
     # D1: the deleted text must not linger — content is cleared to "".
-    refreshed = await repo.get_message_by_id(msg.id)
+    refreshed = await repo.get_message_by_id(msg.id, user_id=u1.id)
     assert refreshed is not None
     assert refreshed.content == ""
     # A repeat delete is a no-op (deleted_at IS NULL guard).
@@ -267,6 +269,7 @@ async def test_message_mutation_outbox_event_commits_atomically(
     message = await _add_message(repo, chat.id, author.id, "original")
     message_id = message.id
     chat_id = chat.id
+    author_id = author.id
     await db_session.commit()
     # Start the transaction used by the service's preceding chat read; the
     # identity map can satisfy get_by_id without SQL after the setup commit.
@@ -274,11 +277,11 @@ async def test_message_mutation_outbox_event_commits_atomically(
 
     if operation == "edit":
         timestamp, affected = await repo.edit_message(
-            message_id, author.id, "edited", chat_id=chat_id
+            message_id, author_id, "edited", chat_id=chat_id
         )
     else:
         timestamp, affected = await repo.soft_delete_message(
-            message_id, author.id, chat_id=chat_id
+            message_id, author_id, chat_id=chat_id
         )
 
     assert affected == 1
@@ -316,13 +319,14 @@ async def test_message_mutation_rollback_discards_outbox_event(
     message = await _add_message(repo, chat.id, author.id, "original")
     message_id = message.id
     chat_id = chat.id
+    author_id = author.id
     await db_session.commit()
     await db_session.execute(select(1))
 
     if operation == "edit":
-        await repo.edit_message(message_id, author.id, "edited", chat_id=chat_id)
+        await repo.edit_message(message_id, author_id, "edited", chat_id=chat_id)
     else:
-        await repo.soft_delete_message(message_id, author.id, chat_id=chat_id)
+        await repo.soft_delete_message(message_id, author_id, chat_id=chat_id)
 
     # Force the ORM event capture/StoredEvent INSERT, then roll back the same
     # transaction that contains the message mutation and its outbox row.
@@ -339,7 +343,7 @@ async def test_message_mutation_rollback_discards_outbox_event(
     assert pending_count == 1
     await db_session.rollback()
 
-    refreshed = await repo.get_message_by_id(message_id)
+    refreshed = await repo.get_message_by_id(message_id, user_id=author_id)
     assert refreshed is not None
     assert refreshed.content == "original"
     assert refreshed.deleted_at is None
@@ -385,7 +389,7 @@ async def test_get_reactors_returns_users_oldest_first(db_session, user_factory)
     # A different emoji must not leak into the result.
     await _seed_reaction(db_session, msg.id, u2.id, "😂")
 
-    reactors = await repo.get_reactors(msg.id, "❤️")
+    reactors = await repo.get_reactors(msg.id, "❤️", user_id=u1.id)
 
     assert {u.id for u in reactors} == {u1.id, u2.id}
 
@@ -407,7 +411,7 @@ async def test_delete_messages_removes_rows(db_session, user_factory):
     m1 = await _add_message(repo, chat.id, u1.id, "a", offset_seconds=0)
     m2 = await _add_message(repo, chat.id, u1.id, "b", offset_seconds=1)
 
-    deleted = await repo.delete_messages([m1.id, m2.id])
+    deleted = await repo.delete_messages([m1.id, m2.id], chat_id=chat.id, user_id=u1.id)
 
     assert deleted == 2
     remaining = (
@@ -448,8 +452,8 @@ async def test_get_message_by_id_roundtrip_and_miss(db_session, user_factory):
     repo, chat, u1, _u2 = await _make_dm(db_session, user_factory)
     msg = await _add_message(repo, chat.id, u1.id, "findme")
 
-    found = await repo.get_message_by_id(msg.id)
+    found = await repo.get_message_by_id(msg.id, user_id=u1.id)
     assert found is not None
     assert found.content == "findme"
 
-    assert await repo.get_message_by_id(uuid.uuid4()) is None
+    assert await repo.get_message_by_id(uuid.uuid4(), user_id=u1.id) is None

@@ -13,6 +13,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "university-ecosystem"
+HELM = shutil.which("helm")
 
 
 class _ComposeLoader(yaml.SafeLoader):
@@ -40,10 +41,8 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def _helm() -> str:
-    executable = shutil.which("helm")
-    if executable is None:
-        pytest.skip("Helm is not installed")
-    return executable
+    assert HELM is not None, "Helm-dependent tests must be marked at collection"
+    return HELM
 
 
 def _render_gateway_deployment(*overrides: str) -> dict[str, Any]:
@@ -133,12 +132,14 @@ def test_helm_gateway_proxy_trust_is_typed_and_empty_by_default() -> None:
     assert trusted_proxies["items"] == {"type": "string", "minLength": 1}
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_helm_gateway_proxy_trust_renders_empty_without_operator_input() -> None:
     deployment = _render_gateway_deployment()
 
     assert _gateway_env(deployment)["GATEWAY_TRUSTED_PROXIES"] == ""
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_helm_gateway_proxy_trust_renders_only_explicit_operator_entries() -> None:
     # Documentation-only ranges make clear these are fixtures, not defaults.
     deployment = _render_gateway_deployment(

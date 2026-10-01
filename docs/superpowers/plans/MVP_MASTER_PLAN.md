@@ -275,9 +275,9 @@ Seeded-admin пароль из `AUDIT_WAVE171.md` пользователь по�
   общем visual review, не создавать отдельные продуктовые gates. После переноса
   rationale классифицировать W210/W211 как исторические документы без текущей
   роли и решить их хранение вместе с прочей документацией вне archive.
-- Пересмотреть `MVP_APPROVED_PLAN.md` и другие документы вне archive: применимые
-  решения перенести сюда, в ADR или runbooks; удалить документ, если после миграции
-  у него нет самостоятельной долговечной роли.
+- Для оставшихся документов вне archive применимые решения перенести сюда, в ADR
+  или runbooks; удалять документ только после проверки ссылок, переноса уникальных
+  требований и подтверждения, что у него нет самостоятельной долговечной роли.
 - Найти и заменить literal citations на удаляемые `AUDIT_WAVE*`, старые handoff и
   абсолютные пользовательские пути в workflows, коде, тестах, индексах и
   инструкциях. Оставлять лишь короткое rationale, которое нужно поддерживать;
@@ -406,8 +406,10 @@ teardown проверяет ownership; пользовательские тома
 - **News/events/map:** сохранение scroll, back/forward, центрирование tabs,
   wheel/touch/pinch isolation и отсутствие page scroll jumps.
 - **Home/stories/activity:** пустые состояния, stories открываются по avatar,
-  keyboard/swipe, пауза в hidden state, memory plateau; только текущие
-  Activity heatmap/trends/grades/comparison, без новых учебных целей/attendance.
+  keyboard/swipe, пауза в hidden state, memory plateau; индикатор периода
+  Activity совпадает с выбранной radio-кнопкой по геометрии bounding box (x, y,
+  width и height с допуском 1 px); только текущие heatmap/trends/grades/comparison,
+  без новых учебных целей/attendance.
 - **Notifications:** все пять текущих топиков (news, schedule changes, events,
   messages, system updates); in-app и реальный Chromium Web Push через локальный
   VAPID, dedup/unread, group-and-sender context, single `chat.reply` instead of a

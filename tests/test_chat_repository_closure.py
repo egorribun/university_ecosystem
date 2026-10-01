@@ -216,6 +216,26 @@ async def test_message_lookup_requires_identity_for_postgresql() -> None:
     db.execute.assert_not_awaited()
 
 
+async def test_get_reactors_sets_rls_identity_and_joins_visible_message() -> None:
+    repo, db = _repo()
+    db.get_bind.return_value.dialect.name = "postgresql"
+    user = SimpleNamespace(id=OTHER_ID)
+
+    with patch.object(
+        repo, "_set_message_rls_user", new_callable=AsyncMock
+    ) as set_identity:
+        db.execute.return_value = _result(rows=[user])
+        assert await repo.get_reactors(CHAT_ID, "👍", user_id=USER_ID) == [user]
+
+    set_identity.assert_awaited_once_with(USER_ID)
+    statement = db.execute.await_args.args[0]
+    compiled = str(statement.compile())
+    assert "JOIN message_reactions" in compiled
+    assert "JOIN messages" in compiled
+    assert "messages.id = message_reactions.message_id" in compiled
+    assert "messages.id =" in compiled
+
+
 async def test_get_user_display_names_projects_identity_and_profile_columns() -> None:
     repo, db = _repo()
     db.execute.return_value = _result(rows=[(USER_ID, "Alice"), (OTHER_ID, None)])
@@ -468,7 +488,7 @@ async def test_reactors_deletes_and_simple_crud_helpers() -> None:
     repo, db = _repo()
     users = [SimpleNamespace(id=USER_ID), SimpleNamespace(id=OTHER_ID)]
     db.execute.return_value = _result(rows=users)
-    assert await repo.get_reactors(CHAT_ID, "👍") == users
+    assert await repo.get_reactors(CHAT_ID, "👍", user_id=USER_ID) == users
 
     assert await repo.delete_messages([]) == 0
     db.execute.return_value = _result(rowcount=4)

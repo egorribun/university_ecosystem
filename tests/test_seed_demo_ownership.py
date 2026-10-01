@@ -11,6 +11,7 @@ import pytest
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import String, UniqueConstraint
 
+from app.auth.security import get_password_hash_sync
 from app.models.chat import Chat, Message
 from app.models.enums import UserRole
 from app.models.schedule import Group
@@ -146,7 +147,9 @@ class DemoGroupOwnershipSession:
 def _user(email: str) -> User:
     user = User(
         email=email,
-        hashed_password="synthetic-hash",
+        hashed_password=get_password_hash_sync(
+            "synthetic test-only password", validate_policy=False
+        ),
         role=UserRole.STUDENT,
         is_active=True,
     )

@@ -70,15 +70,24 @@ requests/second with a `5x` per-client burst, and `20` concurrent connections
 per client. Envoy Gateway `v1.9.2` does not provide a drop-in policy combination
 for those semantics:
 
-- Its global `BackendTrafficPolicy` source-CIDR selector can distinguish IP
-  clients, but global limiting needs separately configured rate-limit service
-  infrastructure. The v1.9.2 `RateLimitValue` has requests and time unit fields,
-  with no burst control. Local limits are per-route and per Envoy instance, not
-  per client. The Go Gateway defaults to a 100 requests/second limit and a
-  configured burst of 200, but the chart does not wire those settings and the
-  limiter does not consume its burst parameter. Its trusted-proxy set is broader
-  than a target-specific Envoy-to-Gateway chain, so it does not establish the
-  legacy 50/250 contract.
+- The chart now renders a local `BackendTrafficPolicy` rule with
+  `sourceCIDR.type: Distinct` for IPv4 and IPv6, so each observed client IP gets
+  a separate 50 requests/second bucket on each route and Envoy proxy. Envoy
+  Gateway v1.9.2 documents local limits as per proxy, and its routes have
+  separate counters; `RateLimitValue` exposes requests and a time unit but no
+  burst field. This is a tested partial guard, not the ingress-wide 50/250
+  contract. A global source-CIDR limit needs separately configured Envoy
+  rate-limit service infrastructure and a datastore.
+- `gatewayApi.clientIPDetection` deliberately defaults to an empty map. Before
+  enabling this preview, the operator must select `directSourceIP` for a
+  source-preserving L4 path, or `xForwardedFor` with the real trusted-hop count
+  or trusted proxy CIDRs. The chart does not guess the external load-balancer
+  chain, and it rejects activation without exactly one source mode.
+- The Go Gateway defaults to a 100 requests/second limit and a configured burst
+  of 200, but the chart does not wire those settings and the limiter does not
+  consume its burst parameter. Its trusted-proxy set is broader than a
+  target-specific Envoy-to-Gateway chain, so it does not establish the legacy
+  50/250 contract.
 - `ClientTrafficPolicy.connection.connectionLimit` limits a Gateway or listener
   per Envoy proxy, not each client. Setting it to 20 would cap the whole listener
   and conflict with the 1,000-connection WebSocket acceptance target.
@@ -101,10 +110,11 @@ to assign API/auth traffic to the Go Gateway, public JWKS to the backend,
 `/ws/ticket` to the Go Gateway, and `/ws/chat` to ws-hub.
 
 This review uses the pinned [Envoy Gateway v1.9 request-buffering](https://gateway.envoyproxy.io/v1.9/tasks/traffic/request-buffering/),
+[local-rate-limit](https://gateway.envoyproxy.io/v1.9/tasks/traffic/local-rate-limit/),
 [global-rate-limit](https://gateway.envoyproxy.io/v1.9/tasks/traffic/global-rate-limit/),
 [connection-limit](https://gateway.envoyproxy.io/v1.9/tasks/traffic/connection-limit/),
 [ClientTrafficPolicy API](https://gateway.envoyproxy.io/v1.9/api/extension_types/),
-and [v1.9 release notes](https://gateway.envoyproxy.io/news/releases/v1.9/).
+and [v1.9.2 release notes](https://gateway.envoyproxy.io/news/releases/notes/v1.9.2/).
 
 CWV release metadata is configured only through the typed top-level `cwv`
 tree. Its release SHA and frontend digest must exactly match the immutable

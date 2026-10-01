@@ -364,7 +364,9 @@ class ChatQueryService:
         ):
             raise_not_found("message", locale)
 
-        reactors = await self.repository.get_reactors(message_id, emoji)
+        reactors = await self.repository.get_reactors(
+            message_id, emoji, user_id=user.id
+        )
         return [
             ReactorOut(
                 user_id=u.id,

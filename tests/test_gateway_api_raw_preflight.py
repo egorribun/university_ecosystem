@@ -12,6 +12,9 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "university-ecosystem"
+BASH = shutil.which("bash") if os.name != "nt" else None
+HELM = shutil.which("helm")
+POSIX_BASH_AVAILABLE = BASH is not None
 CUSTOM_GATEWAY_CLASS_NAME = "envoy-gateway-contract"
 GATEWAY_API_VERSIONS = (
     "gateway.networking.k8s.io/v1/Gateway",
@@ -83,11 +86,7 @@ def _fake_kubectl_bin(tmp_path: Path) -> tuple[Path, Path]:
 def _run_gatewayclass_wrapper(
     tmp_path: Path, *, overrides: dict[str, str] | None = None
 ) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
-    if os.name == "nt":
-        pytest.skip("hermetic shell execution is exercised in Linux CI")
-    bash = shutil.which("bash")
-    if not bash:
-        pytest.skip("bash is unavailable on this host; Linux CI runs the contract")
+    assert BASH is not None, "POSIX shell tests must be marked at collection"
 
     bin_dir, capture = _fake_kubectl_bin(tmp_path)
     environment = os.environ.copy()
@@ -103,7 +102,7 @@ def _run_gatewayclass_wrapper(
         environment.update(overrides)
     result = subprocess.run(  # noqa: S603 - fixed local wrapper and test-only tools
         [
-            bash,
+            BASH,
             str(ROOT / "scripts/apply_raw_k8s.sh"),
             "k8s/gateway-api/gatewayclass.yaml",
         ],
@@ -118,9 +117,7 @@ def _run_gatewayclass_wrapper(
 
 
 def _render_gateway_api_template(tmp_path: Path, class_name: str) -> str:
-    helm = shutil.which("helm")
-    if helm is None:
-        pytest.skip("Helm is not installed")
+    assert HELM is not None, "Helm-dependent tests must be marked at collection"
 
     chart = tmp_path / "chart"
     templates = chart / "templates"
@@ -135,7 +132,7 @@ def _render_gateway_api_template(tmp_path: Path, class_name: str) -> str:
         shutil.copy2(CHART / "templates" / filename, templates / filename)
 
     command = [
-        helm,
+        HELM,
         "template",
         "raw-connectivity-contract",
         str(chart),
@@ -184,6 +181,7 @@ def test_raw_gatewayclass_is_an_allowlisted_cluster_scoped_bootstrap() -> None:
     assert "kubectl create -f -" in wrapper
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_raw_gatewayclass_connects_to_gateway_and_its_http_routes(
     tmp_path: Path,
 ) -> None:
@@ -269,6 +267,7 @@ def test_gateway_api_raw_path_is_documented_as_single_resource_bootstrap() -> No
     assert "do not install a second gateway api bundle" in normalized
 
 
+@pytest.mark.skipif(not POSIX_BASH_AVAILABLE, reason="requires a POSIX shell and bash")
 def test_gatewayclass_wrapper_preflights_versions_before_create(tmp_path: Path) -> None:
     class_name = CUSTOM_GATEWAY_CLASS_NAME
     result, capture, log_path = _run_gatewayclass_wrapper(
@@ -308,14 +307,11 @@ def test_gatewayclass_wrapper_preflights_versions_before_create(tmp_path: Path) 
     )
 
 
+@pytest.mark.skipif(not POSIX_BASH_AVAILABLE, reason="requires a POSIX shell and bash")
 def test_gatewayclass_wrapper_rejects_symlinked_manifest_parent(
     tmp_path: Path,
 ) -> None:
-    if os.name == "nt":
-        pytest.skip("symlinked path execution is exercised in Linux CI")
-    bash = shutil.which("bash")
-    if not bash:
-        pytest.skip("bash is unavailable on this host; Linux CI runs the contract")
+    assert BASH is not None
 
     repo = tmp_path / "repo"
     scripts = repo / "scripts"
@@ -346,7 +342,7 @@ def test_gatewayclass_wrapper_rejects_symlinked_manifest_parent(
     )
     result = subprocess.run(  # noqa: S603 - fixed local wrapper and test-only tools
         [
-            bash,
+            BASH,
             str(scripts / "apply_raw_k8s.sh"),
             "k8s/gateway-api/gatewayclass.yaml",
         ],
@@ -368,6 +364,7 @@ def test_gatewayclass_wrapper_rejects_symlinked_manifest_parent(
     assert not any(call.startswith("create ") for call in calls)
 
 
+@pytest.mark.skipif(not POSIX_BASH_AVAILABLE, reason="requires a POSIX shell and bash")
 @pytest.mark.parametrize(
     ("environment", "expected_error"),
     [
@@ -414,6 +411,7 @@ def test_gatewayclass_wrapper_fails_closed_on_incompatible_prerequisites(
     )
 
 
+@pytest.mark.skipif(not POSIX_BASH_AVAILABLE, reason="requires a POSIX shell and bash")
 def test_gatewayclass_wrapper_never_takes_over_an_existing_class(
     tmp_path: Path,
 ) -> None:
@@ -433,6 +431,7 @@ def test_gatewayclass_wrapper_never_takes_over_an_existing_class(
     )
 
 
+@pytest.mark.skipif(not POSIX_BASH_AVAILABLE, reason="requires a POSIX shell and bash")
 def test_gatewayclass_wrapper_leaves_compatible_existing_class_untouched(
     tmp_path: Path,
 ) -> None:
@@ -452,6 +451,7 @@ def test_gatewayclass_wrapper_leaves_compatible_existing_class_untouched(
     )
 
 
+@pytest.mark.skipif(not POSIX_BASH_AVAILABLE, reason="requires a POSIX shell and bash")
 def test_gatewayclass_wrapper_fails_closed_when_existing_state_cannot_be_read(
     tmp_path: Path,
 ) -> None:

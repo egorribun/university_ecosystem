@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import gc
 import threading
-import time
 import weakref
 from _thread import LockType
 from collections import deque
@@ -158,7 +157,8 @@ def test_cleanup_key_snapshot_survives_cross_thread_insert(
 ) -> None:
     """Cleanup must snapshot keys safely while another loop inserts a key."""
     snapshot_paused = threading.Event()
-    writer_attempted = threading.Event()
+    writer_lock_attempted = threading.Event()
+    writer_inserted = threading.Event()
     iteration_errors: list[str] = []
 
     class InterleavingWindows(dict[str, deque[float]]):
@@ -181,9 +181,8 @@ def test_cleanup_key_snapshot_survives_cross_thread_insert(
                     if owner.pause_next_snapshot:
                         owner.pause_next_snapshot = False
                         snapshot_paused.set()
-                        if not writer_attempted.wait(timeout=2):
-                            raise AssertionError("writer did not reach the snapshot")
-                        time.sleep(0.05)
+                        if not writer_lock_attempted.wait(timeout=2):
+                            raise AssertionError("writer did not contend with snapshot")
                     try:
                         yield from iterator
                     except RuntimeError as exc:
@@ -196,6 +195,26 @@ def test_cleanup_key_snapshot_survives_cross_thread_insert(
     monkeypatch.setattr(memory, "_memory_windows", windows)
     monkeypatch.setattr(cleanup, "_memory_windows", windows)
     strategy = memory.MemorySlidingWindowStrategy(namespace="cleanup-cross-loop")
+    new_key = compose_identifier("cleanup-cross-loop", "new-key")
+    original_shard_lock = memory._shard_lock
+
+    class ObservedLock:
+        def __init__(self, lock: LockType) -> None:
+            self._lock = lock
+
+        def __enter__(self) -> ObservedLock:
+            writer_lock_attempted.set()
+            self._lock.acquire()
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            self._lock.release()
+
+    def observed_shard_lock(key: str) -> LockType | ObservedLock:
+        lock = original_shard_lock(key)
+        return ObservedLock(lock) if key == new_key else lock
+
+    monkeypatch.setattr(memory, "_shard_lock", observed_shard_lock)
     loop = asyncio.new_event_loop()
     task_holder: list[asyncio.Task[None]] = []
     writer_errors: list[BaseException] = []
@@ -204,9 +223,9 @@ def test_cleanup_key_snapshot_survives_cross_thread_insert(
         if not snapshot_paused.wait(timeout=2):
             writer_errors.append(AssertionError("cleanup did not begin its snapshot"))
             return
-        writer_attempted.set()
         try:
             asyncio.run(strategy.check("new-key", limit=5, window_seconds=60))
+            writer_inserted.set()
         except BaseException as exc:
             writer_errors.append(exc)
         finally:
@@ -229,6 +248,7 @@ def test_cleanup_key_snapshot_survives_cross_thread_insert(
 
     assert not writer.is_alive()
     assert not writer_errors
+    assert writer_inserted.is_set()
     assert not iteration_errors
 
 

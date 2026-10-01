@@ -37,9 +37,6 @@ handoffs are intentionally not part of the canonical index.
 - [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md) — decisions, phased
   work and acceptance criteria; [active status](superpowers/plans/STATUS.md)
   is the current progress and continuation guide.
-- [Approved MVP plan (historical snapshot)](superpowers/plans/MVP_APPROVED_PLAN.md) —
-  superseded by the master plan and current session decisions; do not use its
-  historical status or execution instructions.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
   operational status. Historical handoffs are not continuation instructions.
 - [Quality dashboard](testing/dashboard.md)

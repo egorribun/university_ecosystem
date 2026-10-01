@@ -111,6 +111,15 @@ for (const role of ["student", "teacher"] as const) {
       const adminCsrfToken = await readCsrfToken(adminPage)
       expect(adminCsrfToken, "admin has CSRF proof for test-owned story creation").not.toBe("")
 
+      await adminPage.goto("/admin/stories")
+      await expect(adminPage).toHaveURL(/\/admin\/stories$/u)
+      await expect(
+        adminPage.getByRole("heading", {
+          level: 1,
+          name: /Stories management|Управление сторис/u,
+        })
+      ).toBeVisible()
+
       const publishedAt = new Date(Date.now() - 60_000).toISOString()
       const expiresAt = new Date(Date.now() + 86_400_000).toISOString()
       ownedCreateMayHaveSucceeded = true
@@ -137,6 +146,9 @@ for (const role of ["student", "teacher"] as const) {
         throw new Error("admin story create response did not include a usable story id")
       }
       ownedStoryId = createdBody.id
+      await adminPage.reload()
+      await expect(adminPage).toHaveURL(/\/admin\/stories$/u)
+      await expect(adminPage.getByText(ownedTitle, { exact: true })).toBeVisible()
 
       const identityResponse = await page.request.get("/api/v1/users/me")
       expect(identityResponse.status(), `${role} fixture must be authenticated`).toBe(200)
@@ -146,6 +158,12 @@ for (const role of ["student", "teacher"] as const) {
       await expect(page, `${role} should be redirected from story administration`).toHaveURL(
         /\/dashboard$/u
       )
+      await expect(
+        page.getByRole("heading", {
+          level: 1,
+          name: /Stories management|Управление сторис/u,
+        })
+      ).toHaveCount(0)
 
       const csrfToken = await readCsrfToken(page)
       expect(csrfToken, "the authenticated role has CSRF proof for real API attempts").not.toBe("")

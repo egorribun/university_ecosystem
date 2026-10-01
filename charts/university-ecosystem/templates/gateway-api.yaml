@@ -1,6 +1,8 @@
 {{- if .Values.gatewayApi.enabled -}}
 {{- $root := . -}}
 {{- $fullname := include "university-ecosystem.fullname" . -}}
+{{- $clientIPPolicyName := printf "%s-cip-%s" ($fullname | trunc 50 | trimSuffix "-") ($fullname | sha256sum | trunc 8) -}}
+{{- $rateLimitPolicyName := printf "%s-ipr-%s" ($fullname | trunc 50 | trimSuffix "-") ($fullname | sha256sum | trunc 8) -}}
 {{- range $tls := .Values.ingress.tls }}
 ---
 apiVersion: cert-manager.io/v1
@@ -78,6 +80,60 @@ spec:
     {{- end }}
   tls:
     minVersion: "1.3"
+  {{ if .Values.gatewayApi.clientIPDetection }}
+  clientIPDetection:
+{{ toYaml .Values.gatewayApi.clientIPDetection | indent 4 }}
+  {{ end }}
+{{- if .Values.gatewayApi.clientIPDetection }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: {{ $clientIPPolicyName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  targetRefs:
+    {{- range $hostIndex, $host := .Values.ingress.hosts }}
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $fullname }}
+      sectionName: http-{{ $hostIndex }}
+    {{- end }}
+  clientIPDetection:
+    {{- toYaml .Values.gatewayApi.clientIPDetection | nindent 4 }}
+{{- end }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ $rateLimitPolicyName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $fullname }}
+  rateLimit:
+    local:
+      rules:
+        - clientSelectors:
+            - sourceCIDR:
+                type: Distinct
+                value: 0.0.0.0/0
+          limit:
+            requests: {{ .Values.gatewayApi.rateLimit.requests }}
+            unit: {{ .Values.gatewayApi.rateLimit.unit }}
+        - clientSelectors:
+            - sourceCIDR:
+                type: Distinct
+                value: ::/0
+          limit:
+            requests: {{ .Values.gatewayApi.rateLimit.requests }}
+            unit: {{ .Values.gatewayApi.rateLimit.unit }}
 {{- range $hostIndex, $host := .Values.ingress.hosts }}
 {{- $routeSuffix := printf "-route-%d" $hostIndex -}}
 {{- $routeName := printf "%s%s" ($fullname | trunc (int (sub 63 (len $routeSuffix))) | trimSuffix "-") $routeSuffix -}}

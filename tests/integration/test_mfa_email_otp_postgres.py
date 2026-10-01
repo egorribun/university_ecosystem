@@ -300,6 +300,18 @@ def _assert_contract_on_engine(sync_url: str, engine: Engine) -> None:
             == "a" * 64
         )
 
+    # Keep the migration-contract assertions above pinned to the historical
+    # retirement revision, then bring the owned database to the current ORM
+    # schema before the concurrency scenario loads User with every mapped
+    # column. New additive migrations may extend User after the revision under
+    # test (for example, the private demo-seed ownership marker).
+    _upgrade(sync_url, "head")
+    with engine.connect() as connection:
+        user_columns = {
+            column["name"] for column in inspect(connection).get_columns("users")
+        }
+        assert "demo_seed_key" in user_columns
+
 
 @pytest.mark.asyncio
 async def test_postgres_migration_and_two_connection_security_races(

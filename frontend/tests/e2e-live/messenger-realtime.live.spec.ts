@@ -394,6 +394,37 @@ test.describe("live messenger delivery", () => {
       await expect(messageLog.getByText(editedContent, { exact: true })).toBeVisible()
       await expect(messageLog.getByText(message, { exact: true })).toHaveCount(0)
 
+      const receivedEditedMessageRow = messageLog
+        .getByText(editedContent, { exact: true })
+        .locator(
+          "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+        )
+      await receivedEditedMessageRow
+        .getByRole("button", { name: "Добавить реакцию", exact: true })
+        .click()
+      const reactionPicker = receiverPage.getByRole("group", {
+        name: "Добавить реакцию",
+        exact: true,
+      })
+      await expect(reactionPicker).toBeVisible()
+      const reactionResponsePromise = receiverPage.waitForResponse((response) => {
+        const request = response.request()
+        return (
+          request.method() === "POST" &&
+          new URL(response.url()).pathname ===
+            `/api/v1/chats/${chatId}/messages/${sentMessage.id}/reactions`
+        )
+      })
+      await reactionPicker.getByRole("button", { name: "Отреагировать 👍", exact: true }).click()
+      const reactionResponse = await reactionResponsePromise
+      expect(reactionResponse.ok()).toBe(true)
+      await expect(
+        receivedEditedMessageRow.getByRole("button", {
+          name: /Переключить реакцию 👍, 1/,
+          exact: true,
+        })
+      ).toBeVisible()
+
       const editedMessageRow = senderLog
         .getByText(editedContent, { exact: true })
         .locator(
@@ -433,8 +464,45 @@ test.describe("live messenger delivery", () => {
       )
       expect(editFrameIndex).toBeGreaterThanOrEqual(0)
       expect(deleteFrameIndex).toBeGreaterThan(editFrameIndex)
-      await expect(messageLog.getByText("Сообщение удалено", { exact: true })).toBeVisible()
+      const tombstone = messageLog.getByText("Сообщение удалено", { exact: true })
+      await expect(tombstone).toBeVisible()
       await expect(messageLog.getByText(editedContent, { exact: true })).toHaveCount(0)
+      const tombstoneRow = tombstone.locator(
+        "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
+      )
+      await expect(tombstoneRow).toBeVisible()
+      await expect(tombstoneRow.getByRole("button", { name: /реакци/i })).toHaveCount(0)
+
+      const [senderHistoryResponse, receiverHistoryResponse] = await Promise.all([
+        page.request.get(`/api/v1/chats/${chatId}/messages?limit=50`),
+        receiverPage.request.get(`/api/v1/chats/${chatId}/messages?limit=50`),
+      ])
+      expect(senderHistoryResponse.ok()).toBe(true)
+      expect(receiverHistoryResponse.ok()).toBe(true)
+      const senderHistory = (await senderHistoryResponse.json()) as {
+        items: Array<{
+          id: string
+          content: string
+          deleted_at: string | null
+          reactions: Array<{ emoji: string; count: number; reacted_by_me: boolean }>
+        }>
+      }
+      const receiverHistory = (await receiverHistoryResponse.json()) as {
+        items: Array<{
+          id: string
+          content: string
+          deleted_at: string | null
+          reactions: Array<{ emoji: string; count: number; reacted_by_me: boolean }>
+        }>
+      }
+      const senderTombstone = senderHistory.items.find((item) => item.id === sentMessage.id)
+      const receiverTombstone = receiverHistory.items.find((item) => item.id === sentMessage.id)
+      expect(senderTombstone).toMatchObject({ id: sentMessage.id, content: "" })
+      expect(senderTombstone?.deleted_at).toBeTruthy()
+      expect(receiverTombstone).toMatchObject({ id: sentMessage.id, content: "" })
+      expect(receiverTombstone?.deleted_at).toBeTruthy()
+      expect(senderTombstone?.reactions).toEqual([{ emoji: "👍", count: 1, reacted_by_me: false }])
+      expect(receiverTombstone?.reactions).toEqual([{ emoji: "👍", count: 1, reacted_by_me: true }])
     } finally {
       await receiverContext.close()
     }

@@ -30,6 +30,17 @@ test("admin story management is denied to both non-admin live roles", async () =
   assert.match(spec, /await loginAs\(page, role\)/u)
   assert.match(spec, /page\.goto\("\/admin\/stories"\)/u)
   assert.match(spec, /toHaveURL\(\s*\/\\\/dashboard\$\/u/u)
+  assert.match(
+    spec,
+    /getByRole\("heading",[\s\S]{0,180}name:\s*\/Stories management\|Управление сторис\/u,[\s\S]{0,120}toHaveCount\(0\)/u
+  )
+  assert.match(spec, /adminPage\.goto\("\/admin\/stories"\)/u)
+  assert.match(spec, /adminPage\)\.toHaveURL\(\s*\/\\\/admin\\\/stories\$\/u/u)
+  assert.match(
+    spec,
+    /adminPage\.getByRole\("heading",[\s\S]{0,180}name:\s*\/Stories management\|Управление сторис\/u,[\s\S]{0,120}toBeVisible\(\)/u
+  )
+  assert.match(spec, /adminPage\.getByText\(ownedTitle,[\s\S]{0,100}toBeVisible\(\)/u)
   assert.match(spec, /page\.request\.post\("\/api\/v1\/stories"/u)
   assert.match(spec, /expect\(response\.status\(\)[\s\S]*?\.toBe\(403\)/u)
   assert.match(spec, /page\.request\.patch\([\s\S]*?nonExistentStoryId/u)

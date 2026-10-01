@@ -8,10 +8,7 @@ const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
 const mapFeatureUrl = new URL("../../src/features/map/MapFeature.tsx", import.meta.url)
 const mapLibreUrl = new URL("../../src/components/map/MapLibreMap.tsx", import.meta.url)
 const mapSchemaUrl = new URL("../../src/features/map/schema.ts", import.meta.url)
-const approvedPlanUrl = new URL(
-  "../../../docs/superpowers/plans/MVP_APPROVED_PLAN.md",
-  import.meta.url
-)
+const masterPlanUrl = new URL("../../../docs/superpowers/plans/MVP_MASTER_PLAN.md", import.meta.url)
 
 test("live map gesture acceptance covers browser isolation and camera invariants", async () => {
   let spec
@@ -21,15 +18,15 @@ test("live map gesture acceptance covers browser isolation and camera invariants
     assert.fail("a live MapLibre gesture-isolation scenario must exist")
   }
 
-  const [config, mapFeature, mapLibre, mapSchema, approvedPlan] = await Promise.all([
+  const [config, mapFeature, mapLibre, mapSchema, masterPlan] = await Promise.all([
     readFile(configUrl, "utf8"),
     readFile(mapFeatureUrl, "utf8"),
     readFile(mapLibreUrl, "utf8"),
     readFile(mapSchemaUrl, "utf8"),
-    readFile(approvedPlanUrl, "utf8"),
+    readFile(masterPlanUrl, "utf8"),
   ])
 
-  assert.match(approvedPlan, /Map: после wheel\/touch\/pinch внешний scroll не прыгает/u)
+  assert.match(masterPlan, /wheel\/touch\/pinch isolation и отсутствие page scroll jumps/u)
   assert.match(config, /trace:\s*["']off["']/u, "live gesture acceptance must not record traces")
   assert.match(
     config,

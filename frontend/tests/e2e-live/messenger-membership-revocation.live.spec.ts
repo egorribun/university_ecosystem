@@ -23,6 +23,72 @@ type LiveMessage = {
 type LiveChatPage = { items: LiveGroup[]; has_more: boolean; next_cursor: string | null }
 type MutationResult = { status: number; body: unknown }
 type ChatDeleteResult = { chat_id: string; deleted_attachments: number }
+type GroupMessageEvent = { chatId: string; content: string }
+type SocketObservation = {
+  connections: number
+  closedConnections: number
+  roomJoins: string[]
+  newMessages: GroupMessageEvent[]
+}
+
+function parseSocketFrame(payload: string | Buffer): unknown {
+  try {
+    return JSON.parse(typeof payload === "string" ? payload : payload.toString("utf8")) as unknown
+  } catch {
+    return null
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function findRoomJoins(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(findRoomJoins)
+  if (!isRecord(value)) return []
+
+  const rooms: string[] = []
+  if (value.type === "join" && typeof value.room === "string") rooms.push(value.room)
+  return [...rooms, ...Object.values(value).flatMap(findRoomJoins)]
+}
+
+function findNewMessages(value: unknown): GroupMessageEvent[] {
+  if (Array.isArray(value)) return value.flatMap(findNewMessages)
+  if (!isRecord(value)) return []
+
+  const events: GroupMessageEvent[] = []
+  if (
+    value.type === "new_message" &&
+    typeof value.chat_id === "string" &&
+    isRecord(value.message) &&
+    typeof value.message.content === "string"
+  ) {
+    events.push({ chatId: value.chat_id, content: value.message.content })
+  }
+  return [...events, ...Object.values(value).flatMap(findNewMessages)]
+}
+
+function observeSocket(page: Page): SocketObservation {
+  const observation: SocketObservation = {
+    connections: 0,
+    closedConnections: 0,
+    roomJoins: [],
+    newMessages: [],
+  }
+  page.on("websocket", (socket) => {
+    observation.connections += 1
+    socket.on("close", () => {
+      observation.closedConnections += 1
+    })
+    socket.on("framesent", (frame) => {
+      observation.roomJoins.push(...findRoomJoins(parseSocketFrame(frame.payload)))
+    })
+    socket.on("framereceived", (frame) => {
+      observation.newMessages.push(...findNewMessages(parseSocketFrame(frame.payload)))
+    })
+  })
+  return observation
+}
 
 async function currentUser(page: Page): Promise<LiveUser> {
   const response = await page.request.get("/api/v1/users/me")
@@ -194,7 +260,7 @@ async function cleanupOwnedGroup(
 test.use({ trace: "off", screenshot: "off" })
 
 test.describe("live Messenger membership revocation", () => {
-  test("a removed member loses detail, history, reactor, and attachment access", async ({
+  test("a removed member loses detail, history, reactor, attachment, send, and live access", async ({
     browser,
     page,
   }, testInfo) => {
@@ -225,6 +291,9 @@ test.describe("live Messenger membership revocation", () => {
       const removedPage = await removedContext.newPage()
       const remainingPage = await remainingContext.newPage()
       adminPage = await adminContext.newPage()
+      const ownerSocket = observeSocket(page)
+      const removedSocket = observeSocket(removedPage)
+      const remainingSocket = observeSocket(remainingPage)
 
       await loginAs(page, "student")
       await loginAs(removedPage, "teacher")
@@ -259,6 +328,9 @@ test.describe("live Messenger membership revocation", () => {
       await page.goto(`/messenger/${groupId}`)
       await removedPage.goto(`/messenger/${groupId}`)
       await remainingPage.goto(`/messenger/${groupId}`)
+      await expect
+        .poll(() => removedSocket.roomJoins.filter((room) => room === groupId).length)
+        .toBeGreaterThan(0)
 
       const messageContent = `membership-revocation-message-${randomUUID()}`
       const attachmentContent = Buffer.from(`membership-revocation-file-${randomUUID()}`, "utf8")
@@ -336,6 +408,31 @@ test.describe("live Messenger membership revocation", () => {
         })
         .toBe(true)
 
+      const initialConnectionCount = removedSocket.connections
+      const initialClosedConnectionCount = removedSocket.closedConnections
+      const initialRoomJoinCount = removedSocket.roomJoins.filter((room) => room === groupId).length
+      expect(initialConnectionCount).toBeGreaterThan(0)
+      expect(initialRoomJoinCount).toBeGreaterThan(0)
+      await removedPage.reload()
+      await expect
+        .poll(() => removedSocket.closedConnections)
+        .toBeGreaterThan(initialClosedConnectionCount)
+      await expect.poll(() => removedSocket.connections).toBeGreaterThan(initialConnectionCount)
+      await expect
+        .poll(() => removedSocket.roomJoins.filter((room) => room === groupId).length)
+        .toBeGreaterThan(initialRoomJoinCount)
+      await expect(removedPage.locator("#chat-message-input")).toHaveCount(0)
+      await expect(removedPage.getByText(messageContent, { exact: true })).toHaveCount(0)
+
+      const postRevocationAttempt = `membership-revocation-denied-send-${randomUUID()}`
+      const revokedSend = await sameOriginMutation(
+        removedPage,
+        `/api/v1/chats/${groupId}/messages`,
+        "POST",
+        { content: postRevocationAttempt }
+      )
+      expect(isDenied(revokedSend.status)).toBe(true)
+
       const revokedReads = await Promise.all([
         removedPage.request.get(`/api/v1/chats/${groupId}`),
         removedPage.request.get(`/api/v1/chats/${groupId}/messages?limit=100`),
@@ -352,6 +449,51 @@ test.describe("live Messenger membership revocation", () => {
       expect(ownerSnapshotResponse.ok()).toBe(true)
       const ownerSnapshot = (await ownerSnapshotResponse.json()) as LiveGroup
       expectOwnedGroup(ownerSnapshot, groupId, groupName, owner.id, remainingParticipants)
+
+      const postRevocationMessage = `membership-revocation-remains-live-${randomUUID()}`
+      const remainingMessageResponsePromise = page.waitForResponse((response) => {
+        const request = response.request()
+        return (
+          request.method() === "POST" &&
+          new URL(response.url()).pathname === `/api/v1/chats/${groupId}/messages`
+        )
+      })
+      await page.locator("#chat-message-input").fill(postRevocationMessage)
+      await page.locator("#chat-send-btn").click()
+      const remainingMessageResponse = await remainingMessageResponsePromise
+      expect(remainingMessageResponse.ok()).toBe(true)
+
+      for (const socket of [ownerSocket, remainingSocket]) {
+        await expect
+          .poll(() =>
+            socket.newMessages.some(
+              (event) => event.chatId === groupId && event.content === postRevocationMessage
+            )
+          )
+          .toBe(true)
+      }
+      for (const memberPage of [page, remainingPage]) {
+        await expect(memberPage.getByText(messageContent, { exact: true })).toBeVisible()
+        await expect(memberPage.getByText(postRevocationMessage, { exact: true })).toBeVisible()
+      }
+      expect(
+        removedSocket.newMessages.some(
+          (event) => event.chatId === groupId && event.content === postRevocationMessage
+        )
+      ).toBe(false)
+
+      const authorizedHistories = await Promise.all([
+        page.request.get(`/api/v1/chats/${groupId}/messages?limit=100`),
+        remainingPage.request.get(`/api/v1/chats/${groupId}/messages?limit=100`),
+      ])
+      expect(authorizedHistories.every((response) => response.ok())).toBe(true)
+      for (const historyResponse of authorizedHistories) {
+        const history = (await historyResponse.json()) as {
+          items: { content: string }[]
+        }
+        expect(history.items.some((item) => item.content === messageContent)).toBe(true)
+        expect(history.items.some((item) => item.content === postRevocationMessage)).toBe(true)
+      }
     } finally {
       try {
         let groupToClean = group

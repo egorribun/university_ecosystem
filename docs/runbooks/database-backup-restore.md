@@ -112,35 +112,39 @@ ownership.
 
 ## Restore a paired snapshot into isolated targets
 
-Pre-create a new empty object bucket for the restore, distinct from both the
-source object bucket and `BACKUP_S3_BUCKET`. Configure
+Choose an object bucket distinct from both the source object bucket and
+`BACKUP_S3_BUCKET`. The restore target is a required bucket and prefix pair;
+the prefix may be empty when restoring keys at the bucket root. The selected
+prefix must have no current objects, versions, delete markers, or incomplete
+multipart uploads. Configure
 `BACKUP_RESTORE_ADMIN_DATABASE_URL` to a PostgreSQL administrative database,
 choose a nonexistent database named `restore_<name>`, and run:
 
 ~~~powershell
-uv run python scripts/backup_db.py restore-snapshot --manifest-key database/snapshots/<snapshot-id>/database.manifest.json --target-database restore_university_demo --objects-target-bucket university-restore-20261001
+uv run python scripts/backup_db.py restore-snapshot --manifest-key database/snapshots/<snapshot-id>/database.manifest.json --target-database restore_university_demo --objects-target-bucket university-restore-20261001 --objects-target-prefix restore-20261001
 ~~~
 
 Before writes, restore validates the v2 manifest, downloads and verifies the
 database dump and every unique object copy, checks that the database target
-does not exist, and checks that the target bucket has no current objects,
-versions, delete markers, or incomplete multipart uploads. The target S3
-endpoint must support `ListObjectVersions`, `ListMultipartUploads`, pinned
+does not exist, and checks that the selected target prefix has no current
+objects, versions, delete markers, or incomplete multipart uploads. To restore
+at the bucket root, pass `--objects-target-prefix ""` explicitly. The target
+S3 endpoint must support `ListObjectVersions`, `ListMultipartUploads`, pinned
 `GetObject` reads, and `If-None-Match: *` for `PutObject` and
 `CompleteMultipartUpload`. Unsupported or incomplete preflight/conditional
-operations fail closed. The destination checks its empty inventory first;
-conditional creates then prevent a concurrent writer from replacing an
-object. Object bytes are restored under their original keys, and listed HTTP
-metadata is preserved.
+operations fail closed. Conditional creates prevent a concurrent writer from
+replacing an object. Object bytes are restored under
+`<target-prefix>/<original-key>`, and listed HTTP metadata is preserved.
 
 The restore is isolated, not a distributed transaction. PostgreSQL and S3 do
 not share an atomic commit. If the command stops after the database restore or
 some object writes, it leaves the newly created database and any target
 objects untouched for inspection; it never removes source data or performs
-best-effort cleanup. Keep the target database and bucket disconnected from the
-application until the command succeeds and an operator validates the result.
-After a partial restore, inspect the isolated targets and use new empty target
-names for another attempt. The script never overwrites a database or object.
+best-effort cleanup. Keep the target database and object prefix disconnected
+from the application until the command succeeds and an operator validates the
+result. After a partial restore, inspect the isolated targets and use a new
+database name and empty object prefix for another attempt. The script never
+overwrites a database or object.
 
 ## Scope and limits
 

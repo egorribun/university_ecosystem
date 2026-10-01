@@ -141,6 +141,9 @@ func TestHandleWebTransport_SuccessRegistersCanonicalTicketIdentity(t *testing.T
 		}
 		return false
 	}, time.Second, time.Millisecond, "successful WebTransport upgrade did not register a client")
+	if client == nil {
+		t.Fatal("successful WebTransport upgrade registered a nil client")
+	}
 	{
 		assert.Equal(t, "user-wt", client.UserID)
 		assert.NotEmpty(t, client.ID)

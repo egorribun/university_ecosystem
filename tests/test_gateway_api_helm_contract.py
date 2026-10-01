@@ -15,6 +15,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "university-ecosystem"
+HELM = shutil.which("helm")
 API_VERSIONS = (
     "gateway.networking.k8s.io/v1/Gateway",
     "gateway.networking.k8s.io/v1/HTTPRoute",
@@ -25,10 +26,8 @@ API_VERSIONS = (
 
 
 def _helm() -> str:
-    executable = shutil.which("helm")
-    if executable is None:
-        pytest.skip("Helm is not installed")
-    return executable
+    assert HELM is not None, "Helm-dependent tests must be marked at collection"
+    return HELM
 
 
 def _render(
@@ -76,6 +75,7 @@ def _resources(*overrides: str) -> list[dict[str, Any]]:
 
 def _render_gateway_template_isolated(
     *overrides: str,
+    client_ip_detection: str = '{"directSourceIP":{}}',
 ) -> subprocess.CompletedProcess[str]:
     """Render the production Gateway template without the chart-wide fail gate.
 
@@ -112,6 +112,8 @@ def _render_gateway_template_isolated(
             "gatewayApi.enabled=true",
             "--set",
             "ingress.enabled=false",
+            "--set-json",
+            f"gatewayApi.clientIPDetection={client_ip_detection}",
             "--set-string",
             r"gatewayApi.networkPolicy.namespaceSelector.kubernetes\.io/metadata\.name=envoy-gateway-system",
             "--set-string",
@@ -192,6 +194,8 @@ def _gateway_api_overrides(*extra: str) -> tuple[str, ...]:
     return (
         "--set",
         "gatewayApi.enabled=true",
+        "--set-json",
+        'gatewayApi.clientIPDetection={"directSourceIP":{}}',
         "--set-string",
         r"gatewayApi.networkPolicy.namespaceSelector.kubernetes\.io/metadata\.name=envoy-gateway-system",
         "--set-string",
@@ -200,6 +204,7 @@ def _gateway_api_overrides(*extra: str) -> tuple[str, ...]:
     )
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_gateway_api_is_disabled_by_default() -> None:
     resources = _resources()
 
@@ -233,21 +238,26 @@ def test_gateway_api_route_values_keep_api_auth_and_ws_ownership_distinct() -> N
     ]
 
 
-def test_gateway_api_template_emits_no_gateway_wide_limit_policy() -> None:
+def test_gateway_api_template_keeps_buffer_route_scoped_and_rate_client_distinct() -> (
+    None
+):
     template = (CHART / "templates" / "gateway-api.yaml").read_text(encoding="utf-8")
 
-    # The request body limit is attached only to a dedicated versioned API
-    # route; do not promote it to Gateway scope where upgrades may hang.
+    # Body buffering stays on the isolated versioned API route. The rate
+    # policy targets the Gateway so Envoy Gateway applies its local counters
+    # to each route, with distinct source-IP buckets.
     assert "kind: BackendTrafficPolicy" in template
     assert "kind: HTTPRoute" in template
     assert "value: /api/v1" in template
     assert "targetRefs:" in template
-    assert "kind: HTTPRoute" in template
     assert "requestBuffer:" in template
-    assert "rateLimit:" not in template
+    assert "rateLimit:" in template
+    assert "kind: Gateway" in template
+    assert "type: Distinct" in template
     assert "connectionLimit:" not in template
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_gateway_api_request_buffer_is_attached_only_to_isolated_api_route() -> None:
     result = _render_gateway_template_isolated()
     assert result.returncode == 0, result.stderr
@@ -266,6 +276,7 @@ def test_gateway_api_request_buffer_is_attached_only_to_isolated_api_route() -> 
         resource
         for resource in resources
         if resource.get("kind") == "BackendTrafficPolicy"
+        and "requestBuffer" in resource.get("spec", {})
     ]
     assert len(policies) == 1
     policy = policies[0]
@@ -302,6 +313,133 @@ def test_gateway_api_request_buffer_is_attached_only_to_isolated_api_route() -> 
         "/",
         "/.well-known",
     }
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+def test_gateway_api_renders_per_source_ip_local_rate_policy_and_selected_ip_mode() -> (
+    None
+):
+    result = _render_gateway_template_isolated()
+    assert result.returncode == 0, result.stderr
+    resources = [
+        resource
+        for resource in yaml.safe_load_all(result.stdout)
+        if isinstance(resource, dict)
+    ]
+
+    rate_policies = [
+        resource
+        for resource in resources
+        if resource.get("kind") == "BackendTrafficPolicy"
+        and "rateLimit" in resource.get("spec", {})
+    ]
+    assert len(rate_policies) == 1
+    policy = rate_policies[0]
+    assert policy["spec"]["targetRefs"] == [
+        {
+            "group": "gateway.networking.k8s.io",
+            "kind": "Gateway",
+            "name": "gateway-contract-university-ecosystem",
+        }
+    ]
+    rules = policy["spec"]["rateLimit"]["local"]["rules"]
+    assert len(rules) == 2
+    assert [rule["clientSelectors"][0]["sourceCIDR"] for rule in rules] == [
+        {"type": "Distinct", "value": "0.0.0.0/0"},
+        {"type": "Distinct", "value": "::/0"},
+    ]
+    assert [rule["limit"] for rule in rules] == [
+        {"requests": 50, "unit": "Second"},
+        {"requests": 50, "unit": "Second"},
+    ]
+    assert all("burst" not in rule["limit"] for rule in rules)
+
+    client_policies = [
+        resource
+        for resource in resources
+        if resource.get("kind") == "ClientTrafficPolicy"
+    ]
+    tls_policy = next(
+        resource
+        for resource in client_policies
+        if resource["metadata"]["name"].endswith("-tls-policy")
+    )
+    http_client_ip_policy = next(
+        resource
+        for resource in client_policies
+        if "-cip-" in resource["metadata"]["name"]
+    )
+    assert tls_policy["spec"]["clientIPDetection"] == {"directSourceIP": {}}
+    assert tls_policy["spec"]["tls"] == {"minVersion": "1.3"}
+    assert {
+        target["sectionName"] for target in http_client_ip_policy["spec"]["targetRefs"]
+    } == {"http-0", "http-1"}
+    assert http_client_ip_policy["spec"]["clientIPDetection"] == {"directSourceIP": {}}
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+def test_gateway_api_renders_operator_selected_trusted_xff_mode() -> None:
+    result = _render_gateway_template_isolated(
+        client_ip_detection='{"xForwardedFor":{"numTrustedHops":2}}'
+    )
+    assert result.returncode == 0, result.stderr
+    resources = [
+        resource
+        for resource in yaml.safe_load_all(result.stdout)
+        if isinstance(resource, dict)
+    ]
+    policies = [
+        resource
+        for resource in resources
+        if resource.get("kind") == "ClientTrafficPolicy"
+    ]
+    assert len(policies) == 2
+    assert all(
+        policy["spec"]["clientIPDetection"] == {"xForwardedFor": {"numTrustedHops": 2}}
+        for policy in policies
+    )
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+def test_gateway_api_renders_operator_selected_trusted_xff_cidrs_for_each_listener() -> (
+    None
+):
+    selected_mode = {
+        "xForwardedFor": {"trustedCIDRs": ["192.0.2.0/24", "2001:db8::/32"]}
+    }
+    result = _render_gateway_template_isolated(
+        client_ip_detection=json.dumps(selected_mode, separators=(",", ":"))
+    )
+    assert result.returncode == 0, result.stderr
+    policies = [
+        resource
+        for resource in yaml.safe_load_all(result.stdout)
+        if isinstance(resource, dict) and resource.get("kind") == "ClientTrafficPolicy"
+    ]
+    assert len(policies) == 2
+    https_policy = next(
+        policy
+        for policy in policies
+        if policy["metadata"]["name"].endswith("-tls-policy")
+    )
+    http_policy = next(
+        policy for policy in policies if "-cip-" in policy["metadata"]["name"]
+    )
+    assert https_policy["spec"]["clientIPDetection"] == selected_mode
+    assert http_policy["spec"]["clientIPDetection"] == selected_mode
+    assert {target["sectionName"] for target in https_policy["spec"]["targetRefs"]} == {
+        "https-0",
+        "https-1",
+    }
+    assert {target["sectionName"] for target in http_policy["spec"]["targetRefs"]} == {
+        "http-0",
+        "http-1",
+    }
+    assert all(
+        target["kind"] == "Gateway" and target["group"] == "gateway.networking.k8s.io"
+        for policy in policies
+        for target in policy["spec"]["targetRefs"]
+    )
 
 
 def test_gateway_api_template_preserves_tls_redirect_and_route_dispatch() -> None:
@@ -370,6 +508,9 @@ def test_gateway_api_blocker_matches_the_retained_ingress_limit_contract() -> No
     assert "concurrent-buffer memory budget" in validation
     assert "50 requests/second with 5x per-client burst" in validation
     assert "20 concurrent connections per client" in validation
+    assert "local sourceCIDR Distinct rule rendered here" in validation
+    assert "per Envoy proxy and per route" in validation
+    assert "RateLimitValue has no burst field" in validation
 
 
 def test_gateway_api_v19_buffer_memory_and_scope_limitations_are_documented() -> None:
@@ -379,9 +520,13 @@ def test_gateway_api_v19_buffer_memory_and_scope_limitations_are_documented() ->
     assert "BackendTrafficPolicy.requestBuffer" in documentation
     assert "fully buffers each request" in documentation
     assert "concurrent-buffer memory budget" in documentation
-    assert "does not prove the existing" in documentation
+    assert "sourceCIDR.type: Distinct" in documentation
+    assert "gatewayApi.clientIPDetection" in documentation
+    assert "not the ingress-wide 50/250" in documentation
+    assert "local-rate-limit" in documentation
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_gateway_api_network_policy_changes_keep_default_deny_and_narrow_peers() -> (
     None
 ):
@@ -454,6 +599,7 @@ def test_gateway_api_network_policy_changes_keep_default_deny_and_narrow_peers()
         assert "to:" not in block
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_gateway_api_network_policy_replaces_the_legacy_ingress_peer() -> None:
     ingress_result = _render_network_policy_template_isolated(
         "--set", "ingress.enabled=true"
@@ -519,13 +665,30 @@ def test_gateway_api_network_policy_replaces_the_legacy_ingress_peer() -> None:
         assert len(gateway_peers[component][1]) == 1
 
 
-def test_gateway_api_fails_closed_until_per_client_policy_parity_is_implemented() -> (
-    None
-):
-    result = _render(*_gateway_api_overrides("--set", "ingress.enabled=false"))
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+@pytest.mark.parametrize(
+    "client_ip_detection",
+    [
+        '{"directSourceIP":{}}',
+        '{"xForwardedFor":{"trustedCIDRs":["192.0.2.0/24","2001:db8::/32"]}}',
+    ],
+    ids=("direct-source", "trusted-xff-cidrs"),
+)
+def test_gateway_api_fails_closed_until_per_client_policy_parity_is_implemented(
+    client_ip_detection: str,
+) -> None:
+    result = _render(
+        *_gateway_api_overrides(
+            "--set",
+            "ingress.enabled=false",
+            "--set-json",
+            f"gatewayApi.clientIPDetection={client_ip_detection}",
+        )
+    )
 
     assert result.returncode != 0
     assert "gatewayApi.enabled is blocked" in result.stderr
+    assert "clientIPDetection" not in result.stderr
     assert "isolated /api/v1 HTTPRoute" in result.stderr
     assert "concurrent-buffer memory budget" in result.stderr
     assert "50 requests/second with 5x per-client burst" in result.stderr
@@ -534,6 +697,7 @@ def test_gateway_api_fails_closed_until_per_client_policy_parity_is_implemented(
     assert "requestBuffer" in result.stderr
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_gateway_api_requires_proxy_selectors_and_is_exclusive_with_ingress() -> None:
     missing_selectors = _render(
         "--set",
@@ -553,6 +717,55 @@ def test_gateway_api_requires_proxy_selectors_and_is_exclusive_with_ingress() ->
     )
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+def test_gateway_api_requires_operator_selected_client_ip_detection() -> None:
+    result = _render(
+        "--set",
+        "gatewayApi.enabled=true",
+        "--set",
+        "ingress.enabled=false",
+        "--set-string",
+        r"gatewayApi.networkPolicy.namespaceSelector.kubernetes\.io/metadata\.name=envoy-gateway-system",
+        "--set-string",
+        r"gatewayApi.networkPolicy.podSelector.app\.kubernetes\.io/name=envoyproxy",
+    )
+
+    assert result.returncode != 0
+    assert "gatewayApi.clientIPDetection must select exactly one" in result.stderr
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+def test_gateway_api_schema_rejects_conflicting_client_ip_modes() -> None:
+    result = _render(
+        "--set-json",
+        'gatewayApi.clientIPDetection={"directSourceIP":{},"xForwardedFor":{"numTrustedHops":1}}',
+    )
+
+    assert result.returncode != 0
+    assert "clientIPDetection" in result.stderr
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
+@pytest.mark.parametrize(
+    "client_ip_detection",
+    [
+        '{"xForwardedFor":{"numTrustedHops":2,"trustedCIDRs":["192.0.2.0/24"]}}',
+        '{"xForwardedFor":{}}',
+    ],
+    ids=("hops-and-cidrs", "empty-x-forwarded-for"),
+)
+def test_gateway_api_schema_rejects_ambiguous_or_empty_xff_configuration(
+    client_ip_detection: str,
+) -> None:
+    result = _render(
+        "--set-json", f"gatewayApi.clientIPDetection={client_ip_detection}"
+    )
+
+    assert result.returncode != 0
+    assert "clientIPDetection" in result.stderr
+
+
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_gateway_api_rejects_ingress_only_path_types() -> None:
     result = _render(
         *_gateway_api_overrides(
@@ -573,6 +786,7 @@ def test_gateway_api_rejects_ingress_only_path_types() -> None:
     assert "supports only Exact and Prefix ingress pathTypes" in result.stderr
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_gateway_api_requires_its_controller_crds() -> None:
     result = _render(
         *_gateway_api_overrides("--set", "ingress.enabled=false"),
@@ -583,6 +797,7 @@ def test_gateway_api_requires_its_controller_crds() -> None:
     assert "Gateway API and Envoy Gateway CRDs must be installed" in result.stderr
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_gateway_api_requires_backend_traffic_policy_crd_for_request_buffer() -> None:
     result = _render(
         *_gateway_api_overrides("--set", "ingress.enabled=false"),
@@ -601,10 +816,20 @@ def test_gateway_api_values_schema_is_typed_and_closed() -> None:
     assert gateway_api["required"] == [
         "enabled",
         "gatewayClassName",
+        "clientIPDetection",
+        "rateLimit",
         "requestBuffer",
         "networkPolicy",
     ]
     assert gateway_api["properties"]["enabled"]["type"] == "boolean"
+    assert gateway_api["properties"]["clientIPDetection"]["maxProperties"] == 1
+    assert gateway_api["properties"]["clientIPDetection"]["properties"].keys() == {
+        "directSourceIP",
+        "xForwardedFor",
+    }
+    assert gateway_api["properties"]["rateLimit"]["properties"]["requests"]["enum"] == [
+        50
+    ]
     assert "securityPolicyParityConfirmed" not in gateway_api["properties"]
     assert gateway_api["properties"]["requestBuffer"]["required"] == ["limit"]
     assert gateway_api["properties"]["requestBuffer"]["properties"]["limit"][
@@ -616,6 +841,7 @@ def test_gateway_api_values_schema_is_typed_and_closed() -> None:
     ]
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_gateway_api_rejects_body_limit_drift_from_ingress_contract() -> None:
     result = _render(
         "--set-string",
@@ -626,6 +852,7 @@ def test_gateway_api_rejects_body_limit_drift_from_ingress_contract() -> None:
     assert "50Mi" in result.stderr
 
 
+@pytest.mark.skipif(HELM is None, reason="Helm is not installed")
 def test_gateway_api_rejects_the_removed_self_attested_parity_toggle() -> None:
     result = _render(
         "--set",

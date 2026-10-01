@@ -42,6 +42,11 @@ SKIP_PATTERNS = [
     (re.compile(r"\bit\.skip\("), "JS/TS dynamic skip (it.skip) found"),
 ]
 
+_TYPESCRIPT_FILE_REFERENCE = re.compile(
+    r"\breadFileSync\s*\(\s*resolve\s*\(\s*process\.cwd\(\)\s*,\s*(?P<quote>['\"])(?P<path>[^'\"]+)(?P=quote)\s*\)",
+    re.DOTALL,
+)
+
 
 def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -73,8 +78,8 @@ class PythonTestVisitor(ast.NodeVisitor):
     def __init__(self, file_path: Path, errors: list[str]) -> None:
         self.file_path = file_path
         self.errors = errors
-        self.scopes = [set()]  # Scope stack, index 0 is module scope
-        self.imported_modules = set()
+        self.scopes: list[set[str]] = [set()]  # Scope stack, index 0 is module scope
+        self.imported_modules: set[str] = set()
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self.scopes.append(set())
@@ -359,9 +364,9 @@ class _ModuleBindingVisitor(ast.NodeVisitor):
     def _visit_arguments_defaults(self, arguments: ast.arguments) -> None:
         for default in arguments.defaults:
             self.visit(default)
-        for default in arguments.kw_defaults:
-            if default is not None:
-                self.visit(default)
+        for keyword_default in arguments.kw_defaults:
+            if keyword_default is not None:
+                self.visit(keyword_default)
 
     def _visit_function_definition_expressions(
         self, node: ast.FunctionDef | ast.AsyncFunctionDef
@@ -568,6 +573,47 @@ def find_python_repository_references(file_path: Path) -> set[str]:
     return references
 
 
+def find_typescript_repository_references(file_path: Path) -> set[str]:
+    """Return static package-relative files read by a TypeScript contract test."""
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except Exception:
+        return set()
+
+    repository_root = REPOSITORY_ROOT.resolve()
+    package_root = next(
+        (
+            parent.resolve()
+            for parent in file_path.resolve().parents
+            if parent == repository_root or repository_root in parent.parents
+            if (parent / "package.json").is_file()
+        ),
+        None,
+    )
+    if package_root is None:
+        return set()
+
+    references: set[str] = set()
+    for match in _TYPESCRIPT_FILE_REFERENCE.finditer(content):
+        target = match.group("path")
+        if (
+            not target
+            or target.startswith(("/", "\\"))
+            or "\\" in target
+            or "?" in target
+            or "#" in target
+            or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target)
+        ):
+            continue
+        candidate = (package_root / target).resolve()
+        try:
+            relative = candidate.relative_to(repository_root)
+        except ValueError:
+            continue
+        references.add(relative.as_posix())
+    return references
+
+
 def _references_inventory_target(
     repository_references: set[str], reference_paths: set[str]
 ) -> bool:
@@ -703,6 +749,14 @@ def matches_source(
         if test_path.startswith(folder + "/"):
             return True
 
+    # Static repository-file reads are direct contract dependencies across
+    # languages. Accept them only when their resolved target exists in the
+    # inventory as a non-test path.
+    if repository_references and _references_inventory_target(
+        repository_references, reference_paths or set()
+    ):
+        return True
+
     # Remove test/test_ prefix/suffix
     path_obj = Path(test_path)
     name = path_obj.name
@@ -733,15 +787,6 @@ def matches_source(
                 module_path = module.replace(".", "/") + ".py"
                 if module_path in reference_paths:
                     return True
-
-        # Contract tests often validate authored repository assets that are not
-        # executable runtime source: migrations, Helm charts, hooks, schemas,
-        # or quality scripts. Accept only AST-resolved Path expressions that
-        # point to a real non-test inventory target.
-        if repository_references and _references_inventory_target(
-            repository_references, reference_paths or set()
-        ):
-            return True
 
         base_name = name[5:]  # Remove 'test_'
         base_name_clean = base_name.replace(".py", "")
@@ -880,8 +925,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         manifest = json.loads(args.inventory.read_text(encoding="utf-8"))
         mapping = json.loads(args.mapping.read_text(encoding="utf-8"))
-    except Exception as error:
-        print(f"ERROR: failed to parse config/manifest: {error}", file=sys.stderr)
+    except Exception as parse_error:
+        print(
+            f"ERROR: failed to parse config/manifest: {parse_error}",
+            file=sys.stderr,
+        )
         return 2
 
     allowed_sleeps = mapping.get("allowed_sleeps", [])
@@ -921,6 +969,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if path_str.endswith(".py") and classification == "test":
             imported_modules = check_python_duplicates_and_imports(file_path, errors)
             repository_references = find_python_repository_references(file_path)
+        elif path_str.endswith((".test.ts", ".test.tsx")) and classification == "test":
+            repository_references = find_typescript_repository_references(file_path)
 
         # 3. Orphan Tests Check
         if classification == "test":
@@ -947,8 +997,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
     if errors:
-        for error in sorted(set(errors)):
-            print(error, file=sys.stderr)
+        for violation in sorted(set(errors)):
+            print(violation, file=sys.stderr)
         print(
             f"\nVerification FAILED. Found {len(set(errors))} violations.",
             file=sys.stderr,

@@ -20,7 +20,7 @@ test("membership-revocation live acceptance uses an owned synthetic group", () =
   assert.match(config, /testMatch:\s*\/\.\*\\\.live\\\.spec\\\.ts\$\//u)
   assert.match(
     spec,
-    /test\("a removed member loses detail, history, reactor, and attachment access"/u
+    /test\("a removed member loses detail, history, reactor, attachment, send, and live access"/u
   )
   assert.match(spec, /GROUP_CHAT_ACCOUNTS\.secondMember/u)
   assert.match(spec, /randomUUID\(\)/u)
@@ -69,6 +69,45 @@ test("the former member proves all four reads before and after actual revocation
   assert.match(spec, /credentials:\s*["']same-origin["']/u)
   assert.match(chatRouter, /@router\.delete\([\s\S]*?\/\{chat_id\}\/participants\/\{user_id\}/u)
   assert.match(chatRouter, /@router\.get\([\s\S]*?\/\{chat_id\}\/attachments\/\{filename:path\}/u)
+})
+
+test("refresh and WebSocket reconnect remove the former member's app, send, and fan-out access", () => {
+  const scenarioStart = spec.indexOf(
+    'test("a removed member loses detail, history, reactor, attachment, send, and live access"'
+  )
+  assert.notEqual(scenarioStart, -1, "the revocation scenario must remain explicit")
+  const cleanupStart = spec.indexOf("    } finally {", scenarioStart)
+  assert.ok(
+    cleanupStart > scenarioStart,
+    "the revocation scenario cleanup boundary must remain explicit"
+  )
+  const scenario = spec.slice(scenarioStart, cleanupStart)
+
+  assert.match(scenario, /const removedSocket = observeSocket\(removedPage\)/u)
+  assert.match(scenario, /await removedPage\.reload\(\)/u)
+  assert.match(scenario, /removedSocket\.roomJoins[\s\S]*?toBeGreaterThan\(initialRoomJoinCount\)/u)
+  assert.match(scenario, /removedPage\.locator\("#chat-message-input"\)\)\.toHaveCount\(0\)/u)
+  assert.match(
+    scenario,
+    /removedPage\.getByText\(messageContent, \{ exact: true \}\)\)\.toHaveCount\(0\)/u
+  )
+  assert.match(
+    scenario,
+    /sameOriginMutation\([\s\S]*?removedPage[\s\S]*?"POST"[\s\S]*?postRevocationAttempt/u
+  )
+  assert.match(scenario, /expect\(isDenied\(revokedSend\.status\)\)\.toBe\(true\)/u)
+  assert.match(scenario, /postRevocationMessage/u)
+  assert.match(
+    scenario,
+    /expect\(\s*removedSocket\.newMessages\.some\([\s\S]*?postRevocationMessage[\s\S]*?\)\s*\)\.toBe\(false\)/u
+  )
+  assert.match(scenario, /const authorizedHistories/u)
+  assert.match(scenario, /remainingPage\.request\.get\([\s\S]*?messages\?limit=/u)
+  assert.match(scenario, /item\.content === postRevocationMessage[\s\S]*?toBe\(true\)/u)
+  assert.match(
+    scenario,
+    /for \(const memberPage of \[page, remainingPage\]\)[\s\S]*?getByText\(messageContent, \{ exact: true \}\)\)\.toBeVisible\(\)[\s\S]*?getByText\(postRevocationMessage, \{ exact: true \}\)\)\.toBeVisible\(\)/u
+  )
 })
 
 test("cleanup is owner-bounded and the live report cannot capture chat payloads", () => {

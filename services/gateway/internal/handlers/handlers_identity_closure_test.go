@@ -13,7 +13,7 @@ import (
 )
 
 func TestProxyHandlerReplacesClientIdentityWithTenantBoundSignature(t *testing.T) {
-	const secret = "synthetic-identity-closure-key"// pragma: allowlist secret -- synthetic HMAC test key
+	const secret = "synthetic-identity-closure-key" // pragma: allowlist secret -- synthetic HMAC test key
 
 	testCases := []struct {
 		name               string

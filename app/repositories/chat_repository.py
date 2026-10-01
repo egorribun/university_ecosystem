@@ -809,24 +809,32 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         affected = int(getattr(result, "rowcount", 0) or 0)
         return affected if affected > 0 else 0
 
-    async def get_reactors(self, message_id: uuid.UUID, emoji: str) -> list[User]:
+    async def get_reactors(
+        self,
+        message_id: uuid.UUID,
+        emoji: str,
+        *,
+        user_id: uuid.UUID,
+    ) -> list[User]:
         """Fetch the users who reacted to a message with a specific emoji (Wave 207).
 
         Powers the reactor-list "who reacted" popover. A direct JOIN of users →
-        message_reactions on the FK columns (no MessageReaction.user relationship
-        needed) returns the User rows in one query, oldest-reaction-first.
+        message_reactions and the RLS-protected Message row returns only reactors
+        for a message visible to the authenticated user, oldest-reaction-first.
         selectinload(User.profile) eagerly loads the profile (full_name + avatar_url
         live on UserProfile, a lazy="noload" relationship — without this they'd be
         None) so the service reads them in one extra SELECT, never an N+1. The
         (user_id, message_id, emoji) unique constraint guarantees one reaction row
         per user for this emoji, so the result is naturally distinct.
         """
+        await self._set_message_rls_user(user_id)
         stmt = (
             select(User)
             .join(MessageReaction, MessageReaction.user_id == User.id)
+            .join(Message, Message.id == MessageReaction.message_id)
             .where(
                 and_(
-                    MessageReaction.message_id == message_id,
+                    Message.id == message_id,
                     MessageReaction.emoji == emoji,
                 )
             )

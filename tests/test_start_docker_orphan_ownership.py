@@ -76,8 +76,9 @@ def _run_isolated_powershell(
     command_log: Path,
     *arguments: str,
 ) -> subprocess.CompletedProcess[str]:
-    if _POWERSHELL is None:
-        pytest.skip("PowerShell 7 (pwsh) is unavailable")
+    assert _POWERSHELL is not None, (
+        "PowerShell-dependent tests must be marked at collection"
+    )
     environment = os.environ.copy()
     environment["PATH"] = os.pathsep.join(
         (str(bin_directory), environment.get("PATH", ""))

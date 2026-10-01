@@ -355,6 +355,21 @@ def _validate_bucket_name(value: Any) -> str:
     return value
 
 
+def _validate_object_prefix(value: Any) -> str:
+    if value == "":
+        return ""
+    if not isinstance(value, str):
+        raise BackupArtifactError("Restore object prefix is invalid")
+    _validate_object_key(value)
+    return value
+
+
+def _restore_target_object_key(prefix: str, source_key: str) -> str:
+    key = f"{prefix}/{source_key}" if prefix else source_key
+    _validate_object_key(key)
+    return key
+
+
 def _manifest_version_id(value: Any, *, label: str) -> str | None:
     if value is None:
         return None
@@ -1544,32 +1559,44 @@ async def _list_current_objects(client: Any, bucket: str) -> list[dict[str, Any]
     return objects
 
 
-async def _require_empty_restore_bucket(client: Any, bucket: str) -> None:
+async def _require_empty_restore_bucket(client: Any, bucket: str, prefix: str) -> None:
+    inventory_prefix = f"{prefix}/" if prefix else ""
+    prefix_args = {"Prefix": inventory_prefix} if inventory_prefix else {}
     try:
-        current = await client.list_objects_v2(Bucket=bucket, MaxKeys=1)
-        versions = await client.list_object_versions(Bucket=bucket, MaxKeys=1)
-        uploads = await client.list_multipart_uploads(Bucket=bucket, MaxUploads=1)
+        current = await client.list_objects_v2(Bucket=bucket, MaxKeys=1, **prefix_args)
+        versions = await client.list_object_versions(
+            Bucket=bucket, MaxKeys=1, **prefix_args
+        )
+        uploads = await client.list_multipart_uploads(
+            Bucket=bucket, MaxUploads=1, **prefix_args
+        )
     except Exception:
         raise BackupArtifactError(
-            "Restore bucket emptiness and conditional-write prerequisites could not be verified"
+            "Restore object prefix emptiness and conditional-write prerequisites could not be verified"
         ) from None
+    contents = current.get("Contents", [])
+    stored_versions = versions.get("Versions", [])
+    delete_markers = versions.get("DeleteMarkers", [])
+    pending_uploads = uploads.get("Uploads", [])
     if (
         type(current.get("KeyCount")) is not int
         or current.get("KeyCount") != 0
         or current.get("IsTruncated") is not False
         or versions.get("IsTruncated") is not False
         or uploads.get("IsTruncated") is not False
+        or not isinstance(contents, list)
+        or not isinstance(stored_versions, list)
+        or not isinstance(delete_markers, list)
+        or not isinstance(pending_uploads, list)
     ):
-        raise BackupArtifactError("Restore bucket emptiness could not be established")
-    if (
-        current.get("Contents")
-        or versions.get("Versions")
-        or versions.get("DeleteMarkers")
-    ):
-        raise BackupArtifactError("Restore object bucket must be empty")
-    if uploads.get("Uploads"):
         raise BackupArtifactError(
-            "Restore object bucket has incomplete multipart uploads"
+            "Restore object prefix emptiness could not be established"
+        )
+    if contents or stored_versions or delete_markers:
+        raise BackupArtifactError("Restore object target prefix must be empty")
+    if pending_uploads:
+        raise BackupArtifactError(
+            "Restore object target prefix has incomplete multipart uploads"
         )
 
 
@@ -1712,13 +1739,13 @@ async def backup_paired_snapshot_to_s3(
                         )
                     source_version_id = _response_version_id(source_response)
                     archive_key = f"{snapshot_root}/objects/{checksum}.blob"
+                    prior_size = sizes_by_digest.get(checksum)
+                    if prior_size is not None and prior_size != size:
+                        raise BackupArtifactError(
+                            "Snapshot object digest has inconsistent lengths"
+                        )
                     receipt = receipts_by_digest.get(checksum)
                     if receipt is None:
-                        prior_size = sizes_by_digest.get(checksum)
-                        if prior_size is not None and prior_size != size:
-                            raise BackupArtifactError(
-                                "Snapshot object digest has inconsistent lengths"
-                            )
                         receipt = await _upload_file_create_only(
                             backup_client,
                             backup_settings.bucket,
@@ -1832,6 +1859,7 @@ async def restore_paired_snapshot_from_s3(
     backup_settings: S3Settings,
     target_storage_settings: S3Settings,
     target_object_bucket: str,
+    target_object_prefix: str,
     *,
     database_connect: Callable[..., Any] | None = None,
 ) -> PairedSnapshotManifest:
@@ -1841,6 +1869,7 @@ async def restore_paired_snapshot_from_s3(
     _validate_restore_target_name(target_database)
     _validate_restore_admin_database(admin_database_url, target_database)
     target_object_bucket = _validate_bucket_name(target_object_bucket)
+    target_object_prefix = _validate_object_prefix(target_object_prefix)
 
     with tempfile.TemporaryDirectory(prefix="university-paired-restore-") as temp_dir:
         temp_path = Path(temp_dir)
@@ -1855,6 +1884,12 @@ async def restore_paired_snapshot_from_s3(
                 backup_settings.bucket,
                 target_object_bucket,
             )
+            restored_keys = {
+                object_record.source_key: _restore_target_object_key(
+                    target_object_prefix, object_record.source_key
+                )
+                for object_record in manifest.objects
+            }
             database_record = manifest.database
             await _download_object_to_file(
                 backup_client,
@@ -1895,7 +1930,9 @@ async def restore_paired_snapshot_from_s3(
             admin_database_url, target_database, connect=database_connect
         )
         async with s3_client(target_storage_settings) as target_client:
-            await _require_empty_restore_bucket(target_client, target_object_bucket)
+            await _require_empty_restore_bucket(
+                target_client, target_object_bucket, target_object_prefix
+            )
 
             # The database remains isolated until the caller explicitly points an
             # application deployment at the target database and object bucket.
@@ -1912,7 +1949,7 @@ async def restore_paired_snapshot_from_s3(
                         receipt = await _upload_file_create_only(
                             target_client,
                             target_object_bucket,
-                            object_record.source_key,
+                            restored_keys[object_record.source_key],
                             source_path,
                             content_type=(
                                 object_record.content_type or "application/octet-stream"
@@ -1924,7 +1961,7 @@ async def restore_paired_snapshot_from_s3(
                         await _verify_uploaded_file(
                             target_client,
                             target_object_bucket,
-                            object_record.source_key,
+                            restored_keys[object_record.source_key],
                             source_path,
                             receipt=receipt,
                         )
@@ -2025,6 +2062,7 @@ def build_parser() -> argparse.ArgumentParser:
     restore_snapshot_parser.add_argument("--manifest-key", required=True)
     restore_snapshot_parser.add_argument("--target-database", required=True)
     restore_snapshot_parser.add_argument("--objects-target-bucket", required=True)
+    restore_snapshot_parser.add_argument("--objects-target-prefix", required=True)
     restore_snapshot_parser.add_argument(
         "--admin-database-url-env",
         default="BACKUP_RESTORE_ADMIN_DATABASE_URL",
@@ -2078,11 +2116,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     settings,
                     storage_s3_settings_from_environment(),
                     args.objects_target_bucket,
+                    args.objects_target_prefix,
                 )
             )
             print(
                 "Paired snapshot restored into isolated database "
-                f"{args.target_database} and object bucket {args.objects_target_bucket}"
+                f"{args.target_database} and object bucket "
+                f"{args.objects_target_bucket} at prefix "
+                f"{args.objects_target_prefix!r}"
             )
             return 0
         if args.operation == "restore":

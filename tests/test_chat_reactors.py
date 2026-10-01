@@ -85,7 +85,7 @@ class TestGetReactors:
         repo.message_exists_in_chat.assert_awaited_once_with(
             message_id, chat.id, user_id=user.id
         )
-        repo.get_reactors.assert_awaited_once_with(message_id, "👍")
+        repo.get_reactors.assert_awaited_once_with(message_id, "👍", user_id=user.id)
 
     @pytest.mark.asyncio
     async def test_empty_reactor_list_returns_empty(self) -> None:

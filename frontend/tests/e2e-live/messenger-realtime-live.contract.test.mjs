@@ -61,6 +61,54 @@ test("message, edit, delete, and reaction assertions observe real server respons
   assert.match(spec, /receiverMessageHistory\?\.reactions/u)
 })
 
+test("deleted message tombstones keep authorized history visible without reaction controls", () => {
+  const tombstoneStart = spec.indexOf(
+    'test("a message is delivered, edited, and tombstoned in the other authenticated session"'
+  )
+  assert.notEqual(tombstoneStart, -1, "the tombstone scenario must remain explicit")
+  const nextScenario = spec.indexOf(
+    'test("two direct-message deliveries keep sequence order',
+    tombstoneStart
+  )
+  assert.notEqual(nextScenario, -1, "the tombstone scenario boundary must remain explicit")
+  const tombstoneScenario = spec.slice(tombstoneStart, nextScenario)
+
+  assert.match(tombstoneScenario, /request\.method\(\) === "POST"[\s\S]*?\/reactions/u)
+  assert.match(
+    tombstoneScenario,
+    /getByRole\("button", \{ name: "Отреагировать 👍", exact: true \}\)/u
+  )
+  assert.match(
+    tombstoneScenario,
+    /const tombstone = messageLog\.getByText\("Сообщение удалено", \{ exact: true \}\)[\s\S]{0,100}await expect\(tombstone\)\.toBeVisible\(\)/u
+  )
+  assert.match(
+    tombstoneScenario,
+    /tombstoneRow\.getByRole\("button", \{ name: \/реакци\/i \}\)[\s\S]{0,100}\.toHaveCount\(0\)/u
+  )
+  assert.match(
+    tombstoneScenario,
+    /page\.request\.get\(`\/api\/v1\/chats\/\$\{chatId\}\/messages\?limit=50`\)/u
+  )
+  assert.match(
+    tombstoneScenario,
+    /receiverPage\.request\.get\(`\/api\/v1\/chats\/\$\{chatId\}\/messages\?limit=50`\)/u
+  )
+  assert.match(tombstoneScenario, /deleted_at:\s*string \| null/u)
+  assert.match(
+    tombstoneScenario,
+    /expect\(senderTombstone\)\.toMatchObject\(\{ id: sentMessage\.id, content: "" \}\)/u
+  )
+  assert.match(tombstoneScenario, /expect\(senderTombstone\?\.deleted_at\)\.toBeTruthy\(\)/u)
+  assert.match(
+    tombstoneScenario,
+    /expect\(receiverTombstone\)\.toMatchObject\(\{ id: sentMessage\.id, content: "" \}\)/u
+  )
+  assert.match(tombstoneScenario, /expect\(receiverTombstone\?\.deleted_at\)\.toBeTruthy\(\)/u)
+  assert.match(tombstoneScenario, /senderTombstone\?\.reactions/u)
+  assert.match(tombstoneScenario, /receiverTombstone\?\.reactions/u)
+})
+
 test("removing a reaction is delivered over WebSocket and clears both members' server history", () => {
   const reactionStart = spec.indexOf(
     'test("a receiver reaction is delivered to the sender over the live WebSocket"'
