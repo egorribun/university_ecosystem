@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import normalize_locale, translate
 from app.core.logging import get_logger
+from app.core.metrics import record_event_registration
 from app.models import Event
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas import schemas
@@ -331,6 +332,7 @@ class EventService:
             )
             async with self.uow:
                 await self.uow.commit()
+            record_event_registration()
         except IntegrityError as exc:
             await self.uow.rollback()
             # Race condition retry

@@ -38,7 +38,7 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.core.config import settings
-from app.core.metrics import record_redis_command
+from app.core.metrics import record_cache_hit, record_cache_miss, record_redis_command
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -212,6 +212,7 @@ class RedisCache(BaseCache):
             client = await self._get_client()
             raw = await client.get(key)
             if raw is None:
+                record_cache_miss("redis")
                 return None
             parsed = orjson.loads(raw)
             etag = str(parsed.get("etag", ""))
@@ -221,8 +222,10 @@ class RedisCache(BaseCache):
             if not stored_at:
                 stored_at = time_module.time()
             if not etag:
+                record_cache_miss("redis")
                 return None
             success = True
+            record_cache_hit("redis")
             return CacheEntry(
                 etag=etag,
                 payload=payload,

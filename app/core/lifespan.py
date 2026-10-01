@@ -347,6 +347,7 @@ async def _periodic_scheduler_loop() -> None:
         cleanup_privacy_artifacts_task,
         cleanup_sessions_task,
         cleanup_stories_task,
+        refresh_business_gauges_task,
     )
 
     async def _kick(task: Any) -> None:
@@ -392,6 +393,7 @@ async def _periodic_scheduler_loop() -> None:
                 cleanup_password_reset_tokens_task,
                 cleanup_email_change_tokens_task,
                 cleanup_mfa_challenges_task,
+                refresh_business_gauges_task,
             ]
 
             if now_utc.hour % 6 == 0:

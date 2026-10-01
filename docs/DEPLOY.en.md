@@ -365,7 +365,7 @@ The API runs one hourly scheduler (`app/core/lifespan.py::_periodic_scheduler_lo
 
 | Cadence | Jobs |
 |---|---|
-| every hour | expired stories, stale password-reset tokens, stale e-mail-change tokens, stale MFA challenges |
+| every hour | expired stories, stale password-reset tokens, stale e-mail-change tokens, stale MFA challenges, product gauges (active users, MFA adoption) |
 | every 6 hours | expired and revoked sessions |
 | daily at 02:00 UTC | stale notifications, dead-lettered notification-queue jobs, privacy artifacts (and CWV observations) |
 
