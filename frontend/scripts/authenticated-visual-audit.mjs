@@ -146,32 +146,12 @@ class RS256Error extends Error {
 }
 
 async function checkJwksEndpoint() {
-  // W143 SW1 follow-up — CI sidecar (run 25732174008) revealed the script was
-  // preferring the WRONG endpoint. Two JWKS endpoints exist in the backend:
-  //   - GET /.well-known/jwks.json — app/api/well_known.py (proper RSA JWKS
-  //     with kty=RSA + n + e fields per RFC 7517 / 7518; this is what Temporal
-  //     Server fetches via TEMPORAL_JWT_KEY_SOURCE1 per W142 SW3 v2)
-  //   - GET /api/v1/.well-known/jwks.json — app/api/internal/jwks.py (HMAC
-  //     metadata stub with kty=oct, NO key material; for ws-hub legacy rotation
-  //     polling per its own docstring)
-  //
-  // Pre-W143 the script preferred /api/v1/ first, which in CI returned the
-  // stub (kty=oct, no n+e) and passed the alg-only RS256 filter at line 151
-  // (the stub still has alg=RS256). This gave misleading "JWKS healthy"
-  // confirmation while masking the structural endpoint shape mismatch.
-  // W143 SW1 follow-up: prefer the ROOT URL first (Temporal's actual fetch
-  // target per docker-compose TEMPORAL_JWT_KEY_SOURCE1), keep /api/v1/ as
-  // fallback for ws-hub-routed deployments. Also tightens the validation
-  // to require key material (n + e for RSA keys) so a stub-shape response
-  // can no longer false-pass.
+  // The backend publishes one RSA JWKS at /.well-known/jwks.json
+  // (app/api/well_known.py). Temporal fetches it via TEMPORAL_JWT_KEY_SOURCE1
+  // and the gateway, ws-hub and file-processor verify tokens against it.
   const jwksUrl = `${ORIGIN}/.well-known/jwks.json`
   console.log(`→ JWKS pre-check: GET ${jwksUrl}`)
-  let resp = await fetch(jwksUrl)
-  if (resp.status !== 200) {
-    const altUrl = `${ORIGIN}/api/v1/.well-known/jwks.json`
-    console.log(`  fallback: GET ${altUrl}`)
-    resp = await fetch(altUrl)
-  }
+  const resp = await fetch(jwksUrl)
   if (resp.status !== 200) {
     throw new Error(`JWKS endpoint unreachable: HTTP ${resp.status}.`)
   }
@@ -183,16 +163,15 @@ async function checkJwksEndpoint() {
   if (rs256Keys.length === 0) {
     throw new Error(`JWKS has ${jwks.keys.length} keys but NONE with alg=RS256.`)
   }
-  // W143 SW1 follow-up: require RSA key material (kty + n + e) so the
-  // internal stub endpoint (kty=oct, no n+e) can't false-pass this check.
+  // Require RSA key material (kty + n + e) so a key-less response cannot
+  // false-pass this check.
   const rsaWithMaterial = rs256Keys.filter(
     (k) => k.kty === "RSA" && typeof k.n === "string" && typeof k.e === "string"
   )
   if (rsaWithMaterial.length === 0) {
     throw new Error(
       `JWKS has ${rs256Keys.length} RS256 key(s) but NONE include n+e material ` +
-        `(likely hitting the internal stub at /api/v1/.well-known/jwks.json instead ` +
-        `of the proper /. .well-known/jwks.json endpoint).`
+        `(is the backend RSA key loaded?).`
     )
   }
   console.log(`✓ JWKS healthy: ${rsaWithMaterial.length} RS256 key(s) with n+e material`)

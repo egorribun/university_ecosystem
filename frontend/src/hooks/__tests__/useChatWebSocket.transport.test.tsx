@@ -1103,12 +1103,11 @@ describe("frame side effects", () => {
     })
   })
 
-  it("handles read, online and presence frames without optional handlers", async () => {
+  it("handles read and presence frames without optional handlers", async () => {
     const { socket } = await connected()
 
     act(() => {
       socket.receive({ type: "read", chat_id: CHAT, user_id: "peer", read_at: null })
-      socket.receive({ type: "online", user_id: "peer", status: true })
       socket.receive({ type: "presence", user_id: "peer", active: false, last_seen: null })
     })
 
@@ -1138,7 +1137,15 @@ describe("frame side effects", () => {
   ])("stores no checkpoint for a frame with %s", async (_label, fields) => {
     const { socket, result } = await connected({ currentUserId: "me" })
 
-    act(() => socket.receive({ type: "online", user_id: "peer", status: true, ...fields }))
+    act(() =>
+      socket.receive({
+        type: "presence",
+        user_id: "peer",
+        active: true,
+        last_seen: null,
+        ...fields,
+      })
+    )
 
     act(() => result.current.sendJoin(CHAT))
     expect(socket.send).toHaveBeenLastCalledWith(JSON.stringify({ type: "join", room: CHAT }))

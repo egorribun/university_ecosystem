@@ -31,6 +31,7 @@ from app.api.validation import (
     ensure_exists,
     raise_conflict,
     raise_forbidden,
+    raise_http_error,
     raise_not_found,
     require_teacher_or_admin,
 )
@@ -87,13 +88,14 @@ def _event_attachment_url_matches_resource(
     return False
 
 
-def _validate_id_type(id_val: uuid.UUID | int) -> None:
+def _validate_id_type(id_val: uuid.UUID | int, request: Request) -> None:
     if isinstance(id_val, int):
         # Prevent SQLite/Postgres 64-bit signed integer overflow
         if not (-9223372036854775808 <= id_val <= 9223372036854775807):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="ID out of 64-bit integer range.",
+            raise_http_error(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "errors.events.id_out_of_range",
+                resolve_locale(request=request),
             )
 
 
@@ -136,10 +138,9 @@ async def create_event(
         # TD-W19-01 (audit 2026-03-24 Wave 19): use localized error key instead of
         # raw exception message. Previously str(exc) leaked internal error details.
         logger.warning("Event creation failed: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="errors.events.creation_failed",
-        ) from exc
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.events.creation_failed", locale
+        )
     # ``request`` is a required FastAPI parameter and, since the route moved to
     # Dishka, also the carrier of the container -- it is never absent.  Whether
     # a cache exists is the real condition, and _increment_events_list_version
@@ -303,7 +304,7 @@ async def upload_event_file(
     user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> models.EventFile:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
     event = await db.get(models.Event, event_id)
     ensure_exists(event, "events", locale)
@@ -345,7 +346,7 @@ async def get_event_files(
     user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> list[models.EventFile]:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
 
     # Authorize against the parent event before touching its attachments.  The
@@ -389,7 +390,7 @@ async def download_event_file(
 ) -> Response:
     """Download an event file after checking the event's view permission."""
 
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
     try:
         private_attachment_storage_key("event", event_id, filename)
@@ -444,7 +445,7 @@ async def upload_event_image(
     db: FromDishka[AsyncDatabaseSession],
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, str]:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
 
     # RZ-003 Fix: Deny unlinked anonymous file uploads to prevent Storage DoS
@@ -500,9 +501,10 @@ async def update_event(
 
     old_image_url = q.image_url
     if isinstance(event_id, int):
-        raise HTTPException(
-            status_code=400,
-            detail="Integer event IDs are not supported; use a UUID.",
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST,
+            "errors.events.integer_id_unsupported",
+            locale,
         )
     ev_id = event_id
     try:
@@ -543,7 +545,7 @@ async def delete_event(
     user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
 
     # RZ-003 (audit 2026-03-04): Replaced require_owner_or_admin() with
@@ -581,7 +583,7 @@ async def get_event(
     user: models.User = Depends(get_current_user_from_dishka),
     if_none_match: str | None = Header(default=None),
 ) -> schemas.EventOut | Response | Any:
-    _validate_id_type(event_id)
+    _validate_id_type(event_id, request)
     locale = resolve_locale(request=request, user=user)
 
     payload = await events.get_event_detail(event_id, user.id, locale=locale)
@@ -600,7 +602,7 @@ async def delete_event_file(
     user: models.User = Depends(get_current_user_from_dishka),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
-    _validate_id_type(file_id)
+    _validate_id_type(file_id, request)
     locale = resolve_locale(request=request, user=user)
     ef = await db.get(models.EventFile, file_id)
     if not ef:

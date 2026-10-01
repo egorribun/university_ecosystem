@@ -10,7 +10,6 @@ no ``is_development`` field):
     ``is_development=True`` without any extra env.
   * ``app.core.fingerprint.store_mfa_challenge_fingerprints`` Redis-error
     graceful-degradation arm.
-  * ``app.core.timing.RequestTimingMiddleware`` non-HTTP scope passthrough.
 
 Idiom mirrors the existing config tests: construct a FRESH model per test +
 ``monkeypatch.setenv``; NEVER mutate the global ``settings`` singleton (mutmut
@@ -95,11 +94,6 @@ class TestStoreMfaFingerprintsRedisError:
         req = _FakeRequest({"user-agent": "UA"}, client=_Client("9.9.9.9"))
         fp = extract_request_fingerprint(req)
         assert isinstance(fp, str) and len(fp) == 64
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# app.core.timing — RequestTimingMiddleware non-HTTP scope passthrough
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 # ─────────────────────────────────────────────────────────────────────────────

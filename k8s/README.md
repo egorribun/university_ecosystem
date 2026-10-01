@@ -34,7 +34,6 @@ development/diagnostic operations; they do not replace the Helm release.
 - `logging/` - Centralized logging (Fluent Bit / Loki)
 - `monitoring/` - Prometheus monitoring, metrics, and dashboards
 - `chaos/` - Chaos Mesh fault injection and resilience tests
-- `jobs/` - Database migrations and batch jobs
 - `spire/` - SPIFFE/SPIRE zero-trust workload attestation
 
 ## Usage

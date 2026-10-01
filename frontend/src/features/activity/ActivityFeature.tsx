@@ -57,7 +57,7 @@ export function ActivityFeature() {
     heatmapData,
   } = useActivityData()
 
-  const comparative = useActivityComparative(attendance, grades, participation, period)
+  const comparative = useActivityComparative(attendance, grades, participation)
   const hasAvailableActivitySection = Object.values(availability).some(Boolean)
 
   const reduce = useMediaQuery("(prefers-reduced-motion: reduce)")

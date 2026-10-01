@@ -1257,7 +1257,7 @@ jobs:
       - name: Run real SeaweedFS S3 and SpiceDB contract cells
         run: >-
           uv run pytest -q
-          tests/integration/test_minio_integration.py
+          tests/integration/test_s3_storage_integration.py
           tests/integration/test_spicedb_integration.py
           --maxfail=1
 

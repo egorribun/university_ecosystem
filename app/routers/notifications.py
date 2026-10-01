@@ -15,7 +15,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user_from_dishka
+from app.api.deps import (
+    get_current_admin_user_from_dishka,
+    get_current_user_from_dishka,
+)
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
@@ -28,7 +31,6 @@ from app.core.ratelimit import (
 )
 from app.core.ssrf import validate_public_https_url
 from app.models import PushSubscription, User, UserPushTopic
-from app.models.enums import UserRole
 from app.schemas.notifications import (
     AdminUserTopicsResponse,
     AdminUserTopicsUpdate,
@@ -566,18 +568,10 @@ async def get_push_topics(
 async def send_test(
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
     payload: PushTestRequest | None = None,
 ) -> SendTestResponse:
     locale = resolve_locale(request=request, user=user)
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": translate("errors.forbidden", locale=locale),
-            },
-        )
 
     vapid_ready = bool(settings.VAPID_PRIVATE_KEY and settings.VAPID_PUBLIC_KEY)
     allow_missing_credentials = str(settings.environment).lower() in {
@@ -700,17 +694,9 @@ async def admin_get_user_topics(
     user_id: uuid.UUID,
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": translate("errors.forbidden", locale=locale),
-            },
-        )
     target = (
         await db.execute(
             select(User)
@@ -745,17 +731,9 @@ async def admin_update_user_topics(
     payload: AdminUserTopicsUpdate,
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
 ) -> AdminUserTopicsResponse:
     locale = resolve_locale(request=request, user=user)
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": translate("errors.forbidden", locale=locale),
-            },
-        )
     target = (
         await db.execute(
             select(User)
@@ -796,17 +774,9 @@ async def disable_user_push(
     payload: DisableUserPushRequest,
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
 ) -> dict[str, int | bool]:
     locale = resolve_locale(request=request, user=user)
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": translate("errors.forbidden", locale=locale),
-            },
-        )
 
     target = await db.get(User, payload.user_id)
     if not target:
@@ -851,18 +821,10 @@ async def announce_platform_release(
     data: ReleaseAnnouncementRequest,
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
 ) -> ReleaseAnnouncementResponse:
     """Announce a released platform version once to every active user."""
     locale = resolve_locale(request=request, user=user)
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": translate("errors.forbidden", locale=locale),
-            },
-        )
     try:
         await enforce_rate_limit(
             strategy=get_default_strategy(),
@@ -908,19 +870,11 @@ async def broadcast(
     data: NotifyBody,
     request: Request,
     db: FromDishka[AsyncDatabaseSession],
-    user: Annotated[User, Depends(get_current_user_from_dishka)],
+    user: Annotated[User, Depends(get_current_admin_user_from_dishka)],
 ) -> SendTestResponse:
     locale = resolve_locale(request=request, user=user)
     # RZ-33-18: Auth check BEFORE rate limit — prevents unauthenticated users
     # from exhausting the admin's rate-limit budget.
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": translate("errors.forbidden", locale=locale),
-            },
-        )
 
     # RZ-W19-18: rate limit broadcast — max 5 per hour to prevent DB/WebPush saturation
     try:

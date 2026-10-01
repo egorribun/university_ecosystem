@@ -641,6 +641,27 @@ def test_validate_config_requires_file_scanning_in_release_environments() -> Non
     assert "backend.config.eventFileScannerEnabled" in template
 
 
+def test_backend_receives_public_frontend_origin_from_ingress() -> None:
+    resources = _render_staging(release_name="frontend-origin-contract")
+    backend = _component_resource(resources, "Deployment", "backend")
+    env = {
+        item["name"]: item.get("value")
+        for item in backend["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    origin = "https://university.staging.example.org"
+    assert env["APP_BASE_URL"] == origin
+    assert env["FRONTEND_ORIGIN"] == origin
+    assert env["FRONTEND_ORIGINS"] == origin
+
+
+def test_validate_config_pins_frontend_origin_to_the_ingress_host() -> None:
+    template = (CHART / "templates" / "validate-config.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert 'include "university-ecosystem.frontendOrigin"' in template
+    assert "backend.config.frontendOrigin" in template
+
+
 def test_outbox_worker_receives_release_file_scanner_guard() -> None:
     resources = _render_staging(release_name="outbox-scanner-contract")
     outbox = _component_resource(resources, "Deployment", "outbox-worker")

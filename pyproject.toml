@@ -59,10 +59,8 @@ dependencies = [
   "opentelemetry-semantic-conventions>=0.62b0,<1.0",
   "orjson>=3.11.8,<4",                                # SEC-09: cap serializer API major upgrades
   "pgvector>=0.4.2,<1",                                # SEC-09: cap vector extension API major upgrades
-  "qdrant-client>=1.13.0,<2",                          # SEC-09: cap vector client major upgrades
   "pillow>=12.3.0,<13",                                # SEC-09: cap imaging API major upgrades
   "pillow-avif-plugin>=1.5.5,<2",  # TD-26-04: upper bound
-  "polars>=1.39.3,<2",                                # SEC-09: cap dataframe API major upgrades
   "prometheus-client>=0.25.0,<1",                      # SEC-09: cap metrics API major upgrades
   "protobuf>=6.33.6,<8",  # Shared compatible line: flagd 0.5.0, Authzed, and OTEL all require protobuf <7
   "psutil>=7.2.2,<8",                                  # SEC-09: cap process metrics API major upgrades
@@ -227,7 +225,6 @@ module = [
   "openfeature.*",
   "pgvector.*",
   "asyncpg.*",
-  "polars",
   "httpx",
   "pillow_avif",
   "jwt",
@@ -252,7 +249,6 @@ module = [
   "clamd",
   "elasticsearch.*",
   "structlog.*",
-  "qdrant_client.*",
 ]
 ignore_missing_imports = true
 

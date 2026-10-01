@@ -224,7 +224,10 @@ async def verify_mfa_challenge(
     elif payload.method != constants.MFA_METHOD_EMAIL_OTP:
         # Invalid method
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA method"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=translate(
+                "errors.mfa.invalid_method", locale=resolve_locale(request=request)
+            ),
         )
 
     try:

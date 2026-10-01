@@ -18,6 +18,19 @@ Expand the name of the chart.
 {{- end -}}
 {{- end }}
 
+{{/*
+Public frontend origin. An explicit backend.config.frontendOrigin wins;
+otherwise it is derived from the first ingress host. Empty (the application
+falls back to its local development default) when neither is configured.
+*/}}
+{{- define "university-ecosystem.frontendOrigin" -}}
+{{- if .Values.backend.config.frontendOrigin -}}
+{{- .Values.backend.config.frontendOrigin | trimSuffix "/" -}}
+{{- else if and .Values.ingress.enabled .Values.ingress.hosts -}}
+{{- printf "https://%s" (index .Values.ingress.hosts 0).host -}}
+{{- end -}}
+{{- end }}
+
 {{/* Name of the Secret containing application credentials and JWT keys. */}}
 {{- define "university-ecosystem.applicationSecretName" -}}
 {{- default (printf "%s-secrets" .Release.Name) .Values.applicationSecrets.existingSecret -}}

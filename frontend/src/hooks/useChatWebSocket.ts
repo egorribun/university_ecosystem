@@ -862,11 +862,6 @@ export function useChatWebSocket({
                 break
               }
 
-              case "online": {
-                onOnlineStatusRef.current(validated.user_id, validated.status)
-                break
-              }
-
               case "presence": {
                 onPresenceUpdateRef.current(
                   validated.user_id,

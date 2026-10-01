@@ -900,7 +900,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[NewsService]",
@@ -925,7 +925,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[NewsService]",
@@ -1006,7 +1006,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[NewsService]",
@@ -1018,7 +1018,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [],
       "id": "app.api.news:upload_news_image:POST:/upload_image",
@@ -1334,7 +1334,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[StoryService]",
@@ -1346,7 +1346,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[StoryService]",
@@ -1367,7 +1367,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[StoryService]",
@@ -1379,7 +1379,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [],
       "id": "app.api.stories:upload_story_cover:POST:/upload_cover",
@@ -1475,7 +1475,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AuditService]",
@@ -1655,7 +1655,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
@@ -1667,7 +1667,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
@@ -1679,7 +1679,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
@@ -1691,7 +1691,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
@@ -1703,7 +1703,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",
@@ -1734,7 +1734,7 @@
     },
     {
       "dishka_dependencies": [
-        "app.api.deps.auth.get_current_user_from_dishka"
+        "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
         "FromDishka[AsyncDatabaseSession]",

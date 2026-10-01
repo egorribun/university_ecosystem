@@ -110,7 +110,7 @@ async def domain_exception_handler(request: Request, exc: Exception) -> JSONResp
     elif isinstance(exc, BusinessRuleViolation):
         status_code = status.HTTP_400_BAD_REQUEST
         title_key = "titles.bad_request"
-        detail = exc.message
+        detail = translate(exc.message, locale=locale)
         error_type = "https://api.university.edu/probs/business-rule"
 
     return JSONResponse(
@@ -125,6 +125,36 @@ async def domain_exception_handler(request: Request, exc: Exception) -> JSONResp
             "trace_id": get_trace_id(),
         },
     )
+
+
+_PROBLEM_RESERVED_MEMBERS = frozenset(
+    {"type", "title", "status", "detail", "instance", "trace_id"}
+)
+
+
+def _split_problem_detail(raw: Any, *, fallback: str) -> tuple[str, dict[str, Any]]:
+    """Return an RFC 7807 ``detail`` string plus extension members.
+
+    ``HTTPException.detail`` is a plain string for most raise sites, but some
+    carry a structured ``{"error": <code>, "message": <text>, ...}`` mapping.
+    The wire contract keeps ``detail`` a human-readable string in every case;
+    the machine-readable code and any extra keys travel as RFC 7807 extension
+    members (``code`` plus the remaining keys) so clients can parse one shape.
+    """
+    if not isinstance(raw, dict):
+        return (raw if isinstance(raw, str) else fallback), {}
+    extensions = {
+        key: value
+        for key, value in raw.items()
+        if key not in {"error", "message"} | _PROBLEM_RESERVED_MEMBERS
+    }
+    code = raw.get("error")
+    if isinstance(code, str) and code:
+        extensions["code"] = code
+    message = raw.get("message")
+    if isinstance(message, str) and message:
+        return message, extensions
+    return (code if isinstance(code, str) and code else fallback), extensions
 
 
 async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -147,15 +177,17 @@ async def http_exception_handler(request: Request, exc: Exception) -> JSONRespon
     }
     title_key = status_titles.get(exc.status_code, "titles.http_error")
     title = translate(title_key, locale=locale)
+    detail, extensions = _split_problem_detail(exc.detail, fallback=title)
 
     return JSONResponse(
         status_code=exc.status_code,
         media_type="application/problem+json",
         content={
+            **extensions,
             "type": "about:blank",
             "title": title,
             "status": exc.status_code,
-            "detail": exc.detail,
+            "detail": detail,
             # Do not reflect untrusted hosts or potentially sensitive query values.
             "instance": request.url.path,
             "trace_id": get_trace_id(),

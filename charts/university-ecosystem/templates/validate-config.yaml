@@ -153,6 +153,9 @@
   {{- if or (ne (len .Values.wsHub.config.allowedOrigins) 1) (ne (index .Values.wsHub.config.allowedOrigins 0) $frontendOrigin) -}}
     {{- fail "wsHub.config.allowedOrigins must exactly equal the frontend ingress origin" -}}
   {{- end -}}
+  {{- if ne (include "university-ecosystem.frontendOrigin" .) $frontendOrigin -}}
+    {{- fail "backend.config.frontendOrigin must be empty or exactly equal the frontend ingress origin in staging/production" -}}
+  {{- end -}}
   {{- if .Values.wsHub.config.otelInsecure -}}
     {{- fail "wsHub.config.otelInsecure=false is required in staging/production" -}}
   {{- end -}}

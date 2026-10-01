@@ -94,10 +94,7 @@ jobs:
           targets=(
             fuzz_conflict_detection
             fuzz_hmac
-            fuzz_sanitizer
             fuzz_schedule_item
-            fuzz_target_1
-            fuzz_uuid
           )
           mapfile -t discovered < <(cargo +nightly fuzz list | awk 'NF { print $1 }' | sort)
           mapfile -t expected < <(printf '%s\n' "${targets[@]}" | sort)

@@ -330,6 +330,12 @@ required evidence and cannot be replaced by an offline catalog fixture.
   collected, so local SQLite tests cannot certify completion alone.
 - JSON, partition and composite-key fields require additional design review.
 
+## Later change
+
+Revision `202610010001` drops the unused `user_stats` and `vector_chunks`
+tables, so the column lists above that mention them describe history; the
+inventory in `quality/model-default-policy.json` no longer contains them.
+
 ## Related Decisions
 
 - [ADR-003: Background Jobs](ADR-003-background-jobs.md)

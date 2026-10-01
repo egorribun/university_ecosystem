@@ -3400,6 +3400,8 @@ export const updateStoryApiV1StoriesStoryIdPatch = <ThrowOnError extends boolean
  *
  * Search for users.
  * Admins see full profiles (UserOut), others see only public info (UserPublicOut).
+ * Full profiles require the SpiceDB admin permission as well as the role column;
+ * an unreachable authorization service degrades to the public view.
  */
 export const getUsersApiV1UsersGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetUsersApiV1UsersGetData, ThrowOnError>

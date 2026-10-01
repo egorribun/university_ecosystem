@@ -112,7 +112,6 @@ from app.models.users import (
 from app.models.users import (
     UserProfile as UserProfile,
 )
-from app.models.vector_shard import VectorChunk as VectorChunk
 
 
 # Re-added DeadLetterJob (fixed Alembic schema drift; model moved to app/models/dead_letter.py)

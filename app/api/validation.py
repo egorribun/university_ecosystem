@@ -8,7 +8,7 @@ Each helper raises HTTPException with appropriate status codes and localized mes
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any, NoReturn, TypeVar, overload
+from typing import TYPE_CHECKING, Any, NoReturn, TypeVar
 
 from fastapi import HTTPException, status
 
@@ -16,7 +16,7 @@ from app.core.localization import translate
 from app.models.enums import UserRole
 
 if TYPE_CHECKING:
-    from app.schemas.dtos import UserDTO
+    pass
 
 if TYPE_CHECKING:
     from app.models import User
@@ -115,61 +115,14 @@ def raise_conflict(message_key: str, locale: str, **kwargs: Any) -> NoReturn:
     raise_http_error(status.HTTP_409_CONFLICT, message_key, locale, **kwargs)
 
 
-def require_admin(user: User | UserDTO, locale: str) -> None:
-    """
-    Verify user has admin role, raise 403 if not.
-    """
-    # TD-W19-02 (audit 2026-03-24 Wave 19): use UserRole enum constants instead
-    # of hardcoded string literals for role comparison across all validation helpers.
-    if user.role != UserRole.ADMIN:
-        raise_forbidden(locale)
-
-
 def require_teacher_or_admin(user: User, locale: str) -> None:
     """
     Verify user has teacher or admin role, raise 403 if not.
+
+    SpiceDB models teachers per course, not globally, so this teacher gate reads
+    the local role column. Admin-only operations use ``ensure_admin`` instead.
     """
     if user.role not in (UserRole.TEACHER, UserRole.ADMIN):
-        raise_forbidden(locale)
-
-
-@overload
-def require_owner_or_admin(
-    user: User,
-    locale: str,
-    *,
-    owner_id: uuid.UUID | int | str,
-) -> None: ...  # pragma: no branch
-
-
-@overload
-def require_owner_or_admin(
-    user: User,
-    locale: str,
-    *,
-    owner_id: uuid.UUID | int | str,
-    allow_teacher: bool,
-) -> None: ...  # pragma: no branch
-
-
-def require_owner_or_admin(
-    user: User,
-    locale: str,
-    *,
-    owner_id: uuid.UUID | int | str,
-    allow_teacher: bool = False,
-) -> None:
-    """
-    Verify user is owner of resource or has admin (and optionally teacher) role.
-    """
-    allowed_roles = (
-        (UserRole.ADMIN,) if not allow_teacher else (UserRole.ADMIN, UserRole.TEACHER)
-    )
-
-    if user.role in allowed_roles:
-        return
-
-    if user.id != owner_id:
         raise_forbidden(locale)
 
 
@@ -197,7 +150,5 @@ __all__ = [
     "raise_http_error",
     "raise_not_found",
     "raise_validation_error",
-    "require_admin",
-    "require_owner_or_admin",
     "require_teacher_or_admin",
 ]

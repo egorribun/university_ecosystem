@@ -1728,7 +1728,9 @@ async def test_mfa_verify_rejects_unknown_method_before_challenge_lookup() -> No
         )
 
     assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "Invalid MFA method"
+    from app.core.localization.dictionary import TRANSLATIONS
+
+    assert exc_info.value.detail in TRANSLATIONS["errors.mfa.invalid_method"].values()
     db.execute.assert_not_awaited()
 
 

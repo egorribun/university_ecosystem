@@ -6,6 +6,7 @@ from httpx import AsyncClient
 
 from app.auth.security import get_password_hash
 from app.core.database import get_db, get_read_db
+from app.core.localization.dictionary import TRANSLATIONS
 from app.main import app
 from app.models.chat import Chat, Message
 from app.services.chat.query_service import ChatQueryService
@@ -38,7 +39,7 @@ async def test_create_chat_errors(async_client, user_factory):
     )
     assert resp.status_code == 400
     detail = resp.json()["detail"]
-    assert "errors.chat.self_chat" in detail or "Cannot create" in detail
+    assert detail in TRANSLATIONS["errors.chat.self_chat"].values()
 
     # 2. Create chat with non-existent user
     resp = await async_client.post(
@@ -46,7 +47,7 @@ async def test_create_chat_errors(async_client, user_factory):
     )
     assert resp.status_code == 404
     detail = resp.json()["detail"]
-    assert "errors.users.not_found" in detail or "User not found" in detail
+    assert detail in TRANSLATIONS["errors.users.not_found"].values()
 
 
 @pytest.mark.asyncio

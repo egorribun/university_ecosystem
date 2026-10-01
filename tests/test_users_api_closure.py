@@ -317,6 +317,7 @@ async def test_create_and_list_users_roles() -> None:
     with patch.object(api.schemas.UserPublicOut, "model_validate", return_value=public):
         result = await call_injected(
             api.get_users,
+            checker=_checker(),
             bg=bg,
             request=request,
             filters=schemas.UserSearchFilter(),
@@ -330,6 +331,7 @@ async def test_create_and_list_users_roles() -> None:
     with _patch_user_out(expected):
         result = await call_injected(
             api.get_users,
+            checker=_checker(is_admin=True),
             bg=MagicMock(),
             request=request,
             filters=schemas.UserSearchFilter(),
@@ -337,6 +339,46 @@ async def test_create_and_list_users_roles() -> None:
             provides={"UserProfileService": service, "AsyncDatabaseSession": db},
         )
     assert result == [expected]
+
+
+def _checker(*, is_admin: bool = False, unavailable: bool = False) -> SimpleNamespace:
+    from app.auth.rbac import SpiceDBUnavailableError
+
+    check_admin = AsyncMock(
+        side_effect=SpiceDBUnavailableError("down") if unavailable else None,
+        return_value=is_admin,
+    )
+    return SimpleNamespace(check_admin=check_admin)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "checker",
+    [_checker(is_admin=False), _checker(unavailable=True)],
+    ids=["spicedb-denies", "spicedb-unavailable"],
+)
+async def test_get_users_ignores_stale_admin_role_without_spicedb_admin(
+    checker: SimpleNamespace,
+) -> None:
+    service = MagicMock()
+    service.get_users = AsyncMock(return_value=[SimpleNamespace(id=uuid4())])
+    public = object()
+
+    with patch.object(api.schemas.UserPublicOut, "model_validate", return_value=public):
+        result = await call_injected(
+            api.get_users,
+            checker=checker,
+            bg=MagicMock(),
+            request=_request(),
+            filters=schemas.UserSearchFilter(),
+            current_user=_user(role=UserRole.ADMIN),
+            provides={
+                "UserProfileService": service,
+                "AsyncDatabaseSession": AsyncMock(),
+            },
+        )
+
+    assert result == [public]
 
 
 @pytest.mark.asyncio
@@ -352,6 +394,7 @@ async def test_get_users_route_normalizes_legacy_search_before_service_query() -
     with patch.object(api.schemas.UserPublicOut, "model_validate", return_value=public):
         result = await call_injected(
             api.get_users,
+            checker=_checker(),
             bg=MagicMock(),
             request=_request(),
             filters=filters,
@@ -380,6 +423,7 @@ async def test_get_users_route_rejects_blank_search_for_non_admin() -> None:
     with pytest.raises(PermissionDenied):
         await call_injected(
             api.get_users,
+            checker=_checker(),
             bg=MagicMock(),
             request=_request(),
             filters=schemas.UserSearchFilter(full_name="  "),

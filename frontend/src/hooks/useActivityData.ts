@@ -128,9 +128,9 @@ export default function useActivityData() {
     const d = envelope?.grades
     if (d) {
       return {
-        average: toNumber(d.average, 4.4),
+        average: toNumber(d.average),
         scale: isGradeScale(d.scale) ? d.scale : "5",
-        trend: toNumber(d.trend, 0.3),
+        trend: toNumber(d.trend),
         recent: parseGradeRecent(d.recent),
       }
     }

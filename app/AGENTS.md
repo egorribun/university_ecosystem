@@ -186,6 +186,11 @@ except Exception as err:  # RZ-22-01-JUSTIFIED: fail-closed auth fallback with a
 ### 6.3. Storage Path Traversal Prevention
 - `StaticFSStorage._resolve_validated_path()` resolves symlinks and verifies `is_relative_to(base_dir)`.
 
+### 6.4. Authorization Gates & Error Contract
+- Admin-only routes depend on `get_current_admin_user_from_dishka` (or call `ensure_admin(checker, user, request)` for conditional admin paths). Both resolve through SpiceDB and fail closed with 503 when it is unreachable; never gate a privileged operation on the `user.role` column alone. Teacher gating (`require_teacher_or_admin`) stays role-based because SpiceDB models teachers per course.
+- `HTTPException.detail` is rendered as an RFC 7807 string; a structured `{"error": <code>, "message": <text>, ...}` detail surfaces as the `code` extension member plus the extra keys.
+- Every `errors.*` translation key referenced from `app/` must exist in `app/core/localization/dictionary.py` (`tests/test_localization_key_coverage.py`); `translate` falls back to the raw key, which would leak it to clients.
+
 ---
 
 ## 7. Outbox Pattern & Event Publishing
@@ -235,5 +240,6 @@ GraphQL queries (via Strawberry GraphQL) pass through 5 protective middleware la
 | `except Exception:` without tag | Swallows unexpected bugs and violates exception policy | Use narrowed exceptions or tag `# RZ-22-01-JUSTIFIED: <reason>` |
 | `except A, B:` | Python 2 syntax rejected by `no-python2-except` hook | `except (A, B):` |
 | Storing `revoked:jti:*` in cache Redis | Cache eviction (volatile-lru) can resurrect revoked tokens | Store exclusively in persistent `REVOCATION_REDIS_URL` |
+| Gating an admin operation on `user.role == UserRole.ADMIN` | A stale role column grants access SpiceDB has revoked | `Depends(get_current_admin_user_from_dishka)` / `ensure_admin` |
 | Bcrypt password hashing | Bcrypt removed in TD-21-04; violates security standards | Use Argon2id via `argon2-cffi` |
 | Monolithic DI service wrappers | High coupling, slow tests, violates SRP | Narrow Dishka domain providers (`app/core/di/`) |

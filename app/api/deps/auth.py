@@ -331,12 +331,15 @@ async def get_permission_checker(
     return checker
 
 
-async def get_current_admin_user(
-    request: Request,
-    user: Annotated[User, Depends(get_current_user)],
-    checker: Annotated[PermissionChecker, Depends(get_permission_checker)],
-) -> User:
-    """Dependency that ensures the current user is an admin via SpiceDB."""
+async def ensure_admin(
+    checker: PermissionChecker, user: User | UserDTO, request: Request
+) -> None:
+    """Require the global admin permission, resolved through SpiceDB.
+
+    The local ``user.role`` column is never the sole gate for a privileged
+    operation: the check fails closed (HTTP 503) when SpiceDB is unreachable and
+    answers 403 for any user without the permission.
+    """
     try:
         is_admin_user = await checker.check_admin(str(user.id), user=user)
     except SpiceDBUnavailableError:
@@ -348,8 +351,16 @@ async def get_current_admin_user(
             },
         ) from None
     if not is_admin_user:
-        locale = resolve_locale(request=request)
-        raise_forbidden(locale)
+        raise_forbidden(resolve_locale(request=request))
+
+
+async def get_current_admin_user(
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+    checker: Annotated[PermissionChecker, Depends(get_permission_checker)],
+) -> User:
+    """Dependency that ensures the current user is an admin via SpiceDB."""
+    await ensure_admin(checker, user, request)
     return user
 
 
@@ -368,19 +379,7 @@ async def get_current_admin_user_from_dishka(
     authorization check itself is unchanged.
     """
 
-    try:
-        is_admin_user = await checker.check_admin(str(user.id), user=user)
-    except SpiceDBUnavailableError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "error": "authz_unavailable",
-                "message": "Authorization service temporarily unavailable",
-            },
-        ) from None
-    if not is_admin_user:
-        locale = resolve_locale(request=request)
-        raise_forbidden(locale)
+    await ensure_admin(checker, user, request)
     return user
 
 

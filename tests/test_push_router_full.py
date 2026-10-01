@@ -173,7 +173,7 @@ class TestSubscribe:
         }
         resp = await async_client.post("/push/subscribe", json=payload, headers=headers)
         assert resp.status_code == 400
-        assert resp.json()["detail"]["error"] == "invalid_subscription"
+        assert resp.json()["code"] == "invalid_subscription"
 
     @pytest.mark.asyncio
     async def test_private_endpoint_is_rejected_before_persistence(
@@ -189,7 +189,7 @@ class TestSubscribe:
             headers=headers,
         )
         assert resp.status_code == 400
-        assert resp.json()["detail"]["error"] == "invalid_subscription"
+        assert resp.json()["code"] == "invalid_subscription"
 
     @pytest.mark.asyncio
     async def test_validation_empty_keys(
@@ -205,7 +205,7 @@ class TestSubscribe:
         }
         resp = await async_client.post("/push/subscribe", json=payload, headers=headers)
         assert resp.status_code == 400
-        fields = resp.json()["detail"]["fields"]
+        fields = resp.json()["fields"]
         assert len(fields) == 2
 
     @pytest.mark.asyncio
@@ -301,7 +301,7 @@ class TestUpdateTopics:
             headers=headers,
         )
         assert resp.status_code == 404
-        assert resp.json()["detail"]["error"] == "subscription_not_found"
+        assert resp.json()["code"] == "subscription_not_found"
 
     @pytest.mark.asyncio
     async def test_update_topics_empty_endpoint(

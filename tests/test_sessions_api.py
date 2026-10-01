@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.core.config import settings
+from app.core.localization.dictionary import TRANSLATIONS
 from app.models import ActiveSession
 
 
@@ -396,8 +397,7 @@ async def test_revoke_session_requires_step_up_via_signed_gateway_headers(
         f"/auth/sessions/{other_session.id}", headers=gateway_headers
     )
     assert blocked.status_code == status.HTTP_428_PRECONDITION_REQUIRED
-    detail = blocked.json()["detail"]
-    assert detail["error"] == "mfa_step_up_required"
+    assert blocked.json()["code"] == "mfa_step_up_required"
 
     # Give the server a moment before requesting the challenge so the refreshed
     # access token minted after verification has a distinct timestamp. This
@@ -459,4 +459,7 @@ async def test_revoke_missing_session_returns_404(
         f"/auth/sessions/{non_existent_id}", headers=headers
     )
     assert response.status_code == 404
-    assert "auth.session_not_found" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        in TRANSLATIONS["errors.auth.session_not_found"].values()
+    )

@@ -220,12 +220,7 @@ function decodeJwtHeader(token) {
 async function checkJwksEndpoint() {
   const jwksUrl = new URL("/.well-known/jwks.json", ORIGIN)
   console.log("-> JWKS pre-check: GET /.well-known/jwks.json")
-  let resp = await fetch(jwksUrl)
-  if (resp.status !== 200) {
-    const altUrl = new URL("/api/v1/.well-known/jwks.json", ORIGIN)
-    console.log("   fallback: GET /api/v1/.well-known/jwks.json")
-    resp = await fetch(altUrl)
-  }
+  const resp = await fetch(jwksUrl)
   if (resp.status !== 200) {
     throw new Error(`JWKS endpoint unreachable: HTTP ${resp.status}`)
   }
@@ -233,15 +228,14 @@ async function checkJwksEndpoint() {
   if (!jwks.keys || jwks.keys.length === 0) {
     throw new Error(`JWKS endpoint returned 0 keys`)
   }
-  // Prefer kty=RSA + n + e per W143 polish-v2 ## Gotchas (proper RSA JWKS
-  // shape, not the HMAC metadata stub at /api/v1/.well-known/jwks.json).
+  // Require kty=RSA + n + e (the public RSA JWKS shape).
   const rsaKeys = jwks.keys.filter(
     (k) => k.kty === "RSA" && typeof k.n === "string" && typeof k.e === "string"
   )
   if (rsaKeys.length === 0) {
     throw new Error(
       `JWKS has ${jwks.keys.length} keys but NONE with kty=RSA + n + e fields. ` +
-        `Hit the HMAC metadata stub at /api/v1/.well-known/jwks.json? Backend RSA key may not be loaded.`
+        `Backend RSA key may not be loaded.`
     )
   }
   console.log(`OK JWKS healthy: ${rsaKeys.length} RSA key(s)`)

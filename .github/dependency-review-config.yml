@@ -138,8 +138,6 @@ allow-dependencies-licenses:
   - "pkg:golang/github.com/university-ecosystem/services/pkg/spiffe"
   - "pkg:golang/github.com/university-ecosystem/services/pkg/logging"
   - "pkg:golang/golang.org/x/sync"
-  - "pkg:pypi/portalocker"
-  - "pkg:pypi/qdrant-client"
   - "pkg:pypi/mmh3"
   - "pkg:cargo/ammonia"
   # typing-extensions 4.16.0 declares `License-Expression: PSF-2.0` in its

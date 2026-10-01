@@ -5,14 +5,14 @@
       "events.search_vector"
     ],
     "effective_counts": {
-      "both": 94,
-      "python_only": 40,
+      "both": 80,
+      "python_only": 39,
       "server_only": 0
     },
-    "effective_default_count": 134,
-    "migration_head": "202609300002",
+    "effective_default_count": 119,
+    "migration_head": "202610010001",
     "source_counts": {
-      "both": 94,
+      "both": 80,
       "python_only": 17,
       "server_only": 0
     },
@@ -31,8 +31,8 @@
       "schedule.lesson_type",
       "users.demo_seed_key"
     ],
-    "source_mapped_column_count": 111,
-    "table_count": 45
+    "source_mapped_column_count": 97,
+    "table_count": 43
   },
   "exceptions": [
     {
@@ -265,12 +265,6 @@
     },
     {
       "column": "users.id",
-      "kind": "inherited_uuid7_primary_key",
-      "owner": "backend-platform",
-      "reason": "UUIDv7 is supplied by UUID7PrimaryKeyMixin; a database fallback could violate the time-ordered identifier contract."
-    },
-    {
-      "column": "vector_chunks.id",
       "kind": "inherited_uuid7_primary_key",
       "owner": "backend-platform",
       "reason": "UUIDv7 is supplied by UUID7PrimaryKeyMixin; a database fallback could violate the time-ordered identifier contract."

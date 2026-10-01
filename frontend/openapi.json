@@ -12608,7 +12608,7 @@
     },
     "/api/v1/users": {
       "get": {
-        "description": "Search for users.\nAdmins see full profiles (UserOut), others see only public info (UserPublicOut).",
+        "description": "Search for users.\nAdmins see full profiles (UserOut), others see only public info (UserPublicOut).\nFull profiles require the SpiceDB admin permission as well as the role column;\nan unreachable authorization service degrades to the public view.",
         "operationId": "get_users_api_v1_users_get",
         "parameters": [
           {

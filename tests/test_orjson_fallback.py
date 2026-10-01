@@ -1,21 +1,9 @@
-"""Runtime-path tests for ORJSON, ETag, and MFA-cleanup helpers.
+"""Runtime-path tests for the ``app/core/orjson_utils.py`` ImportError fallback.
 
-Direct-call tests targeting the previously-uncovered line ranges:
-
-1. ``app/core/orjson_utils.py`` — lines 26-63: the ``ImportError`` fallback
-   block (``OrJsonMock``). Exercised by loading a fresh module copy from the
-   real file path with ``sys.modules["orjson"] = None`` so the fallback branch
-   executes; coverage attributes the executed lines to the real file because
-   the spec is created from the original path.
-2. ``app/core/etag.py`` — lines 88-89 + 95-142: ``ETagMiddleware.__init__``
-   and ``dispatch``. Driven by calling ``dispatch`` directly with a minimal
-   ASGI-scope ``Request`` plus a stub ``call_next`` (no async_client / ASGI
-   requests). The ``conditional_response`` helper (150-193) is already covered
-   by tests/test_etag.py and is not re-tested here.
-3. ``app/services/mfa_challenge_cleanup.py`` — lines 39 + 81-116:
-   ``MfaChallengeCleanupConfig.normalized_grace_period`` and the
-   ``start_mfa_challenge_cleanup_scheduler`` loop/stop closures, with the DB
-   cleanup function and ``_METRICS`` monkeypatched at the consuming module.
+The ``OrJsonMock`` fallback block is exercised by loading a fresh module copy
+from the real file path with ``sys.modules["orjson"] = None`` so the fallback
+branch executes; coverage attributes the executed lines to the real file
+because the spec is created from the original path.
 """
 
 from __future__ import annotations
@@ -32,7 +20,7 @@ import pytest
 import app.core.orjson_utils as orjson_utils_module
 
 # ---------------------------------------------------------------------------
-# 1. app/core/orjson_utils.py — ImportError fallback block (lines 26-63)
+# app/core/orjson_utils.py — ImportError fallback block
 # ---------------------------------------------------------------------------
 
 
@@ -116,36 +104,3 @@ def test_fallback_module_level_wrappers_use_mock(fallback: Any) -> None:
     raw = fallback.orjson_dumps({"k": 2})
     assert fallback.orjson_loads(raw) == {"k": 2}
     assert fallback.orjson_dumps_str({"k": 2}) == raw.decode("utf-8")
-
-
-# ---------------------------------------------------------------------------
-# 3. app/services/mfa_challenge_cleanup.py — config clamp (39) +
-#    start_mfa_challenge_cleanup_scheduler loop/stop closures (81-116)
-# ---------------------------------------------------------------------------
-
-
-class _FakeRun:
-    def __init__(self) -> None:
-        self.deleted: int | None = None
-
-    def observe_deleted(self, count: int) -> None:
-        self.deleted = count
-
-
-class _FakeTrack:
-    def __init__(self, run: _FakeRun) -> None:
-        self._run = run
-
-    async def __aenter__(self) -> _FakeRun:
-        return self._run
-
-    async def __aexit__(self, *exc: object) -> bool:
-        return False  # propagate exceptions, mirroring the real metrics CM
-
-
-class _FakeMetrics:
-    def __init__(self) -> None:
-        self.run = _FakeRun()
-
-    def track_execution(self) -> _FakeTrack:
-        return _FakeTrack(self.run)

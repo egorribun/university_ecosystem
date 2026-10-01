@@ -4137,7 +4137,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     cell_text = "\n".join(
         step.get("run", "") for step in cell_job["steps"] if isinstance(step, dict)
     )
-    assert "test_minio_integration.py" in cell_text
+    assert "test_s3_storage_integration.py" in cell_text
     assert "test_spicedb_integration.py" in cell_text
     assert jobs["browser-matrix"]["strategy"]["matrix"]["browser"] == [
         "chromium",

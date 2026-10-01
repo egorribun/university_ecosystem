@@ -63,10 +63,14 @@ helper `tests/minio_chaos_client.py`.
   gate.
 - **Legacy non-Dishka auth adapters** stay until the tests that override them
   migrate (ADR-033).
-- **`vector_chunks` table and `VectorChunk` model** stay. Nothing writes to
-  them, but dropping a table needs a PostgreSQL-verified migration plus the
-  ADR-036 inventory update, which could not be exercised in the audit
-  environment.
+- **Raw `k8s/` supporting manifests** stay as the documented
+  development/diagnostic path; the Helm chart is the only staging/production
+  release artifact (`k8s/README.md`). Their backend ConfigMap now uses the
+  real `FRONTEND_ORIGIN(S)`/`APP_BASE_URL` settings.
+- **Generated MSW handlers** (`frontend/src/tests/mocks/generated/`) stay
+  as contract-gated developer tooling.
+- **Feature-flag scaffold** stays (see above); `.agents/` stays as repository
+  tooling.
 
 ## Consequences
 
@@ -78,3 +82,45 @@ helper `tests/minio_chaos_client.py`.
 - `NATS_TASK_MAX_DELIVERIES`, `NATS_TASK_RETRY_BASE_DELAY_SECONDS` tune the
   task worker; Elasticsearch outages never fail the originating write, and
   `search reindex` repairs the drift afterwards.
+
+## Second audit (follow-up changes)
+
+A second pass covered Rust, infrastructure, migrations (applied end to end on
+PostgreSQL 16 with pgvector; `compare_metadata` shows no drift beyond the
+documented CHECK-backed NOT NULL columns), RBAC and cross-module contracts.
+
+- **Deployment**: the Helm chart now sets `APP_BASE_URL`, `FRONTEND_ORIGIN` and
+  `FRONTEND_ORIGINS` from the first ingress host (`charts/.../_helpers.tpl`,
+  `validate-config.yaml` pins them to the ingress origin in staging and
+  production). Before, emailed reset links defaulted to `http://localhost:5173`.
+- **Authorization**: admin-only routes (news, stories, access-audit export,
+  push administration, cross-user session management) depend on the
+  SpiceDB-backed `get_current_admin_user_from_dishka` / `ensure_admin` instead
+  of the `user.role` column, matching the documented rule that the role column
+  is never the sole gate for a privileged operation. `require_admin` and
+  `require_owner_or_admin` are gone; the teacher gate stays role-based because
+  SpiceDB models teachers per course (`tests/test_admin_route_authorization_contract.py`).
+  The user search only returns full profiles when SpiceDB agrees and degrades
+  to the public view when it is unreachable.
+- **Error contract**: `HTTPException.detail` is always a string on the wire;
+  structured `{"error", "message", ...}` details are exposed as RFC 7807
+  extension members (`code`, plus the extra keys). 28 `errors.*` keys that had
+  no translation (clients saw e.g. `errors.chat.self_chat`) are translated and
+  `tests/test_localization_key_coverage.py` keeps the dictionary complete;
+  `BusinessRuleViolation` messages are translated too.
+- **Data**: revision `202610010001` drops the unused `user_stats` and
+  `vector_chunks` tables (reversible); their models, the model-default policy
+  and the unused `qdrant-client`/`polars` dependencies are removed.
+- **Frontend**: the activity comparison cards derive "previous" from the
+  server `trend` (one definition, not a second client-side split of truncated
+  lists), fabricated `4.4`/`0.3` grade defaults are gone, and the never-emitted
+  `online` WebSocket frame is removed from the schema and hook.
+- **Rust**: fuzz targets that exercised local copies or third-party crates
+  (`fuzz_sanitizer`, `fuzz_target_1`, `fuzz_uuid`) are removed and
+  `fuzz_hmac` drives the production `verify_audit_signature`; the unused
+  `ammonia`/`uuid` fuzz dependencies and the non-executing nested
+  `.github/workflows/CI.yml` are gone.
+- **Hygiene**: the nightly S3 cell now tests the production `S3Storage`
+  (`tests/integration/test_s3_storage_integration.py`) instead of a deleted
+  helper; `go mod tidy` for the gateway; stray `C:\dummy_static_dir` artifact
+  and the tests that wrote it; two unreferenced scripts; stale comments.

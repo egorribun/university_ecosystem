@@ -24,6 +24,13 @@ Security policies apply. Before rendering or installing the application:
 5. Replace the required ingress hosts, verify DNS, and wait for the referenced
    TLS certificate to become Ready.
 
+The backend receives `APP_BASE_URL`, `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS`
+from the first ingress host (`https://<ingress.hosts[0].host>`), so emailed
+password-reset and email-change links and the API CORS allow-list point at the
+public frontend. `backend.config.frontendOrigin` may override the derived value
+in development; staging and production fail rendering unless it is empty or
+equal to the ingress origin.
+
 The dependency trust boundary is deliberately narrow: Redis must render as
 `docker.io/bitnami/redis`, its metrics sidecar as
 `docker.io/bitnami/redis-exporter`, and NATS as `docker.io/bitnami/nats`.
