@@ -93,13 +93,13 @@ def test_phase_four_policy_accounts_for_all_remaining_exceptions() -> None:
     )
     # Additive demo ownership migrations advance the inventory head; BE-02 phase
     # four itself remains pinned to its original revision.
-    assert policy["expected"]["migration_head"] == "202609300002"
+    assert policy["expected"]["migration_head"] == "202610010001"
     assert policy["expected"]["effective_counts"] == {
-        "both": 94,
-        "python_only": 40,
+        "both": 80,
+        "python_only": 39,
         "server_only": 0,
     }
-    assert len(policy["exceptions"]) == 40
+    assert len(policy["exceptions"]) == 39
 
 
 def test_conflicting_timestamp_default_is_rejected() -> None:

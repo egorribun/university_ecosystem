@@ -1,7 +1,6 @@
 import * as v from "valibot"
+import { MAX_IMAGE_UPLOAD_BYTES } from "@/constants/uploads"
 
-// Max file size 5MB
-const MAX_FILE_SIZE = 5 * 1024 * 1024
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
 
 export const newsFormSchema = v.object({
@@ -37,7 +36,7 @@ export const newsFormSchema = v.object({
     v.optional(
       v.pipe(
         v.instance(File),
-        v.check((file) => file.size <= MAX_FILE_SIZE, "Max image size is 5MB."),
+        v.check((file) => file.size <= MAX_IMAGE_UPLOAD_BYTES, "Max image size is 5MB."),
         v.check(
           (file) => ACCEPTED_IMAGE_TYPES.includes(file.type),
           "Only .jpg, .jpeg, .png and .webp formats are supported."

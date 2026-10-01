@@ -16,9 +16,6 @@ from app.core.localization import translate
 from app.models.enums import UserRole
 
 if TYPE_CHECKING:
-    pass
-
-if TYPE_CHECKING:
     from app.models import User
 
 T = TypeVar("T")

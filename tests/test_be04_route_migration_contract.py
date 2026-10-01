@@ -32,7 +32,7 @@ def test_story_write_routes_use_dishka_service_and_auth(endpoint: object) -> Non
     assert hasattr(endpoint, "__dishka_orig_func__")
 
     user = signature.parameters["user"]
-    assert user.default.dependency is auth_deps.get_current_user_from_dishka
+    assert user.default.dependency is auth_deps.get_current_admin_user_from_dishka
 
 
 @pytest.mark.parametrize(

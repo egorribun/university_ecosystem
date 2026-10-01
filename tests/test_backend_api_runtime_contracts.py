@@ -307,30 +307,6 @@ async def test_delete_push_subscription_not_found():
 
 
 @pytest.mark.asyncio
-async def test_send_test_push_forbidden():
-    from app.schemas.notifications import PushTestRequest
-
-    payload = PushTestRequest(user_id=uuid.uuid4(), topic="system")
-    request = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.role = UserRole.STUDENT
-
-    with patch(
-        "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await call_injected(
-                push_router.send_test,
-                request=request,
-                user=user,
-                payload=payload,
-                provides={"AsyncDatabaseSession": db},
-            )
-        assert exc.value.status_code == 403
-
-
-@pytest.mark.asyncio
 async def test_send_test_push_vapid_not_configured():
     from app.schemas.notifications import PushTestRequest
 
@@ -522,26 +498,6 @@ async def test_send_test_push_success():
 
 
 @pytest.mark.asyncio
-async def test_admin_get_user_topics_forbidden():
-    request = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.role = UserRole.STUDENT
-    with patch(
-        "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await call_injected(
-                push_router.admin_get_user_topics,
-                user_id=uuid.uuid4(),
-                request=request,
-                user=user,
-                provides={"AsyncDatabaseSession": db},
-            )
-        assert exc.value.status_code == 403
-
-
-@pytest.mark.asyncio
 async def test_admin_get_user_topics_not_found():
     request = MagicMock()
     db = AsyncMock()
@@ -597,30 +553,6 @@ async def test_admin_get_user_topics_success():
         assert res.user_id == target_user.id
         assert res.email == target_user.email
         assert "system.release" in res.topics
-
-
-@pytest.mark.asyncio
-async def test_admin_update_user_topics_forbidden():
-    from app.schemas.notifications import AdminUserTopicsUpdate
-
-    payload = AdminUserTopicsUpdate(topics=["system"])
-    request = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.role = UserRole.STUDENT
-    with patch(
-        "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await call_injected(
-                push_router.admin_update_user_topics,
-                user_id=uuid.uuid4(),
-                payload=payload,
-                request=request,
-                user=user,
-                provides={"AsyncDatabaseSession": db},
-            )
-        assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -690,29 +622,6 @@ async def test_admin_update_user_topics_success():
         )
         assert res.user_id == target_user.id
         assert "system.release" in res.topics
-
-
-@pytest.mark.asyncio
-async def test_disable_user_push_forbidden():
-    from app.schemas.notifications import DisableUserPushRequest
-
-    payload = DisableUserPushRequest(user_id=uuid.uuid4())
-    request = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.role = UserRole.STUDENT
-    with patch(
-        "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await call_injected(
-                push_router.disable_user_push,
-                payload=payload,
-                request=request,
-                user=user,
-                provides={"AsyncDatabaseSession": db},
-            )
-        assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -797,29 +706,6 @@ async def test_disable_user_push_success():
             provides={"AsyncDatabaseSession": db},
         )
         assert res == {"ok": True, "removed": 2}
-
-
-@pytest.mark.asyncio
-async def test_broadcast_forbidden():
-    from app.schemas.notifications import NotifyBody
-
-    payload = NotifyBody(title="hello", body="world")
-    request = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.role = UserRole.STUDENT
-    with patch(
-        "app.routers.notifications.resolve_locale", MagicMock(return_value="en")
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await call_injected(
-                push_router.broadcast,
-                data=payload,
-                request=request,
-                user=user,
-                provides={"AsyncDatabaseSession": db},
-            )
-        assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio

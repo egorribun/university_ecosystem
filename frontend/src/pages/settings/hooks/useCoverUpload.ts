@@ -9,12 +9,12 @@ import { resolveMediaUrl, addVersionParam } from "@/utils/media"
 import type { User } from "@/types/User"
 import type { SetSnackbar } from "@/pages/settings/types"
 import { useObjectUrlPreview } from "./useObjectUrlPreview"
+import { MAX_IMAGE_UPLOAD_BYTES } from "@/constants/uploads"
 
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"])
 
 const isImage = (file: File) => ALLOWED_IMAGE_TYPES.has(file.type.toLowerCase())
-const withinSize = (file: File) => file.size <= MAX_FILE_SIZE_BYTES
+const withinSize = (file: File) => file.size <= MAX_IMAGE_UPLOAD_BYTES
 
 export function useCoverUpload(setSnackbar: SetSnackbar) {
   const { t } = useTranslation(["settings"])

@@ -29,6 +29,19 @@ VERSIONS = ROOT / "alembic" / "versions"
 MIGRATION = VERSIONS / "202609220001_phase_literal_scalar_defaults.py"
 
 
+# Revision 202610010001 dropped these tables; the historical phase still lists
+# their columns, which no longer exist on the models.
+DROPPED_TABLES = frozenset({"user_stats", "vector_chunks"})
+
+
+def _live_specs() -> list:
+    return [
+        spec
+        for spec in _load_migration().DEFAULT_SPECS
+        if spec.table not in DROPPED_TABLES
+    ]
+
+
 def _load_migration() -> ModuleType:
     spec = importlib.util.spec_from_file_location("be02_literal_scalars", MIGRATION)
     assert spec is not None and spec.loader is not None
@@ -46,7 +59,7 @@ def test_literal_scalar_phase_is_dual_declared() -> None:
     run and proposes dropping the default the phase just installed.
     """
 
-    for spec in _load_migration().DEFAULT_SPECS:
+    for spec in _live_specs():
         column = Base.metadata.tables[spec.table].c[spec.column]
         qualified = f"{spec.table}.{spec.column}"
         assert column.default is not None, qualified
@@ -56,7 +69,7 @@ def test_literal_scalar_phase_is_dual_declared() -> None:
 def test_declared_literals_match_the_python_defaults() -> None:
     """The transcribed literal is the scalar the ORM already applies."""
 
-    for spec in _load_migration().DEFAULT_SPECS:
+    for spec in _live_specs():
         column = Base.metadata.tables[spec.table].c[spec.column]
         qualified = f"{spec.table}.{spec.column}"
         python_default = column.default.arg

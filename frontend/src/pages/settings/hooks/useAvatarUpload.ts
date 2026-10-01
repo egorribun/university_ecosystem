@@ -9,13 +9,13 @@ import { resolveMediaUrl, addVersionParam } from "@/utils/media"
 import type { User } from "@/types/User"
 import type { SetSnackbar } from "@/pages/settings/types"
 import { useObjectUrlPreview } from "./useObjectUrlPreview"
+import { MAX_IMAGE_UPLOAD_BYTES } from "@/constants/uploads"
 
 const DEFAULT_AVATAR = "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y"
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"])
 
 const isImage = (file: File) => ALLOWED_IMAGE_TYPES.has(file.type.toLowerCase())
-const withinSize = (file: File) => file.size <= MAX_FILE_SIZE_BYTES
+const withinSize = (file: File) => file.size <= MAX_IMAGE_UPLOAD_BYTES
 
 export function useAvatarUpload(setSnackbar: SetSnackbar) {
   const { t } = useTranslation(["settings"])
