@@ -109,7 +109,7 @@ async def test_toggle_like(news_service, mock_uow, mock_repo):
 
 
 # --------------------------------------------------------------------------- #
-# get_news / get_news_with_details / get_news_item — interaction enrichment    #
+# get_news / get_news_item — interaction enrichment    #
 # --------------------------------------------------------------------------- #
 
 
@@ -125,25 +125,6 @@ async def test_get_news_enriches_with_interactions(news_service, mock_repo):
     assert result is news_obj
     assert result.likes_count == 5
     assert result.is_liked is True
-
-
-@pytest.mark.asyncio
-async def test_get_news_with_details_none_when_missing(news_service, mock_repo):
-    mock_repo.get.return_value = None
-    assert await news_service.get_news_with_details(uuid4(), uuid4()) is None
-
-
-@pytest.mark.asyncio
-async def test_get_news_with_details_enriches(news_service, mock_repo):
-    news_obj = MagicMock()
-    mock_repo.get.return_value = news_obj
-    mock_repo.get_with_interactions.return_value = (3, False)
-
-    result = await news_service.get_news_with_details(uuid4(), uuid4())
-
-    assert result is news_obj
-    assert result.likes_count == 3
-    assert result.is_liked is False
 
 
 @pytest.mark.asyncio

@@ -886,13 +886,6 @@
       "ownership": "worker_internal"
     },
     {
-      "dishka_dependencies": [],
-      "dishka_signals": [],
-      "id": "app.api.internal.jwks:get_jwks:GET:/.well-known/jwks.json",
-      "legacy_dependencies": [],
-      "ownership": "worker_internal"
-    },
-    {
       "dishka_dependencies": [
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
@@ -1801,6 +1794,6 @@
   "summary": {
     "canonical_dishka": 140,
     "public_no_db": 11,
-    "worker_internal": 4
+    "worker_internal": 3
   }
 }

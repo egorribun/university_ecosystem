@@ -549,7 +549,7 @@ def test_configure_event_handlers_registers_global_subscriptions():
         event_handlers.configure_event_handlers()
 
     subscribe_all.assert_called_once_with(event_handlers.log_all_events)
-    assert subscribe.call_count == 25
+    assert subscribe.call_count == 29
     subscribe.assert_any_call(
         "chat.participant_removed",
         event_handlers.handle_chat_participant_removed,
