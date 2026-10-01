@@ -1,6 +1,6 @@
 # MVP — оперативный статус
 
-Срез на 2026-10-01 UTC, перед контрольным коммитом. [Мастер-план](MVP_MASTER_PLAN.md)
+Срез на 2026-10-01 UTC, на контрольной точке паузы. [Мастер-план](MVP_MASTER_PLAN.md)
 фиксирует решения и очереди, [ТЗ MVP](University_Ecosystem_MVP.md) задаёт продуктовые
 требования. Долгосрочный goal приостановлен на контрольной точке; соответствие всего MVP и выпуск `v1.0.0`
 ещё не подтверждены.
@@ -9,7 +9,7 @@
 
 | Область | Подтверждённое состояние |
 | --- | --- |
-| Git / PR | Работа ведётся в основном worktree на `egorribun`, база текущего набора — `f89720aa70de2bfc17dea94b01ef0c003a72ec85`, до контрольного коммита изменения локальны. Открыт единственный PR [#1306](https://github.com/egorribun/university_ecosystem/pull/1306) в `main`. Новые ветки, worktree и PR не создавались. |
+| Git / PR | Локальный checkpoint `00e3a966ccb41047e2aac5c8b22b6991da52779d` создан в основном worktree на `egorribun`. `origin/egorribun` остаётся на `f89720aa70de2bfc17dea94b01ef0c003a72ec85`; checkpoint не отправлен и существующий единственный PR [#1306](https://github.com/egorribun/university_ecosystem/pull/1306) не обновлён. Новые ветки, worktree и PR не создавались. |
 | Исторические worktree | Зарегистрированы три старых detached checkout. В этой контрольной точке они не используются и не менялись; их ignored локальные данные не удалялись. |
 | Последний CI | Run `36854541549` для указанной базы завершился с failure. Сырые логи с credential-shaped содержимым не публиковались. Выявлены: inventory false positives от локальной игнорируемой папки `mutants/`; strict-mypy ошибки quality checker; WASM provenance drift; Secret Keyword в статическом test hash; gofmt только в тестовом файле gateway; PostgreSQL acceptance использовал ORM новее своей схемы. Локальные исправления и проверки перечислены ниже; свежего SHA-bound CI после них пока нет. |
 | Другие красные контексты | `explain-check` исправлен передачей RLS identity в тестовых сценариях; Nilaway guard и Caddy Alpine pin обновлены. `Security Policy Integrity` исполнялся trusted workflow из base `main` и упал на несовместимом аргументе `gh`; это не required context. Ruleset/bypass не менялись. |
@@ -30,11 +30,11 @@
 
 Все перечисленные тесты относятся к локальному изменяемому дереву, если явно не сказано обратное. Они не являются release evidence и не заменяют CI для итогового SHA.
 
-## Следующий безопасный checkpoint
+## Пауза и продолжение
 
-1. Исследовать единственную недостающую backup branch arc без ослабления coverage-контракта; повторно запустить canonical population. Полный pre-commit security/type набор на текущем дереве прошёл.
-2. Явно stage `.secrets.baseline` после полного secret scan; проверить staged diff, исключить `.semgrep-pr-gate-watch-*`, выполнить `git diff --cached --check` и создать один локальный checkpoint commit без `Co-Authored-By`.
-3. Push и обновление PR #1306 отложены до прохождения строгого coverage gate и обязательных локальных проверок; сейчас безопасная контрольная точка — только локальный commit на `egorribun`.
+1. Локальный checkpoint сохранён; полный `pre-commit run --all-files`, commit-time hooks и `git diff --cached --check` прошли. `.secrets.baseline` restaged после последнего secret scan; tracked-изменений после commit нет.
+2. После возобновления исследовать единственную недостающую backup branch arc без ослабления coverage-контракта и повторить canonical population.
+3. Push и обновление PR #1306 выполнять после прохождения строгого coverage gate; release evidence для нового SHA пока отсутствует.
 
 После возобновления: восстановить строгий coverage gate, затем отправить `egorribun` в существующий PR #1306 и разобрать SHA-bound CI; выполнить разрешённый live smoke на отдельном owned стенде, затем продолжать продуктовую, performance, mutation, backup/restore и kind-приёмку по мастер-плану.
 
