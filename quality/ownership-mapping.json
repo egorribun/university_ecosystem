@@ -74,8 +74,7 @@
     "tests/test_uuid7_and_geolocation.py",
     "tests/test_l1_cache.py",
     "frontend/**",
-    "services/gateway/**",
-    "tests/test_vector_sharding.py"
+    "services/gateway/**"
   ],
   "allowed_dynamic_skips": [
     "tests/chaos/**",

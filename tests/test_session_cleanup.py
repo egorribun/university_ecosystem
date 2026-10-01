@@ -1,4 +1,3 @@
-import asyncio
 import datetime as dt
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -6,42 +5,14 @@ import pytest
 
 from app.models import ActiveSession
 from app.services.session_cleanup import (
-    SessionCleanupConfig,
     cleanup_expired_sessions,
     delete_sessions_matching,
     revoke_sessions_matching,
-    start_session_cleanup_scheduler,
 )
 
 # ============================================================
 # SessionCleanupConfig tests
 # ============================================================
-
-
-def test_session_cleanup_config_default():
-    config = SessionCleanupConfig()
-    assert config.interval_seconds == 900
-    assert config.normalized_interval() == 900
-
-
-def test_session_cleanup_config_custom():
-    config = SessionCleanupConfig(interval_seconds=120)
-    assert config.normalized_interval() == 120
-
-
-def test_session_cleanup_config_min_interval():
-    config = SessionCleanupConfig(interval_seconds=10)
-    assert config.normalized_interval() == 30
-
-
-def test_session_cleanup_config_zero_interval():
-    config = SessionCleanupConfig(interval_seconds=0)
-    assert config.normalized_interval() == 30
-
-
-def test_session_cleanup_config_negative():
-    config = SessionCleanupConfig(interval_seconds=-100)
-    assert config.normalized_interval() == 30
 
 
 # ============================================================
@@ -220,78 +191,3 @@ async def test_cleanup_expired_sessions():
 # ============================================================
 # start_session_cleanup_scheduler tests
 # ============================================================
-
-
-@pytest.mark.anyio
-async def test_start_session_cleanup_scheduler_normal():
-    config = SessionCleanupConfig(interval_seconds=30)
-
-    real_sleep = asyncio.sleep
-
-    async def mock_sleep_fn(delay, *args, **kwargs):
-        await real_sleep(0.0001)
-
-    with (
-        patch(
-            "app.services.session_cleanup.cleanup_expired_sessions",
-            new_callable=AsyncMock,
-        ) as mock_cleanup,
-        patch(
-            "app.services.session_cleanup.asyncio.sleep", side_effect=mock_sleep_fn
-        ) as mock_sleep,
-    ):
-        mock_cleanup.return_value = 4
-
-        stop_fn = await start_session_cleanup_scheduler(config=config)
-        assert stop_fn is not None
-
-        await real_sleep(0.05)
-        mock_cleanup.assert_called()
-        mock_sleep.assert_called()
-        await stop_fn()
-        # Double stop when already done
-        await stop_fn()
-
-
-@pytest.mark.anyio
-async def test_start_session_cleanup_scheduler_error():
-    real_sleep = asyncio.sleep
-
-    async def mock_sleep_fn(delay, *args, **kwargs):
-        await real_sleep(0.0001)
-
-    with (
-        patch(
-            "app.services.session_cleanup.cleanup_expired_sessions",
-            new_callable=AsyncMock,
-        ) as mock_cleanup,
-        patch(
-            "app.services.session_cleanup.asyncio.sleep", side_effect=mock_sleep_fn
-        ) as _,
-    ):
-        mock_cleanup.side_effect = ValueError("db error")
-        stop_fn = await start_session_cleanup_scheduler()
-        await real_sleep(0.05)
-        await stop_fn()
-
-
-@pytest.mark.anyio
-async def test_start_session_cleanup_scheduler_cancel_error():
-    real_sleep = asyncio.sleep
-
-    async def mock_sleep_fn(delay, *args, **kwargs):
-        await real_sleep(0.0001)
-
-    with (
-        patch(
-            "app.services.session_cleanup.cleanup_expired_sessions",
-            new_callable=AsyncMock,
-        ) as mock_cleanup,
-        patch(
-            "app.services.session_cleanup.asyncio.sleep", side_effect=mock_sleep_fn
-        ) as _,
-    ):
-        mock_cleanup.side_effect = asyncio.CancelledError()
-        stop_fn = await start_session_cleanup_scheduler()
-        await real_sleep(0.05)
-        await stop_fn()

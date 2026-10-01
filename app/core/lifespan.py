@@ -19,7 +19,6 @@ from app.services.partition_manager import (
     ensure_partitions_exist,
     start_partition_management_scheduler,
 )
-from app.tasks.cleanups import setup_periodic_cleanups
 from app.workers.cdc_outbox import CdcOutboxWorker, require_supported_cdc_transport
 from app.workers.outbox import OutboxWorker
 
@@ -237,8 +236,6 @@ async def _startup_background_workers(app: FastAPI) -> None:
 
     from app.core.nats_broker import NatsTaskBroker
 
-    await setup_periodic_cleanups()
-
     if not hasattr(app.state, "background_tasks"):
         app.state.background_tasks = set()
 
@@ -292,6 +289,13 @@ async def _startup_background_workers(app: FastAPI) -> None:
                 asyncio.create_task(nats_broker.run_worker(), name="nats_worker")
             )
 
+        # Handler failures of non-durable events were logged and dropped because
+        # the bus had no dead-letter sink; record them so /admin/dlq can replay.
+        from app.core.event_dlq import dead_letter_queue
+        from app.core.events import event_bus
+
+        event_bus.set_dlq(dead_letter_queue)
+
         # ADR-020: push SpiceDB relationship changes into the local permission
         # cache so revocations apply immediately instead of after the grace TTL.
         # Only request-serving processes hold that cache.
@@ -343,7 +347,6 @@ async def _periodic_scheduler_loop() -> None:
         cleanup_privacy_artifacts_task,
         cleanup_sessions_task,
         cleanup_stories_task,
-        manage_partitions_task,
     )
 
     async def _kick(task: Any) -> None:
@@ -399,7 +402,6 @@ async def _periodic_scheduler_loop() -> None:
                         cleanup_notifications_task,
                         cleanup_dead_letter_jobs_task,
                         cleanup_privacy_artifacts_task,
-                        manage_partitions_task,
                     ]
                 )
 

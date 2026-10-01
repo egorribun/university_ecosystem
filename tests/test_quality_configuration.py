@@ -241,16 +241,7 @@ def test_runtime_source_has_no_executable_coverage_pragmas() -> None:
             if "pragma: no cover" in line:
                 usages.append((path.relative_to(ROOT).as_posix(), line.strip()))
 
-    assert usages == [
-        (
-            "app/core/event_decorators.py",
-            "]: ...  # pragma: no cover - typing-only overload",
-        ),
-        (
-            "app/core/event_decorators.py",
-            "]: ...  # pragma: no cover - typing-only overload",
-        ),
-    ]
+    assert usages == []
 
 
 def test_governance_quality_configuration_matches_contract() -> None:

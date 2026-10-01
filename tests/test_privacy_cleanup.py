@@ -6,7 +6,6 @@ for sessions/MFA/failed logins, scheduler lifecycle, and metrics tracking.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,7 +15,6 @@ from app.services.privacy_cleanup import (
     PrivacyCleanupConfig,
     _cutoff,
     cleanup_privacy_artifacts,
-    start_privacy_cleanup_scheduler,
 )
 
 # ---------------------------------------------------------------------------
@@ -237,72 +235,3 @@ class TestCleanupPrivacyArtifacts:
 # ---------------------------------------------------------------------------
 # start_privacy_cleanup_scheduler
 # ---------------------------------------------------------------------------
-
-
-class TestPrivacyCleanupScheduler:
-    """Tests for the start_privacy_cleanup_scheduler lifecycle."""
-
-    @pytest.mark.asyncio
-    async def test_scheduler_starts_and_stops(self):
-        """Scheduler starts a background task and the stop function cancels it."""
-        config = PrivacyCleanupConfig(interval_seconds=60)
-
-        with patch(
-            "app.services.privacy_cleanup.cleanup_privacy_artifacts",
-            new_callable=AsyncMock,
-            return_value={
-                "sessions": 0,
-                "mfa_challenges": 0,
-                "mfa_enrollments": 0,
-                "failed_logins": 0,
-                "access_logs": 0,
-            },
-        ):
-            stop_function = await start_privacy_cleanup_scheduler(config=config)
-
-        # Give the loop a chance to run one iteration
-        await asyncio.sleep(0.05)
-
-        # Stop the scheduler
-        await stop_function()
-
-    @pytest.mark.asyncio
-    async def test_stop_on_already_done_task(self):
-        """Stop function handles an already-finished task gracefully."""
-        config = PrivacyCleanupConfig(interval_seconds=60)
-
-        async def fail_immediately(**kwargs):
-            raise RuntimeError("simulated failure")
-
-        with patch(
-            "app.services.privacy_cleanup.cleanup_privacy_artifacts",
-            side_effect=fail_immediately,
-        ):
-            stop_function = await start_privacy_cleanup_scheduler(config=config)
-
-        # Let the task fail
-        await asyncio.sleep(0.1)
-
-        # Stop should handle the already-done/failed task
-        await stop_function()
-
-    @pytest.mark.asyncio
-    async def test_scheduler_uses_normalized_interval(self):
-        """Scheduler uses normalized_interval for sleep duration."""
-        config = PrivacyCleanupConfig(interval_seconds=10)  # Below minimum → 60
-        assert config.normalized_interval() == 60
-
-        with patch(
-            "app.services.privacy_cleanup.cleanup_privacy_artifacts",
-            new_callable=AsyncMock,
-            return_value={
-                "sessions": 0,
-                "mfa_challenges": 0,
-                "mfa_enrollments": 0,
-                "failed_logins": 0,
-                "access_logs": 0,
-            },
-        ):
-            stop_function = await start_privacy_cleanup_scheduler(config=config)
-            await asyncio.sleep(0.05)
-            await stop_function()

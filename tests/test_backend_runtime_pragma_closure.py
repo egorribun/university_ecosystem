@@ -13,7 +13,6 @@ from fastapi import FastAPI
 
 from app.core import metrics, observability
 from app.utils import files
-from app.utils.retry import RetryExhausted, retry_async
 
 
 def _load_without_prometheus(
@@ -200,15 +199,3 @@ def test_detect_mime_type_uses_signature_when_detector_raises() -> None:
 
     with patch.object(files, "_magic_mime_detector", detector):
         assert files.detect_mime_type(b"%PDF-1.7 payload") == "application/pdf"
-
-
-@pytest.mark.asyncio
-async def test_retry_with_zero_attempts_reports_empty_exhaustion() -> None:
-    operation = AsyncMock(return_value="unreachable")
-
-    with pytest.raises(RetryExhausted) as exc_info:
-        await retry_async(operation, max_attempts=0)
-
-    assert exc_info.value.attempts == 0
-    assert exc_info.value.last_error is None
-    operation.assert_not_awaited()

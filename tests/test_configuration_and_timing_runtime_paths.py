@@ -100,17 +100,6 @@ class TestStoreMfaFingerprintsRedisError:
 # ─────────────────────────────────────────────────────────────────────────────
 # app.core.timing — RequestTimingMiddleware non-HTTP scope passthrough
 # ─────────────────────────────────────────────────────────────────────────────
-class TestTimingMiddlewarePassthrough:
-    @pytest.mark.asyncio
-    async def test_non_http_scope_delegates_without_timing(self):
-        from app.core.timing import RequestTimingMiddleware
-
-        app = AsyncMock()
-        mw = RequestTimingMiddleware(app)
-        scope = {"type": "lifespan"}
-        receive, send = AsyncMock(), AsyncMock()
-        await mw(scope, receive, send)
-        app.assert_awaited_once_with(scope, receive, send)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

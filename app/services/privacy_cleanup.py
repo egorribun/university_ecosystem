@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Awaitable, Callable
-from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -112,39 +109,3 @@ async def cleanup_privacy_artifacts(
         run.observe_deleted(sum(counts.values()))
     await db.commit()
     return counts
-
-
-async def start_privacy_cleanup_scheduler(
-    *, config: PrivacyCleanupConfig
-) -> Callable[[], Awaitable[None]]:
-    interval = config.normalized_interval()
-
-    async def _loop() -> None:
-        try:
-            while True:
-                try:
-                    deleted = await cleanup_privacy_artifacts(config=config)
-                    logger.info("Privacy cleanup run completed: %s", deleted)
-                except asyncio.CancelledError:
-                    raise
-                except (OSError, ConnectionError):
-                    # RZ-20-04: Narrowed — DB/network errors only.
-                    logger.exception("Failed to run privacy cleanup")
-                await asyncio.sleep(interval)
-        except asyncio.CancelledError:
-            logger.info("Privacy cleanup loop cancelled")
-            raise
-
-    loop = asyncio.get_running_loop()
-    task = loop.create_task(_loop())
-
-    async def _stop() -> None:
-        if task.done():
-            with suppress(asyncio.CancelledError, Exception):
-                task.result()
-            return
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
-
-    return _stop

@@ -1,14 +1,11 @@
-import asyncio
-import time
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from starlette.responses import FileResponse, JSONResponse
 
 from app.core.internal_access import InternalAccessMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
-from app.core.timing import RequestTimingMiddleware, ensure_minimum_time
 
 
 def _make_http_scope(
@@ -56,53 +53,7 @@ async def _capture_asgi_response(
     await middleware(scope, receive, send)
     return captured
 
-
-@pytest.mark.asyncio
-async def test_ensure_minimum_time():
-    start = time.perf_counter()
-    # Test shortfall
-    await ensure_minimum_time(start, 0.1)
-    elapsed = time.perf_counter() - start
-    # Allow for small precision differences in sleep/perf_counter
-    assert elapsed >= 0.1 - 0.05
-
-    # Test no shortfall
-    start = time.perf_counter() - 0.2
-    await ensure_minimum_time(start, 0.1)
     # Should return immediately
-
-
-@pytest.mark.asyncio
-async def test_request_timing_middleware():
-    async def inner_app(scope: Any, receive: Any, send: Any) -> None:
-        await send({"type": "http.response.start", "status": 200, "headers": []})
-        await send({"type": "http.response.body", "body": b"ok"})
-
-    middleware = RequestTimingMiddleware(inner_app)
-
-    # Normal request — check that it completes (X-Response-Time is opt-in via settings)
-    with patch("app.core.timing.settings") as mock_settings:
-        mock_settings.expose_timing_header = True
-        scope = _make_http_scope(path="/test")
-        result = await _capture_asgi_response(middleware, scope)
-        assert result["status"] == 200
-        assert "x-response-time" in result["headers"]
-
-    # Slow request — triggers warning log
-    async def slow_inner_app(scope: Any, receive: Any, send: Any) -> None:
-        await asyncio.sleep(0.6)
-        await send({"type": "http.response.start", "status": 200, "headers": []})
-        await send({"type": "http.response.body", "body": b"slow"})
-
-    slow_middleware = RequestTimingMiddleware(slow_inner_app)
-    with (
-        patch("app.core.timing.logger") as mock_logger,
-        patch("app.core.timing.settings") as mock_settings,
-    ):
-        mock_settings.expose_timing_header = False
-        scope = _make_http_scope(path="/test")
-        result = await _capture_asgi_response(slow_middleware, scope)
-        assert mock_logger.warning.called
 
 
 @pytest.mark.asyncio

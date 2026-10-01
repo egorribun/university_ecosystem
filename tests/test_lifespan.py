@@ -652,7 +652,6 @@ async def test_startup_background_workers_production() -> None:
     # 1. Success path (NATS connected)
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch("app.core.lifespan.ensure_partitions_exist", new_callable=AsyncMock),
         patch(
             "app.core.lifespan.start_partition_management_scheduler",
@@ -688,7 +687,6 @@ async def test_startup_background_workers_production() -> None:
     mock_nats.is_connected = False
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch("app.core.lifespan.ensure_partitions_exist", new_callable=AsyncMock),
         patch(
             "app.core.lifespan.start_partition_management_scheduler",
@@ -721,7 +719,6 @@ async def test_startup_background_workers_production() -> None:
     app3.state.dishka_container = mock_container
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch(
             "app.core.lifespan.ensure_partitions_exist",
             side_effect=Exception("partitions fail"),
@@ -1087,7 +1084,6 @@ async def test_lifespan_edge_cases_coverage() -> None:
             "app.core.lifespan.ensure_partitions_exist",
             side_effect=Exception("Partition error"),
         ),
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
     ):
         mock_settings.environment = "testing"
         mock_settings.partition_management_enabled = True
@@ -1159,7 +1155,6 @@ async def test_periodic_scheduler_loop_execution() -> None:
         patch("app.tasks.cleanups.cleanup_notifications_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_dead_letter_jobs_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
-        patch("app.tasks.cleanups.manage_partitions_task", AsyncMock()),
         patch("app.core.metrics.record_background_task_error") as mock_record,
     ):
         await _periodic_scheduler_loop()
@@ -1200,7 +1195,6 @@ async def test_prewarm_jwt_public_key_cache_error() -> None:
 async def test_startup_background_workers_partition_disabled() -> None:
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
     ):
         mock_settings.environment = "testing"
         mock_settings.embedded_cdc_outbox_worker_enabled = False
@@ -1231,7 +1225,6 @@ async def test_startup_background_workers_can_disable_embedded_outbox() -> None:
 
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
     ):
         mock_settings.environment = "production"
         # ``settings`` is a MagicMock, so every unset boolean reads
@@ -1255,7 +1248,6 @@ async def test_startup_background_workers_can_disable_embedded_outbox() -> None:
 async def test_startup_background_workers_production_env() -> None:
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch("app.core.lifespan.ensure_partitions_exist", new_callable=AsyncMock),
         patch(
             "app.core.lifespan.start_partition_management_scheduler",
@@ -1340,7 +1332,6 @@ async def test_periodic_scheduler_loop_all_hours() -> None:
         patch("app.tasks.cleanups.cleanup_notifications_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_dead_letter_jobs_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
-        patch("app.tasks.cleanups.manage_partitions_task", AsyncMock()),
     ):
         await _periodic_scheduler_loop()
 
@@ -1357,7 +1348,6 @@ async def test_periodic_scheduler_loop_all_hours() -> None:
         patch("app.tasks.cleanups.cleanup_notifications_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_dead_letter_jobs_task", AsyncMock()),
         patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
-        patch("app.tasks.cleanups.manage_partitions_task", AsyncMock()),
     ):
         await _periodic_scheduler_loop()
 
@@ -1423,7 +1413,6 @@ async def test_lifespan_warm_cache_testing() -> None:
 async def test_startup_background_workers_partition_enabled_testing_env() -> None:
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch("app.core.lifespan.ensure_partitions_exist", new_callable=AsyncMock),
         patch(
             "app.core.lifespan.start_partition_management_scheduler",
@@ -1484,7 +1473,6 @@ async def test_cdc_outbox_worker_replaces_the_polling_worker_when_enabled() -> N
         # test_cdc_safety.py and must reject this selection today.
         patch("app.core.lifespan.require_supported_cdc_transport"),
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch(
             "app.core.lifespan.CdcOutboxWorker", return_value=mock_cdc
         ) as mock_cdc_cls,
@@ -1626,7 +1614,6 @@ async def test_startup_runs_spicedb_watch_only_in_api_processes(
 
     with (
         patch("app.core.lifespan.settings") as mock_settings,
-        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
         patch("app.core.spicedb_watch.start_permission_watch", new=AsyncMock()),
     ):
         mock_settings.environment = "production"
@@ -1643,3 +1630,37 @@ async def test_startup_runs_spicedb_watch_only_in_api_processes(
         for task in app.state.background_tasks:
             task.cancel()
         await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_startup_attaches_dead_letter_queue_to_event_bus() -> None:
+    """Failed non-durable handlers must land in the DLQ instead of vanishing."""
+    from app.core.event_dlq import dead_letter_queue
+    from app.core.events import event_bus
+
+    app = FastAPI()
+    app.state.dishka_container = AsyncMock()
+    nats = AsyncMock()
+    nats.is_connected = False
+    app.state.dishka_container.get.return_value = nats
+    previous = event_bus._dlq
+
+    try:
+        with (
+            patch("app.core.lifespan.settings") as mock_settings,
+            patch("app.core.spicedb_watch.start_permission_watch", new=AsyncMock()),
+        ):
+            mock_settings.environment = "production"
+            mock_settings.app_process_role = "worker"
+            mock_settings.partition_management_enabled = False
+            mock_settings.embedded_outbox_worker_enabled = False
+            mock_settings.embedded_cdc_outbox_worker_enabled = False
+
+            await _startup_background_workers(app)
+
+            assert event_bus._dlq is dead_letter_queue
+            for task in app.state.background_tasks:
+                task.cancel()
+            await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
+    finally:
+        event_bus._dlq = previous

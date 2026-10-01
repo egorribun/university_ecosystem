@@ -356,18 +356,20 @@ server {
 ## Notifications worker
 
 - Для корректной отправки push-уведомлений запустите отдельный воркер: `python -m app.workers.notifications`.
-- При запуске API и воркера в разных процессах выключите встроенный планировщик в API, установив `NOTIFICATIONS_SCHEDULER_INLINE_ENABLED=false`.
 - Воркер публикует здоровье и метрики Prometheus на `http://<host>:9101/healthz` и `http://<host>:9101/metrics` (порт можно изменить через `NOTIFICATIONS_WORKER_METRICS_PORT`).
 - В docker-compose уже добавлен сервис `notifications-worker` с политикой перезапуска `unless-stopped`.
-- Задания из dead-letter очереди автоматически удаляются по истечении 30 дней (управляется `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`). Периодичность проверки задаётся `NOTIFICATION_QUEUE_DEAD_LETTER_CLEANUP_INTERVAL_SECONDS` (минимум 300 секунд; значение `0` отключает планировщик).
+- Задания из dead-letter очереди автоматически удаляются по истечении 30 дней (управляется `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`).
 
-## Очистка сессий пользователей
+## Расписание периодической очистки
 
-- API автоматически удаляет устаревшие записи из `active_sessions` при старте и затем каждые 15 минут.
-- Частоту можно изменить переменной `SESSION_CLEANUP_INTERVAL_SECONDS` (минимум 30 секунд). Значение `0` выключает фоновой планировщик; при этом скрипт очистки можно запускать вручную, вызвав `python -m app.services.session_cleanup` внутри контейнера/виртуального окружения.
+API запускает один почасовой планировщик (`app/core/lifespan.py::_periodic_scheduler_loop`; стартовый джиттер 0–60 с разносит нагрузку при rolling deploy). Периодичность задана в коде и не настраивается для отдельных задач:
 
-## Очистка MFA-челленджей
+| Периодичность | Задачи |
+|---|---|
+| каждый час | истёкшие stories, устаревшие токены сброса пароля, токены смены e-mail, MFA-челленджи |
+| каждые 6 часов | истёкшие и отозванные сессии |
+| ежедневно в 02:00 UTC | устаревшие уведомления, задания notification-queue из dead-letter, privacy-артефакты (и CWV-наблюдения) |
 
-- Утилита `cleanup_stale_mfa_challenges` удаляет записи, у которых и срок действия, и отметка `consumed_at` старше `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`.
-- Планировщик запускается каждые 10 минут по умолчанию (`MFA_CHALLENGE_CLEANUP_INTERVAL_SECONDS`, минимум 30 секунд). Значение `0` отключает фоновой цикл, но задачу можно запускать вручную через `python -m app.services.mfa_challenge_cleanup`.
-- Рекомендуется выдерживать интервал 5–10 минут, чтобы база не разрасталась и не блокировала логин-формы. Следите за метриками `periodic_task_mfa_challenge_cleanup_runs_total`, `_errors_total` и `_deleted_total`, чтобы замечать аномальные пики или ошибки очистки.
+Окна хранения настраиваются (`NOTIFICATIONS_RETENTION_DAYS`, `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`, `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES`, `EMAIL_CHANGE_CLEANUP_RETENTION_MINUTES`, `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`, `SESSION_RETENTION_DAYS`, ...). Каждую задачу можно запустить вручную, например `python -m app.services.session_cleanup` или `python -m app.services.mfa_challenge_cleanup`. Следите за метриками `periodic_task_*_runs_total`, `_errors_total` и `_deleted_total`.
+
+Отзыв сессий (logout, `/auth/sessions/*`) удаляет строки в БД сразу; после обновления с релиза, где строки только помечались отозванными, один раз запустите очистку сессий, чтобы `/auth/sessions` и операторские дашборды были согласованы.

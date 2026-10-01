@@ -745,6 +745,18 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Некорректный статус. Допустимые значения: {statuses}",
         "en": "Invalid status. Must be one of: {statuses}",
     },
+    "errors.dlq.invalid_target": {
+        "ru": "Некорректная цель повтора. Допустимые значения: {targets}",
+        "en": "Invalid replay target. Must be one of: {targets}",
+    },
+    "errors.dlq.already_resolved": {
+        "ru": "Сбой уже обработан",
+        "en": "This failure has already been resolved",
+    },
+    "errors.dlq.not_replayable": {
+        "ru": "Событие нельзя повторить: его одноразовые данные уже уничтожены",
+        "en": "This event cannot be replayed: its one-time data was already destroyed",
+    },
     "success.dlq.retry_queued": {
         "ru": "Задание {job_id} поставлено в очередь на повтор",
         "en": "Job {job_id} queued for retry",

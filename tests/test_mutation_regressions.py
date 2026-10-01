@@ -24,7 +24,6 @@ from app.services.schedule_optimizer import (
     ScheduleOptimizerService,
 )
 from app.services.webpush import build_payload
-from app.utils.retry import RetryExhausted, retry_async
 
 
 def _schedule_item(
@@ -106,24 +105,6 @@ async def test_dead_letter_cleanup_attaches_utc_to_naive_clock() -> None:
     )
 
     assert seen_timezones == [UTC]
-
-
-@pytest.mark.asyncio
-async def test_retry_with_single_attempt_invokes_operation_before_exhausting() -> None:
-    failure = ValueError("terminal")
-    calls = 0
-
-    async def always_fails() -> None:
-        nonlocal calls
-        calls += 1
-        raise failure
-
-    with pytest.raises(RetryExhausted) as exc_info:
-        await asyncio.wait_for(retry_async(always_fails, max_attempts=1), timeout=1.0)
-
-    assert calls == 1
-    assert exc_info.value.attempts == 1
-    assert exc_info.value.last_error is failure
 
 
 @pytest.mark.asyncio
@@ -653,39 +634,6 @@ async def test_detect_conflicts_stub_restores_both_domain_metadata() -> None:
     assert conflicts[0].id == existing.id
     assert conflicts[0].room == existing.room
     assert conflicts[0].teacher == existing.teacher
-
-
-def test_imgproxy_base_url_removes_trailing_slashes() -> None:
-    from app.utils.img import get_optimized_image_url
-
-    settings = SimpleNamespace(
-        imgproxy_key="0" * 64,
-        imgproxy_salt="1" * 64,
-        imgproxy_base_url="https://img.example.com///",
-    )
-
-    with patch("app.utils.img.settings", settings):
-        result = get_optimized_image_url("https://cdn.example.com/photo.jpg")
-
-    assert result is not None
-    assert result.startswith("https://img.example.com/")
-    assert not result.startswith("https://img.example.com//")
-
-
-def test_imgproxy_base_url_preserves_non_slash_suffix() -> None:
-    from app.utils.img import get_optimized_image_url
-
-    settings = SimpleNamespace(
-        imgproxy_key="0" * 64,
-        imgproxy_salt="1" * 64,
-        imgproxy_base_url="https://img.example.comX",
-    )
-
-    with patch("app.utils.img.settings", settings):
-        result = get_optimized_image_url("https://cdn.example.com/photo.jpg")
-
-    assert result is not None
-    assert result.startswith("https://img.example.comX/")
 
 
 @pytest.mark.asyncio

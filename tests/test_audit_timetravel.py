@@ -114,11 +114,10 @@ async def test_grade_service_domain_events(db_session, user_factory):
     student = await user_factory(role="student", email="student-grade@example.com")
     teacher = await user_factory(role="teacher", email="teacher-grade@example.com")
 
-    grade_service = GradeService()
+    grade_service = GradeService(db_session)
 
     # Assign grade
     grade = await grade_service.assign_grade(
-        db_session,
         student_id=student.id,
         subject="Physics",
         score=90.0,
@@ -141,7 +140,6 @@ async def test_grade_service_domain_events(db_session, user_factory):
 
     # Modify grade
     await grade_service.modify_grade(
-        db_session,
         grade_id=grade.id,
         new_score=95.0,
         reason="Extra credit",

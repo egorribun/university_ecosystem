@@ -1,13 +1,10 @@
-import asyncio
 import datetime as dt
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.services.story_cleanup import (
-    StoryCleanupConfig,
     cleanup_expired_stories,
-    start_story_cleanup_scheduler,
 )
 
 
@@ -33,46 +30,3 @@ async def test_cleanup_expired_stories():
         mock_session.return_value.__aenter__.return_value = db
         res2 = await cleanup_expired_stories()
         assert res2 == 3
-
-
-def test_story_cleanup_config():
-    config = StoryCleanupConfig(interval_seconds=10)
-    assert config.normalized_interval() == 60
-
-    config2 = StoryCleanupConfig(interval_seconds=120)
-    assert config2.normalized_interval() == 120
-
-
-@pytest.mark.anyio
-async def test_start_story_cleanup_scheduler_normal():
-    config = StoryCleanupConfig(interval_seconds=60)
-
-    with (
-        patch(
-            "app.services.story_cleanup.cleanup_expired_stories", new_callable=AsyncMock
-        ) as mock_cleanup,
-        patch("app.services.story_cleanup.asyncio.sleep", new_callable=AsyncMock) as _,
-    ):
-        mock_cleanup.return_value = 2
-
-        stop_fn = await start_story_cleanup_scheduler(config=config)
-        assert stop_fn is not None
-
-        await asyncio.sleep(0.05)
-        await stop_fn()
-        # Double stop when already done
-        await stop_fn()
-
-
-@pytest.mark.anyio
-async def test_start_story_cleanup_scheduler_error():
-    with (
-        patch(
-            "app.services.story_cleanup.cleanup_expired_stories", new_callable=AsyncMock
-        ) as mock_cleanup,
-        patch("app.services.story_cleanup.asyncio.sleep", new_callable=AsyncMock) as _,
-    ):
-        mock_cleanup.side_effect = ValueError("db error")
-        stop_fn = await start_story_cleanup_scheduler()
-        await asyncio.sleep(0.05)
-        await stop_fn()

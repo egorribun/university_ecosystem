@@ -42,7 +42,6 @@ async def test_periodic_scheduler_loop_runs_a_cleanup_cycle() -> None:
         patch("app.tasks.cleanups.cleanup_notifications_task", cleanup),
         patch("app.tasks.cleanups.cleanup_dead_letter_jobs_task", cleanup),
         patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", cleanup),
-        patch("app.tasks.cleanups.manage_partitions_task", cleanup),
     ):
         await _periodic_scheduler_loop()
 

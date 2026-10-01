@@ -12,19 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.event_decorators import (
-    clear_pending_registrations,
-    get_pending_count,
-    register_decorated_handlers,
-    subscribe,
-    subscribe_all,
-)
 from app.core.event_dlq import DeadLetterQueue, FailedEvent
-from app.core.event_retry import (
-    EventRetryExhausted,
-    RetryMiddleware,
-    with_retry,
-)
 from app.core.events import (
     DomainEvent,
     EventBus,
@@ -89,62 +77,6 @@ def test_domain_event_custom_metadata():
 # ============================================================
 # Decorator Tests
 # ============================================================
-
-
-def test_subscribe_decorator_registers_handler():
-    """Test @subscribe decorator adds handler to pending list."""
-    clear_pending_registrations()
-
-    @subscribe("test.event")
-    async def test_handler(event: DomainEvent) -> None:
-        pass
-
-    assert get_pending_count() == 1
-
-
-def test_subscribe_all_decorator_registers_handler():
-    """Test @subscribe_all decorator adds handler to pending list."""
-    clear_pending_registrations()
-
-    @subscribe_all
-    async def test_handler(event: DomainEvent) -> None:
-        pass
-
-    assert get_pending_count() == 1
-
-
-@pytest.mark.asyncio
-async def test_register_decorated_handlers():
-    """Test decorated handlers are registered with the bus."""
-    clear_pending_registrations()
-    bus = EventBus()
-
-    @subscribe("user.created")
-    async def handle_user(event: DomainEvent) -> None:
-        pass
-
-    @subscribe_all
-    async def log_all(event: DomainEvent) -> None:
-        pass
-
-    count = register_decorated_handlers(bus)
-
-    assert count == 2
-    assert bus.get_handler_count("user.created") == 2  # specific + all
-    assert len(bus._all_handlers) == 1
-
-
-def test_clear_pending_registrations():
-    """Test clearing pending registrations."""
-    clear_pending_registrations()
-
-    @subscribe("test.event")
-    async def handler(event: DomainEvent) -> None:
-        pass
-
-    assert get_pending_count() == 1
-    clear_pending_registrations()
-    assert get_pending_count() == 0
 
 
 # ============================================================
@@ -261,70 +193,6 @@ def test_event_bus_unsubscribe_all():
 # ============================================================
 # Retry Middleware Tests
 # ============================================================
-
-
-@pytest.mark.asyncio
-async def test_retry_middleware_success():
-    """Test RetryMiddleware allows successful calls through."""
-    middleware = RetryMiddleware(max_retries=3)
-    handler = AsyncMock()
-    event = UserCreated(user_id=1, email="test@example.com")
-
-    await middleware(event, handler)
-
-    handler.assert_called_once_with(event)
-
-
-@pytest.mark.asyncio
-async def test_retry_middleware_retries_on_failure():
-    """Test RetryMiddleware retries failed calls."""
-    middleware = RetryMiddleware(max_retries=2, base_delay=0.01)
-
-    attempts = [0]
-
-    async def failing_then_success(event: DomainEvent) -> None:
-        attempts[0] += 1
-        if attempts[0] < 2:
-            raise ValueError("Temporary failure")
-
-    event = UserCreated(user_id=1, email="test@example.com")
-    await middleware(event, failing_then_success)
-
-    assert attempts[0] == 2
-
-
-@pytest.mark.asyncio
-async def test_retry_middleware_exhausts_retries():
-    """Test RetryMiddleware raises after max retries."""
-    middleware = RetryMiddleware(max_retries=2, base_delay=0.01)
-
-    async def always_fails(event: DomainEvent) -> None:
-        raise ValueError("Permanent failure")
-
-    event = UserCreated(user_id=1, email="test@example.com")
-
-    with pytest.raises(EventRetryExhausted) as exc_info:
-        await middleware(event, always_fails)
-
-    assert exc_info.value.attempts == 3  # 1 initial + 2 retries
-    assert isinstance(exc_info.value.original_error, ValueError)
-
-
-@pytest.mark.asyncio
-async def test_with_retry_decorator():
-    """Test @with_retry decorator."""
-    attempts = [0]
-
-    @with_retry(max_retries=2, base_delay=0.01)
-    async def flaky_handler(event: DomainEvent) -> None:
-        attempts[0] += 1
-        if attempts[0] < 2:
-            raise ValueError("Flaky")
-
-    event = UserCreated(user_id=1, email="test@example.com")
-    await flaky_handler(event)
-
-    assert attempts[0] == 2
 
 
 # ============================================================

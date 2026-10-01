@@ -355,19 +355,20 @@ server {
 ## Notifications worker
 
 - Start a dedicated worker to send push notifications: `python -m app.workers.notifications`.
-- When running the API and worker in separate processes, disable the built-in scheduler in the API by setting `NOTIFICATIONS_SCHEDULER_INLINE_ENABLED=false`.
 - The worker publishes health and Prometheus metrics at `http://<host>:9101/healthz` and `http://<host>:9101/metrics` (change the port via `NOTIFICATIONS_WORKER_METRICS_PORT`).
 - docker-compose already includes a `notifications-worker` service with the `unless-stopped` restart policy.
-- Jobs in the dead-letter queue are automatically removed after 30 days (`NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`). The check interval is controlled by `NOTIFICATION_QUEUE_DEAD_LETTER_CLEANUP_INTERVAL_SECONDS` (minimum 300 seconds; set `0` to disable the scheduler).
+- Jobs in the dead-letter queue are automatically removed after 30 days (`NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`).
 
-## User session cleanup
+## Periodic cleanup schedule
 
-- The API automatically removes stale records from `active_sessions` at startup and then every 15 minutes.
-- Adjust the frequency via `SESSION_CLEANUP_INTERVAL_SECONDS` (minimum 30 seconds). Setting the value to `0` disables the background scheduler; you can run the cleanup manually with `python -m app.services.session_cleanup` inside the container/virtual environment.
-- Session revocations (logout, `/auth/sessions/*`) now delete database rows immediately. Run the cleanup script once after upgrading to purge any previously revoked-but-not-deleted rows so that operator dashboards and the `/auth/sessions` UI stay in sync.
+The API runs one hourly scheduler (`app/core/lifespan.py::_periodic_scheduler_loop`; an initial 0–60 s jitter spreads rolling deploys). The cadence is fixed in code, not configurable per job:
 
-## MFA challenge cleanup
+| Cadence | Jobs |
+|---|---|
+| every hour | expired stories, stale password-reset tokens, stale e-mail-change tokens, stale MFA challenges |
+| every 6 hours | expired and revoked sessions |
+| daily at 02:00 UTC | stale notifications, dead-lettered notification-queue jobs, privacy artifacts (and CWV observations) |
 
-- The `cleanup_stale_mfa_challenges` utility removes rows where both `expires_at` and `consumed_at` are older than `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`.
-- The scheduler runs every 10 minutes by default (`MFA_CHALLENGE_CLEANUP_INTERVAL_SECONDS`, minimum 30 seconds). Set the value to `0` to disable the background loop; you can still run the job manually via `python -m app.services.mfa_challenge_cleanup`.
-- We recommend triggering the cleanup every 5–10 minutes so the table does not grow indefinitely and login flows stay responsive. Monitor `periodic_task_mfa_challenge_cleanup_runs_total`, `_errors_total`, and `_deleted_total` to spot anomalies or repeated failures.
+Retention windows are configurable (`NOTIFICATIONS_RETENTION_DAYS`, `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`, `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES`, `EMAIL_CHANGE_CLEANUP_RETENTION_MINUTES`, `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`, `SESSION_RETENTION_DAYS`, ...). Each job can also be run manually, e.g. `python -m app.services.session_cleanup` or `python -m app.services.mfa_challenge_cleanup`. Monitor `periodic_task_*_runs_total`, `_errors_total` and `_deleted_total`.
+
+Session revocations (logout, `/auth/sessions/*`) delete database rows immediately; after upgrading from a release that only marked rows revoked, run the session cleanup once so `/auth/sessions` and operator dashboards stay in sync.

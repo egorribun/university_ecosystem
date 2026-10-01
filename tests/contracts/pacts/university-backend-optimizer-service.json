@@ -1,0 +1,46 @@
+{
+  "consumer": {
+    "name": "university-backend"
+  },
+  "interactions": [
+    {
+      "description": "a gRPC request for DetectConflicts",
+      "pending": false,
+      "request": {
+        "contents": {
+          "content": "eyJ0YXJnZXQiOiB7IndlZWtkYXkiOiB7InBhY3Q6bWF0Y2hlcjp0eXBlIjogInR5cGUiLCAidmFsdWUiOiAiTW9uZGF5IiwgIm1pbiI6IG51bGwsICJtYXgiOiBudWxsfSwgInN0YXJ0X3RpbWUiOiB7InNlY29uZHMiOiB7InBhY3Q6bWF0Y2hlcjp0eXBlIjogInR5cGUiLCAidmFsdWUiOiAxNzEwMDAwMDAwLCAibWluIjogbnVsbCwgIm1heCI6IG51bGx9LCAibmFub3MiOiAwfSwgImVuZF90aW1lIjogeyJzZWNvbmRzIjogeyJwYWN0Om1hdGNoZXI6dHlwZSI6ICJ0eXBlIiwgInZhbHVlIjogMTcxMDAwMzYwMCwgIm1pbiI6IG51bGwsICJtYXgiOiBudWxsfSwgIm5hbm9zIjogMH0sICJwYXJpdHkiOiB7InBhY3Q6bWF0Y2hlcjp0eXBlIjogInR5cGUiLCAidmFsdWUiOiAiYm90aCIsICJtaW4iOiBudWxsLCAibWF4IjogbnVsbH0sICJyb29tIjogeyJwYWN0Om1hdGNoZXI6dHlwZSI6ICJ0eXBlIiwgInZhbHVlIjogIjQwNCIsICJtaW4iOiBudWxsLCAibWF4IjogbnVsbH0sICJ0ZWFjaGVyIjogeyJwYWN0Om1hdGNoZXI6dHlwZSI6ICJ0eXBlIiwgInZhbHVlIjogIkRyLiBTbWl0aCIsICJtaW4iOiBudWxsLCAibWF4IjogbnVsbH19LCAiZXhpc3RpbmciOiBbeyJ3ZWVrZGF5IjogeyJwYWN0Om1hdGNoZXI6dHlwZSI6ICJ0eXBlIiwgInZhbHVlIjogIk1vbmRheSIsICJtaW4iOiBudWxsLCAibWF4IjogbnVsbH0sICJzdGFydF90aW1lIjogeyJzZWNvbmRzIjogeyJwYWN0Om1hdGNoZXI6dHlwZSI6ICJ0eXBlIiwgInZhbHVlIjogMTcxMDAwMDAwMCwgIm1pbiI6IG51bGwsICJtYXgiOiBudWxsfSwgIm5hbm9zIjogMH0sICJlbmRfdGltZSI6IHsic2Vjb25kcyI6IHsicGFjdDptYXRjaGVyOnR5cGUiOiAidHlwZSIsICJ2YWx1ZSI6IDE3MTAwMDM2MDAsICJtaW4iOiBudWxsLCAibWF4IjogbnVsbH0sICJuYW5vcyI6IDB9LCAicGFyaXR5IjogeyJwYWN0Om1hdGNoZXI6dHlwZSI6ICJ0eXBlIiwgInZhbHVlIjogImJvdGgiLCAibWluIjogbnVsbCwgIm1heCI6IG51bGx9LCAicm9vbSI6IHsicGFjdDptYXRjaGVyOnR5cGUiOiAidHlwZSIsICJ2YWx1ZSI6ICI0MDQiLCAibWluIjogbnVsbCwgIm1heCI6IG51bGx9LCAidGVhY2hlciI6IHsicGFjdDptYXRjaGVyOnR5cGUiOiAidHlwZSIsICJ2YWx1ZSI6ICJEci4gU21pdGgiLCAibWluIjogbnVsbCwgIm1heCI6IG51bGx9fV19",
+          "contentType": "application/grpc",
+          "encoded": "base64"
+        },
+        "metadata": {
+          "contentType": "application/grpc"
+        }
+      },
+      "response": [
+        {
+          "contents": {
+            "content": "eyJjb25mbGljdHMiOiBbeyJ3ZWVrZGF5IjogeyJwYWN0Om1hdGNoZXI6dHlwZSI6ICJ0eXBlIiwgInZhbHVlIjogIk1vbmRheSIsICJtaW4iOiBudWxsLCAibWF4IjogbnVsbH0sICJzdGFydF90aW1lIjogeyJzZWNvbmRzIjogeyJwYWN0Om1hdGNoZXI6dHlwZSI6ICJ0eXBlIiwgInZhbHVlIjogMTcxMDAwMDAwMCwgIm1pbiI6IG51bGwsICJtYXgiOiBudWxsfSwgIm5hbm9zIjogMH0sICJlbmRfdGltZSI6IHsic2Vjb25kcyI6IHsicGFjdDptYXRjaGVyOnR5cGUiOiAidHlwZSIsICJ2YWx1ZSI6IDE3MTAwMDM2MDAsICJtaW4iOiBudWxsLCAibWF4IjogbnVsbH0sICJuYW5vcyI6IDB9LCAicGFyaXR5IjogeyJwYWN0Om1hdGNoZXI6dHlwZSI6ICJ0eXBlIiwgInZhbHVlIjogImJvdGgiLCAibWluIjogbnVsbCwgIm1heCI6IG51bGx9LCAicm9vbSI6IHsicGFjdDptYXRjaGVyOnR5cGUiOiAidHlwZSIsICJ2YWx1ZSI6ICI0MDQiLCAibWluIjogbnVsbCwgIm1heCI6IG51bGx9LCAidGVhY2hlciI6IHsicGFjdDptYXRjaGVyOnR5cGUiOiAidHlwZSIsICJ2YWx1ZSI6ICJEci4gU21pdGgiLCAibWluIjogbnVsbCwgIm1heCI6IG51bGx9fV19",
+            "contentType": "application/grpc",
+            "encoded": "base64"
+          },
+          "metadata": {
+            "contentType": "application/grpc"
+          }
+        }
+      ],
+      "type": "Synchronous/Messages"
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "ffi": "0.5.8",
+      "models": "1.3.16"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "optimizer-service"
+  }
+}

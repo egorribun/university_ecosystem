@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 from dishka import Provider, Scope, provide
 
 from app.core.protocols import AsyncDatabaseSession, UserAnalyticsServiceProtocol
@@ -21,8 +23,16 @@ class ContentProvider(Provider):
         return NotificationService(db=db)
 
     @provide(scope=Scope.REQUEST)
-    def vector_service(self, db: AsyncDatabaseSession) -> VectorService:
-        return VectorService(db=db)
+    async def vector_service(
+        self, db: AsyncDatabaseSession
+    ) -> AsyncIterator[VectorService]:
+        # A generator provider makes Dishka run the finalizer when the request
+        # scope closes; otherwise every request leaked its httpx connection pool.
+        service = VectorService(db=db)
+        try:
+            yield service
+        finally:
+            await service.close()
 
     @provide(scope=Scope.REQUEST)
     def group_service(self, db: AsyncDatabaseSession) -> GroupService:

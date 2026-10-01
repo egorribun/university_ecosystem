@@ -68,6 +68,13 @@ def set_app(application: Any) -> None:
 # P1-W5-08: Maximum seconds a single task handler may run before it is
 # cancelled.  Prevents one stuck handler from blocking the entire worker loop.
 _DEFAULT_TASK_TIMEOUT_S = float(os.environ.get("NATS_TASK_TIMEOUT_SECONDS", "30"))
+# A task that keeps failing is retried with exponential back-off and, after
+# ``_MAX_DELIVERIES`` attempts, parked in the database dead-letter queue instead
+# of being NAKed forever (an un-bounded redelivery loop hammers the broker and
+# starves healthy tasks in the same batch).
+_MAX_DELIVERIES = max(1, int(os.environ.get("NATS_TASK_MAX_DELIVERIES", "5")))
+_RETRY_BASE_DELAY_S = float(os.environ.get("NATS_TASK_RETRY_BASE_DELAY_SECONDS", "5"))
+_RETRY_MAX_DELAY_S = 300.0
 
 
 class _NatsTaskPayload(BaseModel):  # type: ignore[no-redef]
@@ -441,6 +448,66 @@ class NatsTaskBroker:
                 )
             return task_id
 
+    @staticmethod
+    def _num_delivered(msg: Any) -> int:
+        try:
+            return max(1, int(msg.metadata.num_delivered))
+        except (AttributeError, TypeError, ValueError, nats.errors.Error):
+            return 1
+
+    async def _retry_or_dead_letter(
+        self, msg: Any, payload: _NatsTaskPayload, error: str
+    ) -> None:
+        """NAK with back-off, or park the task in the DLQ once retries are spent."""
+        delivered = self._num_delivered(msg)
+        if delivered >= _MAX_DELIVERIES:
+            if await self._dead_letter(payload, error, delivered):
+                await msg.term()
+                return
+            # Persisting failed: keep the message alive rather than lose the task.
+        delay = min(_RETRY_BASE_DELAY_S * 2 ** (delivered - 1), _RETRY_MAX_DELAY_S)
+        await msg.nak(delay=delay)
+
+    async def _dead_letter(
+        self, payload: _NatsTaskPayload, error: str, delivered: int
+    ) -> bool:
+        from sqlalchemy.exc import SQLAlchemyError
+
+        from app.core.database import async_session
+        from app.workers.dead_letter_queue import DeadLetterQueue
+
+        try:
+            async with async_session() as session:
+                await DeadLetterQueue(session).add_failed_job(
+                    job_type=payload.name,
+                    payload={"args": list(payload.args), "kwargs": payload.kwargs},
+                    error_message=error[:2000],
+                )
+                await session.commit()
+        except (SQLAlchemyError, OSError) as exc:
+            _logger.error(
+                "nats_task_dlq_persist_failed: task=%s id=%s err=%s",
+                payload.name,
+                payload.id,
+                exc,
+            )
+            return False
+        _logger.error(
+            "nats_task_dead_lettered: task=%s id=%s deliveries=%d",
+            payload.name,
+            payload.id,
+            delivered,
+        )
+        return True
+
+    async def replay_dead_letter(self, job_type: str, payload: dict[str, Any]) -> None:
+        """Re-enqueue a dead-lettered task (handler for ``DeadLetterQueue`` replay)."""
+        await self.enqueue(
+            job_type,
+            *payload.get("args", []),
+            **payload.get("kwargs", {}),
+        )
+
     async def run_worker(self) -> None:
         """Run the worker to process tasks from JetStream with trace continuation."""
         if self._js is None:
@@ -582,7 +649,9 @@ class NatsTaskBroker:
                                     payload.id,
                                     _DEFAULT_TASK_TIMEOUT_S,
                                 )
-                                await msg.nak()
+                                await self._retry_or_dead_letter(
+                                    msg, payload, "task timed out"
+                                )
                                 continue
 
                         await msg.ack()
@@ -590,8 +659,7 @@ class NatsTaskBroker:
                         _logger.exception(
                             "Error processing task %s: %s", task_name, exc
                         )
-                        # Let it retry (standard JetStream behavior for un-acked messages)
-                        await msg.nak()
+                        await self._retry_or_dead_letter(msg, payload, str(exc))
             except nats.errors.TimeoutError:
                 continue
             except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — worker loop must survive any error (reviewed TD-27-04)

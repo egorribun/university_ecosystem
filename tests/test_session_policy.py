@@ -177,3 +177,20 @@ async def test_ws_token_resolution_honours_mfa_epoch(session_epoch, expected_use
 
     assert (resolved is user) is expected_user
     assert (jti == "jti-2") is expected_user
+
+
+# --- Unknown-account login pays the same Argon2 cost -------------------------
+
+
+@pytest.mark.asyncio
+async def test_verify_dummy_password_runs_one_argon2_verification():
+    from app.auth import security
+
+    security._dummy_password_hash = None
+    await security.verify_dummy_password("whatever")
+    first_hash = security._dummy_password_hash
+    assert first_hash is not None and first_hash.startswith("$argon2")
+
+    # The throw-away hash is reused, never regenerated per request.
+    await security.verify_dummy_password("another")
+    assert security._dummy_password_hash == first_hash

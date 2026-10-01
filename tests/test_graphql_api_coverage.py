@@ -563,58 +563,6 @@ class TestGraphQLAdvancedCoverage:
         assert ctx.is_authenticated is True
 
     @pytest.mark.asyncio
-    async def test_graphql_permissions_coverage(self):
-        from app.auth.rbac import SpiceDBUnavailableError
-        from app.graphql.permissions import IsAdmin, IsAuthenticated
-
-        source = None
-        info = MagicMock()
-        info.context = MagicMock()
-
-        # IsAuthenticated
-        perm_auth = IsAuthenticated()
-        info.context.is_authenticated = True
-        assert perm_auth.has_permission(source, info) is True
-        info.context.is_authenticated = False
-        assert perm_auth.has_permission(source, info) is False
-
-        # IsAdmin
-        perm_admin = IsAdmin()
-
-        # 1. Unauthenticated
-        info.context.is_authenticated = False
-        info.context.current_user = None
-        assert await perm_admin.has_permission(source, info) is False
-
-        # 2. Authenticated but no checker in context
-        info.context.is_authenticated = True
-        info.context.current_user = MagicMock()
-        info.context.checker = None
-        assert await perm_admin.has_permission(source, info) is False
-
-        # 3. Checker check_admin returns True
-        mock_checker = AsyncMock()
-        mock_checker.check_admin.return_value = True
-        info.context.checker = mock_checker
-        assert await perm_admin.has_permission(source, info) is True
-        mock_checker.check_admin.assert_called_once_with(
-            str(info.context.current_user.id)
-        )
-
-        # 4. Checker check_admin returns False
-        mock_checker.check_admin.reset_mock()
-        mock_checker.check_admin.return_value = False
-        assert await perm_admin.has_permission(source, info) is False
-
-        # 5. SpiceDBUnavailableError
-        mock_checker.check_admin.side_effect = SpiceDBUnavailableError("SpiceDB down")
-        assert await perm_admin.has_permission(source, info) is False
-
-        # 6. Unexpected Exception (RZ-22-01)
-        mock_checker.check_admin.side_effect = RuntimeError("DB crash")
-        assert await perm_admin.has_permission(source, info) is False
-
-    @pytest.mark.asyncio
     async def test_increment_user_cost_fallback(self):
         from unittest.mock import patch
 

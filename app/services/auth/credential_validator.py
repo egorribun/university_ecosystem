@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, NoReturn
 
 from fastapi import BackgroundTasks, Request, status
 
-from app.auth.security import verify_and_update_password
+from app.auth.security import verify_and_update_password, verify_dummy_password
 from app.core import metrics
 from app.core.logging import get_logger
 
@@ -87,7 +85,8 @@ class CredentialValidator:
             )
 
         if not user:
-            await asyncio.sleep(0.1 + (secrets.randbelow(100) / 1000.0))
+            # Equalise timing with the known-user path (no account enumeration).
+            await verify_dummy_password(password)
             await self._handle_invalid_user(normalized_email, request, locale, bg_tasks)
 
         verified, new_hash = await verify_and_update_password(
