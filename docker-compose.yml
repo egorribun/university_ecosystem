@@ -809,6 +809,10 @@ services:
     networks:
       - service_net
     read_only: true
+    # The readiness-only SeaweedFS client does not store service data.
+    # Override the image's /data VOLUME with a disposable memory-backed mount.
+    tmpfs:
+      - /data
     cap_drop:
       - ALL
     security_opt:

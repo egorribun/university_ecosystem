@@ -150,6 +150,8 @@ def _live_environment(state_root: Path, public: str, private: str) -> dict[str, 
     temp_root = state_root.parents[1]
     env["TEMP"] = str(temp_root)
     env["TMP"] = str(temp_root)
+    if os.name != "nt":
+        env["TMPDIR"] = str(temp_root)
     env["COMPOSE_PROJECT_NAME"] = "ue-live-36854541120abcd1"
     ports = {name: 32000 + index for index, name in enumerate(PORT_NAMES)}
     env["LIVE_BASE_URL"] = f"http://localhost:{ports['CADDY_HTTP']}"
@@ -379,6 +381,8 @@ def test_launcher_prepare_only_accepts_python_generated_in_place_owner(
     )
     environment["TEMP"] = str(state_root.parents[1])
     environment["TMP"] = str(state_root.parents[1])
+    if os.name != "nt":
+        environment["TMPDIR"] = str(state_root.parents[1])
 
     result = _run_prepare(project, state_root, environment)
 

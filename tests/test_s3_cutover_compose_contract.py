@@ -132,7 +132,7 @@ def test_storage_init_waits_for_the_s3_api_without_mc(relative_path: str) -> Non
     assert init["command"] == ["wget -qO- http://minio:9000/status >/dev/null"]
     assert init["depends_on"]["minio"]["condition"] == "service_healthy"
     assert "environment" not in init
-    assert "tmpfs" not in init
+    assert init["tmpfs"] == ["/data"]
     assert init["read_only"] is True
     assert init["cap_drop"] == ["ALL"]
     assert init["security_opt"] == ["no-new-privileges:true"]

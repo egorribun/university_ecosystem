@@ -463,6 +463,9 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+      # pgvector declares this image VOLUME even though this one-shot client
+      # only runs psql. Keep the implicit mount disposable and Compose-owned.
+      - /var/lib/postgresql/data
     # Replace the base stack's one-item sequence instead of appending the
     # same option during an overlay merge (Compose rejects duplicate entries).
     security_opt: !override
@@ -631,6 +634,9 @@ services:
     networks:
       - internal
     read_only: true
+    # The readiness-only SeaweedFS client does not store service data.
+    tmpfs:
+      - /data
     cap_drop:
       - ALL
     # Replace the base stack's one-item sequence instead of appending the
@@ -1574,6 +1580,8 @@ services:
       - "127.0.0.1:4040:4040"
     volumes:
       - pyroscope-data:/data
+      - pyroscope-compactor-data:/data-compactor
+      - pyroscope-metastore-data:/data-metastore
     deploy:
       resources:
         limits:
@@ -1632,6 +1640,8 @@ volumes:
   loki-data:
   alloy-data:
   pyroscope-data:
+  pyroscope-compactor-data:
+  pyroscope-metastore-data:
   grafana-data:
   prometheus-data:
   revocation-redis-data:

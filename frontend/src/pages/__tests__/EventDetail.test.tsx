@@ -37,6 +37,8 @@ const mocks = vi.hoisted(() => ({
   },
   swipeOptions: null as { onSwipeLeft: () => void; onSwipeRight: () => void } | null,
   navigate: vi.fn(),
+  historyCanGoBack: vi.fn(() => false),
+  historyBack: vi.fn(),
   invalidateQueries: vi.fn(),
   delete: vi.fn(),
   setEventsHeroId: vi.fn(),
@@ -46,6 +48,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({ id: mocks.id }),
   useNavigate: () => mocks.navigate,
+  useRouter: () => ({
+    history: {
+      canGoBack: mocks.historyCanGoBack,
+      back: mocks.historyBack,
+    },
+  }),
 }))
 
 vi.mock("@tanstack/react-query", () => ({
@@ -260,6 +268,8 @@ describe("EventDetail", () => {
     mocks.registration.unregister.mockReset()
     mocks.swipeOptions = null
     mocks.navigate.mockReset()
+    mocks.historyCanGoBack.mockReset().mockReturnValue(false)
+    mocks.historyBack.mockReset()
     mocks.invalidateQueries.mockReset().mockResolvedValue(undefined)
     mocks.delete.mockReset().mockResolvedValue(undefined)
     mocks.setEventsHeroId.mockReset()
@@ -421,9 +431,13 @@ describe("EventDetail", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
   })
 
-  it("uses history back when available and renders narrow inactive events for non-admins", () => {
-    const back = vi.spyOn(window.history, "back").mockImplementation(() => {})
-    window.history.replaceState({ idx: 1 }, "", "/events/event-1")
+  it("uses TanStack history back when available and renders narrow inactive events for non-admins", () => {
+    mocks.historyCanGoBack.mockReturnValue(true)
+    window.history.replaceState(
+      { __TSR_index: 1, __TSR_key: "detail-entry" },
+      "",
+      "/events/event-1"
+    )
     mocks.user = { id: "student-1", role: "student" }
     mocks.media.narrow = true
     mocks.language = "ru"
@@ -440,20 +454,40 @@ describe("EventDetail", () => {
     render(<EventDetail />)
 
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
-    expect(back).toHaveBeenCalledOnce()
+    expect(mocks.historyBack).toHaveBeenCalledOnce()
+    expect(mocks.navigate).not.toHaveBeenCalledWith({ to: "/events" })
     expect(screen.queryByAltText("event")).not.toBeInTheDocument()
     expect(screen.queryByText("event-edit-dialog")).not.toBeInTheDocument()
   })
 
-  it("falls back to the events route when browser history has no index and user is absent", () => {
+  it("falls back to the events route for a direct TanStack history entry", () => {
     mocks.user = null
-    window.history.replaceState(null, "", "/events/event-1")
+    mocks.historyCanGoBack.mockReturnValue(false)
+    window.history.replaceState(
+      { __TSR_index: 0, __TSR_key: "direct-entry" },
+      "",
+      "/events/event-1"
+    )
     mocks.detail = { data: { id: "event-sparse" }, isLoading: false, error: null }
     render(<EventDetail />)
 
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
 
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/events" })
+    expect(mocks.historyBack).not.toHaveBeenCalled()
+  })
+
+  it("uses router history availability instead of a foreign history index", () => {
+    mocks.historyCanGoBack.mockReturnValue(false)
+    window.history.replaceState({ idx: 1 }, "", "/events/event-1")
+    const nativeBack = vi.spyOn(window.history, "back").mockImplementation(() => {})
+    render(<EventDetail />)
+
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/events" })
+    expect(mocks.historyBack).not.toHaveBeenCalled()
+    expect(nativeBack).not.toHaveBeenCalled()
   })
 
   it("updates the Firefox reading-progress fallback on scroll", () => {

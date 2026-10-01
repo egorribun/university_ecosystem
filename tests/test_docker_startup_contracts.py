@@ -613,6 +613,26 @@ def test_storage_initialization_is_compose_managed_and_fail_fast() -> None:
     assert "docker run --rm --network $network" not in launcher
 
 
+def test_full_stack_image_volumes_are_owned_or_explicitly_ephemeral() -> None:
+    project = _compose("docker-compose.full.yml")
+    services = project["services"]
+
+    postgres_init_tmpfs = set(services["postgres-databases-init"].get("tmpfs", []))
+    assert "/var/lib/postgresql/data" in postgres_init_tmpfs
+
+    assert services["minio-init"].get("tmpfs") == ["/data"]
+
+    pyroscope_mounts = set(services["pyroscope"]["volumes"])
+    assert {
+        "pyroscope-data:/data",
+        "pyroscope-compactor-data:/data-compactor",
+        "pyroscope-metastore-data:/data-metastore",
+    }.issubset(pyroscope_mounts)
+    assert {"pyroscope-compactor-data", "pyroscope-metastore-data"}.issubset(
+        project["volumes"]
+    )
+
+
 def test_compose_wrappers_always_use_the_full_stack_env_file() -> None:
     for relative_path in ("scripts/dc.ps1", "scripts/dc.sh"):
         wrapper = _read(relative_path)
